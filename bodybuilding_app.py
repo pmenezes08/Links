@@ -42,25 +42,23 @@ def init_db():
     try:
         conn = sqlite3.connect('users.db')
         c = conn.cursor()
-        c.execute("DROP TABLE IF EXISTS users")
-        c.execute('''CREATE TABLE users
+        # Use CREATE TABLE IF NOT EXISTS to avoid wiping data
+        c.execute('''CREATE TABLE IF NOT EXISTS users
                      (username TEXT PRIMARY KEY, subscription TEXT, password TEXT,
                       gender TEXT, weight REAL, height REAL, blood_type TEXT, muscle_mass REAL, bmi REAL,
                       nutrition_goal TEXT, nutrition_restrictions TEXT)''')
-        c.execute("INSERT OR IGNORE INTO users (username, subscription, password) VALUES (?, ?, ?)",
-                  ('admin', 'premium', '12345'))
-        c.execute("DROP TABLE IF EXISTS api_usage")
-        c.execute('''CREATE TABLE api_usage
+        c.execute('''CREATE TABLE IF NOT EXISTS api_usage
                      (username TEXT, date TEXT, count INTEGER,
                       PRIMARY KEY (username, date))''')
-        c.execute("DROP TABLE IF EXISTS saved_data")
-        c.execute('''CREATE TABLE saved_data
+        c.execute('''CREATE TABLE IF NOT EXISTS saved_data
                      (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT, type TEXT, data TEXT, timestamp TEXT)''')
+        # Add admin user only if it doesn't exist
+        c.execute("INSERT OR IGNORE INTO users (username, subscription, password) VALUES (?, ?, ?)",
+                  ('admin', 'premium', '12345'))
         conn.commit()
-        print("Database initialized with admin user 'admin' as premium")
+        print("Database initialized or verified, admin user ensured")
     except Exception as e:
         print(f"Error initializing database: {e}")
-        sys.exit(1)
     finally:
         conn.close()
 
@@ -117,7 +115,7 @@ def index():
                 return redirect(url_for('signup'))
         print("No username provided, rendering index with error")
         return render_template('index.html', error="Please enter a username!")
-    
+
     print("GET request, rendering index.html")
     return render_template('index.html')
 
@@ -142,7 +140,7 @@ def authorized():
         return render_template('index.html', error=f"X API error: {user_info.text}")
     user_data = user_info.json()['data']
     username = user_data['username']
-    
+
     conn = sqlite3.connect('users.db')
     c = conn.cursor()
     c.execute("SELECT subscription FROM users WHERE username=?", (username,))
@@ -151,7 +149,7 @@ def authorized():
         c.execute("INSERT INTO users (username, subscription) VALUES (?, 'free')", (username,))
         conn.commit()
     conn.close()
-    
+
     session['username'] = username
     print(f"OAuth success, username: {username}, subscription: {user[0] if user else 'free'}")
     if user and user[0] == 'premium':
@@ -170,7 +168,7 @@ def signup():
     if 'username' not in session:
         print("No username in session, redirecting to index")
         return redirect(url_for('index'))
-    
+
     username = session['username']
     print(f"Signup for username: {username}")
     if request.method == 'POST':
@@ -187,7 +185,7 @@ def signup():
             return redirect(url_for('dashboard'))
         print("No password provided, rendering signup with error")
         return render_template('signup.html', error="Please enter a password!")
-    
+
     print("Rendering signup page")
     return render_template('signup.html')
 
@@ -196,14 +194,14 @@ def login_password():
     if 'username' not in session:
         print("No username in session, redirecting to /")
         return redirect(url_for('index'))
-    
+
     username = session['username']
     print(f"Username from session: {username}")
 
     if request.method == 'POST':
         password = request.form.get('password', '')
         print(f"Password entered: {password}")
-        
+
         try:
             conn = sqlite3.connect('users.db')
             c = conn.cursor()
@@ -211,7 +209,7 @@ def login_password():
             user = c.fetchone()
             conn.close()
             print(f"DB query result: {user}")
-            
+
             if user is None:
                 print(f"No user found for {username}")
                 return render_template('login.html', error="User not found!")
@@ -231,7 +229,7 @@ def login_password():
         except Exception as e:
             print(f"Database error: {str(e)}")
             return render_template('login.html', error=f"Login failed: {str(e)}")
-    
+
     print("Rendering login.html for GET request")
     return render_template('login.html')
 
@@ -283,13 +281,13 @@ def admin():
     if 'username' not in session or session['username'] != 'admin':
         print("Unauthorized access to admin, redirecting to index")
         return redirect(url_for('index'))
-    
+
     username = session['username']
     print(f"Admin page accessed by {username}")
 
     conn = sqlite3.connect('users.db')
     c = conn.cursor()
-    
+
     if request.method == 'POST':
         if 'add_user' in request.form:
             new_username = request.form.get('new_username')
