@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard - Workout X</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <div class="sidebar">
+        <button class="menu-btn">☰ Menu</button>
+        <div class="dropdown-content">
+            <a href="/admin">Admin Dashboard</a>
+            <a href="/profile">Profile</a>
+            <a href="/premium_dashboard">Premium Dashboard</a>
+            <a href="/nutrition">Nutrition</a>
+            <a href="/blood_test_analysis">Blood Test Analysis</a>
+            <a href="/chat">Chat with Grok</a>
+            <a href="/health_news">Health News</a>
+            <a href="/subscribe">Subscribe</a>
+            <a href="/logout">Logout</a>
+        </div>
+    </div>
+    <div class="container">
+        <h1>Admin Dashboard</h1>
+        {% if error %}
+            <p style="color: red;">{{ error }}</p>
+        {% endif %}
+        <form method="POST" class="add-user-form">
+            <input type="text" name="new_username" placeholder="New Username" required>
+            <input type="password" name="new_password" placeholder="New Password" required>
+            <select name="new_subscription">
+                <option value="free">Free</option>
+                <option value="premium">Premium</option>
+            </select>
+            <button type="submit" name="add_user" class="sleek-btn">Add User</button>
+        </form>
+        <table>
+            <thead>
+                <tr>
+                    <th>Username</th>
+                    <th>Subscription</th>
+                    <th>Update</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for user in users %}
+                <tr>
+                    <td>{{ user[0] }}</td>
+                    <td>{{ user[1] }}</td>
+                    <td>
+                        <form method="POST">
+                            <input type="hidden" name="username" value="{{ user[0] }}">
+                            <select name="subscription">
+                                <option value="free" {% if user[1] == 'free' %}selected{% endif %}>Free</option>
+                                <option value="premium" {% if user[1] == 'premium' %}selected{% endif %}>Premium</option>
+                            </select>
+                            <button type="submit" name="update_user" class="sleek-btn">Update</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <button onclick="location.href='/premium_dashboard'" class="go-back-btn"></button>
+    </div>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script>
+        $(document).ready(function() {
+            $('.menu-btn').click(function() {
+                $('.dropdown-content').toggle();
+            });
+            $(window).resize(function() {
+                if ($(window).width() > 768) {
+                    $('.dropdown-content').hide();
+                }
+            });
+        });
+    </script>
+    <style>
+        .sidebar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            height: 100%;
+            width: 60px;
+            background: #1a2526;
+            transition: width 0.3s;
+            z-index: 1000;
+        }
+        .menu-btn {
+            background: none;
+            border: none;
+            color: #e0e0e0;
+            font-size: 24px;
+            padding: 15px;
+            cursor: pointer;
+            width: 100%;
+            text-align: left;
+        }
+        .dropdown-content {
+            display: none;
+            background: #2d3839;
+            position: absolute;
+            top: 60px;
+            left: 0;
+            width: 200px;
+        }
+        .dropdown-content a {
+            color: #e0e0e0;
+            padding: 10px 15px;
+            display: block;
+            text-decoration: none;
+        }
+        .dropdown-content a:hover {
+            background: #3a4647;
+        }
+        .container {
+            max-width: 90%;
+            margin: 0 auto;
+            padding: 20px;
+            text-align: center;
+        }
+        .add-user-form {
+            margin: 20px 0;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            justify-content: center;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th, td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid #3a4647;
+        }
+        th {
+            background: #2d3839;
+        }
+        select, input[type="text"], input[type="password"] {
+            background: #3a4647;
+            color: #e0e0e0;
+            border: none;
+            padding: 5px;
+            border-radius: 4px;
+            width: 100%;
+            max-width: 200px;
+        }
+        @media (max-width: 768px) {
+            .sidebar { width: 100%; height: 60px; }
+            .menu-btn { font-size: 20px; padding: 10px; }
+            .dropdown-content { top: 60px; width: 100%; left: 0; }
+            .container { padding: 10px; }
+            h1 { font-size: 1.5em; }
+            .add-user-form { flex-direction: column; align-items: center; }
+            table, th, td { font-size: 0.9em; padding: 8px; }
+            select, input[type="text"], input[type="password"] { max-width: 100%; }
+        }
+    </style>
+</body>
+</html>

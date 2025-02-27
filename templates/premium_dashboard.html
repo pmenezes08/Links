@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Premium Dashboard - Workout X</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <div class="sidebar">
+        <button class="menu-btn">☰ Menu</button>
+        <div class="dropdown-content">
+            {% if session['username'] == 'admin' %}
+            <a href="/admin">Admin Dashboard</a>
+            {% endif %}
+            <a href="/profile">Profile</a>
+            <a href="/premium_dashboard">Premium Dashboard</a>
+            <a href="/nutrition">Nutrition</a>
+            <a href="/blood_test_analysis">Blood Test Analysis</a>
+            <a href="/chat">Chat with Grok</a>
+            <a href="/health_news">Health News</a>
+            <a href="/subscribe">Subscribe</a>
+            <a href="/logout">Logout</a>
+        </div>
+    </div>
+    <div class="container">
+        <h1>Welcome to Premium, {{ name }}!</h1>
+        <p>Unlock 600+ workout combos and personalized plans.</p>
+        <div class="selection">
+            <label for="muscle-select">Muscle Group</label>
+            <select id="muscle-select">
+                <option value="">Select Muscle Group</option>
+                <option value="Chest">Chest</option>
+                <option value="Back">Back</option>
+                <option value="Legs">Legs</option>
+                <option value="Arms">Arms</option>
+                <option value="Shoulders">Shoulders</option>
+                <option value="Core">Core</option>
+            </select>
+        </div>
+        <div class="selection">
+            <label for="type-select">Training Type</label>
+            <select id="type-select">
+                <option value="">Select Training Type</option>
+                <option value="Strength">Strength</option>
+                <option value="Hypertrophy">Hypertrophy</option>
+                <option value="Endurance">Endurance</option>
+            </select>
+        </div>
+        <button id="generate-btn" class="sleek-btn">Generate Workout</button>
+        <div id="result" class="result"></div>
+        <button onclick="location.href='/premium_dashboard'" class="go-back-btn"></button>
+    </div>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+    <script>
+        $(document).ready(function() {
+            $('.menu-btn').click(function() {
+                $('.dropdown-content').toggle();
+            });
+            $(window).resize(function() {
+                if ($(window).width() > 768) {
+                    $('.dropdown-content').hide();
+                }
+            });
+        });
+    </script>
+    <style>
+        .sidebar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            height: 100%;
+            width: 60px;
+            background: #1a2526;
+            transition: width 0.3s;
+            z-index: 1000;
+        }
+        .menu-btn {
+            background: none;
+            border: none;
+            color: #e0e0e0;
+            font-size: 24px;
+            padding: 15px;
+            cursor: pointer;
+            width: 100%;
+            text-align: left;
+        }
+        .dropdown-content {
+            display: none;
+            background: #2d3839;
+            position: absolute;
+            top: 60px;
+            left: 0;
+            width: 200px;
+        }
+        .dropdown-content a {
+            color: #e0e0e0;
+            padding: 10px 15px;
+            display: block;
+            text-decoration: none;
+        }
+        .dropdown-content a:hover {
+            background: #3a4647;
+        }
+        .container {
+            max-width: 90%;
+            margin: 0 auto;
+            padding: 20px;
+            text-align: center;
+        }
+        .selection {
+            margin: 15px 0;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            align-items: center;
+        }
+        select {
+            background: #3a4647;
+            color: #e0e0e0;
+            border: none;
+            padding: 5px;
+            border-radius: 4px;
+            width: 100%;
+            max-width: 300px;
+        }
+        @media (max-width: 768px) {
+            .sidebar { width: 100%; height: 60px; }
+            .menu-btn { font-size: 20px; padding: 10px; }
+            .dropdown-content { top: 60px; width: 100%; left: 0; }
+            .container { padding: 10px; }
+            h1 { font-size: 1.5em; }
+            p { font-size: 0.9em; }
+            select { font-size: 0.9em; padding: 6px; }
+            .sleek-btn { font-size: 0.9em; padding: 8px; }
+        }
+    </style>
+</body>
+</html>
