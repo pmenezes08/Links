@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Welcome to WorkoutX</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <style>
+        .container {
+            max-width: 90%;
+            margin: 0 auto;
+            padding: 20px;
+            text-align: center;
+        }
+        form {
+            margin: 20px 0;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        input {
+            width: 100%;
+            max-width: 300px;
+            padding: 10px;
+            border-radius: 4px;
+            background: #3a4647;
+            color: #e0e0e0;
+            border: none;
+            margin: 0 auto;
+        }
+        button {
+            width: 100%;
+            max-width: 300px;
+            margin: 0 auto;
+        }
+        @media (max-width: 768px) {
+            h1 { font-size: 1.5em; }
+            p { font-size: 0.9em; }
+            input, button { font-size: 1em; padding: 8px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>WorkoutX</h1>
+        <p>Login or sign up to get started!</p>
+        {% if error %}
+            <p style="color: red;">{{ error }}</p>
+        {% endif %}
+        <form method="POST">
+            <input type="text" name="username" placeholder="Enter your username" required>
+            <button type="submit" class="sleek-btn">Login/Sign Up</button>
+        </form>
+        <button onclick="location.href='/login_x'" class="sleek-btn oauth-btn">Sign in with X</button>
+    </div>
+</body>
+</html>

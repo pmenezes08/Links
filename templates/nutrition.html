@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nutrition - Workout X</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <div class="sidebar">
+        <button class="menu-btn">☰ Menu</button>
+        <div class="dropdown-content">
+            {% if session['username'] == 'admin' %}
+            <a href="/admin">Admin Dashboard</a>
+            {% endif %}
+            <a href="/profile">Profile</a>
+            <a href="/premium_dashboard">Premium Dashboard</a>
+            <a href="/nutrition">Nutrition</a>
+            <a href="/blood_test_analysis">Blood Test Analysis</a>
+            <a href="/chat">Chat with Grok</a>
+            <a href="/health_news">Health News</a>
+            <a href="/subscribe">Subscribe</a>
+            <a href="/logout">Logout</a>
+        </div>
+    </div>
+    <div class="container">
+        <h1>Nutrition, {{ name }}!</h1>
+        <p>Get personalized diet plans—type your goals or upload a file!</p>
+        <div id="chat-box" class="chat-box"></div>
+        <form id="nutrition-form" enctype="multipart/form-data">
+            <textarea id="message" name="message" placeholder="Enter your nutrition goals..." rows="2"></textarea>
+            <input type="file" id="file" name="file" accept=".txt,.pdf,.jpg,.png">
+            <button type="submit" class="sleek-btn">Get Plan</button>
+        </form>
+        <button id="save-btn" class="sleek-btn" style="display:none;">Save Response</button>
+        <button onclick="location.href='/premium_dashboard'" class="go-back-btn"></button>
+    </div>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script>
+        $(document).ready(function() {
+            $('.menu-btn').click(function() {
+                $('.dropdown-content').toggle();
+            });
+            $(window).resize(function() {
+                if ($(window).width() > 768) {
+                    $('.dropdown-content').hide();
+                }
+            });
+            $('#nutrition-form').on('submit', function(e) {
+                e.preventDefault();
+                var formData = new FormData(this);
+                $.ajax({
+                    url: '/nutrition',
+                    type: 'POST',
+                    data: formData,
+                    processData: false,
+                    contentType: false,
+                    success: function(response) {
+                        $('#chat-box').append('<p><strong>You:</strong> ' + $('#message').val() + '</p>');
+                        $('#chat-box').append('<p><strong>Grok:</strong> ' + response.response + '</p>');
+                        $('#message').val('');
+                        $('#file').val('');
+                        $('#save-btn').show().data('response', response.response);
+                        $('#chat-box').scrollTop($('#chat-box')[0].scrollHeight);
+                    },
+                    error: function(xhr) {
+                        $('#chat-box').append('<p><strong>Error:</strong> Something went wrong!</p>');
+                    }
+                });
+            });
+            $('#save-btn').on('click', function() {
+                var response = $(this).data('response');
+                $.post('/nutrition', { action: 'save', response: response }, function(data) {
+                    alert(data.message);
+                    $('#save-btn').hide();
+                });
+            });
+        });
+    </script>
+    <style>
+        .sidebar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            height: 100%;
+            width: 60px;
+            background: #1a2526;
+            transition: width 0.3s;
+            z-index: 1000;
+        }
+        .menu-btn {
+            background: none;
+            border: none;
+            color: #e0e0e0;
+            font-size: 24px;
+            padding: 15px;
+            cursor: pointer;
+            width: 100%;
+            text-align: left;
+        }
+        .dropdown-content {
+            display: none;
+            background: #2d3839;
+            position: absolute;
+            top: 60px;
+            left: 0;
+            width: 200px;
+        }
+        .dropdown-content a {
+            color: #e0e0e0;
+            padding: 10px 15px;
+            display: block;
+            text-decoration: none;
+        }
+        .dropdown-content a:hover {
+            background: #3a4647;
+        }
+        .container {
+            max-width: 90%;
+            margin: 0 auto;
+            padding: 20px;
+            text-align: center;
+        }
+        .chat-box {
+            max-height: 400px;
+            overflow-y: auto;
+            background: #2d3839;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+        }
+        .chat-box p {
+            margin: 10px 0;
+            color: #e0e0e0;
+        }
+        .chat-box p strong {
+            color: #ffffff;
+        }
+        form {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            align-items: center;
+        }
+        #message {
+            width: 100%;
+            max-width: 600px;
+            background: #3a4647;
+            border: none;
+            color: #e0e0e0;
+            padding: 10px;
+            border-radius: 8px;
+        }
+        #file {
+            margin: 10px 0;
+        }
+        @media (max-width: 768px) {
+            .sidebar { width: 100%; height: 60px; }
+            .menu-btn { font-size: 20px; padding: 10px; }
+            .dropdown-content { top: 60px; width: 100%; left: 0; }
+            .container { padding: 10px; }
+            h1 { font-size: 1.5em; }
+            p { font-size: 0.9em; }
+            #message { max-width: 100%; font-size: 0.9em; }
+            .sleek-btn { font-size: 0.9em; padding: 8px; }
+        }
+    </style>
+</body>
+</html>
