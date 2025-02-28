@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Premium Dashboard - Workout X</title>
+    <title>Premium Dashboard - Links</title> <!-- Changed from Workout X to Links -->
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
 </head>
 <body>
@@ -26,28 +26,39 @@
     <div class="container">
         <h1>Welcome to Premium, {{ name }}!</h1>
         <p>Unlock 600+ workout combos and personalized plans.</p>
-        <div class="selection">
-            <label for="muscle-select">Muscle Group</label>
-            <select id="muscle-select">
-                <option value="">Select Muscle Group</option>
-                <option value="Chest">Chest</option>
-                <option value="Back">Back</option>
-                <option value="Legs">Legs</option>
-                <option value="Arms">Arms</option>
-                <option value="Shoulders">Shoulders</option>
-                <option value="Core">Core</option>
-            </select>
-        </div>
-        <div class="selection">
-            <label for="type-select">Training Type</label>
-            <select id="type-select">
-                <option value="">Select Training Type</option>
-                <option value="Strength">Strength</option>
-                <option value="Hypertrophy">Hypertrophy</option>
-                <option value="Endurance">Endurance</option>
-            </select>
-        </div>
-        <button id="generate-btn" class="sleek-btn">Generate Workout</button>
+        <form method="POST" action="{{ url_for('generate_workout') }}">
+            <div class="selection">
+                <label for="muscle_or_split">Muscle Group or Split:</label>
+                <select name="muscle_or_split" id="muscle_or_split" required>
+                    <option value="">Select Muscle Group or Split</option>
+                    <option value="Chest">Chest</option>
+                    <option value="Back">Back</option>
+                    <option value="Legs">Legs</option>
+                    <option value="Shoulders">Shoulders</option>
+                    <option value="Arms">Arms</option>
+                    <option value="Push (Chest/Shoulders/Triceps)">Push (Chest/Shoulders/Triceps)</option>
+                    <option value="Pull (Back/Biceps)">Pull (Back/Biceps)</option>
+                    <option value="Full Legs + Calves">Full Legs + Calves</option>
+                    <option value="Legs">Legs (Split)</option>
+                    <option value="Back + Tricep">Back + Tricep (Split)</option>
+                    <option value="Chest + Bicep">Chest + Bicep (Split)</option>
+                    <option value="Shoulders + Abs">Shoulders + Abs (Split)</option>
+                    <option value="Glutes, Hamstrings, and Calves">Glutes, Hamstrings, and Calves (Split)</option>
+                </select>
+            </div>
+            <div class="selection">
+                <label for="training_type">Training Type:</label>
+                <select name="training_type" id="training_type" required>
+                    <option value="">Select Training Type</option>
+                    <option value="Strength">Strength</option>
+                    <option value="Cardio">Cardio</option>
+                    <option value="Bulking">Bulking</option>
+                    <option value="Leaning">Leaning</option>
+                    <option value="Deload">Deload</option>
+                </select>
+            </div>
+            <button type="submit" class="sleek-btn">Generate Workout</button>
+        </form>
         <div id="result" class="result"></div>
         <button onclick="location.href='/premium_dashboard'" class="go-back-btn"></button>
     </div>
@@ -61,6 +72,27 @@
             $(window).resize(function() {
                 if ($(window).width() > 768) {
                     $('.dropdown-content').hide();
+                }
+            });
+
+            // Optional: Handle AJAX for dynamic results (if needed)
+            $('#generate-btn').click(function(e) {
+                e.preventDefault();
+                var muscleOrSplit = $('#muscle_or_split').val();
+                var trainingType = $('#training_type').val();
+                if (muscleOrSplit && trainingType) {
+                    $.post('/generate_workout', {
+                        muscle_or_split: muscleOrSplit,
+                        training_type: trainingType
+                    }, function(data) {
+                        if (data.error) {
+                            $('#result').html('<p style="color: red;">' + data.error + '</p>');
+                        } else {
+                            $('#result').html('<p>' + data.workout + '</p>');
+                        }
+                    });
+                } else {
+                    $('#result').html('<p style="color: red;">Please select both fields!</p>');
                 }
             });
         });
@@ -125,6 +157,26 @@
             width: 100%;
             max-width: 300px;
         }
+        .result {
+            margin-top: 20px;
+            padding: 10px;
+            background: #2d3839;
+            color: #e0e0e0;
+            border-radius: 4px;
+            display: none;
+        }
+        .sleek-btn, .go-back-btn {
+            background: #3a4647;
+            color: #e0e0e0;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        .sleek-btn:hover, .go-back-btn:hover {
+            background: #4a5758;
+        }
         @media (max-width: 768px) {
             .sidebar { width: 100%; height: 60px; }
             .menu-btn { font-size: 20px; padding: 10px; }
@@ -133,7 +185,7 @@
             h1 { font-size: 1.5em; }
             p { font-size: 0.9em; }
             select { font-size: 0.9em; padding: 6px; }
-            .sleek-btn { font-size: 0.9em; padding: 8px; }
+            .sleek-btn, .go-back-btn { font-size: 0.9em; padding: 8px; }
         }
     </style>
 </body>
