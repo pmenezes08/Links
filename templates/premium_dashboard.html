@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Premium Dashboard - Links</title> <!-- Changed from Workout X to Links -->
+    <title>Premium Dashboard - Links</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
 </head>
 <body>
@@ -15,6 +15,7 @@
             {% endif %}
             <a href="/profile">Profile</a>
             <a href="/premium_dashboard">Premium Dashboard</a>
+            <a href="/workouts">Workouts</a>  <!-- New Workouts link -->
             <a href="/nutrition">Nutrition</a>
             <a href="/blood_test_analysis">Blood Test Analysis</a>
             <a href="/chat">Chat with Grok</a>
@@ -25,7 +26,6 @@
     </div>
     <div class="container">
         <h1>Welcome to Premium, {{ name }}!</h1>
-        <p>Unlock 600+ workout combos and personalized plans.</p>
         <form method="POST" action="{{ url_for('generate_workout') }}">
             <div class="selection">
                 <label for="muscle_or_split">Muscle Group or Split:</label>
@@ -58,6 +58,7 @@
                 </select>
             </div>
             <button type="submit" class="sleek-btn">Generate Workout</button>
+            <button type="button" id="save-btn" class="sleek-btn" style="display: none;">Save Workout</button>  <!-- New Save button -->
         </form>
         <div id="result" class="result"></div>
         <button onclick="location.href='/premium_dashboard'" class="go-back-btn"></button>
@@ -75,7 +76,6 @@
                 }
             });
 
-            // Optional: Handle AJAX for dynamic results (if needed)
             $('#generate-btn').click(function(e) {
                 e.preventDefault();
                 var muscleOrSplit = $('#muscle_or_split').val();
@@ -86,18 +86,54 @@
                         training_type: trainingType
                     }, function(data) {
                         if (data.error) {
-                            $('#result').html('<p style="color: red;">' + data.error + '</p>');
+                            $('#result').html('<p style="color: #e0e0e0;">' + data.error + '</p>').show();
                         } else {
-                            $('#result').html('<p>' + data.workout + '</p>');
+                            $('#result').html(data.workout).show();
+                            $('#save-btn').show();  // Show save button when workout is generated
                         }
+                    }).fail(function(xhr, status, error) {
+                        $('#result').html('<p style="color: #e0e0e0;">Error: ' + error + '</p>').show();
                     });
                 } else {
-                    $('#result').html('<p style="color: red;">Please select both fields!</p>');
+                    $('#result').html('<p style="color: #e0e0e0;">Please select both fields!</p>').show();
                 }
+            });
+
+            $('form').submit(function(e) {
+                e.preventDefault();
+                var formData = $(this).serialize();
+                $.post('/generate_workout', formData, function(data) {
+                    if (data.error) {
+                        $('#result').html('<p style="color: #e0e0e0;">' + data.error + '</p>').show();
+                    } else {
+                        $('#result').html(data.workout).show();
+                        $('#save-btn').show();  // Show save button when workout is generated
+                    }
+                }).fail(function(xhr, status, error) {
+                    $('#result').html('<p style="color: #e0e0e0;">Error: ' + error + '</p>').show();
+                });
+                return false;
+            });
+
+            $('#save-btn').click(function() {
+                var workout = $('#result').html();
+                $.post('/save_workout', { workout: workout }, function(response) {
+                    if (response.success) {
+                        alert('Workout saved successfully!');
+                        $('#save-btn').hide();  // Hide save button after saving
+                    } else {
+                        alert('Error saving workout: ' + response.error);
+                    }
+                }).fail(function(xhr, status, error) {
+                    alert('Error: ' + error);
+                });
             });
         });
     </script>
     <style>
+        * {
+            font-family: Arial, Helvetica, sans-serif;  /* Consistent font across all elements */
+        }
         .sidebar {
             position: fixed;
             top: 0;
@@ -117,6 +153,7 @@
             cursor: pointer;
             width: 100%;
             text-align: left;
+            font-family: Arial, Helvetica, sans-serif;  /* Match font */
         }
         .dropdown-content {
             display: none;
@@ -131,6 +168,8 @@
             padding: 10px 15px;
             display: block;
             text-decoration: none;
+            font-size: 0.9em;  /* Match app font size */
+            font-family: Arial, Helvetica, sans-serif;  /* Match font */
         }
         .dropdown-content a:hover {
             background: #3a4647;
@@ -147,6 +186,12 @@
             flex-direction: column;
             gap: 5px;
             align-items: center;
+            justify-content: center;
+        }
+        label {
+            font-size: 0.9em;  /* Match app font size */
+            color: #e0e0e0;
+            font-family: Arial, Helvetica, sans-serif;  /* Match font */
         }
         select {
             background: #3a4647;
@@ -156,6 +201,10 @@
             border-radius: 4px;
             width: 100%;
             max-width: 300px;
+            margin: 0 auto;
+            text-align: center;  /* Center the text inside the select boxes */
+            font-size: 0.9em;  /* Match app font size */
+            font-family: Arial, Helvetica, sans-serif;  /* Match font */
         }
         .result {
             margin-top: 20px;
@@ -164,6 +213,8 @@
             color: #e0e0e0;
             border-radius: 4px;
             display: none;
+            font-size: 0.9em;  /* Reduced font size for workouts, consistent */
+            font-family: Arial, Helvetica, sans-serif;  /* Match font */
         }
         .sleek-btn, .go-back-btn {
             background: #3a4647;
@@ -173,19 +224,29 @@
             border-radius: 4px;
             cursor: pointer;
             margin: 5px;
+            font-size: 0.9em;  /* Match app font size */
+            font-family: Arial, Helvetica, sans-serif;  /* Match font */
         }
         .sleek-btn:hover, .go-back-btn:hover {
             background: #4a5758;
+        }
+        h1 {
+            font-size: 2.5em;  /* Match the large "Links" font size on login page */
+            margin-bottom: 20px;
+            color: #e0e0e0;
+            font-weight: bold;  /* Likely bold like "Links" on login */
+            font-family: Arial, Helvetica, sans-serif;  /* Match font */
         }
         @media (max-width: 768px) {
             .sidebar { width: 100%; height: 60px; }
             .menu-btn { font-size: 20px; padding: 10px; }
             .dropdown-content { top: 60px; width: 100%; left: 0; }
             .container { padding: 10px; }
-            h1 { font-size: 1.5em; }
-            p { font-size: 0.9em; }
+            h1 { font-size: 2em; }  /* Slightly smaller on mobile, matching login page */
+            label { font-size: 0.9em; }
             select { font-size: 0.9em; padding: 6px; }
             .sleek-btn, .go-back-btn { font-size: 0.9em; padding: 8px; }
+            .result { font-size: 0.8em; }  /* Slightly smaller on mobile for consistency */
         }
     </style>
 </body>

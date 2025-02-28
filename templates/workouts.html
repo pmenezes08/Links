@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Workouts - Links</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <div class="sidebar">
+        <button class="menu-btn">☰ Menu</button>
+        <div class="dropdown-content">
+            {% if session['username'] == 'admin' %}
+            <a href="/admin">Admin Dashboard</a>
+            {% endif %}
+            <a href="/profile">Profile</a>
+            <a href="/premium_dashboard">Premium Dashboard</a>
+            <a href="/workouts">Workouts</a>
+            <a href="/nutrition">Nutrition</a>
+            <a href="/blood_test_analysis">Blood Test Analysis</a>
+            <a href="/chat">Chat with Grok</a>
+            <a href="/health_news">Health News</a>
+            <a href="/subscribe">Subscribe</a>
+            <a href="/logout">Logout</a>
+        </div>
+    </div>
+    <div class="container">
+        <h1>Your Saved Workouts, {{ name }}!</h1>
+        {% if workouts %}
+            <div class="delete-section">
+                <select id="delete-workout-select" class="sleek-select">
+                    <option value="">Select a workout to delete</option>
+                    {% for workout in workouts %}
+                        <option value="{{ workout.id }}">Workout on {{ workout.timestamp }} (Week {{ workout.week }})</option>
+                    {% endfor %}
+                </select>
+                <button id="delete-workout-btn" class="sleek-btn">Delete Selected Workout</button>
+            </div>
+            {% for workout in workouts %}
+            <div class="workout-section">
+                <h2>Workout Saved on {{ workout.timestamp }} (Week {{ workout.week }})</h2>
+                <table>
+                    <tr>
+                        <th>Exercise Name</th>
+                        <th>Sets</th>
+                        <th>Reps</th>
+                        <th>Note</th>
+                        <th>Weight (lbs/kg)</th>
+                    </tr>
+                    {% for exercise in workout.exercises %}
+                    <tr>
+                        <td>{{ exercise.name }}</td>
+                        <td>{{ exercise.sets }}</td>
+                        <td>{{ exercise.reps }}</td>
+                        <td>{{ exercise.note }}</td>
+                        <td>
+                            <input type="text" name="weight_{{ workout.id }}_{{ loop.index0 }}" value="{{ workout.weight }}" class="weight-input">
+                            <button class="update-weight-btn sleek-btn" data-workout-id="{{ workout.id }}" data-exercise-index="{{ loop.index0 }}" data-week="{{ workout.week }}">Update</button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </table>
+                <button class="add-week-btn sleek-btn" data-workout-id="{{ workout.id }}">Add New Week</button>
+            </div>
+            {% endfor %}
+        {% else %}
+            <p>No saved workouts yet. Generate and save some from the Premium Dashboard!</p>
+        {% endif %}
+        <button onclick="location.href='/workouts'" class="go-back-btn"></button>
+    </div>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+    <script>
+        $(document).ready(function() {
+            $('.menu-btn').click(function() {
+                $('.dropdown-content').toggle();
+            });
+            $(window).resize(function() {
+                if ($(window).width() > 768) {
+                    $('.dropdown-content').hide();
+                }
+            });
+
+            $('.update-weight-btn').click(function() {
+                var workoutId = $(this).data('workout-id');
+                var exerciseIndex = $(this).data('exercise-index');
+                var week = $(this).data('week');
+                var weight = $(this).closest('tr').find(`input[name="weight_${workoutId}_${exerciseIndex}"]`).val();
+                $.post('/update_weight', {
+                    workout_id: workoutId,
+                    week: week,
+                    weight: weight
+                }, function(response) {
+                    if (response.success) {
+                        alert('Weight updated successfully!');
+                    } else {
+                        alert('Error updating weight: ' + response.error);
+                    }
+                }).fail(function(xhr, status, error) {
+                    alert('Error: ' + error);
+                });
+            });
+
+            $('.add-week-btn').click(function() {
+                var workoutId = $(this).data('workout-id');
+                var currentWeek = parseInt($(this).data('week')) || 1;
+                var newWeek = currentWeek + 1;
+                $.post('/update_weight', {
+                    workout_id: workoutId,
+                    week: newWeek,
+                    weight: ''
+                }, function(response) {
+                    if (response.success) {
+                        location.reload();
+                    } else {
+                        alert('Error adding new week: ' + response.error);
+                    }
+                }).fail(function(xhr, status, error) {
+                    alert('Error: ' + error);
+                });
+            });
+
+            $('#delete-workout-btn').click(function() {
+                var workoutId = $('#delete-workout-select').val();
+                if (!workoutId) {
+                    alert('Please select a workout to delete!');
+                    return;
+                }
+                if (confirm('Are you sure you want to delete this workout?')) {
+                    $.post('/delete_workout', {
+                        workout_id: workoutId
+                    }, function(response) {
+                        if (response.success) {
+                            alert('Workout deleted successfully!');
+                            location.reload();
+                        } else {
+                            alert('Error deleting workout: ' + response.error);
+                        }
+                    }).fail(function(xhr, status, error) {
+                        alert('Error: ' + error);
+                    });
+                }
+            });
+        });
+    </script>
+    <style>
+        * { font-family: Arial, Helvetica, sans-serif; }
+        body { background: #1a2526; margin: 0; padding: 0; }
+        .sidebar { position: fixed; top: 0; left: 0; height: 100%; width: 60px; background: #1a2526; transition: width 0.3s; z-index: 1000; }
+        .menu-btn { background: none; border: none; color: #e0e0e0; font-size: 20px; padding: 15px; cursor: pointer; width: 100%; text-align: left; }
+        .dropdown-content { display: none; background: #2d3839; position: absolute; top: 60px; left: 0; width: 200px; }
+        .dropdown-content a { color: #e0e0e0; padding: 10px 15px; display: block; text-decoration: none; font-size: 0.9em; }
+        .dropdown-content a:hover { background: #3a4647; }
+        .container { max-width: 90%; margin: 0 auto; padding: 20px; text-align: center; }
+        .workout-section { margin: 20px 0; padding: 15px; background: #2d3839; border-radius: 4px; }
+        .delete-section { margin: 15px 0; text-align: center; }
+        h1 { font-size: 1.8em; margin-bottom: 20px; color: #e0e0e0; font-weight: normal; }
+        h2 { font-size: 1.2em; margin: 10px 0; color: #e0e0e0; font-weight: normal; }
+        p { color: #e0e0e0; font-size: 0.9em; }
+        table { width: 100%; border-collapse: collapse; font-size: 0.9em; color: #e0e0e0; }
+        th, td { padding: 8px; text-align: left; }
+        th { background: #3a4647; }
+        tr { background: #2d3839; }
+        .sleek-select { background: #3a4647; color: #e0e0e0; border: none; padding: 8px; border-radius: 4px; font-size: 0.9em; margin-right: 10px; }
+        .sleek-btn, .go-back-btn { background: #3a4647; color: #e0e0e0; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 0.9em; }
+        .sleek-btn:hover, .go-back-btn:hover { background: #4a5758; }
+        .weight-input { width: 60px; background: #3a4647; color: #e0e0e0; border: none; padding: 5px; border-radius: 4px; font-size: 0.9em; }
+        @media (max-width: 768px) {
+            .sidebar { width: 100%; height: 60px; }
+            .menu-btn { font-size: 18px; padding: 10px; }
+            .dropdown-content { top: 60px; width: 100%; left: 0; }
+            .container { padding: 10px; }
+            h1 { font-size: 1.5em; }
+            h2 { font-size: 1em; }
+            table { font-size: 0.8em; }
+            .sleek-select, .sleek-btn, .go-back-btn { font-size: 0.8em; padding: 6px 12px; }
+            .weight-input { width: 50px; font-size: 0.8em; }
+        }
+    </style>
+</body>
+</html>
