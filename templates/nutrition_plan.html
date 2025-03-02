@@ -7,114 +7,25 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
 </head>
 <body>
-    <div class="sidebar">
-        <button class="menu-btn">☰ Menu</button>
-        <div class="dropdown-content">
-            {% if session['username'] == 'admin' %}
-            <a href="/admin">Admin Dashboard</a>
-            {% endif %}
-            <a href="/profile">Profile</a>
-            <a href="/premium_dashboard">Premium Dashboard</a>
-            <a href="/nutrition">Nutrition</a>
-            <a href="/blood_test_analysis">Blood Test Analysis</a>
-            <a href="/chat">Chat with Grok</a>
-            <a href="/health_news">Health News</a>
-            <a href="/subscribe">Subscribe</a>
-            <a href="/logout">Logout</a>
-        </div>
-    </div>
     <div class="container">
-        <h1>Nutrition Plan, {{ name }}!</h1>
+        <h1>Your Nutrition Plan, {{ name }}</h1>
         {% if error %}
-            <p style="color: red;">{{ error }}</p>
+            <p style="color: #ff3b30">{{ error }}</p>
         {% else %}
-            <p><strong>Goal:</strong> {{ goal }}</p>
-            <p><strong>Restrictions:</strong> {{ restrictions }}</p>
-            <h2>Your Plan:</h2>
-            <ul>
-                {% for meal in plan.meals %}
-                <li>{{ meal }}</li>
+            <p><b>Goal:</b> {{ goal }}</p>
+            <p><b>Restrictions:</b> {{ restrictions|default('None', true) }}</p>
+            {% for day in plan %}
+                <h2>{{ day.day }}</h2>
+                {% for meal in day.meals %}
+                    <p><b>{{ meal.meal }}:</b> {{ meal.food }} ({{ meal.calories }} cal)</p>
                 {% endfor %}
-            </ul>
-            <p><strong>Calories:</strong> {{ plan.calories }}</p>
-            <p><strong>Macros:</strong> Protein: {{ plan.macros.protein }}g, Carbs: {{ plan.macros.carbs }}g, Fat: {{ plan.macros.fat }}g</p>
-            <form method="POST">
-                <button type="submit" name="action" value="new" class="sleek-btn">New Plan</button>
-            </form>
+            {% endfor %}
         {% endif %}
-        <button onclick="location.href='/premium_dashboard'" class="go-back-btn"></button>
+        <form method="POST" action="/nutrition_plan">
+            <button type="submit" name="action" value="new" class="sleek-btn">Create New Plan</button>
+        </form>
+        <button onclick="location.href='/profile'" class="sleek-btn">Back to Profile</button>
+        <button onclick="location.href='/'" class="go-back-btn"></button>
     </div>
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <script>
-        $(document).ready(function() {
-            $('.menu-btn').click(function() {
-                $('.dropdown-content').toggle();
-            });
-            $(window).resize(function() {
-                if ($(window).width() > 768) {
-                    $('.dropdown-content').hide();
-                }
-            });
-        });
-    </script>
-    <style>
-        .sidebar {
-            position: fixed;
-            top: 0;
-            left: 0;
-            height: 100%;
-            width: 60px;
-            background: #1a2526;
-            transition: width 0.3s;
-            z-index: 1000;
-        }
-        .menu-btn {
-            background: none;
-            border: none;
-            color: #e0e0e0;
-            font-size: 24px;
-            padding: 15px;
-            cursor: pointer;
-            width: 100%;
-            text-align: left;
-        }
-        .dropdown-content {
-            display: none;
-            background: #2d3839;
-            position: absolute;
-            top: 60px;
-            left: 0;
-            width: 200px;
-        }
-        .dropdown-content a {
-            color: #e0e0e0;
-            padding: 10px 15px;
-            display: block;
-            text-decoration: none;
-        }
-        .dropdown-content a:hover {
-            background: #3a4647;
-        }
-        .container {
-            max-width: 90%;
-            margin: 0 auto;
-            padding: 20px;
-            text-align: center;
-        }
-        ul {
-            text-align: left;
-            max-width: 500px;
-            margin: 0 auto;
-        }
-        @media (max-width: 768px) {
-            .sidebar { width: 100%; height: 60px; }
-            .menu-btn { font-size: 20px; padding: 10px; }
-            .dropdown-content { top: 60px; width: 100%; left: 0; }
-            .container { padding: 10px; }
-            h1 { font-size: 1.5em; }
-            p, ul { font-size: 0.9em; }
-            .sleek-btn { font-size: 0.9em; padding: 8px; }
-        }
-    </style>
 </body>
 </html>

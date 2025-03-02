@@ -7,124 +7,16 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
 </head>
 <body>
-    <div class="sidebar">
-        <button class="menu-btn">☰ Menu</button>
-        <div class="dropdown-content">
-            {% if session['username'] == 'admin' %}
-            <a href="/admin">Admin Dashboard</a>
-            {% endif %}
-            <a href="/profile">Profile</a>
-            {% if session['username'] != 'admin' %}
-            <a href="/free_workouts">Free Workouts</a>
-            {% endif %}
-            {% if session['username'] == 'admin' or session.get('subscription', 'free') == 'premium' %}
-            <a href="/premium_dashboard">Premium Dashboard</a>
-            {% else %}
-            <a href="/dashboard">Dashboard</a>
-            {% endif %}
-            {% if session['username'] != 'admin' and session.get('subscription', 'free') == 'premium' %}
-            <a href="/nutrition">Nutrition</a>
-            <a href="/blood_test_analysis">Blood Test Analysis</a>
-            <a href="/chat">Chat with Grok</a>
-            <a href="/health_news">Health News</a>
-            <a href="/subscribe">Subscribe</a>
-            {% endif %}
-            <a href="/logout">Logout</a>
-        </div>
-    </div>
     <div class="container">
-        <h1>Profile, {{ profile_data.name }}!</h1>
-        <p><strong>Subscription:</strong> {{ profile_data.subscription }}</p>
-        <p><strong>Gender:</strong> {{ profile_data.gender or 'Not set' }}</p>
-        <p><strong>Weight:</strong> {{ profile_data.weight or 'Not set' }} kg</p>
-        <p><strong>Height:</strong> {{ profile_data.height or 'Not set' }} cm</p>
-        <p><strong>Blood Type:</strong> {{ profile_data.blood_type or 'Not set' }}</p>
-        <p><strong>Muscle Mass:</strong> {{ profile_data.muscle_mass or 'Not set' }} kg</p>
-        <p><strong>BMI:</strong> {{ profile_data.bmi or 'Not calculated' }}</p>
-        <button onclick="location.href='/edit_profile'" class="sleek-btn">Edit Profile</button>
-        <h2>Saved Items</h2>
-        {% if saved_items %}
-            <ul>
-                {% for item in saved_items %}
-                <li>{{ item[0] }} - {{ item[1] }} (Saved: {{ item[2] }})</li>
-                {% endfor %}
-            </ul>
-        {% else %}
-            <p>No saved items yet!</p>
+        <h1>Your Profile, {{ name }}</h1>
+        <p><b>Subscription:</b> {{ subscription }}</p>
+        <p><b>Email:</b> {{ email }}</p>
+        {% if subscription == 'free' %}
+            <button onclick="location.href='/subscribe'" class="sleek-btn">Upgrade to Premium</button>
         {% endif %}
-        <button onclick="location.href='/premium_dashboard'" class="go-back-btn"></button>
+        <button onclick="location.href='/premium_dashboard'" class="sleek-btn">Dashboard</button>
+        <button onclick="location.href='/nutrition'" class="sleek-btn">Nutrition</button>
+        <button onclick="location.href='/'" class="sleek-btn">Go Back</button>
     </div>
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <script>
-        $(document).ready(function() {
-            $('.menu-btn').click(function() {
-                $('.dropdown-content').toggle();
-            });
-            $(window).resize(function() {
-                if ($(window).width() > 768) {
-                    $('.dropdown-content').hide();
-                }
-            });
-        });
-    </script>
-    <style>
-        .sidebar {
-            position: fixed;
-            top: 0;
-            left: 0;
-            height: 100%;
-            width: 60px;
-            background: #1a2526;
-            transition: width 0.3s;
-            z-index: 1000;
-        }
-        .menu-btn {
-            background: none;
-            border: none;
-            color: #e0e0e0;
-            font-size: 24px;
-            padding: 15px;
-            cursor: pointer;
-            width: 100%;
-            text-align: left;
-        }
-        .dropdown-content {
-            display: none;
-            background: #2d3839;
-            position: absolute;
-            top: 60px;
-            left: 0;
-            width: 200px;
-        }
-        .dropdown-content a {
-            color: #e0e0e0;
-            padding: 10px 15px;
-            display: block;
-            text-decoration: none;
-        }
-        .dropdown-content a:hover {
-            background: #3a4647;
-        }
-        .container {
-            max-width: 90%;
-            margin: 0 auto;
-            padding: 20px;
-            text-align: center;
-        }
-        ul {
-            text-align: left;
-            max-width: 500px;
-            margin: 0 auto;
-        }
-        @media (max-width: 768px) {
-            .sidebar { width: 100%; height: 60px; }
-            .menu-btn { font-size: 20px; padding: 10px; }
-            .dropdown-content { top: 60px; width: 100%; left: 0; }
-            .container { padding: 10px; }
-            h1 { font-size: 1.5em; }
-            p, ul { font-size: 0.9em; }
-            .sleek-btn { font-size: 0.9em; padding: 8px; }
-        }
-    </style>
 </body>
 </html>

@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>User Chat - Links</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <div class="sidebar">
+        <button class="menu-btn">☰ Menu<span id="unread-badge" class="unread-badge">0</span></button>
+        <div class="dropdown-content">
+            {% if session['username'] == 'admin' %}
+            <a href="/admin" class="sidebar-link">Admin Dashboard</a>
+            {% endif %}
+            <a href="/profile" class="sidebar-link">Profile</a>
+            <a href="/premium_dashboard" class="sidebar-link">Premium Dashboard</a>
+            <a href="/my_workouts" class="sidebar-link">Workouts</a>
+            <a href="/nutrition" class="sidebar-link">Nutrition</a>
+            <a href="/blood_test_analysis" class="sidebar-link">Blood Test Analysis</a>
+            <a href="/health_news" class="sidebar-link">Health News</a>
+            <a href="/subscribe" class="sidebar-link">Subscribe</a>
+            <a href="/logout" class="sidebar-link">Logout</a>
+        </div>
+    </div>
+    <div class="container">
+        <h1>Messages</h1>
+        <div class="chat-container">
+            <select id="user-select" class="sleek-select">
+                <option value="">Select a user to chat with</option>
+                {% for user in users %}
+                    <option value="{{ user }}">{{ user }}</option>
+                {% endfor %}
+            </select>
+            <div id="chat-messages" class="chat-messages"></div>
+            <div class="message-input">
+                <input type="text" id="message-input" class="chat-input" placeholder="Type a message...">
+                <button id="send-btn" class="send-btn">→</button>
+            </div>
+        </div>
+        <button onclick="location.href='/premium_dashboard'" class="go-back-btn">Back</button>
+    </div>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+    <script>
+        $(document).ready(function() {
+            $('.menu-btn').click(function() {
+                $('.dropdown-content').toggle();
+            });
+            $(window).resize(function() {
+                if ($(window).width() > 768) {
+                    $('.dropdown-content').hide();
+                }
+            });
+
+            // Prevent zooming on input focus for mobile
+            $('.chat-input').on('focus', function() {
+                if (window.innerWidth <= 768) {
+                    $('meta[name=viewport]').attr('content', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no');
+                }
+            });
+
+            function formatDate(timestamp) {
+                const date = new Date(timestamp);
+                const today = new Date();
+                const yesterday = new Date(today);
+                yesterday.setDate(today.getDate() - 1);
+
+                const isToday = date.toDateString() === today.toDateString();
+                const isYesterday = date.toDateString() === yesterday.toDateString();
+
+                if (isToday) return 'Today';
+                if (isYesterday) return 'Yesterday';
+                return date.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: '2-digit' });
+            }
+
+            function formatTime(timestamp) {
+                return new Date(timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }).toLowerCase();
+            }
+
+            function checkUnreadMessages() {
+                console.log('Checking unread messages...');
+                $.get('/check_unread_messages', function(data) {
+                    console.log('Server response for /check_unread_messages:', data);
+                    const unreadCount = data.unread_count;
+                    const badge = $('#unread-badge');
+                    if (unreadCount > 0) {
+                        badge.text(unreadCount > 9 ? '9+' : unreadCount);
+                        badge.removeClass('hidden');
+                    } else {
+                        badge.addClass('hidden');
+                    }
+                }).fail(function(xhr, status, error) {
+                    console.error('AJAX Error for /check_unread_messages:', error, 'Status:', status, 'Response:', xhr.responseText);
+                    alert('Error checking unread messages: ' + error);
+                });
+            }
+
+            function loadMessages() {
+                var receiver = $('#user-select').val();
+                console.log('Loading messages for receiver:', receiver);
+                if (receiver) {
+                    $.post('/get_messages', {receiver: receiver}, function(data) {
+                        console.log('Server response for /get_messages:', data);
+                        if (data.success) {
+                            var messages = $('#chat-messages');
+                            messages.empty();
+                            let lastDate = '';
+                            data.messages.forEach(function(msg) {
+                                const msgDate = formatDate(msg.timestamp);
+                                if (msgDate !== lastDate) {
+                                    messages.append('<div class="date-separator">' + msgDate + '</div>');
+                                    lastDate = msgDate;
+                                }
+                                const isSent = msg.sender === '{{ name }}';
+                                messages.append(`
+                                    <div class="message ${isSent ? 'sent' : 'received'}">
+                                        <span class="message-text">${msg.message}</span>
+                                        <span class="message-time">${formatTime(msg.timestamp)}</span>
+                                    </div>
+                                `);
+                            });
+                            messages.scrollTop(messages[0].scrollHeight);
+                            checkUnreadMessages(); // Clear badge after reading messages
+                        } else {
+                            console.error('Error loading messages:', data.error);
+                            alert('Error loading messages: ' + data.error);
+                        }
+                    }).fail(function(xhr, status, error) {
+                        console.error('AJAX Error for /get_messages:', error, 'Status:', status, 'Response:', xhr.responseText);
+                        alert('Error: ' + error);
+                    });
+                } else {
+                    $('#unread-badge').addClass('hidden'); // Clear badge if no user selected
+                    console.log('No receiver selected, clearing badge');
+                }
+            }
+
+            function pollMessages() {
+                console.log('Polling for messages...');
+                loadMessages();
+                checkUnreadMessages(); // Check for unread messages every poll
+                setTimeout(pollMessages, 2000); // Poll every 2 seconds
+            }
+
+            $('#user-select').change(function() {
+                loadMessages();
+            });
+
+            $('#send-btn').click(function() {
+                var receiver = $('#user-select').val();
+                var message = $('#message-input').val().trim();
+                console.log('Sending to:', receiver, 'Message:', message);
+                if (receiver && message) {
+                    $.post('/send_message', {receiver: receiver, message: message}, function(data) {
+                        console.log('Server response:', data);
+                        if (data.success) {
+                            $('#message-input').val('');
+                            loadMessages();
+                            checkUnreadMessages(); // Update badge after sending
+                        } else {
+                            alert('Error sending message: ' + data.error);
+                        }
+                    }).fail(function(xhr, status, error) {
+                        console.error('AJAX Error:', error, 'Status:', status, 'Response:', xhr.responseText);
+                        alert('Error: ' + error);
+                    });
+                } else {
+                    alert('Please select a user and enter a message!');
+                }
+            });
+
+            // Send message on Enter key press (laptop/desktop)
+            $('#message-input').on('keypress', function(e) {
+                if (e.which === 13 && !e.shiftKey) { // Enter key without Shift
+                    e.preventDefault(); // Prevent default newline
+                    $('#send-btn').click(); // Trigger send button click
+                }
+            });
+
+            // Start polling immediately
+            pollMessages();
+            // Initial check for unread messages
+            checkUnreadMessages();
+        });
+    </script>
+    <style>
+        .sidebar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            height: 100%;
+            width: 60px;
+            background: #1a2526;
+            transition: width 0.3s;
+            z-index: 1000;
+        }
+        .menu-btn {
+            background: none;
+            border: none;
+            color: #e0e0e0;
+            font-size: 20px;
+            padding: 15px;
+            cursor: pointer;
+            width: 100%;
+            text-align: left;
+        }
+        .unread-badge {
+            display: inline-block;
+            background: #ff4444;
+            color: #fff;
+            font-size: 0.6em;
+            font-weight: bold;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            text-align: center;
+            line-height: 16px;
+            margin-left: 8px;
+            position: relative;
+            top: -2px;
+        }
+
+        .unread-badge.hidden {
+            display: none;
+        }
+        .dropdown-content {
+            display: none;
+            background: #2d3839;
+            position: absolute;
+            top: 60px;
+            left: 0;
+            width: 200px;
+            box-shadow: 2px 2px 6px rgba(0, 0, 0, 0.2);
+        }
+        .dropdown-content a.sidebar-link {
+            color: #e0e0e0;
+            padding: 12px 15px;
+            display: block;
+            text-decoration: none;
+            font-size: 0.9em;
+            transition: background 0.2s ease;
+        }
+        .dropdown-content a.sidebar-link:hover {
+            background: #3a4647;
+        }
+        .container {
+            max-width: 95%;
+            margin: 0 auto;
+            padding: 25px;
+            text-align: center;
+            margin-left: 70px;
+        }
+        h1 {
+            font-size: 1.5em;
+            margin-bottom: 20px;
+            color: #e0e0e0;
+            font-weight: 500;
+            letter-spacing: 0.5px;
+        }
+        .chat-container {
+            margin: 25px 0;
+            padding: 22px;
+            background: #2d3839;
+            border-radius: 10px;
+            width: 75%;
+            max-width: 933px;
+            margin-left: auto;
+            margin-right: auto;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+            border: 1px solid #3a4647;
+        }
+        .sleek-select {
+            background: #3a4647;
+            color: #e0e0e0;
+            border: none;
+            padding: 9px 14px;
+            border-radius: 6px;
+            font-size: 0.9em;
+            margin-bottom: 14px;
+            width: 100%;
+            max-width: 280px;
+            cursor: pointer;
+            transition: background 0.2s ease;
+        }
+        .sleek-select:hover {
+            background: #4a5758;
+        }
+        .chat-messages {
+            max-height: 55vh;
+            overflow-y: auto;
+            padding: 14px;
+            background: #1a2526;
+            border-radius: 8px;
+            margin-bottom: 14px;
+            border: 1px solid #2d3839;
+        }
+        .date-separator {
+            text-align: center;
+            color: #777;
+            margin: 14px 0;
+            font-size: 0.8em;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            background: #2d3839;
+            padding: 4px 9px;
+            border-radius: 4px;
+            display: inline-block;
+        }
+        .message {
+            max-width: 70%;
+            margin: 7px 0;
+            padding: 7px 11px;
+            border-radius: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: background 0.2s ease;
+        }
+        .message:hover {
+            background: #3f4b4c;
+        }
+        .message.sent {
+            background: #3a4647;
+            margin-left: 30%;
+            color: #e0e0e0;
+        }
+        .message.received {
+            background: #2d3839;
+            margin-right: 30%;
+            color: #e0e0e0;
+        }
+        .message-text {
+            flex: 1;
+            margin-right: 9px;
+            font-size: 0.85em;
+            line-height: 1.3;
+        }
+        .message-time {
+            font-size: 0.65em;
+            color: #888;
+            flex-shrink: 0;
+            white-space: nowrap;
+        }
+        .message-input {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .chat-input {
+            flex: 1;
+            background: #1a2526;
+            color: #e0e0e0;
+            border: none;
+            padding: 7px 11px;
+            border-radius: 18px;
+            font-size: 0.9em;
+            outline: none;
+            width: 100%;
+            max-width: 300px;
+            box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.1);
+            transition: background 0.2s ease;
+            font-size: 0.85em;
+        }
+        .chat-input:focus {
+            background: #223031;
+        }
+        .send-btn {
+            background: #3a4647;
+            color: #e0e0e0;
+            border: none;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            font-size: 14px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+            transition: background 0.2s ease, transform 0.1s ease;
+        }
+        .send-btn:hover {
+            background: #4a5758;
+            transform: scale(1.05);
+        }
+        .go-back-btn {
+            background: #3a4647;
+            color: #e0e0e0;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9em;
+            margin-top: 12px;
+            transition: background 0.2s ease;
+        }
+        .go-back-btn:hover {
+            background: #4a5758;
+        }
+        @media (max-width: 768px) {
+            .sidebar { width: 100%; height: 60px; }
+            .menu-btn { font-size: 18px; padding: 10px; }
+            .dropdown-content { top: 60px; width: 100%; left: 0; }
+            .container { padding: 15px; margin-left: 0; }
+            .chat-container {
+                padding: 12px;
+                width: 100%;
+                max-width: none;
+                margin: 15px 0;
+            }
+            .chat-messages {
+                max-height: 45vh;
+                padding: 10px;
+            }
+            .sleek-select {
+                font-size: 0.9em;
+                padding: 7px 10px;
+                max-width: 100%;
+            }
+            .message-input {
+                flex-direction: column;
+                gap: 8px;
+                align-items: stretch;
+            }
+            .chat-input {
+                max-width: 100%;
+                padding: 6px 9px;
+                font-size: 0.8em;
+            }
+            .send-btn {
+                width: 26px;
+                height: 26px;
+                font-size: 12px;
+                margin-left: auto;
+            }
+            .go-back-btn {
+                font-size: 0.9em;
+                padding: 6px 12px;
+            }
+            .message {
+                max-width: 85%;
+                padding: 5px 8px;
+                font-size: 0.8em;
+            }
+            .message-time {
+                font-size: 0.6em;
+            }
+        }
+        @media (min-width: 769px) and (max-width: 1024px) {
+            .chat-container {
+                width: 70%;
+                max-width: 700px;
+            }
+            .chat-messages {
+                max-height: 45vh;
+            }
+        }
+        @media (min-width: 1025px) {
+            .chat-container {
+                width: 65%;
+                max-width: 933px;
+            }
+            .chat-messages {
+                max-height: 55vh;
+            }
+        }
+    </style>
+</body>
+</html>

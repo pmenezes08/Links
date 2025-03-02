@@ -3,101 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard - Workout X</title>
+    <title>Workout X - Free</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
 </head>
 <body>
-    <div class="sidebar">
-        <button class="menu-btn">☰ Menu</button>
-        <div class="dropdown-content">
-            {% if session['username'] == 'admin' %}
-            <a href="/admin">Admin Dashboard</a>
-            {% endif %}
-            <a href="/profile">Profile</a>
-            <a href="/free_workouts">Free Workouts</a>
-            <a href="/premium_dashboard">Premium Dashboard</a>
-            <a href="/logout">Logout</a>
-        </div>
-    </div>
     <div class="container">
-        <h1>Welcome, {{ name }}!</h1>
-        <p>Upgrade to premium for 600+ workout combos.</p>
+        <h1>Welcome, {{ name }}</h1>
         <button onclick="location.href='/free_workouts'" class="sleek-btn">Free Workouts</button>
-        <button onclick="location.href='/subscribe'" class="sleek-btn">Go Premium</button>
-        <button onclick="location.href='/premium_dashboard'" class="go-back-btn"></button>
+        <button onclick="location.href='/subscribe'" class="sleek-btn">Upgrade to Premium</button>
+        <button onclick="location.href='/'" class="sleek-btn">Go Back</button>
     </div>
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <script>
-        $(document).ready(function() {
-            $('.menu-btn').click(function() {
-                $('.dropdown-content').toggle();
-            });
-            $(window).resize(function() {
-                if ($(window).width() > 768) {
-                    $('.dropdown-content').hide();
-                }
-            });
-        });
-    </script>
-    <style>
-        .sidebar {
-            position: fixed;
-            top: 0;
-            left: 0;
-            height: 100%;
-            width: 60px;
-            background: #1a2526;
-            transition: width 0.3s;
-            z-index: 1000;
-        }
-        .menu-btn {
-            background: none;
-            border: none;
-            color: #e0e0e0;
-            font-size: 24px;
-            padding: 15px;
-            cursor: pointer;
-            width: 100%;
-            text-align: left;
-        }
-        .dropdown-content {
-            display: none;
-            background: #2d3839;
-            position: absolute;
-            top: 60px;
-            left: 0;
-            width: 200px;
-        }
-        .dropdown-content a {
-            color: #e0e0e0;
-            padding: 10px 15px;
-            display: block;
-            text-decoration: none;
-        }
-        .dropdown-content a:hover {
-            background: #3a4647;
-        }
-        .container {
-            max-width: 90%;
-            margin: 0 auto;
-            padding: 20px;
-            text-align: center;
-        }
-        button {
-            width: 100%;
-            max-width: 300px;
-            margin: 10px auto;
-            display: block;
-        }
-        @media (max-width: 768px) {
-            .sidebar { width: 100%; height: 60px; }
-            .menu-btn { font-size: 20px; padding: 10px; }
-            .dropdown-content { top: 60px; width: 100%; left: 0; }
-            .container { padding: 10px; }
-            h1 { font-size: 1.5em; }
-            p { font-size: 0.9em; }
-            .sleek-btn { font-size: 0.9em; padding: 8px; }
-        }
-    </style>
 </body>
 </html>
