@@ -237,11 +237,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 data: formData,
                 processData: false,
                 contentType: false,
-                beforeSend: function() {
-                    $postForm.append('<div class="loader"></div>');
-                },
                 success: function(data) {
-                    $postForm.find('.loader').remove();
                     console.log("Post submission response:", data);
                     if (data.success) {
                         const imageHtml = data.post.image_path ? 
@@ -276,7 +272,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     }
                 },
                 error: function(xhr, status, error) {
-                    $postForm.find('.loader').remove();
                     console.error("Post submission error:", { status, error, response: xhr.responseText });
                     $postForm.after('<div class="error-message">Error posting status. Please try again.</div>');
                     setTimeout(() => $('.error-message').remove(), 3000);
@@ -302,11 +297,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 url: '/post_reply',
                 method: 'POST',
                 data: { post_id: postId, content },
-                beforeSend: function() {
-                    $form.append('<div class="loader"></div>');
-                },
                 success: function(data) {
-                    $form.find('.loader').remove();
                     console.log("Reply submission response:", data);
                     if (data.success) {
                         const $replies = $form.siblings('.replies');
@@ -331,7 +322,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     }
                 },
                 error: function(xhr, status, error) {
-                    $form.find('.loader').remove();
                     console.error("Reply submission error:", { status, error, response: xhr.responseText });
                     $form.after('<div class="error-message">Error posting reply. Please try again.</div>');
                     setTimeout(() => $('.error-message').remove(), 3000);
@@ -434,11 +424,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         post_id: postId,
                         csrf_token: $('meta[name="csrf-token"]').attr('content')
                     },
-                    beforeSend: function() {
-                        $(`[data-post-id="${postId}"]`).append('<div class="loader"></div>');
-                    },
                     success: function(data) {
-                        $(`[data-post-id="${postId}"] .loader`).remove();
                         console.log("Delete post response:", data);
                                                     if (data.success) {
                                 $(`[data-post-id="${postId}"]`).remove();
@@ -448,7 +434,6 @@ document.addEventListener('DOMContentLoaded', function() {
                         }
                     },
                     error: function(xhr, status, error) {
-                        $(`[data-post-id="${postId}"] .loader`).remove();
                         console.error("Delete post error:", { status, error, response: xhr.responseText });
                         $postContainer.after('<div class="error-message">Error deleting post. Please try again.</div>');
                         setTimeout(() => $('.error-message').remove(), 3000);
@@ -470,11 +455,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         reply_id: replyId,
                         csrf_token: $('meta[name="csrf-token"]').attr('content')
                     },
-                    beforeSend: function() {
-                        $(`[data-reply-id="${replyId}"]`).append('<div class="loader"></div>');
-                    },
                     success: function(data) {
-                        $(`[data-reply-id="${replyId}"] .loader`).remove();
                         console.log("Delete reply response:", data);
                                                     if (data.success) {
                                 $(`[data-reply-id="${replyId}"]`).remove();
@@ -484,7 +465,6 @@ document.addEventListener('DOMContentLoaded', function() {
                         }
                     },
                     error: function(xhr, status, error) {
-                        $(`[data-reply-id="${replyId}"] .loader`).remove();
                         console.error("Delete reply error:", { status, error, response: xhr.responseText });
                         $postContainer.after('<div class="error-message">Error deleting reply. Please try again.</div>');
                         setTimeout(() => $('.error-message').remove(), 3000);
@@ -770,11 +750,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             reply_id: replyId,
                             csrf_token: $('meta[name="csrf-token"]').attr('content')
                         },
-                        beforeSend: function() {
-                            $(`[data-reply-id="${replyId}"]`).append('<div class="loader"></div>');
-                        },
                         success: function(data) {
-                            $(`[data-reply-id="${replyId}"] .loader`).remove();
                             console.log("Delete reply response:", data);
                             if (data.success) {
                                 $(`[data-reply-id="${replyId}"]`).remove();
@@ -793,7 +769,6 @@ document.addEventListener('DOMContentLoaded', function() {
                             }
                         },
                         error: function(xhr, status, error) {
-                            $(`[data-reply-id="${replyId}"] .loader`).remove();
                             console.error("Delete reply error:", { status, error, response: xhr.responseText });
                             $('#modalPostContent').after('<div class="error-message">Error deleting reply. Please try again.</div>');
                             setTimeout(() => $('.error-message').remove(), 3000);
@@ -867,11 +842,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     data: formData,
                     processData: false,
                     contentType: false,
-                    beforeSend: function() {
-                        $form.append('<div class="loader"></div>');
-                    },
                     success: function(data) {
-                        $form.find('.loader').remove();
                         console.log("Reply submission response:", data);
                         if (data.success) {
                             const replyImageHtml = data.reply.image_path ? 
@@ -919,7 +890,6 @@ document.addEventListener('DOMContentLoaded', function() {
                         }
                     },
                     error: function(xhr, status, error) {
-                        $form.find('.loader').remove();
                         console.error("Reply submission error:", { status, error, response: xhr.responseText });
                         $form.after('<div class="error-message">Error posting reply. Please try again.</div>');
                         setTimeout(() => $('.error-message').remove(), 3000);
