@@ -1,5 +1,5 @@
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session, flash, abort, send_from_directory
-from flask_oauthlib.client import OAuth
+# from flask_oauthlib.client import OAuth
 import os
 import sys
 import json
@@ -57,18 +57,18 @@ except ImportError as e:
     nutrition_plans = {}
 
 # OAuth setup for X
-oauth = OAuth(app)
-x_auth = oauth.remote_app(
-    'x',
-    consumer_key=X_CONSUMER_KEY,
-    consumer_secret=X_CONSUMER_SECRET,
-    request_token_params={'scope': 'users.read'},
-    base_url='https://api.x.com/2/',
-    request_token_url=None,
-    access_token_method='POST',
-    access_token_url='https://api.x.com/2/oauth2/token',
-    authorize_url='https://x.com/i/oauth2/authorize',
-)
+# oauth = OAuth(app)
+# x_auth = oauth.remote_app(
+#     'x',
+#     consumer_key=X_CONSUMER_KEY,
+#     consumer_secret=X_CONSUMER_SECRET,
+#     request_token_params={'scope': 'users.read'},
+#     base_url='https://api.x.com/2/',
+#     request_token_url=None,
+#     access_token_method='POST',
+#     access_token_url='https://api.x.com/2/oauth2/token',
+#     authorize_url='https://x.com/i/oauth2/authorize',
+# )
 
 # xAI API setup
 XAI_API_URL = 'https://api.x.ai/v1/chat/completions'
