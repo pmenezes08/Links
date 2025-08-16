@@ -449,11 +449,44 @@ document.addEventListener('DOMContentLoaded', function() {
             const postId = $(this).data('post-id');
             const $post = $(this);
             
-            // Show loading state
-            modalContent.innerHTML = '<div style="text-align: center; padding: 40px; color: #9fb0b5;"><i class="fas fa-spinner fa-spin" style="font-size: 24px; margin-bottom: 10px;"></div><div style="text-align: center; color: #9fb0b5;">Loading post...</div>';
+            // Show modal immediately with basic post info
+            const basicPostHtml = `
+                <div class="post" data-post-id="${postId}">
+                    <div class="post-header">
+                        <strong>@${$post.find('.post-header strong').text().replace('@', '')}</strong>
+                        <span class="timestamp">${$post.find('.timestamp').text()}</span>
+                    </div>
+                    <p>${$post.find('p').text()}</p>
+                    <div class="post-actions">
+                        <div class="reactions">
+                            <button class="reaction-btn heart" data-reaction="heart" aria-label="Like post">
+                                <i class="far fa-heart"></i> <span>${$post.find('.reaction-btn[data-reaction="heart"] span').text()}</span>
+                            </button>
+                            <button class="reaction-btn thumbs-up" data-reaction="thumbs-up" aria-label="Thumbs up">
+                                <i class="far fa-thumbs-up"></i> <span>${$post.find('.reaction-btn[data-reaction="thumbs-up"] span').text()}</span>
+                            </button>
+                            <button class="reaction-btn thumbs-down" data-reaction="thumbs-down" aria-label="Thumbs down">
+                                <i class="far fa-thumbs-down"></i> <span>${$post.find('.reaction-btn[data-reaction="thumbs-down"] span').text()}</span>
+                            </button>
+                        </div>
+                        ${$post.find('.delete-post').length ? `<button class="delete-post inline-action" data-post-id="${postId}"><i class="far fa-trash-alt"></i> Delete</button>` : ''}
+                    </div>
+                </div>
+                <div class="replies">
+                    <div style="text-align: center; padding: 20px; color: #9fb0b5;">Loading replies...</div>
+                </div>
+                <form class="reply-form" action="/post_reply" method="POST">
+                    <input type="hidden" name="csrf_token" value="${$('meta[name="csrf-token"]').attr('content')}">
+                    <input type="hidden" name="post_id" value="${postId}">
+                    <input type="text" name="content" class="reply-input" placeholder="Write a reply..." required>
+                    <button type="submit" class="reply-btn"><i class="far fa-paper-plane"></i> Reply</button>
+                </form>
+            `;
+            modalContent.innerHTML = basicPostHtml;
             modal.style.display = "block";
+            attachModalEventHandlers();
 
-            // Fetch full post data from server
+            // Fetch full post data from server and update
             $.ajax({
                 url: '/get_post',
                 method: 'GET',
@@ -464,12 +497,16 @@ document.addEventListener('DOMContentLoaded', function() {
                         modalContent.innerHTML = modalHtml;
                         attachModalEventHandlers();
                     } else {
-                        modalContent.innerHTML = '<div style="text-align: center; padding: 40px; color: #ff6f61;">Error loading post: ' + data.error + '</div>';
+                        // Keep the basic post but show error for replies
+                        const $replies = $('#modalPostContent .replies');
+                        $replies.html('<div style="text-align: center; padding: 20px; color: #ff6f61;">Error loading replies: ' + data.error + '</div>');
                     }
                 },
                 error: function(xhr, status, error) {
                     console.error("Error fetching post:", { status, error, response: xhr.responseText });
-                    modalContent.innerHTML = '<div style="text-align: center; padding: 40px; color: #ff6f61;">Error loading post. Please try again.</div>';
+                    // Keep the basic post but show error for replies
+                    const $replies = $('#modalPostContent .replies');
+                    $replies.html('<div style="text-align: center; padding: 20px; color: #ff6f61;">Error loading replies. Please try again.</div>');
                 }
             });
         });
