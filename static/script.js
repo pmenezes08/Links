@@ -613,7 +613,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     // This is a post reaction
                     console.log("Reaction clicked (modal post):", { postId, reactionType });
                     $.ajax({
-                        url: '/add_post_reaction',
+                        url: '/add_reaction',
                         method: 'POST',
                         data: { post_id: postId, reaction: reactionType },
                         success: function(data) {
