@@ -27,15 +27,20 @@ document.addEventListener('DOMContentLoaded', function() {
 
     if ($menuBtn.length && $dropdown.length) {
         $menuBtn.off('click');
+        $dropdown.hide();
 
         $menuBtn.on('click', function(e) {
             e.preventDefault();
             e.stopPropagation();
             $dropdown.toggle();
-            console.log("Menu toggled, dropdown display:", $dropdown.css('display'));
         });
 
-        $menuBtn.css('pointer-events', 'auto');
+        $(document).on('click', function(e) {
+            const $target = $(e.target);
+            if (!$target.closest('.menu-btn').length && !$target.closest('.dropdown-content').length) {
+                $dropdown.hide();
+            }
+        });
 
         $(window).on('resize', function() {
             if ($(window).width() > 768) {
@@ -43,34 +48,16 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
 
-        // Close dropdown when clicking a menu item on mobile
-        $dropdown.on('click', 'a', function() {
-            if ($(window).width() <= 600) {
-                $dropdown.hide();
-            }
-        });
-
-        // Hide dropdown on click outside
-        $(document).on('click', function(e) {
-            if ($dropdown.is(':visible')) {
-                const $target = $(e.target);
-                const isMenuBtnClicked = $target.closest($menuBtn).length > 0;
-                const isDropdownClicked = $target.closest($dropdown).length > 0;
-                if (!isMenuBtnClicked && !isDropdownClicked) {
-                    $dropdown.hide();
-                }
-            }
-        });
-
-        // Prevent dropdown from closing if clicking inside
-        $dropdown.on('click', function(e) {
-            e.stopPropagation();
-        });
-
-        $dropdown.hide();
+        $dropdown.on('click', 'a', function() { if ($(window).width() <= 600) { $dropdown.hide(); } });
     } else {
         console.error("Menu elements not found:", { $menuBtn, $dropdown });
     }
+
+    // Global go-back button: route to dashboard
+    $(document).on('click', '.go-back-btn', function(e) {
+        e.preventDefault();
+        window.location.href = '/dashboard';
+    });
 
     // Unread Badge Polling (for pages with #unread-badge)
     const $unreadBadge = $('#unread-badge');
