@@ -180,17 +180,44 @@ document.addEventListener('DOMContentLoaded', function() {
             const file = this.files[0];
             if (file) {
                 $('#selected-file-name').text(file.name);
+                
+                // Show image preview
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    let previewHtml = $('#image-preview');
+                    if (previewHtml.length === 0) {
+                        previewHtml = $('<div id="image-preview" class="image-preview"></div>');
+                        $('#image-upload').after(previewHtml);
+                    }
+                    previewHtml.html(`
+                        <div class="preview-container">
+                            <img src="${e.target.result}" alt="Preview" style="max-width: 200px; max-height: 200px; border-radius: 6px;">
+                            <button type="button" class="remove-image" style="position: absolute; top: 5px; right: 5px; background: rgba(0,0,0,0.7); color: white; border: none; border-radius: 50%; width: 24px; height: 24px; cursor: pointer;">×</button>
+                        </div>
+                    `);
+                };
+                reader.readAsDataURL(file);
             } else {
                 $('#selected-file-name').text('');
+                $('#image-preview').remove();
             }
+        });
+
+        // Handle remove image preview
+        $(document).on('click', '.remove-image', function() {
+            $('#image-upload').val('');
+            $('#selected-file-name').text('');
+            $('#image-preview').remove();
         });
 
         // Handle post submission
         $postForm.on('submit', function(e) {
             e.preventDefault();
             const content = $(this).find('input[name="content"]').val().trim();
-            if (!content) {
-                $postForm.after('<div class="error-message">Post content cannot be empty!</div>');
+            const imageFile = $('#image-upload')[0].files[0];
+            
+            if (!content && !imageFile) {
+                $postForm.after('<div class="error-message">Post content or image is required!</div>');
                 setTimeout(() => $('.error-message').remove(), 3000);
                 return;
             }
@@ -241,6 +268,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         $postForm.find('input[name="content"]').val('');
                         $('#image-upload').val('');
                         $('#selected-file-name').text('');
+                        $('#image-preview').remove();
 
                     } else {
                         $postForm.after(`<div class="error-message">Error: ${data.error}</div>`);
@@ -477,6 +505,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const $post = $(this);
             
             // Show modal immediately with basic post info
+            const postImageHtml = $post.find('.post-image').length ? $post.find('.post-image').prop('outerHTML') : '';
             const basicPostHtml = `
                 <div class="post" data-post-id="${postId}">
                     <div class="post-header">
@@ -484,6 +513,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         <span class="timestamp">${$post.find('.timestamp').text()}</span>
                     </div>
                     <p>${$post.find('p').text()}</p>
+                    ${postImageHtml}
                     <div class="post-actions">
                         <div class="reactions">
                             <button class="reaction-btn heart" data-reaction="heart" aria-label="Like post">
@@ -693,14 +723,82 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             });
 
+            // Handle delete reply in modal
+            $('#modalPostContent').off('click', '.delete-reply').on('click', '.delete-reply', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                const replyId = $(this).data('reply-id');
+                if (confirm('Are you sure you want to delete this reply?')) {
+                    console.log("Deleting reply from modal:", replyId);
+                    $.ajax({
+                        url: '/delete_reply',
+                        method: 'POST',
+                        data: { reply_id: replyId },
+                        beforeSend: function() {
+                            $(`[data-reply-id="${replyId}"]`).append('<div class="loader"></div>');
+                        },
+                        success: function(data) {
+                            $(`[data-reply-id="${replyId}"] .loader`).remove();
+                            console.log("Delete reply response:", data);
+                            if (data.success) {
+                                $(`[data-reply-id="${replyId}"]`).remove();
+                                
+                                // Update reply count in main feed
+                                const postId = $('#modalPostContent .post').data('post-id');
+                                const $mainPost = $(`.post[data-post-id="${postId}"]`);
+                                if ($mainPost.length) {
+                                    const currentCount = parseInt($mainPost.find('.reply-indicator').text().match(/\d+/)[0]) || 0;
+                                    const newCount = Math.max(0, currentCount - 1);
+                                    $mainPost.find('.reply-indicator').html(`<i class="far fa-comment"></i> ${newCount} replies`);
+                                }
+                            } else {
+                                $('#modalPostContent').after(`<div class="error-message">Error: ${data.error}</div>`);
+                                setTimeout(() => $('.error-message').remove(), 3000);
+                            }
+                        },
+                        error: function(xhr, status, error) {
+                            $(`[data-reply-id="${replyId}"] .loader`).remove();
+                            console.error("Delete reply error:", { status, error, response: xhr.responseText });
+                            $('#modalPostContent').after('<div class="error-message">Error deleting reply. Please try again.</div>');
+                            setTimeout(() => $('.error-message').remove(), 3000);
+                        }
+                    });
+                }
+            });
+
             // Handle modal reply file upload
             $('#modalPostContent').off('change', '#modal-reply-image-upload').on('change', '#modal-reply-image-upload', function() {
                 const file = this.files[0];
                 if (file) {
                     $('#modal-reply-selected-file-name').text(file.name);
+                    
+                    // Show image preview for reply
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        let previewHtml = $('#modal-reply-image-preview');
+                        if (previewHtml.length === 0) {
+                            previewHtml = $('<div id="modal-reply-image-preview" class="image-preview"></div>');
+                            $('#modal-reply-image-upload').after(previewHtml);
+                        }
+                        previewHtml.html(`
+                            <div class="preview-container">
+                                <img src="${e.target.result}" alt="Preview" style="max-width: 150px; max-height: 150px; border-radius: 6px;">
+                                <button type="button" class="remove-reply-image" style="position: absolute; top: 5px; right: 5px; background: rgba(0,0,0,0.7); color: white; border: none; border-radius: 50%; width: 24px; height: 24px; cursor: pointer;">×</button>
+                            </div>
+                        `);
+                    };
+                    reader.readAsDataURL(file);
                 } else {
                     $('#modal-reply-selected-file-name').text('');
+                    $('#modal-reply-image-preview').remove();
                 }
+            });
+
+            // Handle remove reply image preview
+            $('#modalPostContent').off('click', '.remove-reply-image').on('click', '.remove-reply-image', function() {
+                $('#modal-reply-image-upload').val('');
+                $('#modal-reply-selected-file-name').text('');
+                $('#modal-reply-image-preview').remove();
             });
 
             // Handle reply submission in modal
@@ -709,9 +807,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 const $form = $(this);
                 const postId = $form.find('input[name="post_id"]').val();
                 const content = $form.find('input[name="content"]').val().trim();
+                const imageFile = $('#modal-reply-image-upload')[0].files[0];
                 
-                if (!content) {
-                    $form.after('<div class="error-message">Reply content cannot be empty!</div>');
+                if (!content && !imageFile) {
+                    $form.after('<div class="error-message">Reply content or image is required!</div>');
                     setTimeout(() => $('.error-message').remove(), 3000);
                     return;
                 }
@@ -770,6 +869,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             $form.find('input[name="content"]').val('');
                             $('#modal-reply-image-upload').val('');
                             $('#modal-reply-selected-file-name').text('');
+                            $('#modal-reply-image-preview').remove();
                             
                             // Update reply count in main feed
                             const $mainPost = $(`.post[data-post-id="${postId}"]`);

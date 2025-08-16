@@ -934,3 +934,18 @@ select:focus, input:focus {
     object-fit: cover;
     display: block;
 }
+
+.image-preview {
+    margin: 8px 0;
+}
+
+.preview-container {
+    position: relative;
+    display: inline-block;
+}
+
+.preview-container img {
+    display: block;
+    border-radius: 6px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
