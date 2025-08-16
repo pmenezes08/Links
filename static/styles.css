@@ -642,3 +642,21 @@ select:focus, input:focus {
 .popup-content input[name="username"]::placeholder { color: #d1d4d6; }
 
 .popup-content .sleek-btn { width: 100%; max-width: 350px; }
+
+/* dashboard button row */
+.dashboard-actions {
+	display: flex;
+	gap: 8px;
+	justify-content: center;
+	align-items: center;
+	flex-wrap: nowrap;
+	margin-top: 12px;
+}
+
+.sleek-btn.compact {
+	padding: 6px 10px;
+	font-size: 0.9em;
+	max-width: none;
+	width: auto;
+	letter-spacing: 0.5px;
+}
