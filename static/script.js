@@ -522,7 +522,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                 <i class="far fa-thumbs-down"></i> <span>${$post.find('.reaction-btn[data-reaction="thumbs-down"] span').text()}</span>
                             </button>
                         </div>
-                        ${$post.find('.delete-post').length ? `<button class="delete-post inline-action" data-post-id="${postId}"><i class="far fa-trash-alt"></i> Delete</button>` : ''}
+
                     </div>
                 </div>
                 <div class="replies">
@@ -627,8 +627,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                 <i class="${postData.user_reaction === 'thumbs-down' ? 'fas' : 'far'} fa-thumbs-down"></i> <span>${postData.reactions['thumbs-down'] || 0}</span>
                             </button>
                         </div>
-                        ${postData.username === sessionStorage.getItem('username') ? 
-                            `<button class="delete-post inline-action" data-post-id="${postData.id}"><i class="far fa-trash-alt"></i> Delete</button>` : ''}
+
                     </div>
                 </div>
                 <div class="replies">
