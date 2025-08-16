@@ -426,24 +426,24 @@ select:focus, input:focus {
 }
 .post {
     background: #2d3839;
-    padding: 12px;
+    padding: 8px;
     border-radius: 6px;
-    margin-bottom: 12px;
+    margin-bottom: 8px;
     box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
 }
 
 .reply {
     background: #3a4647;
-    padding: 8px;
+    padding: 6px;
     border-radius: 4px;
-    margin: 8px 12px;
+    margin: 6px 8px;
     font-size: 0.9em;
 }
 
 .reactions {
     display: flex;
     gap: 6px;
-    margin: 8px 0 2px 0;
+    margin: 6px 0 2px 0;
     align-items: center;
 }
 
@@ -512,10 +512,10 @@ select:focus, input:focus {
     background: #2d3839;
     border-radius: 12px;
     border: 1px solid rgba(255, 255, 255, 0.08);
-    padding: 12px 16px;
+    padding: 8px 12px;
     width: 100%;
     max-width: 650px;
-    margin: 0 auto 16px;
+    margin: 0 auto 12px;
 }
 
 .composer-inner {
@@ -575,16 +575,15 @@ select:focus, input:focus {
 
 /* Sleek reply button */
 .reply-btn {
-	background: rgba(255, 255, 255, 0.06);
-	border: 1px solid rgba(255, 255, 255, 0.12);
-	border-radius: 9999px;
+	background: transparent;
+	border: none;
 	color: #e0e0e0;
 	padding: 6px 12px;
 	font-size: 0.9em;
 	cursor: pointer;
-	transition: background 0.2s ease, border-color 0.2s ease, transform 0.1s ease;
+	transition: color 0.2s ease;
 }
-.reply-btn:hover { background: rgba(255, 255, 255, 0.1); border-color: rgba(255, 255, 255, 0.22); transform: translateY(-1px); }
+.reply-btn:hover { color: #ffffff; }
 .reply-btn:active { transform: translateY(0); }
 .inline-action {
     background: transparent;
@@ -638,8 +637,8 @@ select:focus, input:focus {
     .membership-item { font-size: 0.9em; padding: 6px; }
     .sleek-btn, .go-back-btn { font-size: 0.9em; padding: 6px 12px; }
     .sleek-btn.small { padding: 4px 10px; font-size: 0.8em; }
-    .post { margin-bottom: 10px; }
-    .reply { margin: 6px 10px; }
+    .post { margin-bottom: 8px; }
+    .reply { margin: 4px 8px; }
     .reactions { gap: 5px; }
     .reaction-btn { padding: 3px 5px; font-size: 0.95em; }
     .delete-post, .delete-reply { margin-top: 6px; }
