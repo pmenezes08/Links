@@ -1561,9 +1561,6 @@ def post_status():
     content = request.form.get('content', '').strip()
     logger.debug(f"Received post request for {username} with content: {content}")
     
-    if not content:
-        return jsonify({'success': False, 'error': 'Content cannot be empty!'}), 400
-    
     # Handle file upload
     image_path = None
     if 'image' in request.files:
@@ -1572,6 +1569,9 @@ def post_status():
             image_path = save_uploaded_file(file)
             if not image_path:
                 return jsonify({'success': False, 'error': 'Invalid file type. Allowed: png, jpg, jpeg, gif, webp'}), 400
+    
+    if not content and not image_path:
+        return jsonify({'success': False, 'error': 'Content or image is required!'}), 400
     
     timestamp = datetime.now().strftime('%m.%d.%y %H:%M')
     try:
@@ -1606,8 +1606,8 @@ def post_reply():
     content = request.form.get('content', '').strip()
     logger.debug(f"Received reply request for {username} to post {post_id} with content: {content}")
 
-    if not post_id or not content:
-        return jsonify({'success': False, 'error': 'Post ID and content are required!'}), 400
+    if not post_id:
+        return jsonify({'success': False, 'error': 'Post ID is required!'}), 400
 
     # Handle file upload for reply
     image_path = None
@@ -1617,6 +1617,9 @@ def post_reply():
             image_path = save_uploaded_file(file)
             if not image_path:
                 return jsonify({'success': False, 'error': 'Invalid file type. Allowed: png, jpg, jpeg, gif, webp'}), 400
+
+    if not content and not image_path:
+        return jsonify({'success': False, 'error': 'Content or image is required!'}), 400
 
     # Use a consistent timestamp format for storage and a display-friendly one for the response
     now = datetime.now()

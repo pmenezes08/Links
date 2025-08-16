@@ -283,14 +283,16 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         });
 
-        // Handle reply submission
+        // Handle reply submission (for old reply forms in main feed - not used anymore)
         $postContainer.on('submit', '.reply-form', function(e) {
             e.preventDefault();
             const $form = $(this);
             const postId = $form.find('input[name="post_id"]').val();
             const content = $form.find('input[name="content"]').val().trim();
-            if (!content) {
-                $form.after('<div class="error-message">Reply content cannot be empty!</div>');
+            const imageFile = $form.find('input[type="file"]')[0]?.files[0];
+            
+            if (!content && !imageFile) {
+                $form.after('<div class="error-message">Reply content or image is required!</div>');
                 setTimeout(() => $('.error-message').remove(), 3000);
                 return;
             }
