@@ -1658,6 +1658,69 @@ def add_reply_reaction():
         logger.error(f"Error adding reply reaction: {str(e)}")
         return jsonify({'success': False, 'error': 'Server error'}), 500
 
+@app.route('/get_post')
+@login_required
+def get_post():
+    username = session.get('username')
+    post_id = request.args.get('post_id', type=int)
+    
+    if not post_id:
+        return jsonify({'success': False, 'error': 'Post ID is required'}), 400
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Fetch the post
+            c.execute("SELECT * FROM posts WHERE id = ?", (post_id,))
+            post_raw = c.fetchone()
+            
+            if not post_raw:
+                return jsonify({'success': False, 'error': 'Post not found'}), 404
+            
+            post = dict(post_raw)
+            
+            # Fetch replies for the post
+            c.execute("SELECT * FROM replies WHERE post_id = ? ORDER BY timestamp ASC", (post_id,))
+            replies_raw = c.fetchall()
+            post['replies'] = [dict(row) for row in replies_raw]
+            
+            # Fetch reactions for the post
+            c.execute("""
+                SELECT reaction_type, COUNT(*) as count
+                FROM reactions
+                WHERE post_id = ?
+                GROUP BY reaction_type
+            """, (post_id,))
+            reactions_raw = c.fetchall()
+            post['reactions'] = {r['reaction_type']: r['count'] for r in reactions_raw}
+            
+            # Get the current user's reaction to this post
+            c.execute("SELECT reaction_type FROM reactions WHERE post_id = ? AND username = ?", (post_id, username))
+            user_reaction_raw = c.fetchone()
+            post['user_reaction'] = user_reaction_raw['reaction_type'] if user_reaction_raw else None
+            
+            # Add reaction counts for each reply and user reaction
+            for reply in post['replies']:
+                c.execute("""
+                    SELECT reaction_type, COUNT(*) as count
+                    FROM reply_reactions
+                    WHERE reply_id = ?
+                    GROUP BY reaction_type
+                """, (reply['id'],))
+                rr = c.fetchall()
+                reply['reactions'] = {r['reaction_type']: r['count'] for r in rr}
+                
+                c.execute("SELECT reaction_type FROM reply_reactions WHERE reply_id = ? AND username = ?", (reply['id'], username))
+                ur = c.fetchone()
+                reply['user_reaction'] = ur['reaction_type'] if ur else None
+            
+            return jsonify({'success': True, 'post': post})
+            
+    except Exception as e:
+        logger.error(f"Error fetching post {post_id}: {str(e)}")
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
 @app.errorhandler(500)
 def internal_server_error(e):
     logger.error(f"Internal server error: {str(e)}")

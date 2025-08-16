@@ -459,67 +459,52 @@ document.addEventListener('DOMContentLoaded', function() {
             const postId = $(this).data('post-id');
             const $post = $(this);
             
-            // Get post data
-            const postData = {
-                id: postId,
-                username: $post.find('.post-header strong').text(),
-                content: $post.find('p').text(),
-                timestamp: $post.find('.timestamp').text(),
-                reactions: {
-                    heart: $post.find('.reaction-btn[data-reaction="heart"] span').text(),
-                    'thumbs-up': $post.find('.reaction-btn[data-reaction="thumbs-up"] span').text(),
-                    'thumbs-down': $post.find('.reaction-btn[data-reaction="thumbs-down"] span').text()
-                },
-                user_reaction: $post.find('.reaction-btn.active').data('reaction') || null,
-                replies: []
-            };
-
-            // Get replies data
-            $post.find('.reply').each(function() {
-                const $reply = $(this);
-                postData.replies.push({
-                    id: $reply.data('reply-id'),
-                    username: $reply.find('.reply-header strong').text(),
-                    content: $reply.find('p').text(),
-                    timestamp: $reply.find('.timestamp').text(),
-                    reactions: {
-                        heart: $reply.find('.reaction-btn[data-reaction="heart"] span').text(),
-                        'thumbs-up': $reply.find('.reaction-btn[data-reaction="thumbs-up"] span').text(),
-                        'thumbs-down': $reply.find('.reaction-btn[data-reaction="thumbs-down"] span').text()
-                    }
-                });
-            });
-
-            // Build modal content
-            const modalHtml = buildModalContent(postData);
-            modalContent.innerHTML = modalHtml;
+            // Show loading state
+            modalContent.innerHTML = '<div style="text-align: center; padding: 40px; color: #9fb0b5;"><i class="fas fa-spinner fa-spin" style="font-size: 24px; margin-bottom: 10px;"></div><div style="text-align: center; color: #9fb0b5;">Loading post...</div>';
             modal.style.display = "block";
 
-            // Re-attach event handlers for modal content
-            attachModalEventHandlers();
+            // Fetch full post data from server
+            $.ajax({
+                url: '/get_post',
+                method: 'GET',
+                data: { post_id: postId },
+                success: function(data) {
+                    if (data.success) {
+                        const modalHtml = buildModalContent(data.post);
+                        modalContent.innerHTML = modalHtml;
+                        attachModalEventHandlers();
+                    } else {
+                        modalContent.innerHTML = '<div style="text-align: center; padding: 40px; color: #ff6f61;">Error loading post: ' + data.error + '</div>';
+                    }
+                },
+                error: function(xhr, status, error) {
+                    console.error("Error fetching post:", { status, error, response: xhr.responseText });
+                    modalContent.innerHTML = '<div style="text-align: center; padding: 40px; color: #ff6f61;">Error loading post. Please try again.</div>';
+                }
+            });
         });
 
         function buildModalContent(postData) {
             const repliesHtml = postData.replies.map(reply => `
                 <div class="reply" data-reply-id="${reply.id}">
                     <div class="reply-header">
-                        <strong>${reply.username}</strong>
+                        <strong>@${reply.username}</strong>
                         <span class="timestamp">${reply.timestamp}</span>
                     </div>
                     <p>${reply.content}</p>
                     <div class="reply-actions">
                         <div class="reactions">
-                            <button class="reaction-btn heart" data-reaction="heart" aria-label="Like reply">
-                                <i class="far fa-heart"></i> <span>${reply.reactions.heart}</span>
+                            <button class="reaction-btn heart ${reply.user_reaction === 'heart' ? 'active' : ''}" data-reaction="heart" aria-label="Like reply">
+                                <i class="${reply.user_reaction === 'heart' ? 'fas' : 'far'} fa-heart"></i> <span>${reply.reactions.heart || 0}</span>
                             </button>
-                            <button class="reaction-btn thumbs-up" data-reaction="thumbs-up" aria-label="Thumbs up reply">
-                                <i class="far fa-thumbs-up"></i> <span>${reply.reactions['thumbs-up']}</span>
+                            <button class="reaction-btn thumbs-up ${reply.user_reaction === 'thumbs-up' ? 'active' : ''}" data-reaction="thumbs-up" aria-label="Thumbs up reply">
+                                <i class="${reply.user_reaction === 'thumbs-up' ? 'fas' : 'far'} fa-thumbs-up"></i> <span>${reply.reactions['thumbs-up'] || 0}</span>
                             </button>
-                            <button class="reaction-btn thumbs-down" data-reaction="thumbs-down" aria-label="Thumbs down reply">
-                                <i class="far fa-thumbs-down"></i> <span>${reply.reactions['thumbs-down']}</span>
+                            <button class="reaction-btn thumbs-down ${reply.user_reaction === 'thumbs-down' ? 'active' : ''}" data-reaction="thumbs-down" aria-label="Thumbs down reply">
+                                <i class="${reply.user_reaction === 'thumbs-down' ? 'fas' : 'far'} fa-thumbs-down"></i> <span>${reply.reactions['thumbs-down'] || 0}</span>
                             </button>
                         </div>
-                        ${reply.username === '@' + sessionStorage.getItem('username') ? 
+                        ${reply.username === sessionStorage.getItem('username') ? 
                             `<button class="delete-reply inline-action" data-reply-id="${reply.id}"><i class="far fa-trash-alt"></i> Delete</button>` : ''}
                     </div>
                 </div>
@@ -528,23 +513,23 @@ document.addEventListener('DOMContentLoaded', function() {
             return `
                 <div class="post" data-post-id="${postData.id}">
                     <div class="post-header">
-                        <strong>${postData.username}</strong>
+                        <strong>@${postData.username}</strong>
                         <span class="timestamp">${postData.timestamp}</span>
                     </div>
                     <p>${postData.content}</p>
                     <div class="post-actions">
                         <div class="reactions">
                             <button class="reaction-btn heart ${postData.user_reaction === 'heart' ? 'active' : ''}" data-reaction="heart" aria-label="Like post">
-                                <i class="${postData.user_reaction === 'heart' ? 'fas' : 'far'} fa-heart"></i> <span>${postData.reactions.heart}</span>
+                                <i class="${postData.user_reaction === 'heart' ? 'fas' : 'far'} fa-heart"></i> <span>${postData.reactions.heart || 0}</span>
                             </button>
                             <button class="reaction-btn thumbs-up ${postData.user_reaction === 'thumbs-up' ? 'active' : ''}" data-reaction="thumbs-up" aria-label="Thumbs up">
-                                <i class="${postData.user_reaction === 'thumbs-up' ? 'fas' : 'far'} fa-thumbs-up"></i> <span>${postData.reactions['thumbs-up']}</span>
+                                <i class="${postData.user_reaction === 'thumbs-up' ? 'fas' : 'far'} fa-thumbs-up"></i> <span>${postData.reactions['thumbs-up'] || 0}</span>
                             </button>
                             <button class="reaction-btn thumbs-down ${postData.user_reaction === 'thumbs-down' ? 'active' : ''}" data-reaction="thumbs-down" aria-label="Thumbs down">
-                                <i class="${postData.user_reaction === 'thumbs-down' ? 'fas' : 'far'} fa-thumbs-down"></i> <span>${postData.reactions['thumbs-down']}</span>
+                                <i class="${postData.user_reaction === 'thumbs-down' ? 'fas' : 'far'} fa-thumbs-down"></i> <span>${postData.reactions['thumbs-down'] || 0}</span>
                             </button>
                         </div>
-                        ${postData.username === '@' + sessionStorage.getItem('username') ? 
+                        ${postData.username === sessionStorage.getItem('username') ? 
                             `<button class="delete-post inline-action" data-post-id="${postData.id}"><i class="far fa-trash-alt"></i> Delete</button>` : ''}
                     </div>
                 </div>

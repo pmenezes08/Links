@@ -828,7 +828,7 @@ select:focus, input:focus {
 }
 
 .modal .reply-btn {
-    background: #4db6ac;
+    background: #2d5a2d;
     border: none;
     color: #ffffff;
     padding: 8px 16px;
@@ -839,5 +839,5 @@ select:focus, input:focus {
 }
 
 .modal .reply-btn:hover {
-    background: #37a69c;
+    background: #1e3d1e;
 }
