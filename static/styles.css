@@ -1,3 +1,4 @@
+/* General styles */
 body {
     background: linear-gradient(135deg, #1c2526, #2d3839);
     color: #ffffff;
@@ -7,8 +8,9 @@ body {
     overflow-x: hidden;
 }
 
+/* Container styles for all pages */
 .container {
-    padding: 40px 20px;
+    padding: 20px;
     text-align: center;
     max-width: 800px;
     margin: 0 auto;
@@ -18,51 +20,53 @@ body {
     justify-content: center;
     align-items: center;
     position: relative;
+    overflow: visible;
 }
 
+/* Headers */
 h1 {
-    font-size: 48px;
+    font-size: 36px;
     font-weight: 600;
     color: #ffffff;
-    margin-bottom: 20px;
-    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    margin-bottom: 15px;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
 }
 
 h2 {
-    font-size: 36px;
+    font-size: 28px;
     font-weight: 500;
     color: #ffffff;
-    margin-bottom: 30px;
+    margin-bottom: 20px;
 }
 
+/* Form and input styles */
 .selection {
-    margin: 20px 0;
-    width: 400px;
+    margin: 15px 0;
+    width: 100%;
+    max-width: 400px;
     text-align: center;
 }
 
 label {
     display: block;
-    font-size: 18px;
+    font-size: 16px;
     font-weight: 400;
     color: #d1d4d6;
-    margin-bottom: 10px;
+    margin-bottom: 8px;
 }
 
 select, input {
-    width: 400px;
-    padding: 14px;
-    font-size: 16px;
+    width: 100%;
+    padding: 10px;
+    font-size: 14px;
     line-height: 1.5;
     background: rgba(255, 255, 255, 0.1);
     border: none;
-    border-radius: 8px;
+    border-radius: 6px;
     color: #ffffff;
     font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
     appearance: none;
     transition: background 0.3s ease;
-    margin: 0 auto;
-    display: block;
     box-sizing: border-box;
 }
 
@@ -76,12 +80,13 @@ select:focus, input:focus {
     background: rgba(255, 255, 255, 0.15);
 }
 
+/* Buttons */
 .sleek-btn {
     background: #2d3839;
     border: none;
     border-radius: 4px;
     color: #ffffff;
-    padding: 6px 12px;
+    padding: 8px 16px;
     font-size: 14px;
     font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
     font-weight: 400;
@@ -90,7 +95,8 @@ select:focus, input:focus {
     text-transform: uppercase;
     letter-spacing: 1px;
     margin: 8px auto;
-    width: 350px !important;
+    width: 100%;
+    max-width: 350px;
     display: block;
     text-align: center;
     overflow: hidden;
@@ -102,9 +108,14 @@ select:focus, input:focus {
     background: #3a4647;
 }
 
-/* SSO Login Button */
+.sleek-btn.small {
+    width: auto;
+    padding: 6px 12px;
+    font-size: 0.9em;
+}
+
 #x-login-btn {
-    background: #1d9bf0; /* X’s brand blue */
+    background: #1d9bf0;
     border: none;
     border-radius: 4px;
     color: #ffffff;
@@ -128,7 +139,7 @@ select:focus, input:focus {
     border: none;
     border-radius: 50%;
     color: #ffffff;
-    width: 25px !important;
+    width: 25px;
     height: 25px;
     padding: 0;
     font-size: 14px;
@@ -152,16 +163,17 @@ select:focus, input:focus {
     background: #3a4647;
 }
 
+/* Result and error messages */
 .result {
-    margin-top: 30px;
-    font-size: 18px;
+    margin-top: 20px;
+    font-size: 16px;
     text-align: left;
     color: #e0e0e0;
     background: rgba(255, 255, 255, 0.05);
-    padding: 20px;
-    border-radius: 12px;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
-    opacity: 1; /* Default for jQuery animation */
+    padding: 15px;
+    border-radius: 8px;
+    box-shadow: 0 1px 6px rgba(0, 0, 0, 0.2);
+    opacity: 1;
 }
 
 .result b {
@@ -169,13 +181,20 @@ select:focus, input:focus {
     font-weight: 500;
 }
 
-/* Error Message Styling */
 .error-message {
     color: #ff3b30;
-    font-size: 16px;
-    margin-top: 20px;
+    font-size: 14px;
+    margin-top: 10px;
 }
 
+.success-message {
+    color: #4CAF50;
+    font-size: 14px;
+    margin-top: 8px;
+    text-align: center;
+}
+
+/* Popup styles */
 .popup {
     position: fixed;
     top: 0;
@@ -191,12 +210,12 @@ select:focus, input:focus {
 
 .popup-content {
     background: #1c2526;
-    padding: 40px;
-    border-radius: 20px;
+    padding: 30px;
+    border-radius: 16px;
     text-align: center;
     width: 90%;
     max-width: 500px;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
     animation: fadeIn 0.5s ease;
 }
 
@@ -205,21 +224,286 @@ select:focus, input:focus {
     to { opacity: 1; transform: translateY(0); }
 }
 
+/* Ad styles */
 .ad {
-    margin-top: 30px;
-    padding: 15px;
+    margin-top: 20px;
+    padding: 12px;
     background: rgba(255, 255, 255, 0.1);
     color: #d1d4d6;
-    border-radius: 12px;
-    font-size: 16px;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+    border-radius: 8px;
+    font-size: 14px;
+    box-shadow: 0 1px 6px rgba(0, 0, 0, 0.2);
 }
 
+/* Nutrition-specific styles */
+.chat-box {
+    max-height: 400px;
+    overflow-y: auto;
+    background: #2d3839;
+    padding: 12px;
+    border-radius: 6px;
+    margin-bottom: 12px;
+    width: 100%;
+}
+
+.chat-box p {
+    margin: 8px 0;
+    color: #e0e0e0;
+}
+
+.grok-response {
+    background: #3a4647;
+    padding: 8px;
+    border-radius: 4px;
+    margin: 8px 0;
+    color: #e0e0e0;
+    line-height: 1.5;
+    text-align: left;
+    max-width: 600px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.grok-response strong {
+    color: #ffffff;
+}
+
+.grok-response p {
+    margin: 4px 0;
+}
+
+.grok-response ul {
+    list-style: disc;
+    padding-left: 16px;
+    margin: 4px 0;
+}
+
+.grok-response li {
+    margin: 4px 0;
+}
+
+.loader {
+    width: 30px;
+    height: 30px;
+    border: 3px solid #e0e0e0;
+    border-top: 3px solid #4CAF50;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin: 8px auto;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+#message {
+    width: 100%;
+    max-width: 600px;
+    background: rgba(255, 255, 255, 0.1);
+    border: none;
+    color: #ffffff;
+    padding: 10px;
+    border-radius: 6px;
+    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    font-size: 14px;
+}
+
+#file {
+    margin: 10px 0;
+    color: #e0e0e0;
+}
+
+/* Sidebar and Menu Styles */
+.sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100%;
+    width: 60px;
+    background: #1a2526;
+    transition: width 0.3s;
+    z-index: 1000;
+    overflow: visible;
+}
+
+.menu-btn {
+    background: none;
+    border: none;
+    color: #e0e0e0;
+    font-size: 20px;
+    padding: 15px;
+    cursor: pointer;
+    width: 100%;
+    text-align: left;
+    pointer-events: auto;
+    z-index: 1002;
+}
+
+.dropdown-content {
+    display: none;
+    background: #2d3839;
+    position: absolute;
+    top: 60px;
+    left: 60px;
+    width: 200px;
+    box-shadow: 2px 2px 6px rgba(0, 0, 0, 0.2);
+    z-index: 1001;
+}
+
+.dropdown-content a {
+    color: #e0e0e0;
+    padding: 10px 15px;
+    display: block;
+    text-decoration: none;
+    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    font-size: 0.9em;
+}
+
+.dropdown-content a:hover {
+    background: #3a4647;
+}
+
+.unread-badge {
+    display: inline-block;
+    background: #ff4444;
+    color: #fff;
+    font-size: 0.6em;
+    font-weight: bold;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    text-align: center;
+    line-height: 16px;
+    margin-left: 8px;
+    position: relative;
+    top: -2px;
+}
+
+.unread-badge.hidden {
+    display: none;
+}
+
+/* Your Sports-specific styles */
+.sports-content {
+    background: #2d3839;
+    padding: 15px;
+    border-radius: 6px;
+    max-width: 800px;
+    margin: 0 auto;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+    overflow: visible;
+}
+
+.membership-list {
+    list-style: none;
+    padding: 0;
+    margin: 12px 0;
+}
+
+.membership-item {
+    background: #3a4647;
+    padding: 8px;
+    border-radius: 4px;
+    margin-bottom: 8px;
+    color: #e0e0e0;
+    font-size: 0.9em;
+}
+
+/* Social Feed Styles */
+.post {
+    background: #2d3839;
+    padding: 12px;
+    border-radius: 6px;
+    margin-bottom: 12px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+}
+
+.reply {
+    background: #3a4647;
+    padding: 8px;
+    border-radius: 4px;
+    margin: 8px 12px;
+    font-size: 0.9em;
+}
+
+.reactions {
+    display: flex;
+    gap: 8px;
+    margin: 10px 0;
+    align-items: center;
+}
+
+.reaction-btn {
+    background: none;
+    border: none;
+    font-size: 1.1em;
+    cursor: pointer;
+    color: #b0bec5; /* Light grey for inactive */
+    transition: color 0.2s ease, transform 0.1s ease;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 6px;
+    border-radius: 4px;
+}
+
+.reaction-btn i {
+    font-size: 1.1em;
+}
+
+.reaction-btn:hover {
+    color: #78909c; /* Darker grey on hover */
+    transform: scale(1.05);
+}
+
+.reaction-btn.active {
+    color: #ff6f61; /* Soft red for active */
+}
+
+.reaction-btn.active:hover {
+    color: #f4514e; /* Darker red on hover */
+}
+
+.delete-post, .delete-reply {
+    background: #ff6f61;
+    color: #ffffff;
+    border: none;
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: 0.8em;
+    cursor: pointer;
+    transition: background 0.2s ease;
+    margin-top: 8px;
+}
+
+.delete-post:hover, .delete-reply:hover {
+    background: #f4514e;
+}
+
+/* Media Queries */
 @media (max-width: 600px) {
-    h1 { font-size: 36px; }
-    h2 { font-size: 28px; }
-    .container { padding: 20px; }
+    h1 { font-size: 28px; }
+    h2 { font-size: 24px; }
+    .container { padding: 15px; }
     select, input, .sleek-btn, #x-login-btn { width: 100%; max-width: none; }
     .selection { width: 100%; }
     .go-back-btn { top: 5px; right: 5px; }
+    .sidebar { width: 100%; height: 60px; overflow: visible; }
+    .menu-btn { font-size: 18px; padding: 10px; }
+    .dropdown-content {
+        top: 60px;
+        width: 100%;
+        left: 0;
+        z-index: 1001;
+    }
+    .sports-content { padding: 12px; max-width: 100%; }
+    .membership-item { font-size: 0.9em; padding: 6px; }
+    .sleek-btn, .go-back-btn { font-size: 0.9em; padding: 6px 12px; }
+    .sleek-btn.small { padding: 4px 10px; font-size: 0.8em; }
+    .post { margin-bottom: 10px; }
+    .reply { margin: 6px 10px; }
+    .reactions { gap: 6px; }
+    .reaction-btn { padding: 3px 5px; font-size: 1em; }
+    .delete-post, .delete-reply { margin-top: 6px; }
 }
