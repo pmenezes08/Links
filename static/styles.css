@@ -429,40 +429,47 @@ select:focus, input:focus {
 
 .reactions {
     display: flex;
-    gap: 8px;
-    margin: 10px 0;
+    gap: 6px;
+    margin: 8px 0 2px 0;
     align-items: center;
 }
 
 .reaction-btn {
     background: none;
     border: none;
-    font-size: 1.1em;
+    font-size: 0.95em;
     cursor: pointer;
-    color: #b0bec5; /* Light grey for inactive */
-    transition: color 0.2s ease, transform 0.1s ease;
-    display: flex;
+    color: #b0bec5;
+    transition: color 0.15s ease, transform 0.1s ease, background 0.15s ease;
+    display: inline-flex;
     align-items: center;
     gap: 4px;
-    padding: 4px 6px;
-    border-radius: 4px;
+    padding: 3px 6px;
+    border-radius: 6px;
 }
 
 .reaction-btn i {
-    font-size: 1.1em;
+    font-size: 1em;
+}
+
+.reaction-btn span {
+    font-size: 0.85em;
+    color: #cfd8dc;
 }
 
 .reaction-btn:hover {
-    color: #78909c; /* Darker grey on hover */
-    transform: scale(1.05);
+    color: #90a4ae;
+    background: rgba(255, 255, 255, 0.04);
 }
 
 .reaction-btn.active {
-    color: #ff6f61; /* Soft red for active */
+    color: #4db6ac;
+    background: rgba(77, 182, 172, 0.08);
 }
 
 .reaction-btn.active:hover {
-    color: #f4514e; /* Darker red on hover */
+    color: #37a69c;
+    background: rgba(77, 182, 172, 0.12);
 }
 
 .delete-post, .delete-reply {
@@ -593,7 +600,8 @@ select:focus, input:focus {
     .sleek-btn.small { padding: 4px 10px; font-size: 0.8em; }
     .post { margin-bottom: 10px; }
     .reply { margin: 6px 10px; }
-    .reactions { gap: 6px; }
-    .reaction-btn { padding: 3px 5px; font-size: 1em; }
+    .reactions { gap: 5px; }
+    .reaction-btn { padding: 3px 5px; font-size: 0.95em; }
     .delete-post, .delete-reply { margin-top: 6px; }
+    .posts { max-width: 100%; }
 }
