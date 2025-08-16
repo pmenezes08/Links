@@ -211,14 +211,13 @@ document.addEventListener('DOMContentLoaded', function() {
                                 <form class="reply-form" action="/post_reply" method="POST">
                                     <input type="hidden" name="post_id" value="${data.post.id}">
                                     <input type="text" name="content" placeholder="Write a reply..." required>
-                                    <button type="submit" class="sleek-btn small">Reply</button>
+                                                                         <button type="submit" class="reply-btn"><i class="far fa-paper-plane"></i> Reply</button>
                                 </form>
                                 <div class="replies"></div>
                             </div>`;
                         $postContainer.prepend(postHtml);
                         $postForm.find('input[name="content"]').val('');
-                        $postForm.after('<div class="success-message">Post added!</div>');
-                        setTimeout(() => $('.success-message').remove(), 3000);
+
                     } else {
                         $postForm.after(`<div class="error-message">Error: ${data.error}</div>`);
                         setTimeout(() => $('.error-message').remove(), 3000);
@@ -272,8 +271,6 @@ document.addEventListener('DOMContentLoaded', function() {
                             </div>`;
                         $replies.append(replyHtml);
                         $form.find('input[name="content"]').val('');
-                        $form.after('<div class="success-message">Reply added!</div>');
-                        setTimeout(() => $('.success-message').remove(), 3000);
                     } else {
                         $form.after(`<div class="error-message">Error: ${data.error}</div>`);
                         setTimeout(() => $('.error-message').remove(), 3000);
@@ -388,11 +385,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     success: function(data) {
                         $(`[data-post-id="${postId}"] .loader`).remove();
                         console.log("Delete post response:", data);
-                        if (data.success) {
-                            $(`[data-post-id="${postId}"]`).remove();
-                            $postContainer.after('<div class="success-message">Post deleted!</div>');
-                            setTimeout(() => $('.success-message').remove(), 3000);
-                        } else {
+                                                    if (data.success) {
+                                $(`[data-post-id="${postId}"]`).remove();
+                            } else {
                             $postContainer.after(`<div class="error-message">Error: ${data.error}</div>`);
                             setTimeout(() => $('.error-message').remove(), 3000);
                         }
@@ -423,11 +418,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     success: function(data) {
                         $(`[data-reply-id="${replyId}"] .loader`).remove();
                         console.log("Delete reply response:", data);
-                        if (data.success) {
-                            $(`[data-reply-id="${replyId}"]`).remove();
-                            $postContainer.after('<div class="success-message">Reply deleted!</div>');
-                            setTimeout(() => $('.success-message').remove(), 3000);
-                        } else {
+                                                    if (data.success) {
+                                $(`[data-reply-id="${replyId}"]`).remove();
+                            } else {
                             $postContainer.after(`<div class="error-message">Error: ${data.error}</div>`);
                             setTimeout(() => $('.error-message').remove(), 3000);
                         }

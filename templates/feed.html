@@ -64,7 +64,7 @@
                             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                             <input type="hidden" name="post_id" value="{{ post.id }}">
                             <input type="text" name="content" class="reply-input" placeholder="Write a reply..." required>
-                            <button type="submit" class="inline-action reply-action"><i class="far fa-paper-plane"></i> Reply</button>
+                            <button type="submit" class="reply-btn"><i class="far fa-paper-plane"></i> Reply</button>
                         </form>
                         <div class="replies">
                             {% for reply in post.replies %}
