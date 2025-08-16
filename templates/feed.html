@@ -48,7 +48,7 @@
             {% if posts %}
                 {% for post in posts %}
                     <div class="post" data-post-id="{{ post.id }}">
-                        <p><strong>@{{ post.username }}</strong> <span>{{ post.timestamp | format_date('%m/%d/%y %I:%M %p') }}</span></p>
+                        <div class="post-header"><strong>@{{ post.username }}</strong><span class="timestamp">{{ post.timestamp | format_date('%m/%d/%y %I:%M %p') }}</span></div>
                         <p>{{ post.content }}</p>
                         <div class="post-actions">
                             <div class="reactions">

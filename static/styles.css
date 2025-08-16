@@ -411,6 +411,17 @@ select:focus, input:focus {
 }
 
 /* Social Feed Styles */
+.post-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 8px;
+}
+.post-header .timestamp {
+    font-size: 0.8em;
+    color: #9fb0b5;
+    white-space: nowrap;
+}
 .post {
     background: #2d3839;
     padding: 12px;

@@ -198,7 +198,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     if (data.success) {
                         const postHtml = `
                             <div class="post" data-post-id="${data.post.id}">
-                                <p><strong>@${data.post.username}</strong> <span>${data.post.timestamp}</span></p>
+                                <div class="post-header"><strong>@${data.post.username}</strong><span class="timestamp">${data.post.timestamp}</span></div>
                                 <p>${data.post.content}</p>
                                 <div class="post-actions">
                                     <div class="reactions">
