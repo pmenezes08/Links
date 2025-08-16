@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, redirect, url_for, session, flash, abort
+from flask import Flask, render_template, request, jsonify, redirect, url_for, session, flash, abort, send_from_directory
 from flask_oauthlib.client import OAuth
 import os
 import sys
@@ -12,9 +12,18 @@ from datetime import datetime, timedelta
 from functools import wraps
 from markupsafe import escape
 import secrets
+from werkzeug.utils import secure_filename
 
 # Initialize Flask app
 app = Flask(__name__, template_folder='templates')
+
+# File upload configuration
+UPLOAD_FOLDER = 'static/uploads'
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+
+# Create uploads directory if it doesn't exist
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 # Load secret keys from environment variables
 app.secret_key = os.getenv('FLASK_SECRET_KEY', 'temporary-secret-key-12345')
@@ -85,7 +94,25 @@ def init_db():
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
-            # ... (keep all your existing CREATE TABLE statements) ...
+            
+            # Create posts table with image support
+            c.execute('''CREATE TABLE IF NOT EXISTS posts
+                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                          username TEXT NOT NULL,
+                          content TEXT NOT NULL,
+                          image_path TEXT,
+                          timestamp TEXT NOT NULL,
+                          FOREIGN KEY (username) REFERENCES users(username))''')
+
+            # Create replies table
+            c.execute('''CREATE TABLE IF NOT EXISTS replies
+                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                          post_id INTEGER NOT NULL,
+                          username TEXT NOT NULL,
+                          content TEXT NOT NULL,
+                          timestamp TEXT NOT NULL,
+                          FOREIGN KEY (post_id) REFERENCES posts(id),
+                          FOREIGN KEY (username) REFERENCES users(username))''')
 
             # Add this new table for reactions
             c.execute('''CREATE TABLE IF NOT EXISTS reactions
@@ -107,7 +134,14 @@ def init_db():
                           FOREIGN KEY (username) REFERENCES users(username),
                           UNIQUE(reply_id, username))''')
 
-            # ... (keep the rest of your init_db function) ...
+            # Add image column to existing posts table if it doesn't exist
+            try:
+                c.execute("ALTER TABLE posts ADD COLUMN image_path TEXT")
+            except sqlite3.OperationalError:
+                # Column already exists
+                pass
+
+            conn.commit()
     except Exception as e:
         logger.error(f"Error initializing database: {e}")
         abort(500)
@@ -132,6 +166,23 @@ def ensure_indexes():
 
 init_db()
 ensure_indexes()
+
+# --- File upload helpers ---
+def allowed_file(filename):
+    return '.' in filename and \
+           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+def save_uploaded_file(file):
+    if file and allowed_file(file.filename):
+        filename = secure_filename(file.filename)
+        # Add timestamp to make filename unique
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        name, ext = os.path.splitext(filename)
+        unique_filename = f"{name}_{timestamp}{ext}"
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
+        file.save(filepath)
+        return f"uploads/{unique_filename}"
+    return None
 
 # --- CSRF helpers ---
 def get_csrf_token():
@@ -1498,22 +1549,40 @@ def post_status():
     username = session['username']
     if not validate_csrf():
         return jsonify({'success': False, 'error': 'Invalid CSRF token'}), 400
+    
     content = request.form.get('content', '').strip()
     logger.debug(f"Received post request for {username} with content: {content}")
+    
     if not content:
         return jsonify({'success': False, 'error': 'Content cannot be empty!'}), 400
+    
+    # Handle file upload
+    image_path = None
+    if 'image' in request.files:
+        file = request.files['image']
+        if file.filename != '':
+            image_path = save_uploaded_file(file)
+            if not image_path:
+                return jsonify({'success': False, 'error': 'Invalid file type. Allowed: png, jpg, jpeg, gif, webp'}), 400
+    
     timestamp = datetime.now().strftime('%m.%d.%y %H:%M')
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
-            c.execute("INSERT INTO posts (username, content, timestamp) VALUES (?, ?, ?)",
-                      (username, content, timestamp))
+            c.execute("INSERT INTO posts (username, content, image_path, timestamp) VALUES (?, ?, ?, ?)",
+                      (username, content, image_path, timestamp))
             conn.commit()
         logger.info(f"Post added successfully for {username} with ID: {c.lastrowid}")
         return jsonify({
             'success': True,
             'message': 'Post added!',
-            'post': {'id': c.lastrowid, 'username': username, 'content': content, 'timestamp': timestamp}
+            'post': {
+                'id': c.lastrowid, 
+                'username': username, 
+                'content': content, 
+                'image_path': image_path,
+                'timestamp': timestamp
+            }
         }), 200
     except Exception as e:
         logger.error(f"Error posting status for {username}: {str(e)}", exc_info=True)
@@ -1579,10 +1648,20 @@ def delete_post():
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
-            c.execute("SELECT username FROM posts WHERE id= ?", (post_id,))
+            c.execute("SELECT username, image_path FROM posts WHERE id= ?", (post_id,))
             post = c.fetchone()
             if not post or post['username'] != username:
                 return jsonify({'success': False, 'error': 'Post not found or unauthorized!'}), 403
+            
+            # Delete image file if it exists
+            if post['image_path']:
+                try:
+                    image_file_path = os.path.join('static', post['image_path'])
+                    if os.path.exists(image_file_path):
+                        os.remove(image_file_path)
+                except Exception as e:
+                    logger.warning(f"Could not delete image file {post['image_path']}: {e}")
+            
             c.execute("DELETE FROM replies WHERE post_id= ?", (post_id,))
             c.execute("DELETE FROM posts WHERE id= ?", (post_id,))
             conn.commit()

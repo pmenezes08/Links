@@ -175,6 +175,16 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
 
+        // Handle file upload
+        $('#image-upload').on('change', function() {
+            const file = this.files[0];
+            if (file) {
+                $('#selected-file-name').text(file.name);
+            } else {
+                $('#selected-file-name').text('');
+            }
+        });
+
         // Handle post submission
         $postForm.on('submit', function(e) {
             e.preventDefault();
@@ -184,11 +194,22 @@ document.addEventListener('DOMContentLoaded', function() {
                 setTimeout(() => $('.error-message').remove(), 3000);
                 return;
             }
+            
+            const formData = new FormData();
+            formData.append('content', content);
+            
+            const imageFile = $('#image-upload')[0].files[0];
+            if (imageFile) {
+                formData.append('image', imageFile);
+            }
+            
             console.log("Submitting post with content:", content);
             $.ajax({
                 url: '/post_status',
                 method: 'POST',
-                data: { content },
+                data: formData,
+                processData: false,
+                contentType: false,
                 beforeSend: function() {
                     $postForm.append('<div class="loader"></div>');
                 },
@@ -196,10 +217,14 @@ document.addEventListener('DOMContentLoaded', function() {
                     $postForm.find('.loader').remove();
                     console.log("Post submission response:", data);
                     if (data.success) {
+                        const imageHtml = data.post.image_path ? 
+                            `<div class="post-image"><img src="/static/${data.post.image_path}" alt="Post image" loading="lazy"></div>` : '';
+                        
                         const postHtml = `
                             <div class="post clickable-post" data-post-id="${data.post.id}">
                                 <div class="post-header"><strong>@${data.post.username}</strong><span class="timestamp">${data.post.timestamp}</span></div>
                                 <p>${data.post.content}</p>
+                                ${imageHtml}
                                 <div class="post-actions">
                                     <div class="reactions">
                                         <button class="reaction-btn heart" data-reaction="heart" aria-label="Like post"><i class="far fa-heart"></i> <span>0</span></button>
@@ -214,6 +239,8 @@ document.addEventListener('DOMContentLoaded', function() {
                             </div>`;
                         $postContainer.prepend(postHtml);
                         $postForm.find('input[name="content"]').val('');
+                        $('#image-upload').val('');
+                        $('#selected-file-name').text('');
 
                     } else {
                         $postForm.after(`<div class="error-message">Error: ${data.error}</div>`);
@@ -537,6 +564,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 </div>
             `).join('');
 
+            const imageHtml = postData.image_path ? 
+                `<div class="post-image"><img src="/static/${postData.image_path}" alt="Post image" loading="lazy"></div>` : '';
+            
             return `
                 <div class="post" data-post-id="${postData.id}">
                     <div class="post-header">
@@ -544,6 +574,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         <span class="timestamp">${postData.timestamp}</span>
                     </div>
                     <p>${postData.content}</p>
+                    ${imageHtml}
                     <div class="post-actions">
                         <div class="reactions">
                             <button class="reaction-btn heart ${postData.user_reaction === 'heart' ? 'active' : ''}" data-reaction="heart" aria-label="Like post">

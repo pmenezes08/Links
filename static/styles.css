@@ -561,6 +561,61 @@ select:focus, input:focus {
 
 .composer-body { flex: 1; }
 
+.composer-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 8px;
+}
+
+.file-upload-container {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.file-upload-btn {
+    background: #4db6ac;
+    border: none;
+    color: #ffffff;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 0.9em;
+    cursor: pointer;
+    transition: background 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.file-upload-btn:hover {
+    background: #37a69c;
+}
+
+.selected-file-name {
+    color: #9fb0b5;
+    font-size: 0.85em;
+    max-width: 150px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.post-image {
+    margin: 12px 0;
+    border-radius: 8px;
+    overflow: hidden;
+    max-width: 100%;
+}
+
+.post-image img {
+    width: 100%;
+    height: auto;
+    max-height: 400px;
+    object-fit: cover;
+    display: block;
+}
+
 .composer-input {
     background: transparent;
     border: none;

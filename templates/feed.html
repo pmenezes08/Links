@@ -31,11 +31,18 @@
 
         <!-- Composer -->
         <div class="composer-card">
-            <form action="/post_status" method="POST" class="composer-form">
+            <form action="/post_status" method="POST" class="composer-form" enctype="multipart/form-data">
                 <div class="composer-inner">
                     <div class="composer-body">
                         <input type="text" name="content" class="composer-input" placeholder="What is happening?!" required>
                         <div class="composer-actions">
+                            <div class="file-upload-container">
+                                <label for="image-upload" class="file-upload-btn">
+                                    <i class="far fa-image"></i>
+                                </label>
+                                <input type="file" id="image-upload" name="image" accept="image/*" style="display: none;">
+                                <span id="selected-file-name" class="selected-file-name"></span>
+                            </div>
                             <button type="submit" class="sleek-btn small">Post</button>
                         </div>
                     </div>
@@ -50,6 +57,11 @@
                     <div class="post clickable-post" data-post-id="{{ post.id }}">
                         <div class="post-header"><strong>@{{ post.username }}</strong><span class="timestamp">{{ post.timestamp | format_date('%m/%d/%y %I:%M %p') }}</span></div>
                         <p>{{ post.content }}</p>
+                        {% if post.image_path %}
+                            <div class="post-image">
+                                <img src="{{ url_for('static', filename=post.image_path) }}" alt="Post image" loading="lazy">
+                            </div>
+                        {% endif %}
                         <div class="post-actions">
                             <div class="reactions">
                                 <button class="reaction-btn heart {{ 'active' if post.user_reaction == 'heart' }}" data-reaction="heart" aria-label="Like post"><i class="far fa-heart"></i> <span>{{ post.reactions['heart'] or 0 }}</span></button>
