@@ -655,14 +655,22 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
         function attachModalEventHandlers() {
-            // Handle delete reply in modal with direct event binding
-            $('#modalPostContent').off('click', '.delete-reply.inline-action').on('click', '.delete-reply.inline-action', function(e) {
+            // Remove ALL existing event handlers first
+            $(document).off('click', '#modalPostContent .delete-reply.inline-action');
+            $(document).off('click', '#modalPostContent .reactions .reaction-btn');
+            
+            // Handle delete reply in modal with document-level delegation
+            $(document).on('click', '#modalPostContent .delete-reply.inline-action', function(e) {
                 e.preventDefault();
                 e.stopPropagation();
                 e.stopImmediatePropagation();
-                console.log("Delete reply button clicked in modal");
+                console.log("=== DELETE BUTTON CLICKED ===");
+                console.log("Target element:", e.target);
+                console.log("Current element:", this);
+                console.log("Element classes:", $(this).attr('class'));
                 const replyId = $(this).data('reply-id');
                 console.log("Reply ID:", replyId);
+                
                 if (confirm('Are you sure you want to delete this reply?')) {
                     console.log("Deleting reply from modal:", replyId);
                     $.ajax({
@@ -700,9 +708,14 @@ document.addEventListener('DOMContentLoaded', function() {
             });
 
             // Re-attach reaction handlers for modal content - ONLY for actual reaction buttons
-            $('#modalPostContent').off('click', '.reactions .reaction-btn').on('click', '.reactions .reaction-btn', function(e) {
+            $(document).on('click', '#modalPostContent .reactions .reaction-btn', function(e) {
                 e.preventDefault();
                 e.stopPropagation();
+                console.log("=== REACTION BUTTON CLICKED ===");
+                console.log("Target element:", e.target);
+                console.log("Current element:", this);
+                console.log("Element classes:", $(this).attr('class'));
+                
                 const $button = $(this);
                 const reactionType = $button.data('reaction');
                 const $post = $button.closest('.post');
