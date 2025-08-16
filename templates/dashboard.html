@@ -7,6 +7,24 @@
 	<link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
 </head>
 <body>
+	<div class="sidebar">
+		<button class="menu-btn">☰ Menu</button>
+		<div class="dropdown-content">
+			{% if session['username'] == 'admin' %}
+			<a href="/admin">Admin Dashboard</a>
+			{% endif %}
+			<a href="/profile">Profile</a>
+			<a href="/user_chat">Messages</a>
+			<a href="/premium_dashboard">Premium Dashboard</a>
+			<a href="/feed">Social Feed</a>
+			<a href="/nutrition">Nutrition</a>
+			<a href="/blood_test_analysis">Blood Test Analysis</a>
+			<a href="/chat">Chat with Grok</a>
+			<a href="/health_news">Health News</a>
+			<a href="/subscribe">Subscribe</a>
+			<a href="/logout">Logout</a>
+		</div>
+	</div>
 	<div class="container">
 		<h1>Welcome, {{ name }}</h1>
 		<div class="dashboard-actions">
@@ -18,5 +36,7 @@
 			{% endif %}
 		</div>
 	</div>
+	<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+	<script src="{{ url_for('static', filename='script.js') }}"></script>
 </body>
 </html>

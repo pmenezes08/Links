@@ -684,3 +684,10 @@ select:focus, input:focus {
     transform: translateY(0);
     box-shadow: none;
 }
+
+/* Hover state enhancement for buttons */
+.sleek-btn:hover,
+.sleek-btn.compact:hover,
+.sleek-btn.pill:hover {
+    background: #2a3a3a; /* darker greenish tone within theme */
+}
