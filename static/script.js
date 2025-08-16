@@ -601,7 +601,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                 </button>
                             </div>
                             ${reply.username === sessionStorage.getItem('username') ? 
-                                `<button class="delete-reply inline-action" data-reply-id="${reply.id}"><i class="far fa-trash-alt"></i> Delete</button>` : ''}
+                                `<button class="delete-reply inline-action modal-delete-btn" data-reply-id="${reply.id}" data-action="delete"><i class="far fa-trash-alt"></i> Delete</button>` : ''}
                         </div>
                     </div>
                 `;
@@ -656,11 +656,11 @@ document.addEventListener('DOMContentLoaded', function() {
 
         function attachModalEventHandlers() {
             // Remove ALL existing event handlers first
-            $(document).off('click', '#modalPostContent .delete-reply.inline-action');
+            $(document).off('click', '#modalPostContent .modal-delete-btn');
             $(document).off('click', '#modalPostContent .reactions .reaction-btn');
             
             // Handle delete reply in modal with document-level delegation
-            $(document).on('click', '#modalPostContent .delete-reply.inline-action', function(e) {
+            $(document).on('click', '#modalPostContent .modal-delete-btn', function(e) {
                 e.preventDefault();
                 e.stopPropagation();
                 e.stopImmediatePropagation();
@@ -711,12 +711,20 @@ document.addEventListener('DOMContentLoaded', function() {
             $(document).on('click', '#modalPostContent .reactions .reaction-btn', function(e) {
                 e.preventDefault();
                 e.stopPropagation();
+                
+                const $button = $(this);
+                
+                // Double-check this is actually a reaction button
+                if (!$button.hasClass('reaction-btn') || $button.hasClass('modal-delete-btn')) {
+                    console.log("=== NOT A REACTION BUTTON - IGNORING ===");
+                    return;
+                }
+                
                 console.log("=== REACTION BUTTON CLICKED ===");
                 console.log("Target element:", e.target);
                 console.log("Current element:", this);
                 console.log("Element classes:", $(this).attr('class'));
                 
-                const $button = $(this);
                 const reactionType = $button.data('reaction');
                 const $post = $button.closest('.post');
                 const postId = $post.data('post-id');
