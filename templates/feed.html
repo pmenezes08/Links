@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Social Feed</title>
+    <title>Social</title>
     <meta name="csrf-token" content="{{ csrf_token }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
@@ -19,7 +19,7 @@
             <a href="{{ url_for('dashboard') }}">Dashboard</a>
             <a href="{{ url_for('free_workouts') }}">Free Workouts</a>
             <a href="{{ url_for('premium_dashboard') }}">Premium Dashboard</a>
-            <a href="{{ url_for('feed') }}">Social Feed</a>
+            <a href="{{ url_for('feed') }}">Social</a>
             <a href="{{ url_for('logout') }}">Logout</a>
             <span id="unread-badge" class="unread-badge hidden">0</span>
         </div>
@@ -27,7 +27,7 @@
 
     <!-- Main Content -->
     <div class="container feed">
-        <h1>Social Feed</h1>
+        <h1>Social</h1>
 
         <!-- Composer -->
         <div class="composer-card">

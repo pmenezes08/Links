@@ -410,7 +410,7 @@ select:focus, input:focus {
     font-size: 0.9em;
 }
 
-/* Social Feed Styles */
+/* Social Styles */
 .post-header,
 .reply-header {
     display: flex;

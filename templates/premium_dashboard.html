@@ -16,7 +16,7 @@
             <a href="/profile">Profile</a>
             <a href="/user_chat">Messages</a>
             <a href="/premium_dashboard">Premium Dashboard</a>
-            <a href="/feed">Social Feed</a>
+            <a href="/feed">Social</a>
             <a href="/my_workouts">Workouts</a>
             <a href="/nutrition">Nutrition</a>
             <a href="/blood_test_analysis">Blood Test Analysis</a>
@@ -29,7 +29,7 @@
     <div class="container">
         <h2 class="low-profile-header">Premium Dashboard - {{ name }}</h2>
         <div class="dashboard-actions">
-            <button onclick="location.href='{{ url_for('feed') }}'" class="sleek-btn compact pill">Social Feed</button>
+            <button onclick="location.href='{{ url_for('feed') }}'" class="sleek-btn compact pill">Social</button>
             <button onclick="location.href='{{ url_for('user_chat') }}'" class="sleek-btn compact pill">Messages</button>
             <button onclick="location.href='{{ url_for('nutrition') }}'" class="sleek-btn compact pill">Nutrition</button>
             <button onclick="location.href='{{ url_for('blood_test_analysis') }}'" class="sleek-btn compact pill">Blood Tests</button>

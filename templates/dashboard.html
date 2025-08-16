@@ -16,7 +16,7 @@
 			<a href="/profile">Profile</a>
 			<a href="/user_chat">Messages</a>
 			<a href="/premium_dashboard">Premium Dashboard</a>
-			<a href="/feed">Social Feed</a>
+			            <a href="/feed">Social</a>
 			<a href="/nutrition">Nutrition</a>
 			<a href="/blood_test_analysis">Blood Test Analysis</a>
 			<a href="/chat">Chat with Grok</a>
@@ -28,7 +28,7 @@
 	<div class="container">
 		<h1>Welcome, {{ name }}</h1>
 		<div class="dashboard-actions">
-			<button onclick="location.href='{{ url_for('feed') }}'" class="sleek-btn compact pill">Social Feed</button>
+			        <button onclick="location.href='{{ url_for('feed') }}'" class="sleek-btn compact pill">Social</button>
 			<button onclick="location.href='{{ url_for('free_workouts') }}'" class="sleek-btn compact pill">Free Workouts</button>
 			<button onclick="location.href='{{ url_for('generate_workout_page') }}'" class="sleek-btn compact pill">Generate Workout</button>
 			{% if name == 'admin' %}

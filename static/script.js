@@ -142,7 +142,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // Social Feed Interactivity (for feed.html)
+    // Social Interactivity (for feed.html)
     const $postForm = $('form[action="/post_status"]');
     const $postContainer = $('.posts');
 
@@ -163,7 +163,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     if ($postForm.length && $postContainer.length) {
-        console.log("Social feed elements initialized:", { $postForm, $postContainer });
+        console.log("Social elements initialized:", { $postForm, $postContainer });
 
         // Initialize icons for pre-active reactions on page load
         $('.reactions').each(function() {
