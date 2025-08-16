@@ -1286,7 +1286,12 @@ def your_sports():
     """Your Communities page - transformed from Your Sports"""
     username = session['username']
     try:
-        return render_template('your_sports.html', csrf_token=get_csrf_token())
+        # Generate CSRF token directly here
+        token = session.get('csrf_token')
+        if not token:
+            token = secrets.token_hex(16)
+            session['csrf_token'] = token
+        return render_template('your_sports.html', csrf_token=token)
     except Exception as e:
         logger.error(f"Error in your_sports for {username}: {str(e)}")
         abort(500)
