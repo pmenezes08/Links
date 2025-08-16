@@ -1,95 +1,376 @@
-document.addEventListener('DOMContentLoaded', function() {
-    console.log("Document loaded");
+// static/script.js
 
-    // Check for jQuery
-    if (typeof $ === 'undefined') {
-        console.error("jQuery not loaded - critical features disabled");
-        const popupContent = document.querySelector('#intro-popup .popup-content');
-        if (popupContent) {
-            popupContent.innerHTML = '<p class="error-message">jQuery failed to load. Please refresh the page.</p>';
-        }
+document.addEventListener('DOMContentLoaded', function() {
+    console.log("script.js loaded, jQuery version:", jQuery.fn.jquery);
+
+    // Ensure jQuery is loaded
+    if (typeof jQuery === 'undefined') {
+        console.error("jQuery is not loaded. Please ensure <script src='https://code.jquery.com/jquery-3.6.0.min.js'></script> is included.");
         return;
     }
-    console.log("jQuery loaded successfully");
 
-    // SSO Error Handling from URL Params
-    const urlParams = new URLSearchParams(window.location.search);
-    if (urlParams.has('error')) {
-        const error = urlParams.get('error');
-        const errorDesc = urlParams.get('error_description');
-        console.error(`SSO Error: ${error} - ${errorDesc}`);
-        const popupContent = $('#intro-popup .popup-content');
-        popupContent.append(`<p class="error-message">SSO Failed: ${errorDesc || error}</p>`);
-    }
+    // Menu Toggle and Click-Outside Functionality
+    const $menuBtn = $('.menu-btn');
+    const $dropdown = $('.dropdown-content');
 
-    // X Login Button Click (for consistency, though <a> href works too)
-    const xLoginBtn = document.getElementById('x-login-btn');
-    if (xLoginBtn) {
-        xLoginBtn.addEventListener('click', function(e) {
-            console.log("Initiating X SSO login...");
-            // Let the <a> href handle navigation to /login_x
+    if ($menuBtn.length && $dropdown.length) {
+        $menuBtn.off('click');
+        $menuBtn[0].removeEventListener('click', toggleMenu);
+
+        $menuBtn.on('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            $dropdown.toggle();
+            console.log("Menu toggled, dropdown display:", $dropdown.css('display'));
         });
+
+        $menuBtn.css('pointer-events', 'auto');
+
+        $(window).on('resize', function() {
+            if ($(window).width() > 768) {
+                $dropdown.hide();
+            }
+        });
+
+        // Close dropdown when clicking a menu item on mobile
+        $dropdown.on('click', 'a', function() {
+            if ($(window).width() <= 600) {
+                $dropdown.hide();
+            }
+        });
+
+        // Hide dropdown on click outside
+        $(document).on('click', function(e) {
+            if ($dropdown.is(':visible')) {
+                const $target = $(e.target);
+                const isMenuBtnClicked = $target.closest($menuBtn).length > 0;
+                const isDropdownClicked = $target.closest($dropdown).length > 0;
+                if (!isMenuBtnClicked && !isDropdownClicked) {
+                    $dropdown.hide();
+                }
+            }
+        });
+
+        // Prevent dropdown from closing if clicking inside
+        $dropdown.on('click', function(e) {
+            e.stopPropagation();
+        });
+
+        $dropdown.hide();
+    } else {
+        console.error("Menu elements not found:", { $menuBtn, $dropdown });
     }
 
-    // Workout Generation (assuming this will be added to other pages like free_workouts.html)
-    const generateBtn = document.getElementById('generate-btn');
-    if (generateBtn) {
-        generateBtn.addEventListener('click', function() {
-            const muscleSelect = document.getElementById('muscle-select');
-            const typeSelect = document.getElementById('type-select');
-            const muscle = muscleSelect ? muscleSelect.value : '';
-            const trainingType = typeSelect ? typeSelect.value : '';
-            const subscription = window.location.pathname.includes('free') ? 'free' : 'premium';
-            const result = document.getElementById('result');
-
-            if (!muscle || !trainingType || !result) {
-                if (result) {
-                    result.innerHTML = '<span class="error-message">Please select a muscle group and training type!</span>';
-                }
-                console.warn("Missing muscle, training type, or result element");
-                return;
+    // Unread Badge Polling (for pages with #unread-badge)
+    const $unreadBadge = $('#unread-badge');
+    if ($unreadBadge.length) {
+        function checkUnreadMessages() {
+            if (sessionStorage.getItem('username')) {
+                $.get('/check_unread_messages')
+                    .done(function(data) {
+                        const unreadCount = data.unread_count;
+                        if (unreadCount > 0) {
+                            $unreadBadge.text(unreadCount > 9 ? '9+' : unreadCount).removeClass('hidden');
+                        } else {
+                            $unreadBadge.addClass('hidden');
+                        }
+                    })
+                    .fail(function(xhr, status, error) {
+                        console.error('Error checking unread messages:', error);
+                    });
             }
+        }
 
-            $.ajax({
-                url: '/generate_workout',
-                type: 'POST',
-                data: {
-                    muscle: muscle,
-                    training_type: trainingType,
-                    subscription: subscription
-                },
-                cache: false,
-                success: function(response) {
-                    if (response.error) {
-                        result.innerHTML = `<span class="error-message">${response.error}</span>`;
-                        console.warn("Workout generation error:", response.error);
+        checkUnreadMessages();
+        setInterval(checkUnreadMessages, 5000);
+    }
+
+    // Workout Generation (for Premium Dashboard)
+    const $workoutForm = $('form[action="/generate_workout"]');
+    const $saveBtn = $('#save-btn');
+    const $resultDiv = $('#result');
+    let isGenerating = false;
+
+    if ($workoutForm.length && $saveBtn.length && $resultDiv.length) {
+        $workoutForm.on('submit', function(e) {
+            e.preventDefault();
+            if (!isGenerating) {
+                isGenerating = true;
+                $resultDiv.hide();
+                const formData = new FormData(this);
+                fetch('/generate_workout', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    isGenerating = false;
+                    if (data.error) {
+                        $resultDiv.html('<p style="color: #e0e0e0;">' + data.error + '</p>').show();
                     } else {
-                        result.innerHTML = response.workout;
-                        $(result).css('opacity', 0).animate({ opacity: 1 }, 500);
-                        console.log("Workout generated:", response.workout);
+                        $resultDiv.html('<h3 class="result-title">Workout Generated</h3><div class="workout-content">' + data.workout + '</div>').show();
+                        $saveBtn.show();
                     }
-                },
-                error: function(xhr, status, error) {
-                    if (xhr.status === 401) {
-                        result.innerHTML = '<span class="error-message">Please log in to generate workouts! <a href="/login_x">Log in with X</a></span>';
-                        console.warn("Unauthorized - redirecting to login");
-                    } else {
-                        result.innerHTML = '<span class="error-message">Error generating workout!</span>';
-                        console.error("AJAX error:", status, error, xhr.responseText);
-                    }
+                })
+                .catch(error => {
+                    isGenerating = false;
+                    $resultDiv.html('<p style="color: #e0e0e0;">Error: ' + error + '</p>').show();
+                });
+            }
+        });
+
+        $saveBtn.on('click', function() {
+            const workout = $resultDiv.html();
+            fetch('/save_workout', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: 'workout=' + encodeURIComponent(workout)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    $resultDiv.after('<div class="success-message">Workout saved successfully!</div>');
+                    $saveBtn.hide();
+                    setTimeout(() => $('.success-message').remove(), 3000);
+                } else {
+                    $resultDiv.after(`<div class="error-message">Error saving workout: ${data.error}</div>`);
+                    setTimeout(() => $('.error-message').remove(), 3000);
                 }
+            })
+            .catch(error => {
+                $resultDiv.after(`<div class="error-message">Error: ${error}</div>`);
+                setTimeout(() => $('.error-message').remove(), 3000);
             });
         });
     }
 
-    // Check Login Status on Load
-    $.get('/free_workouts', function(data) {
-        if (!data.includes('name')) {
-            console.warn("User not logged in - SSO may be required");
-        } else {
-            console.log("User logged in - ready for action");
-        }
-    }).fail(function(xhr) {
-        console.error("Failed to check user status:", xhr.status, xhr.responseText);
-    });
+    // Social Feed Interactivity (for feed.html)
+    const $postForm = $('form[action="/post_status"]');
+    const $postContainer = $('.posts');
+
+    if ($postForm.length && $postContainer.length) {
+        console.log("Social feed elements initialized:", { $postForm, $postContainer });
+
+        // Handle post submission
+        $postForm.on('submit', function(e) {
+            e.preventDefault();
+            const content = $(this).find('input[name="content"]').val().trim();
+            if (!content) {
+                $postForm.after('<div class="error-message">Post content cannot be empty!</div>');
+                setTimeout(() => $('.error-message').remove(), 3000);
+                return;
+            }
+            console.log("Submitting post with content:", content);
+            $.ajax({
+                url: '/post_status',
+                method: 'POST',
+                data: { content },
+                beforeSend: function() {
+                    $postForm.append('<div class="loader"></div>');
+                },
+                success: function(data) {
+                    $postForm.find('.loader').remove();
+                    console.log("Post submission response:", data);
+                    if (data.success) {
+                        const postHtml = `
+                            <div class="post" data-post-id="${data.post.id}">
+                                <p><strong>@${data.post.username}</strong> <span>${data.post.timestamp}</span></p>
+                                <p>${data.post.content}</p>
+                                <div class="reactions">
+                                    <button class="reaction-btn heart" data-reaction="heart" aria-label="Like post"><i class="far fa-heart"></i> <span>0</span></button>
+                                    <button class="reaction-btn thumbs-up" data-reaction="thumbs-up" aria-label="Thumbs up"><i class="far fa-thumbs-up"></i> <span>0</span></button>
+                                    <button class="reaction-btn thumbs-down" data-reaction="thumbs-down" aria-label="Thumbs down"><i class="far fa-thumbs-down"></i> <span>0</span></button>
+                                    <button class="reaction-btn smile" data-reaction="smile" aria-label="Smile"><i class="far fa-smile"></i> <span>0</span></button>
+                                </div>
+                                ${data.post.username === sessionStorage.getItem('username') ? '<button class="delete-post" data-post-id="' + data.post.id + '">Delete</button>' : ''}
+                                <form class="reply-form" action="/post_reply" method="POST">
+                                    <input type="hidden" name="post_id" value="${data.post.id}">
+                                    <input type="text" name="content" placeholder="Write a reply..." required>
+                                    <button type="submit" class="sleek-btn small">Reply</button>
+                                </form>
+                                <div class="replies"></div>
+                            </div>`;
+                        $postContainer.prepend(postHtml);
+                        $postForm.find('input[name="content"]').val('');
+                        $postForm.after('<div class="success-message">Post added!</div>');
+                        setTimeout(() => $('.success-message').remove(), 3000);
+                    } else {
+                        $postForm.after(`<div class="error-message">Error: ${data.error}</div>`);
+                        setTimeout(() => $('.error-message').remove(), 3000);
+                    }
+                },
+                error: function(xhr, status, error) {
+                    $postForm.find('.loader').remove();
+                    console.error("Post submission error:", { status, error, response: xhr.responseText });
+                    $postForm.after('<div class="error-message">Error posting status. Please try again.</div>');
+                    setTimeout(() => $('.error-message').remove(), 3000);
+                }
+            });
+        });
+
+        // Handle reply submission
+        $postContainer.on('submit', '.reply-form', function(e) {
+            e.preventDefault();
+            const $form = $(this);
+            const postId = $form.find('input[name="post_id"]').val();
+            const content = $form.find('input[name="content"]').val().trim();
+            if (!content) {
+                $form.after('<div class="error-message">Reply content cannot be empty!</div>');
+                setTimeout(() => $('.error-message').remove(), 3000);
+                return;
+            }
+            console.log("Submitting reply for post", postId, "with content:", content);
+            $.ajax({
+                url: '/post_reply',
+                method: 'POST',
+                data: { post_id: postId, content },
+                beforeSend: function() {
+                    $form.append('<div class="loader"></div>');
+                },
+                success: function(data) {
+                    $form.find('.loader').remove();
+                    console.log("Reply submission response:", data);
+                    if (data.success) {
+                        const $replies = $form.siblings('.replies');
+                        const replyHtml = `
+                            <div class="reply" data-reply-id="${data.reply.id}">
+                                <p><strong>@${data.reply.username}</strong> <span>${data.reply.timestamp}</span></p>
+                                <p>${data.reply.content}</p>
+                                ${data.reply.username === sessionStorage.getItem('username') ? '<button class="delete-reply" data-reply-id="' + data.reply.id + '">Delete</button>' : ''}
+                            </div>`;
+                        $replies.append(replyHtml);
+                        $form.find('input[name="content"]').val('');
+                        $form.after('<div class="success-message">Reply added!</div>');
+                        setTimeout(() => $('.success-message').remove(), 3000);
+                    } else {
+                        $form.after(`<div class="error-message">Error: ${data.error}</div>`);
+                        setTimeout(() => $('.error-message').remove(), 3000);
+                    }
+                },
+                error: function(xhr, status, error) {
+                    $form.find('.loader').remove();
+                    console.error("Reply submission error:", { status, error, response: xhr.responseText });
+                    $form.after('<div class="error-message">Error posting reply. Please try again.</div>');
+                    setTimeout(() => $('.error-message').remove(), 3000);
+                }
+            });
+        });
+
+        // Handle reaction clicks
+        $postContainer.on('click', '.reaction-btn', function(e) {
+            e.preventDefault();
+            const $button = $(this);
+            const postId = $button.closest('.post').data('post-id');
+            const reactionType = $button.data('reaction');
+            const validReactions = ['heart', 'thumbs-up', 'thumbs-down', 'smile'];
+            if (!validReactions.includes(reactionType)) {
+                $button.after('<div class="error-message">Invalid reaction type!</div>');
+                setTimeout(() => $('.error-message').remove(), 3000);
+                return;
+            }
+            console.log("Reaction clicked:", { postId, reactionType });
+            $.ajax({
+                url: '/add_reaction',
+                method: 'POST',
+                data: { post_id: postId, reaction: reactionType },
+                beforeSend: function() {
+                    $button.append('<div class="loader"></div>');
+                },
+                success: function(data) {
+                    $button.find('.loader').remove();
+                    console.log("Reaction response:", data);
+                    if (data.success) {
+                        const $reactions = $button.closest('.reactions');
+                        $reactions.find('.reaction-btn span').text(0); // Reset all counts
+                        Object.keys(data.counts).forEach(type => {
+                            $reactions.find(`[data-reaction="${type}"] span`).text(data.counts[type] || 0);
+                        });
+                        $reactions.find('.reaction-btn').removeClass('active');
+                        if (data.user_reaction) {
+                            $reactions.find(`[data-reaction="${data.user_reaction}"]`).addClass('active');
+                        }
+                    } else {
+                        $button.after(`<div class="error-message">Error: ${data.error}</div>`);
+                        setTimeout(() => $('.error-message').remove(), 3000);
+                    }
+                },
+                error: function(xhr, status, error) {
+                    $button.find('.loader').remove();
+                    console.error("Reaction error:", { status, error, response: xhr.responseText });
+                    $button.after('<div class="error-message">Error adding reaction. Please try again.</div>');
+                    setTimeout(() => $('.error-message').remove(), 3000);
+                }
+            });
+        });
+
+        // Handle post deletion
+        $postContainer.on('click', '.delete-post', function(e) {
+            e.preventDefault();
+            const postId = $(this).data('post-id');
+            if (confirm('Are you sure you want to delete this post?')) {
+                console.log("Deleting post:", postId);
+                $.ajax({
+                    url: '/delete_post',
+                    method: 'POST',
+                    data: { post_id: postId },
+                    beforeSend: function() {
+                        $(`[data-post-id="${postId}"]`).append('<div class="loader"></div>');
+                    },
+                    success: function(data) {
+                        $(`[data-post-id="${postId}"] .loader`).remove();
+                        console.log("Delete post response:", data);
+                        if (data.success) {
+                            $(`[data-post-id="${postId}"]`).remove();
+                            $postContainer.after('<div class="success-message">Post deleted!</div>');
+                            setTimeout(() => $('.success-message').remove(), 3000);
+                        } else {
+                            $postContainer.after(`<div class="error-message">Error: ${data.error}</div>`);
+                            setTimeout(() => $('.error-message').remove(), 3000);
+                        }
+                    },
+                    error: function(xhr, status, error) {
+                        $(`[data-post-id="${postId}"] .loader`).remove();
+                        console.error("Delete post error:", { status, error, response: xhr.responseText });
+                        $postContainer.after('<div class="error-message">Error deleting post. Please try again.</div>');
+                        setTimeout(() => $('.error-message').remove(), 3000);
+                    }
+                });
+            }
+        });
+
+        // Handle reply deletion
+        $postContainer.on('click', '.delete-reply', function(e) {
+            e.preventDefault();
+            const replyId = $(this).data('reply-id');
+            if (confirm('Are you sure you want to delete this reply?')) {
+                console.log("Deleting reply:", replyId);
+                $.ajax({
+                    url: '/delete_reply',
+                    method: 'POST',
+                    data: { reply_id: replyId },
+                    beforeSend: function() {
+                        $(`[data-reply-id="${replyId}"]`).append('<div class="loader"></div>');
+                    },
+                    success: function(data) {
+                        $(`[data-reply-id="${replyId}"] .loader`).remove();
+                        console.log("Delete reply response:", data);
+                        if (data.success) {
+                            $(`[data-reply-id="${replyId}"]`).remove();
+                            $postContainer.after('<div class="success-message">Reply deleted!</div>');
+                            setTimeout(() => $('.success-message').remove(), 3000);
+                        } else {
+                            $postContainer.after(`<div class="error-message">Error: ${data.error}</div>`);
+                            setTimeout(() => $('.error-message').remove(), 3000);
+                        }
+                    },
+                    error: function(xhr, status, error) {
+                        $(`[data-reply-id="${replyId}"] .loader`).remove();
+                        console.error("Delete reply error:", { status, error, response: xhr.responseText });
+                        $postContainer.after('<div class="error-message">Error deleting reply. Please try again.</div>');
+                        setTimeout(() => $('.error-message').remove(), 3000);
+                    }
+                });
+            }
+        });
+    }
 });
