@@ -577,6 +577,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 const replyImageHtml = reply.image_path ? 
                     `<div class="reply-image"><img src="/static/${reply.image_path}" alt="Reply image" loading="lazy"></div>` : '';
                 
+                console.log("Building reply HTML for:", reply.username, "Current user:", sessionStorage.getItem('username'));
+                
                 return `
                     <div class="reply" data-reply-id="${reply.id}">
                         <div class="reply-header">

@@ -698,7 +698,8 @@ select:focus, input:focus {
 .reply .delete-reply.inline-action,
 .modal .delete-reply.inline-action,
 #modalPostContent .delete-reply.inline-action,
-.reply-actions .delete-reply.inline-action {
+.reply-actions .delete-reply.inline-action,
+.reply .reply-actions .delete-reply.inline-action {
     background: transparent !important;
     color: #b0bec5 !important;
     border: none !important;
@@ -714,7 +715,8 @@ select:focus, input:focus {
 .reply .delete-reply.inline-action:hover,
 .modal .delete-reply.inline-action:hover,
 #modalPostContent .delete-reply.inline-action:hover,
-.reply-actions .delete-reply.inline-action:hover {
+.reply-actions .delete-reply.inline-action:hover,
+.reply .reply-actions .delete-reply.inline-action:hover {
     background: rgba(255, 255, 255, 0.06) !important;
     color: #ff6f61 !important;
 }
