@@ -110,6 +110,7 @@ def init_db():
                           post_id INTEGER NOT NULL,
                           username TEXT NOT NULL,
                           content TEXT NOT NULL,
+                          image_path TEXT,
                           timestamp TEXT NOT NULL,
                           FOREIGN KEY (post_id) REFERENCES posts(id),
                           FOREIGN KEY (username) REFERENCES users(username))''')
@@ -137,6 +138,13 @@ def init_db():
             # Add image column to existing posts table if it doesn't exist
             try:
                 c.execute("ALTER TABLE posts ADD COLUMN image_path TEXT")
+            except sqlite3.OperationalError:
+                # Column already exists
+                pass
+
+            # Add image column to existing replies table if it doesn't exist
+            try:
+                c.execute("ALTER TABLE replies ADD COLUMN image_path TEXT")
             except sqlite3.OperationalError:
                 # Column already exists
                 pass
@@ -1601,6 +1609,15 @@ def post_reply():
     if not post_id or not content:
         return jsonify({'success': False, 'error': 'Post ID and content are required!'}), 400
 
+    # Handle file upload for reply
+    image_path = None
+    if 'image' in request.files:
+        file = request.files['image']
+        if file.filename != '':
+            image_path = save_uploaded_file(file)
+            if not image_path:
+                return jsonify({'success': False, 'error': 'Invalid file type. Allowed: png, jpg, jpeg, gif, webp'}), 400
+
     # Use a consistent timestamp format for storage and a display-friendly one for the response
     now = datetime.now()
     timestamp_db = now.strftime('%m.%d.%y %H:%M')
@@ -1613,8 +1630,8 @@ def post_reply():
             if not c.fetchone():
                 return jsonify({'success': False, 'error': 'Post not found!'}), 404
 
-            c.execute("INSERT INTO replies (post_id, username, content, timestamp) VALUES (?, ?, ?, ?)",
-                      (post_id, username, content, timestamp_db))
+            c.execute("INSERT INTO replies (post_id, username, content, image_path, timestamp) VALUES (?, ?, ?, ?, ?)",
+                      (post_id, username, content, image_path, timestamp_db))
             reply_id = c.lastrowid
             conn.commit()
 
@@ -1628,6 +1645,7 @@ def post_reply():
                 'post_id': post_id,
                 'username': username,
                 'content': content,
+                'image_path': image_path,
                 'timestamp': timestamp_display  # Use the display-friendly timestamp
             }
         }), 200
@@ -1684,10 +1702,20 @@ def delete_reply():
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
-            c.execute("SELECT username FROM replies WHERE id= ?", (reply_id,))
+            c.execute("SELECT username, image_path FROM replies WHERE id= ?", (reply_id,))
             reply = c.fetchone()
             if not reply or reply['username'] != username:
                 return jsonify({'success': False, 'error': 'Reply not found or unauthorized!'}), 403
+            
+            # Delete image file if it exists
+            if reply['image_path']:
+                try:
+                    image_file_path = os.path.join('static', reply['image_path'])
+                    if os.path.exists(image_file_path):
+                        os.remove(image_file_path)
+                except Exception as e:
+                    logger.warning(f"Could not delete reply image file {reply['image_path']}: {e}")
+            
             c.execute("DELETE FROM replies WHERE id= ?", (reply_id,))
             conn.commit()
         logger.info(f"Reply {reply_id} deleted successfully by {username}")

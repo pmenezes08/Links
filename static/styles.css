@@ -912,3 +912,25 @@ select:focus, input:focus {
 .modal .reply-btn:hover {
     background: #37a69c;
 }
+
+.modal .reply-form-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.reply-image {
+    margin: 8px 0;
+    border-radius: 6px;
+    overflow: hidden;
+    max-width: 100%;
+}
+
+.reply-image img {
+    width: 100%;
+    height: auto;
+    max-height: 300px;
+    object-fit: cover;
+    display: block;
+}

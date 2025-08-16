@@ -539,30 +539,36 @@ document.addEventListener('DOMContentLoaded', function() {
         });
 
         function buildModalContent(postData) {
-            const repliesHtml = postData.replies.map(reply => `
-                <div class="reply" data-reply-id="${reply.id}">
-                    <div class="reply-header">
-                        <strong>@${reply.username}</strong>
-                        <span class="timestamp">${reply.timestamp}</span>
-                    </div>
-                    <p>${reply.content}</p>
-                    <div class="reply-actions">
-                        <div class="reactions">
-                            <button class="reaction-btn heart ${reply.user_reaction === 'heart' ? 'active' : ''}" data-reaction="heart" aria-label="Like reply">
-                                <i class="${reply.user_reaction === 'heart' ? 'fas' : 'far'} fa-heart"></i> <span>${reply.reactions.heart || 0}</span>
-                            </button>
-                            <button class="reaction-btn thumbs-up ${reply.user_reaction === 'thumbs-up' ? 'active' : ''}" data-reaction="thumbs-up" aria-label="Thumbs up reply">
-                                <i class="${reply.user_reaction === 'thumbs-up' ? 'fas' : 'far'} fa-thumbs-up"></i> <span>${reply.reactions['thumbs-up'] || 0}</span>
-                            </button>
-                            <button class="reaction-btn thumbs-down ${reply.user_reaction === 'thumbs-down' ? 'active' : ''}" data-reaction="thumbs-down" aria-label="Thumbs down reply">
-                                <i class="${reply.user_reaction === 'thumbs-down' ? 'fas' : 'far'} fa-thumbs-down"></i> <span>${reply.reactions['thumbs-down'] || 0}</span>
-                            </button>
+            const repliesHtml = postData.replies.map(reply => {
+                const replyImageHtml = reply.image_path ? 
+                    `<div class="reply-image"><img src="/static/${reply.image_path}" alt="Reply image" loading="lazy"></div>` : '';
+                
+                return `
+                    <div class="reply" data-reply-id="${reply.id}">
+                        <div class="reply-header">
+                            <strong>@${reply.username}</strong>
+                            <span class="timestamp">${reply.timestamp}</span>
                         </div>
-                        ${reply.username === sessionStorage.getItem('username') ? 
-                            `<button class="delete-reply inline-action" data-reply-id="${reply.id}"><i class="far fa-trash-alt"></i> Delete</button>` : ''}
+                        <p>${reply.content}</p>
+                        ${replyImageHtml}
+                        <div class="reply-actions">
+                            <div class="reactions">
+                                <button class="reaction-btn heart ${reply.user_reaction === 'heart' ? 'active' : ''}" data-reaction="heart" aria-label="Like reply">
+                                    <i class="${reply.user_reaction === 'heart' ? 'fas' : 'far'} fa-heart"></i> <span>${reply.reactions.heart || 0}</span>
+                                </button>
+                                <button class="reaction-btn thumbs-up ${reply.user_reaction === 'thumbs-up' ? 'active' : ''}" data-reaction="thumbs-up" aria-label="Thumbs up reply">
+                                    <i class="${reply.user_reaction === 'thumbs-up' ? 'fas' : 'far'} fa-thumbs-up</i> <span>${reply.reactions['thumbs-up'] || 0}</span>
+                                </button>
+                                <button class="reaction-btn thumbs-down ${reply.user_reaction === 'thumbs-down' ? 'active' : ''}" data-reaction="thumbs-down" aria-label="Thumbs down reply">
+                                    <i class="${reply.user_reaction === 'thumbs-down' ? 'fas' : 'far'} fa-thumbs-down</i> <span>${reply.reactions['thumbs-down'] || 0}</span>
+                                </button>
+                            </div>
+                            ${reply.username === sessionStorage.getItem('username') ? 
+                                `<button class="delete-reply inline-action" data-reply-id="${reply.id}"><i class="far fa-trash-alt"></i> Delete</button>` : ''}
+                        </div>
                     </div>
-                </div>
-            `).join('');
+                `;
+            }).join('');
 
             const imageHtml = postData.image_path ? 
                 `<div class="post-image"><img src="/static/${postData.image_path}" alt="Post image" loading="lazy"></div>` : '';
@@ -594,11 +600,20 @@ document.addEventListener('DOMContentLoaded', function() {
                 <div class="replies">
                     ${repliesHtml}
                 </div>
-                <form class="reply-form" action="/post_reply" method="POST">
+                <form class="reply-form" action="/post_reply" method="POST" enctype="multipart/form-data">
                     <input type="hidden" name="csrf_token" value="${$('meta[name="csrf-token"]').attr('content')}">
                     <input type="hidden" name="post_id" value="${postData.id}">
                     <input type="text" name="content" class="reply-input" placeholder="Write a reply..." required>
-                    <button type="submit" class="reply-btn"><i class="far fa-paper-plane"></i> Reply</button>
+                    <div class="reply-form-actions">
+                        <div class="file-upload-container">
+                            <label for="modal-reply-image-upload" class="file-upload-btn">
+                                <i class="fas fa-paperclip"></i>
+                            </label>
+                            <input type="file" id="modal-reply-image-upload" name="image" accept="image/*" style="display: none;">
+                            <span id="modal-reply-selected-file-name" class="selected-file-name"></span>
+                        </div>
+                        <button type="submit" class="reply-btn"><i class="far fa-paper-plane"></i> Reply</button>
+                    </div>
                 </form>
             `;
         }
@@ -678,6 +693,16 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             });
 
+            // Handle modal reply file upload
+            $('#modalPostContent').off('change', '#modal-reply-image-upload').on('change', '#modal-reply-image-upload', function() {
+                const file = this.files[0];
+                if (file) {
+                    $('#modal-reply-selected-file-name').text(file.name);
+                } else {
+                    $('#modal-reply-selected-file-name').text('');
+                }
+            });
+
             // Handle reply submission in modal
             $('#modalPostContent').off('submit', '.reply-form').on('submit', '.reply-form', function(e) {
                 e.preventDefault();
@@ -691,11 +716,22 @@ document.addEventListener('DOMContentLoaded', function() {
                     return;
                 }
 
+                const formData = new FormData();
+                formData.append('post_id', postId);
+                formData.append('content', content);
+                
+                const imageFile = $('#modal-reply-image-upload')[0].files[0];
+                if (imageFile) {
+                    formData.append('image', imageFile);
+                }
+
                 console.log("Submitting reply in modal:", { postId, content });
                 $.ajax({
                     url: '/post_reply',
                     method: 'POST',
-                    data: { post_id: postId, content },
+                    data: formData,
+                    processData: false,
+                    contentType: false,
                     beforeSend: function() {
                         $form.append('<div class="loader"></div>');
                     },
@@ -703,6 +739,9 @@ document.addEventListener('DOMContentLoaded', function() {
                         $form.find('.loader').remove();
                         console.log("Reply submission response:", data);
                         if (data.success) {
+                            const replyImageHtml = data.reply.image_path ? 
+                                `<div class="reply-image"><img src="/static/${data.reply.image_path}" alt="Reply image" loading="lazy"></div>` : '';
+                            
                             const replyHtml = `
                                 <div class="reply" data-reply-id="${data.reply.id}">
                                     <div class="reply-header">
@@ -710,6 +749,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                         <span class="timestamp">${data.reply.timestamp}</span>
                                     </div>
                                     <p>${data.reply.content}</p>
+                                    ${replyImageHtml}
                                     <div class="reply-actions">
                                         <div class="reactions">
                                             <button class="reaction-btn heart" data-reaction="heart" aria-label="Like reply">
@@ -728,6 +768,8 @@ document.addEventListener('DOMContentLoaded', function() {
                                 </div>`;
                             $('#modalPostContent .replies').append(replyHtml);
                             $form.find('input[name="content"]').val('');
+                            $('#modal-reply-image-upload').val('');
+                            $('#modal-reply-selected-file-name').text('');
                             
                             // Update reply count in main feed
                             const $mainPost = $(`.post[data-post-id="${postId}"]`);
