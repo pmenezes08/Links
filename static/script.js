@@ -554,45 +554,80 @@ document.addEventListener('DOMContentLoaded', function() {
                 const reactionType = $button.data('reaction');
                 const $post = $button.closest('.post');
                 const postId = $post.data('post-id');
+                const $reply = $button.closest('.reply');
                 
-                console.log("Reaction clicked (modal post):", { postId, reactionType });
-                $.ajax({
-                    url: '/add_post_reaction',
-                    method: 'POST',
-                    data: { post_id: postId, reaction: reactionType },
-                    beforeSend: function() {
-                        $button.append('<div class="loader"></div>');
-                    },
-                    success: function(data) {
-                        $button.find('.loader').remove();
-                        if (data.success) {
-                            const $reactions = $button.closest('.reactions');
-                            $reactions.find('.reaction-btn span').text(0);
-                            Object.keys(data.counts).forEach(type => {
-                                $reactions.find(`[data-reaction="${type}"] span`).text(data.counts[type] || 0);
-                            });
-                            updateReactionIconStates($reactions, data.user_reaction);
-                            
-                            // Update the main feed post as well
-                            const $mainPost = $(`.post[data-post-id="${postId}"]`);
-                            if ($mainPost.length) {
-                                $mainPost.find('.reaction-btn span').text(0);
+                if ($reply.length) {
+                    // This is a reply reaction
+                    const replyId = $reply.data('reply-id');
+                    console.log("Reaction clicked (modal reply):", { replyId, reactionType });
+                    $.ajax({
+                        url: '/add_reply_reaction',
+                        method: 'POST',
+                        data: { reply_id: replyId, reaction: reactionType },
+                        beforeSend: function() {
+                            $button.append('<div class="loader"></div>');
+                        },
+                        success: function(data) {
+                            $button.find('.loader').remove();
+                            if (data.success) {
+                                const $reactions = $button.closest('.reactions');
+                                $reactions.find('.reaction-btn span').text(0);
                                 Object.keys(data.counts).forEach(type => {
-                                    $mainPost.find(`[data-reaction="${type}"] span`).text(data.counts[type] || 0);
+                                    $reactions.find(`[data-reaction="${type}"] span`).text(data.counts[type] || 0);
                                 });
-                                updateReactionIconStates($mainPost.find('.reactions'), data.user_reaction);
+                                updateReactionIconStates($reactions, data.user_reaction);
+                            } else {
+                                $button.after(`<div class="error-message">Error: ${data.error}</div>`);
+                                setTimeout(() => $('.error-message').remove(), 3000);
                             }
-                        } else {
-                            $button.after(`<div class="error-message">Error: ${data.error}</div>`);
+                        },
+                        error: function(xhr, status, error) {
+                            $button.find('.loader').remove();
+                            $button.after('<div class="error-message">Error adding reaction. Please try again.</div>');
                             setTimeout(() => $('.error-message').remove(), 3000);
                         }
-                    },
-                    error: function(xhr, status, error) {
-                        $button.find('.loader').remove();
-                        $button.after('<div class="error-message">Error adding reaction. Please try again.</div>');
-                        setTimeout(() => $('.error-message').remove(), 3000);
-                    }
-                });
+                    });
+                } else {
+                    // This is a post reaction
+                    console.log("Reaction clicked (modal post):", { postId, reactionType });
+                    $.ajax({
+                        url: '/add_post_reaction',
+                        method: 'POST',
+                        data: { post_id: postId, reaction: reactionType },
+                        beforeSend: function() {
+                            $button.append('<div class="loader"></div>');
+                        },
+                        success: function(data) {
+                            $button.find('.loader').remove();
+                            if (data.success) {
+                                const $reactions = $button.closest('.reactions');
+                                $reactions.find('.reaction-btn span').text(0);
+                                Object.keys(data.counts).forEach(type => {
+                                    $reactions.find(`[data-reaction="${type}"] span`).text(data.counts[type] || 0);
+                                });
+                                updateReactionIconStates($reactions, data.user_reaction);
+                                
+                                // Update the main feed post as well
+                                const $mainPost = $(`.post[data-post-id="${postId}"]`);
+                                if ($mainPost.length) {
+                                    $mainPost.find('.reaction-btn span').text(0);
+                                    Object.keys(data.counts).forEach(type => {
+                                        $mainPost.find(`[data-reaction="${type}"] span`).text(data.counts[type] || 0);
+                                    });
+                                    updateReactionIconStates($mainPost.find('.reactions'), data.user_reaction);
+                                }
+                            } else {
+                                $button.after(`<div class="error-message">Error: ${data.error}</div>`);
+                                setTimeout(() => $('.error-message').remove(), 3000);
+                            }
+                        },
+                        error: function(xhr, status, error) {
+                            $button.find('.loader').remove();
+                            $button.after('<div class="error-message">Error adding reaction. Please try again.</div>');
+                            setTimeout(() => $('.error-message').remove(), 3000);
+                        }
+                    });
+                }
             });
 
             // Handle reply submission in modal

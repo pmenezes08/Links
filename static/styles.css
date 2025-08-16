@@ -477,12 +477,11 @@ select:focus, input:focus {
     font-size: 0.95em;
     cursor: pointer;
     color: #b0bec5;
-    transition: color 0.15s ease, transform 0.1s ease, background 0.15s ease;
+    transition: color 0.15s ease;
     display: inline-flex;
     align-items: center;
     gap: 4px;
     padding: 3px 6px;
-    border-radius: 6px;
 }
 
 .reaction-btn i {
@@ -496,17 +495,14 @@ select:focus, input:focus {
 
 .reaction-btn:hover {
     color: #90a4ae;
-    background: rgba(255, 255, 255, 0.04);
 }
 
 .reaction-btn.active {
     color: #4db6ac;
-    background: rgba(77, 182, 172, 0.08);
 }
 
 .reaction-btn.active:hover {
     color: #37a69c;
-    background: rgba(77, 182, 172, 0.12);
 }
 
 .delete-post, .delete-reply {
@@ -793,6 +789,7 @@ select:focus, input:focus {
     box-shadow: none;
     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
     padding-bottom: 20px;
+    padding-right: 40px; /* Add space for close button */
 }
 
 .modal .reply {
@@ -828,7 +825,7 @@ select:focus, input:focus {
 }
 
 .modal .reply-btn {
-    background: #2d5a2d;
+    background: #4db6ac;
     border: none;
     color: #ffffff;
     padding: 8px 16px;
@@ -839,5 +836,5 @@ select:focus, input:focus {
 }
 
 .modal .reply-btn:hover {
-    background: #1e3d1e;
+    background: #37a69c;
 }
