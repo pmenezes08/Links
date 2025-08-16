@@ -432,6 +432,30 @@ select:focus, input:focus {
     box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
 }
 
+.clickable-post {
+    cursor: pointer;
+    transition: background 0.2s ease, transform 0.1s ease;
+}
+
+.clickable-post:hover {
+    background: #3a4647;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.reply-indicator {
+    color: #9fb0b5;
+    font-size: 0.85em;
+    margin-top: 6px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.reply-indicator i {
+    font-size: 0.9em;
+}
+
 .reply {
     background: #3a4647;
     padding: 6px;
@@ -716,4 +740,104 @@ select:focus, input:focus {
 .sleek-btn.compact:hover,
 .sleek-btn.pill:hover {
     background: #2a3a3a; /* darker greenish tone within theme */
+}
+
+/* Modal styles */
+.modal {
+    display: none;
+    position: fixed;
+    z-index: 2000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(4px);
+}
+
+.modal-content {
+    background: #2d3839;
+    margin: 5% auto;
+    padding: 20px;
+    border-radius: 12px;
+    width: 90%;
+    max-width: 600px;
+    max-height: 80vh;
+    overflow-y: auto;
+    position: relative;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.close {
+    color: #9fb0b5;
+    float: right;
+    font-size: 28px;
+    font-weight: bold;
+    cursor: pointer;
+    position: absolute;
+    top: 10px;
+    right: 15px;
+    transition: color 0.2s ease;
+}
+
+.close:hover,
+.close:focus {
+    color: #ffffff;
+}
+
+/* Modal post styles */
+.modal .post {
+    background: transparent;
+    padding: 0;
+    margin-bottom: 20px;
+    box-shadow: none;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    padding-bottom: 20px;
+}
+
+.modal .reply {
+    background: #3a4647;
+    padding: 8px 12px;
+    border-radius: 6px;
+    margin: 8px 0;
+    font-size: 0.9em;
+    border-left: 3px solid #4db6ac;
+}
+
+.modal .reply-form {
+    margin-top: 15px;
+    padding-top: 15px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.modal .reply-input {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 6px;
+    color: #ffffff;
+    padding: 8px 12px;
+    width: 100%;
+    box-sizing: border-box;
+    margin-bottom: 8px;
+}
+
+.modal .reply-input:focus {
+    outline: none;
+    border-color: #4db6ac;
+    background: rgba(255, 255, 255, 0.15);
+}
+
+.modal .reply-btn {
+    background: #4db6ac;
+    border: none;
+    color: #ffffff;
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-size: 0.9em;
+    cursor: pointer;
+    transition: background 0.2s ease;
+}
+
+.modal .reply-btn:hover {
+    background: #37a69c;
 }

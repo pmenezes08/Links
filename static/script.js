@@ -197,7 +197,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     console.log("Post submission response:", data);
                     if (data.success) {
                         const postHtml = `
-                            <div class="post" data-post-id="${data.post.id}">
+                            <div class="post clickable-post" data-post-id="${data.post.id}">
                                 <div class="post-header"><strong>@${data.post.username}</strong><span class="timestamp">${data.post.timestamp}</span></div>
                                 <p>${data.post.content}</p>
                                 <div class="post-actions">
@@ -208,12 +208,9 @@ document.addEventListener('DOMContentLoaded', function() {
                                     </div>
                                     ${data.post.username === sessionStorage.getItem('username') ? '<button class="delete-post inline-action" data-post-id="' + data.post.id + '"><i class="far fa-trash-alt"></i> Delete</button>' : ''}
                                 </div>
-                                <form class="reply-form" action="/post_reply" method="POST">
-                                    <input type="hidden" name="post_id" value="${data.post.id}">
-                                    <input type="text" name="content" placeholder="Write a reply..." required>
-                                                                         <button type="submit" class="reply-btn"><i class="far fa-paper-plane"></i> Reply</button>
-                                </form>
-                                <div class="replies"></div>
+                                <div class="reply-indicator">
+                                    <i class="far fa-comment"></i> 0 replies
+                                </div>
                             </div>`;
                         $postContainer.prepend(postHtml);
                         $postForm.find('input[name="content"]').val('');
@@ -434,5 +431,255 @@ document.addEventListener('DOMContentLoaded', function() {
                 });
             }
         });
+
+        // Modal functionality
+        const modal = document.getElementById('postModal');
+        const modalContent = document.getElementById('modalPostContent');
+        const closeBtn = document.querySelector('.close');
+
+        // Close modal when clicking the X
+        closeBtn.onclick = function() {
+            modal.style.display = "none";
+        }
+
+        // Close modal when clicking outside of it
+        window.onclick = function(event) {
+            if (event.target == modal) {
+                modal.style.display = "none";
+            }
+        }
+
+        // Handle post clicks to open modal
+        $postContainer.on('click', '.clickable-post', function(e) {
+            // Don't open modal if clicking on buttons or forms
+            if ($(e.target).closest('.reaction-btn, .delete-post, .reply-form, .reply-btn, .reply-input').length) {
+                return;
+            }
+
+            const postId = $(this).data('post-id');
+            const $post = $(this);
+            
+            // Get post data
+            const postData = {
+                id: postId,
+                username: $post.find('.post-header strong').text(),
+                content: $post.find('p').text(),
+                timestamp: $post.find('.timestamp').text(),
+                reactions: {
+                    heart: $post.find('.reaction-btn[data-reaction="heart"] span').text(),
+                    'thumbs-up': $post.find('.reaction-btn[data-reaction="thumbs-up"] span').text(),
+                    'thumbs-down': $post.find('.reaction-btn[data-reaction="thumbs-down"] span').text()
+                },
+                user_reaction: $post.find('.reaction-btn.active').data('reaction') || null,
+                replies: []
+            };
+
+            // Get replies data
+            $post.find('.reply').each(function() {
+                const $reply = $(this);
+                postData.replies.push({
+                    id: $reply.data('reply-id'),
+                    username: $reply.find('.reply-header strong').text(),
+                    content: $reply.find('p').text(),
+                    timestamp: $reply.find('.timestamp').text(),
+                    reactions: {
+                        heart: $reply.find('.reaction-btn[data-reaction="heart"] span').text(),
+                        'thumbs-up': $reply.find('.reaction-btn[data-reaction="thumbs-up"] span').text(),
+                        'thumbs-down': $reply.find('.reaction-btn[data-reaction="thumbs-down"] span').text()
+                    }
+                });
+            });
+
+            // Build modal content
+            const modalHtml = buildModalContent(postData);
+            modalContent.innerHTML = modalHtml;
+            modal.style.display = "block";
+
+            // Re-attach event handlers for modal content
+            attachModalEventHandlers();
+        });
+
+        function buildModalContent(postData) {
+            const repliesHtml = postData.replies.map(reply => `
+                <div class="reply" data-reply-id="${reply.id}">
+                    <div class="reply-header">
+                        <strong>${reply.username}</strong>
+                        <span class="timestamp">${reply.timestamp}</span>
+                    </div>
+                    <p>${reply.content}</p>
+                    <div class="reply-actions">
+                        <div class="reactions">
+                            <button class="reaction-btn heart" data-reaction="heart" aria-label="Like reply">
+                                <i class="far fa-heart"></i> <span>${reply.reactions.heart}</span>
+                            </button>
+                            <button class="reaction-btn thumbs-up" data-reaction="thumbs-up" aria-label="Thumbs up reply">
+                                <i class="far fa-thumbs-up"></i> <span>${reply.reactions['thumbs-up']}</span>
+                            </button>
+                            <button class="reaction-btn thumbs-down" data-reaction="thumbs-down" aria-label="Thumbs down reply">
+                                <i class="far fa-thumbs-down"></i> <span>${reply.reactions['thumbs-down']}</span>
+                            </button>
+                        </div>
+                        ${reply.username === '@' + sessionStorage.getItem('username') ? 
+                            `<button class="delete-reply inline-action" data-reply-id="${reply.id}"><i class="far fa-trash-alt"></i> Delete</button>` : ''}
+                    </div>
+                </div>
+            `).join('');
+
+            return `
+                <div class="post" data-post-id="${postData.id}">
+                    <div class="post-header">
+                        <strong>${postData.username}</strong>
+                        <span class="timestamp">${postData.timestamp}</span>
+                    </div>
+                    <p>${postData.content}</p>
+                    <div class="post-actions">
+                        <div class="reactions">
+                            <button class="reaction-btn heart ${postData.user_reaction === 'heart' ? 'active' : ''}" data-reaction="heart" aria-label="Like post">
+                                <i class="${postData.user_reaction === 'heart' ? 'fas' : 'far'} fa-heart"></i> <span>${postData.reactions.heart}</span>
+                            </button>
+                            <button class="reaction-btn thumbs-up ${postData.user_reaction === 'thumbs-up' ? 'active' : ''}" data-reaction="thumbs-up" aria-label="Thumbs up">
+                                <i class="${postData.user_reaction === 'thumbs-up' ? 'fas' : 'far'} fa-thumbs-up"></i> <span>${postData.reactions['thumbs-up']}</span>
+                            </button>
+                            <button class="reaction-btn thumbs-down ${postData.user_reaction === 'thumbs-down' ? 'active' : ''}" data-reaction="thumbs-down" aria-label="Thumbs down">
+                                <i class="${postData.user_reaction === 'thumbs-down' ? 'fas' : 'far'} fa-thumbs-down"></i> <span>${postData.reactions['thumbs-down']}</span>
+                            </button>
+                        </div>
+                        ${postData.username === '@' + sessionStorage.getItem('username') ? 
+                            `<button class="delete-post inline-action" data-post-id="${postData.id}"><i class="far fa-trash-alt"></i> Delete</button>` : ''}
+                    </div>
+                </div>
+                <div class="replies">
+                    ${repliesHtml}
+                </div>
+                <form class="reply-form" action="/post_reply" method="POST">
+                    <input type="hidden" name="csrf_token" value="${$('meta[name="csrf-token"]').attr('content')}">
+                    <input type="hidden" name="post_id" value="${postData.id}">
+                    <input type="text" name="content" class="reply-input" placeholder="Write a reply..." required>
+                    <button type="submit" class="reply-btn"><i class="far fa-paper-plane"></i> Reply</button>
+                </form>
+            `;
+        }
+
+        function attachModalEventHandlers() {
+            // Re-attach reaction handlers for modal content
+            $('#modalPostContent').off('click', '.reaction-btn').on('click', '.reaction-btn', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                const $button = $(this);
+                const reactionType = $button.data('reaction');
+                const $post = $button.closest('.post');
+                const postId = $post.data('post-id');
+                
+                console.log("Reaction clicked (modal post):", { postId, reactionType });
+                $.ajax({
+                    url: '/add_post_reaction',
+                    method: 'POST',
+                    data: { post_id: postId, reaction: reactionType },
+                    beforeSend: function() {
+                        $button.append('<div class="loader"></div>');
+                    },
+                    success: function(data) {
+                        $button.find('.loader').remove();
+                        if (data.success) {
+                            const $reactions = $button.closest('.reactions');
+                            $reactions.find('.reaction-btn span').text(0);
+                            Object.keys(data.counts).forEach(type => {
+                                $reactions.find(`[data-reaction="${type}"] span`).text(data.counts[type] || 0);
+                            });
+                            updateReactionIconStates($reactions, data.user_reaction);
+                            
+                            // Update the main feed post as well
+                            const $mainPost = $(`.post[data-post-id="${postId}"]`);
+                            if ($mainPost.length) {
+                                $mainPost.find('.reaction-btn span').text(0);
+                                Object.keys(data.counts).forEach(type => {
+                                    $mainPost.find(`[data-reaction="${type}"] span`).text(data.counts[type] || 0);
+                                });
+                                updateReactionIconStates($mainPost.find('.reactions'), data.user_reaction);
+                            }
+                        } else {
+                            $button.after(`<div class="error-message">Error: ${data.error}</div>`);
+                            setTimeout(() => $('.error-message').remove(), 3000);
+                        }
+                    },
+                    error: function(xhr, status, error) {
+                        $button.find('.loader').remove();
+                        $button.after('<div class="error-message">Error adding reaction. Please try again.</div>');
+                        setTimeout(() => $('.error-message').remove(), 3000);
+                    }
+                });
+            });
+
+            // Handle reply submission in modal
+            $('#modalPostContent').off('submit', '.reply-form').on('submit', '.reply-form', function(e) {
+                e.preventDefault();
+                const $form = $(this);
+                const postId = $form.find('input[name="post_id"]').val();
+                const content = $form.find('input[name="content"]').val().trim();
+                
+                if (!content) {
+                    $form.after('<div class="error-message">Reply content cannot be empty!</div>');
+                    setTimeout(() => $('.error-message').remove(), 3000);
+                    return;
+                }
+
+                console.log("Submitting reply in modal:", { postId, content });
+                $.ajax({
+                    url: '/post_reply',
+                    method: 'POST',
+                    data: { post_id: postId, content },
+                    beforeSend: function() {
+                        $form.append('<div class="loader"></div>');
+                    },
+                    success: function(data) {
+                        $form.find('.loader').remove();
+                        console.log("Reply submission response:", data);
+                        if (data.success) {
+                            const replyHtml = `
+                                <div class="reply" data-reply-id="${data.reply.id}">
+                                    <div class="reply-header">
+                                        <strong>@${data.reply.username}</strong>
+                                        <span class="timestamp">${data.reply.timestamp}</span>
+                                    </div>
+                                    <p>${data.reply.content}</p>
+                                    <div class="reply-actions">
+                                        <div class="reactions">
+                                            <button class="reaction-btn heart" data-reaction="heart" aria-label="Like reply">
+                                                <i class="far fa-heart"></i> <span>0</span>
+                                            </button>
+                                            <button class="reaction-btn thumbs-up" data-reaction="thumbs-up" aria-label="Thumbs up reply">
+                                                <i class="far fa-thumbs-up"></i> <span>0</span>
+                                            </button>
+                                            <button class="reaction-btn thumbs-down" data-reaction="thumbs-down" aria-label="Thumbs down reply">
+                                                <i class="far fa-thumbs-down"></i> <span>0</span>
+                                            </button>
+                                        </div>
+                                        ${data.reply.username === sessionStorage.getItem('username') ? 
+                                            `<button class="delete-reply inline-action" data-reply-id="${data.reply.id}"><i class="far fa-trash-alt"></i> Delete</button>` : ''}
+                                    </div>
+                                </div>`;
+                            $('#modalPostContent .replies').append(replyHtml);
+                            $form.find('input[name="content"]').val('');
+                            
+                            // Update reply count in main feed
+                            const $mainPost = $(`.post[data-post-id="${postId}"]`);
+                            if ($mainPost.length) {
+                                const currentCount = parseInt($mainPost.find('.reply-indicator').text().match(/\d+/)[0]) || 0;
+                                $mainPost.find('.reply-indicator').html(`<i class="far fa-comment"></i> ${currentCount + 1} replies`);
+                            }
+                        } else {
+                            $form.after(`<div class="error-message">Error: ${data.error}</div>`);
+                            setTimeout(() => $('.error-message').remove(), 3000);
+                        }
+                    },
+                    error: function(xhr, status, error) {
+                        $form.find('.loader').remove();
+                        console.error("Reply submission error:", { status, error, response: xhr.responseText });
+                        $form.after('<div class="error-message">Error posting reply. Please try again.</div>');
+                        setTimeout(() => $('.error-message').remove(), 3000);
+                    }
+                });
+            });
+        }
     }
 });

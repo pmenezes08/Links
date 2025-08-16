@@ -47,7 +47,7 @@
         <div class="posts timeline">
             {% if posts %}
                 {% for post in posts %}
-                    <div class="post" data-post-id="{{ post.id }}">
+                    <div class="post clickable-post" data-post-id="{{ post.id }}">
                         <div class="post-header"><strong>@{{ post.username }}</strong><span class="timestamp">{{ post.timestamp | format_date('%m/%d/%y %I:%M %p') }}</span></div>
                         <p>{{ post.content }}</p>
                         <div class="post-actions">
@@ -60,35 +60,25 @@
                                 <button class="delete-post inline-action" data-post-id="{{ post.id }}"><i class="far fa-trash-alt"></i> Delete</button>
                             {% endif %}
                         </div>
-                        <form class="reply-form" action="/post_reply" method="POST">
-                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                            <input type="hidden" name="post_id" value="{{ post.id }}">
-                            <input type="text" name="content" class="reply-input" placeholder="Write a reply..." required>
-                            <button type="submit" class="reply-btn"><i class="far fa-paper-plane"></i> Reply</button>
-                        </form>
-                        <div class="replies">
-                            {% for reply in post.replies %}
-                                <div class="reply" data-reply-id="{{ reply.id }}">
-                                    <div class="reply-header"><strong>@{{ reply.username }}</strong><span class="timestamp">{{ reply.timestamp | format_date('%m/%d/%y %I:%M %p') }}</span></div>
-                                    <p>{{ reply.content }}</p>
-                                    <div class="reply-actions">
-                                        <div class="reactions">
-                                            <button class="reaction-btn heart" data-reaction="heart" aria-label="Like reply"><i class="far fa-heart"></i> <span>{{ reply.reactions['heart'] or 0 if reply.reactions else 0 }}</span></button>
-                                            <button class="reaction-btn thumbs-up" data-reaction="thumbs-up" aria-label="Thumbs up reply"><i class="far fa-thumbs-up"></i> <span>{{ reply.reactions['thumbs-up'] or 0 if reply.reactions else 0 }}</span></button>
-                                            <button class="reaction-btn thumbs-down" data-reaction="thumbs-down" aria-label="Thumbs down reply"><i class="far fa-thumbs-down"></i> <span>{{ reply.reactions['thumbs-down'] or 0 if reply.reactions else 0 }}</span></button>
-                                        </div>
-                                        {% if reply.username == session['username'] %}
-                                            <button class="delete-reply inline-action" data-reply-id="{{ reply.id }}"><i class="far fa-trash-alt"></i> Delete</button>
-                                        {% endif %}
-                                    </div>
-                                </div>
-                            {% endfor %}
+                        <!-- Reply count indicator -->
+                        <div class="reply-indicator">
+                            <i class="far fa-comment"></i> {{ post.replies|length }} replies
                         </div>
                     </div>
                 {% endfor %}
             {% else %}
                 <p>No posts yet. Be the first!</p>
             {% endif %}
+        </div>
+    </div>
+
+    <!-- Post Modal -->
+    <div id="postModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <div id="modalPostContent">
+                <!-- Post content will be loaded here -->
+            </div>
         </div>
     </div>
 </body>
