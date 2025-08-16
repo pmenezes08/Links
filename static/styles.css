@@ -109,9 +109,22 @@ select:focus, input:focus {
 }
 
 .sleek-btn.small {
-    width: auto;
-    padding: 6px 12px;
+    background: #4db6ac;
+    border: none;
+    color: #ffffff;
+    padding: 8px 16px;
+    border-radius: 6px;
     font-size: 0.9em;
+    cursor: pointer;
+    transition: background 0.2s ease;
+    width: auto;
+    margin: 0;
+    text-transform: none;
+    letter-spacing: normal;
+}
+
+.sleek-btn.small:hover {
+    background: #37a69c;
 }
 
 #x-login-btn {
