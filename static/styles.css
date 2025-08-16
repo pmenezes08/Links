@@ -575,21 +575,20 @@ select:focus, input:focus {
 }
 
 .file-upload-btn {
-    background: #4db6ac;
+    background: none;
     border: none;
-    color: #ffffff;
-    padding: 8px 12px;
-    border-radius: 6px;
-    font-size: 0.9em;
+    color: #9fb0b5;
+    padding: 6px 8px;
+    font-size: 1.1em;
     cursor: pointer;
-    transition: background 0.2s ease;
+    transition: color 0.2s ease;
     display: flex;
     align-items: center;
     gap: 4px;
 }
 
 .file-upload-btn:hover {
-    background: #37a69c;
+    color: #ffffff;
 }
 
 .selected-file-name {
