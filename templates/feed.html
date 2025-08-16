@@ -69,7 +69,7 @@
                         <div class="replies">
                             {% for reply in post.replies %}
                                 <div class="reply" data-reply-id="{{ reply.id }}">
-                                    <p><strong>@{{ reply.username }}</strong> <span>{{ reply.timestamp | format_date('%m/%d/%y %I:%M %p') }}</span></p>
+                                    <div class="reply-header"><strong>@{{ reply.username }}</strong><span class="timestamp">{{ reply.timestamp | format_date('%m/%d/%y %I:%M %p') }}</span></div>
                                     <p>{{ reply.content }}</p>
                                     <div class="reply-actions">
                                         <div class="reactions">

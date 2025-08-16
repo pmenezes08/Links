@@ -411,13 +411,15 @@ select:focus, input:focus {
 }
 
 /* Social Feed Styles */
-.post-header {
+.post-header,
+.reply-header {
     display: flex;
     justify-content: space-between;
     align-items: baseline;
     gap: 8px;
 }
-.post-header .timestamp {
+.post-header .timestamp,
+.reply-header .timestamp {
     font-size: 0.8em;
     color: #9fb0b5;
     white-space: nowrap;

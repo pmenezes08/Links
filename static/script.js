@@ -258,7 +258,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         const $replies = $form.siblings('.replies');
                         const replyHtml = `
                             <div class="reply" data-reply-id="${data.reply.id}">
-                                <p><strong>@${data.reply.username}</strong> <span>${data.reply.timestamp}</span></p>
+                                <div class="reply-header"><strong>@${data.reply.username}</strong><span class="timestamp">${data.reply.timestamp}</span></div>
                                 <p>${data.reply.content}</p>
                                 <div class="reply-actions">
                                     <div class="reactions">
