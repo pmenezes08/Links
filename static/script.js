@@ -655,7 +655,51 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
         function attachModalEventHandlers() {
-            // Re-attach reaction handlers for modal content
+            // Handle delete reply in modal FIRST (higher priority)
+            $(document).off('click', '#modalPostContent .delete-reply.inline-action').on('click', '#modalPostContent .delete-reply.inline-action', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+                console.log("Delete reply button clicked in modal");
+                const replyId = $(this).data('reply-id');
+                console.log("Reply ID:", replyId);
+                if (confirm('Are you sure you want to delete this reply?')) {
+                    console.log("Deleting reply from modal:", replyId);
+                    $.ajax({
+                        url: '/delete_reply',
+                        method: 'POST',
+                        data: { 
+                            reply_id: replyId,
+                            csrf_token: $('meta[name="csrf-token"]').attr('content')
+                        },
+                        success: function(data) {
+                            console.log("Delete reply response:", data);
+                            if (data.success) {
+                                $(`[data-reply-id="${replyId}"]`).remove();
+                                
+                                // Update reply count in main feed
+                                const postId = $('#modalPostContent .post').data('post-id');
+                                const $mainPost = $(`.post[data-post-id="${postId}"]`);
+                                if ($mainPost.length) {
+                                    const currentCount = parseInt($mainPost.find('.reply-indicator').text().match(/\d+/)[0]) || 0;
+                                    const newCount = Math.max(0, currentCount - 1);
+                                    $mainPost.find('.reply-indicator').html(`<i class="far fa-comment"></i> ${newCount} replies`);
+                                }
+                            } else {
+                                $('#modalPostContent').after(`<div class="error-message">Error: ${data.error}</div>`);
+                                setTimeout(() => $('.error-message').remove(), 3000);
+                            }
+                        },
+                        error: function(xhr, status, error) {
+                            console.error("Delete reply error:", { status, error, response: xhr.responseText });
+                            $('#modalPostContent').after('<div class="error-message">Error deleting reply. Please try again.</div>');
+                            setTimeout(() => $('.error-message').remove(), 3000);
+                        }
+                    });
+                }
+            });
+
+            // Re-attach reaction handlers for modal content (LOWER priority)
             $('#modalPostContent').off('click', '.reaction-btn').on('click', '.reaction-btn', function(e) {
                 e.preventDefault();
                 e.stopPropagation();
@@ -664,11 +708,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 const $post = $button.closest('.post');
                 const postId = $post.data('post-id');
                 const $reply = $button.closest('.reply');
-                
-                // Only handle reaction buttons, not other buttons within replies
-                if (!$button.hasClass('reaction-btn')) {
-                    return;
-                }
                 
                 if ($reply.length) {
                     // This is a reply reaction
@@ -736,50 +775,6 @@ document.addEventListener('DOMContentLoaded', function() {
                         },
                         error: function(xhr, status, error) {
                             $button.after('<div class="error-message">Error adding reaction. Please try again.</div>');
-                            setTimeout(() => $('.error-message').remove(), 3000);
-                        }
-                    });
-                }
-            });
-
-            // Handle delete reply in modal
-            $(document).off('click', '#modalPostContent .delete-reply.inline-action').on('click', '#modalPostContent .delete-reply.inline-action', function(e) {
-                e.preventDefault();
-                e.stopPropagation();
-                e.stopImmediatePropagation();
-                console.log("Delete reply button clicked in modal");
-                const replyId = $(this).data('reply-id');
-                console.log("Reply ID:", replyId);
-                if (confirm('Are you sure you want to delete this reply?')) {
-                    console.log("Deleting reply from modal:", replyId);
-                    $.ajax({
-                        url: '/delete_reply',
-                        method: 'POST',
-                        data: { 
-                            reply_id: replyId,
-                            csrf_token: $('meta[name="csrf-token"]').attr('content')
-                        },
-                        success: function(data) {
-                            console.log("Delete reply response:", data);
-                            if (data.success) {
-                                $(`[data-reply-id="${replyId}"]`).remove();
-                                
-                                // Update reply count in main feed
-                                const postId = $('#modalPostContent .post').data('post-id');
-                                const $mainPost = $(`.post[data-post-id="${postId}"]`);
-                                if ($mainPost.length) {
-                                    const currentCount = parseInt($mainPost.find('.reply-indicator').text().match(/\d+/)[0]) || 0;
-                                    const newCount = Math.max(0, currentCount - 1);
-                                    $mainPost.find('.reply-indicator').html(`<i class="far fa-comment"></i> ${newCount} replies`);
-                                }
-                            } else {
-                                $('#modalPostContent').after(`<div class="error-message">Error: ${data.error}</div>`);
-                                setTimeout(() => $('.error-message').remove(), 3000);
-                            }
-                        },
-                        error: function(xhr, status, error) {
-                            console.error("Delete reply error:", { status, error, response: xhr.responseText });
-                            $('#modalPostContent').after('<div class="error-message">Error deleting reply. Please try again.</div>');
                             setTimeout(() => $('.error-message').remove(), 3000);
                         }
                     });
