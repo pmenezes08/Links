@@ -9,13 +9,22 @@ document.addEventListener('DOMContentLoaded', function() {
         return;
     }
 
+    // CSRF + username bootstrap from meta
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+    const currentUsernameMeta = document.querySelector('meta[name="current-username"]')?.getAttribute('content') || '';
+    if (currentUsernameMeta) {
+        try { sessionStorage.setItem('username', currentUsernameMeta); } catch (e) {}
+    }
+    if (csrfToken && $.ajaxSetup) {
+        $.ajaxSetup({ headers: { 'X-CSRFToken': csrfToken } });
+    }
+
     // Menu Toggle and Click-Outside Functionality
     const $menuBtn = $('.menu-btn');
     const $dropdown = $('.dropdown-content');
 
     if ($menuBtn.length && $dropdown.length) {
         $menuBtn.off('click');
-        $menuBtn[0].removeEventListener('click', toggleMenu);
 
         $menuBtn.on('click', function(e) {
             e.preventDefault();
@@ -148,8 +157,32 @@ document.addEventListener('DOMContentLoaded', function() {
     const $postForm = $('form[action="/post_status"]');
     const $postContainer = $('.posts');
 
+    function updateReactionIconStates($reactions, activeType) {
+        $reactions.find('.reaction-btn').each(function() {
+            const $btn = $(this);
+            const $icon = $btn.find('i');
+            $btn.removeClass('active');
+            $icon.removeClass('fa-solid').addClass('fa-regular');
+        });
+        if (activeType) {
+            const $activeBtn = $reactions.find(`[data-reaction="${activeType}"]`);
+            $activeBtn.addClass('active');
+            $activeBtn.find('i').removeClass('fa-regular').addClass('fa-solid');
+        }
+    }
+
     if ($postForm.length && $postContainer.length) {
         console.log("Social feed elements initialized:", { $postForm, $postContainer });
+
+        // Initialize icons for pre-active reactions on page load
+        $('.reactions').each(function() {
+            const $reactions = $(this);
+            const $active = $reactions.find('.reaction-btn.active').first();
+            const activeType = $active.data('reaction');
+            if (activeType) {
+                updateReactionIconStates($reactions, activeType);
+            }
+        });
 
         // Handle post submission
         $postForm.on('submit', function(e) {
@@ -174,13 +207,15 @@ document.addEventListener('DOMContentLoaded', function() {
                     if (data.success) {
                         const postHtml = `
                             <div class="post" data-post-id="${data.post.id}">
-                                <p><strong>@${data.post.username}</strong> <span>${data.post.timestamp}</span></p>
-                                <p>${data.post.content}</p>
+                                <div class="post-header">
+                                    <p class="post-meta"><strong>@${data.post.username}</strong> <span>${data.post.timestamp}</span></p>
+                                </div>
+                                <p class="post-content">${data.post.content}</p>
                                 <div class="reactions">
-                                    <button class="reaction-btn heart" data-reaction="heart" aria-label="Like post"><i class="far fa-heart"></i> <span>0</span></button>
-                                    <button class="reaction-btn thumbs-up" data-reaction="thumbs-up" aria-label="Thumbs up"><i class="far fa-thumbs-up"></i> <span>0</span></button>
-                                    <button class="reaction-btn thumbs-down" data-reaction="thumbs-down" aria-label="Thumbs down"><i class="far fa-thumbs-down"></i> <span>0</span></button>
-                                    <button class="reaction-btn smile" data-reaction="smile" aria-label="Smile"><i class="far fa-smile"></i> <span>0</span></button>
+                                    <button class="reaction-btn heart" data-reaction="heart" aria-label="Like post"><i class="fa-regular fa-heart"></i> <span>0</span></button>
+                                    <button class="reaction-btn thumbs-up" data-reaction="thumbs-up" aria-label="Thumbs up"><i class="fa-regular fa-thumbs-up"></i> <span>0</span></button>
+                                    <button class="reaction-btn thumbs-down" data-reaction="thumbs-down" aria-label="Thumbs down"><i class="fa-regular fa-thumbs-down"></i> <span>0</span></button>
+                                    <button class="reaction-btn smile" data-reaction="smile" aria-label="Smile"><i class="fa-regular fa-face-smile"></i> <span>0</span></button>
                                 </div>
                                 ${data.post.username === sessionStorage.getItem('username') ? '<button class="delete-post" data-post-id="' + data.post.id + '">Delete</button>' : ''}
                                 <form class="reply-form" action="/post_reply" method="POST">
@@ -285,10 +320,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         Object.keys(data.counts).forEach(type => {
                             $reactions.find(`[data-reaction="${type}"] span`).text(data.counts[type] || 0);
                         });
-                        $reactions.find('.reaction-btn').removeClass('active');
-                        if (data.user_reaction) {
-                            $reactions.find(`[data-reaction="${data.user_reaction}"]`).addClass('active');
-                        }
+                        updateReactionIconStates($reactions, data.user_reaction);
                     } else {
                         $button.after(`<div class="error-message">Error: ${data.error}</div>`);
                         setTimeout(() => $('.error-message').remove(), 3000);

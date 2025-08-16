@@ -7,6 +7,8 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <meta name="csrf-token" content="{{ csrf_token }}">
+    <meta name="current-username" content="{{ session['username'] }}">
     <script src="{{ url_for('static', filename='script.js') }}"></script>
 </head>
 <body>
@@ -24,12 +26,13 @@
     </div>
 
     <!-- Main Content -->
-    <div class="container">
+    <div class="container feed-container">
         <h1>Social Feed</h1>
 
         <!-- Post Submission Form -->
         <form action="/post_status" method="POST">
             <div class="selection">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <input type="text" name="content" placeholder="What's on your mind?" required>
                 <button type="submit" class="sleek-btn">Post</button>
             </div>
@@ -40,18 +43,21 @@
             {% if posts %}
                 {% for post in posts %}
                     <div class="post" data-post-id="{{ post.id }}">
-                        <p><strong>@{{ post.username }}</strong> <span>{{ post.timestamp | format_date('%m/%d/%y %I:%M %p') }}</span></p>
-                        <p>{{ post.content }}</p>
+                        <div class="post-header">
+                            <p class="post-meta"><strong>@{{ post.username }}</strong> <span>{{ post.timestamp | format_date('%m/%d/%y %I:%M %p') }}</span></p>
+                        </div>
+                        <p class="post-content">{{ post.content }}</p>
                         <div class="reactions">
-                            <button class="reaction-btn heart {{ 'active' if post.user_reaction == 'heart' }}" data-reaction="heart" aria-label="Like post"><i class="far fa-heart"></i> <span>{{ post.reactions['heart'] or 0 }}</span></button>
-                            <button class="reaction-btn thumbs-up {{ 'active' if post.user_reaction == 'thumbs-up' }}" data-reaction="thumbs-up" aria-label="Thumbs up"><i class="far fa-thumbs-up"></i> <span>{{ post.reactions['thumbs-up'] or 0 }}</span></button>
-                            <button class="reaction-btn thumbs-down {{ 'active' if post.user_reaction == 'thumbs-down' }}" data-reaction="thumbs-down" aria-label="Thumbs down"><i class="far fa-thumbs-down"></i> <span>{{ post.reactions['thumbs-down'] or 0 }}</span></button>
-                            <button class="reaction-btn smile {{ 'active' if post.user_reaction == 'smile' }}" data-reaction="smile" aria-label="Smile"><i class="far fa-smile"></i> <span>{{ post.reactions['smile'] or 0 }}</span></button>
+                            <button class="reaction-btn heart {{ 'active' if post.user_reaction == 'heart' }}" data-reaction="heart" aria-label="Like post"><i class="fa-regular fa-heart"></i> <span>{{ post.reactions.get('heart', 0) }}</span></button>
+                            <button class="reaction-btn thumbs-up {{ 'active' if post.user_reaction == 'thumbs-up' }}" data-reaction="thumbs-up" aria-label="Thumbs up"><i class="fa-regular fa-thumbs-up"></i> <span>{{ post.reactions.get('thumbs-up', 0) }}</span></button>
+                            <button class="reaction-btn thumbs-down {{ 'active' if post.user_reaction == 'thumbs-down' }}" data-reaction="thumbs-down" aria-label="Thumbs down"><i class="fa-regular fa-thumbs-down"></i> <span>{{ post.reactions.get('thumbs-down', 0) }}</span></button>
+                            <button class="reaction-btn smile {{ 'active' if post.user_reaction == 'smile' }}" data-reaction="smile" aria-label="Smile"><i class="fa-regular fa-face-smile"></i> <span>{{ post.reactions.get('smile', 0) }}</span></button>
                         </div>
                         {% if post.username == session['username'] %}
                             <button class="delete-post" data-post-id="{{ post.id }}">Delete</button>
                         {% endif %}
                         <form class="reply-form" action="/post_reply" method="POST">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                             <input type="hidden" name="post_id" value="{{ post.id }}">
                             <input type="text" name="content" placeholder="Write a reply..." required>
                             <button type="submit" class="sleek-btn small">Reply</button>

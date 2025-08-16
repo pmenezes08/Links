@@ -11,6 +11,7 @@ import requests
 from datetime import datetime, timedelta
 from functools import wraps
 from markupsafe import escape
+import secrets
 
 # Initialize Flask app
 app = Flask(__name__, template_folder='templates')
@@ -118,6 +119,38 @@ def ensure_indexes():
 
 init_db()
 ensure_indexes()
+
+# --- CSRF helpers ---
+def get_csrf_token():
+    token = session.get('csrf_token')
+    if not token:
+        token = secrets.token_hex(16)
+        session['csrf_token'] = token
+    return token
+
+
+def validate_csrf():
+    try:
+        if request.method in ('POST', 'PUT', 'DELETE'):
+            sent_token = (
+                request.headers.get('X-CSRFToken')
+                or request.headers.get('X-CSRF-Token')
+                or request.form.get('csrf_token')
+            )
+            expected_token = session.get('csrf_token')
+            if not expected_token or not sent_token or sent_token != expected_token:
+                logger.warning("CSRF validation failed")
+                return False
+        return True
+    except Exception as e:
+        logger.error(f"CSRF validation error: {e}")
+        return False
+
+
+@app.before_request
+def ensure_csrf_token():
+    # Ensure a CSRF token exists for the session
+    get_csrf_token()
 
 # Utility functions
 def check_api_limit(username):
@@ -1039,6 +1072,8 @@ def saved_nutrition():
 @login_required
 def delete_nutrition():
     username = session['username']
+    if not validate_csrf():
+        return jsonify({'success': False, 'error': 'Invalid CSRF token'}), 400
     timestamp = request.form.get('timestamp')
     if not timestamp:
         return jsonify({'success': False, 'error': 'Timestamp required!'})
@@ -1364,18 +1399,18 @@ def feed():
                 user_reaction_raw = c.fetchone()
                 post['user_reaction'] = user_reaction_raw['reaction_type'] if user_reaction_raw else None
 
-        return render_template('feed.html', posts=posts)
+        return render_template('feed.html', posts=posts, csrf_token=get_csrf_token(), username=username)
     except Exception as e:
         logger.error(f"Error fetching feed: {str(e)}")
         abort(500)
 
 
-# ... (other imports and setup remain unchanged)
-
 @app.route('/add_reaction', methods=['POST'])
 @login_required
 def add_reaction():
     username = session['username']
+    if not validate_csrf():
+        return jsonify({'success': False, 'error': 'Invalid CSRF token'}), 400
     post_id = request.form.get('post_id')
     reaction_type = request.form.get('reaction')
 
@@ -1434,6 +1469,8 @@ def add_reaction():
 @login_required
 def post_status():
     username = session['username']
+    if not validate_csrf():
+        return jsonify({'success': False, 'error': 'Invalid CSRF token'}), 400
     content = request.form.get('content', '').strip()
     logger.debug(f"Received post request for {username} with content: {content}")
     if not content:
@@ -1459,6 +1496,8 @@ def post_status():
 @login_required
 def post_reply():
     username = session['username']
+    if not validate_csrf():
+        return jsonify({'success': False, 'error': 'Invalid CSRF token'}), 400
     post_id = request.form.get('post_id', type=int)
     content = request.form.get('content', '').strip()
     logger.debug(f"Received reply request for {username} to post {post_id} with content: {content}")
@@ -1474,7 +1513,7 @@ def post_reply():
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
-            c.execute("SELECT id FROM posts WHERE id=?", (post_id,))
+            c.execute("SELECT id FROM posts WHERE id= ?", (post_id,))
             if not c.fetchone():
                 return jsonify({'success': False, 'error': 'Post not found!'}), 404
 
@@ -1504,6 +1543,8 @@ def post_reply():
 @login_required
 def delete_post():
     username = session['username']
+    if not validate_csrf():
+        return jsonify({'success': False, 'error': 'Invalid CSRF token'}), 400
     post_id = request.form.get('post_id', type=int)
     logger.debug(f"Received delete post request for {username} with post_id: {post_id}")
     if not post_id:
@@ -1511,12 +1552,12 @@ def delete_post():
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
-            c.execute("SELECT username FROM posts WHERE id=?", (post_id,))
+            c.execute("SELECT username FROM posts WHERE id= ?", (post_id,))
             post = c.fetchone()
             if not post or post['username'] != username:
                 return jsonify({'success': False, 'error': 'Post not found or unauthorized!'}), 403
-            c.execute("DELETE FROM replies WHERE post_id=?", (post_id,))
-            c.execute("DELETE FROM posts WHERE id=?", (post_id,))
+            c.execute("DELETE FROM replies WHERE post_id= ?", (post_id,))
+            c.execute("DELETE FROM posts WHERE id= ?", (post_id,))
             conn.commit()
         logger.info(f"Post {post_id} deleted successfully by {username}")
         return jsonify({'success': True, 'message': 'Post deleted!'}), 200
@@ -1528,6 +1569,8 @@ def delete_post():
 @login_required
 def delete_reply():
     username = session['username']
+    if not validate_csrf():
+        return jsonify({'success': False, 'error': 'Invalid CSRF token'}), 400
     reply_id = request.form.get('reply_id', type=int)
     logger.debug(f"Received delete reply request for {username} with reply_id: {reply_id}")
     if not reply_id:
@@ -1535,11 +1578,11 @@ def delete_reply():
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
-            c.execute("SELECT username FROM replies WHERE id=?", (reply_id,))
+            c.execute("SELECT username FROM replies WHERE id= ?", (reply_id,))
             reply = c.fetchone()
             if not reply or reply['username'] != username:
                 return jsonify({'success': False, 'error': 'Reply not found or unauthorized!'}), 403
-            c.execute("DELETE FROM replies WHERE id=?", (reply_id,))
+            c.execute("DELETE FROM replies WHERE id= ?", (reply_id,))
             conn.commit()
         logger.info(f"Reply {reply_id} deleted successfully by {username}")
         return jsonify({'success': True, 'message': 'Reply deleted!'}), 200
