@@ -35,41 +35,8 @@
             <button onclick="location.href='{{ url_for('your_sports') }}'" class="sleek-btn compact pill">Your Sports</button>
             <button onclick="location.href='{{ url_for('health_news') }}'" class="sleek-btn compact pill">Health News</button>
             <button onclick="location.href='{{ url_for('profile') }}'" class="sleek-btn compact pill">Profile</button>
+            <button onclick="location.href='{{ url_for('generate_workout_page') }}'" class="sleek-btn compact pill">Generate Workout</button>
         </div>
-        <form method="POST" action="{{ url_for('generate_workout') }}">
-            <div class="selection">
-                <label for="muscle_or_split">Muscle Group or Split:</label>
-                <select name="muscle_or_split" id="muscle_or_split" required>
-                    <option value="">Select Muscle Group or Split</option>
-                    <option value="Chest">Chest</option>
-                    <option value="Back">Back</option>
-                    <option value="Legs">Legs</option>
-                    <option value="Shoulders">Shoulders</option>
-                    <option value="Arms">Arms</option>
-                    <option value="Push (Chest/Shoulders/Triceps)">Push (Chest/Shoulders/Triceps)</option>
-                    <option value="Pull (Back/Biceps)">Pull (Back/Biceps)</option>
-                    <option value="Full Legs + Calves">Full Legs + Calves</option>
-                    <option value="Legs">Legs (Split)</option>
-                    <option value="Back + Tricep">Back + Tricep (Split)</option>
-                    <option value="Chest + Bicep">Chest + Bicep (Split)</option>
-                    <option value="Shoulders + Abs">Shoulders + Abs (Split)</option>
-                    <option value="Glutes, Hamstrings, and Calves">Glutes, Hamstrings, and Calves (Split)</option>
-                </select>
-            </div>
-            <div class="selection">
-                <label for="training_type">Training Type:</label>
-                <select name="training_type" id="training_type" required>
-                    <option value="">Select Training Type</option>
-                    <option value="Strength">Strength</option>
-                    <option value="Cardio">Cardio</option>
-                    <option value="Bulking">Bulking</option>
-                    <option value="Leaning">Leaning</option>
-                    <option value="Deload">Deload</option>
-                </select>
-            </div>
-            <button type="submit" class="sleek-btn smaller-btn" style="margin-top: 10px;">Generate Workout</button>
-            <button type="button" id="save-btn" class="sleek-btn" style="display: none; margin-top: 10px;">Save Workout</button>
-        </form>
         <div id="result" class="result"></div>
         <button onclick="location.href='/premium_dashboard'" class="go-back-btn"></button>
     </div>
@@ -84,71 +51,6 @@
                 if ($(window).width() > 768) {
                     $('.dropdown-content').hide();
                 }
-            });
-
-            let isGenerating = false;
-
-            $('#generate-btn').click(function(e) {
-                e.preventDefault();
-                var muscleOrSplit = $('#muscle_or_split').val();
-                var trainingType = $('#training_type').val();
-                if (muscleOrSplit && trainingType && !isGenerating) {
-                    $('#result').hide(); // Hide result during generation
-                    isGenerating = true;
-                    $.post('/generate_workout', {
-                        muscle_or_split: muscleOrSplit,
-                        training_type: trainingType
-                    }, function(data) {
-                        isGenerating = false;
-                        if (data.error) {
-                            $('#result').html('<p style="color: #e0e0e0;">' + data.error + '</p>').show();
-                        } else {
-                            $('#result').html(data.workout).show();
-                            $('#save-btn').show();  // Show save button when workout is generated
-                        }
-                    }).fail(function(xhr, status, error) {
-                        isGenerating = false;
-                        $('#result').html('<p style="color: #e0e0e0;">Error: ' + error + '</p>').show();
-                    });
-                } else if (!muscleOrSplit || !trainingType) {
-                    $('#result').html('<p style="color: #e0e0e0;">Please select both fields!</p>').show();
-                }
-            });
-
-            $('form').submit(function(e) {
-                e.preventDefault();
-                var formData = $(this).serialize();
-                if (!isGenerating) {
-                    $('#result').hide(); // Hide result during generation
-                    isGenerating = true;
-                    $.post('/generate_workout', formData, function(data) {
-                        isGenerating = false;
-                        if (data.error) {
-                            $('#result').html('<p style="color: #e0e0e0;">' + data.error + '</p>').show();
-                        } else {
-                            $('#result').html(data.workout).show();
-                            $('#save-btn').show();  // Show save button when workout is generated
-                        }
-                    }).fail(function(xhr, status, error) {
-                        isGenerating = false;
-                        $('#result').html('<p style="color: #e0e0e0;">Error: ' + error + '</p>').show();
-                    });
-                }
-                return false;
-            });
-
-            $('#save-btn').click(function() {
-                var workout = $('#result').html();
-                $.post('/save_workout', { workout: workout }, function(response) {
-                    if (response.success) {
-                        alert('Workout saved successfully!');
-                        $('#save-btn').hide();  // Hide save button after saving
-                    } else {
-                        alert('Error saving workout: ' + response.error);
-                    }
-                }).fail(function(xhr, status, error) {
-                    alert('Error: ' + error);
-                });
             });
         });
     </script>
