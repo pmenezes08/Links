@@ -1444,8 +1444,8 @@ def feed():
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
-            # Fetch all posts, ordered by the most recent
-            c.execute("SELECT * FROM posts ORDER BY timestamp DESC")
+            # Fetch all posts, ordered by the most recent (using ID for chronological order)
+            c.execute("SELECT * FROM posts ORDER BY id DESC")
             posts_raw = c.fetchall()
             posts = [dict(row) for row in posts_raw]
 
