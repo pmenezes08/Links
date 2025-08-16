@@ -578,6 +578,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     `<div class="reply-image"><img src="/static/${reply.image_path}" alt="Reply image" loading="lazy"></div>` : '';
                 
                 console.log("Building reply HTML for:", reply.username, "Current user:", sessionStorage.getItem('username'));
+                console.log("Should show delete button:", reply.username === sessionStorage.getItem('username'));
                 
                 return `
                     <div class="reply" data-reply-id="${reply.id}">
@@ -737,10 +738,12 @@ document.addEventListener('DOMContentLoaded', function() {
             });
 
             // Handle delete reply in modal
-            $('#modalPostContent').off('click', '.delete-reply').on('click', '.delete-reply', function(e) {
+            $(document).off('click', '#modalPostContent .delete-reply').on('click', '#modalPostContent .delete-reply', function(e) {
                 e.preventDefault();
                 e.stopPropagation();
+                console.log("Delete reply button clicked in modal");
                 const replyId = $(this).data('reply-id');
+                console.log("Reply ID:", replyId);
                 if (confirm('Are you sure you want to delete this reply?')) {
                     console.log("Deleting reply from modal:", replyId);
                     $.ajax({
