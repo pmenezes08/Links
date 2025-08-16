@@ -1119,7 +1119,7 @@ def health_news():
             return render_template('index.html', error="Premium subscription required!")
         news_items = [
             {'title': 'Protein Boosts Gains', 'summary': 'More protein = more muscle.', 'source': 'ScienceDaily', 'source_url': 'https://www.sciencedaily.com', 'image_url': 'https://via.placeholder.com/150'},
-            {'title': 'Keto vs. Paleo', 'summary': 'Which diet wins? It's complicated.', 'source': 'HealthLine', 'source_url': 'https://www.healthline.com', 'image_url': 'https://via.placeholder.com/150'}
+            {'title': 'Keto vs. Paleo', 'summary': "Which diet wins? It's complicated.", 'source': 'HealthLine', 'source_url': 'https://www.healthline.com', 'image_url': 'https://via.placeholder.com/150'}
         ]
         return render_template('health_news.html', name=username, news_items=news_items, subscription=user['subscription'])
     except Exception as e:
