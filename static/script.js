@@ -299,11 +299,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 url: '/add_reaction',
                 method: 'POST',
                 data: { post_id: postId, reaction: reactionType },
-                beforeSend: function() {
-                    $button.append('<div class="loader"></div>');
-                },
                 success: function(data) {
-                    $button.find('.loader').remove();
                     if (data.success) {
                         const $reactions = $button.closest('.reactions');
                         $reactions.find('.reaction-btn span').text(0);
@@ -317,7 +313,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     }
                 },
                 error: function(xhr, status, error) {
-                    $button.find('.loader').remove();
                     $button.after('<div class="error-message">Error adding reaction. Please try again.</div>');
                     setTimeout(() => $('.error-message').remove(), 3000);
                 }
@@ -341,11 +336,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 url: '/add_reply_reaction',
                 method: 'POST',
                 data: { reply_id: replyId, reaction: reactionType },
-                beforeSend: function() {
-                    $button.append('<div class="loader"></div>');
-                },
                 success: function(data) {
-                    $button.find('.loader').remove();
                     if (data.success) {
                         const $reactions = $button.closest('.reactions');
                         $reactions.find('.reaction-btn span').text(0);
@@ -359,7 +350,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     }
                 },
                 error: function(xhr, status, error) {
-                    $button.find('.loader').remove();
                     $button.after('<div class="error-message">Error adding reaction. Please try again.</div>');
                     setTimeout(() => $('.error-message').remove(), 3000);
                 }
@@ -564,11 +554,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         url: '/add_reply_reaction',
                         method: 'POST',
                         data: { reply_id: replyId, reaction: reactionType },
-                        beforeSend: function() {
-                            $button.append('<div class="loader"></div>');
-                        },
                         success: function(data) {
-                            $button.find('.loader').remove();
                             if (data.success) {
                                 const $reactions = $button.closest('.reactions');
                                 $reactions.find('.reaction-btn span').text(0);
@@ -582,7 +568,6 @@ document.addEventListener('DOMContentLoaded', function() {
                             }
                         },
                         error: function(xhr, status, error) {
-                            $button.find('.loader').remove();
                             $button.after('<div class="error-message">Error adding reaction. Please try again.</div>');
                             setTimeout(() => $('.error-message').remove(), 3000);
                         }
@@ -594,11 +579,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         url: '/add_post_reaction',
                         method: 'POST',
                         data: { post_id: postId, reaction: reactionType },
-                        beforeSend: function() {
-                            $button.append('<div class="loader"></div>');
-                        },
                         success: function(data) {
-                            $button.find('.loader').remove();
                             if (data.success) {
                                 const $reactions = $button.closest('.reactions');
                                 $reactions.find('.reaction-btn span').text(0);
@@ -622,7 +603,6 @@ document.addEventListener('DOMContentLoaded', function() {
                             }
                         },
                         error: function(xhr, status, error) {
-                            $button.find('.loader').remove();
                             $button.after('<div class="error-message">Error adding reaction. Please try again.</div>');
                             setTimeout(() => $('.error-message').remove(), 3000);
                         }
