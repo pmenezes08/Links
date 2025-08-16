@@ -225,7 +225,6 @@ document.addEventListener('DOMContentLoaded', function() {
             const formData = new FormData();
             formData.append('content', content);
             
-            const imageFile = $('#image-upload')[0].files[0];
             if (imageFile) {
                 formData.append('image', imageFile);
             }
@@ -532,11 +531,20 @@ document.addEventListener('DOMContentLoaded', function() {
                 <div class="replies">
                     <div style="text-align: center; padding: 20px; color: #9fb0b5;">Loading replies...</div>
                 </div>
-                <form class="reply-form" action="/post_reply" method="POST">
+                <form class="reply-form" action="/post_reply" method="POST" enctype="multipart/form-data">
                     <input type="hidden" name="csrf_token" value="${$('meta[name="csrf-token"]').attr('content')}">
                     <input type="hidden" name="post_id" value="${postId}">
-                    <input type="text" name="content" class="reply-input" placeholder="Write a reply..." required>
-                    <button type="submit" class="reply-btn"><i class="far fa-paper-plane"></i> Reply</button>
+                    <input type="text" name="content" class="reply-input" placeholder="Write a reply...">
+                    <div class="reply-form-actions">
+                        <div class="file-upload-container">
+                            <label for="modal-reply-image-upload" class="file-upload-btn">
+                                <i class="fas fa-paperclip"></i>
+                            </label>
+                            <input type="file" id="modal-reply-image-upload" name="image" accept="image/*" style="display: none;">
+                            <span id="modal-reply-selected-file-name" class="selected-file-name"></span>
+                        </div>
+                        <button type="submit" class="reply-btn"><i class="far fa-paper-plane"></i> Reply</button>
+                    </div>
                 </form>
             `;
             modalContent.innerHTML = basicPostHtml;
