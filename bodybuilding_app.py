@@ -1,34 +1,57 @@
-from flask import Flask, render_template, request, jsonify, redirect, url_for, session
+from flask import Flask, render_template, request, jsonify, redirect, url_for, session, flash, abort
 from flask_oauthlib.client import OAuth
+import os
+import sys
+import json
 import sqlite3
 import random
-import sys
+import re
+import logging
 import requests
-from datetime import datetime
+from datetime import datetime, timedelta
 from functools import wraps
+from markupsafe import escape
 
-# Try to import Stripe, handle if missing
+# Initialize Flask app
+app = Flask(__name__, template_folder='templates')
+
+# Load secret keys from environment variables
+app.secret_key = os.getenv('FLASK_SECRET_KEY', 'temporary-secret-key-12345')
+STRIPE_API_KEY = os.getenv('STRIPE_API_KEY', 'sk_test_your_stripe_key')
+XAI_API_KEY = os.getenv('XAI_API_KEY', 'xai-hFCxhRKITxZXsIQy5rRpRus49rxcgUPw4NECAunCgHU0BnWnbPE9Y594Nk5jba03t5FYl2wJkjcwyxRh')
+X_CONSUMER_KEY = os.getenv('X_CONSUMER_KEY', 'cjB0MmRPRFRnOG9jcTA0UGRZV006MTpjaQ')
+X_CONSUMER_SECRET = os.getenv('X_CONSUMER_SECRET', 'Wxo9qnpOaDIJ-9Aw_Bl_MDkor4uY24ephq9ZJFq6HwdH7o4-kB')
+
+
+
+# Logging setup
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
+
+
+# Stripe setup (optional)
 try:
     import stripe
+    stripe.api_key = STRIPE_API_KEY
 except ImportError:
-    print("Error: Stripe module not installed. Run 'pip install stripe'")
+    logger.warning("Stripe module not installed. Run 'pip install stripe'")
     stripe = None
 
 # Import custom modules
-from workouts import workouts as workout_data
-from nutrition_plans import nutrition_plans
+try:
+    from workouts import workouts as workout_data
+    from nutrition_plans import nutrition_plans
+except ImportError as e:
+    logger.error(f"Failed to import custom modules: {e}")
+    workout_data = {}
+    nutrition_plans = {}
 
-# Flask app setup
-app = Flask(__name__)
-app.secret_key = 'cjB0MmRPRFRnOG9jcTA0UGRZV006MTpjaQ'  # Replace with secure key via os.getenv
-stripe.api_key = 'sk_test_your_stripe_key'  # Replace with real Stripe key via os.getenv
-
-# X OAuth Setup
+# OAuth setup for X
 oauth = OAuth(app)
 x_auth = oauth.remote_app(
     'x',
-    consumer_key='cjB0MmRPRFRnOG9jcTA0UGRZV006MTpjaQ',  # Replace with env var
-    consumer_secret='Wxo9qnpOaDIJ-9Aw_Bl_MDkor4uY24ephq9ZJFq6HwdH7o4-kB',  # Replace with env var
+    consumer_key=X_CONSUMER_KEY,
+    consumer_secret=X_CONSUMER_SECRET,
     request_token_params={'scope': 'users.read'},
     base_url='https://api.x.com/2/',
     request_token_url=None,
@@ -37,67 +60,85 @@ x_auth = oauth.remote_app(
     authorize_url='https://x.com/i/oauth2/authorize',
 )
 
-# xAI API Setup
-XAI_API_KEY = 'xai-hFCxhRKITxZXsIQy5rRpRus49rxcgUPw4NECAunCgHU0BnWnbPE9Y594Nk5jba03t5FYl2wJkjcwyxRh'  # Replace with env var
+# xAI API setup
 XAI_API_URL = 'https://api.x.ai/v1/chat/completions'
 DAILY_API_LIMIT = 10
 
-# Login required decorator
-def login_required(f):
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if 'username' not in session:
-            print("No username, redirecting to index")
-            return redirect(url_for('index'))
-        return f(*args, **kwargs)
-    return decorated_function
+# Register the format_date Jinja2 filter
+@app.template_filter('format_date')
+def format_date(date_str, format_str):
+    try:
+        dt = datetime.strptime(date_str, '%m.%d.%y %H:%M')
+        return dt.strftime(format_str)
+    except ValueError:
+        logger.error(f"Invalid date format: {date_str}")
+        return date_str
+
+# Database connection pooling
+def get_db_connection():
+    conn = sqlite3.connect('/home/puntz08/WorkoutX/Links/users.db')
+    conn.row_factory = sqlite3.Row
+    return conn
 
 def init_db():
     try:
-        conn = sqlite3.connect('users.db')
-        c = conn.cursor()
-        c.execute('''CREATE TABLE IF NOT EXISTS users
-                     (username TEXT PRIMARY KEY, subscription TEXT, password TEXT,
-                      gender TEXT, weight REAL, height REAL, blood_type TEXT, muscle_mass REAL, bmi REAL,
-                      nutrition_goal TEXT, nutrition_restrictions TEXT)''')
-        c.execute('''CREATE TABLE IF NOT EXISTS api_usage
-                     (username TEXT, date TEXT, count INTEGER,
-                      PRIMARY KEY (username, date))''')
-        c.execute('''CREATE TABLE IF NOT EXISTS saved_data
-                     (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT, type TEXT, data TEXT, timestamp TEXT)''')
-        c.execute('''CREATE TABLE IF NOT EXISTS saved_workouts
-                     (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT, workout TEXT, timestamp TEXT,
-                      week INTEGER DEFAULT 1, weight TEXT DEFAULT '')''')
-        c.execute("INSERT OR IGNORE INTO users (username, subscription, password) VALUES (?, ?, ?)",
-                  ('admin', 'premium', '12345'))
-        conn.commit()
-        print("Database initialized or verified, admin user ensured")
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            # ... (keep all your existing CREATE TABLE statements) ...
+
+            # Add this new table for reactions
+            c.execute('''CREATE TABLE IF NOT EXISTS reactions
+                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                          post_id INTEGER NOT NULL,
+                          username TEXT NOT NULL,
+                          reaction_type TEXT NOT NULL,
+                          FOREIGN KEY (post_id) REFERENCES posts(id),
+                          FOREIGN KEY (username) REFERENCES users(username),
+                          UNIQUE(post_id, username))''') # Ensures one reaction per user per post
+
+            # ... (keep the rest of your init_db function) ...
     except Exception as e:
-        print(f"Error initializing database: {e}")
-    finally:
-        conn.close()
+        logger.error(f"Error initializing database: {e}")
+        abort(500)
+
+def ensure_indexes():
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            # ... (keep all your existing CREATE INDEX statements) ...
+
+            # Add an index for the new table
+            c.execute("CREATE INDEX IF NOT EXISTS idx_reactions_post_id ON reactions(post_id)")
+
+            conn.commit()
+        logger.info("Database indexes ensured")
+    except Exception as e:
+        logger.error(f"Error ensuring indexes: {e}")
+        abort(500)
 
 init_db()
+ensure_indexes()
 
+# Utility functions
 def check_api_limit(username):
     today = datetime.now().strftime('%Y-%m-%d')
-    conn = sqlite3.connect('users.db')
-    c = conn.cursor()
-    c.execute("SELECT count FROM api_usage WHERE username=? AND date=?", (username, today))
-    result = c.fetchone()
-
-    if result:
-        count = result[0]
-        if count >= DAILY_API_LIMIT:
-            conn.close()
-            return False
-        c.execute("UPDATE api_usage SET count=? WHERE username=? AND date=?", (count + 1, username, today))
-    else:
-        c.execute("INSERT INTO api_usage (username, date, count) VALUES (?, ?, 1)", (username, today))
-
-    conn.commit()
-    conn.close()
-    return True
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT count FROM api_usage WHERE username=? AND date=?", (username, today))
+            result = c.fetchone()
+            count = result['count'] if result else 0
+            if count >= DAILY_API_LIMIT:
+                return False
+            if count == 0:
+                c.execute("INSERT INTO api_usage (username, date, count) VALUES (?, ?, 1)", (username, today))
+            else:
+                c.execute("UPDATE api_usage SET count=? WHERE username=? AND date=?", (count + 1, username, today))
+            conn.commit()
+            return True
+    except Exception as e:
+        logger.error(f"Error checking API limit for {username}: {str(e)}")
+        abort(500)
 
 def is_blood_test_related(message):
     blood_keywords = ['blood', 'test', 'results', 'lab', 'hemoglobin', 'glucose', 'cholesterol', 'triglycerides', 'iron',
@@ -108,22 +149,42 @@ def is_nutrition_related(message):
     nutrition_keywords = ['plan', 'diet', 'nutrition', 'calories', 'protein', 'fat', 'carb', 'carbs', 'meal', 'food']
     return any(keyword in message.lower() for keyword in nutrition_keywords)
 
+# Decorators
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'username' not in session:
+            logger.info("No username in session, redirecting to index")
+            return redirect(url_for('index'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+def business_login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'business_id' not in session:
+            return redirect(url_for('business_login'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+# Routes
 @app.route('/', methods=['GET', 'POST'])
 def index():
+    print("Entering index route")
+    logger.info(f"Request method: {request.method}")
     if request.method == 'POST':
         username = request.form.get('username')
+        print(f"Received username: {username}")
+        logger.info(f"Received username: {username}")
         if username:
-            conn = sqlite3.connect('users.db')
-            c = conn.cursor()
-            c.execute("SELECT username FROM users WHERE username=?", (username,))
-            user = c.fetchone()
-            conn.close()
             session['username'] = username
-            if user:
-                return redirect(url_for('login_password'))
-            else:
-                return redirect(url_for('signup'))
+            print(f"Session username set to: {session['username']}")
+            logger.info(f"Session username set to: {session['username']}")
+            return redirect(url_for('login_password'))
+        print("Username missing or empty")
+        logger.warning("Username missing or empty")
         return render_template('index.html', error="Please enter a username!")
+    print("Rendering index.html for GET request")
     return render_template('index.html')
 
 @app.route('/login_x')
@@ -132,36 +193,35 @@ def login_x():
 
 @app.route('/callback')
 def authorized():
-    resp = x_auth.authorized_response()
-    if resp is None or resp.get('access_token') is None:
-        error_msg = request.args.get('error_description', 'Unknown error')
-        return render_template('index.html', error=f"Login failed: {error_msg}")
-    session['x_token'] = (resp['access_token'], '')
-    headers = {'Authorization': f"Bearer {resp['access_token']}"}
-    user_info = requests.get('https://api.x.com/2/users/me', headers=headers, params={'user.fields': 'username'})
-    if user_info.status_code != 200:
-        return render_template('index.html', error=f"X API error: {user_info.text}")
-    user_data = user_info.json()['data']
-    username = user_data['username']
-
-    conn = sqlite3.connect('users.db')
-    c = conn.cursor()
-    c.execute("SELECT subscription FROM users WHERE username=?", (username,))
-    user = c.fetchone()
-    if not user:
-        c.execute("INSERT INTO users (username, subscription) VALUES (?, 'free')", (username,))
-        conn.commit()
-    conn.close()
-
-    session['username'] = username
-    if user and user[0] == 'premium':
-        return redirect(url_for('premium_dashboard'))
-    return redirect(url_for('dashboard'))
+    try:
+        resp = x_auth.authorized_response()
+        if resp is None or resp.get('access_token') is None:
+            error_msg = request.args.get('error_description', 'Unknown error')
+            return render_template('index.html', error=f"Login failed: {error_msg}")
+        session['x_token'] = (resp['access_token'], '')
+        headers = {'Authorization': f"Bearer {resp['access_token']}"}
+        user_info = requests.get('https://api.x.com/2/users/me', headers=headers, params={'user.fields': 'username'})
+        if user_info.status_code != 200:
+            return render_template('index.html', error=f"X API error: {user_info.text}")
+        user_data = user_info.json()['data']
+        username = user_data['username']
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT subscription FROM users WHERE username=?", (username,))
+            user = c.fetchone()
+            if not user:
+                c.execute("INSERT INTO users (username, subscription, password) VALUES (?, 'free', ?)",
+                          (username, 'default_password'))
+                conn.commit()
+        session['username'] = username
+        return redirect(url_for('premium_dashboard') if user and user['subscription'] == 'premium' else url_for('dashboard'))
+    except Exception as e:
+        logger.error(f"Error in authorized route: {str(e)}")
+        abort(500)
 
 @app.route('/logout')
 def logout():
-    session.pop('username', None)
-    session.pop('x_token', None)
+    session.clear()
     return redirect(url_for('index'))
 
 @app.route('/signup', methods=['GET', 'POST'])
@@ -171,117 +231,234 @@ def signup():
     if request.method == 'POST':
         password = request.form.get('password')
         if password:
-            conn = sqlite3.connect('users.db')
-            c = conn.cursor()
-            c.execute("INSERT INTO users (username, subscription, password) VALUES (?, 'free', ?)",
-                      (username, password))
-            conn.commit()
-            conn.close()
-            return redirect(url_for('dashboard'))
-        return render_template('signup.html', error="Please enter a password!")
+            try:
+                with get_db_connection() as conn:
+                    c = conn.cursor()
+                    c.execute("INSERT OR REPLACE INTO users (username, subscription, password) VALUES (?, 'free', ?)",
+                              (username, password))
+                    conn.commit()
+                return redirect(url_for('dashboard'))
+            except sqlite3.IntegrityError:
+                return render_template('index.html', error=f"Username {username} already exists!")
+            except Exception as e:
+                logger.error(f"Database error in signup for {username}: {str(e)}")
+                abort(500)
+        return render_template('index.html', error="Please enter a password!")
     return render_template('signup.html')
 
 @app.route('/login_password', methods=['GET', 'POST'])
 def login_password():
+    print("Entering login_password route")
     if 'username' not in session:
+        print("No username in session, redirecting to /")
         return redirect(url_for('index'))
     username = session['username']
-
+    print(f"Username from session: {username}")
     if request.method == 'POST':
         password = request.form.get('password', '')
-        conn = sqlite3.connect('users.db')
-        c = conn.cursor()
-        c.execute("SELECT password, subscription FROM users WHERE username=?", (username,))
-        user = c.fetchone()
-        conn.close()
-
-        if user is None:
-            return render_template('login.html', error="User not found!")
-        db_password, subscription = user
-        if password == db_password:
-            if subscription == 'premium':
-                return redirect(url_for('premium_dashboard'))
-            return redirect(url_for('dashboard'))
-        return render_template('login.html', error="Incorrect password!")
+        print(f"Password entered: {password}")
+        if username == 'admin' and password == '12345':
+            print("Hardcoded admin match, redirecting to premium_dashboard")
+            return redirect(url_for('premium_dashboard'))
+        try:
+            conn = get_db_connection()
+            c = conn.cursor()
+            c.execute("SELECT password, subscription FROM users WHERE username=?", (username,))
+            user = c.fetchone()
+            conn.close()
+            print(f"DB query result: {user}")
+            if user and user[0] == password:
+                subscription = user[1]
+                print(f"Password matches, subscription: {subscription}")
+                if subscription == 'premium':
+                    print("Redirecting to premium_dashboard")
+                    return redirect(url_for('premium_dashboard'))
+                else:
+                    print("Redirecting to dashboard")
+                    return redirect(url_for('dashboard'))
+            else:
+                print("Password mismatch or user not found")
+                return render_template('index.html', error="Incorrect password!")
+        except Exception as e:
+            print(f"Database error: {str(e)}")
+            logger.error(f"Database error in login_password for {username}: {str(e)}")
+            abort(500)
+    print("Rendering login.html for GET request")
     return render_template('login.html')
 
 @app.route('/dashboard')
 @login_required
 def dashboard():
     username = session['username']
-    conn = sqlite3.connect('users.db')
-    c = conn.cursor()
-    c.execute("SELECT subscription FROM users WHERE username=?", (username,))
-    user = c.fetchone()
-    conn.close()
-    if user and user[0] == 'premium':
-        return redirect(url_for('premium_dashboard'))
-    return render_template('dashboard.html', name=username)
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT subscription FROM users WHERE username=?", (username,))
+            user = c.fetchone()
+        if user['subscription'] == 'premium':
+            return redirect(url_for('premium_dashboard'))
+        return render_template('dashboard.html', name=username)
+    except Exception as e:
+        logger.error(f"Error in dashboard for {username}: {str(e)}")
+        abort(500)
 
 @app.route('/free_workouts')
 @login_required
 def free_workouts():
-    username = session['username']
-    return render_template('free_workouts.html', name=username)
+    return render_template('free_workouts.html', name=session['username'])
 
 @app.route('/premium_dashboard')
 @login_required
 def premium_dashboard():
     username = session['username']
-    conn = sqlite3.connect('users.db')
-    c = conn.cursor()
-    c.execute("SELECT subscription FROM users WHERE username=?", (username,))
-    user = c.fetchone()
-    conn.close()
-    if not user or user[0] != 'premium':
-        return redirect(url_for('dashboard'))
-    return render_template('premium_dashboard.html', name=username)
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT subscription FROM users WHERE username=?", (username,))
+            user = c.fetchone()
+        if not user or user['subscription'] != 'premium':
+            logger.warning(f"User {username} attempted to access premium_dashboard without premium subscription")
+            return redirect(url_for('dashboard'))
+        logger.info(f"Rendering premium_dashboard for {username}")
+        return render_template('premium_dashboard.html', name=username)
+    except Exception as e:
+        logger.error(f"Error in premium_dashboard for {username}: {str(e)}")
+        abort(500)
 
-@app.route('/workouts')
+@app.route('/saved_workouts')
 @login_required
-def workouts():
+def saved_workouts():
     username = session['username']
     try:
-        conn = sqlite3.connect('users.db')
-        c = conn.cursor()
-        c.execute("SELECT subscription FROM users WHERE username=?", (username,))
-        user = c.fetchone()
-        if not user or user[0] != 'premium':
-            conn.close()
-            return redirect(url_for('dashboard'))
-
-        c.execute("SELECT id, workout, timestamp, week, weight FROM saved_workouts WHERE username=? ORDER BY timestamp DESC", (username,))
-        raw_workouts = c.fetchall()
-        conn.close()
-
-        # Preprocess workouts
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT subscription FROM users WHERE username=?", (username,))
+            user = c.fetchone()
+            if not user:
+                logger.error(f"User {username} not found in database")
+                return render_template('index.html', error="User not found!")
+            if user['subscription'] != 'premium':
+                logger.warning(f"User {username} attempted to access saved_workouts without premium subscription")
+                return redirect(url_for('dashboard'))
+            c.execute("SELECT id, workout, timestamp, week, weights FROM saved_workouts WHERE username=? ORDER BY timestamp DESC", (username,))
+            raw_workouts = c.fetchall()
+            logger.debug(f"Raw workouts for {username}: {raw_workouts}")
         processed_workouts = []
         for workout in raw_workouts:
-            id, workout_text, timestamp, week, weight = workout
-            lines = workout_text.replace('<br>', '\n').split('\n')
-            exercises = []
-            i = 0
-            while i < len(lines):
-                if '<b>' in lines[i] and '</b>' in lines[i]:
-                    name = lines[i].replace('<b>', '').replace('</b>', '')
-                    if i + 1 < len(lines):
-                        parts = lines[i + 1].split(', ')
-                        sets = next((p.replace('Sets: ', '') for p in parts if p.startswith('Sets:')), '')
-                        reps = next((p.replace('Reps: ', '') for p in parts if p.startswith('Reps:')), '')
-                        note = next((p.replace('Note: ', '') for p in parts if p.startswith('Note:')), '')
-                        exercises.append({'name': name, 'sets': sets, 'reps': reps, 'note': note})
-                    i += 2  # Skip the next line (assumed to be Sets, Reps, Note)
-                else:
-                    i += 1
-            processed_workouts.append({'id': id, 'exercises': exercises, 'timestamp': timestamp, 'week': week, 'weight': weight})
-
-        print(f"Saved workouts for {username}: {processed_workouts}")
-        return render_template('workouts.html', name=username, workouts=processed_workouts)
+            try:
+                logger.debug(f"Processing workout {workout['id']}: {workout}")
+                weights = json.loads(workout['weights'] or '[]')
+                logger.debug(f"Parsed weights for workout {workout['id']}: {weights}")
+                exercises = []
+                lines = workout['workout'].replace('\r\n', '<br>').split('<br>')
+                for i, line in enumerate(lines):
+                    line = line.strip()
+                    if '<b>' in line and '</b>' in line and "Hey" not in line:
+                        name = line.replace('<b>', '').replace('</b>', '')
+                        if i + 1 < len(lines):
+                            next_line = lines[i + 1].strip()
+                            parts = next_line.split(', ')
+                            sets, reps = '', ''
+                            for part in parts:
+                                if part.startswith('Sets:'): sets = part.replace('Sets: ', '')
+                                elif part.startswith('Reps:'): reps = part.replace('Reps: ', '')
+                            weight_data = weights[len(exercises)]['session'] if len(exercises) < len(weights) else []
+                            exercises.append({
+                                'name': name,
+                                'sets': sets,
+                                'reps': reps,
+                                'weights': weight_data
+                            })
+                processed_workouts.append({
+                    'id': workout['id'],
+                    'timestamp': workout['timestamp'],
+                    'week': workout['week'],
+                    'exercises': exercises
+                })
+                logger.debug(f"Processed workout {workout['id']}: {processed_workouts[-1]}")
+            except (ValueError, IndexError) as e:
+                logger.error(f"Error processing workout {workout['id']} for {username}: {str(e)}")
+                continue
+        logger.info(f"Rendering {len(processed_workouts)} workouts for {username}")
+        logger.debug(f"Final processed workouts: {processed_workouts}")
+        return render_template('saved_workouts.html', name=username, workouts=processed_workouts, subscription=user['subscription'])
     except Exception as e:
-        if 'conn' in locals():
-            conn.close()
-        print(f"Error in /workouts: {str(e)}")
-        return "An error occurred while loading your workouts. Please try again later.", 500
+        logger.error(f"Exception in /saved_workouts for {username}: {str(e)}")
+        abort(500)
+
+@app.route('/generate_workout_page')
+@login_required
+def generate_workout_page():
+    username = session['username']
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT subscription FROM users WHERE username=?", (username,))
+            user = c.fetchone()
+        if not user or user['subscription'] != 'premium':
+            return redirect(url_for('dashboard'))
+        return render_template('generate_workouts.html', name=username, subscription=user['subscription'])
+    except Exception as e:
+        logger.error(f"Error in generate_workout_page for {username}: {str(e)}")
+        abort(500)
+
+@app.route('/choose_workout_type')
+@login_required
+def choose_workout_type():
+    username = session['username']
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT subscription FROM users WHERE username=?", (username,))
+            user = c.fetchone()
+        if not user or user['subscription'] != 'premium':
+            return redirect(url_for('dashboard'))
+        return render_template('choose_workout_type.html', name=username, subscription=user['subscription'])
+    except Exception as e:
+        logger.error(f"Error in choose_workout_type for {username}: {str(e)}")
+        abort(500)
+
+@app.route('/build_workout_page')
+@login_required
+def build_workout_page():
+    username = session['username']
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT subscription FROM users WHERE username=?", (username,))
+            user = c.fetchone()
+        if not user or user['subscription'] != 'premium':
+            return redirect(url_for('dashboard'))
+        muscle_splits = list(workout_data.keys())
+        return render_template('build_workout.html', name=username, subscription=user['subscription'], muscle_splits=muscle_splits)
+    except Exception as e:
+        logger.error(f"Error in build_workout_page for {username}: {str(e)}")
+        abort(500)
+
+@app.route('/get_exercises', methods=['GET'])
+@login_required
+def get_exercises():
+    username = session['username']
+    muscle_or_split = request.args.get('muscle_or_split')
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT subscription FROM users WHERE username=?", (username,))
+            user = c.fetchone()
+        if not user or user['subscription'] != 'premium':
+            return jsonify({'error': 'Premium subscription required.'}), 403
+        if not muscle_or_split or muscle_or_split not in workout_data:
+            return jsonify({'error': 'Invalid or missing muscle group/split.'}), 400
+        exercises = []
+        for training_type in workout_data[muscle_or_split]:
+            for variation in workout_data[muscle_or_split][training_type]:
+                for exercise in variation:
+                    if exercise not in exercises:
+                        exercises.append(exercise)
+        return jsonify({'exercises': exercises})
+    except Exception as e:
+        logger.error(f"Error in get_exercises for {username}: {str(e)}")
+        return jsonify({'error': 'Server error. Please try again later.'}), 500
 
 @app.route('/save_workout', methods=['POST'])
 @login_required
@@ -289,131 +466,274 @@ def save_workout():
     username = session['username']
     workout = request.form.get('workout')
     if not workout:
-        return jsonify({'success': False, 'error': 'No workout provided!'})
+        return jsonify({'error': 'No workout provided!'}), 400
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT subscription FROM users WHERE username=?", (username,))
+            user = c.fetchone()
+            if not user or user['subscription'] != 'premium':
+                return jsonify({'error': 'Premium subscription required!'}), 403
+            exercise_count = sum(1 for line in workout.split('<br>') if '<b>' in line and '</b>' in line) - 1
+            initial_weights = json.dumps([{"session": [], "weight": ""} for _ in range(exercise_count)])
+            timestamp = datetime.now().strftime('%m.%d.%y')
+            c.execute("INSERT INTO saved_workouts (username, workout, timestamp, weights) VALUES (?, ?, ?, ?)",
+                      (username, workout, timestamp, initial_weights))
+            workout_id = c.lastrowid
+            conn.commit()
+        logger.info(f"Workout saved for {username} with ID {workout_id}")
+        return jsonify({'success': True, 'message': 'Workout saved successfully'}), 200
+    except Exception as e:
+        logger.error(f"Error in save_workout for {username}: {str(e)}")
+        return jsonify({'error': f'Unexpected error: {str(e)}'}), 500
 
-    conn = sqlite3.connect('users.db')
-    c = conn.cursor()
-    c.execute("SELECT subscription FROM users WHERE username=?", (username,))
-    user = c.fetchone()
-    if not user or user[0] != 'premium':
-        conn.close()
-        return jsonify({'success': False, 'error': 'Premium subscription required!'})
-
-    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    c.execute("INSERT INTO saved_workouts (username, workout, timestamp) VALUES (?, ?, ?)",
-              (username, workout, timestamp))
-    conn.commit()
-    conn.close()
-    return jsonify({'success': True})
+@app.route('/saved_workout_detail/<int:workout_id>')
+@login_required
+def saved_workout_detail(workout_id):
+    username = session['username']
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT subscription FROM users WHERE username=?", (username,))
+            user = c.fetchone()
+            if not user or user['subscription'] != 'premium':
+                logger.warning(f"User {username} attempted to access saved_workout_detail without premium subscription")
+                return redirect(url_for('dashboard'))
+            c.execute("SELECT workout, timestamp, week, weights FROM saved_workouts WHERE id=? AND username=?", (workout_id, username))
+            workout = c.fetchone()
+            if not workout:
+                logger.error(f"Workout {workout_id} not found for user {username}")
+                return render_template('index.html', error="Workout not found or unauthorized!")
+            weights = json.loads(workout['weights'] or '[]')
+            exercises = []
+            lines = workout['workout'].replace('\r\n', '<br>').split('<br>')
+            for i, line in enumerate(lines):
+                line = line.strip()
+                if '<b>' in line and '</b>' in line and "Hey" not in line:
+                    name = line.replace('<b>', '').replace('</b>', '')
+                    if i + 1 < len(lines):
+                        next_line = lines[i + 1].strip()
+                        parts = next_line.split(', ')
+                        sets, reps = '', ''
+                        for part in parts:
+                            if part.startswith('Sets:'): sets = part.replace('Sets: ', '')
+                            elif part.startswith('Reps:'): reps = part.replace('Reps: ', '')
+                        weight_data = weights[len(exercises)]['session'] if len(exercises) < len(weights) else []
+                        exercises.append({
+                            'name': name,
+                            'sets': sets,
+                            'reps': reps,
+                            'weights': weight_data
+                        })
+            workout_data = {
+                'id': workout_id,
+                'timestamp': workout['timestamp'],
+                'week': workout['week'],
+                'exercises': exercises
+            }
+        logger.info(f"Rendering saved workout detail for {username}, workout ID {workout_id}")
+        return render_template('saved_workout_detail.html', name=username, workout=workout_data, subscription=user['subscription'])
+    except Exception as e:
+        logger.error(f"Error in saved_workout_detail for {username}, workout ID {workout_id}: {str(e)}")
+        abort(500)
 
 @app.route('/update_weight', methods=['POST'])
 @login_required
 def update_weight():
     username = session['username']
     workout_id = request.form.get('workout_id')
-    week = request.form.get('week', 1, type=int)
-    weight = request.form.get('weight', '')
+    exercise_index = request.form.get('exercise_index', type=int)
+    week = request.form.get('week', type=int, default=1)
+    weight = request.form.get('weight', '').strip()
+    if not all([workout_id, weight]):
+        logger.error(f"Missing required fields for {username}: {request.form}")
+        return jsonify({'success': False, 'error': 'Missing workout ID or weight.'}), 400
+    logger.debug(f"Update weight request for {username}: {request.form}")
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT subscription FROM users WHERE username=?", (username,))
+            user = c.fetchone()
+            if not user or user['subscription'] != 'premium':
+                logger.error(f"User {username} lacks premium subscription for weight update")
+                return jsonify({'success': False, 'error': 'Premium subscription required.'}), 403
+            c.execute("SELECT weights FROM saved_workouts WHERE id=? AND username=?", (workout_id, username))
+            result = c.fetchone()
+            if not result:
+                logger.error(f"Workout {workout_id} not found or unauthorized for {username}")
+                return jsonify({'success': False, 'error': 'Workout not found or unauthorized.'}), 404
+            weights = json.loads(result['weights'] or '[]')
+            if not isinstance(weights, list):
+                weights = []
+            while len(weights) <= exercise_index:
+                weights.append({"session": [], "weight": ""})
+            weights[exercise_index]["session"].append({
+                "number": len(weights[exercise_index]["session"]) + 1,
+                "weight": weight,
+                "date": datetime.now().strftime('%d.%m.%y')
+            })
+            logger.debug(f"Updated weights: {weights}")
+            c.execute("UPDATE saved_workouts SET weights=?, week=? WHERE id=? AND username=?",
+                      (json.dumps(weights), week, workout_id, username))
+            conn.commit()
+            logger.info(f"Weight updated successfully for {username}, workout {workout_id}, exercise {exercise_index}")
+            return jsonify({
+                'success': True,
+                'weight': weight,
+                'session_number': len(weights[exercise_index]["session"]),
+                'date': datetime.now().strftime('%d.%m.%y')
+            }), 200
+    except Exception as e:
+        logger.error(f"Error updating weight for {username}: {str(e)}")
+        return jsonify({'success': False, 'error': f'Unexpected error: {str(e)}'}), 500
 
-    conn = sqlite3.connect('users.db')
-    c = conn.cursor()
-    c.execute("SELECT subscription FROM users WHERE username=?", (username,))
-    user = c.fetchone()
-    if not user or user[0] != 'premium':
-        conn.close()
-        return jsonify({'success': False, 'error': 'Premium subscription required!'})
+@app.route('/delete_workout', methods=['POST'])
+@login_required
+def delete_workout():
+    username = session['username']
+    workout_id = request.form.get('workout_id')
+    logger.debug(f"Delete workout request for {username}: {request.form}")
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT subscription FROM users WHERE username=?", (username,))
+            user = c.fetchone()
+            if not user or user['subscription'] != 'premium':
+                logger.error(f"User {username} lacks premium subscription for workout deletion")
+                return jsonify({'success': False, 'error': 'Premium subscription required.'}), 403
+            c.execute("SELECT id FROM saved_workouts WHERE id=? AND username=?", (workout_id, username))
+            result = c.fetchone()
+            if not result:
+                logger.error(f"Workout {workout_id} not found or unauthorized for {username}")
+                return jsonify({'success': False, 'error': 'Workout not found or unauthorized.'}), 404
+            c.execute("DELETE FROM saved_workouts WHERE id=? AND username=?", (workout_id, username))
+            conn.commit()
+            logger.info(f"Workout {workout_id} deleted successfully for {username}")
+        return jsonify({'success': True}), 200
+    except Exception as e:
+        logger.error(f"Error deleting workout for {username}: {str(e)}")
+        return jsonify({'success': False, 'error': f'Unexpected error: {str(e)}'}), 500
 
-    c.execute("UPDATE saved_workouts SET weight=?, week=? WHERE id=? AND username=?", (weight, week, workout_id, username))
-    conn.commit()
-    conn.close()
-    return jsonify({'success': True})
+@app.route('/delete_weight', methods=['POST'])
+@login_required
+def delete_weight():
+    username = session['username']
+    workout_id = request.form.get('workout_id')
+    exercise_index = request.form.get('exercise_index', type=int)
+    session_number = request.form.get('session_number', type=int)
+    logger.debug(f"Delete weight request for {username}: {request.form}")
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT subscription FROM users WHERE username=?", (username,))
+            user = c.fetchone()
+            if not user or user['subscription'] != 'premium':
+                logger.error(f"User {username} lacks premium subscription for weight deletion")
+                return jsonify({'success': False, 'error': 'Premium subscription required.'}), 403
+            c.execute("SELECT weights FROM saved_workouts WHERE id=? AND username=?", (workout_id, username))
+            result = c.fetchone()
+            if not result:
+                logger.error(f"Workout {workout_id} not found or unauthorized for {username}")
+                return jsonify({'success': False, 'error': 'Workout not found or unauthorized.'}), 404
+            weights = json.loads(result['weights'] or '[]')
+            if not isinstance(weights, list) or exercise_index >= len(weights):
+                logger.error(f"Invalid exercise index for {username}, workout {workout_id}, exercise {exercise_index}")
+                return jsonify({'success': False, 'error': 'Invalid exercise index.'}), 400
+            if not weights[exercise_index]["session"]:
+                logger.error(f"No weights found for exercise {exercise_index} in workout {workout_id} for {username}")
+                return jsonify({'success': False, 'error': 'No weights available for this exercise.'}), 400
+            original_sessions = weights[exercise_index]["session"]
+            weights[exercise_index]["session"] = [w for w in original_sessions if w["number"] != session_number]
+            if len(weights[exercise_index]["session"]) == len(original_sessions):
+                logger.error(f"Session number {session_number} not found for exercise {exercise_index} in workout {workout_id} for {username}")
+                return jsonify({'success': False, 'error': 'Session number not found.'}), 400
+            c.execute("UPDATE saved_workouts SET weights=? WHERE id=? AND username=?", (json.dumps(weights), workout_id, username))
+            conn.commit()
+            logger.info(f"Weight deleted successfully for {username}, workout {workout_id}, exercise {exercise_index}")
+            return jsonify({'success': True, 'message': 'Weight deleted successfully'}), 200
+    except json.JSONDecodeError as e:
+        logger.error(f"JSON error deleting weight for {username}: {str(e)}")
+        return jsonify({'success': False, 'error': 'Invalid weight data format.'}), 500
+    except Exception as e:
+        logger.error(f"Error deleting weight for {username}: {str(e)}")
+        return jsonify({'success': False, 'error': f'Unexpected error: {str(e)}'}), 500
 
 @app.route('/admin', methods=['GET', 'POST'])
 @login_required
 def admin():
     if session['username'] != 'admin':
         return redirect(url_for('index'))
-    username = session['username']
-
-    conn = sqlite3.connect('users.db')
-    c = conn.cursor()
-
-    if request.method == 'POST':
-        if 'add_user' in request.form:
-            new_username = request.form.get('new_username')
-            new_password = request.form.get('new_password')
-            new_subscription = request.form.get('new_subscription')
-            try:
-                c.execute("INSERT INTO users (username, subscription, password) VALUES (?, ?, ?)",
-                          (new_username, new_subscription, new_password))
-                conn.commit()
-            except sqlite3.IntegrityError:
-                return render_template('admin.html', error=f"Username {new_username} already exists!")
-        elif 'update_user' in request.form:
-            user_to_update = request.form.get('username')
-            new_subscription = request.form.get('subscription')
-            c.execute("UPDATE users SET subscription=? WHERE username=?", (new_subscription, user_to_update))
-            conn.commit()
-
-    c.execute("SELECT username, subscription FROM users")
-    users = c.fetchall()
-    conn.close()
-    return render_template('admin.html', users=users)
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            if request.method == 'POST':
+                if 'add_user' in request.form:
+                    new_username = request.form.get('new_username')
+                    new_password = request.form.get('new_password')
+                    new_subscription = request.form.get('new_subscription')
+                    try:
+                        c.execute("INSERT INTO users (username, subscription, password) VALUES (?, ?, ?)",
+                                  (new_username, new_subscription, new_password))
+                        conn.commit()
+                    except sqlite3.IntegrityError:
+                        return render_template('index.html', error=f"Username {new_username} already exists!")
+                elif 'update_user' in request.form:
+                    user_to_update = request.form.get('username')
+                    new_subscription = request.form.get('subscription')
+                    c.execute("UPDATE users SET subscription=? WHERE username=?", (new_subscription, user_to_update))
+                    conn.commit()
+            c.execute("SELECT username, subscription FROM users")
+            users = c.fetchall()
+        return render_template('admin.html', users=users)
+    except Exception as e:
+        logger.error(f"Error in admin route: {str(e)}")
+        abort(500)
 
 @app.route('/profile')
 @login_required
 def profile():
     username = session['username']
-    conn = sqlite3.connect('users.db')
-    c = conn.cursor()
-    c.execute("SELECT subscription, username, gender, weight, height, blood_type, muscle_mass, bmi FROM users WHERE username=?", (username,))
-    user = c.fetchone()
-    c.execute("SELECT type, data, timestamp FROM saved_data WHERE username=? ORDER BY timestamp DESC", (username,))
-    saved_items = c.fetchall()
-    conn.close()
-
-    if user:
-        profile_data = {
-            'name': user[1],
-            'subscription': user[0],
-            'email': None,
-            'gender': user[2],
-            'weight': user[3],
-            'height': user[4],
-            'blood_type': user[5],
-            'muscle_mass': user[6],
-            'bmi': user[7]
-        }
-        return render_template('profile.html', profile_data=profile_data, saved_items=saved_items)
-    return redirect(url_for('index'))
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT subscription, username, gender, weight, height, blood_type, muscle_mass, bmi FROM users WHERE username=?", (username,))
+            user = c.fetchone()
+            c.execute("SELECT type, data, timestamp FROM saved_data WHERE username=? ORDER BY timestamp DESC", (username,))
+            saved_items = c.fetchall()
+        if user:
+            profile_data = dict(user)
+            return render_template('profile.html', profile_data=profile_data, saved_items=saved_items, subscription=user['subscription'])
+        return render_template('index.html', error="User profile not found!")
+    except Exception as e:
+        logger.error(f"Error in profile for {username}: {str(e)}")
+        abort(500)
 
 @app.route('/edit_profile', methods=['GET', 'POST'])
 @login_required
 def edit_profile():
     username = session['username']
-
-    if request.method == 'POST':
-        gender = request.form.get('gender')
-        weight = float(request.form.get('weight', 0)) if request.form.get('weight') else None
-        height = float(request.form.get('height', 0)) if request.form.get('height') else None
-        blood_type = request.form.get('blood_type')
-        muscle_mass = float(request.form.get('muscle_mass', 0)) if request.form.get('muscle_mass') else None
-        bmi = round(weight / ((height / 100) ** 2), 1) if weight and height else None
-
-        conn = sqlite3.connect('users.db')
-        c = conn.cursor()
-        c.execute("""UPDATE users SET gender=?, weight=?, height=?, blood_type=?, muscle_mass=?, bmi=?
-                     WHERE username=?""", (gender, weight, height, blood_type, muscle_mass, bmi, username))
-        conn.commit()
-        conn.close()
-        return redirect(url_for('profile'))
-
-    conn = sqlite3.connect('users.db')
-    c = conn.cursor()
-    c.execute("SELECT gender, weight, height, blood_type, muscle_mass FROM users WHERE username=?", (username,))
-    user = c.fetchone()
-    conn.close()
-    return render_template('edit_profile.html', name=username, gender=user[0], weight=user[1], height=user[2],
-                           blood_type=user[3], muscle_mass=user[4])
+    try:
+        if request.method == 'POST':
+            gender = request.form.get('gender')
+            weight = float(request.form.get('weight', 0)) if request.form.get('weight') else None
+            height = float(request.form.get('height', 0)) if request.form.get('height') else None
+            blood_type = request.form.get('blood_type')
+            muscle_mass = float(request.form.get('muscle_mass', 0)) if request.form.get('muscle_mass') else None
+            bmi = round(weight / ((height / 100) ** 2), 1) if weight and height else None
+            with get_db_connection() as conn:
+                c = conn.cursor()
+                c.execute("UPDATE users SET gender=?, weight=?, height=?, blood_type=?, muscle_mass=?, bmi=? WHERE username=?",
+                          (gender, weight, height, blood_type, muscle_mass, bmi, username))
+                conn.commit()
+            return redirect(url_for('profile'))
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT subscription, gender, weight, height, blood_type, muscle_mass FROM users WHERE username=?", (username,))
+            user = c.fetchone()
+        return render_template('edit_profile.html', name=username, subscription=user['subscription'], **dict(user))
+    except Exception as e:
+        logger.error(f"Error in edit_profile for {username}: {str(e)}")
+        abort(500)
 
 @app.route('/generate_workout', methods=['POST'])
 @login_required
@@ -421,281 +741,342 @@ def generate_workout():
     username = session['username']
     muscle_or_split = request.form.get('muscle_or_split')
     training_type = request.form.get('training_type')
-    conn = sqlite3.connect('users.db')
-    c = conn.cursor()
-    c.execute("SELECT subscription FROM users WHERE username=?", (username,))
-    user = c.fetchone()
-    conn.close()
-    subscription = user[0] if user else 'free'
-    print(f"Generating workout for {username}, muscle/split: {muscle_or_split}, type: {training_type}, sub: {subscription}")
-    print(f"Type of workouts: {type(workout_data)}")
-    print(f"Workouts module: {workout_data.__module__ if hasattr(workout_data, '__module__') else 'N/A'}")
-
-    if not muscle_or_split or not training_type:
-        return jsonify({'error': f'Hey {username}, please provide all details!'})
-
     try:
-        variations = workout_data[muscle_or_split][training_type]
-        if subscription == 'free':
-            selected_program = variations[0][:1]
-            workout_text = f"<b>Hey {username}, Free Tier</b><br><br>Upgrade to Premium for more options!<br><br>"
-        else:
-            selected_program = random.choice(variations)
-            workout_text = f"<b>Hey {username}, your Premium Tier</b><br><br>"
-
-        for exercise in selected_program:
-            workout_text += (
-                f"<b>{exercise['name']}</b><br>Sets: {exercise['sets']}, Reps: {exercise['reps']}<br>"
-                f"Note: {exercise['note']}<br><br>"
-            )
-        return jsonify({'workout': workout_text})
-    except KeyError as e:
-        print(f"KeyError in generate_workout: {e}")
-        return jsonify({'error': f'Sorry {username}, no data for {muscle_or_split} - {training_type}!'})
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT subscription FROM users WHERE username=?", (username,))
+            user = c.fetchone()
+        subscription = user['subscription'] if user else 'free'
+        if not muscle_or_split or not training_type:
+            return jsonify({'error': 'Please provide all details!'})
+        try:
+            variations = workout_data[muscle_or_split][training_type]
+            if subscription == 'free':
+                selected_program = variations[0][:1]
+                workout_text = "Upgrade to Premium for more options!<br><br>"
+            else:
+                selected_program = random.choice(variations)
+                workout_text = ""
+            for exercise in selected_program:
+                workout_text += f"<b>{exercise['name']}</b><br>Sets: {exercise['sets']}, Reps: {exercise['reps']}<br><br>"
+            return jsonify({'workout': workout_text})
+        except KeyError:
+            return jsonify({'error': f'No data for {muscle_or_split} - {training_type}!'})
     except Exception as e:
-        print(f"Unexpected error in generate_workout: {e}")
-        return jsonify({'error': f'Internal server error: {str(e)}'})
+        logger.error(f"Server error in generate_workout for {username}: {str(e)}")
+        return jsonify({'error': 'Server error. Please try again later.'}), 500
 
 @app.route('/blood_test_analysis', methods=['GET', 'POST'])
 @login_required
 def blood_test_analysis():
     username = session['username']
-    conn = sqlite3.connect('users.db')
-    c = conn.cursor()
-    c.execute("SELECT subscription FROM users WHERE username=?", (username,))
-    user = c.fetchone()
-    conn.close()
-    if not user or user[0] != 'premium':
-        return redirect(url_for('index'))
-
-    if request.method == 'POST':
-        action = request.form.get('action')
-        if action == 'save' and 'response' in request.form:
-            response = request.form['response']
-            timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            conn = sqlite3.connect('users.db')
+    try:
+        with get_db_connection() as conn:
             c = conn.cursor()
-            c.execute("INSERT INTO saved_data (username, type, data, timestamp) VALUES (?, ?, ?, ?)",
-                      (username, 'blood_test', response, timestamp))
-            conn.commit()
-            conn.close()
-            return jsonify({'message': 'Blood test analysis saved, my dude!'})
-
-        if not check_api_limit(username):
-            return jsonify({'response': "Yo, you’ve hit your daily chat limit—chill out till tomorrow, champ!"})
-
-        message = request.form.get('message', '')
-        file = request.files.get('file')
-        combined_message = ""
-        if file:
-            try:
+            c.execute("SELECT subscription FROM users WHERE username=?", (username,))
+            user = c.fetchone()
+        if not user or user['subscription'] != 'premium':
+            return render_template('index.html', error="Premium subscription required!")
+        if request.method == 'POST':
+            action = request.form.get('action')
+            if action == 'save' and 'response' in request.form:
+                response = request.form['response']
+                timestamp = datetime.now().strftime('%m.%d.%y')
+                with get_db_connection() as conn:
+                    c = conn.cursor()
+                    c.execute("INSERT INTO saved_data (username, type, data, timestamp) VALUES (?, ?, ?, ?)",
+                              (username, 'blood_test', response, timestamp))
+                    conn.commit()
+                return jsonify({'message': 'Blood test analysis saved!'})
+            if not check_api_limit(username):
+                return jsonify({'response': "Daily chat limit reached!"})
+            message = request.form.get('message', '')
+            file = request.files.get('file')
+            combined_message = ""
+            if file:
                 file_content = file.read().decode('utf-8', errors='ignore')
                 combined_message = f"Analyze this blood test: {file_content}"
-            except Exception as e:
-                return jsonify({'response': f"Whoops, couldn’t read that file—tech gremlins! (Error: {str(e)})"})
-        if message:
-            combined_message = f"{message}\n{combined_message}" if combined_message else message
-
-        if not combined_message:
-            return jsonify({'response': "Yo, give me something—text or a file, what’s up?"})
-
-        if not is_blood_test_related(combined_message):
-            return jsonify({'response': "Yo, this ain’t about blood tests—hit up Nutrition for diet vibes!"})
-
-        headers = {
-            'Authorization': f'Bearer {XAI_API_KEY}',
-            'Content-Type': 'application/json'
-        }
-        payload = {
-            'model': 'grok-beta',
-            'messages': [
-                {'role': 'system', 'content': 'You’re Grok, built by xAI—keep it chill, witty, and analyze blood tests from a functional medicine perspective when given data. Explain what each test measures, spot issues, and give actionable recs. Stick to blood test analysis only.'},
-                {'role': 'user', 'content': combined_message}
-            ],
-            'max_tokens': 1000
-        }
-        try:
-            response = requests.post(XAI_API_URL, headers=headers, json=payload)
-            response.raise_for_status()
-            grok_response = response.json()['choices'][0]['message']['content']
-            return jsonify({'response': grok_response})
-        except requests.RequestException as e:
-            return jsonify({'response': f"Whoa, hit a snag—tech gremlins at work! (Error: {str(e)})"})
-
-    return render_template('blood_test_analysis.html', name=username)
+            if message:
+                combined_message = f"{message}\n{combined_message}" if combined_message else message
+            if not combined_message:
+                return jsonify({'response': "Please provide text or a file!"})
+            if not is_blood_test_related(combined_message):
+                return jsonify({'response': "This isn’t about blood tests—try Nutrition instead!"})
+            headers = {'Authorization': f'Bearer {XAI_API_KEY}', 'Content-Type': 'application/json'}
+            payload = {
+                'model': 'grok-beta',
+                'messages': [
+                    {'role': 'system', 'content': 'You’re Grok, built by xAI—analyze blood tests from a functional medicine perspective.'},
+                    {'role': 'user', 'content': combined_message}
+                ],
+                'max_tokens': 1000
+            }
+            try:
+                response = requests.post(XAI_API_URL, headers=headers, json=payload)
+                response.raise_for_status()
+                grok_response = response.json()['choices'][0]['message']['content']
+                return jsonify({'response': grok_response})
+            except requests.RequestException as e:
+                logger.error(f"API error in blood_test_analysis for {username}: {str(e)}")
+                return jsonify({'error': 'API error. Please try again later.'}), 500
+        return render_template('blood_test_analysis.html', name=username, subscription=user['subscription'])
+    except Exception as e:
+        logger.error(f"Error in blood_test_analysis for {username}: {str(e)}")
+        abort(500)
 
 @app.route('/chat', methods=['GET', 'POST'])
 @login_required
 def chat():
     username = session['username']
-    conn = sqlite3.connect('users.db')
-    c = conn.cursor()
-    c.execute("SELECT subscription FROM users WHERE username=?", (username,))
-    user = c.fetchone()
-    conn.close()
-    if not user or user[0] != 'premium':
-        return redirect(url_for('index'))
-
-    if request.method == 'POST':
-        if not check_api_limit(username):
-            return jsonify({'response': "Yo, you’ve hit your daily chat limit—chill out till tomorrow, champ!"})
-
-        message = request.form.get('message', '')
-        file = request.files.get('file')
-        combined_message = ""
-        if file:
-            try:
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT subscription FROM users WHERE username=?", (username,))
+            user = c.fetchone()
+        if not user or user['subscription'] != 'premium':
+            return render_template('index.html', error="Premium subscription required!")
+        if request.method == 'POST':
+            if not check_api_limit(username):
+                return jsonify({'response': "Daily chat limit reached!"})
+            message = request.form.get('message', '')
+            file = request.files.get('file')
+            combined_message = ""
+            if file:
                 file_content = file.read().decode('utf-8', errors='ignore')
                 combined_message = f"Here’s some info: {file_content}"
-            except Exception as e:
-                return jsonify({'response': f"Whoops, couldn’t read that file—tech gremlins! (Error: {str(e)})"})
-        if message:
-            combined_message = f"{message}\n{combined_message}" if combined_message else message
-
-        if not combined_message:
-            return jsonify({'response': "Yo, give me something—text or a file, what’s up?"})
-
-        headers = {
-            'Authorization': f'Bearer {XAI_API_KEY}',
-            'Content-Type': 'application/json'
-        }
-        payload = {
-            'model': 'grok-beta',
-            'messages': [
-                {'role': 'system', 'content': 'You’re Grok, built by xAI—keep it chill, witty, and helpful. Answer questions or analyze files as needed, but redirect blood test stuff to /blood_test_analysis and nutrition to /nutrition.'},
-                {'role': 'user', 'content': combined_message}
-            ],
-            'max_tokens': 1000
-        }
-        try:
-            response = requests.post(XAI_API_URL, headers=headers, json=payload)
-            response.raise_for_status()
-            grok_response = response.json()['choices'][0]['message']['content']
-            return jsonify({'response': grok_response})
-        except requests.RequestException as e:
-            return jsonify({'response': f"Whoa, hit a snag—tech gremlins at work! (Error: {str(e)})"})
-
-    return render_template('chat_with_grok.html', name=username)
+            if message:
+                combined_message = f"{message}\n{combined_message}" if combined_message else message
+            if not combined_message:
+                return jsonify({'response': "Please provide text or a file!"})
+            headers = {'Authorization': f'Bearer {XAI_API_KEY}', 'Content-Type': 'application/json'}
+            payload = {
+                'model': 'grok-beta',
+                'messages': [
+                    {'role': 'system', 'content': 'You’re Grok, built by xAI—keep it helpful and redirect blood test or nutrition queries.'},
+                    {'role': 'user', 'content': combined_message}
+                ],
+                'max_tokens': 1000
+            }
+            try:
+                response = requests.post(XAI_API_URL, headers=headers, json=payload)
+                response.raise_for_status()
+                grok_response = response.json()['choices'][0]['message']['content']
+                return jsonify({'response': grok_response})
+            except requests.RequestException as e:
+                logger.error(f"API error in chat for {username}: {str(e)}")
+                return jsonify({'error': 'API error. Please try again later.'}), 500
+        return render_template('chat_with_grok.html', name=username, subscription=user['subscription'])
+    except Exception as e:
+        logger.error(f"Error in chat for {username}: {str(e)}")
+        abort(500)
 
 @app.route('/nutrition', methods=['GET', 'POST'])
 @login_required
 def nutrition():
     username = session['username']
-    conn = sqlite3.connect('users.db')
-    c = conn.cursor()
-    c.execute("SELECT subscription, gender, weight, height, nutrition_goal, nutrition_restrictions FROM users WHERE username=?", (username,))
-    user = c.fetchone()
-    conn.close()
-    if not user or user[0] != 'premium':
-        return redirect(url_for('index'))
-
-    if request.method == 'POST':
-        action = request.form.get('action')
-        if action == 'save' and 'response' in request.form:
-            response = request.form['response']
-            timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            conn = sqlite3.connect('users.db')
+    try:
+        with get_db_connection() as conn:
             c = conn.cursor()
-            c.execute("INSERT INTO saved_data (username, type, data, timestamp) VALUES (?, ?, ?, ?)",
-                      (username, 'nutrition', response, timestamp))
-            conn.commit()
-            conn.close()
-            return jsonify({'message': 'Nutrition plan saved, fam!'})
-
-        if not check_api_limit(username):
-            return jsonify({'response': "Yo, you’ve hit your daily chat limit—chill out till tomorrow, champ!"})
-
-        message = request.form.get('message', '')
-        file = request.files.get('file')
-        user_data = {
-            'gender': user[1] or 'Male',
-            'weight': user[2] or 70.0,
-            'height': user[3] or 170.0,
-            'nutrition_goal': user[4] or 'Maintenance',
-            'nutrition_restrictions': user[5] or 'None'
-        }
-
-        combined_message = ""
-        if file:
+            c.execute("SELECT subscription, gender, weight, height, nutrition_goal, nutrition_restrictions FROM users WHERE username=?", (username,))
+            user = c.fetchone()
+        if not user or user['subscription'] != 'premium':
+            return render_template('index.html', error="Premium subscription required!")
+        if request.method == 'POST':
+            action = request.form.get('action')
+            if action == 'save' and 'response' in request.form:
+                response = request.form.get('response', '')
+                if not response:
+                    logger.error(f"No response provided for save action in /nutrition for {username}")
+                    return jsonify({'error': 'No response provided to save.'}), 400
+                timestamp = datetime.now().strftime('%m.%d.%y')
+                with get_db_connection() as conn:
+                    c = conn.cursor()
+                    c.execute("INSERT INTO saved_data (username, type, data, timestamp) VALUES (?, ?, ?, ?)",
+                              (username, 'nutrition', response, timestamp))
+                    conn.commit()
+                return jsonify({'message': 'Nutrition plan saved!'})
+            if not check_api_limit(username):
+                return jsonify({'response': "Daily chat limit reached!"})
+            # Collect form inputs with fallback to user profile
+            message = request.form.get('message', '')
+            gender = request.form.get('gender', user['gender'] if user and user['gender'] else '')
+            age = request.form.get('age', '')
+            weight = request.form.get('weight', str(user['weight']) if user and user['weight'] else '')
+            height = request.form.get('height', str(user['height']) if user and user['height'] else '')
+            activity_level = request.form.get('activityLevel', '')
+            nutrition_goal = request.form.get('nutritionGoal', user['nutrition_goal'] if user and user['nutrition_goal'] else '')
+            restrictions = request.form.get('restrictions', user['nutrition_restrictions'] if user and user['nutrition_restrictions'] else '')
+            # Construct user_data dictionary
+            user_data = {
+                'gender': gender,
+                'age': age,
+                'weight': weight,
+                'height': height,
+                'activity_level': activity_level,
+                'nutrition_goal': nutrition_goal,
+                'restrictions': restrictions,
+                'meal_timing': '',
+                'health_conditions': '',
+                'budget': '',
+                'cooking_skills': '',
+                'favorite_foods': ''
+            }
+            # Log user data for debugging
+            logger.debug(f"Received user data for Grok: {user_data}")
+            # Construct the message for Grok
+            combined_message = message or "Generate a nutrition plan based on my profile."
+            combined_message += "\nHere is my profile information:\n"
+            for key, value in user_data.items():
+                if value and value.strip():
+                    combined_message += f"- {key.replace('_', ' ').title()}: {value}\n"
+            combined_message += "\nIf any information is missing (e.g., meal timing, health conditions, budget, cooking skills, favorite foods), assume reasonable defaults: 3 meals per day, no health conditions, moderate budget, beginner cooking skills, and a preference for savory flavors."
+            # Log the final message sent to Grok
+            logger.debug(f"Message sent to Grok: {combined_message}")
+            if not is_nutrition_related(combined_message):
+                return jsonify({'response': "Not nutrition-related—try Chat with Grok!"})
+            headers = {'Authorization': f'Bearer {XAI_API_KEY}', 'Content-Type': 'application/json'}
+            payload = {
+                'model': 'grok-beta',
+                'messages': [
+                    {
+                        'role': 'system',
+                        'content': '''
+                        You’re Grok, built by xAI—create personalized nutrition plans based on the user’s profile. Use the following information if provided:
+                        - Gender (e.g., Male, Female, Non-binary, Prefer not to say)
+                        - Age (e.g., 25 years)
+                        - Weight (e.g., 150 lbs or 68 kg)
+                        - Height (e.g., 5’7” or 170 cm)
+                        - Activity Level (e.g., Sedentary, Lightly active, Moderately active, Very active, Extremely active)
+                        - Nutrition Goal (e.g., Lose weight, Gain muscle, Maintain current weight, Improve energy, Manage a specific health condition)
+                        - Dietary Restrictions/Preferences (e.g., Vegetarian, Vegan, Gluten-free, Dairy-free, Nut allergies, Low-carb, Halal, Kosher)
+                        - Meal Timing (e.g., 3 meals/day, 2 meals + 2 snacks)
+                        - Health Conditions (e.g., Diabetes, Hypertension, Thyroid issues)
+                        - Budget (e.g., Low, Moderate, High)
+                        - Cooking Skills/Time (e.g., Beginner, Advanced, Limited time)
+                        - Favorite Foods/Flavors (e.g., Spicy, Sweet, Savory)
+                        If any information is missing, use the defaults specified in the message or ask the user for clarification. Format the nutrition plan with clear headers for days (e.g., “Day 1”), meals (e.g., “Breakfast,” “Lunch,” “Snack,” “Dinner”), and detailed descriptions. Use simple, readable language and ensure the plan is balanced, healthy, and aligns with the user’s goals and restrictions.
+                        '''
+                    },
+                    {
+                        'role': 'user',
+                        'content': combined_message
+                    }
+                ],
+                'max_tokens': 1500
+            }
             try:
-                file_content = file.read().decode('utf-8', errors='ignore')
-                combined_message = f"Additional info from file: {file_content}"
+                response = requests.post(XAI_API_URL, headers=headers, json=payload)
+                response.raise_for_status()
+                grok_response = response.json()['choices'][0]['message']['content']
+                return jsonify({'response': grok_response})
+            except requests.RequestException as e:
+                logger.error(f"API error in nutrition for {username}: {str(e)} with payload: {payload}")
+                return jsonify({'error': 'API error. Please try again later.'}), 500
             except Exception as e:
-                return jsonify({'response': f"Whoops, couldn’t read that file—tech gremlins! (Error: {str(e)})"})
-        if message:
-            combined_message = f"{message}\n{combined_message}" if combined_message else message
-
-        if not combined_message:
-            combined_message = "Hey, give me a nutrition plan based on my profile!"
-
-        if is_blood_test_related(combined_message) and not is_nutrition_related(combined_message):
-            return jsonify({'response': "Hey, this looks like blood test stuff—take it to Blood Test Analysis!"})
-        elif not is_nutrition_related(combined_message):
-            return jsonify({'response': "Yo, this ain’t about nutrition—hit up Chat with Grok for other vibes!"})
-
-        headers = {
-            'Authorization': f'Bearer {XAI_API_KEY}',
-            'Content-Type': 'application/json'
-        }
-        payload = {
-            'model': 'grok-beta',
-            'messages': [
-                {'role': 'system', 'content': f'You’re Grok, built by xAI—keep it chill, witty, and recommend detailed nutrition plans based on user profile data (gender, weight, height, goals, restrictions). User profile: {user_data}\nHit me with your diet goals—I’ll hook you up with calories, macros, and sample meals. Nutrition only!'},
-                {'role': 'user', 'content': combined_message}
-            ],
-            'max_tokens': 1000
-        }
-        try:
-            response = requests.post(XAI_API_URL, headers=headers, json=payload)
-            response.raise_for_status()
-            grok_response = response.json()['choices'][0]['message']['content']
-            return jsonify({'response': grok_response})
-        except requests.RequestException as e:
-            return jsonify({'response': f"Whoa, hit a snag—tech gremlins at work! (Error: {str(e)})"})
-
-    return render_template('nutrition.html', name=username)
+                logger.error(f"Unexpected error in nutrition for {username}: {str(e)}")
+                return jsonify({'error': 'Unexpected error. Please try again later.'}), 500
+        return render_template('nutrition.html', name=username, subscription=user['subscription'])
+    except Exception as e:
+        logger.error(f"Error in nutrition for {username}: {str(e)}")
+        abort(500)
 
 @app.route('/nutrition_plan', methods=['GET', 'POST'])
 @login_required
 def nutrition_plan():
     username = session['username']
-    conn = sqlite3.connect('users.db')
-    c = conn.cursor()
-    c.execute("SELECT subscription, gender, weight, height, nutrition_goal, nutrition_restrictions FROM users WHERE username=?", (username,))
-    user = c.fetchone()
-    conn.close()
-    if not user or user[0] != 'premium':
-        return redirect(url_for('index'))
-
-    if request.method == 'POST' and request.form.get('action') == 'new':
-        return redirect(url_for('nutrition'))
-
-    gender = user[1] or 'Male'
-    goal = user[4] or 'Weight Loss'
-    restrictions = user[5] or ''
     try:
-        plan = nutrition_plans[gender][goal][restrictions]
-        return render_template('nutrition_plan.html', name=username, plan=plan, goal=goal, restrictions=restrictions)
-    except KeyError:
-        return render_template('nutrition_plan.html', name=username, error="No plan available for your selections. Try chatting with Grok!")
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT subscription, gender, weight, height, nutrition_goal, nutrition_restrictions FROM users WHERE username=?", (username,))
+            user = c.fetchone()
+        if not user or user['subscription'] != 'premium':
+            return render_template('index.html', error="Premium subscription required!")
+        if request.method == 'POST' and request.form.get('action') == 'new':
+            return redirect(url_for('nutrition'))
+        gender = user['gender'] or 'Male'
+        goal = user['nutrition_goal'] or 'Weight Loss'
+        restrictions = user['nutrition_restrictions'] or ''
+        try:
+            plan = nutrition_plans[gender][goal][restrictions]
+            return render_template('nutrition_plan.html', name=username, plan=plan, goal=goal, restrictions=restrictions, subscription=user['subscription'])
+        except KeyError:
+            return render_template('index.html', error="No plan available—try chatting with Grok!")
+    except Exception as e:
+        logger.error(f"Error in nutrition_plan for {username}: {str(e)}")
+        abort(500)
+
+@app.route('/saved_nutrition')
+@login_required
+def saved_nutrition():
+    username = session['username']
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT subscription FROM users WHERE username=?", (username,))
+            user = c.fetchone()
+            if not user:
+                logger.error(f"User {username} not found in database")
+                return render_template('index.html', error="User not found!")
+            if user['subscription'] != 'premium':
+                logger.warning(f"User {username} attempted to access saved_nutrition without premium subscription")
+                return redirect(url_for('dashboard'))
+            c.execute("SELECT data, timestamp FROM saved_data WHERE username=? AND type='nutrition' ORDER BY timestamp DESC", (username,))
+            rows = c.fetchall()
+            plans = [dict(row) for row in rows]
+            logger.debug(f"Raw database rows for {username}: {rows}")
+            logger.debug(f"Converted plans for {username}: {plans}")
+            if not plans:
+                logger.warning(f"No nutrition plans found for {username}")
+        return render_template('saved_nutrition.html', plans=plans, name=username, subscription=user['subscription'])
+    except sqlite3.Error as e:
+        logger.error(f"Database error in saved_nutrition for {username}: {str(e)}")
+        abort(500)
+    except Exception as e:
+        logger.error(f"Unexpected error in saved_nutrition for {username}: {str(e)}")
+        abort(500)
+
+@app.route('/delete_nutrition', methods=['POST'], endpoint='delete_nutrition_endpoint')
+@login_required
+def delete_nutrition():
+    username = session['username']
+    timestamp = request.form.get('timestamp')
+    if not timestamp:
+        return jsonify({'success': False, 'error': 'Timestamp required!'})
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT subscription FROM users WHERE username=?", (username,))
+            user = c.fetchone()
+            if not user or user['subscription'] != 'premium':
+                return jsonify({'success': False, 'error': 'Premium subscription required!'})
+            c.execute("DELETE FROM saved_data WHERE username=? AND type='nutrition' AND timestamp=?", (username, timestamp))
+            if c.rowcount == 0:
+                return jsonify({'success': False, 'error': 'Nutrition plan not found!'})
+            conn.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"Error deleting nutrition for {username}: {str(e)}")
+        abort(500)
 
 @app.route('/health_news')
 @login_required
 def health_news():
     username = session['username']
-    conn = sqlite3.connect('users.db')
-    c = conn.cursor()
-    c.execute("SELECT subscription FROM users WHERE username=?", (username,))
-    user = c.fetchone()
-    conn.close()
-    if not user or user[0] != 'premium':
-        return redirect(url_for('index'))
-
-    news_items = [
-        {'title': 'Protein Boosts Gains', 'summary': 'New study says more protein = more muscle.', 'source': 'ScienceDaily', 'source_url': 'https://www.sciencedaily.com', 'image_url': 'https://via.placeholder.com/150'},
-        {'title': 'Keto vs. Paleo', 'summary': 'Which diet reigns supreme? Spoiler: It’s complicated.', 'source': 'HealthLine', 'source_url': 'https://www.healthline.com', 'image_url': 'https://via.placeholder.com/150'}
-    ]
-    return render_template('health_news.html', name=username, news_items=news_items)
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT subscription FROM users WHERE username=?", (username,))
+            user = c.fetchone()
+        if not user or user['subscription'] != 'premium':
+            return render_template('index.html', error="Premium subscription required!")
+        news_items = [
+            {'title': 'Protein Boosts Gains', 'summary': 'More protein = more muscle.', 'source': 'ScienceDaily', 'source_url': 'https://www.sciencedaily.com', 'image_url': 'https://via.placeholder.com/150'},
+            {'title': 'Keto vs. Paleo', 'summary': 'Which diet wins? It’s complicated.', 'source': 'HealthLine', 'source_url': 'https://www.healthline.com', 'image_url': 'https://via.placeholder.com/150'}
+        ]
+        return render_template('health_news.html', name=username, news_items=news_items, subscription=user['subscription'])
+    except Exception as e:
+        logger.error(f"Error in health_news for {username}: {str(e)}")
+        abort(500)
 
 @app.route('/subscribe', methods=['GET', 'POST'])
 @login_required
@@ -704,13 +1085,9 @@ def subscribe():
     if request.method == 'POST':
         plan = request.form['plan']
         if not stripe:
-            return render_template('subscribe.html', error="Stripe not configured!")
+            return render_template('index.html', error="Stripe not configured!")
         try:
-            if plan == 'monthly':
-                price_id = 'price_monthly_id'  # Replace with real Stripe Price ID
-            elif plan == 'yearly':
-                price_id = 'price_yearly_id'  # Replace with real Stripe Price ID
-
+            price_id = 'price_monthly_id' if plan == 'monthly' else 'price_yearly_id'
             checkout_session = stripe.checkout.Session.create(
                 payment_method_types=['card'],
                 line_items=[{'price': price_id, 'quantity': 1}],
@@ -720,23 +1097,466 @@ def subscribe():
             )
             return redirect(checkout_session.url, code=303)
         except Exception as e:
-            return render_template('subscribe.html', error=str(e))
-    return render_template('subscribe.html')
+            logger.error(f"Stripe error in subscribe for {username}: {str(e)}")
+            abort(500)
+    return render_template('subscribe.html', name=username)
 
 @app.route('/success')
 @login_required
 def success():
     username = session['username']
-    conn = sqlite3.connect('users.db')
-    c = conn.cursor()
-    c.execute("UPDATE users SET subscription='premium' WHERE username=?", (username,))
-    conn.commit()
-    conn.close()
-    return render_template('success.html', name=username)
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("UPDATE users SET subscription='premium' WHERE username=?", (username,))
+            conn.commit()
+        return render_template('success.html', name=username, subscription='premium')
+    except Exception as e:
+        logger.error(f"Error in success for {username}: {str(e)}")
+        abort(500)
 
-@x_auth.tokengetter
-def get_x_oauth_token():
-    return session.get('x_token')
+@app.route('/your_sports')
+@login_required
+def your_sports():
+    username = session['username']
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT subscription FROM users WHERE username=?", (username,))
+            user = c.fetchone()
+            c.execute("SELECT b.name, b.type, m.membership_type, m.start_date, m.end_date, m.status FROM memberships m JOIN businesses b ON m.business_id = b.business_id WHERE m.user_username=?", (username,))
+            memberships = c.fetchall()
+        return render_template('your_sports.html', name=username, memberships=memberships, subscription=user['subscription'])
+    except Exception as e:
+        logger.error(f"Error in your_sports for {username}: {str(e)}")
+        abort(500)
+
+@app.route('/business_register', methods=['GET', 'POST'])
+def business_register():
+    if request.method == 'POST':
+        name = request.form.get('name')
+        email = request.form.get('email')
+        password = request.form.get('password')
+        address = request.form.get('address')
+        phone = request.form.get('phone')
+        type = request.form.get('type', 'gym')
+        if name and email and password:
+            try:
+                with get_db_connection() as conn:
+                    c = conn.cursor()
+                    c.execute("SELECT email FROM businesses WHERE email=?", (email,))
+                    if c.fetchone():
+                        return render_template('index.html', error="Email already registered!")
+                    c.execute("INSERT INTO businesses (name, email, password, address, phone, type) VALUES (?, ?, ?, ?, ?, ?)",
+                              (name, email, password, address, phone, type))
+                    conn.commit()
+                return redirect(url_for('business_login'))
+            except Exception as e:
+                logger.error(f"Error in business_register: {str(e)}")
+                abort(500)
+        return render_template('index.html', error="Please fill all required fields!")
+    return render_template('business_register.html')
+
+@app.route('/business_login', methods=['GET', 'POST'])
+def business_login():
+    if request.method == 'POST':
+        email = request.form.get('email')
+        password = request.form.get('password')
+        try:
+            with get_db_connection() as conn:
+                c = conn.cursor()
+                c.execute("SELECT business_id, name, password FROM businesses WHERE email=?", (email,))
+                business = c.fetchone()
+            if business and business['password'] == password:
+                session['business_id'] = business['business_id']
+                session['business_name'] = business['name']
+                return redirect(url_for('business_dashboard'))
+            return render_template('index.html', error="Invalid email or password!")
+        except Exception as e:
+            logger.error(f"Error in business_login: {str(e)}")
+            abort(500)
+    return render_template('business_login.html')
+
+@app.route('/business_dashboard')
+@business_login_required
+def business_dashboard():
+    business_id = session['business_id']
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT name, email, address, phone, type FROM businesses WHERE business_id=?", (business_id,))
+            business = c.fetchone()
+            c.execute("SELECT u.username, m.membership_type, m.start_date, m.end_date, m.status FROM memberships m JOIN users u ON m.user_username = u.username WHERE m.business_id=?", (business_id,))
+            memberships = c.fetchall()
+        return render_template('business_dashboard.html', business=business, memberships=memberships)
+    except Exception as e:
+        logger.error(f"Error in business_dashboard for business {business_id}: {str(e)}")
+        abort(500)
+
+@app.route('/business_logout')
+def business_logout():
+    session.pop('business_id', None)
+    session.pop('business_name', None)
+    return redirect(url_for('business_login'))
+
+@app.route('/delete_chat', methods=['POST'])
+@login_required
+def delete_chat():
+    username = session['username']
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT subscription FROM users WHERE username=?", (username,))
+            user = c.fetchone()
+            if not user or user['subscription'] != 'premium':
+                return jsonify({'success': False, 'error': 'Premium subscription required!'})
+            receiver = request.form.get('receiver')
+            if not receiver:
+                return jsonify({'success': False, 'error': 'Receiver required!'})
+            c.execute("DELETE FROM messages WHERE (sender=? AND receiver=?) OR (sender=? AND receiver=?)",
+                      (username, receiver, receiver, username))
+            deleted_count = c.rowcount
+            conn.commit()
+        return jsonify({'success': True, 'deleted_count': deleted_count})
+    except Exception as e:
+        logger.error(f"Error deleting chat for {username}: {str(e)}")
+        abort(500)
+
+@app.route('/user_chat')
+@login_required
+def user_chat():
+    username = session['username']
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT subscription FROM users WHERE username=?", (username,))
+            user = c.fetchone()
+            if not user or user['subscription'] != 'premium':
+                return render_template('index.html', error="Premium subscription required!")
+            c.execute("SELECT username FROM users WHERE username != ?", (username,))
+            users = [row['username'] for row in c.fetchall()]
+        return render_template('user_chat.html', name=username, users=users, subscription=user['subscription'])
+    except Exception as e:
+        logger.error(f"Error in user_chat for {username}: {str(e)}")
+        abort(500)
+
+@app.route('/get_messages', methods=['POST'])
+@login_required
+def get_messages():
+    username = session['username']
+    receiver = request.form.get('receiver')
+    if not receiver:
+        return jsonify({'success': False, 'error': 'No receiver specified'})
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT subscription FROM users WHERE username=?", (username,))
+            user = c.fetchone()
+            if not user or user['subscription'] != 'premium':
+                return jsonify({'success': False, 'error': 'Premium subscription required!'})
+            c.execute("""
+                SELECT id, sender, receiver, message, timestamp, is_read
+                FROM messages
+                WHERE (sender=? AND receiver=?) OR (sender=? AND receiver=?)
+                ORDER BY timestamp ASC
+            """, (username, receiver, receiver, username))
+            messages = [dict(row) for row in c.fetchall()]
+            c.execute("UPDATE messages SET is_read=1 WHERE receiver=? AND sender=? AND is_read=0", (username, receiver))
+            conn.commit()
+        return jsonify({'success': True, 'messages': messages})
+    except Exception as e:
+        logger.error(f"Error getting messages for {username}: {str(e)}")
+        abort(500)
+
+@app.route('/send_message', methods=['POST'])
+@login_required
+def send_message():
+    username = session['username']
+    receiver = request.form.get('receiver')
+    message = request.form.get('message')
+    if not receiver or not message:
+        return jsonify({'success': False, 'error': 'Receiver and message required'})
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT subscription FROM users WHERE username=?", (username,))
+            user = c.fetchone()
+            if not user or user['subscription'] != 'premium':
+                return jsonify({'success': False, 'error': 'Premium subscription required!'})
+            timestamp = datetime.now().strftime('%m.%d.%y')
+            c.execute("INSERT INTO messages (sender, receiver, message, timestamp) VALUES (?, ?, ?, ?)",
+                      (username, receiver, message, timestamp))
+            conn.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"Error sending message for {username}: {str(e)}")
+        abort(500)
+
+@app.route('/delete_message', methods=['POST'])
+@login_required
+def delete_message():
+    username = session['username']
+    message_id = request.form.get('message_id')
+    if not message_id:
+        return jsonify({'success': False, 'error': 'Message ID required'})
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT subscription FROM users WHERE username=?", (username,))
+            user = c.fetchone()
+            if not user or user['subscription'] != 'premium':
+                return jsonify({'success': False, 'error': 'Premium subscription required!'})
+            c.execute("DELETE FROM messages WHERE id=? AND (sender=? OR receiver=?)",
+                      (message_id, username, username))
+            if c.rowcount == 0:
+                return jsonify({'success': False, 'error': 'Message not found or not yours'})
+            conn.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"Error deleting message for {username}: {str(e)}")
+        abort(500)
+
+@app.route('/check_unread_messages')
+@login_required
+def check_unread_messages():
+    username = session['username']
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT COUNT(*) FROM messages WHERE receiver=? AND is_read=0", (username,))
+            unread_count = c.fetchone()[0]
+        return jsonify({'unread_count': unread_count})
+    except Exception as e:
+        logger.error(f"Error checking unread messages for {username}: {str(e)}")
+        abort(500)
+
+@app.route('/feed')
+@login_required
+def feed():
+    username = session.get('username')
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            # Fetch all posts, ordered by the most recent
+            c.execute("SELECT * FROM posts ORDER BY timestamp DESC")
+            posts_raw = c.fetchall()
+            posts = [dict(row) for row in posts_raw]
+
+            for post in posts:
+                # Fetch replies for each post
+                c.execute("SELECT * FROM replies WHERE post_id = ? ORDER BY timestamp ASC", (post['id'],))
+                replies_raw = c.fetchall()
+                post['replies'] = [dict(row) for row in replies_raw]
+
+                # --- NEW: Fetch reactions for each post ---
+                # Get reaction counts (e.g., {'heart': 5, 'thumbs-up': 2})
+                c.execute("""
+                    SELECT reaction_type, COUNT(*) as count
+                    FROM reactions
+                    WHERE post_id = ?
+                    GROUP BY reaction_type
+                """, (post['id'],))
+                reactions_raw = c.fetchall()
+                post['reactions'] = {r['reaction_type']: r['count'] for r in reactions_raw}
+
+                # Get the current logged-in user's reaction to this post
+                c.execute("SELECT reaction_type FROM reactions WHERE post_id = ? AND username = ?", (post['id'], username))
+                user_reaction_raw = c.fetchone()
+                post['user_reaction'] = user_reaction_raw['reaction_type'] if user_reaction_raw else None
+
+        return render_template('feed.html', posts=posts)
+    except Exception as e:
+        logger.error(f"Error fetching feed: {str(e)}")
+        abort(500)
+
+
+# ... (other imports and setup remain unchanged)
+
+@app.route('/add_reaction', methods=['POST'])
+@login_required
+def add_reaction():
+    username = session['username']
+    post_id = request.form.get('post_id')
+    reaction_type = request.form.get('reaction')
+
+    if not all([post_id, reaction_type]):
+        return jsonify({'success': False, 'error': 'Missing data'}), 400
+
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+
+            # Check if the user already reacted to this post
+            c.execute("SELECT id, reaction_type FROM reactions WHERE post_id = ? AND username = ?", (post_id, username))
+            existing = c.fetchone()
+
+            if existing:
+                if existing['reaction_type'] == reaction_type:
+                    # User clicked the same reaction again, so remove it (toggle off)
+                    c.execute("DELETE FROM reactions WHERE id = ?", (existing['id'],))
+                else:
+                    # User changed their reaction, so update it
+                    c.execute("UPDATE reactions SET reaction_type = ? WHERE id = ?", (reaction_type, existing['id']))
+            else:
+                # No existing reaction, so insert a new one
+                c.execute("INSERT INTO reactions (post_id, username, reaction_type) VALUES (?, ?, ?)",
+                          (post_id, username, reaction_type))
+
+            conn.commit()
+
+            # After changes, fetch the new reaction counts for the post
+            c.execute("""
+                SELECT reaction_type, COUNT(*) as count
+                FROM reactions
+                WHERE post_id = ?
+                GROUP BY reaction_type
+            """, (post_id,))
+            counts_raw = c.fetchall()
+            new_counts = {r['reaction_type']: r['count'] for r in counts_raw}
+
+            # Also get the user's new reaction state to send back to the UI
+            c.execute("SELECT reaction_type FROM reactions WHERE post_id = ? AND username = ?", (post_id, username))
+            user_reaction_raw = c.fetchone()
+            new_user_reaction = user_reaction_raw['reaction_type'] if user_reaction_raw else None
+
+            return jsonify({
+                'success': True,
+                'counts': new_counts,
+                'user_reaction': new_user_reaction
+            })
+
+    except Exception as e:
+        logger.error(f"Error adding reaction: {str(e)}")
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
+
+@app.route('/post_status', methods=['POST'])
+@login_required
+def post_status():
+    username = session['username']
+    content = request.form.get('content', '').strip()
+    logger.debug(f"Received post request for {username} with content: {content}")
+    if not content:
+        return jsonify({'success': False, 'error': 'Content cannot be empty!'}), 400
+    timestamp = datetime.now().strftime('%m.%d.%y %H:%M')
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("INSERT INTO posts (username, content, timestamp) VALUES (?, ?, ?)",
+                      (username, content, timestamp))
+            conn.commit()
+        logger.info(f"Post added successfully for {username} with ID: {c.lastrowid}")
+        return jsonify({
+            'success': True,
+            'message': 'Post added!',
+            'post': {'id': c.lastrowid, 'username': username, 'content': content, 'timestamp': timestamp}
+        }), 200
+    except Exception as e:
+        logger.error(f"Error posting status for {username}: {str(e)}", exc_info=True)
+        return jsonify({'success': False, 'error': f'Unexpected error: {str(e)}'}), 500
+
+@app.route('/post_reply', methods=['POST'])
+@login_required
+def post_reply():
+    username = session['username']
+    post_id = request.form.get('post_id', type=int)
+    content = request.form.get('content', '').strip()
+    logger.debug(f"Received reply request for {username} to post {post_id} with content: {content}")
+
+    if not post_id or not content:
+        return jsonify({'success': False, 'error': 'Post ID and content are required!'}), 400
+
+    # Use a consistent timestamp format for storage and a display-friendly one for the response
+    now = datetime.now()
+    timestamp_db = now.strftime('%m.%d.%y %H:%M')
+    timestamp_display = now.strftime('%m/%d/%y %I:%M %p')
+
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT id FROM posts WHERE id=?", (post_id,))
+            if not c.fetchone():
+                return jsonify({'success': False, 'error': 'Post not found!'}), 404
+
+            c.execute("INSERT INTO replies (post_id, username, content, timestamp) VALUES (?, ?, ?, ?)",
+                      (post_id, username, content, timestamp_db))
+            reply_id = c.lastrowid
+            conn.commit()
+
+        logger.info(f"Reply added successfully for {username} to post {post_id} with ID: {reply_id}")
+
+        return jsonify({
+            'success': True,
+            'message': 'Reply added!',
+            'reply': {
+                'id': reply_id,
+                'post_id': post_id,
+                'username': username,
+                'content': content,
+                'timestamp': timestamp_display  # Use the display-friendly timestamp
+            }
+        }), 200
+    except Exception as e:
+        logger.error(f"Error posting reply for {username}: {str(e)}", exc_info=True)
+        return jsonify({'success': False, 'error': f'Unexpected error: {str(e)}'}), 500
+
+@app.route('/delete_post', methods=['POST'])
+@login_required
+def delete_post():
+    username = session['username']
+    post_id = request.form.get('post_id', type=int)
+    logger.debug(f"Received delete post request for {username} with post_id: {post_id}")
+    if not post_id:
+        return jsonify({'success': False, 'error': 'Post ID is required!'}), 400
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT username FROM posts WHERE id=?", (post_id,))
+            post = c.fetchone()
+            if not post or post['username'] != username:
+                return jsonify({'success': False, 'error': 'Post not found or unauthorized!'}), 403
+            c.execute("DELETE FROM replies WHERE post_id=?", (post_id,))
+            c.execute("DELETE FROM posts WHERE id=?", (post_id,))
+            conn.commit()
+        logger.info(f"Post {post_id} deleted successfully by {username}")
+        return jsonify({'success': True, 'message': 'Post deleted!'}), 200
+    except Exception as e:
+        logger.error(f"Error deleting post {post_id} for {username}: {str(e)}", exc_info=True)
+        return jsonify({'success': False, 'error': f'Unexpected error: {str(e)}'}), 500
+
+@app.route('/delete_reply', methods=['POST'])
+@login_required
+def delete_reply():
+    username = session['username']
+    reply_id = request.form.get('reply_id', type=int)
+    logger.debug(f"Received delete reply request for {username} with reply_id: {reply_id}")
+    if not reply_id:
+        return jsonify({'success': False, 'error': 'Reply ID is required!'}), 400
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT username FROM replies WHERE id=?", (reply_id,))
+            reply = c.fetchone()
+            if not reply or reply['username'] != username:
+                return jsonify({'success': False, 'error': 'Reply not found or unauthorized!'}), 403
+            c.execute("DELETE FROM replies WHERE id=?", (reply_id,))
+            conn.commit()
+        logger.info(f"Reply {reply_id} deleted successfully by {username}")
+        return jsonify({'success': True, 'message': 'Reply deleted!'}), 200
+    except Exception as e:
+        logger.error(f"Error deleting reply {reply_id} for {username}: {str(e)}", exc_info=True)
+        return jsonify({'success': False, 'error': f'Unexpected error: {str(e)}'}), 500
+
+
+@app.errorhandler(500)
+def internal_server_error(e):
+    logger.error(f"Internal server error: {str(e)}")
+    return render_template('error.html', error="An internal server error occurred. Please try again later."), 500
+
+@app.errorhandler(404)
+def not_found_error(e):
+    logger.error(f"404 Not Found error: {str(e)}")
+    return render_template('error.html', error="Page not found. Please check the URL or return to the homepage."), 404
 
 if __name__ == '__main__':
-    app.run(debug=False, host='0.0.0.0', port=8080)  # Disabled debug for production
+    app.run(debug=False, host='0.0.0.0', port=8080)
