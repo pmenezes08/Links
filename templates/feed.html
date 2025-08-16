@@ -4,11 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Social Feed</title>
+    <meta name="csrf-token" content="{{ csrf_token }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <meta name="csrf-token" content="{{ csrf_token }}">
-    <meta name="current-username" content="{{ session['username'] }}">
+    <meta name="current-username" content="{{ username }}">
     <script src="{{ url_for('static', filename='script.js') }}"></script>
 </head>
 <body>
@@ -33,7 +34,6 @@
         <div class="composer-card">
             <form action="/post_status" method="POST" class="composer-form">
                 <div class="composer-inner">
-                    <div class="avatar"></div>
                     <div class="composer-body">
                         <input type="text" name="content" class="composer-input" placeholder="What is happening?!" required>
                         <div class="composer-actions">
@@ -64,17 +64,24 @@
                         <form class="reply-form" action="/post_reply" method="POST">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                             <input type="hidden" name="post_id" value="{{ post.id }}">
-                            <input type="text" name="content" placeholder="Write a reply..." required>
-                            <button type="submit" class="sleek-btn small">Reply</button>
+                            <input type="text" name="content" class="reply-input" placeholder="Write a reply..." required>
+                            <button type="submit" class="inline-action reply-action"><i class="far fa-paper-plane"></i> Reply</button>
                         </form>
                         <div class="replies">
                             {% for reply in post.replies %}
                                 <div class="reply" data-reply-id="{{ reply.id }}">
                                     <p><strong>@{{ reply.username }}</strong> <span>{{ reply.timestamp | format_date('%m/%d/%y %I:%M %p') }}</span></p>
                                     <p>{{ reply.content }}</p>
-                                    {% if reply.username == session['username'] %}
-                                        <button class="delete-reply inline-action" data-reply-id="{{ reply.id }}"><i class="far fa-trash-alt"></i> Delete</button>
-                                    {% endif %}
+                                    <div class="reply-actions">
+                                        <div class="reactions">
+                                            <button class="reaction-btn heart" data-reaction="heart" aria-label="Like reply"><i class="far fa-heart"></i> <span>{{ reply.reactions['heart'] or 0 if reply.reactions else 0 }}</span></button>
+                                            <button class="reaction-btn thumbs-up" data-reaction="thumbs-up" aria-label="Thumbs up reply"><i class="far fa-thumbs-up"></i> <span>{{ reply.reactions['thumbs-up'] or 0 if reply.reactions else 0 }}</span></button>
+                                            <button class="reaction-btn thumbs-down" data-reaction="thumbs-down" aria-label="Thumbs down reply"><i class="far fa-thumbs-down"></i> <span>{{ reply.reactions['thumbs-down'] or 0 if reply.reactions else 0 }}</span></button>
+                                        </div>
+                                        {% if reply.username == session['username'] %}
+                                            <button class="delete-reply inline-action" data-reply-id="{{ reply.id }}"><i class="far fa-trash-alt"></i> Delete</button>
+                                        {% endif %}
+                                    </div>
                                 </div>
                             {% endfor %}
                         </div>
