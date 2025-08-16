@@ -655,8 +655,8 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
         function attachModalEventHandlers() {
-            // Handle delete reply in modal FIRST (higher priority)
-            $(document).off('click', '#modalPostContent .delete-reply.inline-action').on('click', '#modalPostContent .delete-reply.inline-action', function(e) {
+            // Handle delete reply in modal with direct event binding
+            $('#modalPostContent').off('click', '.delete-reply.inline-action').on('click', '.delete-reply.inline-action', function(e) {
                 e.preventDefault();
                 e.stopPropagation();
                 e.stopImmediatePropagation();
@@ -699,8 +699,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             });
 
-            // Re-attach reaction handlers for modal content (LOWER priority)
-            $('#modalPostContent').off('click', '.reaction-btn').on('click', '.reaction-btn', function(e) {
+            // Re-attach reaction handlers for modal content - ONLY for actual reaction buttons
+            $('#modalPostContent').off('click', '.reactions .reaction-btn').on('click', '.reactions .reaction-btn', function(e) {
                 e.preventDefault();
                 e.stopPropagation();
                 const $button = $(this);
