@@ -847,12 +847,12 @@ def blood_test_analysis():
             if not combined_message:
                 return jsonify({'response': "Please provide text or a file!"})
             if not is_blood_test_related(combined_message):
-                return jsonify({'response': "This isn't about blood tests—try Nutrition instead!"})
+                return jsonify({'response': "This isn't about blood tests - try Nutrition instead!"})
             headers = {'Authorization': f'Bearer {XAI_API_KEY}', 'Content-Type': 'application/json'}
             payload = {
                 'model': 'grok-beta',
                 'messages': [
-                    {'role': 'system', 'content': 'You're Grok, built by xAI—analyze blood tests from a functional medicine perspective.'},
+                    {'role': 'system', 'content': "You're Grok, built by xAI - analyze blood tests from a functional medicine perspective."},
                     {'role': 'user', 'content': combined_message}
                 ],
                 'max_tokens': 1000
@@ -898,7 +898,7 @@ def chat():
             payload = {
                 'model': 'grok-beta',
                 'messages': [
-                    {'role': 'system', 'content': 'You're Grok, built by xAI—keep it helpful and redirect blood test or nutrition queries.'},
+                    {'role': 'system', 'content': "You're Grok, built by xAI - keep it helpful and redirect blood test or nutrition queries."},
                     {'role': 'user', 'content': combined_message}
                 ],
                 'max_tokens': 1000
@@ -979,7 +979,7 @@ def nutrition():
             # Log the final message sent to Grok
             logger.debug(f"Message sent to Grok: {combined_message}")
             if not is_nutrition_related(combined_message):
-                return jsonify({'response': "Not nutrition-related—try Chat with Grok!"})
+                return jsonify({'response': "Not nutrition-related - try Chat with Grok!"})
             headers = {'Authorization': f'Bearer {XAI_API_KEY}', 'Content-Type': 'application/json'}
             payload = {
                 'model': 'grok-beta',
@@ -987,7 +987,7 @@ def nutrition():
                     {
                         'role': 'system',
                         'content': '''
-                        You're Grok, built by xAI—create personalized nutrition plans based on the user's profile. Use the following information if provided:
+                        You're Grok, built by xAI - create personalized nutrition plans based on the user's profile. Use the following information if provided:
                         - Gender (e.g., Male, Female, Non-binary, Prefer not to say)
                         - Age (e.g., 25 years)
                         - Weight (e.g., 150 lbs or 68 kg)
@@ -1046,7 +1046,7 @@ def nutrition_plan():
             plan = nutrition_plans[gender][goal][restrictions]
             return render_template('nutrition_plan.html', name=username, plan=plan, goal=goal, restrictions=restrictions, subscription=user['subscription'])
         except KeyError:
-            return render_template('index.html', error="No plan available—try chatting with Grok!")
+            return render_template('index.html', error="No plan available - try chatting with Grok!")
     except Exception as e:
         logger.error(f"Error in nutrition_plan for {username}: {str(e)}")
         abort(500)
