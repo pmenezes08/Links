@@ -584,12 +584,13 @@ select:focus, input:focus {
     background: none;
     border: none;
     color: #9fb0b5;
-    padding: 6px 8px;
-    font-size: 1.1em;
+    padding: 4px 6px;
+    font-size: 0.9em;
     cursor: pointer;
     transition: color 0.2s ease;
     display: flex;
     align-items: center;
+    justify-content: center;
     gap: 4px;
 }
 
