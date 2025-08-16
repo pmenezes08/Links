@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Social Feed</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</head>
+<body>
+    <!-- Sidebar Menu -->
+    <div class="sidebar">
+        <button class="menu-btn">☰ Menu</button>
+        <div class="dropdown-content">
+            <a href="{{ url_for('dashboard') }}">Dashboard</a>
+            <a href="{{ url_for('free_workouts') }}">Free Workouts</a>
+            <a href="{{ url_for('premium_dashboard') }}">Premium Dashboard</a>
+            <a href="{{ url_for('feed') }}">Social Feed</a>
+            <a href="{{ url_for('logout') }}">Logout</a>
+            <span id="unread-badge" class="unread-badge hidden">0</span>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="container">
+        <h1>Social Feed</h1>
+
+        <!-- Post Submission Form -->
+        <form action="/post_status" method="POST">
+            <div class="selection">
+                <input type="text" name="content" placeholder="What's on your mind?" required>
+                <button type="submit" class="sleek-btn">Post</button>
+            </div>
+        </form>
+
+        <!-- Posts Display -->
+        <div class="posts">
+            {% if posts %}
+                {% for post in posts %}
+                    <div class="post" data-post-id="{{ post.id }}">
+                        <p><strong>@{{ post.username }}</strong> <span>{{ post.timestamp | format_date('%m/%d/%y %I:%M %p') }}</span></p>
+                        <p>{{ post.content }}</p>
+                        <div class="reactions">
+                            <button class="reaction-btn heart {{ 'active' if post.user_reaction == 'heart' }}" data-reaction="heart" aria-label="Like post"><i class="far fa-heart"></i> <span>{{ post.reactions['heart'] or 0 }}</span></button>
+                            <button class="reaction-btn thumbs-up {{ 'active' if post.user_reaction == 'thumbs-up' }}" data-reaction="thumbs-up" aria-label="Thumbs up"><i class="far fa-thumbs-up"></i> <span>{{ post.reactions['thumbs-up'] or 0 }}</span></button>
+                            <button class="reaction-btn thumbs-down {{ 'active' if post.user_reaction == 'thumbs-down' }}" data-reaction="thumbs-down" aria-label="Thumbs down"><i class="far fa-thumbs-down"></i> <span>{{ post.reactions['thumbs-down'] or 0 }}</span></button>
+                            <button class="reaction-btn smile {{ 'active' if post.user_reaction == 'smile' }}" data-reaction="smile" aria-label="Smile"><i class="far fa-smile"></i> <span>{{ post.reactions['smile'] or 0 }}</span></button>
+                        </div>
+                        {% if post.username == session['username'] %}
+                            <button class="delete-post" data-post-id="{{ post.id }}">Delete</button>
+                        {% endif %}
+                        <form class="reply-form" action="/post_reply" method="POST">
+                            <input type="hidden" name="post_id" value="{{ post.id }}">
+                            <input type="text" name="content" placeholder="Write a reply..." required>
+                            <button type="submit" class="sleek-btn small">Reply</button>
+                        </form>
+                        <div class="replies">
+                            {% for reply in post.replies %}
+                                <div class="reply" data-reply-id="{{ reply.id }}">
+                                    <p><strong>@{{ reply.username }}</strong> <span>{{ reply.timestamp | format_date('%m/%d/%y %I:%M %p') }}</span></p>
+                                    <p>{{ reply.content }}</p>
+                                    {% if reply.username == session['username'] %}
+                                        <button class="delete-reply" data-reply-id="{{ reply.id }}">Delete</button>
+                                    {% endif %}
+                                </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                {% endfor %}
+            {% else %}
+                <p>No posts yet. Be the first!</p>
+            {% endif %}
+        </div>
+    </div>
+</body>
+</html>
