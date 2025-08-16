@@ -1283,15 +1283,10 @@ def success():
 @app.route('/your_sports')
 @login_required
 def your_sports():
+    """Your Communities page - transformed from Your Sports"""
     username = session['username']
     try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            c.execute("SELECT subscription FROM users WHERE username=?", (username,))
-            user = c.fetchone()
-            c.execute("SELECT b.name, b.type, m.membership_type, m.start_date, m.end_date, m.status FROM memberships m JOIN businesses b ON m.business_id = b.business_id WHERE m.user_username=?", (username,))
-            memberships = c.fetchall()
-        return render_template('your_sports.html', name=username, memberships=memberships, subscription=user['subscription'])
+        return render_template('your_sports.html', csrf_token=get_csrf_token())
     except Exception as e:
         logger.error(f"Error in your_sports for {username}: {str(e)}")
         abort(500)
