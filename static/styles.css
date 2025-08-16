@@ -570,14 +570,14 @@ select:focus, input:focus {
 .composer-actions {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 8px;
     margin-top: 8px;
 }
 
 .file-upload-container {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
 }
 
 .file-upload-btn {
