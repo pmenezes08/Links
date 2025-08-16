@@ -28,7 +28,13 @@
     <div class="container">
         <h2 class="low-profile-header">Premium Dashboard - {{ name }}</h2>
         <div class="dashboard-actions">
-            <button onclick="location.href='{{ url_for('feed') }}'" class="sleek-btn compact">Social Feed</button>
+            <button onclick="location.href='{{ url_for('feed') }}'" class="sleek-btn compact pill">Social Feed</button>
+            <button onclick="location.href='{{ url_for('user_chat') }}'" class="sleek-btn compact pill">Messages</button>
+            <button onclick="location.href='{{ url_for('nutrition') }}'" class="sleek-btn compact pill">Nutrition</button>
+            <button onclick="location.href='{{ url_for('blood_test_analysis') }}'" class="sleek-btn compact pill">Blood Tests</button>
+            <button onclick="location.href='{{ url_for('your_sports') }}'" class="sleek-btn compact pill">Your Sports</button>
+            <button onclick="location.href='{{ url_for('health_news') }}'" class="sleek-btn compact pill">Health News</button>
+            <button onclick="location.href='{{ url_for('profile') }}'" class="sleek-btn compact pill">Profile</button>
         </div>
         <form method="POST" action="{{ url_for('generate_workout') }}">
             <div class="selection">

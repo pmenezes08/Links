@@ -645,18 +645,42 @@ select:focus, input:focus {
 
 /* dashboard button row */
 .dashboard-actions {
-	display: flex;
-	gap: 8px;
-	justify-content: center;
-	align-items: center;
-	flex-wrap: nowrap;
-	margin-top: 12px;
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-top: 16px;
 }
 
 .sleek-btn.compact {
-	padding: 6px 10px;
-	font-size: 0.9em;
-	max-width: none;
-	width: auto;
-	letter-spacing: 0.5px;
+    padding: 6px 12px;
+    font-size: 0.9em;
+    max-width: none;
+    width: auto;
+    letter-spacing: 0.3px;
+}
+
+/* Pill-style variant for dashboard actions */
+.sleek-btn.pill {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 9999px;
+    color: #e0e0e0;
+    padding: 8px 14px;
+    width: auto;
+    max-width: none;
+    letter-spacing: 0.3px;
+}
+
+.sleek-btn.pill:hover {
+    background: rgba(255, 255, 255, 0.10);
+    border-color: rgba(255, 255, 255, 0.22);
+    transform: translateY(-1px);
+    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.25);
+}
+
+.sleek-btn.pill:active {
+    transform: translateY(0);
+    box-shadow: none;
 }
