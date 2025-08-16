@@ -224,6 +224,7 @@ document.addEventListener('DOMContentLoaded', function() {
             
             const formData = new FormData();
             formData.append('content', content);
+            formData.append('csrf_token', $('meta[name="csrf-token"]').attr('content'));
             
             if (imageFile) {
                 formData.append('image', imageFile);
@@ -354,7 +355,11 @@ document.addEventListener('DOMContentLoaded', function() {
             $.ajax({
                 url: '/add_reaction',
                 method: 'POST',
-                data: { post_id: postId, reaction: reactionType },
+                data: { 
+                    post_id: postId, 
+                    reaction: reactionType,
+                    csrf_token: $('meta[name="csrf-token"]').attr('content')
+                },
                 success: function(data) {
                     if (data.success) {
                         const $reactions = $button.closest('.reactions');
@@ -391,7 +396,11 @@ document.addEventListener('DOMContentLoaded', function() {
             $.ajax({
                 url: '/add_reply_reaction',
                 method: 'POST',
-                data: { reply_id: replyId, reaction: reactionType },
+                data: { 
+                    reply_id: replyId, 
+                    reaction: reactionType,
+                    csrf_token: $('meta[name="csrf-token"]').attr('content')
+                },
                 success: function(data) {
                     if (data.success) {
                         const $reactions = $button.closest('.reactions');
@@ -421,7 +430,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 $.ajax({
                     url: '/delete_post',
                     method: 'POST',
-                    data: { post_id: postId },
+                    data: { 
+                        post_id: postId,
+                        csrf_token: $('meta[name="csrf-token"]').attr('content')
+                    },
                     beforeSend: function() {
                         $(`[data-post-id="${postId}"]`).append('<div class="loader"></div>');
                     },
@@ -454,7 +466,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 $.ajax({
                     url: '/delete_reply',
                     method: 'POST',
-                    data: { reply_id: replyId },
+                    data: { 
+                        reply_id: replyId,
+                        csrf_token: $('meta[name="csrf-token"]').attr('content')
+                    },
                     beforeSend: function() {
                         $(`[data-reply-id="${replyId}"]`).append('<div class="loader"></div>');
                     },
@@ -676,7 +691,11 @@ document.addEventListener('DOMContentLoaded', function() {
                     $.ajax({
                         url: '/add_reply_reaction',
                         method: 'POST',
-                        data: { reply_id: replyId, reaction: reactionType },
+                        data: { 
+                            reply_id: replyId, 
+                            reaction: reactionType,
+                            csrf_token: $('meta[name="csrf-token"]').attr('content')
+                        },
                         success: function(data) {
                             if (data.success) {
                                 const $reactions = $button.closest('.reactions');
@@ -701,7 +720,11 @@ document.addEventListener('DOMContentLoaded', function() {
                     $.ajax({
                         url: '/add_reaction',
                         method: 'POST',
-                        data: { post_id: postId, reaction: reactionType },
+                        data: { 
+                            post_id: postId, 
+                            reaction: reactionType,
+                            csrf_token: $('meta[name="csrf-token"]').attr('content')
+                        },
                         success: function(data) {
                             if (data.success) {
                                 const $reactions = $button.closest('.reactions');
@@ -743,7 +766,10 @@ document.addEventListener('DOMContentLoaded', function() {
                     $.ajax({
                         url: '/delete_reply',
                         method: 'POST',
-                        data: { reply_id: replyId },
+                        data: { 
+                            reply_id: replyId,
+                            csrf_token: $('meta[name="csrf-token"]').attr('content')
+                        },
                         beforeSend: function() {
                             $(`[data-reply-id="${replyId}"]`).append('<div class="loader"></div>');
                         },
@@ -828,8 +854,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 const formData = new FormData();
                 formData.append('post_id', postId);
                 formData.append('content', content);
+                formData.append('csrf_token', $('meta[name="csrf-token"]').attr('content'));
                 
-                const imageFile = $('#modal-reply-image-upload')[0].files[0];
                 if (imageFile) {
                     formData.append('image', imageFile);
                 }
