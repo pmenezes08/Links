@@ -665,6 +665,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 const postId = $post.data('post-id');
                 const $reply = $button.closest('.reply');
                 
+                // Only handle reaction buttons, not other buttons within replies
+                if (!$button.hasClass('reaction-btn')) {
+                    return;
+                }
+                
                 if ($reply.length) {
                     // This is a reply reaction
                     const replyId = $reply.data('reply-id');
@@ -738,9 +743,10 @@ document.addEventListener('DOMContentLoaded', function() {
             });
 
             // Handle delete reply in modal
-            $(document).off('click', '#modalPostContent .delete-reply').on('click', '#modalPostContent .delete-reply', function(e) {
+            $(document).off('click', '#modalPostContent .delete-reply.inline-action').on('click', '#modalPostContent .delete-reply.inline-action', function(e) {
                 e.preventDefault();
                 e.stopPropagation();
+                e.stopImmediatePropagation();
                 console.log("Delete reply button clicked in modal");
                 const replyId = $(this).data('reply-id');
                 console.log("Reply ID:", replyId);
