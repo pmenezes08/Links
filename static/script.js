@@ -157,6 +157,12 @@ document.addEventListener('DOMContentLoaded', function() {
     const $postForm = $('form[action="/post_status"]');
     const $postContainer = $('.posts');
 
+    // Set up CSRF header for all AJAX requests
+    const csrfToken = $("meta[name='csrf-token']").attr('content');
+    if (csrfToken) {
+        $.ajaxSetup({ headers: { 'X-CSRF-Token': csrfToken } });
+    }
+
     function updateReactionIconStates($reactions, activeType) {
         $reactions.find('.reaction-btn').each(function() {
             const $btn = $(this);
@@ -270,7 +276,14 @@ document.addEventListener('DOMContentLoaded', function() {
                             <div class="reply" data-reply-id="${data.reply.id}">
                                 <p><strong>@${data.reply.username}</strong> <span>${data.reply.timestamp}</span></p>
                                 <p>${data.reply.content}</p>
-                                ${data.reply.username === sessionStorage.getItem('username') ? '<button class="delete-reply inline-action" data-reply-id="' + data.reply.id + '"><i class="far fa-trash-alt"></i> Delete</button>' : ''}
+                                <div class="reply-actions">
+                                    <div class="reactions">
+                                        <button class="reaction-btn heart" data-reaction="heart" aria-label="Like reply"><i class="far fa-heart"></i> <span>0</span></button>
+                                        <button class="reaction-btn thumbs-up" data-reaction="thumbs-up" aria-label="Thumbs up reply"><i class="far fa-thumbs-up"></i> <span>0</span></button>
+                                        <button class="reaction-btn thumbs-down" data-reaction="thumbs-down" aria-label="Thumbs down reply"><i class="far fa-thumbs-down"></i> <span>0</span></button>
+                                    </div>
+                                    ${data.reply.username === sessionStorage.getItem('username') ? '<button class="delete-reply inline-action" data-reply-id="' + data.reply.id + '"><i class="far fa-trash-alt"></i> Delete</button>' : ''}
+                                </div>
                             </div>`;
                         $replies.append(replyHtml);
                         $form.find('input[name="content"]').val('');
@@ -290,8 +303,8 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         });
 
-        // Handle reaction clicks
-        $postContainer.on('click', '.reaction-btn', function(e) {
+        // Handle reaction clicks for posts
+        $postContainer.on('click', '.post > .post-actions .reactions .reaction-btn', function(e) {
             e.preventDefault();
             const $button = $(this);
             const postId = $button.closest('.post').data('post-id');
@@ -302,7 +315,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 setTimeout(() => $('.error-message').remove(), 3000);
                 return;
             }
-            console.log("Reaction clicked:", { postId, reactionType });
+            console.log("Reaction clicked (post):", { postId, reactionType });
             $.ajax({
                 url: '/add_reaction',
                 method: 'POST',
@@ -312,10 +325,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 },
                 success: function(data) {
                     $button.find('.loader').remove();
-                    console.log("Reaction response:", data);
                     if (data.success) {
                         const $reactions = $button.closest('.reactions');
-                        $reactions.find('.reaction-btn span').text(0); // Reset all counts
+                        $reactions.find('.reaction-btn span').text(0);
                         Object.keys(data.counts).forEach(type => {
                             $reactions.find(`[data-reaction="${type}"] span`).text(data.counts[type] || 0);
                         });
@@ -327,7 +339,48 @@ document.addEventListener('DOMContentLoaded', function() {
                 },
                 error: function(xhr, status, error) {
                     $button.find('.loader').remove();
-                    console.error("Reaction error:", { status, error, response: xhr.responseText });
+                    $button.after('<div class="error-message">Error adding reaction. Please try again.</div>');
+                    setTimeout(() => $('.error-message').remove(), 3000);
+                }
+            });
+        });
+
+        // Handle reaction clicks for replies
+        $postContainer.on('click', '.reply .reactions .reaction-btn', function(e) {
+            e.preventDefault();
+            const $button = $(this);
+            const replyId = $button.closest('.reply').data('reply-id');
+            const reactionType = $button.data('reaction');
+            const validReactions = ['heart', 'thumbs-up', 'thumbs-down'];
+            if (!validReactions.includes(reactionType)) {
+                $button.after('<div class="error-message">Invalid reaction type!</div>');
+                setTimeout(() => $('.error-message').remove(), 3000);
+                return;
+            }
+            console.log("Reaction clicked (reply):", { replyId, reactionType });
+            $.ajax({
+                url: '/add_reply_reaction',
+                method: 'POST',
+                data: { reply_id: replyId, reaction: reactionType },
+                beforeSend: function() {
+                    $button.append('<div class="loader"></div>');
+                },
+                success: function(data) {
+                    $button.find('.loader').remove();
+                    if (data.success) {
+                        const $reactions = $button.closest('.reactions');
+                        $reactions.find('.reaction-btn span').text(0);
+                        Object.keys(data.counts).forEach(type => {
+                            $reactions.find(`[data-reaction="${type}"] span`).text(data.counts[type] || 0);
+                        });
+                        updateReactionIconStates($reactions, data.user_reaction);
+                    } else {
+                        $button.after(`<div class="error-message">Error: ${data.error}</div>`);
+                        setTimeout(() => $('.error-message').remove(), 3000);
+                    }
+                },
+                error: function(xhr, status, error) {
+                    $button.find('.loader').remove();
                     $button.after('<div class="error-message">Error adding reaction. Please try again.</div>');
                     setTimeout(() => $('.error-message').remove(), 3000);
                 }

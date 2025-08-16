@@ -97,6 +97,16 @@ def init_db():
                           FOREIGN KEY (username) REFERENCES users(username),
                           UNIQUE(post_id, username))''') # Ensures one reaction per user per post
 
+            # Add table for reply reactions
+            c.execute('''CREATE TABLE IF NOT EXISTS reply_reactions
+                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                          reply_id INTEGER NOT NULL,
+                          username TEXT NOT NULL,
+                          reaction_type TEXT NOT NULL,
+                          FOREIGN KEY (reply_id) REFERENCES replies(id),
+                          FOREIGN KEY (username) REFERENCES users(username),
+                          UNIQUE(reply_id, username))''')
+
             # ... (keep the rest of your init_db function) ...
     except Exception as e:
         logger.error(f"Error initializing database: {e}")
@@ -110,6 +120,9 @@ def ensure_indexes():
 
             # Add an index for the new table
             c.execute("CREATE INDEX IF NOT EXISTS idx_reactions_post_id ON reactions(post_id)")
+
+            # Add index for reply reactions
+            c.execute("CREATE INDEX IF NOT EXISTS idx_reply_reactions_reply_id ON reply_reactions(reply_id)")
 
             conn.commit()
         logger.info("Database indexes ensured")
@@ -834,12 +847,12 @@ def blood_test_analysis():
             if not combined_message:
                 return jsonify({'response': "Please provide text or a file!"})
             if not is_blood_test_related(combined_message):
-                return jsonify({'response': "This isn’t about blood tests—try Nutrition instead!"})
+                return jsonify({'response': "This isn't about blood tests—try Nutrition instead!"})
             headers = {'Authorization': f'Bearer {XAI_API_KEY}', 'Content-Type': 'application/json'}
             payload = {
                 'model': 'grok-beta',
                 'messages': [
-                    {'role': 'system', 'content': 'You’re Grok, built by xAI—analyze blood tests from a functional medicine perspective.'},
+                    {'role': 'system', 'content': 'You're Grok, built by xAI—analyze blood tests from a functional medicine perspective.'},
                     {'role': 'user', 'content': combined_message}
                 ],
                 'max_tokens': 1000
@@ -876,7 +889,7 @@ def chat():
             combined_message = ""
             if file:
                 file_content = file.read().decode('utf-8', errors='ignore')
-                combined_message = f"Here’s some info: {file_content}"
+                combined_message = f"Here's some info: {file_content}"
             if message:
                 combined_message = f"{message}\n{combined_message}" if combined_message else message
             if not combined_message:
@@ -885,7 +898,7 @@ def chat():
             payload = {
                 'model': 'grok-beta',
                 'messages': [
-                    {'role': 'system', 'content': 'You’re Grok, built by xAI—keep it helpful and redirect blood test or nutrition queries.'},
+                    {'role': 'system', 'content': 'You're Grok, built by xAI—keep it helpful and redirect blood test or nutrition queries.'},
                     {'role': 'user', 'content': combined_message}
                 ],
                 'max_tokens': 1000
@@ -974,11 +987,11 @@ def nutrition():
                     {
                         'role': 'system',
                         'content': '''
-                        You’re Grok, built by xAI—create personalized nutrition plans based on the user’s profile. Use the following information if provided:
+                        You're Grok, built by xAI—create personalized nutrition plans based on the user's profile. Use the following information if provided:
                         - Gender (e.g., Male, Female, Non-binary, Prefer not to say)
                         - Age (e.g., 25 years)
                         - Weight (e.g., 150 lbs or 68 kg)
-                        - Height (e.g., 5’7” or 170 cm)
+                        - Height (e.g., 5'7" or 170 cm)
                         - Activity Level (e.g., Sedentary, Lightly active, Moderately active, Very active, Extremely active)
                         - Nutrition Goal (e.g., Lose weight, Gain muscle, Maintain current weight, Improve energy, Manage a specific health condition)
                         - Dietary Restrictions/Preferences (e.g., Vegetarian, Vegan, Gluten-free, Dairy-free, Nut allergies, Low-carb, Halal, Kosher)
@@ -987,7 +1000,7 @@ def nutrition():
                         - Budget (e.g., Low, Moderate, High)
                         - Cooking Skills/Time (e.g., Beginner, Advanced, Limited time)
                         - Favorite Foods/Flavors (e.g., Spicy, Sweet, Savory)
-                        If any information is missing, use the defaults specified in the message or ask the user for clarification. Format the nutrition plan with clear headers for days (e.g., “Day 1”), meals (e.g., “Breakfast,” “Lunch,” “Snack,” “Dinner”), and detailed descriptions. Use simple, readable language and ensure the plan is balanced, healthy, and aligns with the user’s goals and restrictions.
+                        If any information is missing, use the defaults specified in the message or ask the user for clarification. Format the nutrition plan with clear headers for days (e.g., "Day 1"), meals (e.g., "Breakfast," "Lunch," "Snack," "Dinner"), and detailed descriptions. Use simple, readable language and ensure the plan is balanced, healthy, and aligns with the user's goals and restrictions.
                         '''
                     },
                     {
@@ -1106,7 +1119,7 @@ def health_news():
             return render_template('index.html', error="Premium subscription required!")
         news_items = [
             {'title': 'Protein Boosts Gains', 'summary': 'More protein = more muscle.', 'source': 'ScienceDaily', 'source_url': 'https://www.sciencedaily.com', 'image_url': 'https://via.placeholder.com/150'},
-            {'title': 'Keto vs. Paleo', 'summary': 'Which diet wins? It’s complicated.', 'source': 'HealthLine', 'source_url': 'https://www.healthline.com', 'image_url': 'https://via.placeholder.com/150'}
+            {'title': 'Keto vs. Paleo', 'summary': 'Which diet wins? It's complicated.', 'source': 'HealthLine', 'source_url': 'https://www.healthline.com', 'image_url': 'https://via.placeholder.com/150'}
         ]
         return render_template('health_news.html', name=username, news_items=news_items, subscription=user['subscription'])
     except Exception as e:
@@ -1399,6 +1412,20 @@ def feed():
                 user_reaction_raw = c.fetchone()
                 post['user_reaction'] = user_reaction_raw['reaction_type'] if user_reaction_raw else None
 
+                # Add reaction counts for each reply and user reaction
+                for reply in post['replies']:
+                    c.execute("""
+                        SELECT reaction_type, COUNT(*) as count
+                        FROM reply_reactions
+                        WHERE reply_id = ?
+                        GROUP BY reaction_type
+                    """, (reply['id'],))
+                    rr = c.fetchall()
+                    reply['reactions'] = {r['reaction_type']: r['count'] for r in rr}
+                    c.execute("SELECT reaction_type FROM reply_reactions WHERE reply_id = ? AND username = ?", (reply['id'], username))
+                    ur = c.fetchone()
+                    reply['user_reaction'] = ur['reaction_type'] if ur else None
+
         return render_template('feed.html', posts=posts, csrf_token=get_csrf_token(), username=username)
     except Exception as e:
         logger.error(f"Error fetching feed: {str(e)}")
@@ -1590,6 +1617,46 @@ def delete_reply():
         logger.error(f"Error deleting reply {reply_id} for {username}: {str(e)}", exc_info=True)
         return jsonify({'success': False, 'error': f'Unexpected error: {str(e)}'}), 500
 
+@app.route('/add_reply_reaction', methods=['POST'])
+@login_required
+def add_reply_reaction():
+    username = session['username']
+    if not validate_csrf():
+        return jsonify({'success': False, 'error': 'Invalid CSRF token'}), 400
+    reply_id = request.form.get('reply_id', type=int)
+    reaction_type = request.form.get('reaction')
+
+    if not all([reply_id, reaction_type]):
+        return jsonify({'success': False, 'error': 'Missing data'}), 400
+
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT id, reaction_type FROM reply_reactions WHERE reply_id = ? AND username = ?", (reply_id, username))
+            existing = c.fetchone()
+            if existing:
+                if existing['reaction_type'] == reaction_type:
+                    c.execute("DELETE FROM reply_reactions WHERE id = ?", (existing['id'],))
+                else:
+                    c.execute("UPDATE reply_reactions SET reaction_type = ? WHERE id = ?", (reaction_type, existing['id']))
+            else:
+                c.execute("INSERT INTO reply_reactions (reply_id, username, reaction_type) VALUES (?, ?, ?)", (reply_id, username, reaction_type))
+            conn.commit()
+            c.execute("""
+                SELECT reaction_type, COUNT(*) as count
+                FROM reply_reactions
+                WHERE reply_id = ?
+                GROUP BY reaction_type
+            """, (reply_id,))
+            counts_raw = c.fetchall()
+            new_counts = {r['reaction_type']: r['count'] for r in counts_raw}
+            c.execute("SELECT reaction_type FROM reply_reactions WHERE reply_id = ? AND username = ?", (reply_id, username))
+            user_reaction_raw = c.fetchone()
+            new_user_reaction = user_reaction_raw['reaction_type'] if user_reaction_raw else None
+            return jsonify({'success': True, 'counts': new_counts, 'user_reaction': new_user_reaction})
+    except Exception as e:
+        logger.error(f"Error adding reply reaction: {str(e)}")
+        return jsonify({'success': False, 'error': 'Server error'}), 500
 
 @app.errorhandler(500)
 def internal_server_error(e):
