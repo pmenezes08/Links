@@ -1,198 +1,35 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Workouts - Links</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Workouts</title>
+	<link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
 </head>
 <body>
-    <div class="sidebar">
-        <button class="menu-btn">☰ Menu</button>
-        <div class="dropdown-content">
-            {% if session['username'] == 'admin' %}
-            <a href="/admin">Admin Dashboard</a>
-            {% endif %}
-            <a href="/profile">Profile</a>
-            <a href="/premium_dashboard">Premium Dashboard</a>
-            <a href="/workouts">Workouts</a>
-            <a href="/nutrition">Nutrition</a>
-            <a href="/blood_test_analysis">Blood Test Analysis</a>
-            <a href="/chat">Chat with Grok</a>
-            <a href="/health_news">Health News</a>
-            <a href="/subscribe">Subscribe</a>
-            <a href="/logout">Logout</a>
-        </div>
-    </div>
-    <div class="container">
-        <h1>Your Saved Workouts, {{ name }}!</h1>
-        {% for workout in workouts %}
-        <div class="workout-section">
-            <h2>Workout Saved on {{ workout[2] }} (Week {{ workout[3] }})</h2>
-            <table style="width: 90%; margin: 20px auto; border-collapse: collapse;">
-                <tr style="background: #3a4647; color: #e0e0e0;">
-                    <th style="padding: 10px;">Exercise Name</th>
-                    <th style="padding: 10px;">Sets</th>
-                    <th style="padding: 10px;">Reps</th>
-                    <th style="padding: 10px;">Note</th>
-                    <th style="padding: 10px;">Weight (lbs/kg)</th>
-                </tr>
-                {% set exercises = workout[1]|safe|replace('<br>', '\n')|split('\n')|select('string')|list %}
-                {% for exercise_line in exercises %}
-                    {% if '<b>' in exercise_line and '</b>' in exercise_line %}
-                        {% set name = exercise_line|replace('<b>', '')|replace('</b>', '') %}
-                        {% set parts = loop.index0 + 1 < exercises|length ? exercises[loop.index0 + 1]|split(', ') : [] %}
-                        {% set sets = parts|selectattr('startswith', 'Sets:')|map('replace', 'Sets: ', '')|first or '' %}
-                        {% set reps = parts|selectattr('startswith', 'Reps:')|map('replace', 'Reps: ', '')|first or '' %}
-                        {% set note = parts|selectattr('startswith', 'Note:')|map('replace', 'Note: ', '')|first or '' %}
-                        <tr style="background: #2d3839; color: #e0e0e0;">
-                            <td style="padding: 10px;">{{ name }}</td>
-                            <td style="padding: 10px;">{{ sets }}</td>
-                            <td style="padding: 10px;">{{ reps }}</td>
-                            <td style="padding: 10px;">{{ note }}</td>
-                            <td style="padding: 10px;">
-                                <input type="text" name="weight_{{ workout[0] }}_{{ loop.index0 }}" value="{{ workout[4] }}" style="width: 80px; background: #3a4647; color: #e0e0e0; border: none; padding: 5px; border-radius: 4px; font-size: 0.9em; font-family: Arial, Helvetica, sans-serif;">
-                                <button class="update-weight-btn sleek-btn" data-workout-id="{{ workout[0] }}" data-exercise-index="{{ loop.index0 }}" data-week="{{ workout[3] }}">Update</button>
-                            </td>
-                        </tr>
-                    {% endif %}
-                {% endfor %}
-            </table>
-            <button class="add-week-btn sleek-btn" data-workout-id="{{ workout[0] }}">Add New Week</button>
-        </div>
-        {% endfor %}
-        <button onclick="location.href='/workouts'" class="go-back-btn"></button>
-    </div>
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <script src="{{ url_for('static', filename='script.js') }}"></script>
-    <script>
-        $(document).ready(function() {
-            $('.menu-btn').click(function() {
-                $('.dropdown-content').toggle();
-            });
-            $(window).resize(function() {
-                if ($(window).width() > 768) {
-                    $('.dropdown-content').hide();
-                }
-            });
-
-            $('.update-weight-btn').click(function() {
-                var workoutId = $(this).data('workout-id');
-                var exerciseIndex = $(this).data('exercise-index');
-                var week = $(this).data('week');
-                var weight = $(this).closest('tr').find(`input[name="weight_${workoutId}_${exerciseIndex}"]`).val();
-                $.post('/update_weight', {
-                    workout_id: workoutId,
-                    week: week,
-                    weight: weight
-                }, function(response) {
-                    if (response.success) {
-                        alert('Weight updated successfully!');
-                    } else {
-                        alert('Error updating weight: ' + response.error);
-                    }
-                }).fail(function(xhr, status, error) {
-                    alert('Error: ' + error);
-                });
-            });
-
-            $('.add-week-btn').click(function() {
-                var workoutId = $(this).data('workout-id');
-                var currentWeek = parseInt($(this).data('week')) || 1;
-                var newWeek = currentWeek + 1;
-                $.post('/update_weight', {
-                    workout_id: workoutId,
-                    week: newWeek,
-                    weight: ''
-                }, function(response) {
-                    if (response.success) {
-                        location.reload();  // Refresh to show new week
-                    } else {
-                        alert('Error adding new week: ' + response.error);
-                    }
-                }).fail(function(xhr, status, error) {
-                    alert('Error: ' + error);
-                });
-            });
-        });
-    </script>
-    <style>
-        * {
-            font-family: Arial, Helvetica, sans-serif;  /* Consistent font across all elements */
-        }
-        .sidebar {
-            position: fixed;
-            top: 0;
-            left: 0;
-            height: 100%;
-            width: 60px;
-            background: #1a2526;
-            transition: width 0.3s;
-            z-index: 1000;
-        }
-        .menu-btn {
-            background: none;
-            border: none;
-            color: #e0e0e0;
-            font-size: 24px;
-            padding: 15px;
-            cursor: pointer;
-            width: 100%;
-            text-align: left;
-            font-family: Arial, Helvetica, sans-serif;  /* Match font */
-        }
-        .dropdown-content {
-            display: none;
-            background: #2d3839;
-            position: absolute;
-            top: 60px;
-            left: 0;
-            width: 200px;
-        }
-        .dropdown-content a {
-            color: #e0e0e0;
-            padding: 10px 15px;
-            display: block;
-            text-decoration: none;
-            font-size: 0.9em;  /* Match app font size */
-            font-family: Arial, Helvetica, sans-serif;  /* Match font */
-        }
-        .dropdown-content a:hover {
-            background: #3a4647;
-        }
-        .container {
-            max-width: 90%;
-            margin: 0 auto;
-            padding: 20px;
-            text-align: center;
-        }
-        .workout-section {
-            margin: 20px 0;
-            padding: 10px;
-            background: #2d3839;
-            border-radius: 4px;
-        }
-        h1 {
-            font-size: 2.5em;  /* Match the large "Links" font size on login page */
-            margin-bottom: 20px;
-            color: #e0e0e0;
-            font-weight: bold;
-            font-family: Arial, Helvetica, sans-serif;  /* Match font */
-        }
-        h2 {
-            font-size: 1.5em;  /* Slightly larger than body text, but smaller than h1 */
-            margin: 10px 0;
-            color: #e0e0e0;
-            font-family: Arial, Helvetica, sans-serif;  /* Match font */
-        }
-        @media (max-width: 768px) {
-            .sidebar { width: 100%; height: 60px; }
-            .menu-btn { font-size: 20px; padding: 10px; }
-            .dropdown-content { top: 60px; width: 100%; left: 0; }
-            .container { padding: 10px; }
-            h1 { font-size: 2em; }  /* Slightly smaller on mobile, matching login page */
-            h2 { font-size: 1.2em; }
-        }
-    </style>
+	<div class="sidebar">
+		<button class="menu-btn">☰ Menu</button>
+		<div class="dropdown-content">
+			{% if session['username'] == 'admin' %}
+			<a href="/admin">Admin Dashboard</a>
+			{% endif %}
+			<a href="/profile">Profile</a>
+			<a href="/user_chat">Messages</a>
+			<a href="/premium_dashboard">Premium Dashboard</a>
+			<a href="/feed">Social Feed</a>
+			<a href="/nutrition">Nutrition</a>
+			<a href="/blood_test_analysis">Blood Test Analysis</a>
+			<a href="/chat">Chat with Grok</a>
+			<a href="/health_news">Health News</a>
+			<a href="/subscribe">Subscribe</a>
+			<a href="/logout">Logout</a>
+		</div>
+	</div>
+	<div class="container">
+		<h1>Workouts</h1>
+		<button onclick="location.href='/dashboard'" class="go-back-btn"></button>
+	</div>
+	<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+	<script src="{{ url_for('static', filename='script.js') }}"></script>
 </body>
 </html>

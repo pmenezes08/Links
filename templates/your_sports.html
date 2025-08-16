@@ -1,230 +1,35 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Your Sports - Workout X</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Your Sports</title>
+	<link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
 </head>
 <body>
-    <div class="sidebar">
-        <button class="menu-btn">☰ Menu<span id="unread-badge" class="unread-badge">0</span></button>
-        <div class="dropdown-content">
-            <a href="/" class="sidebar-link">Welcome Page</a>
-            {% if session.get('username') %}
-                <a href="/profile" class="sidebar-link">Profile</a>
-                <a href="/user_chat" class="sidebar-link">Messages</a>
-                <a href="/premium_dashboard" class="sidebar-link">Premium Dashboard</a>
-                <a href="/my_workouts" class="sidebar-link">Workouts</a>
-                <a href="/nutrition" class="sidebar-link">Nutrition</a>
-                <a href="/blood_test_analysis" class="sidebar-link">Blood Test Analysis</a>
-                <a href="/chat" class="sidebar-link">Chat with Grok</a>
-                <a href="/health_news" class="sidebar-link">Health News</a>
-                <a href="/your_sports" class="sidebar-link">Your Sports</a>
-                <a href="/subscribe" class="sidebar-link">Subscribe</a>
-                <a href="/logout" class="sidebar-link">Logout</a>
-            {% endif %}
-        </div>
-    </div>
-    <div class="container">
-        <h2>Your Sports, {{ name }}</h2>
-        <div class="sports-content">
-            <h3>Your Memberships</h3>
-            {% if memberships %}
-                <ul class="membership-list">
-                    {% for membership in memberships %}
-                        <li class="membership-item">
-                            {{ membership[0] }} ({{ membership[1] }}) - {{ membership[2] }} ({{ membership[3] }} to {{ membership[4] or 'Ongoing' }}, Status: {{ membership[5] }})
-                            <!-- Placeholder for renew/cancel (to be implemented) -->
-                            {% if membership[5] == 'active' %}
-                                <form method="POST" action="{{ url_for('user_renew_membership') }}" style="display: inline; margin-left: 10px;">
-                                    {{ csrf_token() }}
-                                    <input type="hidden" name="membership_id" value="{{ loop.index0 + 1 }}"> <!-- Adjust based on actual membership_id -->
-                                    <select name="membership_type">
-                                        <option value="monthly">Renew Monthly</option>
-                                        <option value="yearly">Renew Yearly</option>
-                                    </select>
-                                    <button type="submit" class="sleek-btn small">Renew</button>
-                                </form>
-                                <form method="POST" action="{{ url_for('user_cancel_membership') }}" style="display: inline; margin-left: 5px;">
-                                    {{ csrf_token() }}
-                                    <input type="hidden" name="membership_id" value="{{ loop.index0 + 1 }}"> <!-- Adjust based on actual membership_id -->
-                                    <button type="submit" class="sleek-btn small" onclick="return confirm('Are you sure you want to cancel this membership?')">Cancel</button>
-                                </form>
-                            {% endif %}
-                        </li>
-                    {% endfor %}
-                </ul>
-            {% else %}
-                <p style="color: #e0e0e0;">You have no active memberships. Join a gym, fitness club, or sports club today!</p>
-            {% endif %}
-            <button onclick="location.href='/premium_dashboard'" class="go-back-btn">Back</button>
-        </div>
-    </div>
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <script src="{{ url_for('static', filename='script.js') }}"></script>
-    <script>
-        $(document).ready(function() {
-            $('.menu-btn').click(function() {
-                $('.dropdown-content').toggle();
-            });
-            $(window).resize(function() {
-                if ($(window).width() > 768) {
-                    $('.dropdown-content').hide();
-                }
-            });
-
-            // Check for unread messages if logged in
-            function checkUnreadMessages() {
-                if (sessionStorage.getItem('username')) {
-                    $.get('/check_unread_messages', function(data) {
-                        const unreadCount = data.unread_count;
-                        const badge = $('#unread-badge');
-                        if (unreadCount > 0) {
-                            badge.text(unreadCount > 9 ? '9+' : unreadCount);
-                            badge.removeClass('hidden');
-                        } else {
-                            badge.addClass('hidden');
-                        }
-                    }).fail(function(xhr, status, error) {
-                        console.error('Error checking unread messages:', error);
-                    });
-                }
-            }
-
-            checkUnreadMessages();
-            setInterval(checkUnreadMessages, 5000);
-        });
-    </script>
-    <style>
-        * {
-            font-family: Arial, Helvetica, sans-serif;
-        }
-        .sidebar {
-            position: fixed;
-            top: 0;
-            left: 0;
-            height: 100%;
-            width: 60px;
-            background: #1a2526;
-            transition: width 0.3s;
-            z-index: 1000;
-        }
-        .menu-btn {
-            background: none;
-            border: none;
-            color: #e0e0e0;
-            font-size: 24px;
-            padding: 15px;
-            cursor: pointer;
-            width: 100%;
-            text-align: left;
-        }
-        .unread-badge {
-            display: inline-block;
-            background: #ff4444;
-            color: #fff;
-            font-size: 0.6em;
-            font-weight: bold;
-            width: 16px;
-            height: 16px;
-            border-radius: 50%;
-            text-align: center;
-            line-height: 16px;
-            margin-left: 8px;
-            position: relative;
-            top: -2px;
-        }
-        .unread-badge.hidden {
-            display: none;
-        }
-        .dropdown-content {
-            display: none;
-            background: #2d3839;
-            position: absolute;
-            top: 60px;
-            left: 0;
-            width: 200px;
-            box-shadow: 2px 2px 6px rgba(0, 0, 0, 0.2);
-        }
-        .dropdown-content a, .dropdown-content a.sidebar-link {
-            color: #e0e0e0;
-            padding: 10px 15px;
-            display: block;
-            text-decoration: none;
-            font-size: 0.9em;
-        }
-        .dropdown-content a:hover, .dropdown-content a.sidebar-link:hover {
-            background: #3a4647;
-        }
-        .container {
-            max-width: 90%;
-            margin: 0 auto;
-            padding: 20px;
-            text-align: center;
-        }
-        h2 {
-            color: #e0e0e0;
-            font-size: 1.5em;
-            margin-bottom: 15px;
-        }
-        .sports-content {
-            background: #2d3839;
-            padding: 20px;
-            border-radius: 8px;
-            max-width: 800px;
-            margin: 0 auto;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-        }
-        h3 {
-            color: #e0e0e0;
-            font-size: 1.2em;
-            margin-top: 20px;
-            margin-bottom: 10px;
-        }
-        .membership-list {
-            list-style: none;
-            padding: 0;
-            margin: 15px 0;
-        }
-        .membership-item {
-            background: #3a4647;
-            padding: 10px;
-            border-radius: 4px;
-            margin-bottom: 10px;
-            color: #e0e0e0;
-            font-size: 0.9em;
-        }
-        .sleek-btn, .go-back-btn {
-            background: #3a4647;
-            color: #e0e0e0;
-            border: none;
-            padding: 8px 16px;
-            border-radius: 4px;
-            cursor: pointer;
-            margin: 5px;
-            font-size: 0.9em;
-            transition: opacity 0.2s ease;
-        }
-        .sleek-btn.small {
-            padding: 6px 12px;
-            font-size: 0.8em;
-        }
-        .sleek-btn:hover, .go-back-btn:hover {
-            opacity: 0.8;
-        }
-        @media (max-width: 768px) {
-            .sidebar { width: 100%; height: 60px; }
-            .menu-btn { font-size: 20px; padding: 10px; }
-            .dropdown-content { top: 60px; width: 100%; left: 0; }
-            .container { padding: 10px; }
-            h2 { font-size: 1.3em; }
-            h3 { font-size: 1em; }
-            .sports-content { padding: 15px; max-width: 100%; }
-            .membership-item { font-size: 0.9em; padding: 8px; }
-            .sleek-btn, .go-back-btn { font-size: 0.9em; padding: 6px 12px; }
-            .sleek-btn.small { padding: 4px 10px; font-size: 0.8em; }
-        }
-    </script>
+	<div class="sidebar">
+		<button class="menu-btn">☰ Menu<span id="unread-badge" class="unread-badge">0</span></button>
+		<div class="dropdown-content">
+			{% if session['username'] == 'admin' %}
+			<a href="/admin">Admin Dashboard</a>
+			{% endif %}
+			<a href="/profile">Profile</a>
+			<a href="/user_chat">Messages</a>
+			<a href="/premium_dashboard">Premium Dashboard</a>
+			<a href="/feed">Social Feed</a>
+			<a href="/nutrition">Nutrition</a>
+			<a href="/blood_test_analysis">Blood Test Analysis</a>
+			<a href="/chat">Chat with Grok</a>
+			<a href="/health_news">Health News</a>
+			<a href="/subscribe">Subscribe</a>
+			<a href="/logout">Logout</a>
+		</div>
+	</div>
+	<div class="container">
+		<h1>Your Sports</h1>
+		<button onclick="location.href='/dashboard'" class="go-back-btn">Back</button>
+	</div>
+	<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+	<script src="{{ url_for('static', filename='script.js') }}"></script>
 </body>
 </html>
