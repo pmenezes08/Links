@@ -618,3 +618,27 @@ select:focus, input:focus {
     .delete-post, .delete-reply { margin-top: 6px; }
     .posts { max-width: 100%; }
 }
+
+.login-options {
+	display: flex;
+	gap: 8px;
+	justify-content: center;
+	flex-wrap: wrap;
+	margin-top: 8px;
+}
+
+.popup-content input[name="username"] {
+	background: rgba(255, 255, 255, 0.1);
+	border: none;
+	border-radius: 6px;
+	color: #ffffff;
+	padding: 10px;
+	width: 100%;
+	max-width: 350px;
+	box-sizing: border-box;
+	margin: 8px auto;
+}
+
+.popup-content input[name="username"]::placeholder { color: #d1d4d6; }
+
+.popup-content .sleek-btn { width: 100%; max-width: 350px; }

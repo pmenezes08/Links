@@ -15,10 +15,10 @@
 				<input type="text" name="username" placeholder="Enter your username" required>
 				<button type="submit" class="sleek-btn">User Login</button>
 			</form>
-			<div style="display:flex; gap:8px; justify-content:center; flex-wrap:wrap; margin-top:8px;">
-				<button onclick="location.href='{{ url_for('business_login') }}'" class="sleek-btn">Business Login</button>
-				<button onclick="location.href='{{ url_for('login_x') }}'" class="sleek-btn">Sign In with X</button>
-			</div>
+			            <div class="login-options">
+                <button onclick="location.href='{{ url_for('business_login') }}'" class="sleek-btn">Business Login</button>
+                <button onclick="location.href='{{ url_for('login_x') }}'" class="sleek-btn">Sign In with X</button>
+            </div>
 			{% if error %}
 				<p style="color:#ff4444; margin-top:10px;">{{ error }}</p>
 			{% endif %}
