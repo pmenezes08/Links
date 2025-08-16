@@ -26,36 +26,41 @@
     </div>
 
     <!-- Main Content -->
-    <div class="container feed-container">
+    <div class="container feed">
         <h1>Social Feed</h1>
 
-        <!-- Post Submission Form -->
-        <form action="/post_status" method="POST">
-            <div class="selection">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                <input type="text" name="content" placeholder="What's on your mind?" required>
-                <button type="submit" class="sleek-btn">Post</button>
-            </div>
-        </form>
+        <!-- Composer -->
+        <div class="composer-card">
+            <form action="/post_status" method="POST" class="composer-form">
+                <div class="composer-inner">
+                    <div class="avatar"></div>
+                    <div class="composer-body">
+                        <input type="text" name="content" class="composer-input" placeholder="What is happening?!" required>
+                        <div class="composer-actions">
+                            <button type="submit" class="sleek-btn small">Post</button>
+                        </div>
+                    </div>
+                </div>
+            </form>
+        </div>
 
         <!-- Posts Display -->
-        <div class="posts">
+        <div class="posts timeline">
             {% if posts %}
                 {% for post in posts %}
                     <div class="post" data-post-id="{{ post.id }}">
-                        <div class="post-header">
-                            <p class="post-meta"><strong>@{{ post.username }}</strong> <span>{{ post.timestamp | format_date('%m/%d/%y %I:%M %p') }}</span></p>
+                        <p><strong>@{{ post.username }}</strong> <span>{{ post.timestamp | format_date('%m/%d/%y %I:%M %p') }}</span></p>
+                        <p>{{ post.content }}</p>
+                        <div class="post-actions">
+                            <div class="reactions">
+                                <button class="reaction-btn heart {{ 'active' if post.user_reaction == 'heart' }}" data-reaction="heart" aria-label="Like post"><i class="far fa-heart"></i> <span>{{ post.reactions['heart'] or 0 }}</span></button>
+                                <button class="reaction-btn thumbs-up {{ 'active' if post.user_reaction == 'thumbs-up' }}" data-reaction="thumbs-up" aria-label="Thumbs up"><i class="far fa-thumbs-up"></i> <span>{{ post.reactions['thumbs-up'] or 0 }}</span></button>
+                                <button class="reaction-btn thumbs-down {{ 'active' if post.user_reaction == 'thumbs-down' }}" data-reaction="thumbs-down" aria-label="Thumbs down"><i class="far fa-thumbs-down"></i> <span>{{ post.reactions['thumbs-down'] or 0 }}</span></button>
+                            </div>
+                            {% if post.username == session['username'] %}
+                                <button class="delete-post inline-action" data-post-id="{{ post.id }}"><i class="far fa-trash-alt"></i> Delete</button>
+                            {% endif %}
                         </div>
-                        <p class="post-content">{{ post.content }}</p>
-                        <div class="reactions">
-                            <button class="reaction-btn heart {{ 'active' if post.user_reaction == 'heart' }}" data-reaction="heart" aria-label="Like post"><i class="fa-regular fa-heart"></i> <span>{{ post.reactions.get('heart', 0) }}</span></button>
-                            <button class="reaction-btn thumbs-up {{ 'active' if post.user_reaction == 'thumbs-up' }}" data-reaction="thumbs-up" aria-label="Thumbs up"><i class="fa-regular fa-thumbs-up"></i> <span>{{ post.reactions.get('thumbs-up', 0) }}</span></button>
-                            <button class="reaction-btn thumbs-down {{ 'active' if post.user_reaction == 'thumbs-down' }}" data-reaction="thumbs-down" aria-label="Thumbs down"><i class="fa-regular fa-thumbs-down"></i> <span>{{ post.reactions.get('thumbs-down', 0) }}</span></button>
-                            <button class="reaction-btn smile {{ 'active' if post.user_reaction == 'smile' }}" data-reaction="smile" aria-label="Smile"><i class="fa-regular fa-face-smile"></i> <span>{{ post.reactions.get('smile', 0) }}</span></button>
-                        </div>
-                        {% if post.username == session['username'] %}
-                            <button class="delete-post" data-post-id="{{ post.id }}">Delete</button>
-                        {% endif %}
                         <form class="reply-form" action="/post_reply" method="POST">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                             <input type="hidden" name="post_id" value="{{ post.id }}">
@@ -68,7 +73,7 @@
                                     <p><strong>@{{ reply.username }}</strong> <span>{{ reply.timestamp | format_date('%m/%d/%y %I:%M %p') }}</span></p>
                                     <p>{{ reply.content }}</p>
                                     {% if reply.username == session['username'] %}
-                                        <button class="delete-reply" data-reply-id="{{ reply.id }}">Delete</button>
+                                        <button class="delete-reply inline-action" data-reply-id="{{ reply.id }}"><i class="far fa-trash-alt"></i> Delete</button>
                                     {% endif %}
                                 </div>
                             {% endfor %}

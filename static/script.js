@@ -207,17 +207,16 @@ document.addEventListener('DOMContentLoaded', function() {
                     if (data.success) {
                         const postHtml = `
                             <div class="post" data-post-id="${data.post.id}">
-                                <div class="post-header">
-                                    <p class="post-meta"><strong>@${data.post.username}</strong> <span>${data.post.timestamp}</span></p>
+                                <p><strong>@${data.post.username}</strong> <span>${data.post.timestamp}</span></p>
+                                <p>${data.post.content}</p>
+                                <div class="post-actions">
+                                    <div class="reactions">
+                                        <button class="reaction-btn heart" data-reaction="heart" aria-label="Like post"><i class="far fa-heart"></i> <span>0</span></button>
+                                        <button class="reaction-btn thumbs-up" data-reaction="thumbs-up" aria-label="Thumbs up"><i class="far fa-thumbs-up"></i> <span>0</span></button>
+                                        <button class="reaction-btn thumbs-down" data-reaction="thumbs-down" aria-label="Thumbs down"><i class="far fa-thumbs-down"></i> <span>0</span></button>
+                                    </div>
+                                    ${data.post.username === sessionStorage.getItem('username') ? '<button class="delete-post inline-action" data-post-id="' + data.post.id + '"><i class="far fa-trash-alt"></i> Delete</button>' : ''}
                                 </div>
-                                <p class="post-content">${data.post.content}</p>
-                                <div class="reactions">
-                                    <button class="reaction-btn heart" data-reaction="heart" aria-label="Like post"><i class="fa-regular fa-heart"></i> <span>0</span></button>
-                                    <button class="reaction-btn thumbs-up" data-reaction="thumbs-up" aria-label="Thumbs up"><i class="fa-regular fa-thumbs-up"></i> <span>0</span></button>
-                                    <button class="reaction-btn thumbs-down" data-reaction="thumbs-down" aria-label="Thumbs down"><i class="fa-regular fa-thumbs-down"></i> <span>0</span></button>
-                                    <button class="reaction-btn smile" data-reaction="smile" aria-label="Smile"><i class="fa-regular fa-face-smile"></i> <span>0</span></button>
-                                </div>
-                                ${data.post.username === sessionStorage.getItem('username') ? '<button class="delete-post" data-post-id="' + data.post.id + '">Delete</button>' : ''}
                                 <form class="reply-form" action="/post_reply" method="POST">
                                     <input type="hidden" name="post_id" value="${data.post.id}">
                                     <input type="text" name="content" placeholder="Write a reply..." required>
@@ -271,7 +270,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             <div class="reply" data-reply-id="${data.reply.id}">
                                 <p><strong>@${data.reply.username}</strong> <span>${data.reply.timestamp}</span></p>
                                 <p>${data.reply.content}</p>
-                                ${data.reply.username === sessionStorage.getItem('username') ? '<button class="delete-reply" data-reply-id="' + data.reply.id + '">Delete</button>' : ''}
+                                ${data.reply.username === sessionStorage.getItem('username') ? '<button class="delete-reply inline-action" data-reply-id="' + data.reply.id + '"><i class="far fa-trash-alt"></i> Delete</button>' : ''}
                             </div>`;
                         $replies.append(replyHtml);
                         $form.find('input[name="content"]').val('');
@@ -297,7 +296,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const $button = $(this);
             const postId = $button.closest('.post').data('post-id');
             const reactionType = $button.data('reaction');
-            const validReactions = ['heart', 'thumbs-up', 'thumbs-down', 'smile'];
+            const validReactions = ['heart', 'thumbs-up', 'thumbs-down'];
             if (!validReactions.includes(reactionType)) {
                 $button.after('<div class="error-message">Invalid reaction type!</div>');
                 setTimeout(() => $('.error-message').remove(), 3000);
