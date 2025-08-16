@@ -526,7 +526,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     </div>
                 </div>
                 <div class="replies">
-                    <div style="text-align: center; padding: 20px; color: #9fb0b5;">Loading replies...</div>
                 </div>
                 <form class="reply-form" action="/post_reply" method="POST" enctype="multipart/form-data">
                     <input type="hidden" name="csrf_token" value="${$('meta[name="csrf-token"]').attr('content')}">
