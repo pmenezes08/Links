@@ -1280,21 +1280,7 @@ def success():
         logger.error(f"Error in success for {username}: {str(e)}")
         abort(500)
 
-@app.route('/your_sports')
-@login_required
-def your_sports():
-    """Your Communities page - transformed from Your Sports"""
-    username = session['username']
-    try:
-        # Generate CSRF token directly here
-        token = session.get('csrf_token')
-        if not token:
-            token = secrets.token_hex(16)
-            session['csrf_token'] = token
-        return render_template('your_sports.html', csrf_token=token)
-    except Exception as e:
-        logger.error(f"Error in your_sports for {username}: {str(e)}")
-        abort(500)
+
 
 @app.route('/business_register', methods=['GET', 'POST'])
 def business_register():
@@ -1912,8 +1898,18 @@ def get_post():
 @app.route('/communities')
 @login_required
 def communities():
-    """Main communities page - redirects to your_sports for now"""
-    return redirect(url_for('your_sports'))
+    """Main communities page"""
+    username = session['username']
+    try:
+        # Generate CSRF token directly here
+        token = session.get('csrf_token')
+        if not token:
+            token = secrets.token_hex(16)
+            session['csrf_token'] = token
+        return render_template('communities.html', csrf_token=token)
+    except Exception as e:
+        logger.error(f"Error in communities for {username}: {str(e)}")
+        abort(500)
 
 @app.route('/create_community', methods=['POST'])
 @login_required
