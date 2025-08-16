@@ -149,6 +149,40 @@ def init_db():
                 # Column already exists
                 pass
 
+            # Create communities table
+            c.execute('''CREATE TABLE IF NOT EXISTS communities
+                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                          name TEXT NOT NULL,
+                          type TEXT NOT NULL,
+                          creator_username TEXT NOT NULL,
+                          join_code TEXT UNIQUE NOT NULL,
+                          created_at TEXT NOT NULL,
+                          FOREIGN KEY (creator_username) REFERENCES users(username))''')
+
+            # Create user_communities table (many-to-many relationship)
+            c.execute('''CREATE TABLE IF NOT EXISTS user_communities
+                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                          user_id INTEGER NOT NULL,
+                          community_id INTEGER NOT NULL,
+                          joined_at TEXT NOT NULL,
+                          FOREIGN KEY (user_id) REFERENCES users(id),
+                          FOREIGN KEY (community_id) REFERENCES communities(id),
+                          UNIQUE(user_id, community_id))''')
+
+            # Add community_id to posts table
+            try:
+                c.execute("ALTER TABLE posts ADD COLUMN community_id INTEGER")
+            except sqlite3.OperationalError:
+                # Column already exists
+                pass
+
+            # Add community_id to replies table
+            try:
+                c.execute("ALTER TABLE replies ADD COLUMN community_id INTEGER")
+            except sqlite3.OperationalError:
+                # Column already exists
+                pass
+
             conn.commit()
     except Exception as e:
         logger.error(f"Error initializing database: {e}")
@@ -165,6 +199,14 @@ def ensure_indexes():
 
             # Add index for reply reactions
             c.execute("CREATE INDEX IF NOT EXISTS idx_reply_reactions_reply_id ON reply_reactions(reply_id)")
+
+            # Add indexes for communities
+            c.execute("CREATE INDEX IF NOT EXISTS idx_communities_join_code ON communities(join_code)")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_communities_creator ON communities(creator_username)")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_user_communities_user_id ON user_communities(user_id)")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_user_communities_community_id ON user_communities(community_id)")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_posts_community_id ON posts(community_id)")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_replies_community_id ON replies(community_id)")
 
             conn.commit()
         logger.info("Database indexes ensured")
@@ -191,6 +233,22 @@ def save_uploaded_file(file):
         file.save(filepath)
         return f"uploads/{unique_filename}"
     return None
+
+def generate_join_code():
+    """Generate a unique 6-character join code for communities"""
+    import random
+    import string
+    
+    while True:
+        # Generate a 6-character code with letters and numbers
+        code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+        
+        # Check if code already exists
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT id FROM communities WHERE join_code = ?", (code,))
+            if not c.fetchone():
+                return code
 
 # --- CSRF helpers ---
 def get_csrf_token():
@@ -1559,7 +1617,8 @@ def post_status():
         return jsonify({'success': False, 'error': 'Invalid CSRF token'}), 400
     
     content = request.form.get('content', '').strip()
-    logger.debug(f"Received post request for {username} with content: {content}")
+    community_id = request.form.get('community_id', type=int)
+    logger.debug(f"Received post request for {username} with content: {content} in community: {community_id}")
     
     # Handle file upload
     image_path = None
@@ -1577,8 +1636,20 @@ def post_status():
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
-            c.execute("INSERT INTO posts (username, content, image_path, timestamp) VALUES (?, ?, ?, ?)",
-                      (username, content, image_path, timestamp))
+            
+            # If community_id is provided, verify user is member
+            if community_id:
+                c.execute("""
+                    SELECT 1 FROM user_communities uc
+                    JOIN users u ON uc.user_id = u.id
+                    WHERE u.username = ? AND uc.community_id = ?
+                """, (username, community_id))
+                
+                if not c.fetchone():
+                    return jsonify({'success': False, 'error': 'You are not a member of this community'}), 403
+            
+            c.execute("INSERT INTO posts (username, content, image_path, timestamp, community_id) VALUES (?, ?, ?, ?, ?)",
+                      (username, content, image_path, timestamp, community_id))
             conn.commit()
         logger.info(f"Post added successfully for {username} with ID: {c.lastrowid}")
         return jsonify({
@@ -1589,7 +1660,8 @@ def post_status():
                 'username': username, 
                 'content': content, 
                 'image_path': image_path,
-                'timestamp': timestamp
+                'timestamp': timestamp,
+                'community_id': community_id
             }
         }), 200
     except Exception as e:
@@ -1633,8 +1705,13 @@ def post_reply():
             if not c.fetchone():
                 return jsonify({'success': False, 'error': 'Post not found!'}), 404
 
-            c.execute("INSERT INTO replies (post_id, username, content, image_path, timestamp) VALUES (?, ?, ?, ?, ?)",
-                      (post_id, username, content, image_path, timestamp_db))
+            # Get the community_id from the post
+            c.execute("SELECT community_id FROM posts WHERE id = ?", (post_id,))
+            post_data = c.fetchone()
+            community_id = post_data['community_id'] if post_data else None
+            
+            c.execute("INSERT INTO replies (post_id, username, content, image_path, timestamp, community_id) VALUES (?, ?, ?, ?, ?, ?)",
+                      (post_id, username, content, image_path, timestamp_db, community_id))
             reply_id = c.lastrowid
             conn.commit()
 
@@ -1830,6 +1907,160 @@ def get_post():
     except Exception as e:
         logger.error(f"Error fetching post {post_id}: {str(e)}")
         return jsonify({'success': False, 'error': 'Server error'}), 500
+
+# Community Routes
+@app.route('/communities')
+@login_required
+def communities():
+    """Main communities page - redirects to your_sports for now"""
+    return redirect(url_for('your_sports'))
+
+@app.route('/create_community', methods=['POST'])
+@login_required
+def create_community():
+    """Create a new community"""
+    username = session.get('username')
+    name = request.form.get('name')
+    community_type = request.form.get('type')
+    
+    if not name or not community_type:
+        return jsonify({'success': False, 'error': 'Name and type are required'}), 400
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Generate unique join code
+            join_code = generate_join_code()
+            
+            # Create the community
+            c.execute("""
+                INSERT INTO communities (name, type, creator_username, join_code, created_at)
+                VALUES (?, ?, ?, ?, ?)
+            """, (name, community_type, username, join_code, datetime.now().strftime('%m.%d.%y %H:%M')))
+            
+            community_id = c.lastrowid
+            
+            # Add creator as member
+            c.execute("""
+                INSERT INTO user_communities (user_id, community_id, joined_at)
+                SELECT id, ?, ?
+                FROM users WHERE username = ?
+            """, (community_id, datetime.now().strftime('%m.%d.%y %H:%M'), username))
+            
+            conn.commit()
+            
+            return jsonify({
+                'success': True, 
+                'community_id': community_id,
+                'join_code': join_code,
+                'message': f'Community "{name}" created successfully!'
+            })
+            
+    except Exception as e:
+        logger.error(f"Error creating community: {str(e)}")
+        return jsonify({'success': False, 'error': 'Failed to create community'}), 500
+
+@app.route('/get_user_communities')
+@login_required
+def get_user_communities():
+    """Get all communities the user is a member of"""
+    username = session.get('username')
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Get user's communities
+            c.execute("""
+                SELECT c.id, c.name, c.type, c.join_code, c.created_at
+                FROM communities c
+                JOIN user_communities uc ON c.id = uc.community_id
+                JOIN users u ON uc.user_id = u.id
+                WHERE u.username = ?
+                ORDER BY c.created_at DESC
+            """, (username,))
+            
+            communities = []
+            for row in c.fetchall():
+                communities.append({
+                    'id': row['id'],
+                    'name': row['name'],
+                    'type': row['type'],
+                    'join_code': row['join_code'],
+                    'created_at': row['created_at']
+                })
+            
+            return jsonify({'success': True, 'communities': communities})
+            
+    except Exception as e:
+        logger.error(f"Error fetching user communities: {str(e)}")
+        return jsonify({'success': False, 'error': 'Failed to fetch communities'}), 500
+
+@app.route('/community_feed/<int:community_id>')
+@login_required
+def community_feed(community_id):
+    """Community-specific social feed"""
+    username = session.get('username')
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Check if user is member of this community
+            c.execute("""
+                SELECT 1 FROM user_communities uc
+                JOIN users u ON uc.user_id = u.id
+                WHERE u.username = ? AND uc.community_id = ?
+            """, (username, community_id))
+            
+            if not c.fetchone():
+                return jsonify({'success': False, 'error': 'You are not a member of this community'}), 403
+            
+            # Get community info
+            c.execute("SELECT * FROM communities WHERE id = ?", (community_id,))
+            community = dict(c.fetchone())
+            
+            # Get posts for this community
+            c.execute("""
+                SELECT * FROM posts 
+                WHERE community_id = ? 
+                ORDER BY id DESC
+            """, (community_id,))
+            
+            posts = []
+            for post_row in c.fetchall():
+                post = dict(post_row)
+                
+                # Get reply count
+                c.execute("SELECT COUNT(*) as count FROM replies WHERE post_id = ?", (post['id'],))
+                post['reply_count'] = c.fetchone()['count']
+                
+                # Get reactions
+                c.execute("""
+                    SELECT reaction_type, COUNT(*) as count
+                    FROM reactions
+                    WHERE post_id = ?
+                    GROUP BY reaction_type
+                """, (post['id'],))
+                reactions_raw = c.fetchall()
+                post['reactions'] = {r['reaction_type']: r['count'] for r in reactions_raw}
+                
+                # Get user's reaction
+                c.execute("SELECT reaction_type FROM reactions WHERE post_id = ? AND username = ?", (post['id'], username))
+                user_reaction_raw = c.fetchone()
+                post['user_reaction'] = user_reaction_raw['reaction_type'] if user_reaction_raw else None
+                
+                posts.append(post)
+            
+            return render_template('feed.html', 
+                                posts=posts, 
+                                community=community,
+                                csrf_token=get_csrf_token())
+            
+    except Exception as e:
+        logger.error(f"Error loading community feed: {str(e)}")
+        return jsonify({'success': False, 'error': 'Failed to load community feed'}), 500
 
 @app.errorhandler(500)
 def internal_server_error(e):

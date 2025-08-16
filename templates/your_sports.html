@@ -3,8 +3,9 @@
 <head>
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>Your Sports</title>
+	<title>Your Communities</title>
 	<link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+	<meta name="csrf-token" content="{{ csrf_token() }}">
 </head>
 <body>
 	<div class="sidebar">
@@ -16,7 +17,7 @@
 			<a href="/profile">Profile</a>
 			<a href="/user_chat">Messages</a>
 			<a href="/premium_dashboard">Premium Dashboard</a>
-			            <a href="/feed">Social</a>
+			<a href="/communities">Your Communities</a>
 			<a href="/nutrition">Nutrition</a>
 			<a href="/blood_test_analysis">Blood Test Analysis</a>
 			<a href="/chat">Chat with Grok</a>
@@ -26,10 +27,122 @@
 		</div>
 	</div>
 	<div class="container">
-		<h1>Your Sports</h1>
+		<h1>Your Communities</h1>
+		
+		<!-- Community Creation Section -->
+		<div class="community-creation-section">
+			<button id="buildCommunityBtn" class="build-community-btn">Build your community</button>
+			
+			<div id="communityForm" class="community-form" style="display: none;">
+				<h3>Create New Community</h3>
+				<form id="createCommunityForm">
+					<div class="form-group">
+						<label for="communityType">Community Type:</label>
+						<select id="communityType" name="type" required>
+							<option value="">Select a type...</option>
+							<option value="Gym">Gym</option>
+							<option value="Golf">Golf</option>
+							<option value="Running Club">Running Club</option>
+						</select>
+					</div>
+					<div class="form-group">
+						<label for="communityName">Community Name:</label>
+						<input type="text" id="communityName" name="name" placeholder="Enter community name..." required>
+					</div>
+					<div class="form-actions">
+						<button type="submit" class="create-community-btn">Create your community</button>
+						<button type="button" id="cancelCommunityBtn" class="cancel-btn">Cancel</button>
+					</div>
+				</form>
+			</div>
+		</div>
+
+		<!-- User's Communities Section -->
+		<div class="user-communities-section">
+			<h3>Your Communities</h3>
+			<div id="communitiesList" class="communities-list">
+				<!-- Communities will be loaded here -->
+			</div>
+		</div>
+
 		<button onclick="location.href='/dashboard'" class="go-back-btn">Back</button>
 	</div>
+
 	<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 	<script src="{{ url_for('static', filename='script.js') }}"></script>
+	<script>
+		$(document).ready(function() {
+			// Load user's communities
+			loadUserCommunities();
+
+			// Toggle community creation form
+			$('#buildCommunityBtn').click(function() {
+				$('#communityForm').slideToggle();
+			});
+
+			$('#cancelCommunityBtn').click(function() {
+				$('#communityForm').slideUp();
+			});
+
+			// Handle community creation
+			$('#createCommunityForm').submit(function(e) {
+				e.preventDefault();
+				
+				const formData = {
+					name: $('#communityName').val(),
+					type: $('#communityType').val(),
+					csrf_token: $('meta[name="csrf-token"]').attr('content')
+				};
+
+				$.ajax({
+					url: '/create_community',
+					method: 'POST',
+					data: formData,
+					success: function(response) {
+						if (response.success) {
+							alert('Community created successfully! Join code: ' + response.join_code);
+							$('#communityForm').slideUp();
+							$('#createCommunityForm')[0].reset();
+							loadUserCommunities(); // Reload communities
+						} else {
+							alert('Error: ' + response.error);
+						}
+					},
+					error: function() {
+						alert('Error creating community. Please try again.');
+					}
+				});
+			});
+		});
+
+		function loadUserCommunities() {
+			$.ajax({
+				url: '/get_user_communities',
+				method: 'GET',
+				success: function(response) {
+					if (response.success) {
+						const communitiesList = $('#communitiesList');
+						communitiesList.empty();
+						
+						if (response.communities.length === 0) {
+							communitiesList.html('<p class="no-communities">You haven\'t joined any communities yet.</p>');
+						} else {
+							response.communities.forEach(function(community) {
+								const communityBtn = $(`
+									<button class="community-btn" onclick="location.href='/community_feed/${community.id}'">
+										${community.name} - Social Feed
+									</button>
+								`);
+								communitiesList.append(communityBtn);
+							});
+						}
+					}
+				},
+				error: function() {
+					$('#communitiesList').html('<p class="error">Error loading communities.</p>');
+				}
+			});
+		}
+	</script>
 </body>
 </html>
