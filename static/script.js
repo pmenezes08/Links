@@ -10,13 +10,15 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // CSRF + username bootstrap from meta
-    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
-    const currentUsernameMeta = document.querySelector('meta[name="current-username"]')?.getAttribute('content') || '';
-    if (currentUsernameMeta) {
-        try { sessionStorage.setItem('username', currentUsernameMeta); } catch (e) {}
+    const csrfTokenMeta = document.querySelector('meta[name="csrf-token"]');
+    const csrfToken = csrfTokenMeta ? csrfTokenMeta.getAttribute('content') : '';
+    const currentUsernameMeta = document.querySelector('meta[name="current-username"]');
+    const currentUsername = currentUsernameMeta ? currentUsernameMeta.getAttribute('content') : '';
+    if (currentUsername) {
+        try { sessionStorage.setItem('username', currentUsername); } catch (e) {}
     }
     if (csrfToken && $.ajaxSetup) {
-        $.ajaxSetup({ headers: { 'X-CSRFToken': csrfToken } });
+        $.ajaxSetup({ headers: { 'X-CSRF-Token': csrfToken } });
     }
 
     // Menu Toggle and Click-Outside Functionality
@@ -157,11 +159,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const $postForm = $('form[action="/post_status"]');
     const $postContainer = $('.posts');
 
-    // Set up CSRF header for all AJAX requests
-    const csrfToken = $("meta[name='csrf-token']").attr('content');
-    if (csrfToken) {
-        $.ajaxSetup({ headers: { 'X-CSRF-Token': csrfToken } });
-    }
+    // CSRF header already set above
 
     function updateReactionIconStates($reactions, activeType) {
         $reactions.find('.reaction-btn').each(function() {
