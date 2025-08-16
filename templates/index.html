@@ -10,8 +10,11 @@
     <div id="intro-popup" class="popup">
         <div class="popup-content">
             <h2>Workout X</h2>
-            <p>Sign in with X to get started</p>
-            <button onclick="location.href='{{ url_for('login_x') }}'" class="sleek-btn">Sign In with X</button>
+            <p>Sign in to get started</p>
+            <div style="display:flex; gap:8px; justify-content:center; flex-wrap:wrap;">
+                <button onclick="location.href='{{ url_for('login_password') }}'" class="sleek-btn">Sign In</button>
+                <button onclick="location.href='{{ url_for('login_x') }}'" class="sleek-btn">Sign In with X</button>
+            </div>
         </div>
     </div>
 </body>
