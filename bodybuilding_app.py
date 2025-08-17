@@ -1997,6 +1997,11 @@ def post_status():
             conn.commit()
             post_id = c.lastrowid
             logger.info(f"Post added successfully for {username} with ID: {post_id} in community: {community_id}")
+            
+            # Verify the post was saved with correct community_id
+            c.execute("SELECT community_id FROM posts WHERE id = ?", (post_id,))
+            saved_post = c.fetchone()
+            logger.info(f"Verified post {post_id} has community_id: {saved_post['community_id'] if saved_post else 'None'}")
         
         # Check if this is an AJAX request
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
@@ -2455,6 +2460,8 @@ def join_community():
     username = session.get('username')
     community_code = request.form.get('community_code', '').strip()
     
+    logger.info(f"Join community request from {username} with code: {community_code}")
+    
     if not community_code:
         return jsonify({'success': False, 'error': 'Community code is required'})
     
@@ -2477,6 +2484,7 @@ def join_community():
             """, (community_code,))
             
             community = c.fetchone()
+            logger.info(f"Community lookup result: {community}")
             if not community:
                 return jsonify({'success': False, 'error': 'Invalid community code'})
             
@@ -2495,8 +2503,8 @@ def join_community():
             
             # Add user to community as a member
             c.execute("""
-                INSERT INTO user_communities (user_id, community_id, role, joined_at)
-                VALUES (?, ?, 'member', datetime('now'))
+                INSERT INTO user_communities (user_id, community_id, joined_at)
+                VALUES (?, ?, datetime('now'))
             """, (user_id, community_id))
             
             conn.commit()

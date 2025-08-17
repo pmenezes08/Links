@@ -564,11 +564,11 @@ select:focus, input:focus {
 }
 
 .reaction-btn.active {
-    color: #4db6ac;
+    color: #ffffff;
 }
 
 .reaction-btn.active:hover {
-    color: #37a69c;
+    color: #ffffff;
 }
 
 .delete-post, .delete-reply {
@@ -1001,14 +1001,14 @@ select:focus, input:focus {
 
 .modal .reply-input:focus {
     outline: none;
-    border-color: #4db6ac;
+    border-color: #ffffff;
     background: rgba(255, 255, 255, 0.15);
 }
 
 .modal .reply-btn {
-    background: #4db6ac;
+    background: #ffffff;
     border: none;
-    color: #ffffff;
+    color: #2d3839;
     padding: 8px 16px;
     border-radius: 6px;
     font-size: 0.9em;
@@ -1017,7 +1017,7 @@ select:focus, input:focus {
 }
 
 .modal .reply-btn:hover {
-    background: #37a69c;
+    background: #e0e0e0;
 }
 
 .modal .reply-form-actions {
@@ -1073,18 +1073,18 @@ select:focus, input:focus {
 }
 
 .community-btn {
-    background: linear-gradient(135deg, rgba(77, 182, 172, 0.2), rgba(77, 182, 172, 0.1)) !important;
-    border: 1px solid rgba(77, 182, 172, 0.3) !important;
-    color: #4db6ac !important;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.1)) !important;
+    border: 1px solid rgba(255, 255, 255, 0.3) !important;
+    color: #ffffff !important;
     font-weight: 500;
 }
 
 .community-btn:hover {
-    background: linear-gradient(135deg, rgba(77, 182, 172, 0.3), rgba(77, 182, 172, 0.2)) !important;
-    border-color: rgba(77, 182, 172, 0.5) !important;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0.2)) !important;
+    border-color: rgba(255, 255, 255, 0.5) !important;
     color: #ffffff !important;
     transform: translateY(-2px);
-    box-shadow: 0 6px 15px rgba(77, 182, 172, 0.3);
+    box-shadow: 0 6px 15px rgba(255, 255, 255, 0.3);
 }
 
 /* Community Feed Styles */
@@ -1095,7 +1095,7 @@ select:focus, input:focus {
 }
 
 .community-header h1 {
-    color: #4db6ac;
+    color: #ffffff;
     font-size: 2.5em;
     margin-bottom: 10px;
     font-weight: 600;
@@ -1288,7 +1288,7 @@ select:focus, input:focus {
 }
 
 .user-communities-section h3 {
-    color: #4db6ac;
+    color: #ffffff;
     margin-bottom: 20px;
     font-size: 18px;
 }
@@ -1335,9 +1335,9 @@ select:focus, input:focus {
 }
 
 .edit-community-btn:hover {
-    background: rgba(77, 182, 172, 0.2);
-    border-color: rgba(77, 182, 172, 0.3);
-    color: #4db6ac;
+    background: rgba(255, 255, 255, 0.2);
+    border-color: rgba(255, 255, 255, 0.3);
+    color: #ffffff;
 }
 
 .delete-community-btn:hover {
@@ -1407,7 +1407,7 @@ select:focus, input:focus {
 }
 
 .form-section h3 {
-    color: #2d8a7e;
+    color: #ffffff;
     margin-bottom: 20px;
     font-size: 1.2em;
     font-weight: 600;
@@ -1419,7 +1419,7 @@ select:focus, input:focus {
 
 .form-group label {
     display: block;
-    color: #2d8a7e;
+    color: #ffffff;
     margin-bottom: 8px;
     font-weight: 500;
     font-size: 0.95em;
@@ -1508,7 +1508,7 @@ select:focus, input:focus {
 }
 
 .login-link a {
-    color: #2d8a7e;
+    color: #ffffff;
     text-decoration: none;
     font-weight: 500;
 }
@@ -1558,7 +1558,7 @@ select:focus, input:focus {
 }
 
 .admin-profile-header h1 {
-    color: #2d8a7e;
+    color: #ffffff;
     font-size: 2.5em;
     margin-bottom: 10px;
     font-weight: 600;
@@ -1588,7 +1588,7 @@ select:focus, input:focus {
 .admin-info-section h2,
 .admin-stats-section h2,
 .admin-actions-section h2 {
-    color: #2d8a7e;
+    color: #ffffff;
     margin-bottom: 25px;
     font-size: 1.5em;
     font-weight: 600;
