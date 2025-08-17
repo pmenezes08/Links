@@ -40,7 +40,7 @@
                 <tr>
                     <th>Username</th>
                     <th>Subscription</th>
-                    <th>Update</th>
+                    <th>Actions</th>
                 </tr>
             </thead>
             <tbody>
@@ -49,7 +49,7 @@
                     <td>{{ user[0] }}</td>
                     <td>{{ user[1] }}</td>
                     <td>
-                        <form method="POST">
+                        <form method="POST" style="display: inline;">
                             <input type="hidden" name="username" value="{{ user[0] }}">
                             <select name="subscription">
                                 <option value="free" {% if user[1] == 'free' %}selected{% endif %}>Free</option>
@@ -57,6 +57,12 @@
                             </select>
                             <button type="submit" name="update_user" class="sleek-btn">Update</button>
                         </form>
+                        {% if user[0] != 'admin' %}
+                        <form method="POST" style="display: inline; margin-left: 10px;">
+                            <input type="hidden" name="username" value="{{ user[0] }}">
+                            <button type="submit" name="delete_user" class="delete-btn" onclick="return confirm('Are you sure you want to delete user {{ user[0] }}? This action cannot be undone.')">Delete</button>
+                        </form>
+                        {% endif %}
                     </td>
                 </tr>
                 {% endfor %}
@@ -121,6 +127,11 @@
             padding: 20px;
             text-align: center;
         }
+        h1 {
+            color: #ffffff;
+            font-size: 1.8em;
+            margin-bottom: 20px;
+        }
         .add-user-form {
             margin: 20px 0;
             display: flex;
@@ -132,23 +143,57 @@
             width: 100%;
             border-collapse: collapse;
             margin-top: 20px;
+            background: #2d3839;
+            border-radius: 8px;
+            overflow: hidden;
         }
         th, td {
-            padding: 10px;
+            padding: 12px;
             text-align: left;
             border-bottom: 1px solid #3a4647;
+            color: #ffffff;
+            font-size: 0.9em;
         }
         th {
-            background: #2d3839;
+            background: #1a2526;
+            font-weight: 600;
+            font-size: 0.85em;
         }
         select, input[type="text"], input[type="password"] {
             background: #3a4647;
-            color: #e0e0e0;
+            color: #ffffff;
             border: none;
-            padding: 5px;
+            padding: 8px 12px;
             border-radius: 4px;
             width: 100%;
             max-width: 200px;
+            font-size: 0.9em;
+        }
+        .sleek-btn {
+            background: #2d3839;
+            color: #ffffff;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.85em;
+            transition: background 0.3s ease;
+        }
+        .sleek-btn:hover {
+            background: #3a4647;
+        }
+        .delete-btn {
+            background: #dc3545;
+            color: #ffffff;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.8em;
+            transition: background 0.3s ease;
+        }
+        .delete-btn:hover {
+            background: #c82333;
         }
         @media (max-width: 768px) {
             .sidebar { width: 100%; height: 60px; }
