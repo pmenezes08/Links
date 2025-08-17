@@ -2467,6 +2467,34 @@ def delete_community():
         logger.error(f"Error deleting community: {str(e)}")
         return jsonify({'success': False, 'error': 'Failed to delete community'}), 500
 
+@app.route('/debug_community/<int:community_id>')
+@login_required
+def debug_community(community_id):
+    """Debug route to check community data"""
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Get community info
+            c.execute("SELECT * FROM communities WHERE id = ?", (community_id,))
+            community = c.fetchone()
+            
+            if not community:
+                return jsonify({'success': False, 'error': 'Community not found'})
+            
+            community_dict = dict(community)
+            logger.info(f"Debug community {community_id}: {community_dict}")
+            
+            return jsonify({
+                'success': True,
+                'community': community_dict,
+                'community_id_type': type(community_dict.get('id')),
+                'community_id_value': community_dict.get('id')
+            })
+    except Exception as e:
+        logger.error(f"Error in debug_community: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
+
 @app.route('/debug_posts')
 @login_required
 def debug_posts():
@@ -2588,6 +2616,7 @@ def community_feed(community_id):
             # Get community info
             c.execute("SELECT * FROM communities WHERE id = ?", (community_id,))
             community = dict(c.fetchone())
+            logger.info(f"Community object for template: {community}")
             
             # Get posts for this community
             c.execute("""
@@ -2642,6 +2671,7 @@ def community_feed(community_id):
                     ur = c.fetchone()
                     reply['user_reaction'] = ur['reaction_type'] if ur else None
             
+            logger.info(f"Rendering community_feed.html with community.id: {community.get('id')}")
             return render_template('community_feed.html', 
                                 posts=posts, 
                                 community=community,
