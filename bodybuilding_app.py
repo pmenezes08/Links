@@ -567,9 +567,21 @@ def dashboard():
             c = conn.cursor()
             c.execute("SELECT subscription FROM users WHERE username=?", (username,))
             user = c.fetchone()
+            
+            # Get user's communities
+            c.execute("""
+                SELECT c.id, c.name, c.type
+                FROM communities c
+                JOIN user_communities uc ON c.id = uc.community_id
+                JOIN users u ON uc.user_id = u.rowid
+                WHERE u.username = ?
+                ORDER BY c.name
+            """, (username,))
+            communities = [{'id': row['id'], 'name': row['name'], 'type': row['type']} for row in c.fetchall()]
+            
         if user['subscription'] == 'premium':
             return redirect(url_for('premium_dashboard'))
-        return render_template('dashboard.html', name=username)
+        return render_template('dashboard.html', name=username, communities=communities)
     except Exception as e:
         logger.error(f"Error in dashboard for {username}: {str(e)}")
         abort(500)
@@ -588,11 +600,23 @@ def premium_dashboard():
             c = conn.cursor()
             c.execute("SELECT subscription FROM users WHERE username=?", (username,))
             user = c.fetchone()
+            
+            # Get user's communities
+            c.execute("""
+                SELECT c.id, c.name, c.type
+                FROM communities c
+                JOIN user_communities uc ON c.id = uc.community_id
+                JOIN users u ON uc.user_id = u.rowid
+                WHERE u.username = ?
+                ORDER BY c.name
+            """, (username,))
+            communities = [{'id': row['id'], 'name': row['name'], 'type': row['type']} for row in c.fetchall()]
+            
         if not user or user['subscription'] != 'premium':
             logger.warning(f"User {username} attempted to access premium_dashboard without premium subscription")
             return redirect(url_for('dashboard'))
         logger.info(f"Rendering premium_dashboard for {username}")
-        return render_template('premium_dashboard.html', name=username)
+        return render_template('premium_dashboard.html', name=username, communities=communities)
     except Exception as e:
         logger.error(f"Error in premium_dashboard for {username}: {str(e)}")
         abort(500)
@@ -2118,7 +2142,7 @@ def community_feed(community_id):
             # Check if user is member of this community
             c.execute("""
                 SELECT 1 FROM user_communities uc
-                JOIN users u ON uc.user_id = u.id
+                JOIN users u ON uc.user_id = u.rowid
                 WHERE u.username = ? AND uc.community_id = ?
             """, (username, community_id))
             
@@ -2161,7 +2185,7 @@ def community_feed(community_id):
                 
                 posts.append(post)
             
-            return render_template('feed.html', 
+            return render_template('community_feed.html', 
                                 posts=posts, 
                                 community=community,
                                 csrf_token=get_csrf_token())

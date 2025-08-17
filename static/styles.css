@@ -1016,6 +1016,112 @@ select:focus, input:focus {
 }
 
 /* Community Page Styles */
+.community-buttons-section {
+    margin-top: 30px;
+    padding-top: 20px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.community-buttons-section h3 {
+    color: #e0e0e0;
+    font-size: 1.1em;
+    margin-bottom: 15px;
+    text-align: center;
+    font-weight: 500;
+}
+
+.community-btn {
+    background: linear-gradient(135deg, rgba(77, 182, 172, 0.2), rgba(77, 182, 172, 0.1)) !important;
+    border: 1px solid rgba(77, 182, 172, 0.3) !important;
+    color: #4db6ac !important;
+    font-weight: 500;
+}
+
+.community-btn:hover {
+    background: linear-gradient(135deg, rgba(77, 182, 172, 0.3), rgba(77, 182, 172, 0.2)) !important;
+    border-color: rgba(77, 182, 172, 0.5) !important;
+    color: #ffffff !important;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 15px rgba(77, 182, 172, 0.3);
+}
+
+/* Community Feed Styles */
+.community-header {
+    text-align: center;
+    margin-bottom: 30px;
+    padding: 20px;
+}
+
+.community-header h1 {
+    color: #4db6ac;
+    font-size: 2.5em;
+    margin-bottom: 10px;
+    font-weight: 600;
+}
+
+.community-type {
+    color: #9fb0b5;
+    font-size: 1.1em;
+    margin-bottom: 15px;
+    font-weight: 500;
+}
+
+.community-description {
+    color: #e0e0e0;
+    font-size: 1em;
+    max-width: 600px;
+    margin: 0 auto;
+    line-height: 1.5;
+}
+
+.post-creation-section {
+    margin-bottom: 30px;
+}
+
+.post-form {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 12px;
+    padding: 20px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.post-form textarea {
+    width: 100%;
+    min-height: 100px;
+    padding: 15px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.1);
+    color: #ffffff;
+    font-size: 14px;
+    font-family: inherit;
+    resize: vertical;
+    margin-bottom: 15px;
+}
+
+.post-form textarea:focus {
+    outline: none;
+    border-color: rgba(77, 182, 172, 0.5);
+    box-shadow: 0 0 0 2px rgba(77, 182, 172, 0.2);
+}
+
+.post-btn {
+    background: linear-gradient(135deg, #4db6ac, #37a69c);
+    color: white;
+    border: none;
+    padding: 12px 24px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.post-btn:hover {
+    background: linear-gradient(135deg, #37a69c, #2d8a7e);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(77, 182, 172, 0.3);
+}
 .community-creation-section {
     padding: 20px;
     margin-bottom: 30px;

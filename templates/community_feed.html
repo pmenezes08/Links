@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ community.name }} - Community Feed</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}?v=3.0">
+</head>
+<body>
+    <div class="sidebar">
+        <button class="menu-btn">☰ Menu</button>
+        <div class="dropdown-content">
+            <a href="/dashboard">Dashboard</a>
+            <a href="/profile">Profile</a>
+            <a href="/user_chat">Messages</a>
+            <a href="/feed">Main Social</a>
+            <a href="/communities">Your Communities</a>
+            <a href="/nutrition">Nutrition</a>
+            <a href="/logout">Logout</a>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="community-header">
+            <h1>{{ community.name }}</h1>
+            <p class="community-type">{{ community.type }} Community</p>
+            <p class="community-description">{{ community.description or 'Share your thoughts and experiences with your community!' }}</p>
+        </div>
+
+        <div class="post-creation-section">
+            <form id="postForm" class="post-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <input type="hidden" name="community_id" value="{{ community.id }}">
+                <textarea name="content" placeholder="What's on your mind in {{ community.name }}?" required></textarea>
+                <button type="submit" class="post-btn">Post to {{ community.name }}</button>
+            </form>
+        </div>
+
+        <div id="posts-container" class="posts-container">
+            {% if posts %}
+                {% for post in posts %}
+                <div class="post" data-post-id="{{ post.id }}">
+                    <div class="post-header">
+                        <span class="post-author">{{ post.username }}</span>
+                        <span class="post-time">{{ post.timestamp }}</span>
+                    </div>
+                    <div class="post-content">{{ post.content }}</div>
+                    <div class="post-actions">
+                        <button class="action-btn like-btn" data-post-id="{{ post.id }}" data-reaction="like">
+                            👍 <span class="count">{{ post.reactions.get('like', 0) }}</span>
+                        </button>
+                        <button class="action-btn love-btn" data-post-id="{{ post.id }}" data-reaction="love">
+                            ❤️ <span class="count">{{ post.reactions.get('love', 0) }}</span>
+                        </button>
+                        <button class="action-btn reply-btn" data-post-id="{{ post.id }}">
+                            💬 <span class="count">{{ post.reply_count }}</span>
+                        </button>
+                    </div>
+                    
+                    <div class="replies-section" id="replies-{{ post.id }}" style="display: none;">
+                        <div class="replies-container"></div>
+                        <form class="reply-form" data-post-id="{{ post.id }}">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                            <input type="text" name="content" placeholder="Write a reply..." required>
+                            <button type="submit">Reply</button>
+                        </form>
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <div class="no-posts">
+                    <p>No posts yet in {{ community.name }}. Be the first to share something!</p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script>
+        $(document).ready(function() {
+            // Menu toggle
+            $('.menu-btn').click(function() {
+                $('.dropdown-content').toggle();
+            });
+
+            // Post creation
+            $('#postForm').submit(function(e) {
+                e.preventDefault();
+                const formData = new FormData(this);
+                
+                $.ajax({
+                    url: '/create_post',
+                    method: 'POST',
+                    data: formData,
+                    processData: false,
+                    contentType: false,
+                    success: function(response) {
+                        if (response.success) {
+                            location.reload();
+                        } else {
+                            alert('Error creating post: ' + response.error);
+                        }
+                    },
+                    error: function() {
+                        alert('Error creating post');
+                    }
+                });
+            });
+
+            // Reactions
+            $('.action-btn').click(function() {
+                const postId = $(this).data('post-id');
+                const reaction = $(this).data('reaction');
+                const $btn = $(this);
+                
+                $.post('/react', {
+                    post_id: postId,
+                    reaction: reaction,
+                    csrf_token: $('input[name="csrf_token"]').val()
+                }, function(response) {
+                    if (response.success) {
+                        $btn.find('.count').text(response.count);
+                    }
+                });
+            });
+
+            // Reply toggle
+            $('.reply-btn').click(function() {
+                const postId = $(this).data('post-id');
+                const $repliesSection = $('#replies-' + postId);
+                $repliesSection.toggle();
+                
+                if ($repliesSection.is(':visible')) {
+                    loadReplies(postId);
+                }
+            });
+
+            // Reply submission
+            $('.reply-form').submit(function(e) {
+                e.preventDefault();
+                const postId = $(this).data('post-id');
+                const content = $(this).find('input[name="content"]').val();
+                
+                $.post('/create_reply', {
+                    post_id: postId,
+                    content: content,
+                    csrf_token: $('input[name="csrf_token"]').val()
+                }, function(response) {
+                    if (response.success) {
+                        loadReplies(postId);
+                        $(this).find('input[name="content"]').val('');
+                    }
+                });
+            });
+
+            function loadReplies(postId) {
+                $.get('/get_replies/' + postId, function(response) {
+                    if (response.success) {
+                        const $container = $('#replies-' + postId + ' .replies-container');
+                        $container.empty();
+                        
+                        response.replies.forEach(function(reply) {
+                            $container.append(`
+                                <div class="reply">
+                                    <div class="reply-header">
+                                        <span class="reply-author">${reply.username}</span>
+                                        <span class="reply-time">${reply.timestamp}</span>
+                                    </div>
+                                    <div class="reply-content">${reply.content}</div>
+                                </div>
+                            `);
+                        });
+                    }
+                });
+            }
+        });
+    </script>
+</body>
+</html>
