@@ -1978,8 +1978,8 @@ def post_status():
         with get_db_connection() as conn:
             c = conn.cursor()
             
-            # If community_id is provided, verify user is member
-            if community_id:
+            # If community_id is provided, verify user is member (admin bypass)
+            if community_id and username != 'admin':
                 c.execute("""
                     SELECT 1 FROM user_communities uc
                     JOIN users u ON uc.user_id = u.rowid
@@ -2108,7 +2108,7 @@ def delete_post():
             c = conn.cursor()
             c.execute("SELECT username, image_path FROM posts WHERE id= ?", (post_id,))
             post = c.fetchone()
-            if not post or post['username'] != username:
+            if not post or (post['username'] != username and username != 'admin'):
                 return jsonify({'success': False, 'error': 'Post not found or unauthorized!'}), 403
             
             # Delete image file if it exists
@@ -2144,7 +2144,7 @@ def delete_reply():
             c = conn.cursor()
             c.execute("SELECT username, image_path FROM replies WHERE id= ?", (reply_id,))
             reply = c.fetchone()
-            if not reply or reply['username'] != username:
+            if not reply or (reply['username'] != username and username != 'admin'):
                 return jsonify({'success': False, 'error': 'Reply not found or unauthorized!'}), 403
             
             # Delete image file if it exists
@@ -2520,15 +2520,16 @@ def community_feed(community_id):
         with get_db_connection() as conn:
             c = conn.cursor()
             
-            # Check if user is member of this community
-            c.execute("""
-                SELECT 1 FROM user_communities uc
-                JOIN users u ON uc.user_id = u.rowid
-                WHERE u.username = ? AND uc.community_id = ?
-            """, (username, community_id))
-            
-            if not c.fetchone():
-                return jsonify({'success': False, 'error': 'You are not a member of this community'}), 403
+            # Check if user is member of this community OR if user is admin
+            if username != 'admin':
+                c.execute("""
+                    SELECT 1 FROM user_communities uc
+                    JOIN users u ON uc.user_id = u.rowid
+                    WHERE u.username = ? AND uc.community_id = ?
+                """, (username, community_id))
+                
+                if not c.fetchone():
+                    return jsonify({'success': False, 'error': 'You are not a member of this community'}), 403
             
             # Get community info
             c.execute("SELECT * FROM communities WHERE id = ?", (community_id,))
