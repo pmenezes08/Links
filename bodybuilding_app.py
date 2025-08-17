@@ -450,10 +450,7 @@ def validate_csrf():
         return False
 
 
-@app.before_request
-def ensure_csrf_token():
-    # Ensure a CSRF token exists for the session
-    get_csrf_token()
+
 
 # Utility functions
 def check_api_limit(username):
@@ -2146,7 +2143,7 @@ def feed():
                     ur = c.fetchone()
                     reply['user_reaction'] = ur['reaction_type'] if ur else None
 
-        return render_template('feed.html', posts=posts, csrf_token=get_csrf_token(), username=username)
+        return render_template('feed.html', posts=posts, username=username)
     except Exception as e:
         logger.error(f"Error fetching feed: {str(e)}")
         abort(500)
@@ -2997,8 +2994,7 @@ def community_feed(community_id):
             return render_template('community_feed.html', 
                                 posts=posts, 
                                 community=community,
-                                username=username,
-                                csrf_token=get_csrf_token())
+                                username=username)
             
     except Exception as e:
         logger.error(f"Error loading community feed: {str(e)}")
