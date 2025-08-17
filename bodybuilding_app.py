@@ -2129,6 +2129,82 @@ def get_user_communities():
         logger.error(f"Error fetching user communities: {str(e)}")
         return jsonify({'success': False, 'error': 'Failed to fetch communities'}), 500
 
+@app.route('/edit_community', methods=['POST'])
+@login_required
+def edit_community():
+    """Edit a community name"""
+    username = session.get('username')
+    community_id = request.form.get('community_id', type=int)
+    new_name = request.form.get('name', '').strip()
+    
+    if not community_id or not new_name:
+        return jsonify({'success': False, 'error': 'Community ID and name are required'}), 400
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Check if user is the creator of this community
+            c.execute("SELECT creator_username FROM communities WHERE id = ?", (community_id,))
+            community = c.fetchone()
+            
+            if not community:
+                return jsonify({'success': False, 'error': 'Community not found'}), 404
+            
+            if community['creator_username'] != username:
+                return jsonify({'success': False, 'error': 'Only the community creator can edit the community'}), 403
+            
+            # Update the community name
+            c.execute("UPDATE communities SET name = ? WHERE id = ?", (new_name, community_id))
+            conn.commit()
+            
+            return jsonify({'success': True, 'message': 'Community updated successfully'})
+            
+    except Exception as e:
+        logger.error(f"Error editing community: {str(e)}")
+        return jsonify({'success': False, 'error': 'Failed to edit community'}), 500
+
+@app.route('/delete_community', methods=['POST'])
+@login_required
+def delete_community():
+    """Delete a community and all its posts"""
+    username = session.get('username')
+    community_id = request.form.get('community_id', type=int)
+    
+    if not community_id:
+        return jsonify({'success': False, 'error': 'Community ID is required'}), 400
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Check if user is the creator of this community
+            c.execute("SELECT creator_username FROM communities WHERE id = ?", (community_id,))
+            community = c.fetchone()
+            
+            if not community:
+                return jsonify({'success': False, 'error': 'Community not found'}), 404
+            
+            if community['creator_username'] != username:
+                return jsonify({'success': False, 'error': 'Only the community creator can delete the community'}), 403
+            
+            # Delete all posts in the community
+            c.execute("DELETE FROM posts WHERE community_id = ?", (community_id,))
+            
+            # Delete all user_communities entries for this community
+            c.execute("DELETE FROM user_communities WHERE community_id = ?", (community_id,))
+            
+            # Delete the community itself
+            c.execute("DELETE FROM communities WHERE id = ?", (community_id,))
+            
+            conn.commit()
+            
+            return jsonify({'success': True, 'message': 'Community deleted successfully'})
+            
+    except Exception as e:
+        logger.error(f"Error deleting community: {str(e)}")
+        return jsonify({'success': False, 'error': 'Failed to delete community'}), 500
+
 @app.route('/community_feed/<int:community_id>')
 @login_required
 def community_feed(community_id):

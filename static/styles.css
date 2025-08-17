@@ -1050,9 +1050,6 @@ select:focus, input:focus {
     text-align: center;
     margin-bottom: 30px;
     padding: 20px;
-    background: rgba(255, 255, 255, 0.05);
-    border-radius: 12px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .community-header h1 {
@@ -1257,7 +1254,54 @@ select:focus, input:focus {
 .communities-list {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 15px;
+}
+
+.community-card {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 12px;
+    padding: 15px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.community-card .community-btn {
+    flex: 1;
+    margin: 0;
+}
+
+.community-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.edit-community-btn,
+.delete-community-btn {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: #e0e0e0;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.edit-community-btn:hover {
+    background: rgba(77, 182, 172, 0.2);
+    border-color: rgba(77, 182, 172, 0.3);
+    color: #4db6ac;
+}
+
+.delete-community-btn:hover {
+    background: rgba(255, 107, 97, 0.2);
+    border-color: rgba(255, 107, 97, 0.3);
+    color: #ff6b61;
 }
 
 .community-btn {
