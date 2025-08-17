@@ -43,50 +43,31 @@
 		$(document).ready(function() {
 			console.log('Dashboard script loaded');
 			
-			// Test if jQuery is working
-			if (typeof $ === 'undefined') {
-				console.error('jQuery not loaded!');
-				return;
-			}
-			
-			// Test if elements exist
-			const menuBtn = $('.menu-btn');
-			const dropdown = $('.dropdown-content');
-			
-			console.log('Menu button exists:', menuBtn.length);
-			console.log('Dropdown content exists:', dropdown.length);
-			
-			if (menuBtn.length === 0) {
-				console.error('Menu button not found!');
-				return;
-			}
-			
-			// Add click handler
-			menuBtn.on('click', function(e) {
+			// Simple and reliable menu toggle
+			$('.menu-btn').on('click', function(e) {
 				e.preventDefault();
 				e.stopPropagation();
-				console.log('Menu button clicked');
-				dropdown.toggle();
-				console.log('Dropdown visibility:', dropdown.is(':visible'));
+				console.log('Menu clicked');
+				$('.dropdown-content').slideToggle(200);
 			});
 			
-			// Hide dropdown when clicking outside
-			$(document).on('click', function(event) {
-				if (!$(event.target).closest('.sidebar').length) {
-					dropdown.hide();
+			// Close menu when clicking outside
+			$(document).on('click', function(e) {
+				if (!$(e.target).closest('.sidebar').length) {
+					$('.dropdown-content').slideUp(200);
 				}
 			});
 			
-			// Hide dropdown on window resize
-			$(window).on('resize', function() {
-				if ($(window).width() > 768) {
-					dropdown.hide();
+			// Close menu on escape key
+			$(document).on('keydown', function(e) {
+				if (e.key === 'Escape') {
+					$('.dropdown-content').slideUp(200);
 				}
 			});
 			
-			// Test click
-			console.log('Adding click test...');
-			menuBtn.css('background-color', 'rgba(255, 255, 255, 0.1)'); // Make it more visible
+			// Debug info
+			console.log('Menu button found:', $('.menu-btn').length);
+			console.log('Dropdown found:', $('.dropdown-content').length);
 		});
 	</script>
 </body>

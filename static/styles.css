@@ -370,23 +370,29 @@ select:focus, input:focus {
 }
 
 .menu-btn {
-    background: none;
+    background: rgba(255, 255, 255, 0.05);
     border: none;
     color: #e0e0e0;
-    font-size: 24px;
-    padding: 15px;
+    font-size: 16px;
+    padding: 12px 8px;
     cursor: pointer;
     width: 100%;
     text-align: center;
     pointer-events: auto;
     z-index: 1002;
     position: relative;
-    transition: color 0.3s ease;
+    transition: all 0.3s ease;
+    font-weight: 500;
+    letter-spacing: 0.5px;
+    border-radius: 4px;
+    margin: 8px 4px;
+    width: calc(100% - 8px);
 }
 
 .menu-btn:hover {
     color: #ffffff;
     background: rgba(255, 255, 255, 0.1);
+    transform: scale(1.05);
 }
 
 .dropdown-content {
@@ -400,6 +406,7 @@ select:focus, input:focus {
     z-index: 1001;
     border-radius: 0 8px 8px 0;
     border: 1px solid rgba(255, 255, 255, 0.1);
+    overflow: hidden;
 }
 
 .dropdown-content a {
