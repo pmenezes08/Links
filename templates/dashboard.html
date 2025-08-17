@@ -43,26 +43,38 @@
 		$(document).ready(function() {
 			console.log('Dashboard script loaded');
 			
-			// Simple and reliable menu toggle
+			let menuTimeout;
+			
+			// Show menu on button click
 			$('.menu-btn').on('click', function(e) {
 				e.preventDefault();
 				e.stopPropagation();
 				console.log('Menu clicked');
-				$('.dropdown-content').slideToggle(200);
+				$('.dropdown-content').slideDown(200);
 			});
 			
-			// Close menu only when clicking outside the sidebar area
-			$(document).on('click', function(e) {
-				const sidebar = $('.sidebar');
-				const dropdown = $('.dropdown-content');
-				
-				// Check if click is outside both sidebar and dropdown
-				if (!sidebar.is(e.target) && 
-					sidebar.has(e.target).length === 0 && 
-					!dropdown.is(e.target) && 
-					dropdown.has(e.target).length === 0) {
-					dropdown.slideUp(200);
-				}
+			// Keep menu open when hovering over sidebar
+			$('.sidebar').on('mouseenter', function() {
+				clearTimeout(menuTimeout);
+			});
+			
+			// Keep menu open when hovering over dropdown
+			$('.dropdown-content').on('mouseenter', function() {
+				clearTimeout(menuTimeout);
+			});
+			
+			// Close menu when leaving sidebar area
+			$('.sidebar').on('mouseleave', function() {
+				menuTimeout = setTimeout(function() {
+					$('.dropdown-content').slideUp(200);
+				}, 300); // 300ms delay before closing
+			});
+			
+			// Close menu when leaving dropdown
+			$('.dropdown-content').on('mouseleave', function() {
+				menuTimeout = setTimeout(function() {
+					$('.dropdown-content').slideUp(200);
+				}, 300); // 300ms delay before closing
 			});
 			
 			// Close menu on escape key
