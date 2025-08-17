@@ -97,6 +97,39 @@
 							<img id="previewImage" src="" alt="Background preview">
 						</div>
 					</div>
+					<div class="form-group">
+						<label for="communityTemplate">Color Template:</label>
+						<div class="template-options">
+							<div class="template-option">
+								<input type="radio" id="template-default" name="template" value="default" checked>
+								<label for="template-default" class="template-label">
+									<span class="template-preview default-template"></span>
+									<span class="template-name">Default</span>
+								</label>
+							</div>
+							<div class="template-option">
+								<input type="radio" id="template-dark" name="template" value="dark">
+								<label for="template-dark" class="template-label">
+									<span class="template-preview dark-template"></span>
+									<span class="template-name">Dark</span>
+								</label>
+							</div>
+							<div class="template-option">
+								<input type="radio" id="template-light" name="template" value="light">
+								<label for="template-dark" class="template-label">
+									<span class="template-preview light-template"></span>
+									<span class="template-name">Light</span>
+								</label>
+							</div>
+							<div class="template-option">
+								<input type="radio" id="template-colorful" name="template" value="colorful">
+								<label for="template-colorful" class="template-label">
+									<span class="template-preview colorful-template"></span>
+									<span class="template-name">Colorful</span>
+								</label>
+							</div>
+						</div>
+					</div>
 					<div class="form-actions">
 						<button type="submit" class="create-community-btn">Create your community</button>
 						<button type="button" id="cancelCommunityBtn" class="cancel-btn">Cancel</button>
@@ -195,6 +228,10 @@
 				if (backgroundUrl) {
 					formData.append('background_url', backgroundUrl);
 				}
+				
+				// Add template selection
+				const template = $('input[name="template"]:checked').val();
+				formData.append('template', template);
 
 				$.ajax({
 					url: '/create_community',

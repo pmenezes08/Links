@@ -6,6 +6,41 @@
     <title>{{ community.name }} - Social</title>
     <meta name="csrf-token" content="{{ csrf_token }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v='2.0') }}">
+    <style>
+        /* Template-specific styles */
+        {% if community.template == 'dark' %}
+        .composer-card, .post {
+            background: #1a1a1a !important;
+            border-color: #333 !important;
+        }
+        .composer-input {
+            background: #000 !important;
+            color: #fff !important;
+        }
+        {% elif community.template == 'light' %}
+        .composer-card, .post {
+            background: #f5f5f5 !important;
+            border-color: #ddd !important;
+            color: #333 !important;
+        }
+        .composer-input {
+            background: #fff !important;
+            color: #333 !important;
+        }
+        .post-header strong {
+            color: #333 !important;
+        }
+        {% elif community.template == 'colorful' %}
+        .composer-card, .post {
+            background: linear-gradient(135deg, #667eea, #764ba2) !important;
+            border-color: rgba(255,255,255,0.3) !important;
+        }
+        .composer-input {
+            background: rgba(255,255,255,0.1) !important;
+            color: #fff !important;
+        }
+        {% endif %}
+    </style>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <meta name="current-username" content="{{ username }}">
@@ -27,7 +62,7 @@
     </div>
 
     <!-- Main Content -->
-    <div class="container feed">
+    <div class="container feed" {% if community.background_path %}style="background-image: url('{% if community.background_path.startswith('http') %}{{ community.background_path }}{% else %}{{ url_for('static', filename=community.background_path) }}{% endif %}'); background-size: cover; background-position: center; background-attachment: fixed;"{% endif %}>
         <div class="community-header">
             <h1>{{ community.name }}</h1>
             <p class="community-type">{{ community.type }} Community</p>

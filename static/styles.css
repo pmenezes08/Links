@@ -1260,6 +1260,71 @@ select:focus, input:focus {
     display: block;
 }
 
+.template-options {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 15px;
+    margin-top: 10px;
+}
+
+.template-option {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.template-option input[type="radio"] {
+    display: none;
+}
+
+.template-label {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    padding: 10px;
+    border: 2px solid rgba(255, 255, 255, 0.2);
+    border-radius: 8px;
+    transition: all 0.3s ease;
+    width: 100%;
+}
+
+.template-option input[type="radio"]:checked + .template-label {
+    border-color: #ffffff;
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.template-preview {
+    width: 60px;
+    height: 40px;
+    border-radius: 6px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+}
+
+.template-name {
+    font-size: 0.9em;
+    color: #ffffff;
+    font-weight: 500;
+}
+
+/* Template Color Schemes */
+.default-template {
+    background: linear-gradient(135deg, #2d3839, #1a2526);
+}
+
+.dark-template {
+    background: linear-gradient(135deg, #1a1a1a, #000000);
+}
+
+.light-template {
+    background: linear-gradient(135deg, #f5f5f5, #e0e0e0);
+}
+
+.colorful-template {
+    background: linear-gradient(135deg, #667eea, #764ba2);
+}
+
 .community-form h3 {
     color: #4db6ac;
     margin-bottom: 20px;

@@ -43,7 +43,8 @@ def fix_communities_table():
         columns_to_add = [
             ('description', 'TEXT'),
             ('location', 'TEXT'),
-            ('background_path', 'TEXT')
+            ('background_path', 'TEXT'),
+            ('template', 'TEXT')
         ]
         
         # Add missing columns

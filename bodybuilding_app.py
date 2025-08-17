@@ -172,7 +172,8 @@ def add_missing_tables():
             columns_to_add = [
                 ('description', 'TEXT'),
                 ('location', 'TEXT'),
-                ('background_path', 'TEXT')
+                ('background_path', 'TEXT'),
+                ('template', 'TEXT')
             ]
             
             for column_name, column_type in columns_to_add:
@@ -294,6 +295,7 @@ def init_db():
                           description TEXT,
                           location TEXT,
                           background_path TEXT,
+                          template TEXT DEFAULT 'default',
                           FOREIGN KEY (creator_username) REFERENCES users(username))''')
 
             # Create user_communities table
@@ -2352,6 +2354,7 @@ def create_community():
     community_type = request.form.get('type')
     description = request.form.get('description', '')
     location = request.form.get('location', '')
+    template = request.form.get('template', 'default')
     
     if not name or not community_type:
         return jsonify({'success': False, 'error': 'Name and type are required'}), 400
@@ -2380,9 +2383,9 @@ def create_community():
             
             # Create the community
             c.execute("""
-                INSERT INTO communities (name, type, creator_username, join_code, created_at, description, location, background_path)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """, (name, community_type, username, join_code, datetime.now().strftime('%m.%d.%y %H:%M'), description, location, background_path))
+                INSERT INTO communities (name, type, creator_username, join_code, created_at, description, location, background_path, template)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (name, community_type, username, join_code, datetime.now().strftime('%m.%d.%y %H:%M'), description, location, background_path, template))
             
             community_id = c.lastrowid
             
