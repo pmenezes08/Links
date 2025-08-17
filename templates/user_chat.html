@@ -27,7 +27,12 @@
 	<div class="container">
 		<div class="messages-container">
 			<div class="messages-header">
-				<h2><i class="fas fa-comments"></i> Messages</h2>
+				<div class="header-left">
+					<button class="mobile-menu-btn" id="mobileMenuBtn" style="display: none;">
+						<i class="fas fa-bars"></i>
+					</button>
+					<h2><i class="fas fa-comments"></i> Messages</h2>
+				</div>
 				<button onclick="location.href='/dashboard'" class="go-back-btn">
 					<i class="fas fa-arrow-left"></i> Back
 				</button>
@@ -177,11 +182,20 @@
 				startChat(username, community);
 			});
 			
+			// Mobile menu button
+			$('#mobileMenuBtn').click(function() {
+				$('.user-selection-panel').addClass('show');
+			});
+			
 			// Back to users
 			$('#backToUsers').click(function() {
 				$('#chatPanel').hide();
 				$('#welcomeMessage').show();
 				$('.user-selection-panel').show();
+				// Add mobile class for slide animation
+				if (window.innerWidth <= 768) {
+					$('.user-selection-panel').addClass('show');
+				}
 				stopMessagePolling();
 			});
 			
@@ -205,6 +219,10 @@
 				// Show chat panel
 				$('#welcomeMessage').hide();
 				$('.user-selection-panel').hide();
+				// Remove mobile class for slide animation
+				if (window.innerWidth <= 768) {
+					$('.user-selection-panel').removeClass('show');
+				}
 				$('#chatPanel').show();
 				
 				// Load messages
