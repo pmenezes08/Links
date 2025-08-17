@@ -6,7 +6,7 @@
 	<title>Workout X - Dashboard</title>
 	<link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}?v=2.0">
 </head>
-<body>
+<body class="dashboard-page">
 	<div class="sidebar">
 		<button class="menu-btn">☰ Menu</button>
 		<div class="dropdown-content">
@@ -41,7 +41,12 @@
 	<script src="{{ url_for('static', filename='script.js') }}"></script>
 	<script>
 		$(document).ready(function() {
-			$('.menu-btn').click(function() {
+			console.log('Dashboard script loaded');
+			
+			$('.menu-btn').click(function(e) {
+				e.preventDefault();
+				e.stopPropagation();
+				console.log('Menu button clicked');
 				$('.dropdown-content').toggle();
 			});
 			
@@ -58,6 +63,10 @@
 					$('.dropdown-content').hide();
 				}
 			});
+			
+			// Debug: Check if elements exist
+			console.log('Menu button exists:', $('.menu-btn').length);
+			console.log('Dropdown content exists:', $('.dropdown-content').length);
 		});
 	</script>
 </body>
