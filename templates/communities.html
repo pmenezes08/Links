@@ -12,16 +12,13 @@
 	<div class="sidebar">
 		<button class="menu-btn">☰ Menu<span id="unread-badge" class="unread-badge">0</span></button>
 		<div class="dropdown-content">
+			<a href="/profile">Profile</a>
 			{% if session['username'] == 'admin' %}
 			<a href="/admin">Admin Dashboard</a>
 			{% endif %}
-			<a href="/profile">Profile</a>
 			<a href="/user_chat">Messages</a>
 			<a href="/premium_dashboard">Premium Dashboard</a>
 			<a href="/communities">Your Communities</a>
-			<a href="/nutrition">Nutrition</a>
-			<a href="/blood_test_analysis">Blood Test Analysis</a>
-			<a href="/chat">Chat with Grok</a>
 			<a href="/subscribe">Subscribe</a>
 			<a href="/logout">Logout</a>
 		</div>

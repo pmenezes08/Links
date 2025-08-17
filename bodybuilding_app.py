@@ -1755,9 +1755,34 @@ def user_chat():
             user = c.fetchone()
             if not user or user['subscription'] != 'premium':
                 return render_template('index.html', error="Premium subscription required!")
+            
+            # Get user's communities
+            c.execute("""
+                SELECT c.id, c.name, c.type, c.creator_username
+                FROM communities c
+                INNER JOIN user_communities uc ON c.id = uc.community_id
+                WHERE uc.username = ?
+                ORDER BY c.name
+            """, (username,))
+            communities = c.fetchall()
+            
+            # Get all users in the same communities
+            community_members = {}
+            for community in communities:
+                c.execute("""
+                    SELECT DISTINCT uc.username
+                    FROM user_communities uc
+                    WHERE uc.community_id = ? AND uc.username != ?
+                    ORDER BY uc.username
+                """, (community[0], username))
+                members = [row[0] for row in c.fetchall()]
+                community_members[community[0]] = members
+            
+            # Get all users for general messaging
             c.execute("SELECT username FROM users WHERE username != ?", (username,))
-            users = [row['username'] for row in c.fetchall()]
-        return render_template('user_chat.html', name=username, users=users, subscription=user['subscription'])
+            all_users = [row['username'] for row in c.fetchall()]
+            
+        return render_template('user_chat.html', name=username, users=all_users, communities=communities, community_members=community_members, subscription=user['subscription'])
     except Exception as e:
         logger.error(f"Error in user_chat for {username}: {str(e)}")
         abort(500)

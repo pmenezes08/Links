@@ -10,18 +10,15 @@
     <div class="sidebar">
         <button class="menu-btn">☰ Menu</button>
         <div class="dropdown-content">
+            <a href="/profile">Profile</a>
             {% if session['username'] == 'admin' %}
             <a href="/admin">Admin Dashboard</a>
             <a href="/admin_profile">Admin Profile</a>
             {% endif %}
-            <a href="/profile">Profile</a>
             <a href="/user_chat">Messages</a>
             <a href="/premium_dashboard">Premium Dashboard</a>
             <a href="/feed">Social</a>
-            <a href="/my_workouts">Workouts</a>
-            <a href="/nutrition">Nutrition</a>
-            <a href="/blood_test_analysis">Blood Test Analysis</a>
-            <a href="/chat">Chat with Grok</a>
+            <a href="/communities">Your Communities</a>
             <a href="/subscribe">Subscribe</a>
             <a href="/logout">Logout</a>
         </div>
@@ -31,11 +28,8 @@
         <div class="dashboard-actions">
             <button onclick="location.href='{{ url_for('feed') }}'" class="sleek-btn compact pill">Social</button>
             <button onclick="location.href='{{ url_for('user_chat') }}'" class="sleek-btn compact pill">Messages</button>
-            <button onclick="location.href='{{ url_for('nutrition') }}'" class="sleek-btn compact pill">Nutrition</button>
-            <button onclick="location.href='{{ url_for('blood_test_analysis') }}'" class="sleek-btn compact pill">Blood Tests</button>
             <button onclick="location.href='{{ url_for('communities') }}'" class="sleek-btn compact pill">Your Communities</button>
             <button onclick="location.href='{{ url_for('profile') }}'" class="sleek-btn compact pill">Profile</button>
-            <button onclick="location.href='{{ url_for('generate_workout_page') }}'" class="sleek-btn compact pill">Generate Workout</button>
         </div>
         <div id="result" class="result"></div>
         <button onclick="location.href='/premium_dashboard'" class="go-back-btn"></button>

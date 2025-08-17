@@ -3,39 +3,297 @@
 <head>
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>User Chat</title>
-	<link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+	<title>Messages</title>
+	<link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}?v=5.0">
+	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 </head>
 <body>
 	<div class="sidebar">
 		<button class="menu-btn">☰ Menu<span id="unread-badge" class="unread-badge">0</span></button>
 		<div class="dropdown-content">
+			<a href="/profile">Profile</a>
 			{% if session['username'] == 'admin' %}
 			<a href="/admin">Admin Dashboard</a>
 			{% endif %}
-			<a href="/profile">Profile</a>
 			<a href="/user_chat">Messages</a>
 			<a href="/premium_dashboard">Premium Dashboard</a>
-			            <a href="/feed">Social</a>
-			<a href="/nutrition">Nutrition</a>
-			<a href="/blood_test_analysis">Blood Test Analysis</a>
-			<a href="/chat">Chat with Grok</a>
-			<a href="/health_news">Health News</a>
+			<a href="/feed">Social</a>
+			<a href="/communities">Your Communities</a>
 			<a href="/subscribe">Subscribe</a>
 			<a href="/logout">Logout</a>
 		</div>
 	</div>
+	
 	<div class="container">
-		<div class="popup-content">
-			<h2>Messages</h2>
-			<button onclick="location.href='/dashboard'" class="go-back-btn">Back</button>
-			<div id="chat-container"></div>
+		<div class="messages-container">
+			<div class="messages-header">
+				<h2><i class="fas fa-comments"></i> Messages</h2>
+				<button onclick="location.href='/dashboard'" class="go-back-btn">
+					<i class="fas fa-arrow-left"></i> Back
+				</button>
+			</div>
+			
+			<div class="messages-content">
+				<!-- User Selection Panel -->
+				<div class="user-selection-panel">
+					<div class="selection-tabs">
+						<button class="tab-btn active" data-tab="general">
+							<i class="fas fa-users"></i> All Users
+						</button>
+						<button class="tab-btn" data-tab="communities">
+							<i class="fas fa-layer-group"></i> Community Members
+						</button>
+					</div>
+					
+					<!-- General Users Tab -->
+					<div class="tab-content active" id="general-tab">
+						<div class="user-list">
+							<h3>Select a user to message:</h3>
+							<div class="user-grid">
+								{% for user in users %}
+								<div class="user-item" data-username="{{ user }}">
+									<div class="user-avatar">
+										<i class="fas fa-user"></i>
+									</div>
+									<div class="user-name">{{ user }}</div>
+								</div>
+								{% endfor %}
+							</div>
+						</div>
+					</div>
+					
+					<!-- Community Members Tab -->
+					<div class="tab-content" id="communities-tab">
+						<div class="communities-list">
+							<h3>Your Communities:</h3>
+							{% if communities %}
+								{% for community in communities %}
+								<div class="community-section">
+									<div class="community-header">
+										<h4><i class="fas fa-users"></i> {{ community[1] }}</h4>
+										<span class="community-type">{{ community[2] }}</span>
+									</div>
+									{% if community_members[community[0]] %}
+									<div class="community-members">
+										{% for member in community_members[community[0]] %}
+										<div class="member-item" data-username="{{ member }}" data-community="{{ community[1] }}">
+											<div class="member-avatar">
+												<i class="fas fa-user"></i>
+											</div>
+											<div class="member-info">
+												<div class="member-name">{{ member }}</div>
+												<div class="member-community">{{ community[1] }}</div>
+											</div>
+										</div>
+										{% endfor %}
+									</div>
+									{% else %}
+									<div class="no-members">
+										<p>No other members in this community yet.</p>
+									</div>
+									{% endif %}
+								</div>
+								{% endfor %}
+							{% else %}
+							<div class="no-communities">
+								<p>You haven't joined any communities yet.</p>
+								<a href="/communities" class="join-community-link">Join Communities</a>
+							</div>
+							{% endif %}
+						</div>
+					</div>
+				</div>
+				
+				<!-- Chat Panel -->
+				<div class="chat-panel" id="chatPanel" style="display: none;">
+					<div class="chat-header">
+						<button class="back-to-users" id="backToUsers">
+							<i class="fas fa-arrow-left"></i>
+						</button>
+						<div class="chat-user-info">
+							<div class="chat-user-avatar">
+								<i class="fas fa-user"></i>
+							</div>
+							<div class="chat-user-details">
+								<div class="chat-user-name" id="chatUserName"></div>
+								<div class="chat-user-community" id="chatUserCommunity"></div>
+							</div>
+						</div>
+					</div>
+					
+					<div class="chat-messages" id="chatMessages">
+						<!-- Messages will be loaded here -->
+					</div>
+					
+					<div class="chat-input-area">
+						<form id="messageForm" class="message-form">
+							<input type="text" id="messageInput" placeholder="Type your message..." maxlength="500">
+							<button type="submit" class="send-btn">
+								<i class="fas fa-paper-plane"></i>
+							</button>
+						</form>
+					</div>
+				</div>
+				
+				<!-- Welcome Message -->
+				<div class="welcome-message" id="welcomeMessage">
+					<div class="welcome-content">
+						<i class="fas fa-comments welcome-icon"></i>
+						<h3>Welcome to Messages</h3>
+						<p>Select a user from the left panel to start chatting, or choose someone from your communities.</p>
+					</div>
+				</div>
+			</div>
 		</div>
 	</div>
+	
 	<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 	<script src="{{ url_for('static', filename='script.js') }}"></script>
-	<style>
-		* { font-family: Arial, Helvetica, sans-serif; }
-	</style>
+	<script>
+		$(document).ready(function() {
+			let currentReceiver = null;
+			let messageInterval = null;
+			
+			// Tab switching
+			$('.tab-btn').click(function() {
+				$('.tab-btn').removeClass('active');
+				$(this).addClass('active');
+				
+				const tab = $(this).data('tab');
+				$('.tab-content').removeClass('active');
+				$('#' + tab + '-tab').addClass('active');
+			});
+			
+			// User selection (general)
+			$('.user-item').click(function() {
+				const username = $(this).data('username');
+				startChat(username);
+			});
+			
+			// Member selection (communities)
+			$('.member-item').click(function() {
+				const username = $(this).data('username');
+				const community = $(this).data('community');
+				startChat(username, community);
+			});
+			
+			// Back to users
+			$('#backToUsers').click(function() {
+				$('#chatPanel').hide();
+				$('#welcomeMessage').show();
+				$('.user-selection-panel').show();
+				stopMessagePolling();
+			});
+			
+			// Message form submission
+			$('#messageForm').submit(function(e) {
+				e.preventDefault();
+				sendMessage();
+			});
+			
+			function startChat(username, community = null) {
+				currentReceiver = username;
+				
+				// Update chat header
+				$('#chatUserName').text(username);
+				if (community) {
+					$('#chatUserCommunity').text('from ' + community);
+				} else {
+					$('#chatUserCommunity').text('');
+				}
+				
+				// Show chat panel
+				$('#welcomeMessage').hide();
+				$('.user-selection-panel').hide();
+				$('#chatPanel').show();
+				
+				// Load messages
+				loadMessages();
+				
+				// Start polling for new messages
+				startMessagePolling();
+			}
+			
+			function loadMessages() {
+				$.ajax({
+					url: '/get_messages',
+					method: 'POST',
+					data: {
+						receiver: currentReceiver,
+						csrf_token: $('meta[name="csrf-token"]').attr('content')
+					},
+					success: function(response) {
+						if (response.success) {
+							displayMessages(response.messages);
+						} else {
+							console.error('Error loading messages:', response.error);
+						}
+					},
+					error: function() {
+						console.error('Failed to load messages');
+					}
+				});
+			}
+			
+			function displayMessages(messages) {
+				const chatMessages = $('#chatMessages');
+				chatMessages.empty();
+				
+				messages.forEach(function(message) {
+					const isOwn = message.sender === '{{ name }}';
+					const messageHtml = `
+						<div class="message ${isOwn ? 'own-message' : 'other-message'}">
+							<div class="message-content">
+								<div class="message-text">${message.message}</div>
+								<div class="message-time">${message.timestamp}</div>
+							</div>
+						</div>
+					`;
+					chatMessages.append(messageHtml);
+				});
+				
+				// Scroll to bottom
+				chatMessages.scrollTop(chatMessages[0].scrollHeight);
+			}
+			
+			function sendMessage() {
+				const messageText = $('#messageInput').val().trim();
+				if (!messageText || !currentReceiver) return;
+				
+				$.ajax({
+					url: '/send_message',
+					method: 'POST',
+					data: {
+						receiver: currentReceiver,
+						message: messageText,
+						csrf_token: $('meta[name="csrf-token"]').attr('content')
+					},
+					success: function(response) {
+						if (response.success) {
+							$('#messageInput').val('');
+							loadMessages(); // Reload to show new message
+						} else {
+							console.error('Error sending message:', response.error);
+						}
+					},
+					error: function() {
+						console.error('Failed to send message');
+					}
+				});
+			}
+			
+			function startMessagePolling() {
+				stopMessagePolling();
+				messageInterval = setInterval(loadMessages, 3000); // Poll every 3 seconds
+			}
+			
+			function stopMessagePolling() {
+				if (messageInterval) {
+					clearInterval(messageInterval);
+					messageInterval = null;
+				}
+			}
+		});
+	</script>
 </body>
 </html>
