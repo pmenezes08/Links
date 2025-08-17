@@ -81,8 +81,15 @@
         </div>
         {% endif %}
         <div class="community-header">
-            <h1>{{ community.name }}</h1>
-            <p class="community-type">{{ community.type }} Community</p>
+            <div class="community-header-left">
+                <h1>{{ community.name }}</h1>
+                <p class="community-type">{{ community.type }} Community</p>
+            </div>
+            <div class="community-header-right">
+                <button class="members-btn" onclick="showMembersModal()">
+                    <i class="fas fa-users"></i> Members
+                </button>
+            </div>
         </div>
 
         <!-- Composer -->
@@ -151,5 +158,159 @@
             </div>
         </div>
     </div>
+
+    <!-- Members Modal -->
+    <div id="membersModal" class="modal">
+        <div class="modal-content members-modal">
+            <div class="modal-header">
+                <h2><i class="fas fa-users"></i> {{ community.name }} Members</h2>
+                <span class="close" onclick="closeMembersModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div id="membersList">
+                    <!-- Members will be loaded here -->
+                </div>
+                {% if username == community.creator_username or username == 'admin' %}
+                <div class="add-member-section">
+                    <h3>Add Member</h3>
+                    <div class="add-member-form">
+                        <input type="text" id="newMemberUsername" placeholder="Enter username to add" class="member-input">
+                        <button onclick="addMember()" class="sleek-btn small">Add</button>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function showMembersModal() {
+            document.getElementById('membersModal').style.display = 'block';
+            loadMembers();
+        }
+
+        function closeMembersModal() {
+            document.getElementById('membersModal').style.display = 'none';
+        }
+
+        function loadMembers() {
+            fetch('/get_community_members', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').content
+                },
+                body: 'community_id={{ community.id }}'
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    displayMembers(data.members);
+                } else {
+                    document.getElementById('membersList').innerHTML = '<p class="error">Error loading members</p>';
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                document.getElementById('membersList').innerHTML = '<p class="error">Error loading members</p>';
+            });
+        }
+
+        function displayMembers(members) {
+            const membersList = document.getElementById('membersList');
+            if (members.length === 0) {
+                membersList.innerHTML = '<p class="no-members">No members found</p>';
+                return;
+            }
+
+            let html = '<div class="members-grid">';
+            members.forEach(member => {
+                const isOwner = member.username === '{{ community.creator_username }}';
+                const canRemove = ('{{ username }}' === '{{ community.creator_username }}' || '{{ username }}' === 'admin') && !isOwner;
+                
+                html += `
+                    <div class="member-item">
+                        <div class="member-avatar">
+                            <i class="fas fa-user"></i>
+                        </div>
+                        <div class="member-info">
+                            <div class="member-name">${member.username}${isOwner ? ' <span class="owner-badge">Owner</span>' : ''}</div>
+                            <div class="member-joined">Joined: ${member.joined_date}</div>
+                        </div>
+                        ${canRemove ? `<button class="remove-member-btn" onclick="removeMember('${member.username}')"><i class="fas fa-times"></i></button>` : ''}
+                    </div>
+                `;
+            });
+            html += '</div>';
+            membersList.innerHTML = html;
+        }
+
+        function addMember() {
+            const username = document.getElementById('newMemberUsername').value.trim();
+            if (!username) {
+                alert('Please enter a username');
+                return;
+            }
+
+            fetch('/add_community_member', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').content
+                },
+                body: `community_id={{ community.id }}&username=${encodeURIComponent(username)}`
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    document.getElementById('newMemberUsername').value = '';
+                    loadMembers();
+                    alert('Member added successfully!');
+                } else {
+                    alert(data.error || 'Error adding member');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Error adding member');
+            });
+        }
+
+        function removeMember(username) {
+            if (!confirm(`Are you sure you want to remove ${username} from this community?`)) {
+                return;
+            }
+
+            fetch('/remove_community_member', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').content
+                },
+                body: `community_id={{ community.id }}&username=${encodeURIComponent(username)}`
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    loadMembers();
+                    alert('Member removed successfully!');
+                } else {
+                    alert(data.error || 'Error removing member');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Error removing member');
+            });
+        }
+
+        // Close modal when clicking outside
+        window.onclick = function(event) {
+            const membersModal = document.getElementById('membersModal');
+            if (event.target === membersModal) {
+                closeMembersModal();
+            }
+        }
+    </script>
 </body>
 </html>

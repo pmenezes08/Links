@@ -1877,6 +1877,128 @@ def delete_message():
         logger.error(f"Error deleting message for {username}: {str(e)}")
         abort(500)
 
+@app.route('/get_community_members', methods=['POST'])
+@login_required
+def get_community_members():
+    username = session['username']
+    community_id = request.form.get('community_id')
+    if not community_id:
+        return jsonify({'success': False, 'error': 'No community ID specified'})
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            # Check if user is a member of this community
+            c.execute("""
+                SELECT 1 FROM user_communities uc
+                INNER JOIN users u ON uc.user_id = u.rowid
+                WHERE uc.community_id = ? AND u.username = ?
+            """, (community_id, username))
+            if not c.fetchone():
+                return jsonify({'success': False, 'error': 'Not a member of this community'})
+            
+            # Get all members of the community
+            c.execute("""
+                SELECT u.username, uc.joined_at
+                FROM user_communities uc
+                INNER JOIN users u ON uc.user_id = u.rowid
+                WHERE uc.community_id = ?
+                ORDER BY u.username
+            """, (community_id,))
+            members = []
+            for row in c.fetchall():
+                joined_date = row['joined_at'] if row['joined_at'] else 'Unknown'
+                members.append({
+                    'username': row['username'],
+                    'joined_date': joined_date
+                })
+        return jsonify({'success': True, 'members': members})
+    except Exception as e:
+        logger.error(f"Error getting community members for {username}: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/add_community_member', methods=['POST'])
+@login_required
+def add_community_member():
+    username = session['username']
+    community_id = request.form.get('community_id')
+    new_member_username = request.form.get('username')
+    if not community_id or not new_member_username:
+        return jsonify({'success': False, 'error': 'Missing required parameters'})
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            # Check if user is community owner or admin
+            c.execute("SELECT creator_username FROM communities WHERE id = ?", (community_id,))
+            community = c.fetchone()
+            if not community:
+                return jsonify({'success': False, 'error': 'Community not found'})
+            
+            if username != community['creator_username'] and username != 'admin':
+                return jsonify({'success': False, 'error': 'Only community owner or admin can add members'})
+            
+            # Check if new member exists
+            c.execute("SELECT rowid FROM users WHERE username = ?", (new_member_username,))
+            new_member = c.fetchone()
+            if not new_member:
+                return jsonify({'success': False, 'error': 'User not found'})
+            
+            # Check if already a member
+            c.execute("""
+                SELECT 1 FROM user_communities uc
+                INNER JOIN users u ON uc.user_id = u.rowid
+                WHERE uc.community_id = ? AND u.username = ?
+            """, (community_id, new_member_username))
+            if c.fetchone():
+                return jsonify({'success': False, 'error': 'User is already a member'})
+            
+            # Add member
+            c.execute("INSERT INTO user_communities (community_id, user_id) VALUES (?, ?)",
+                      (community_id, new_member['rowid']))
+            conn.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"Error adding community member for {username}: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/remove_community_member', methods=['POST'])
+@login_required
+def remove_community_member():
+    username = session['username']
+    community_id = request.form.get('community_id')
+    member_username = request.form.get('username')
+    if not community_id or not member_username:
+        return jsonify({'success': False, 'error': 'Missing required parameters'})
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            # Check if user is community owner or admin
+            c.execute("SELECT creator_username FROM communities WHERE id = ?", (community_id,))
+            community = c.fetchone()
+            if not community:
+                return jsonify({'success': False, 'error': 'Community not found'})
+            
+            if username != community['creator_username'] and username != 'admin':
+                return jsonify({'success': False, 'error': 'Only community owner or admin can remove members'})
+            
+            # Prevent removing the owner
+            if member_username == community['creator_username']:
+                return jsonify({'success': False, 'error': 'Cannot remove community owner'})
+            
+            # Get member's user ID
+            c.execute("SELECT rowid FROM users WHERE username = ?", (member_username,))
+            member = c.fetchone()
+            if not member:
+                return jsonify({'success': False, 'error': 'User not found'})
+            
+            # Remove member
+            c.execute("DELETE FROM user_communities WHERE community_id = ? AND user_id = ?",
+                      (community_id, member['rowid']))
+            conn.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"Error removing community member for {username}: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
+
 @app.route('/check_unread_messages')
 @login_required
 def check_unread_messages():
