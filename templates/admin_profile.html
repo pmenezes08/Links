@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Profile - Workout X</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}?v=6.0">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+</head>
+<body>
+    <div class="sidebar">
+        <button class="menu-btn">☰ Menu</button>
+        <div class="dropdown-content">
+            <a href="{{ url_for('dashboard') }}">Dashboard</a>
+            <a href="{{ url_for('admin') }}">Admin Dashboard</a>
+            <a href="{{ url_for('admin_profile') }}">Admin Profile</a>
+            <a href="{{ url_for('feed') }}">Social</a>
+            <a href="{{ url_for('communities') }}">Your Communities</a>
+            <a href="{{ url_for('logout') }}">Logout</a>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="admin-profile-header">
+            <h1><i class="fas fa-user-shield"></i> Admin Profile</h1>
+            <p class="admin-subtitle">System Administrator Dashboard</p>
+        </div>
+
+        <div class="admin-profile-content">
+            <div class="admin-info-section">
+                <h2>Administrator Information</h2>
+                <div class="admin-info-grid">
+                    <div class="info-item">
+                        <label>Username:</label>
+                        <span>{{ admin_info.username }}</span>
+                    </div>
+                    <div class="info-item">
+                        <label>Email:</label>
+                        <span>{{ admin_info.email }}</span>
+                    </div>
+                    <div class="info-item">
+                        <label>Full Name:</label>
+                        <span>{{ admin_info.first_name }} {{ admin_info.last_name }}</span>
+                    </div>
+                    <div class="info-item">
+                        <label>Subscription:</label>
+                        <span class="premium-badge">{{ admin_info.subscription }}</span>
+                    </div>
+                    <div class="info-item">
+                        <label>Account Created:</label>
+                        <span>{{ admin_info.created_at }}</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="admin-stats-section">
+                <h2>System Statistics</h2>
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-users"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3>{{ stats.total_users }}</h3>
+                            <p>Total Users</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-comments"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3>{{ stats.total_posts }}</h3>
+                            <p>Total Posts</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-users-cog"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3>{{ stats.total_communities }}</h3>
+                            <p>Communities</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-crown"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3>{{ stats.premium_users }}</h3>
+                            <p>Premium Users</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="admin-actions-section">
+                <h2>Administrative Actions</h2>
+                <div class="admin-actions-grid">
+                    <button onclick="location.href='{{ url_for('admin') }}'" class="admin-action-btn">
+                        <i class="fas fa-tachometer-alt"></i>
+                        <span>Admin Dashboard</span>
+                    </button>
+                    <button onclick="location.href='{{ url_for('feed') }}'" class="admin-action-btn">
+                        <i class="fas fa-stream"></i>
+                        <span>View Social Feed</span>
+                    </button>
+                    <button onclick="location.href='{{ url_for('communities') }}'" class="admin-action-btn">
+                        <i class="fas fa-users"></i>
+                        <span>Manage Communities</span>
+                    </button>
+                    <button onclick="location.href='{{ url_for('dashboard') }}'" class="admin-action-btn">
+                        <i class="fas fa-home"></i>
+                        <span>Main Dashboard</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script>
+        $(document).ready(function() {
+            $('.menu-btn').click(function() {
+                $('.dropdown-content').toggle();
+            });
+        });
+    </script>
+</body>
+</html>

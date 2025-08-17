@@ -584,6 +584,53 @@ def signup():
         logger.error(f"Error during user registration: {str(e)}")
         return render_template('signup.html', error='An error occurred during registration. Please try again.')
 
+@app.route('/admin_profile')
+@login_required
+def admin_profile():
+    """Admin profile page - only accessible to admin user"""
+    username = session.get('username')
+    
+    # Check if user is admin
+    if username != 'admin':
+        abort(403)  # Forbidden - only admin can access this page
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Get admin information
+            c.execute("""
+                SELECT username, email, first_name, last_name, subscription, created_at
+                FROM users WHERE username = ?
+            """, (username,))
+            admin_info = dict(c.fetchone())
+            
+            # Get system statistics
+            c.execute("SELECT COUNT(*) as count FROM users")
+            total_users = c.fetchone()['count']
+            
+            c.execute("SELECT COUNT(*) as count FROM posts")
+            total_posts = c.fetchone()['count']
+            
+            c.execute("SELECT COUNT(*) as count FROM communities")
+            total_communities = c.fetchone()['count']
+            
+            c.execute("SELECT COUNT(*) as count FROM users WHERE subscription = 'premium'")
+            premium_users = c.fetchone()['count']
+            
+            stats = {
+                'total_users': total_users,
+                'total_posts': total_posts,
+                'total_communities': total_communities,
+                'premium_users': premium_users
+            }
+            
+        return render_template('admin_profile.html', admin_info=admin_info, stats=stats)
+        
+    except Exception as e:
+        logger.error(f"Error loading admin profile: {str(e)}")
+        abort(500)
+
 @app.route('/logout')
 def logout():
     session.clear()
