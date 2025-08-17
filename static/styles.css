@@ -787,14 +787,17 @@ select:focus, input:focus {
 
 .popup-content .sleek-btn { width: 100%; max-width: 350px; }
 
-/* dashboard button row */
+/* dashboard button column - vertical stack */
 .dashboard-actions {
     display: flex;
-    gap: 12px;
+    flex-direction: column;
+    gap: 16px;
     justify-content: center;
     align-items: center;
-    flex-wrap: wrap;
-    margin-top: 16px;
+    margin-top: 24px;
+    max-width: 400px;
+    margin-left: auto;
+    margin-right: auto;
 }
 
 .sleek-btn.compact {
@@ -805,28 +808,51 @@ select:focus, input:focus {
     letter-spacing: 0.3px;
 }
 
-/* Pill-style variant for dashboard actions */
+/* Enhanced Pill-style variant for dashboard actions */
 .sleek-btn.pill {
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: 9999px;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.04));
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 12px;
     color: #e0e0e0;
-    padding: 8px 14px;
-    width: auto;
-    max-width: none;
-    letter-spacing: 0.3px;
+    padding: 14px 24px;
+    width: 100%;
+    max-width: 320px;
+    letter-spacing: 0.5px;
+    font-weight: 500;
+    font-size: 0.95em;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    overflow: hidden;
+    backdrop-filter: blur(10px);
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.sleek-btn.pill::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+    transition: left 0.5s;
 }
 
 .sleek-btn.pill:hover {
-    background: rgba(255, 255, 255, 0.10);
-    border-color: rgba(255, 255, 255, 0.22);
-    transform: translateY(-1px);
-    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.25);
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.08));
+    border-color: rgba(255, 255, 255, 0.25);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+    color: #ffffff;
+}
+
+.sleek-btn.pill:hover::before {
+    left: 100%;
 }
 
 .sleek-btn.pill:active {
     transform: translateY(0);
-    box-shadow: none;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
 }
 
 /* Hover state enhancement for buttons */
@@ -834,6 +860,21 @@ select:focus, input:focus {
 .sleek-btn.compact:hover,
 .sleek-btn.pill:hover {
     background: #2a3a3a; /* darker greenish tone within theme */
+}
+
+/* Responsive dashboard actions */
+@media (max-width: 768px) {
+    .dashboard-actions {
+        max-width: 100%;
+        padding: 0 20px;
+        gap: 12px;
+    }
+    
+    .sleek-btn.pill {
+        padding: 12px 20px;
+        font-size: 0.9em;
+        max-width: 100%;
+    }
 }
 
 /* Modal styles */
