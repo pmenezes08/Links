@@ -1079,9 +1079,15 @@ def delete_weight():
 def admin():
     if session['username'] != 'admin':
         return redirect(url_for('index'))
+    
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
+            
+            # Get users list first
+            c.execute("SELECT username, subscription FROM users")
+            users = c.fetchall()
+            
             if request.method == 'POST':
                 if 'add_user' in request.form:
                     new_username = request.form.get('new_username')
@@ -1091,35 +1097,53 @@ def admin():
                         c.execute("INSERT INTO users (username, subscription, password) VALUES (?, ?, ?)",
                                   (new_username, new_subscription, new_password))
                         conn.commit()
+                        # Refresh users list
+                        c.execute("SELECT username, subscription FROM users")
+                        users = c.fetchall()
                     except sqlite3.IntegrityError:
-                        return render_template('index.html', error=f"Username {new_username} already exists!")
+                        return render_template('admin.html', users=users, error=f"Username {new_username} already exists!")
+                        
                 elif 'update_user' in request.form:
                     user_to_update = request.form.get('username')
                     new_subscription = request.form.get('subscription')
                     c.execute("UPDATE users SET subscription=? WHERE username=?", (new_subscription, user_to_update))
                     conn.commit()
+                    # Refresh users list
+                    c.execute("SELECT username, subscription FROM users")
+                    users = c.fetchall()
+                    
                 elif 'delete_user' in request.form:
                     user_to_delete = request.form.get('username')
+                    
                     # Prevent admin from deleting themselves
                     if user_to_delete == 'admin':
                         return render_template('admin.html', users=users, error="Cannot delete admin user!")
                     
-                    # Delete user's data from all related tables
-                    c.execute("DELETE FROM posts WHERE username=?", (user_to_delete,))
-                    c.execute("DELETE FROM replies WHERE username=?", (user_to_delete,))
-                    c.execute("DELETE FROM reactions WHERE username=?", (user_to_delete,))
-                    c.execute("DELETE FROM reply_reactions WHERE username=?", (user_to_delete,))
-                    c.execute("DELETE FROM user_communities WHERE user_id=(SELECT rowid FROM users WHERE username=?)", (user_to_delete,))
-                    c.execute("DELETE FROM saved_data WHERE username=?", (user_to_delete,))
-                    c.execute("DELETE FROM messages WHERE sender=?", (user_to_delete,))
-                    c.execute("DELETE FROM messages WHERE recipient=?", (user_to_delete,))
-                    
-                    # Finally delete the user
-                    c.execute("DELETE FROM users WHERE username=?", (user_to_delete,))
-                    conn.commit()
-            c.execute("SELECT username, subscription FROM users")
-            users = c.fetchall()
+                    try:
+                        # Delete user's data from all related tables
+                        c.execute("DELETE FROM posts WHERE username=?", (user_to_delete,))
+                        c.execute("DELETE FROM replies WHERE username=?", (user_to_delete,))
+                        c.execute("DELETE FROM reactions WHERE username=?", (user_to_delete,))
+                        c.execute("DELETE FROM reply_reactions WHERE username=?", (user_to_delete,))
+                        c.execute("DELETE FROM user_communities WHERE user_id=(SELECT rowid FROM users WHERE username=?)", (user_to_delete,))
+                        c.execute("DELETE FROM saved_data WHERE username=?", (user_to_delete,))
+                        c.execute("DELETE FROM messages WHERE sender=?", (user_to_delete,))
+                        c.execute("DELETE FROM messages WHERE recipient=?", (user_to_delete,))
+                        
+                        # Finally delete the user
+                        c.execute("DELETE FROM users WHERE username=?", (user_to_delete,))
+                        conn.commit()
+                        
+                        # Refresh users list
+                        c.execute("SELECT username, subscription FROM users")
+                        users = c.fetchall()
+                        
+                    except Exception as delete_error:
+                        logger.error(f"Error deleting user {user_to_delete}: {str(delete_error)}")
+                        return render_template('admin.html', users=users, error=f"Error deleting user: {str(delete_error)}")
+            
         return render_template('admin.html', users=users)
+        
     except Exception as e:
         logger.error(f"Error in admin route: {str(e)}")
         abort(500)
