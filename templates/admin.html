@@ -548,6 +548,27 @@
             }
         `;
         document.head.appendChild(style);
+
+        // Menu dropdown functionality
+        $(document).ready(function() {
+            $('.menu-btn').click(function() {
+                $('.dropdown-content').toggle();
+            });
+            
+            $(window).resize(function() {
+                if ($(window).width() > 768) {
+                    $('.dropdown-content').hide();
+                }
+            });
+            
+            // Close dropdown when clicking outside
+            $(document).click(function(event) {
+                if (!$(event.target).closest('.sidebar').length) {
+                    $('.dropdown-content').hide();
+                }
+            });
+        });
     </script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 </body>
 </html>
