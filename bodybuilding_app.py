@@ -1999,6 +1999,40 @@ def remove_community_member():
         logger.error(f"Error removing community member for {username}: {str(e)}")
         return jsonify({'success': False, 'error': str(e)})
 
+@app.route('/update_user_password', methods=['POST'])
+@login_required
+def update_user_password():
+    username = session['username']
+    if username != 'admin':
+        return jsonify({'success': False, 'error': 'Admin access required'})
+    
+    target_username = request.form.get('username')
+    new_password = request.form.get('new_password')
+    
+    if not target_username or not new_password:
+        return jsonify({'success': False, 'error': 'Username and new password required'})
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            # Check if target user exists
+            c.execute("SELECT rowid FROM users WHERE username = ?", (target_username,))
+            user = c.fetchone()
+            if not user:
+                return jsonify({'success': False, 'error': 'User not found'})
+            
+            # Hash the new password
+            hashed_password = generate_password_hash(new_password)
+            
+            # Update the password
+            c.execute("UPDATE users SET password = ? WHERE username = ?", (hashed_password, target_username))
+            conn.commit()
+            
+        return jsonify({'success': True, 'message': f'Password updated successfully for {target_username}'})
+    except Exception as e:
+        logger.error(f"Error updating password for {target_username}: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
+
 @app.route('/check_unread_messages')
 @login_required
 def check_unread_messages():

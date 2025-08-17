@@ -59,6 +59,7 @@
                             </select>
                             <button type="submit" name="update_user" class="sleek-btn">Update</button>
                         </form>
+                        <button onclick="showPasswordModal('{{ user[0] }}')" class="sleek-btn" style="margin-left: 10px;">Update Password</button>
                         {% if user[0] != 'admin' %}
                         <form method="POST" style="display: inline; margin-left: 10px;">
                             <input type="hidden" name="username" value="{{ user[0] }}">
@@ -351,6 +352,146 @@
             table, th, td { font-size: 0.9em; padding: 8px; }
             select, input[type="text"], input[type="password"] { max-width: 100%; }
         }
+        
+        // Password Update Modal
+        function showPasswordModal(username) {
+            const modal = document.createElement('div');
+            modal.id = 'passwordModal';
+            modal.style.cssText = `
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(0, 0, 0, 0.7);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                z-index: 10000;
+            `;
+            
+            modal.innerHTML = `
+                <div style="
+                    background: #2d3839;
+                    padding: 30px;
+                    border-radius: 8px;
+                    width: 90%;
+                    max-width: 400px;
+                    color: #ffffff;
+                ">
+                    <h3 style="margin: 0 0 20px 0; color: #ffffff;">Update Password for ${username}</h3>
+                    <form id="passwordForm">
+                        <input type="hidden" id="targetUsername" value="${username}">
+                        <div style="margin-bottom: 15px;">
+                            <label for="newPassword" style="display: block; margin-bottom: 5px; color: #ffffff;">New Password:</label>
+                            <input type="password" id="newPassword" required style="
+                                width: 100%;
+                                padding: 10px;
+                                border: 1px solid rgba(255, 255, 255, 0.2);
+                                border-radius: 4px;
+                                background: rgba(255, 255, 255, 0.1);
+                                color: #ffffff;
+                                font-size: 14px;
+                            ">
+                        </div>
+                        <div style="margin-bottom: 20px;">
+                            <label for="confirmPassword" style="display: block; margin-bottom: 5px; color: #ffffff;">Confirm Password:</label>
+                            <input type="password" id="confirmPassword" required style="
+                                width: 100%;
+                                padding: 10px;
+                                border: 1px solid rgba(255, 255, 255, 0.2);
+                                border-radius: 4px;
+                                background: rgba(255, 255, 255, 0.1);
+                                color: #ffffff;
+                                font-size: 14px;
+                            ">
+                        </div>
+                        <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                            <button type="button" onclick="closePasswordModal()" style="
+                                background: rgba(255, 255, 255, 0.1);
+                                color: #ffffff;
+                                border: 1px solid rgba(255, 255, 255, 0.2);
+                                padding: 10px 20px;
+                                border-radius: 4px;
+                                cursor: pointer;
+                                font-size: 14px;
+                            ">Cancel</button>
+                            <button type="submit" style="
+                                background: #182c25;
+                                color: #ffffff;
+                                border: none;
+                                padding: 10px 20px;
+                                border-radius: 4px;
+                                cursor: pointer;
+                                font-size: 14px;
+                                font-weight: 500;
+                            ">Update Password</button>
+                        </div>
+                    </form>
+                </div>
+            `;
+            
+            document.body.appendChild(modal);
+            
+            // Handle form submission
+            document.getElementById('passwordForm').addEventListener('submit', function(e) {
+                e.preventDefault();
+                updateUserPassword();
+            });
+        }
+        
+        function closePasswordModal() {
+            const modal = document.getElementById('passwordModal');
+            if (modal) {
+                modal.remove();
+            }
+        }
+        
+        function updateUserPassword() {
+            const username = document.getElementById('targetUsername').value;
+            const newPassword = document.getElementById('newPassword').value;
+            const confirmPassword = document.getElementById('confirmPassword').value;
+            
+            if (newPassword !== confirmPassword) {
+                alert('Passwords do not match!');
+                return;
+            }
+            
+            if (newPassword.length < 6) {
+                alert('Password must be at least 6 characters long!');
+                return;
+            }
+            
+            // Send AJAX request
+            fetch('/update_user_password', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: `username=${encodeURIComponent(username)}&new_password=${encodeURIComponent(newPassword)}`
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert(data.message);
+                    closePasswordModal();
+                } else {
+                    alert('Error: ' + data.error);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Error updating password. Please try again.');
+            });
+        }
+        
+        // Close modal when clicking outside
+        document.addEventListener('click', function(event) {
+            const modal = document.getElementById('passwordModal');
+            if (event.target === modal) {
+                closePasswordModal();
+            }
+        });
     </style>
 </body>
 </html>

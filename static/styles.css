@@ -137,7 +137,7 @@ select:focus, input:focus {
 }
 
 .sleek-btn.small {
-    background: #06402B;
+    background: #182c25;
     border: none;
     color: #ffffff;
     padding: 8px 16px;
@@ -152,7 +152,7 @@ select:focus, input:focus {
 }
 
 .sleek-btn.small:hover {
-    background: #0a5a3a;
+    background: #1f3a2f;
 }
 
 #x-login-btn {
@@ -981,7 +981,7 @@ select:focus, input:focus {
 .member-avatar {
     width: 40px;
     height: 40px;
-    background: linear-gradient(135deg, #06402B, #0a5a3a);
+    background: linear-gradient(135deg, #182c25, #1f3a2f);
     border-radius: 50%;
     display: flex;
     align-items: center;
@@ -1006,7 +1006,7 @@ select:focus, input:focus {
 }
 
 .owner-badge {
-    background: #06402B;
+    background: #182c25;
     color: #ffffff;
     padding: 2px 8px;
     border-radius: 10px;
@@ -1060,8 +1060,8 @@ select:focus, input:focus {
 
 .member-input:focus {
     outline: none;
-    border-color: #06402B;
-    box-shadow: 0 0 0 2px rgba(6, 64, 43, 0.2);
+    border-color: #182c25;
+    box-shadow: 0 0 0 2px rgba(24, 44, 37, 0.2);
 }
 
 .member-input::placeholder {
@@ -1317,7 +1317,7 @@ select:focus, input:focus {
 
 .tab-btn.active {
     background: #2d3839; /* Active tab matches sidebar */
-    color: #06402B; /* App theme color for active tab */
+    color: #182c25; /* App theme color for active tab */
 }
 
 .tab-btn.active::after {
@@ -1327,7 +1327,7 @@ select:focus, input:focus {
     left: 0;
     right: 0;
     height: 2px;
-    background: #06402B; /* App theme color underline */
+    background: #182c25; /* App theme color underline */
 }
 
 .tab-content {
@@ -1377,7 +1377,7 @@ select:focus, input:focus {
 .user-avatar {
     width: 40px;
     height: 40px;
-    background: #06402B; /* App theme color */
+    background: #182c25; /* App theme color */
     border-radius: 50%;
     display: flex;
     align-items: center;
@@ -1453,7 +1453,7 @@ select:focus, input:focus {
 .member-avatar {
     width: 36px;
     height: 36px;
-    background: #06402B; /* App theme color */
+    background: #182c25; /* App theme color */
     border-radius: 50%;
     display: flex;
     align-items: center;
@@ -1488,7 +1488,7 @@ select:focus, input:focus {
 
 .join-community-btn {
     display: inline-block;
-    background: linear-gradient(135deg, #06402B, #0a5a3a);
+    background: linear-gradient(135deg, #182c25, #1f3a2f);
     color: #ffffff;
     padding: 10px 20px;
     border-radius: 25px;
@@ -1501,11 +1501,11 @@ select:focus, input:focus {
 
 .join-community-btn:hover {
     transform: translateY(-2px);
-    box-shadow: 0 4px 15px rgba(6, 64, 43, 0.3);
+    box-shadow: 0 4px 15px rgba(24, 44, 37, 0.3);
 }
 
 .join-community-link {
-    color: #06402B;
+    color: #182c25;
     text-decoration: none;
     font-weight: 500;
 }
@@ -1557,7 +1557,7 @@ select:focus, input:focus {
 .chat-user-avatar {
     width: 40px;
     height: 40px;
-    background: linear-gradient(135deg, #06402B, #0a5a3a);
+    background: linear-gradient(135deg, #182c25, #1f3a2f);
     border-radius: 50%;
     display: flex;
     align-items: center;
@@ -1610,7 +1610,7 @@ select:focus, input:focus {
 }
 
 .own-message .message-content {
-    background: #06402B; /* App theme color for own messages */
+    background: #182c25; /* App theme color for own messages */
     color: #ffffff;
     border-bottom-right-radius: 2px;
     margin-left: auto;
@@ -1671,7 +1671,7 @@ select:focus, input:focus {
 
 #messageInput:focus {
     outline: none;
-    box-shadow: 0 0 0 1px #06402B;
+    box-shadow: 0 0 0 1px #182c25;
 }
 
 #messageInput::placeholder {
@@ -1681,7 +1681,7 @@ select:focus, input:focus {
 .send-btn {
     width: 40px;
     height: 40px;
-    background: #06402B; /* App theme color */
+    background: #182c25; /* App theme color */
     border: none;
     border-radius: 50%;
     color: #ffffff;
@@ -1694,7 +1694,7 @@ select:focus, input:focus {
 }
 
 .send-btn:hover {
-    background: #0a5a3a;
+    background: #1f3a2f;
     transform: scale(1.05);
 }
 
@@ -1857,7 +1857,7 @@ select:focus, input:focus {
 
 .welcome-icon {
     font-size: 4em;
-    color: #06402B;
+    color: #182c25;
     margin-bottom: 20px;
 }
 
@@ -1983,12 +1983,12 @@ select:focus, input:focus {
 
 .post-form textarea:focus {
     outline: none;
-    border-color: rgba(6, 64, 43, 0.5);
-    box-shadow: 0 0 0 2px rgba(6, 64, 43, 0.2);
+    border-color: rgba(24, 44, 37, 0.5);
+    box-shadow: 0 0 0 2px rgba(24, 44, 37, 0.2);
 }
 
 .post-btn {
-    background: linear-gradient(135deg, #06402B, #0a5a3a);
+    background: linear-gradient(135deg, #182c25, #1f3a2f);
     color: white;
     border: none;
     padding: 12px 24px;
@@ -2000,9 +2000,9 @@ select:focus, input:focus {
 }
 
 .post-btn:hover {
-    background: linear-gradient(135deg, #0a5a3a, #0d4a2e);
+    background: linear-gradient(135deg, #1f3a2f, #2a4a3a);
     transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(6, 64, 43, 0.3);
+    box-shadow: 0 4px 12px rgba(24, 44, 37, 0.3);
 }
 .community-creation-section {
     padding: 20px;
@@ -2224,8 +2224,8 @@ select:focus, input:focus {
 }
 
 .theme-preset.active {
-    border-color: #06402B;
-    background: rgba(6, 64, 43, 0.1);
+    border-color: #182c25;
+    background: rgba(24, 44, 37, 0.1);
 }
 
 .preset-preview {
@@ -2340,7 +2340,7 @@ select:focus, input:focus {
 }
 
 .create-community-btn {
-    background: linear-gradient(135deg, #06402B, #0a5a3a);
+    background: linear-gradient(135deg, #182c25, #1f3a2f);
     border: none;
     color: #ffffff;
     padding: 12px 24px;
@@ -2352,13 +2352,13 @@ select:focus, input:focus {
 }
 
 .create-community-btn:hover {
-    background: linear-gradient(135deg, #0a5a3a, #0d4a2e);
+    background: linear-gradient(135deg, #1f3a2f, #2a4a3a);
     transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(6, 64, 43, 0.3);
+    box-shadow: 0 4px 12px rgba(24, 44, 37, 0.3);
 }
 
 .community-form h3 {
-    color: #06402B;
+    color: #182c25;
     margin-bottom: 20px;
     font-size: 18px;
 }
@@ -2408,7 +2408,7 @@ select:focus, input:focus {
 }
 
 .create-community-btn {
-    background: linear-gradient(135deg, #06402B, #0a5a3a);
+    background: linear-gradient(135deg, #182c25, #1f3a2f);
     color: white;
     border: none;
     padding: 12px 24px;
@@ -2421,7 +2421,7 @@ select:focus, input:focus {
 }
 
 .create-community-btn:hover {
-    background: linear-gradient(135deg, #0a5a3a, #0d4a2e);
+    background: linear-gradient(135deg, #1f3a2f, #2a4a3a);
     transform: translateY(-1px);
 }
 
@@ -2599,8 +2599,8 @@ select:focus, input:focus {
 .form-group input:focus,
 .form-group select:focus {
     outline: none;
-    border-color: rgba(6, 64, 43, 0.5);
-    box-shadow: 0 0 0 2px rgba(6, 64, 43, 0.2);
+    border-color: rgba(24, 44, 37, 0.5);
+    box-shadow: 0 0 0 2px rgba(24, 44, 37, 0.2);
 }
 
 .form-group input::placeholder {
@@ -2615,7 +2615,7 @@ select:focus, input:focus {
 }
 
 .sleek-btn.primary {
-    background: linear-gradient(135deg, #06402B, #0a5a3a);
+    background: linear-gradient(135deg, #182c25, #1f3a2f);
     color: white;
     border: none;
     padding: 15px 30px;
@@ -2629,9 +2629,9 @@ select:focus, input:focus {
 }
 
 .sleek-btn.primary:hover {
-    background: linear-gradient(135deg, #0a5a3a, #0d4a2e);
+    background: linear-gradient(135deg, #1f3a2f, #2a4a3a);
     transform: translateY(-2px);
-    box-shadow: 0 6px 15px rgba(6, 64, 43, 0.3);
+    box-shadow: 0 6px 15px rgba(24, 44, 37, 0.3);
 }
 
 .sleek-btn.secondary {
@@ -2684,16 +2684,16 @@ select:focus, input:focus {
 }
 
 .signup-btn {
-    background: linear-gradient(135deg, #06402B, #0a5a3a) !important;
+    background: linear-gradient(135deg, #182c25, #1f3a2f) !important;
     color: white !important;
     border: none !important;
     font-weight: 600 !important;
 }
 
 .signup-btn:hover {
-    background: linear-gradient(135deg, #0a5a3a, #0d4a2e) !important;
+    background: linear-gradient(135deg, #1f3a2f, #2a4a3a) !important;
     transform: translateY(-2px) !important;
-    box-shadow: 0 6px 15px rgba(6, 64, 43, 0.3) !important;
+    box-shadow: 0 6px 15px rgba(24, 44, 37, 0.3) !important;
 }
 
 .error-message {
@@ -2781,7 +2781,7 @@ select:focus, input:focus {
 }
 
 .premium-badge {
-    background: linear-gradient(135deg, #06402B, #0a5a3a);
+    background: linear-gradient(135deg, #182c25, #1f3a2f);
     color: white;
     padding: 4px 12px;
     border-radius: 20px;
@@ -2811,7 +2811,7 @@ select:focus, input:focus {
 
 .stat-icon {
     font-size: 2.5em;
-    color: #06402B;
+    color: #182c25;
     margin-bottom: 15px;
 }
 
@@ -2835,9 +2835,9 @@ select:focus, input:focus {
 }
 
 .admin-action-btn {
-    background: linear-gradient(135deg, rgba(6, 64, 43, 0.2), rgba(6, 64, 43, 0.1));
-    border: 1px solid rgba(6, 64, 43, 0.3);
-    color: #06402B;
+    background: linear-gradient(135deg, rgba(24, 44, 37, 0.2), rgba(24, 44, 37, 0.1));
+    border: 1px solid rgba(24, 44, 37, 0.3);
+    color: #182c25;
     padding: 20px;
     border-radius: 12px;
     font-size: 1em;
@@ -2851,11 +2851,11 @@ select:focus, input:focus {
 }
 
 .admin-action-btn:hover {
-    background: linear-gradient(135deg, rgba(6, 64, 43, 0.3), rgba(6, 64, 43, 0.2));
-    border-color: rgba(6, 64, 43, 0.5);
+    background: linear-gradient(135deg, rgba(24, 44, 37, 0.3), rgba(24, 44, 37, 0.2));
+    border-color: rgba(24, 44, 37, 0.5);
     color: #ffffff;
     transform: translateY(-2px);
-    box-shadow: 0 8px 20px rgba(6, 64, 43, 0.3);
+    box-shadow: 0 8px 20px rgba(24, 44, 37, 0.3);
 }
 
 .admin-action-btn i {
@@ -2891,7 +2891,7 @@ select:focus, input:focus {
 }
 
 .join-community-btn {
-    background: linear-gradient(135deg, #06402B, #0a5a3a);
+    background: linear-gradient(135deg, #182c25, #1f3a2f);
     color: white;
     border: none;
     padding: 12px 24px;
@@ -2904,9 +2904,9 @@ select:focus, input:focus {
 }
 
 .join-community-btn:hover {
-    background: linear-gradient(135deg, #0a5a3a, #0d4a2e);
+    background: linear-gradient(135deg, #1f3a2f, #2a4a3a);
     transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(6, 64, 43, 0.3);
+    box-shadow: 0 4px 12px rgba(24, 44, 37, 0.3);
 }
 
 .join-message {
@@ -2936,9 +2936,9 @@ select:focus, input:focus {
 .join-code-section {
     margin: 10px 0;
     padding: 8px 12px;
-    background: rgba(6, 64, 43, 0.1);
+    background: rgba(24, 44, 37, 0.1);
     border-radius: 6px;
-    border: 1px solid rgba(6, 64, 43, 0.3);
+    border: 1px solid rgba(24, 44, 37, 0.3);
     display: flex;
     align-items: center;
     gap: 8px;
@@ -2961,7 +2961,7 @@ select:focus, input:focus {
 }
 
 .copy-btn {
-    background: #06402B;
+    background: #182c25;
     color: white;
     border: none;
     padding: 4px 8px;
@@ -2972,5 +2972,5 @@ select:focus, input:focus {
 }
 
 .copy-btn:hover {
-    background: #0a5a3a;
+    background: #1f3a2f;
 }
