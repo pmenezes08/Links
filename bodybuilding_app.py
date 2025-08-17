@@ -1119,8 +1119,28 @@ def admin():
         with get_db_connection() as conn:
             c = conn.cursor()
             
-            # Get users list first
-            c.execute("SELECT username, subscription FROM users")
+            # Get statistics
+            c.execute("SELECT COUNT(*) FROM users")
+            total_users = c.fetchone()[0]
+            
+            c.execute("SELECT COUNT(*) FROM users WHERE subscription = 'premium'")
+            premium_users = c.fetchone()[0]
+            
+            c.execute("SELECT COUNT(*) FROM communities")
+            total_communities = c.fetchone()[0]
+            
+            c.execute("SELECT COUNT(*) FROM posts")
+            total_posts = c.fetchone()[0]
+            
+            stats = {
+                'total_users': total_users,
+                'premium_users': premium_users,
+                'total_communities': total_communities,
+                'total_posts': total_posts
+            }
+            
+            # Get users list
+            c.execute("SELECT username, subscription FROM users ORDER BY username")
             users = c.fetchall()
             
             # Get all communities with member counts
@@ -1132,7 +1152,19 @@ def admin():
                 GROUP BY c.id, c.name, c.type, c.creator_username, c.join_code
                 ORDER BY c.name
             """)
-            communities = c.fetchall()
+            communities_raw = c.fetchall()
+            
+            # Convert to list of dictionaries for easier template access
+            communities = []
+            for community in communities_raw:
+                communities.append({
+                    'id': community[0],
+                    'name': community[1],
+                    'type': community[2],
+                    'creator_username': community[3],
+                    'join_code': community[4],
+                    'member_count': community[5]
+                })
             
             if request.method == 'POST':
                 if 'add_user' in request.form:
@@ -1147,7 +1179,7 @@ def admin():
                         c.execute("SELECT username, subscription FROM users")
                         users = c.fetchall()
                     except sqlite3.IntegrityError:
-                        return render_template('admin.html', users=users, communities=communities, error=f"Username {new_username} already exists!")
+                        return render_template('admin.html', users=users, communities=communities, stats=stats, error=f"Username {new_username} already exists!")
                         
                 elif 'update_user' in request.form:
                     user_to_update = request.form.get('username')
@@ -1163,7 +1195,7 @@ def admin():
                     
                     # Prevent admin from deleting themselves
                     if user_to_delete == 'admin':
-                        return render_template('admin.html', users=users, communities=communities, error="Cannot delete admin user!")
+                        return render_template('admin.html', users=users, communities=communities, stats=stats, error="Cannot delete admin user!")
                     
                     try:
                         # Delete user's data from all related tables
@@ -1186,7 +1218,7 @@ def admin():
                         
                     except Exception as delete_error:
                         logger.error(f"Error deleting user {user_to_delete}: {str(delete_error)}")
-                        return render_template('admin.html', users=users, communities=communities, error=f"Error deleting user: {str(delete_error)}")
+                        return render_template('admin.html', users=users, communities=communities, stats=stats, error=f"Error deleting user: {str(delete_error)}")
                         
                 elif 'delete_community' in request.form:
                     community_id = request.form.get('community_id')
@@ -1211,13 +1243,25 @@ def admin():
                             GROUP BY c.id, c.name, c.type, c.creator_username, c.join_code
                             ORDER BY c.name
                         """)
-                        communities = c.fetchall()
+                        communities_raw = c.fetchall()
+                        
+                        # Convert to list of dictionaries
+                        communities = []
+                        for community in communities_raw:
+                            communities.append({
+                                'id': community[0],
+                                'name': community[1],
+                                'type': community[2],
+                                'creator_username': community[3],
+                                'join_code': community[4],
+                                'member_count': community[5]
+                            })
                         
                     except Exception as delete_error:
                         logger.error(f"Error deleting community {community_id}: {str(delete_error)}")
-                        return render_template('admin.html', users=users, communities=communities, error=f"Error deleting community: {str(delete_error)}")
+                        return render_template('admin.html', users=users, communities=communities, stats=stats, error=f"Error deleting community: {str(delete_error)}")
             
-        return render_template('admin.html', users=users, communities=communities)
+        return render_template('admin.html', users=users, communities=communities, stats=stats)
         
     except Exception as e:
         logger.error(f"Error in admin route: {str(e)}")
