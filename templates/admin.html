@@ -575,9 +575,17 @@
             const menuBtn = document.querySelector('.menu-btn');
             const dropdownContent = document.querySelector('.dropdown-content');
             
+            console.log('Menu button found:', menuBtn);
+            console.log('Dropdown content found:', dropdownContent);
+            
             if (menuBtn && dropdownContent) {
-                menuBtn.addEventListener('click', function() {
-                    dropdownContent.style.display = dropdownContent.style.display === 'block' ? 'none' : 'block';
+                menuBtn.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    console.log('Menu button clicked!');
+                    const currentDisplay = dropdownContent.style.display;
+                    dropdownContent.style.display = currentDisplay === 'block' ? 'none' : 'block';
+                    console.log('Dropdown display set to:', dropdownContent.style.display);
                 });
                 
                 // Close dropdown when clicking outside
