@@ -1786,7 +1786,7 @@ select:focus, input:focus {
 }
 
 .join-code-label {
-    color: #2d8a7e;
+    color: #ffffff;
     font-size: 0.85em;
     font-weight: 500;
 }
@@ -1797,7 +1797,7 @@ select:focus, input:focus {
     padding: 4px 8px;
     border-radius: 3px;
     font-size: 0.85em;
-    color: #4db6ac;
+    color: #ffffff;
     border: 1px solid #3a4647;
 }
 

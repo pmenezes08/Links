@@ -1947,7 +1947,7 @@ def post_status():
     
     content = request.form.get('content', '').strip()
     community_id = request.form.get('community_id', type=int)
-    logger.debug(f"Received post request for {username} with content: {content} in community: {community_id}")
+    logger.info(f"Received post request for {username} with content: {content} in community: {community_id}")
     
     # Handle file upload
     image_path = None
@@ -1995,7 +1995,8 @@ def post_status():
             c.execute("INSERT INTO posts (username, content, image_path, timestamp, community_id) VALUES (?, ?, ?, ?, ?)",
                       (username, content, image_path, timestamp, community_id))
             conn.commit()
-        logger.info(f"Post added successfully for {username} with ID: {c.lastrowid}")
+            post_id = c.lastrowid
+            logger.info(f"Post added successfully for {username} with ID: {post_id} in community: {community_id}")
         
         # Check if this is an AJAX request
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
@@ -2541,8 +2542,10 @@ def community_feed(community_id):
                 WHERE community_id = ? 
                 ORDER BY id DESC
             """, (community_id,))
+            logger.info(f"Fetching posts for community {community_id}")
             posts_raw = c.fetchall()
             posts = [dict(row) for row in posts_raw]
+            logger.info(f"Found {len(posts)} posts for community {community_id}")
 
             for post in posts:
                 # Fetch replies for each post
