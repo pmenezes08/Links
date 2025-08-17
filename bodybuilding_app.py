@@ -2628,7 +2628,12 @@ def community_feed(community_id):
             
             # Get community info
             c.execute("SELECT * FROM communities WHERE id = ?", (community_id,))
-            community = dict(c.fetchone())
+            community_row = c.fetchone()
+            if not community_row:
+                logger.error(f"Community with id {community_id} not found")
+                return jsonify({'success': False, 'error': 'Community not found'}), 404
+            
+            community = dict(community_row)
             logger.info(f"Community object for template: {community}")
             
             # Get posts for this community
@@ -2643,11 +2648,14 @@ def community_feed(community_id):
             logger.info(f"Found {len(posts)} posts for community {community_id}")
             
             # Debug: Show all posts in the database for this community
-            c.execute("SELECT id, username, content, community_id FROM posts WHERE community_id = ? ORDER BY id DESC", (community_id,))
-            debug_posts = c.fetchall()
-            logger.info(f"Debug: All posts in database for community {community_id}:")
-            for post in debug_posts:
-                logger.info(f"  Post {post['id']}: {post['username']} - {post['content'][:50]}... (community_id: {post['community_id']})")
+            try:
+                c.execute("SELECT id, username, content, community_id FROM posts WHERE community_id = ? ORDER BY id DESC", (community_id,))
+                debug_posts = c.fetchall()
+                logger.info(f"Debug: All posts in database for community {community_id}:")
+                for post in debug_posts:
+                    logger.info(f"  Post {post['id']}: {post['username']} - {post['content'][:50]}... (community_id: {post['community_id']})")
+            except Exception as debug_error:
+                logger.warning(f"Error in debug query: {debug_error}")
 
             for post in posts:
                 # Fetch replies for each post
