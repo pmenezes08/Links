@@ -1088,6 +1088,17 @@ def admin():
             c.execute("SELECT username, subscription FROM users")
             users = c.fetchall()
             
+            # Get all communities with member counts
+            c.execute("""
+                SELECT c.id, c.name, c.type, c.creator_username, 
+                       COUNT(uc.user_id) as member_count
+                FROM communities c
+                LEFT JOIN user_communities uc ON c.id = uc.community_id
+                GROUP BY c.id, c.name, c.type, c.creator_username
+                ORDER BY c.name
+            """)
+            communities = c.fetchall()
+            
             if request.method == 'POST':
                 if 'add_user' in request.form:
                     new_username = request.form.get('new_username')
@@ -1101,7 +1112,7 @@ def admin():
                         c.execute("SELECT username, subscription FROM users")
                         users = c.fetchall()
                     except sqlite3.IntegrityError:
-                        return render_template('admin.html', users=users, error=f"Username {new_username} already exists!")
+                        return render_template('admin.html', users=users, communities=communities, error=f"Username {new_username} already exists!")
                         
                 elif 'update_user' in request.form:
                     user_to_update = request.form.get('username')
@@ -1117,7 +1128,7 @@ def admin():
                     
                     # Prevent admin from deleting themselves
                     if user_to_delete == 'admin':
-                        return render_template('admin.html', users=users, error="Cannot delete admin user!")
+                        return render_template('admin.html', users=users, communities=communities, error="Cannot delete admin user!")
                     
                     try:
                         # Delete user's data from all related tables
@@ -1140,9 +1151,38 @@ def admin():
                         
                     except Exception as delete_error:
                         logger.error(f"Error deleting user {user_to_delete}: {str(delete_error)}")
-                        return render_template('admin.html', users=users, error=f"Error deleting user: {str(delete_error)}")
+                        return render_template('admin.html', users=users, communities=communities, error=f"Error deleting user: {str(delete_error)}")
+                        
+                elif 'delete_community' in request.form:
+                    community_id = request.form.get('community_id')
+                    
+                    try:
+                        # Delete all posts in this community
+                        c.execute("DELETE FROM posts WHERE community_id=?", (community_id,))
+                        
+                        # Delete all user_community entries for this community
+                        c.execute("DELETE FROM user_communities WHERE community_id=?", (community_id,))
+                        
+                        # Delete the community itself
+                        c.execute("DELETE FROM communities WHERE id=?", (community_id,))
+                        conn.commit()
+                        
+                        # Refresh communities list
+                        c.execute("""
+                            SELECT c.id, c.name, c.type, c.creator_username, 
+                                   COUNT(uc.user_id) as member_count
+                            FROM communities c
+                            LEFT JOIN user_communities uc ON c.id = uc.community_id
+                            GROUP BY c.id, c.name, c.type, c.creator_username
+                            ORDER BY c.name
+                        """)
+                        communities = c.fetchall()
+                        
+                    except Exception as delete_error:
+                        logger.error(f"Error deleting community {community_id}: {str(delete_error)}")
+                        return render_template('admin.html', users=users, communities=communities, error=f"Error deleting community: {str(delete_error)}")
             
-        return render_template('admin.html', users=users)
+        return render_template('admin.html', users=users, communities=communities)
         
     except Exception as e:
         logger.error(f"Error in admin route: {str(e)}")
