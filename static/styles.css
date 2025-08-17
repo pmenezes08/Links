@@ -1660,3 +1660,73 @@ select:focus, input:focus {
 .admin-action-btn i {
     font-size: 1.2em;
 }
+
+/* Join Community Styles */
+.join-community-section {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 12px;
+    padding: 25px;
+    margin-bottom: 30px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.join-community-section h3 {
+    color: #2d8a7e;
+    margin-bottom: 20px;
+    font-size: 1.3em;
+    font-weight: 600;
+}
+
+.join-community-form {
+    display: flex;
+    gap: 15px;
+    align-items: end;
+    flex-wrap: wrap;
+}
+
+.join-community-form .form-group {
+    flex: 1;
+    min-width: 250px;
+}
+
+.join-community-btn {
+    background: linear-gradient(135deg, #4db6ac, #37a69c);
+    color: white;
+    border: none;
+    padding: 12px 24px;
+    border-radius: 8px;
+    font-size: 0.95em;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    white-space: nowrap;
+}
+
+.join-community-btn:hover {
+    background: linear-gradient(135deg, #37a69c, #2d8a7e);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(45, 138, 126, 0.3);
+}
+
+.join-message {
+    margin-top: 15px;
+    padding: 12px 16px;
+    border-radius: 8px;
+    font-size: 0.9em;
+    font-weight: 500;
+    display: none;
+}
+
+.join-message.success {
+    background: rgba(76, 175, 80, 0.1);
+    border: 1px solid rgba(76, 175, 80, 0.3);
+    color: #4caf50;
+    display: block;
+}
+
+.join-message.error {
+    background: rgba(244, 67, 54, 0.1);
+    border: 1px solid rgba(244, 67, 54, 0.3);
+    color: #f44336;
+    display: block;
+}

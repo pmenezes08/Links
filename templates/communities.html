@@ -29,6 +29,19 @@
 	<div class="container">
 		<h1>Communities</h1>
 		
+		<!-- Join Community Section -->
+		<div class="join-community-section">
+			<h3>Join a Community</h3>
+			<form id="joinCommunityForm" class="join-community-form">
+				<div class="form-group">
+					<label for="communityCode">Community Code:</label>
+					<input type="text" id="communityCode" name="communityCode" placeholder="Enter community code..." required>
+				</div>
+				<button type="submit" class="join-community-btn">Join Community</button>
+			</form>
+			<div id="joinMessage" class="join-message"></div>
+		</div>
+		
 		<!-- Community Creation Section -->
 		<div class="community-creation-section">
 			<button id="buildCommunityBtn" class="build-community-btn">Build your community</button>
@@ -131,6 +144,38 @@
 					}
 				});
 			});
+
+			// Handle joining community by code
+			$('#joinCommunityForm').submit(function(e) {
+				e.preventDefault();
+				
+				const communityCode = $('#communityCode').val().trim();
+				if (!communityCode) {
+					showJoinMessage('Please enter a community code.', 'error');
+					return;
+				}
+
+				$.ajax({
+					url: '/join_community',
+					method: 'POST',
+					data: {
+						community_code: communityCode,
+						csrf_token: $('meta[name="csrf-token"]').attr('content')
+					},
+					success: function(response) {
+						if (response.success) {
+							showJoinMessage('Successfully joined "' + response.community_name + '"!', 'success');
+							$('#communityCode').val('');
+							loadUserCommunities(); // Reload communities
+						} else {
+							showJoinMessage('Error: ' + response.error, 'error');
+						}
+					},
+					error: function() {
+						showJoinMessage('Error joining community. Please try again.', 'error');
+					}
+				});
+			});
 		});
 
 		function loadUserCommunities() {
@@ -221,6 +266,18 @@
 						alert('Error deleting community. Please try again.');
 					}
 				});
+			}
+		}
+
+		function showJoinMessage(message, type) {
+			const joinMessage = $('#joinMessage');
+			joinMessage.removeClass('success error').addClass(type).text(message);
+			
+			// Auto-hide success messages after 3 seconds
+			if (type === 'success') {
+				setTimeout(function() {
+					joinMessage.fadeOut();
+				}, 3000);
 			}
 		}
 	</script>

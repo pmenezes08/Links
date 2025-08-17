@@ -2363,6 +2363,69 @@ def delete_community():
         logger.error(f"Error deleting community: {str(e)}")
         return jsonify({'success': False, 'error': 'Failed to delete community'}), 500
 
+@app.route('/join_community', methods=['POST'])
+@login_required
+def join_community():
+    """Join a community using a community code"""
+    username = session.get('username')
+    community_code = request.form.get('community_code', '').strip()
+    
+    if not community_code:
+        return jsonify({'success': False, 'error': 'Community code is required'})
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Get user ID
+            c.execute("SELECT rowid FROM users WHERE username = ?", (username,))
+            user = c.fetchone()
+            if not user:
+                return jsonify({'success': False, 'error': 'User not found'})
+            
+            user_id = user['rowid']
+            
+            # Find community by join code
+            c.execute("""
+                SELECT id, name, join_code FROM communities 
+                WHERE join_code = ?
+            """, (community_code,))
+            
+            community = c.fetchone()
+            if not community:
+                return jsonify({'success': False, 'error': 'Invalid community code'})
+            
+            community_id = community['id']
+            community_name = community['name']
+            
+            # Check if user is already a member
+            c.execute("""
+                SELECT id FROM user_communities 
+                WHERE user_id = ? AND community_id = ?
+            """, (user_id, community_id))
+            
+            existing_membership = c.fetchone()
+            if existing_membership:
+                return jsonify({'success': False, 'error': 'You are already a member of this community'})
+            
+            # Add user to community as a member
+            c.execute("""
+                INSERT INTO user_communities (user_id, community_id, role, joined_at)
+                VALUES (?, ?, 'member', datetime('now'))
+            """, (user_id, community_id))
+            
+            conn.commit()
+            
+        return jsonify({
+            'success': True, 
+            'community_name': community_name,
+            'message': f'Successfully joined "{community_name}"!'
+        })
+        
+    except Exception as e:
+        logger.error(f"Error joining community: {str(e)}")
+        return jsonify({'success': False, 'error': 'An error occurred while joining the community'})
+
 @app.route('/community_feed/<int:community_id>')
 @login_required
 def community_feed(community_id):
