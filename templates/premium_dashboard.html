@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Premium Dashboard - Links</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}?v=2.0">
 </head>
 <body>
     <div class="sidebar">
@@ -21,7 +21,6 @@
             <a href="/nutrition">Nutrition</a>
             <a href="/blood_test_analysis">Blood Test Analysis</a>
             <a href="/chat">Chat with Grok</a>
-            <a href="/health_news">Health News</a>
             <a href="/subscribe">Subscribe</a>
             <a href="/logout">Logout</a>
         </div>
@@ -34,7 +33,6 @@
             <button onclick="location.href='{{ url_for('nutrition') }}'" class="sleek-btn compact pill">Nutrition</button>
             <button onclick="location.href='{{ url_for('blood_test_analysis') }}'" class="sleek-btn compact pill">Blood Tests</button>
             <button onclick="location.href='{{ url_for('communities') }}'" class="sleek-btn compact pill">Your Communities</button>
-            <button onclick="location.href='{{ url_for('health_news') }}'" class="sleek-btn compact pill">Health News</button>
             <button onclick="location.href='{{ url_for('profile') }}'" class="sleek-btn compact pill">Profile</button>
             <button onclick="location.href='{{ url_for('generate_workout_page') }}'" class="sleek-btn compact pill">Generate Workout</button>
         </div>
