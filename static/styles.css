@@ -1017,11 +1017,8 @@ select:focus, input:focus {
 
 /* Community Page Styles */
 .community-creation-section {
-    background: rgba(255, 255, 255, 0.05);
-    border-radius: 8px;
     padding: 20px;
     margin-bottom: 30px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .build-community-btn {
@@ -1049,10 +1046,8 @@ select:focus, input:focus {
 }
 
 .community-form {
-    background: rgba(0, 0, 0, 0.3);
-    border-radius: 8px;
     padding: 20px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    margin-top: 20px;
 }
 
 .community-form h3 {
@@ -1073,7 +1068,8 @@ select:focus, input:focus {
 }
 
 .form-group select,
-.form-group input {
+.form-group input,
+.form-group textarea {
     width: 100%;
     padding: 12px;
     border: 1px solid rgba(255, 255, 255, 0.2);
@@ -1081,13 +1077,16 @@ select:focus, input:focus {
     background: rgba(255, 255, 255, 0.1);
     color: #ffffff;
     font-size: 14px;
+    font-family: inherit;
+    resize: vertical;
 }
 
 .form-group select:focus,
-.form-group input:focus {
+.form-group input:focus,
+.form-group textarea:focus {
     outline: none;
-    border-color: #4db6ac;
-    box-shadow: 0 0 0 2px rgba(77, 182, 172, 0.2);
+    border-color: rgba(255, 255, 255, 0.3);
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.1);
 }
 
 .form-group select option {
@@ -1137,10 +1136,7 @@ select:focus, input:focus {
 }
 
 .user-communities-section {
-    background: rgba(255, 255, 255, 0.05);
-    border-radius: 8px;
     padding: 20px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .user-communities-section h3 {

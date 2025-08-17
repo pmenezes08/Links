@@ -2046,12 +2046,15 @@ def create_community():
             
             community_id = c.lastrowid
             
-            # Add creator as member
-            c.execute("""
-                INSERT INTO user_communities (user_id, community_id, joined_at)
-                SELECT id, ?, ?
-                FROM users WHERE username = ?
-            """, (community_id, datetime.now().strftime('%m.%d.%y %H:%M'), username))
+            # Get user's ID and add creator as member
+            c.execute("SELECT rowid FROM users WHERE username = ?", (username,))
+            user_row = c.fetchone()
+            if user_row:
+                user_id = user_row[0]
+                c.execute("""
+                    INSERT INTO user_communities (user_id, community_id, joined_at)
+                    VALUES (?, ?, ?)
+                """, (user_id, community_id, datetime.now().strftime('%m.%d.%y %H:%M')))
             
             conn.commit()
             
