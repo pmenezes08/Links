@@ -1780,9 +1780,21 @@ def user_chat():
                 members = [row[0] for row in c.fetchall()]
                 community_members[community[0]] = members
             
-            # Get all users for general messaging
-            c.execute("SELECT username FROM users WHERE username != ?", (username,))
-            all_users = [row['username'] for row in c.fetchall()]
+            # Get all community members for messaging (only users in same communities)
+            all_community_members = set()
+            for community in communities:
+                c.execute("""
+                    SELECT DISTINCT u.username
+                    FROM user_communities uc
+                    INNER JOIN users u ON uc.user_id = u.rowid
+                    WHERE uc.community_id = ? AND u.username != ?
+                    ORDER BY u.username
+                """, (community[0], username))
+                members = [row[0] for row in c.fetchall()]
+                all_community_members.update(members)
+            
+            # Convert to sorted list
+            all_users = sorted(list(all_community_members))
             
         return render_template('user_chat.html', name=username, users=all_users, communities=communities, community_members=community_members, subscription=user['subscription'])
     except Exception as e:

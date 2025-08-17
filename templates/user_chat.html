@@ -43,17 +43,18 @@
 				<div class="user-selection-panel">
 					<div class="selection-tabs">
 						<button class="tab-btn active" data-tab="general">
-							<i class="fas fa-users"></i> All Users
+							<i class="fas fa-users"></i> Community Members
 						</button>
 						<button class="tab-btn" data-tab="communities">
-							<i class="fas fa-layer-group"></i> Community Members
+							<i class="fas fa-layer-group"></i> By Community
 						</button>
 					</div>
 					
-					<!-- General Users Tab -->
+					<!-- Community Members Tab -->
 					<div class="tab-content active" id="general-tab">
 						<div class="user-list">
-							<h3>Select a user to message:</h3>
+							<h3>Select a community member to message:</h3>
+							{% if users %}
 							<div class="user-grid">
 								{% for user in users %}
 								<div class="user-item" data-username="{{ user }}">
@@ -64,13 +65,19 @@
 								</div>
 								{% endfor %}
 							</div>
+							{% else %}
+							<div class="no-members">
+								<p>You need to join communities to message other members.</p>
+								<a href="/communities" class="join-community-btn">Join Communities</a>
+							</div>
+							{% endif %}
 						</div>
 					</div>
 					
-					<!-- Community Members Tab -->
+					<!-- By Community Tab -->
 					<div class="tab-content" id="communities-tab">
 						<div class="communities-list">
-							<h3>Your Communities:</h3>
+							<h3>Browse by Community:</h3>
 							{% if communities %}
 								{% for community in communities %}
 								<div class="community-section">

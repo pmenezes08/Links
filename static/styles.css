@@ -1350,6 +1350,24 @@ select:focus, input:focus {
     color: #9fb0b5;
 }
 
+.join-community-btn {
+    display: inline-block;
+    background: linear-gradient(135deg, #4db6ac, #37a69c);
+    color: #ffffff;
+    padding: 10px 20px;
+    border-radius: 25px;
+    text-decoration: none;
+    margin-top: 15px;
+    transition: all 0.3s ease;
+    border: none;
+    cursor: pointer;
+}
+
+.join-community-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(77, 182, 172, 0.3);
+}
+
 .join-community-link {
     color: #4db6ac;
     text-decoration: none;
