@@ -173,8 +173,25 @@ def add_missing_tables():
             c.execute('''CREATE TABLE IF NOT EXISTS saved_data
                          (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT, type TEXT, data TEXT, timestamp TEXT)''')
             
+            # Add missing columns to communities table
+            columns_to_add = [
+                ('description', 'TEXT'),
+                ('location', 'TEXT'),
+                ('background_path', 'TEXT')
+            ]
+            
+            for column_name, column_type in columns_to_add:
+                try:
+                    c.execute(f"ALTER TABLE communities ADD COLUMN {column_name} {column_type}")
+                    logger.info(f"Added column {column_name} to communities table")
+                except sqlite3.OperationalError as e:
+                    if "duplicate column name" in str(e):
+                        logger.info(f"Column {column_name} already exists in communities table")
+                    else:
+                        logger.warning(f"Could not add column {column_name}: {e}")
+            
             conn.commit()
-            logger.info("Missing tables added successfully")
+            logger.info("Missing tables and columns added successfully")
             
     except Exception as e:
         logger.error(f"Error adding missing tables: {e}")
@@ -372,12 +389,13 @@ def save_uploaded_file(file, subfolder=None):
             upload_path = os.path.join(app.config['UPLOAD_FOLDER'], subfolder)
             os.makedirs(upload_path, exist_ok=True)
             filepath = os.path.join(upload_path, unique_filename)
-            return f"uploads/{subfolder}/{unique_filename}"
+            return_path = f"uploads/{subfolder}/{unique_filename}"
         else:
             filepath = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
-            return f"uploads/{unique_filename}"
+            return_path = f"uploads/{unique_filename}"
         
         file.save(filepath)
+        return return_path
     return None
 
 def generate_join_code():
