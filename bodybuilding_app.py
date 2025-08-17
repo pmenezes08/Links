@@ -1,4 +1,5 @@
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session, flash, abort, send_from_directory
+from flask_wtf.csrf import CSRFProtect
 # from flask_oauthlib.client import OAuth
 import os
 import sys
@@ -17,6 +18,9 @@ from werkzeug.security import generate_password_hash, check_password_hash
 
 # Initialize Flask app
 app = Flask(__name__, template_folder='templates')
+
+# Initialize CSRF protection
+csrf = CSRFProtect(app)
 
 # File upload configuration
 UPLOAD_FOLDER = 'static/uploads'

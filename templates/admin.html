@@ -232,6 +232,7 @@
                 <span class="close" onclick="closeAddUserModal()">&times;</span>
             </div>
             <form id="addUserForm" method="POST">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <div class="form-group">
                     <label for="newUsername">Username:</label>
                     <input type="text" name="new_username" id="newUsername" required>
@@ -440,11 +441,13 @@
 
         function deleteUser(username) {
             if (confirm(`Are you sure you want to delete user "${username}"? This action cannot be undone.`)) {
+                const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
                 const form = document.createElement('form');
                 form.method = 'POST';
                 form.innerHTML = `
                     <input type="hidden" name="username" value="${username}">
                     <input type="hidden" name="delete_user" value="1">
+                    <input type="hidden" name="csrf_token" value="${csrfToken}">
                 `;
                 document.body.appendChild(form);
                 form.submit();
@@ -453,11 +456,13 @@
 
         function deleteCommunity(communityId, communityName) {
             if (confirm(`Are you sure you want to delete the community "${communityName}"?\n\nThis will permanently delete the community and all its posts. This action cannot be undone.`)) {
+                const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
                 const form = document.createElement('form');
                 form.method = 'POST';
                 form.innerHTML = `
                     <input type="hidden" name="community_id" value="${communityId}">
                     <input type="hidden" name="delete_community" value="1">
+                    <input type="hidden" name="csrf_token" value="${csrfToken}">
                 `;
                 document.body.appendChild(form);
                 form.submit();
