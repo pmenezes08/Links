@@ -43,30 +43,50 @@
 		$(document).ready(function() {
 			console.log('Dashboard script loaded');
 			
-			$('.menu-btn').click(function(e) {
+			// Test if jQuery is working
+			if (typeof $ === 'undefined') {
+				console.error('jQuery not loaded!');
+				return;
+			}
+			
+			// Test if elements exist
+			const menuBtn = $('.menu-btn');
+			const dropdown = $('.dropdown-content');
+			
+			console.log('Menu button exists:', menuBtn.length);
+			console.log('Dropdown content exists:', dropdown.length);
+			
+			if (menuBtn.length === 0) {
+				console.error('Menu button not found!');
+				return;
+			}
+			
+			// Add click handler
+			menuBtn.on('click', function(e) {
 				e.preventDefault();
 				e.stopPropagation();
 				console.log('Menu button clicked');
-				$('.dropdown-content').toggle();
+				dropdown.toggle();
+				console.log('Dropdown visibility:', dropdown.is(':visible'));
 			});
 			
 			// Hide dropdown when clicking outside
-			$(document).click(function(event) {
+			$(document).on('click', function(event) {
 				if (!$(event.target).closest('.sidebar').length) {
-					$('.dropdown-content').hide();
+					dropdown.hide();
 				}
 			});
 			
 			// Hide dropdown on window resize
-			$(window).resize(function() {
+			$(window).on('resize', function() {
 				if ($(window).width() > 768) {
-					$('.dropdown-content').hide();
+					dropdown.hide();
 				}
 			});
 			
-			// Debug: Check if elements exist
-			console.log('Menu button exists:', $('.menu-btn').length);
-			console.log('Dropdown content exists:', $('.dropdown-content').length);
+			// Test click
+			console.log('Adding click test...');
+			menuBtn.css('background-color', 'rgba(255, 255, 255, 0.1)'); // Make it more visible
 		});
 	</script>
 </body>

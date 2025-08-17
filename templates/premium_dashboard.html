@@ -46,110 +46,51 @@
         $(document).ready(function() {
             console.log('Premium dashboard script loaded');
             
-            $('.menu-btn').click(function(e) {
+            // Test if jQuery is working
+            if (typeof $ === 'undefined') {
+                console.error('jQuery not loaded!');
+                return;
+            }
+            
+            // Test if elements exist
+            const menuBtn = $('.menu-btn');
+            const dropdown = $('.dropdown-content');
+            
+            console.log('Menu button exists:', menuBtn.length);
+            console.log('Dropdown content exists:', dropdown.length);
+            
+            if (menuBtn.length === 0) {
+                console.error('Menu button not found!');
+                return;
+            }
+            
+            // Add click handler
+            menuBtn.on('click', function(e) {
                 e.preventDefault();
                 e.stopPropagation();
                 console.log('Menu button clicked');
-                $('.dropdown-content').toggle();
+                dropdown.toggle();
+                console.log('Dropdown visibility:', dropdown.is(':visible'));
             });
             
             // Hide dropdown when clicking outside
-            $(document).click(function(event) {
+            $(document).on('click', function(event) {
                 if (!$(event.target).closest('.sidebar').length) {
-                    $('.dropdown-content').hide();
+                    dropdown.hide();
                 }
             });
             
             // Hide dropdown on window resize
-            $(window).resize(function() {
+            $(window).on('resize', function() {
                 if ($(window).width() > 768) {
-                    $('.dropdown-content').hide();
+                    dropdown.hide();
                 }
             });
             
-            // Debug: Check if elements exist
-            console.log('Menu button exists:', $('.menu-btn').length);
-            console.log('Dropdown content exists:', $('.dropdown-content').length);
+            // Test click
+            console.log('Adding click test...');
+            menuBtn.css('background-color', 'rgba(255, 255, 255, 0.1)'); // Make it more visible
         });
     </script>
-        .container {
-            max-width: 90%;
-            margin: 0 auto;
-            padding: 20px;
-            text-align: center;
-        }
-        .low-profile-header {
-            font-size: 1.2em;  /* Smaller, low-profile header */
-            color: #e0e0e0;
-            margin-bottom: 20px;
-            font-family: Arial, Helvetica, sans-serif;  /* Match font */
-        }
-        .selection {
-            margin: 15px 0;
-            display: flex;
-            flex-direction: column;
-            gap: 5px;
-            align-items: center;
-            justify-content: center;
-        }
-        label {
-            font-size: 0.9em;  /* Match app font size */
-            color: #e0e0e0;
-            font-family: Arial, Helvetica, sans-serif;  /* Match font */
-        }
-        select {
-            background: #3a4647;
-            color: #e0e0e0;
-            border: none;
-            padding: 8px;  /* Slightly larger padding for select boxes */
-            border-radius: 4px;
-            width: 100%;
-            max-width: 300px;
-            margin: 0 auto;
-            text-align: center;  /* Center the text inside the select boxes */
-            font-size: 0.9em;  /* Match app font size */
-            font-family: Arial, Helvetica, sans-serif;  /* Match font */
-        }
-        .result {
-            margin-top: 20px;
-            padding: 10px;
-            background: #2d3839;
-            color: #e0e0e0;
-            border-radius: 4px;
-            display: none;
-            font-size: 0.9em;  /* Reduced font size for workouts, consistent */
-            font-family: Arial, Helvetica, sans-serif;  /* Match font */
-        }
-        .sleek-btn, .go-back-btn {
-            background: #3a4647;
-            color: #e0e0e0;
-            border: none;
-            padding: 8px 16px;  /* Slightly smaller padding for buttons */
-            border-radius: 4px;
-            cursor: pointer;
-            margin: 5px;
-            font-size: 0.9em;  /* Match app font size */
-            font-family: Arial, Helvetica, sans-serif;  /* Match font */
-            transition: opacity 0.2s ease;  /* Subtle opacity transition */
-        }
-        .smaller-btn {
-            padding: 6px 12px;  /* Even smaller for "Generate Workout" button */
-        }
-        .sleek-btn:hover, .go-back-btn:hover {
-            opacity: 0.8;  /* Slight dim on hover for low-profile effect */
-        }
-        @media (max-width: 768px) {
-            .sidebar { width: 100%; height: 60px; }
-            .menu-btn { font-size: 20px; padding: 10px; }
-            .dropdown-content { top: 60px; width: 100%; left: 0; }
-            .container { padding: 10px; }
-            .low-profile-header { font-size: 1em; }  /* Even smaller on mobile for low profile */
-            label { font-size: 0.9em; }
-            select { font-size: 0.9em; padding: 6px; }
-            .sleek-btn, .go-back-btn { font-size: 0.9em; padding: 6px 12px; }
-            .smaller-btn { padding: 4px 10px; }  /* Smaller on mobile */
-            .result { font-size: 0.8em; }  /* Slightly smaller on mobile for consistency */
-        }
-    </style>
 </body>
 </html>

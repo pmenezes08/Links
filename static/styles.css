@@ -36,6 +36,21 @@ body.login-page {
     max-width: calc(100% - 90px);
 }
 
+/* Ensure sidebar is visible and working on dashboard pages */
+.dashboard-page .sidebar,
+.premium-dashboard-page .sidebar {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+}
+
+.dashboard-page .menu-btn,
+.premium-dashboard-page .menu-btn {
+    display: block !important;
+    visibility: visible !important;
+    cursor: pointer !important;
+}
+
 /* Headers */
 h1 {
     font-size: 36px;
