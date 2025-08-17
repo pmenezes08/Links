@@ -1100,9 +1100,10 @@ select:focus, input:focus {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 20px;
+    padding: 16px 20px;
     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-    background: rgba(255, 255, 255, 0.05);
+    background: #2d3839; /* WhatsApp header color */
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
 .messages-header h2 {
@@ -1111,6 +1112,8 @@ select:focus, input:focus {
     display: flex;
     align-items: center;
     gap: 10px;
+    font-size: 1.3em;
+    font-weight: 600;
 }
 
 .messages-content {
@@ -1119,10 +1122,10 @@ select:focus, input:focus {
     overflow: hidden;
 }
 
-/* User Selection Panel */
+/* User Selection Panel - WhatsApp Style */
 .user-selection-panel {
     width: 350px;
-    background: rgba(255, 255, 255, 0.05);
+    background: #2d3839; /* WhatsApp sidebar color */
     border-right: 1px solid rgba(255, 255, 255, 0.1);
     display: flex;
     flex-direction: column;
@@ -1131,6 +1134,7 @@ select:focus, input:focus {
 .selection-tabs {
     display: flex;
     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    background: #1a2526; /* Darker tab background */
 }
 
 .tab-btn {
@@ -1146,15 +1150,26 @@ select:focus, input:focus {
     justify-content: center;
     gap: 8px;
     font-size: 0.9em;
+    position: relative;
 }
 
 .tab-btn:hover {
-    background: rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.05);
 }
 
 .tab-btn.active {
-    background: rgba(77, 182, 172, 0.2);
-    border-bottom: 2px solid #4db6ac;
+    background: #2d3839; /* Active tab matches sidebar */
+    color: #4db6ac; /* App theme color for active tab */
+}
+
+.tab-btn.active::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: #4db6ac; /* App theme color underline */
 }
 
 .tab-content {
@@ -1184,33 +1199,39 @@ select:focus, input:focus {
     display: flex;
     align-items: center;
     gap: 12px;
-    padding: 12px;
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 8px;
+    padding: 12px 16px;
+    background: transparent;
+    border: none;
+    border-radius: 0;
     cursor: pointer;
-    transition: all 0.3s ease;
+    transition: all 0.2s ease;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .user-item:hover {
-    background: rgba(255, 255, 255, 0.1);
-    border-color: rgba(77, 182, 172, 0.3);
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.user-item:last-child {
+    border-bottom: none;
 }
 
 .user-avatar {
     width: 40px;
     height: 40px;
-    background: linear-gradient(135deg, #4db6ac, #37a69c);
+    background: #4db6ac; /* App theme color */
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
     color: #ffffff;
+    flex-shrink: 0;
 }
 
 .user-name {
     color: #ffffff;
     font-weight: 500;
+    font-size: 0.95em;
 }
 
 /* Community Members */
@@ -1254,39 +1275,46 @@ select:focus, input:focus {
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 8px 12px;
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.05);
-    border-radius: 6px;
+    padding: 10px 16px;
+    background: transparent;
+    border: none;
+    border-radius: 0;
     cursor: pointer;
-    transition: all 0.3s ease;
+    transition: all 0.2s ease;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
 }
 
 .member-item:hover {
-    background: rgba(255, 255, 255, 0.08);
-    border-color: rgba(77, 182, 172, 0.2);
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.member-item:last-child {
+    border-bottom: none;
 }
 
 .member-avatar {
-    width: 32px;
-    height: 32px;
-    background: linear-gradient(135deg, #4db6ac, #37a69c);
+    width: 36px;
+    height: 36px;
+    background: #4db6ac; /* App theme color */
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
     color: #ffffff;
     font-size: 0.8em;
+    flex-shrink: 0;
 }
 
 .member-info {
     flex: 1;
+    min-width: 0;
 }
 
 .member-name {
     color: #ffffff;
     font-size: 0.9em;
     font-weight: 500;
+    margin-bottom: 2px;
 }
 
 .member-community {
@@ -1310,21 +1338,22 @@ select:focus, input:focus {
     text-decoration: underline;
 }
 
-/* Chat Panel */
+/* Chat Panel - WhatsApp Style */
 .chat-panel {
     flex: 1;
     display: flex;
     flex-direction: column;
-    background: rgba(255, 255, 255, 0.02);
+    background: #1a2526; /* Dark background like WhatsApp */
 }
 
 .chat-header {
     display: flex;
     align-items: center;
     gap: 15px;
-    padding: 20px;
+    padding: 16px 20px;
+    background: #2d3839; /* WhatsApp header color */
     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-    background: rgba(255, 255, 255, 0.05);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
 .back-to-users {
@@ -1374,14 +1403,16 @@ select:focus, input:focus {
     flex: 1;
     overflow-y: auto;
     padding: 20px;
+    background: #1a2526; /* WhatsApp chat background */
     display: flex;
     flex-direction: column;
-    gap: 15px;
+    gap: 8px;
 }
 
 .message {
     display: flex;
-    margin-bottom: 10px;
+    margin-bottom: 8px;
+    max-width: 100%;
 }
 
 .own-message {
@@ -1393,59 +1424,77 @@ select:focus, input:focus {
 }
 
 .message-content {
-    max-width: 70%;
-    padding: 12px 16px;
-    border-radius: 18px;
+    max-width: 65%;
+    padding: 8px 12px;
+    border-radius: 7.5px;
     position: relative;
-}
-
-.own-message .message-content {
-    background: linear-gradient(135deg, #4db6ac, #37a69c);
-    color: #ffffff;
-    border-bottom-right-radius: 4px;
-}
-
-.other-message .message-content {
-    background: rgba(255, 255, 255, 0.1);
-    color: #ffffff;
-    border-bottom-left-radius: 4px;
-}
-
-.message-text {
-    margin-bottom: 4px;
+    word-wrap: break-word;
     line-height: 1.4;
 }
 
+.own-message .message-content {
+    background: #4db6ac; /* App theme color for own messages */
+    color: #ffffff;
+    border-bottom-right-radius: 2px;
+    margin-left: auto;
+}
+
+.other-message .message-content {
+    background: #2d3839; /* Dark background for other messages */
+    color: #ffffff;
+    border-bottom-left-radius: 2px;
+    margin-right: auto;
+}
+
+.message-text {
+    margin-bottom: 2px;
+    font-size: 0.95em;
+}
+
 .message-time {
-    font-size: 0.75em;
+    font-size: 0.7em;
     opacity: 0.7;
+    text-align: right;
+    margin-top: 2px;
+}
+
+.own-message .message-time {
+    text-align: right;
+}
+
+.other-message .message-time {
+    text-align: left;
 }
 
 .chat-input-area {
-    padding: 20px;
+    padding: 16px 20px;
+    background: #2d3839; /* WhatsApp input area color */
     border-top: 1px solid rgba(255, 255, 255, 0.1);
-    background: rgba(255, 255, 255, 0.05);
 }
 
 .message-form {
     display: flex;
-    gap: 10px;
+    gap: 12px;
+    align-items: flex-end;
 }
 
 #messageInput {
     flex: 1;
     padding: 12px 16px;
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    border-radius: 25px;
-    background: rgba(255, 255, 255, 0.1);
+    border: none;
+    border-radius: 20px;
+    background: #1a2526; /* Dark input background */
     color: #ffffff;
-    font-size: 0.9em;
+    font-size: 0.95em;
+    resize: none;
+    min-height: 20px;
+    max-height: 100px;
+    line-height: 1.4;
 }
 
 #messageInput:focus {
     outline: none;
-    border-color: #4db6ac;
-    box-shadow: 0 0 0 2px rgba(77, 182, 172, 0.2);
+    box-shadow: 0 0 0 1px #4db6ac;
 }
 
 #messageInput::placeholder {
@@ -1453,22 +1502,27 @@ select:focus, input:focus {
 }
 
 .send-btn {
-    width: 45px;
-    height: 45px;
-    background: linear-gradient(135deg, #4db6ac, #37a69c);
+    width: 40px;
+    height: 40px;
+    background: #4db6ac; /* App theme color */
     border: none;
     border-radius: 50%;
     color: #ffffff;
     cursor: pointer;
-    transition: all 0.3s ease;
+    transition: all 0.2s ease;
     display: flex;
     align-items: center;
     justify-content: center;
+    flex-shrink: 0;
 }
 
 .send-btn:hover {
-    background: linear-gradient(135deg, #37a69c, #2d8a7e);
+    background: #37a69c;
     transform: scale(1.05);
+}
+
+.send-btn:active {
+    transform: scale(0.95);
 }
 
 /* Welcome Message */
