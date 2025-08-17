@@ -10,6 +10,7 @@
     <div class="container">
         <h1>Edit Profile, {{ name }}</h1>
         <form method="POST" action="/edit_profile">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <div class="selection">
                 <label for="gender">Gender</label>
                 <select id="gender" name="gender">
