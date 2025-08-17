@@ -13,6 +13,7 @@ from functools import wraps
 from markupsafe import escape
 import secrets
 from werkzeug.utils import secure_filename
+from werkzeug.security import generate_password_hash, check_password_hash
 
 # Initialize Flask app
 app = Flask(__name__, template_folder='templates')
@@ -190,14 +191,16 @@ def init_db():
             # Create users table
             logger.info("Creating users table...")
             c.execute('''CREATE TABLE IF NOT EXISTS users
-                         (username TEXT PRIMARY KEY, subscription TEXT, password TEXT,
-                          gender TEXT, weight REAL, height REAL, blood_type TEXT, muscle_mass REAL, bmi REAL,
-                          nutrition_goal TEXT, nutrition_restrictions TEXT)''')
+                         (username TEXT PRIMARY KEY, email TEXT UNIQUE, subscription TEXT DEFAULT 'free', 
+                          password TEXT, first_name TEXT, last_name TEXT, age INTEGER, gender TEXT, 
+                          fitness_level TEXT, primary_goal TEXT, weight REAL, height REAL, blood_type TEXT, 
+                          muscle_mass REAL, bmi REAL, nutrition_goal TEXT, nutrition_restrictions TEXT, 
+                          created_at TEXT)''')
             
             # Insert admin user
             logger.info("Inserting admin user...")
-            c.execute("INSERT OR IGNORE INTO users (username, subscription, password) VALUES (?, ?, ?)",
-                      ('admin', 'premium', '12345'))
+            c.execute("INSERT OR IGNORE INTO users (username, email, subscription, password, first_name, last_name, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                      ('admin', 'admin@workoutx.com', 'premium', '12345', 'Admin', 'User', datetime.now().strftime('%m.%d.%y %H:%M')))
             
             # Create posts table
             logger.info("Creating posts table...")
@@ -490,6 +493,75 @@ def authorized():
     except Exception as e:
         logger.error(f"Error in authorized route: {str(e)}")
         abort(500)
+
+@app.route('/signup', methods=['GET', 'POST'])
+def signup():
+    """User registration page"""
+    if request.method == 'GET':
+        return render_template('signup.html')
+    
+    # Handle POST request for user registration
+    username = request.form.get('username', '').strip()
+    email = request.form.get('email', '').strip()
+    password = request.form.get('password', '')
+    confirm_password = request.form.get('confirm_password', '')
+    first_name = request.form.get('first_name', '').strip()
+    last_name = request.form.get('last_name', '').strip()
+    age = request.form.get('age', type=int)
+    gender = request.form.get('gender', '').strip()
+    fitness_level = request.form.get('fitness_level', '').strip()
+    primary_goal = request.form.get('primary_goal', '').strip()
+    
+    # Validation
+    if not all([username, email, password, confirm_password, first_name, last_name]):
+        return render_template('signup.html', error='All required fields must be filled')
+    
+    if password != confirm_password:
+        return render_template('signup.html', error='Passwords do not match')
+    
+    if len(password) < 6:
+        return render_template('signup.html', error='Password must be at least 6 characters long')
+    
+    if not re.match(r'^[a-zA-Z0-9_]+$', username):
+        return render_template('signup.html', error='Username can only contain letters, numbers, and underscores')
+    
+    if len(username) < 3:
+        return render_template('signup.html', error='Username must be at least 3 characters long')
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Check if username already exists
+            c.execute("SELECT 1 FROM users WHERE username = ?", (username,))
+            if c.fetchone():
+                return render_template('signup.html', error='Username already exists')
+            
+            # Check if email already exists
+            c.execute("SELECT 1 FROM users WHERE email = ?", (email,))
+            if c.fetchone():
+                return render_template('signup.html', error='Email already registered')
+            
+            # Hash the password
+            hashed_password = generate_password_hash(password)
+            
+            # Insert new user
+            c.execute("""
+                INSERT INTO users (username, email, password, first_name, last_name, age, gender, fitness_level, primary_goal, subscription, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'free', ?)
+            """, (username, email, hashed_password, first_name, last_name, age, gender, fitness_level, primary_goal, datetime.now().strftime('%m.%d.%y %H:%M')))
+            
+            conn.commit()
+            
+            # Log the user in automatically
+            session['username'] = username
+            session['user_id'] = c.lastrowid
+            
+            return redirect(url_for('dashboard'))
+            
+    except Exception as e:
+        logger.error(f"Error during user registration: {str(e)}")
+        return render_template('signup.html', error='An error occurred during registration. Please try again.')
 
 @app.route('/logout')
 def logout():
