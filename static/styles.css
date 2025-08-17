@@ -1366,6 +1366,7 @@ select:focus, input:focus {
     display: flex;
     flex-direction: column;
     background: #1a2526; /* Dark background like WhatsApp */
+    min-width: 900px; /* Ensure minimum width for chat area on desktop */
 }
 
 .chat-header {
@@ -1446,7 +1447,7 @@ select:focus, input:focus {
 }
 
 .message-content {
-    max-width: 65%;
+    max-width: 75%; /* Increased from 65% for better desktop experience */
     padding: 8px 12px;
     border-radius: 7.5px;
     position: relative;
@@ -1557,6 +1558,10 @@ select:focus, input:focus {
     .user-selection-panel {
         width: 400px;
     }
+    
+    .chat-panel {
+        min-width: 700px; /* Slightly smaller for medium screens */
+    }
 }
 
 @media (max-width: 1200px) {
@@ -1567,6 +1572,10 @@ select:focus, input:focus {
     
     .user-selection-panel {
         width: 350px;
+    }
+    
+    .chat-panel {
+        min-width: 600px; /* Smaller for smaller screens */
     }
 }
 
@@ -1605,6 +1614,7 @@ select:focus, input:focus {
     
     .chat-panel {
         width: 100%;
+        min-width: auto; /* Remove min-width constraint on mobile */
     }
     
     .chat-header {
