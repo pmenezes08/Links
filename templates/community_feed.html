@@ -35,10 +35,6 @@
 
         <!-- Composer -->
         <div class="composer-card">
-            <!-- Debug: Show community data -->
-            <div style="background: #ff0000; color: white; padding: 10px; margin-bottom: 10px;">
-                DEBUG: Community ID = {{ community.id }}, Type = {{ type(community.id) }}
-            </div>
             <form action="/post_status" method="POST" class="composer-form" enctype="multipart/form-data">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <input type="hidden" name="community_id" value="{{ community.id }}">

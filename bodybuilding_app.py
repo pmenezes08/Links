@@ -2634,7 +2634,6 @@ def community_feed(community_id):
                 return jsonify({'success': False, 'error': 'Community not found'}), 404
             
             community = dict(community_row)
-            logger.info(f"Community object for template: {community}")
             
             # Get posts for this community
             c.execute("""
@@ -2642,20 +2641,10 @@ def community_feed(community_id):
                 WHERE community_id = ? 
                 ORDER BY id DESC
             """, (community_id,))
-            logger.info(f"Fetching posts for community {community_id}")
             posts_raw = c.fetchall()
             posts = [dict(row) for row in posts_raw]
-            logger.info(f"Found {len(posts)} posts for community {community_id}")
             
-            # Debug: Show all posts in the database for this community
-            try:
-                c.execute("SELECT id, username, content, community_id FROM posts WHERE community_id = ? ORDER BY id DESC", (community_id,))
-                debug_posts = c.fetchall()
-                logger.info(f"Debug: All posts in database for community {community_id}:")
-                for post in debug_posts:
-                    logger.info(f"  Post {post['id']}: {post['username']} - {post['content'][:50]}... (community_id: {post['community_id']})")
-            except Exception as debug_error:
-                logger.warning(f"Error in debug query: {debug_error}")
+
 
             for post in posts:
                 # Fetch replies for each post
@@ -2692,7 +2681,6 @@ def community_feed(community_id):
                     ur = c.fetchone()
                     reply['user_reaction'] = ur['reaction_type'] if ur else None
             
-            logger.info(f"Rendering community_feed.html with community.id: {community.get('id')}")
             return render_template('community_feed.html', 
                                 posts=posts, 
                                 community=community,
