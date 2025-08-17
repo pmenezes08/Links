@@ -1950,6 +1950,9 @@ def post_status():
     community_id = int(community_id_raw) if community_id_raw else None
     logger.info(f"Received post request for {username} with content: {content} in community: {community_id} (raw: {community_id_raw})")
     
+    # Debug: Log all form data
+    logger.info(f"All form data: {dict(request.form)}")
+    
     # Handle file upload
     image_path = None
     if 'image' in request.files:
@@ -1993,6 +1996,9 @@ def post_status():
                     else:
                         return redirect(url_for('community_feed', community_id=community_id) + '?error=You are not a member of this community')
             
+            # Debug: Log the exact values being inserted
+            logger.info(f"About to insert post with values: username={username}, content={content}, image_path={image_path}, timestamp={timestamp}, community_id={community_id} (type: {type(community_id)})")
+            
             c.execute("INSERT INTO posts (username, content, image_path, timestamp, community_id) VALUES (?, ?, ?, ?, ?)",
                       (username, content, image_path, timestamp, community_id))
             conn.commit()
@@ -2003,6 +2009,13 @@ def post_status():
             c.execute("SELECT community_id FROM posts WHERE id = ?", (post_id,))
             saved_post = c.fetchone()
             logger.info(f"Verified post {post_id} has community_id: {saved_post['community_id'] if saved_post else 'None'}")
+            
+            # Also check what posts exist for this community
+            c.execute("SELECT id, username, content, community_id FROM posts WHERE community_id = ? ORDER BY id DESC", (community_id,))
+            community_posts = c.fetchall()
+            logger.info(f"Total posts in community {community_id}: {len(community_posts)}")
+            for post in community_posts:
+                logger.info(f"  Post {post['id']}: {post['username']} - {post['content'][:50]}... (community_id: {post['community_id']})")
         
         # Check if this is an AJAX request
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
@@ -2454,6 +2467,37 @@ def delete_community():
         logger.error(f"Error deleting community: {str(e)}")
         return jsonify({'success': False, 'error': 'Failed to delete community'}), 500
 
+@app.route('/debug_posts')
+@login_required
+def debug_posts():
+    """Debug route to check posts in database"""
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Check posts table structure
+            c.execute("PRAGMA table_info(posts)")
+            columns = c.fetchall()
+            logger.info("Posts table structure:")
+            for col in columns:
+                logger.info(f"  {col['name']}: {col['type']}")
+            
+            # Get all posts
+            c.execute("SELECT id, username, content, community_id FROM posts ORDER BY id DESC LIMIT 10")
+            posts = c.fetchall()
+            logger.info(f"Recent posts in database:")
+            for post in posts:
+                logger.info(f"  Post {post['id']}: {post['username']} - {post['content'][:50]}... (community_id: {post['community_id']})")
+            
+            return jsonify({
+                'success': True,
+                'posts': [dict(post) for post in posts],
+                'columns': [dict(col) for col in columns]
+            })
+    except Exception as e:
+        logger.error(f"Error in debug_posts: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
+
 @app.route('/join_community', methods=['POST'])
 @login_required
 def join_community():
@@ -2555,6 +2599,13 @@ def community_feed(community_id):
             posts_raw = c.fetchall()
             posts = [dict(row) for row in posts_raw]
             logger.info(f"Found {len(posts)} posts for community {community_id}")
+            
+            # Debug: Show all posts in the database for this community
+            c.execute("SELECT id, username, content, community_id FROM posts WHERE community_id = ? ORDER BY id DESC", (community_id,))
+            debug_posts = c.fetchall()
+            logger.info(f"Debug: All posts in database for community {community_id}:")
+            for post in debug_posts:
+                logger.info(f"  Post {post['id']}: {post['username']} - {post['content'][:50]}... (community_id: {post['community_id']})")
 
             for post in posts:
                 # Fetch replies for each post
