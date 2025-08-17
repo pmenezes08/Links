@@ -586,6 +586,12 @@
                     const currentDisplay = dropdownContent.style.display;
                     dropdownContent.style.display = currentDisplay === 'block' ? 'none' : 'block';
                     console.log('Dropdown display set to:', dropdownContent.style.display);
+                    
+                    // Debug: Check dropdown position and visibility
+                    if (dropdownContent.style.display === 'block') {
+                        console.log('Dropdown position:', dropdownContent.getBoundingClientRect());
+                        console.log('Dropdown computed styles:', window.getComputedStyle(dropdownContent));
+                    }
                 });
                 
                 // Close dropdown when clicking outside

@@ -3567,7 +3567,8 @@ select:focus, input:focus {
     width: 200px;
     border-radius: 0 0 8px 0;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-    z-index: 1001;
+    z-index: 9999;
+    border: 2px solid #ff0000;
 }
 
 .admin-dashboard .dropdown-content a {
