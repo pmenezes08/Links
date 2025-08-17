@@ -74,6 +74,14 @@ except ImportError as e:
 XAI_API_URL = 'https://api.x.ai/v1/chat/completions'
 DAILY_API_LIMIT = 10
 
+# Initialize database on application startup
+try:
+    ensure_database_exists()
+    logger.info("Database initialized successfully on startup")
+except Exception as e:
+    logger.error(f"Failed to initialize database on startup: {e}")
+    print(f"WARNING: Database initialization failed on startup: {e}")
+
 # Register the format_date Jinja2 filter
 @app.template_filter('format_date')
 def format_date(date_str, format_str):
@@ -84,37 +92,126 @@ def format_date(date_str, format_str):
         logger.error(f"Invalid date format: {date_str}")
         return date_str
 
-# Database connection pooling
+# Database connection pooling with absolute path
 def get_db_connection():
-    conn = sqlite3.connect('users.db')
-    conn.row_factory = sqlite3.Row
-    return conn
+    # Get the absolute path to the database file
+    db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'users.db')
+    try:
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        return conn
+    except Exception as e:
+        logger.error(f"Failed to connect to database at {db_path}: {e}")
+        # Try to ensure database exists and retry
+        try:
+            ensure_database_exists()
+            conn = sqlite3.connect(db_path)
+            conn.row_factory = sqlite3.Row
+            return conn
+        except Exception as e2:
+            logger.error(f"Failed to create database and connect: {e2}")
+            raise
 
-def init_db():
+def ensure_database_exists():
+    """Ensure the database and all tables exist."""
+    try:
+        db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'users.db')
+        logger.info(f"Database path: {db_path}")
+        
+        # Connect to database (this will create it if it doesn't exist)
+        conn = sqlite3.connect(db_path)
+        c = conn.cursor()
+        
+        # Check if users table exists
+        c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='users'")
+        users_table_exists = c.fetchone() is not None
+        
+        if not users_table_exists:
+            logger.info("Users table does not exist. Creating all tables...")
+            init_db()
+        else:
+            logger.info("Users table exists. Checking other tables...")
+            # Check if messages table exists
+            c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='messages'")
+            messages_table_exists = c.fetchone() is not None
+            
+            if not messages_table_exists:
+                logger.info("Messages table missing. Adding missing tables...")
+                add_missing_tables()
+        
+        conn.close()
+        logger.info("Database check completed successfully")
+        
+    except Exception as e:
+        logger.error(f"Error ensuring database exists: {e}")
+        raise
+
+def add_missing_tables():
+    """Add any missing tables to existing database."""
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
             
-            # Create users table first
+            # Create messages table
+            c.execute('''CREATE TABLE IF NOT EXISTS messages
+                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                          sender TEXT NOT NULL,
+                          receiver TEXT NOT NULL,
+                          message TEXT NOT NULL,
+                          timestamp TEXT NOT NULL,
+                          is_read INTEGER DEFAULT 0,
+                          FOREIGN KEY (sender) REFERENCES users(username),
+                          FOREIGN KEY (receiver) REFERENCES users(username))''')
+            
+            # Create api_usage table if it doesn't exist
+            c.execute('''CREATE TABLE IF NOT EXISTS api_usage
+                         (username TEXT, date TEXT, count INTEGER,
+                          PRIMARY KEY (username, date))''')
+            
+            # Create saved_data table if it doesn't exist
+            c.execute('''CREATE TABLE IF NOT EXISTS saved_data
+                         (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT, type TEXT, data TEXT, timestamp TEXT)''')
+            
+            conn.commit()
+            logger.info("Missing tables added successfully")
+            
+    except Exception as e:
+        logger.error(f"Error adding missing tables: {e}")
+        raise
+
+def init_db():
+    """Initialize the database with all required tables."""
+    try:
+        logger.info("Starting database initialization...")
+        
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Create users table
+            logger.info("Creating users table...")
             c.execute('''CREATE TABLE IF NOT EXISTS users
                          (username TEXT PRIMARY KEY, subscription TEXT, password TEXT,
                           gender TEXT, weight REAL, height REAL, blood_type TEXT, muscle_mass REAL, bmi REAL,
                           nutrition_goal TEXT, nutrition_restrictions TEXT)''')
             
-            # Insert admin user if not exists
+            # Insert admin user
+            logger.info("Inserting admin user...")
             c.execute("INSERT OR IGNORE INTO users (username, subscription, password) VALUES (?, ?, ?)",
                       ('admin', 'premium', '12345'))
             
-            # Create posts table with image support
+            # Create posts table
+            logger.info("Creating posts table...")
             c.execute('''CREATE TABLE IF NOT EXISTS posts
                          (id INTEGER PRIMARY KEY AUTOINCREMENT,
                           username TEXT NOT NULL,
                           content TEXT NOT NULL,
                           image_path TEXT,
                           timestamp TEXT NOT NULL,
+                          community_id INTEGER,
                           FOREIGN KEY (username) REFERENCES users(username))''')
 
             # Create replies table
+            logger.info("Creating replies table...")
             c.execute('''CREATE TABLE IF NOT EXISTS replies
                          (id INTEGER PRIMARY KEY AUTOINCREMENT,
                           post_id INTEGER NOT NULL,
@@ -122,10 +219,12 @@ def init_db():
                           content TEXT NOT NULL,
                           image_path TEXT,
                           timestamp TEXT NOT NULL,
+                          community_id INTEGER,
                           FOREIGN KEY (post_id) REFERENCES posts(id),
                           FOREIGN KEY (username) REFERENCES users(username))''')
 
-            # Add this new table for reactions
+            # Create reactions table
+            logger.info("Creating reactions table...")
             c.execute('''CREATE TABLE IF NOT EXISTS reactions
                          (id INTEGER PRIMARY KEY AUTOINCREMENT,
                           post_id INTEGER NOT NULL,
@@ -133,9 +232,10 @@ def init_db():
                           reaction_type TEXT NOT NULL,
                           FOREIGN KEY (post_id) REFERENCES posts(id),
                           FOREIGN KEY (username) REFERENCES users(username),
-                          UNIQUE(post_id, username))''') # Ensures one reaction per user per post
+                          UNIQUE(post_id, username))''')
 
-            # Add table for reply reactions
+            # Create reply_reactions table
+            logger.info("Creating reply_reactions table...")
             c.execute('''CREATE TABLE IF NOT EXISTS reply_reactions
                          (id INTEGER PRIMARY KEY AUTOINCREMENT,
                           reply_id INTEGER NOT NULL,
@@ -145,21 +245,8 @@ def init_db():
                           FOREIGN KEY (username) REFERENCES users(username),
                           UNIQUE(reply_id, username))''')
 
-            # Add image column to existing posts table if it doesn't exist
-            try:
-                c.execute("ALTER TABLE posts ADD COLUMN image_path TEXT")
-            except sqlite3.OperationalError:
-                # Column already exists
-                pass
-
-            # Add image column to existing replies table if it doesn't exist
-            try:
-                c.execute("ALTER TABLE replies ADD COLUMN image_path TEXT")
-            except sqlite3.OperationalError:
-                # Column already exists
-                pass
-
             # Create communities table
+            logger.info("Creating communities table...")
             c.execute('''CREATE TABLE IF NOT EXISTS communities
                          (id INTEGER PRIMARY KEY AUTOINCREMENT,
                           name TEXT NOT NULL,
@@ -169,7 +256,8 @@ def init_db():
                           created_at TEXT NOT NULL,
                           FOREIGN KEY (creator_username) REFERENCES users(username))''')
 
-            # Create user_communities table (many-to-many relationship)
+            # Create user_communities table
+            logger.info("Creating user_communities table...")
             c.execute('''CREATE TABLE IF NOT EXISTS user_communities
                          (id INTEGER PRIMARY KEY AUTOINCREMENT,
                           user_id INTEGER NOT NULL,
@@ -179,30 +267,19 @@ def init_db():
                           FOREIGN KEY (community_id) REFERENCES communities(id),
                           UNIQUE(user_id, community_id))''')
 
-            # Add community_id to posts table
-            try:
-                c.execute("ALTER TABLE posts ADD COLUMN community_id INTEGER")
-            except sqlite3.OperationalError:
-                # Column already exists
-                pass
-
-            # Add community_id to replies table
-            try:
-                c.execute("ALTER TABLE replies ADD COLUMN community_id INTEGER")
-            except sqlite3.OperationalError:
-                # Column already exists
-                pass
-
             # Create api_usage table
+            logger.info("Creating api_usage table...")
             c.execute('''CREATE TABLE IF NOT EXISTS api_usage
                          (username TEXT, date TEXT, count INTEGER,
                           PRIMARY KEY (username, date))''')
             
             # Create saved_data table
+            logger.info("Creating saved_data table...")
             c.execute('''CREATE TABLE IF NOT EXISTS saved_data
                          (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT, type TEXT, data TEXT, timestamp TEXT)''')
             
-            # Create messages table for user chat functionality
+            # Create messages table
+            logger.info("Creating messages table...")
             c.execute('''CREATE TABLE IF NOT EXISTS messages
                          (id INTEGER PRIMARY KEY AUTOINCREMENT,
                           sender TEXT NOT NULL,
@@ -214,9 +291,11 @@ def init_db():
                           FOREIGN KEY (receiver) REFERENCES users(username))''')
 
             conn.commit()
+            logger.info("Database initialization completed successfully")
+            
     except Exception as e:
         logger.error(f"Error initializing database: {e}")
-        abort(500)
+        raise
 
 def ensure_indexes():
     try:
@@ -2099,4 +2178,13 @@ def not_found_error(e):
     return render_template('error.html', error="Page not found. Please check the URL or return to the homepage."), 404
 
 if __name__ == '__main__':
+    # Ensure database exists and is properly initialized
+    try:
+        ensure_database_exists()
+        logger.info("Database initialization completed successfully")
+    except Exception as e:
+        logger.error(f"Failed to initialize database: {e}")
+        print(f"ERROR: Database initialization failed: {e}")
+        sys.exit(1)
+    
     app.run(debug=False, host='0.0.0.0', port=8080)
