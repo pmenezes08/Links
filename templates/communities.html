@@ -44,98 +44,129 @@
 		
 		<!-- Community Creation Section -->
 		<div class="community-creation-section">
-			<button id="buildCommunityBtn" class="build-community-btn">Build your community</button>
-			
-			<div id="communityForm" class="community-form" style="display: none;">
-				<h3>Create New Community</h3>
+			<button id="buildCommunityBtn" class="build-community-btn">
+				<i class="fas fa-plus-circle"></i> Build your community
+			</button>
+		</div>
+		
+		<!-- Community Creation Modal -->
+		<div id="communityModal" class="modal-overlay" style="display: none;">
+			<div class="modal-content">
+				<div class="modal-header">
+					<h3>Create Your Community</h3>
+					<button class="modal-close" id="closeModal">&times;</button>
+				</div>
+				
 				<form id="createCommunityForm">
-					<div class="form-group">
-						<label for="communityType">Community Type:</label>
-						<select id="communityType" name="type" required>
-							<option value="">Select a type...</option>
-							<option value="Gym">Gym</option>
-							<option value="Golf">Golf</option>
-							<option value="Running Club">Running Club</option>
-							<option value="Basketball">Basketball</option>
-							<option value="Soccer">Soccer</option>
-							<option value="Tennis">Tennis</option>
-							<option value="Swimming">Swimming</option>
-							<option value="Cycling">Cycling</option>
-							<option value="Yoga">Yoga</option>
-							<option value="CrossFit">CrossFit</option>
-							<option value="Boxing">Boxing</option>
-							<option value="Martial Arts">Martial Arts</option>
-							<option value="Other">Other</option>
-						</select>
-					</div>
-					<div class="form-group">
-						<label for="communityName">Community Name:</label>
-						<input type="text" id="communityName" name="name" placeholder="Enter community name..." required>
-					</div>
-					<div class="form-group">
-						<label for="communityDescription">Description (Optional):</label>
-						<textarea id="communityDescription" name="description" placeholder="Describe your community..." rows="3"></textarea>
-					</div>
-					<div class="form-group">
-						<label for="communityLocation">Location (Optional):</label>
-						<input type="text" id="communityLocation" name="location" placeholder="City, State, or Venue name...">
-					</div>
-					<div class="form-group">
-						<label for="communityBackground">Background Picture (Optional):</label>
-						<div class="background-options">
-							<div class="background-option">
-								<label for="backgroundFile">Upload from device:</label>
-								<input type="file" id="backgroundFile" name="background_file" accept="image/*">
-								<span class="file-info" id="fileInfo"></span>
-							</div>
-							<div class="background-option">
-								<label for="backgroundUrl">Or use URL:</label>
-								<input type="url" id="backgroundUrl" name="background_url" placeholder="https://example.com/image.jpg">
-							</div>
+					<div class="form-section">
+						<div class="form-group">
+							<label for="communityName">Community Name</label>
+							<input type="text" id="communityName" name="name" required placeholder="Enter community name">
 						</div>
-						<div class="background-preview" id="backgroundPreview" style="display: none;">
-							<img id="previewImage" src="" alt="Background preview">
+						
+						<div class="form-group">
+							<label for="communityType">Community Type</label>
+							<select id="communityType" name="type" required>
+								<option value="">Select a type</option>
+								<option value="Fitness">Fitness</option>
+								<option value="Yoga">Yoga</option>
+								<option value="Running">Running</option>
+								<option value="Cycling">Cycling</option>
+								<option value="Swimming">Swimming</option>
+								<option value="CrossFit">CrossFit</option>
+								<option value="Bodybuilding">Bodybuilding</option>
+								<option value="Pilates">Pilates</option>
+								<option value="Dance">Dance</option>
+								<option value="Martial Arts">Martial Arts</option>
+								<option value="Other">Other</option>
+							</select>
+						</div>
+						
+						<div class="form-group">
+							<label for="communityDescription">Description (Optional)</label>
+							<textarea id="communityDescription" name="description" rows="2" placeholder="Tell people what your community is about..."></textarea>
+						</div>
+						
+						<div class="form-group">
+							<label for="communityLocation">Location (Optional)</label>
+							<input type="text" id="communityLocation" name="location" placeholder="City, Country, or Online">
 						</div>
 					</div>
-					<div class="form-group">
-						<label for="communityColors">Color Palette:</label>
-						<div class="color-palette-section">
-							<div class="color-option">
-								<label for="backgroundColor">Background Color:</label>
-								<input type="color" id="backgroundColor" name="background_color" value="#2d3839">
-								<span class="color-preview" id="backgroundColorPreview"></span>
+					
+					<div class="form-section">
+						<div class="form-group">
+							<label for="communityBackground">Background Image (Optional)</label>
+							<div class="background-options">
+								<div class="background-option">
+									<label for="backgroundFile">Upload from device:</label>
+									<input type="file" id="backgroundFile" name="background_file" accept="image/*">
+									<div class="file-info" id="fileInfo"></div>
+								</div>
+								<div class="background-option">
+									<label for="backgroundUrl">Or use URL:</label>
+									<input type="text" id="backgroundUrl" name="background_url" placeholder="https://example.com/image.jpg">
+								</div>
 							</div>
-							<div class="color-option">
-								<label for="textColor">Text Color:</label>
-								<input type="color" id="textColor" name="text_color" value="#ffffff">
-								<span class="color-preview" id="textColorPreview"></span>
-							</div>
-							<div class="color-option">
-								<label for="accentColor">Accent Color:</label>
-								<input type="color" id="accentColor" name="accent_color" value="#4db6ac">
-								<span class="color-preview" id="accentColorPreview"></span>
-							</div>
-							<div class="color-option">
-								<label for="cardColor">Card Background:</label>
-								<input type="color" id="cardColor" name="card_color" value="#1a2526">
-								<span class="color-preview" id="cardColorPreview"></span>
+							<div class="background-preview" id="backgroundPreview" style="display: none;">
+								<img id="previewImage" src="" alt="Preview">
 							</div>
 						</div>
-						<div class="color-preview-section">
-							<h4>Preview:</h4>
-							<div class="color-preview-card" id="colorPreviewCard">
-								<div class="preview-header">Sample Post</div>
-								<div class="preview-content">This is how your community will look with the selected colors.</div>
-								<div class="preview-actions">
-									<button class="preview-btn">Like</button>
-									<button class="preview-btn">Comment</button>
+					</div>
+					
+					<div class="form-section">
+						<div class="form-group">
+							<label>Color Theme</label>
+							<div class="color-theme-selector">
+								<div class="theme-presets">
+									<button type="button" class="theme-preset active" data-theme="default">
+										<span class="preset-preview default-theme"></span>
+										<span class="preset-name">Default</span>
+									</button>
+									<button type="button" class="theme-preset" data-theme="dark">
+										<span class="preset-preview dark-theme"></span>
+										<span class="preset-name">Dark</span>
+									</button>
+									<button type="button" class="theme-preset" data-theme="light">
+										<span class="preset-preview light-theme"></span>
+										<span class="preset-name">Light</span>
+									</button>
+									<button type="button" class="theme-preset" data-theme="colorful">
+										<span class="preset-preview colorful-theme"></span>
+										<span class="preset-name">Colorful</span>
+									</button>
+								</div>
+								<div class="custom-colors-toggle">
+									<button type="button" id="customColorsToggle" class="custom-toggle-btn">
+										<i class="fas fa-palette"></i> Custom Colors
+									</button>
+								</div>
+								<div class="custom-colors-panel" id="customColorsPanel" style="display: none;">
+									<div class="color-grid">
+										<div class="color-item">
+											<label>Background</label>
+											<input type="color" id="backgroundColor" name="background_color" value="#2d3839">
+										</div>
+										<div class="color-item">
+											<label>Text</label>
+											<input type="color" id="textColor" name="text_color" value="#ffffff">
+										</div>
+										<div class="color-item">
+											<label>Accent</label>
+											<input type="color" id="accentColor" name="accent_color" value="#4db6ac">
+										</div>
+										<div class="color-item">
+											<label>Cards</label>
+											<input type="color" id="cardColor" name="card_color" value="#1a2526">
+										</div>
+									</div>
 								</div>
 							</div>
 						</div>
 					</div>
+					
 					<div class="form-actions">
-						<button type="submit" class="create-community-btn">Create your community</button>
-						<button type="button" id="cancelCommunityBtn" class="cancel-btn">Cancel</button>
+						<button type="button" class="cancel-btn" id="cancelCommunityBtn">Cancel</button>
+						<button type="submit" class="create-community-btn">Create Community</button>
 					</div>
 				</form>
 			</div>
@@ -229,16 +260,84 @@
 			// Initialize color previews
 			updateColorPreview();
 			
+			// Theme preset functionality
+			$('.theme-preset').click(function() {
+				$('.theme-preset').removeClass('active');
+				$(this).addClass('active');
+				
+				const theme = $(this).data('theme');
+				setThemeColors(theme);
+			});
+			
+			// Custom colors toggle
+			$('#customColorsToggle').click(function() {
+				$('#customColorsPanel').slideToggle(200);
+			});
+			
 			// Update on color change
 			$('#backgroundColor, #textColor, #accentColor, #cardColor').on('input', updateColorPreview);
+			
+			// Function to set theme colors
+			function setThemeColors(theme) {
+				let colors = {};
+				
+				switch(theme) {
+					case 'default':
+						colors = {
+							background: '#2d3839',
+							text: '#ffffff',
+							accent: '#4db6ac',
+							card: '#1a2526'
+						};
+						break;
+					case 'dark':
+						colors = {
+							background: '#1a1a1a',
+							text: '#ffffff',
+							accent: '#666666',
+							card: '#000000'
+						};
+						break;
+					case 'light':
+						colors = {
+							background: '#f5f5f5',
+							text: '#333333',
+							accent: '#4db6ac',
+							card: '#ffffff'
+						};
+						break;
+					case 'colorful':
+						colors = {
+							background: '#667eea',
+							text: '#ffffff',
+							accent: '#764ba2',
+							card: '#5a6fd8'
+						};
+						break;
+				}
+				
+				$('#backgroundColor').val(colors.background);
+				$('#textColor').val(colors.text);
+				$('#accentColor').val(colors.accent);
+				$('#cardColor').val(colors.card);
+				
+				updateColorPreview();
+			}
 
-			// Toggle community creation form
+			// Modal functionality
 			$('#buildCommunityBtn').click(function() {
-				$('#communityForm').slideToggle();
+				$('#communityModal').fadeIn(300);
 			});
-
-			$('#cancelCommunityBtn').click(function() {
-				$('#communityForm').slideUp();
+			
+			$('#closeModal, #cancelCommunityBtn').click(function() {
+				$('#communityModal').fadeOut(300);
+			});
+			
+			// Close modal when clicking outside
+			$('#communityModal').click(function(e) {
+				if (e.target === this) {
+					$(this).fadeOut(300);
+				}
 			});
 
 			// Handle community creation
@@ -280,7 +379,7 @@
 					success: function(response) {
 						if (response.success) {
 							alert('Community created successfully! Join code: ' + response.join_code);
-							$('#communityForm').slideUp();
+							$('#communityModal').fadeOut(300);
 							$('#createCommunityForm')[0].reset();
 							$('#backgroundPreview').hide();
 							$('#fileInfo').text('');
