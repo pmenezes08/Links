@@ -5,11 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ community.name }} - Social</title>
     <meta name="csrf-token" content="{{ csrf_token }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v='1.1') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v='2.0') }}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <meta name="current-username" content="{{ username }}">
-    <script src="{{ url_for('static', filename='script.js', v='1.1') }}"></script>
+    <script src="{{ url_for('static', filename='script.js', v='2.0') }}"></script>
 </head>
 <body>
     <!-- Sidebar Menu -->
@@ -35,6 +35,10 @@
 
         <!-- Composer -->
         <div class="composer-card">
+            <!-- Debug: Show community data -->
+            <div style="background: #ff0000; color: white; padding: 10px; margin-bottom: 10px;">
+                DEBUG: Community ID = {{ community.id }}, Type = {{ type(community.id) }}
+            </div>
             <form action="/post_status" method="POST" class="composer-form" enctype="multipart/form-data">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <input type="hidden" name="community_id" value="{{ community.id }}">
