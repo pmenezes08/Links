@@ -505,6 +505,7 @@ def business_login_required(f):
 
 # Routes
 @app.route('/', methods=['GET', 'POST'])
+@csrf.exempt
 def index():
     print("Entering index route")
     logger.info(f"Request method: {request.method}")
@@ -556,6 +557,7 @@ def authorized():
         abort(500)
 
 @app.route('/signup', methods=['GET', 'POST'])
+@csrf.exempt
 def signup():
     """User registration page"""
     if request.method == 'GET':
@@ -678,6 +680,7 @@ def logout():
 
 
 @app.route('/login_password', methods=['GET', 'POST'])
+@csrf.exempt
 def login_password():
     print("Entering login_password route")
     if 'username' not in session:
