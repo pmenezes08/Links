@@ -1089,7 +1089,7 @@ select:focus, input:focus {
 
 /* Messages Interface Styles */
 .messages-container {
-    max-width: 1400px; /* Increased for desktop */
+    max-width: 1800px; /* Much larger for desktop */
     margin: 0 auto;
     height: 100vh;
     display: flex;
@@ -1146,7 +1146,7 @@ select:focus, input:focus {
 
 /* User Selection Panel - WhatsApp Style */
 .user-selection-panel {
-    width: 400px; /* Increased width for desktop */
+    width: 450px; /* Even wider for desktop */
     background: #2d3839; /* WhatsApp sidebar color */
     border-right: 1px solid rgba(255, 255, 255, 0.1);
     display: flex;
@@ -1548,6 +1548,17 @@ select:focus, input:focus {
 }
 
 /* Responsive Design for Messages */
+@media (max-width: 1600px) {
+    .messages-container {
+        max-width: 95%;
+        margin: 0 auto;
+    }
+    
+    .user-selection-panel {
+        width: 400px;
+    }
+}
+
 @media (max-width: 1200px) {
     .messages-container {
         max-width: 100%;
