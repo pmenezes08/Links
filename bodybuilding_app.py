@@ -201,6 +201,17 @@ def init_db():
             # Create saved_data table
             c.execute('''CREATE TABLE IF NOT EXISTS saved_data
                          (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT, type TEXT, data TEXT, timestamp TEXT)''')
+            
+            # Create messages table for user chat functionality
+            c.execute('''CREATE TABLE IF NOT EXISTS messages
+                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                          sender TEXT NOT NULL,
+                          receiver TEXT NOT NULL,
+                          message TEXT NOT NULL,
+                          timestamp TEXT NOT NULL,
+                          is_read INTEGER DEFAULT 0,
+                          FOREIGN KEY (sender) REFERENCES users(username),
+                          FOREIGN KEY (receiver) REFERENCES users(username))''')
 
             conn.commit()
     except Exception as e:
