@@ -197,6 +197,28 @@ def init_db():
                           muscle_mass REAL, bmi REAL, nutrition_goal TEXT, nutrition_restrictions TEXT, 
                           created_at TEXT)''')
             
+            # Add missing columns to existing users table if they don't exist
+            logger.info("Checking for missing columns...")
+            columns_to_add = [
+                ('email', 'TEXT'),
+                ('first_name', 'TEXT'),
+                ('last_name', 'TEXT'),
+                ('age', 'INTEGER'),
+                ('fitness_level', 'TEXT'),
+                ('primary_goal', 'TEXT'),
+                ('created_at', 'TEXT')
+            ]
+            
+            for column_name, column_type in columns_to_add:
+                try:
+                    c.execute(f"ALTER TABLE users ADD COLUMN {column_name} {column_type}")
+                    logger.info(f"Added column {column_name}")
+                except sqlite3.OperationalError as e:
+                    if "duplicate column name" in str(e):
+                        logger.info(f"Column {column_name} already exists")
+                    else:
+                        logger.warning(f"Could not add column {column_name}: {e}")
+            
             # Insert admin user
             logger.info("Inserting admin user...")
             c.execute("INSERT OR IGNORE INTO users (username, email, subscription, password, first_name, last_name, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -568,27 +590,7 @@ def logout():
     session.clear()
     return redirect(url_for('index'))
 
-@app.route('/signup', methods=['GET', 'POST'])
-@login_required
-def signup():
-    username = session['username']
-    if request.method == 'POST':
-        password = request.form.get('password')
-        if password:
-            try:
-                with get_db_connection() as conn:
-                    c = conn.cursor()
-                    c.execute("INSERT OR REPLACE INTO users (username, subscription, password) VALUES (?, 'free', ?)",
-                              (username, password))
-                    conn.commit()
-                return redirect(url_for('dashboard'))
-            except sqlite3.IntegrityError:
-                return render_template('index.html', error=f"Username {username} already exists!")
-            except Exception as e:
-                logger.error(f"Database error in signup for {username}: {str(e)}")
-                abort(500)
-        return render_template('index.html', error="Please enter a password!")
-    return render_template('signup.html')
+
 
 @app.route('/login_password', methods=['GET', 'POST'])
 def login_password():
