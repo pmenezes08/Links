@@ -95,6 +95,16 @@ def init_db():
         with get_db_connection() as conn:
             c = conn.cursor()
             
+            # Create users table first
+            c.execute('''CREATE TABLE IF NOT EXISTS users
+                         (username TEXT PRIMARY KEY, subscription TEXT, password TEXT,
+                          gender TEXT, weight REAL, height REAL, blood_type TEXT, muscle_mass REAL, bmi REAL,
+                          nutrition_goal TEXT, nutrition_restrictions TEXT)''')
+            
+            # Insert admin user if not exists
+            c.execute("INSERT OR IGNORE INTO users (username, subscription, password) VALUES (?, ?, ?)",
+                      ('admin', 'premium', '12345'))
+            
             # Create posts table with image support
             c.execute('''CREATE TABLE IF NOT EXISTS posts
                          (id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -182,6 +192,15 @@ def init_db():
             except sqlite3.OperationalError:
                 # Column already exists
                 pass
+
+            # Create api_usage table
+            c.execute('''CREATE TABLE IF NOT EXISTS api_usage
+                         (username TEXT, date TEXT, count INTEGER,
+                          PRIMARY KEY (username, date))''')
+            
+            # Create saved_data table
+            c.execute('''CREATE TABLE IF NOT EXISTS saved_data
+                         (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT, type TEXT, data TEXT, timestamp TEXT)''')
 
             conn.commit()
     except Exception as e:
