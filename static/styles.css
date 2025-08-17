@@ -1890,39 +1890,48 @@ select:focus, input:focus {
 }
 
 .community-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
+    text-align: center;
     margin-bottom: 30px;
     padding: 20px;
+    position: relative;
 }
 
-.community-header-left {
-    text-align: left;
+.community-header h1 {
+    color: #ffffff;
+    font-size: 2.5em;
+    margin-bottom: 10px;
+    font-weight: 600;
 }
 
-.community-header-right {
-    display: flex;
-    align-items: center;
+.community-type {
+    color: #9fb0b5;
+    font-size: 1.1em;
+    margin-bottom: 15px;
+    font-weight: 500;
 }
 
 .members-btn {
-    background: linear-gradient(135deg, #4db6ac, #37a69c);
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    background: rgba(255, 255, 255, 0.1);
     color: #ffffff;
-    border: none;
-    padding: 8px 16px;
-    border-radius: 20px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    padding: 6px 12px;
+    border-radius: 15px;
     cursor: pointer;
-    font-size: 0.9em;
+    font-size: 0.8em;
     transition: all 0.3s ease;
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 4px;
+    backdrop-filter: blur(10px);
 }
 
 .members-btn:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 15px rgba(77, 182, 172, 0.3);
+    background: rgba(255, 255, 255, 0.2);
+    border-color: rgba(255, 255, 255, 0.3);
+    transform: translateY(-1px);
 }
 
 .community-header h1 {

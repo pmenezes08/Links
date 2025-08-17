@@ -81,15 +81,11 @@
         </div>
         {% endif %}
         <div class="community-header">
-            <div class="community-header-left">
-                <h1>{{ community.name }}</h1>
-                <p class="community-type">{{ community.type }} Community</p>
-            </div>
-            <div class="community-header-right">
-                <button class="members-btn" onclick="showMembersModal()">
-                    <i class="fas fa-users"></i> Members
-                </button>
-            </div>
+            <h1>{{ community.name }}</h1>
+            <p class="community-type">{{ community.type }} Community</p>
+            <button class="members-btn" onclick="showMembersModal()">
+                <i class="fas fa-users"></i> Members
+            </button>
         </div>
 
         <!-- Composer -->
