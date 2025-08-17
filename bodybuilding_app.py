@@ -1824,8 +1824,8 @@ def feed():
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
-            # Fetch all posts, ordered by the most recent (using ID for chronological order)
-            c.execute("SELECT * FROM posts ORDER BY id DESC")
+            # Fetch only main social feed posts (where community_id is NULL), ordered by the most recent
+            c.execute("SELECT * FROM posts WHERE community_id IS NULL ORDER BY id DESC")
             posts_raw = c.fetchall()
             posts = [dict(row) for row in posts_raw]
 
@@ -1946,8 +1946,9 @@ def post_status():
                 return redirect(url_for('feed') + '?error=Invalid CSRF token')
     
     content = request.form.get('content', '').strip()
-    community_id = request.form.get('community_id', type=int)
-    logger.info(f"Received post request for {username} with content: {content} in community: {community_id}")
+    community_id_raw = request.form.get('community_id')
+    community_id = int(community_id_raw) if community_id_raw else None
+    logger.info(f"Received post request for {username} with content: {content} in community: {community_id} (raw: {community_id_raw})")
     
     # Handle file upload
     image_path = None
