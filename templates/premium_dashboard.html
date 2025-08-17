@@ -54,10 +54,17 @@
                 $('.dropdown-content').slideToggle(200);
             });
             
-            // Close menu when clicking outside
+            // Close menu only when clicking outside the sidebar area
             $(document).on('click', function(e) {
-                if (!$(e.target).closest('.sidebar').length) {
-                    $('.dropdown-content').slideUp(200);
+                const sidebar = $('.sidebar');
+                const dropdown = $('.dropdown-content');
+                
+                // Check if click is outside both sidebar and dropdown
+                if (!sidebar.is(e.target) && 
+                    sidebar.has(e.target).length === 0 && 
+                    !dropdown.is(e.target) && 
+                    dropdown.has(e.target).length === 0) {
+                    dropdown.slideUp(200);
                 }
             });
             
