@@ -28,6 +28,12 @@ body.login-page {
     overflow: visible;
 }
 
+/* Dashboard pages need left margin for sidebar */
+body:not(.login-page) .container {
+    margin-left: 70px;
+    margin-right: auto;
+}
+
 /* Headers */
 h1 {
     font-size: 36px;
@@ -356,6 +362,7 @@ select:focus, input:focus {
     text-align: left;
     pointer-events: auto;
     z-index: 1002;
+    position: relative;
 }
 
 .dropdown-content {
@@ -367,6 +374,7 @@ select:focus, input:focus {
     width: 200px;
     box-shadow: 2px 2px 6px rgba(0, 0, 0, 0.2);
     z-index: 1001;
+    border-radius: 0 8px 8px 0;
 }
 
 .dropdown-content a {

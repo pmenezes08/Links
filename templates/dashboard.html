@@ -39,5 +39,26 @@
 	</div>
 	<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 	<script src="{{ url_for('static', filename='script.js') }}"></script>
+	<script>
+		$(document).ready(function() {
+			$('.menu-btn').click(function() {
+				$('.dropdown-content').toggle();
+			});
+			
+			// Hide dropdown when clicking outside
+			$(document).click(function(event) {
+				if (!$(event.target).closest('.sidebar').length) {
+					$('.dropdown-content').hide();
+				}
+			});
+			
+			// Hide dropdown on window resize
+			$(window).resize(function() {
+				if ($(window).width() > 768) {
+					$('.dropdown-content').hide();
+				}
+			});
+		});
+	</script>
 </body>
 </html>

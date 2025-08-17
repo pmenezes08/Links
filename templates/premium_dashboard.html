@@ -47,6 +47,15 @@
             $('.menu-btn').click(function() {
                 $('.dropdown-content').toggle();
             });
+            
+            // Hide dropdown when clicking outside
+            $(document).click(function(event) {
+                if (!$(event.target).closest('.sidebar').length) {
+                    $('.dropdown-content').hide();
+                }
+            });
+            
+            // Hide dropdown on window resize
             $(window).resize(function() {
                 if ($(window).width() > 768) {
                     $('.dropdown-content').hide();
@@ -54,50 +63,6 @@
             });
         });
     </script>
-    <style>
-        * {
-            font-family: Arial, Helvetica, sans-serif;  /* Consistent font across all elements */
-        }
-        .sidebar {
-            position: fixed;
-            top: 0;
-            left: 0;
-            height: 100%;
-            width: 60px;
-            background: #1a2526;
-            transition: width 0.3s;
-            z-index: 1000;
-        }
-        .menu-btn {
-            background: none;
-            border: none;
-            color: #e0e0e0;
-            font-size: 24px;
-            padding: 15px;
-            cursor: pointer;
-            width: 100%;
-            text-align: left;
-            font-family: Arial, Helvetica, sans-serif;  /* Match font */
-        }
-        .dropdown-content {
-            display: none;
-            background: #2d3839;
-            position: absolute;
-            top: 60px;
-            left: 0;
-            width: 200px;
-        }
-        .dropdown-content a {
-            color: #e0e0e0;
-            padding: 10px 15px;
-            display: block;
-            text-decoration: none;
-            font-size: 0.9em;  /* Match app font size */
-            font-family: Arial, Helvetica, sans-serif;  /* Match font */
-        }
-        .dropdown-content a:hover {
-            background: #3a4647;
-        }
         .container {
             max-width: 90%;
             margin: 0 auto;
