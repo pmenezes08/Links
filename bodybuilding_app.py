@@ -279,6 +279,9 @@ def init_db():
                           creator_username TEXT NOT NULL,
                           join_code TEXT UNIQUE NOT NULL,
                           created_at TEXT NOT NULL,
+                          description TEXT,
+                          location TEXT,
+                          background_path TEXT,
                           FOREIGN KEY (creator_username) REFERENCES users(username))''')
 
             # Create user_communities table
@@ -356,16 +359,25 @@ def allowed_file(filename):
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-def save_uploaded_file(file):
+def save_uploaded_file(file, subfolder=None):
     if file and allowed_file(file.filename):
         filename = secure_filename(file.filename)
         # Add timestamp to make filename unique
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         name, ext = os.path.splitext(filename)
         unique_filename = f"{name}_{timestamp}{ext}"
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
+        
+        # Create subfolder if specified
+        if subfolder:
+            upload_path = os.path.join(app.config['UPLOAD_FOLDER'], subfolder)
+            os.makedirs(upload_path, exist_ok=True)
+            filepath = os.path.join(upload_path, unique_filename)
+            return f"uploads/{subfolder}/{unique_filename}"
+        else:
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
+            return f"uploads/{unique_filename}"
+        
         file.save(filepath)
-        return f"uploads/{unique_filename}"
     return None
 
 def generate_join_code():
@@ -2325,9 +2337,26 @@ def create_community():
     username = session.get('username')
     name = request.form.get('name')
     community_type = request.form.get('type')
+    description = request.form.get('description', '')
+    location = request.form.get('location', '')
     
     if not name or not community_type:
         return jsonify({'success': False, 'error': 'Name and type are required'}), 400
+    
+    # Handle background image
+    background_path = None
+    if 'background_file' in request.files:
+        file = request.files['background_file']
+        if file.filename != '':
+            background_path = save_uploaded_file(file, 'community_backgrounds')
+            if not background_path:
+                return jsonify({'success': False, 'error': 'Invalid background image file type. Allowed: png, jpg, jpeg, gif, webp'}), 400
+    
+    # Use URL if no file uploaded
+    if not background_path:
+        background_url = request.form.get('background_url', '').strip()
+        if background_url:
+            background_path = background_url
     
     try:
         with get_db_connection() as conn:
@@ -2338,9 +2367,9 @@ def create_community():
             
             # Create the community
             c.execute("""
-                INSERT INTO communities (name, type, creator_username, join_code, created_at)
-                VALUES (?, ?, ?, ?, ?)
-            """, (name, community_type, username, join_code, datetime.now().strftime('%m.%d.%y %H:%M')))
+                INSERT INTO communities (name, type, creator_username, join_code, created_at, description, location, background_path)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (name, community_type, username, join_code, datetime.now().strftime('%m.%d.%y %H:%M'), description, location, background_path))
             
             community_id = c.lastrowid
             

@@ -80,6 +80,23 @@
 						<label for="communityLocation">Location (Optional):</label>
 						<input type="text" id="communityLocation" name="location" placeholder="City, State, or Venue name...">
 					</div>
+					<div class="form-group">
+						<label for="communityBackground">Background Picture (Optional):</label>
+						<div class="background-options">
+							<div class="background-option">
+								<label for="backgroundFile">Upload from device:</label>
+								<input type="file" id="backgroundFile" name="background_file" accept="image/*">
+								<span class="file-info" id="fileInfo"></span>
+							</div>
+							<div class="background-option">
+								<label for="backgroundUrl">Or use URL:</label>
+								<input type="url" id="backgroundUrl" name="background_url" placeholder="https://example.com/image.jpg">
+							</div>
+						</div>
+						<div class="background-preview" id="backgroundPreview" style="display: none;">
+							<img id="previewImage" src="" alt="Background preview">
+						</div>
+					</div>
 					<div class="form-actions">
 						<button type="submit" class="create-community-btn">Create your community</button>
 						<button type="button" id="cancelCommunityBtn" class="cancel-btn">Cancel</button>
@@ -106,6 +123,46 @@
 			// Load user's communities
 			loadUserCommunities();
 
+			// Background image preview functionality
+			// Handle file upload preview
+			$('#backgroundFile').on('change', function() {
+				const file = this.files[0];
+				if (file) {
+					// Clear URL input
+					$('#backgroundUrl').val('');
+					
+					// Show file info
+					$('#fileInfo').text(`Selected: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`);
+					
+					// Preview image
+					const reader = new FileReader();
+					reader.onload = function(e) {
+						$('#previewImage').attr('src', e.target.result);
+						$('#backgroundPreview').show();
+					};
+					reader.readAsDataURL(file);
+				} else {
+					$('#fileInfo').text('');
+					$('#backgroundPreview').hide();
+				}
+			});
+			
+			// Handle URL input preview
+			$('#backgroundUrl').on('input', function() {
+				const url = $(this).val().trim();
+				if (url) {
+					// Clear file input
+					$('#backgroundFile').val('');
+					$('#fileInfo').text('');
+					
+					// Preview image
+					$('#previewImage').attr('src', url);
+					$('#backgroundPreview').show();
+				} else {
+					$('#backgroundPreview').hide();
+				}
+			});
+
 			// Toggle community creation form
 			$('#buildCommunityBtn').click(function() {
 				$('#communityForm').slideToggle();
@@ -119,21 +176,39 @@
 			$('#createCommunityForm').submit(function(e) {
 				e.preventDefault();
 				
-				const formData = {
-					name: $('#communityName').val(),
-					type: $('#communityType').val(),
-					csrf_token: $('meta[name="csrf-token"]').attr('content')
-				};
+				// Create FormData object to handle file uploads
+				const formData = new FormData();
+				formData.append('name', $('#communityName').val());
+				formData.append('type', $('#communityType').val());
+				formData.append('description', $('#communityDescription').val());
+				formData.append('location', $('#communityLocation').val());
+				formData.append('csrf_token', $('meta[name="csrf-token"]').attr('content'));
+				
+				// Add background file if selected
+				const backgroundFile = $('#backgroundFile')[0].files[0];
+				if (backgroundFile) {
+					formData.append('background_file', backgroundFile);
+				}
+				
+				// Add background URL if provided
+				const backgroundUrl = $('#backgroundUrl').val().trim();
+				if (backgroundUrl) {
+					formData.append('background_url', backgroundUrl);
+				}
 
 				$.ajax({
 					url: '/create_community',
 					method: 'POST',
 					data: formData,
+					processData: false,
+					contentType: false,
 					success: function(response) {
 						if (response.success) {
 							alert('Community created successfully! Join code: ' + response.join_code);
 							$('#communityForm').slideUp();
 							$('#createCommunityForm')[0].reset();
+							$('#backgroundPreview').hide();
+							$('#fileInfo').text('');
 							loadUserCommunities(); // Reload communities
 						} else {
 							alert('Error: ' + response.error);
