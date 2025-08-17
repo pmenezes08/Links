@@ -48,6 +48,10 @@
         body {
             background-color: {{ community.background_color or '#2d3839' }} !important;
         }
+        
+        .community-header-image {
+            border-color: {{ community.accent_color or '#4db6ac' }} !important;
+        }
     </style>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
@@ -70,7 +74,12 @@
     </div>
 
     <!-- Main Content -->
-    <div class="container feed" {% if community.background_path %}style="background-image: url('{% if community.background_path.startswith('http') %}{{ community.background_path }}{% else %}{{ url_for('static', filename=community.background_path) }}{% endif %}'); background-size: cover; background-position: center; background-attachment: fixed;"{% endif %}>
+    <div class="container feed">
+        {% if community.background_path %}
+        <div class="community-header-image">
+            <img src="{% if community.background_path.startswith('http') %}{{ community.background_path }}{% else %}{{ url_for('static', filename=community.background_path) }}{% endif %}" alt="{{ community.name }} Header" class="header-image">
+        </div>
+        {% endif %}
         <div class="community-header">
             <h1>{{ community.name }}</h1>
             <p class="community-type">{{ community.type }} Community</p>
