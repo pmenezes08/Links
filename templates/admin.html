@@ -574,9 +574,26 @@
         document.addEventListener('DOMContentLoaded', function() {
             const menuBtn = document.querySelector('.menu-btn');
             const dropdownContent = document.querySelector('.dropdown-content');
+            const sidebar = document.querySelector('.sidebar');
             
             console.log('Menu button found:', menuBtn);
             console.log('Dropdown content found:', dropdownContent);
+            console.log('Sidebar found:', sidebar);
+            
+            if (sidebar) {
+                const sidebarRect = sidebar.getBoundingClientRect();
+                const sidebarStyles = window.getComputedStyle(sidebar);
+                console.log('Sidebar position:', {
+                    top: sidebarRect.top,
+                    left: sidebarRect.left,
+                    width: sidebarRect.width,
+                    height: sidebarRect.height
+                });
+                console.log('Sidebar styles:', {
+                    position: sidebarStyles.position,
+                    zIndex: sidebarStyles.zIndex
+                });
+            }
             
             if (menuBtn && dropdownContent) {
                 menuBtn.addEventListener('click', function(e) {
@@ -589,8 +606,23 @@
                     
                     // Debug: Check dropdown position and visibility
                     if (dropdownContent.style.display === 'block') {
-                        console.log('Dropdown position:', dropdownContent.getBoundingClientRect());
-                        console.log('Dropdown computed styles:', window.getComputedStyle(dropdownContent));
+                        const rect = dropdownContent.getBoundingClientRect();
+                        const styles = window.getComputedStyle(dropdownContent);
+                        console.log('Dropdown position:', {
+                            top: rect.top,
+                            left: rect.left,
+                            width: rect.width,
+                            height: rect.height,
+                            visible: rect.width > 0 && rect.height > 0
+                        });
+                        console.log('Dropdown styles:', {
+                            display: styles.display,
+                            position: styles.position,
+                            zIndex: styles.zIndex,
+                            backgroundColor: styles.backgroundColor,
+                            visibility: styles.visibility,
+                            opacity: styles.opacity
+                        });
                     }
                 });
                 
