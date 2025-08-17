@@ -1805,7 +1805,14 @@ def add_reaction():
 def post_status():
     username = session['username']
     if not validate_csrf():
-        return jsonify({'success': False, 'error': 'Invalid CSRF token'}), 400
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify({'success': False, 'error': 'Invalid CSRF token'}), 400
+        else:
+            community_id = request.form.get('community_id', type=int)
+            if community_id:
+                return redirect(url_for('community_feed', community_id=community_id) + '?error=Invalid CSRF token')
+            else:
+                return redirect(url_for('feed') + '?error=Invalid CSRF token')
     
     content = request.form.get('content', '').strip()
     community_id = request.form.get('community_id', type=int)
@@ -1818,10 +1825,22 @@ def post_status():
         if file.filename != '':
             image_path = save_uploaded_file(file)
             if not image_path:
-                return jsonify({'success': False, 'error': 'Invalid file type. Allowed: png, jpg, jpeg, gif, webp'}), 400
+                if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                    return jsonify({'success': False, 'error': 'Invalid file type. Allowed: png, jpg, jpeg, gif, webp'}), 400
+                else:
+                    if community_id:
+                        return redirect(url_for('community_feed', community_id=community_id) + '?error=Invalid file type. Allowed: png, jpg, jpeg, gif, webp')
+                    else:
+                        return redirect(url_for('feed') + '?error=Invalid file type. Allowed: png, jpg, jpeg, gif, webp')
     
     if not content and not image_path:
-        return jsonify({'success': False, 'error': 'Content or image is required!'}), 400
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify({'success': False, 'error': 'Content or image is required!'}), 400
+        else:
+            if community_id:
+                return redirect(url_for('community_feed', community_id=community_id) + '?error=Content or image is required!')
+            else:
+                return redirect(url_for('feed') + '?error=Content or image is required!')
     
     timestamp = datetime.now().strftime('%m.%d.%y %H:%M')
     try:
@@ -1837,27 +1856,46 @@ def post_status():
                 """, (username, community_id))
                 
                 if not c.fetchone():
-                    return jsonify({'success': False, 'error': 'You are not a member of this community'}), 403
+                    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                        return jsonify({'success': False, 'error': 'You are not a member of this community'}), 403
+                    else:
+                        return redirect(url_for('community_feed', community_id=community_id) + '?error=You are not a member of this community')
             
             c.execute("INSERT INTO posts (username, content, image_path, timestamp, community_id) VALUES (?, ?, ?, ?, ?)",
                       (username, content, image_path, timestamp, community_id))
             conn.commit()
         logger.info(f"Post added successfully for {username} with ID: {c.lastrowid}")
-        return jsonify({
-            'success': True,
-            'message': 'Post added!',
-            'post': {
-                'id': c.lastrowid, 
-                'username': username, 
-                'content': content, 
-                'image_path': image_path,
-                'timestamp': timestamp,
-                'community_id': community_id
-            }
-        }), 200
+        
+        # Check if this is an AJAX request
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify({
+                'success': True,
+                'message': 'Post added!',
+                'post': {
+                    'id': c.lastrowid, 
+                    'username': username, 
+                    'content': content, 
+                    'image_path': image_path,
+                    'timestamp': timestamp,
+                    'community_id': community_id
+                }
+            }), 200
+        else:
+            # Regular form submission - redirect back to the appropriate page
+            if community_id:
+                return redirect(url_for('community_feed', community_id=community_id))
+            else:
+                return redirect(url_for('feed'))
     except Exception as e:
         logger.error(f"Error posting status for {username}: {str(e)}", exc_info=True)
-        return jsonify({'success': False, 'error': f'Unexpected error: {str(e)}'}), 500
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify({'success': False, 'error': f'Unexpected error: {str(e)}'}), 500
+        else:
+            # For regular form submissions, redirect with error
+            if community_id:
+                return redirect(url_for('community_feed', community_id=community_id) + '?error=' + str(e))
+            else:
+                return redirect(url_for('feed') + '?error=' + str(e))
 
 @app.route('/post_reply', methods=['POST'])
 @login_required

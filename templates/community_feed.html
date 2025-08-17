@@ -36,6 +36,7 @@
         <!-- Composer -->
         <div class="composer-card">
             <form action="/post_status" method="POST" class="composer-form" enctype="multipart/form-data">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <input type="hidden" name="community_id" value="{{ community.id }}">
                 <div class="composer-inner">
                     <div class="composer-body">
