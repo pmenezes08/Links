@@ -131,14 +131,9 @@ def ensure_database_exists():
             logger.info("Users table does not exist. Creating all tables...")
             init_db()
         else:
-            logger.info("Users table exists. Checking other tables...")
-            # Check if messages table exists
-            c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='messages'")
-            messages_table_exists = c.fetchone() is not None
-            
-            if not messages_table_exists:
-                logger.info("Messages table missing. Adding missing tables...")
-                add_missing_tables()
+            logger.info("Users table exists. Checking for missing tables and columns...")
+            # Always check for missing tables and columns
+            add_missing_tables()
         
         conn.close()
         logger.info("Database check completed successfully")
@@ -2526,6 +2521,16 @@ def delete_community():
     except Exception as e:
         logger.error(f"Error deleting community: {str(e)}")
         return jsonify({'success': False, 'error': 'Failed to delete community'}), 500
+
+@app.route('/migrate_database')
+def migrate_database():
+    """Manual database migration endpoint"""
+    try:
+        add_missing_tables()
+        return jsonify({'success': True, 'message': 'Database migration completed successfully'})
+    except Exception as e:
+        logger.error(f"Database migration failed: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/debug_community/<int:community_id>')
 @login_required
