@@ -191,11 +191,22 @@
 							communitiesList.html('<p class="no-communities">You haven\'t joined any communities yet.</p>');
 						} else {
 							response.communities.forEach(function(community) {
+								const joinCodeSection = community.is_creator ? `
+									<div class="join-code-section">
+										<span class="join-code-label">Join Code:</span>
+										<span class="join-code">${community.join_code}</span>
+										<button onclick="copyJoinCode('${community.join_code}', '${community.name}')" class="copy-btn" title="Copy join code">
+											<i class="fas fa-copy"></i>
+										</button>
+									</div>
+								` : '';
+								
 								const communityCard = $(`
 									<div class="community-card">
 										<button class="community-btn" onclick="location.href='/community_feed/${community.id}'">
 											${community.name} - Social Feed
 										</button>
+										${joinCodeSection}
 										<div class="community-actions">
 											<button class="edit-community-btn" onclick="editCommunity(${community.id}, '${community.name}', '${community.type}')">
 												<i class="fas fa-edit"></i> Edit
@@ -279,6 +290,36 @@
 					joinMessage.fadeOut();
 				}, 3000);
 			}
+		}
+
+		function copyJoinCode(joinCode, communityName) {
+			navigator.clipboard.writeText(joinCode).then(function() {
+				// Show success message
+				const message = document.createElement('div');
+				message.className = 'copy-success';
+				message.textContent = `Join code for "${communityName}" copied to clipboard!`;
+				message.style.cssText = `
+					position: fixed;
+					top: 20px;
+					right: 20px;
+					background: #28a745;
+					color: white;
+					padding: 12px 20px;
+					border-radius: 4px;
+					z-index: 10000;
+					font-size: 0.9em;
+					box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+				`;
+				document.body.appendChild(message);
+				
+				// Remove message after 3 seconds
+				setTimeout(() => {
+					message.remove();
+				}, 3000);
+			}).catch(function(err) {
+				console.error('Could not copy text: ', err);
+				alert(`Join code: ${joinCode}\n\nCopy this code manually.`);
+			});
 		}
 	</script>
 </body>

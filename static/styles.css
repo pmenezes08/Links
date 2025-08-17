@@ -1772,3 +1772,46 @@ select:focus, input:focus {
     color: #f44336;
     display: block;
 }
+
+/* Join Code Styles for Communities Page */
+.join-code-section {
+    margin: 10px 0;
+    padding: 8px 12px;
+    background: rgba(45, 138, 126, 0.1);
+    border-radius: 6px;
+    border: 1px solid rgba(45, 138, 126, 0.3);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.join-code-label {
+    color: #2d8a7e;
+    font-size: 0.85em;
+    font-weight: 500;
+}
+
+.join-code {
+    font-family: 'Courier New', monospace;
+    background: #1a2526;
+    padding: 4px 8px;
+    border-radius: 3px;
+    font-size: 0.85em;
+    color: #4db6ac;
+    border: 1px solid #3a4647;
+}
+
+.copy-btn {
+    background: #4db6ac;
+    color: white;
+    border: none;
+    padding: 4px 8px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 0.8em;
+    transition: background 0.3s ease;
+}
+
+.copy-btn:hover {
+    background: #37a69c;
+}

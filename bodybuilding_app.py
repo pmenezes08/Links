@@ -1090,11 +1090,11 @@ def admin():
             
             # Get all communities with member counts
             c.execute("""
-                SELECT c.id, c.name, c.type, c.creator_username, 
+                SELECT c.id, c.name, c.type, c.creator_username, c.join_code,
                        COUNT(uc.user_id) as member_count
                 FROM communities c
                 LEFT JOIN user_communities uc ON c.id = uc.community_id
-                GROUP BY c.id, c.name, c.type, c.creator_username
+                GROUP BY c.id, c.name, c.type, c.creator_username, c.join_code
                 ORDER BY c.name
             """)
             communities = c.fetchall()
@@ -1169,11 +1169,11 @@ def admin():
                         
                         # Refresh communities list
                         c.execute("""
-                            SELECT c.id, c.name, c.type, c.creator_username, 
+                            SELECT c.id, c.name, c.type, c.creator_username, c.join_code,
                                    COUNT(uc.user_id) as member_count
                             FROM communities c
                             LEFT JOIN user_communities uc ON c.id = uc.community_id
-                            GROUP BY c.id, c.name, c.type, c.creator_username
+                            GROUP BY c.id, c.name, c.type, c.creator_username, c.join_code
                             ORDER BY c.name
                         """)
                         communities = c.fetchall()
@@ -2344,9 +2344,9 @@ def get_user_communities():
         with get_db_connection() as conn:
             c = conn.cursor()
             
-            # Get user's communities
+            # Get user's communities with creator information
             c.execute("""
-                SELECT c.id, c.name, c.type, c.join_code, c.created_at
+                SELECT c.id, c.name, c.type, c.join_code, c.created_at, c.creator_username
                 FROM communities c
                 JOIN user_communities uc ON c.id = uc.community_id
                 JOIN users u ON uc.user_id = u.rowid
@@ -2361,7 +2361,8 @@ def get_user_communities():
                     'name': row['name'],
                     'type': row['type'],
                     'join_code': row['join_code'],
-                    'created_at': row['created_at']
+                    'created_at': row['created_at'],
+                    'is_creator': row['creator_username'] == username
                 })
             
             return jsonify({'success': True, 'communities': communities})
