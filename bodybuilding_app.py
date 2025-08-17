@@ -2108,7 +2108,7 @@ def get_user_communities():
                 SELECT c.id, c.name, c.type, c.join_code, c.created_at
                 FROM communities c
                 JOIN user_communities uc ON c.id = uc.community_id
-                JOIN users u ON uc.user_id = u.id
+                JOIN users u ON uc.user_id = u.rowid
                 WHERE u.username = ?
                 ORDER BY c.created_at DESC
             """, (username,))
