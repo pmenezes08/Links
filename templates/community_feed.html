@@ -7,39 +7,47 @@
     <meta name="csrf-token" content="{{ csrf_token }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v='2.0') }}">
     <style>
-        /* Template-specific styles */
-        {% if community.template == 'dark' %}
+        /* Custom color styles */
         .composer-card, .post {
-            background: #1a1a1a !important;
-            border-color: #333 !important;
+            background-color: {{ community.card_color or '#1a2526' }} !important;
+            border-color: {{ community.accent_color or '#4db6ac' }} !important;
+            color: {{ community.text_color or '#ffffff' }} !important;
         }
+        
         .composer-input {
-            background: #000 !important;
-            color: #fff !important;
+            background-color: {{ community.card_color or '#1a2526' }} !important;
+            color: {{ community.text_color or '#ffffff' }} !important;
+            border-color: {{ community.accent_color or '#4db6ac' }} !important;
         }
-        {% elif community.template == 'light' %}
-        .composer-card, .post {
-            background: #f5f5f5 !important;
-            border-color: #ddd !important;
-            color: #333 !important;
-        }
-        .composer-input {
-            background: #fff !important;
-            color: #333 !important;
-        }
+        
         .post-header strong {
-            color: #333 !important;
+            color: {{ community.text_color or '#ffffff' }} !important;
         }
-        {% elif community.template == 'colorful' %}
-        .composer-card, .post {
-            background: linear-gradient(135deg, #667eea, #764ba2) !important;
-            border-color: rgba(255,255,255,0.3) !important;
+        
+        .post p {
+            color: {{ community.text_color or '#ffffff' }} !important;
         }
-        .composer-input {
-            background: rgba(255,255,255,0.1) !important;
-            color: #fff !important;
+        
+        .reaction-btn {
+            color: {{ community.text_color or '#ffffff' }} !important;
         }
-        {% endif %}
+        
+        .reaction-btn.active {
+            color: {{ community.accent_color or '#4db6ac' }} !important;
+        }
+        
+        .sleek-btn {
+            background-color: {{ community.accent_color or '#4db6ac' }} !important;
+            color: {{ community.text_color or '#ffffff' }} !important;
+        }
+        
+        .sleek-btn:hover {
+            background-color: {{ community.accent_color or '#4db6ac' }}dd !important;
+        }
+        
+        body {
+            background-color: {{ community.background_color or '#2d3839' }} !important;
+        }
     </style>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>

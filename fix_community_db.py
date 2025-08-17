@@ -44,7 +44,11 @@ def fix_communities_table():
             ('description', 'TEXT'),
             ('location', 'TEXT'),
             ('background_path', 'TEXT'),
-            ('template', 'TEXT')
+            ('template', 'TEXT'),
+            ('background_color', 'TEXT'),
+            ('text_color', 'TEXT'),
+            ('accent_color', 'TEXT'),
+            ('card_color', 'TEXT')
         ]
         
         # Add missing columns

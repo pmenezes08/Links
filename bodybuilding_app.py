@@ -173,7 +173,11 @@ def add_missing_tables():
                 ('description', 'TEXT'),
                 ('location', 'TEXT'),
                 ('background_path', 'TEXT'),
-                ('template', 'TEXT')
+                ('template', 'TEXT'),
+                ('background_color', 'TEXT'),
+                ('text_color', 'TEXT'),
+                ('accent_color', 'TEXT'),
+                ('card_color', 'TEXT')
             ]
             
             for column_name, column_type in columns_to_add:
@@ -296,6 +300,10 @@ def init_db():
                           location TEXT,
                           background_path TEXT,
                           template TEXT DEFAULT 'default',
+                          background_color TEXT DEFAULT '#2d3839',
+                          text_color TEXT DEFAULT '#ffffff',
+                          accent_color TEXT DEFAULT '#4db6ac',
+                          card_color TEXT DEFAULT '#1a2526',
                           FOREIGN KEY (creator_username) REFERENCES users(username))''')
 
             # Create user_communities table
@@ -2355,6 +2363,10 @@ def create_community():
     description = request.form.get('description', '')
     location = request.form.get('location', '')
     template = request.form.get('template', 'default')
+    background_color = request.form.get('background_color', '#2d3839')
+    text_color = request.form.get('text_color', '#ffffff')
+    accent_color = request.form.get('accent_color', '#4db6ac')
+    card_color = request.form.get('card_color', '#1a2526')
     
     if not name or not community_type:
         return jsonify({'success': False, 'error': 'Name and type are required'}), 400
@@ -2383,9 +2395,9 @@ def create_community():
             
             # Create the community
             c.execute("""
-                INSERT INTO communities (name, type, creator_username, join_code, created_at, description, location, background_path, template)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (name, community_type, username, join_code, datetime.now().strftime('%m.%d.%y %H:%M'), description, location, background_path, template))
+                INSERT INTO communities (name, type, creator_username, join_code, created_at, description, location, background_path, template, background_color, text_color, accent_color, card_color)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (name, community_type, username, join_code, datetime.now().strftime('%m.%d.%y %H:%M'), description, location, background_path, template, background_color, text_color, accent_color, card_color))
             
             community_id = c.lastrowid
             

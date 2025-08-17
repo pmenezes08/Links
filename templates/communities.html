@@ -98,35 +98,38 @@
 						</div>
 					</div>
 					<div class="form-group">
-						<label for="communityTemplate">Color Template:</label>
-						<div class="template-options">
-							<div class="template-option">
-								<input type="radio" id="template-default" name="template" value="default" checked>
-								<label for="template-default" class="template-label">
-									<span class="template-preview default-template"></span>
-									<span class="template-name">Default</span>
-								</label>
+						<label for="communityColors">Color Palette:</label>
+						<div class="color-palette-section">
+							<div class="color-option">
+								<label for="backgroundColor">Background Color:</label>
+								<input type="color" id="backgroundColor" name="background_color" value="#2d3839">
+								<span class="color-preview" id="backgroundColorPreview"></span>
 							</div>
-							<div class="template-option">
-								<input type="radio" id="template-dark" name="template" value="dark">
-								<label for="template-dark" class="template-label">
-									<span class="template-preview dark-template"></span>
-									<span class="template-name">Dark</span>
-								</label>
+							<div class="color-option">
+								<label for="textColor">Text Color:</label>
+								<input type="color" id="textColor" name="text_color" value="#ffffff">
+								<span class="color-preview" id="textColorPreview"></span>
 							</div>
-							<div class="template-option">
-								<input type="radio" id="template-light" name="template" value="light">
-								<label for="template-dark" class="template-label">
-									<span class="template-preview light-template"></span>
-									<span class="template-name">Light</span>
-								</label>
+							<div class="color-option">
+								<label for="accentColor">Accent Color:</label>
+								<input type="color" id="accentColor" name="accent_color" value="#4db6ac">
+								<span class="color-preview" id="accentColorPreview"></span>
 							</div>
-							<div class="template-option">
-								<input type="radio" id="template-colorful" name="template" value="colorful">
-								<label for="template-colorful" class="template-label">
-									<span class="template-preview colorful-template"></span>
-									<span class="template-name">Colorful</span>
-								</label>
+							<div class="color-option">
+								<label for="cardColor">Card Background:</label>
+								<input type="color" id="cardColor" name="card_color" value="#1a2526">
+								<span class="color-preview" id="cardColorPreview"></span>
+							</div>
+						</div>
+						<div class="color-preview-section">
+							<h4>Preview:</h4>
+							<div class="color-preview-card" id="colorPreviewCard">
+								<div class="preview-header">Sample Post</div>
+								<div class="preview-content">This is how your community will look with the selected colors.</div>
+								<div class="preview-actions">
+									<button class="preview-btn">Like</button>
+									<button class="preview-btn">Comment</button>
+								</div>
 							</div>
 						</div>
 					</div>
@@ -195,6 +198,39 @@
 					$('#backgroundPreview').hide();
 				}
 			});
+			
+			// Color picker functionality
+			function updateColorPreview() {
+				const backgroundColor = $('#backgroundColor').val();
+				const textColor = $('#textColor').val();
+				const accentColor = $('#accentColor').val();
+				const cardColor = $('#cardColor').val();
+				
+				// Update color previews
+				$('#backgroundColorPreview').css('background-color', backgroundColor);
+				$('#textColorPreview').css('background-color', textColor);
+				$('#accentColorPreview').css('background-color', accentColor);
+				$('#cardColorPreview').css('background-color', cardColor);
+				
+				// Update preview card
+				$('#colorPreviewCard').css({
+					'background-color': cardColor,
+					'border-color': accentColor
+				});
+				$('.preview-header').css('color', textColor);
+				$('.preview-content').css('color', textColor + 'cc'); // Add transparency
+				$('.preview-btn').css({
+					'background-color': accentColor + '20',
+					'border-color': accentColor,
+					'color': textColor
+				});
+			}
+			
+			// Initialize color previews
+			updateColorPreview();
+			
+			// Update on color change
+			$('#backgroundColor, #textColor, #accentColor, #cardColor').on('input', updateColorPreview);
 
 			// Toggle community creation form
 			$('#buildCommunityBtn').click(function() {
@@ -229,9 +265,11 @@
 					formData.append('background_url', backgroundUrl);
 				}
 				
-				// Add template selection
-				const template = $('input[name="template"]:checked').val();
-				formData.append('template', template);
+				// Add color palette values
+				formData.append('background_color', $('#backgroundColor').val());
+				formData.append('text_color', $('#textColor').val());
+				formData.append('accent_color', $('#accentColor').val());
+				formData.append('card_color', $('#cardColor').val());
 
 				$.ajax({
 					url: '/create_community',
