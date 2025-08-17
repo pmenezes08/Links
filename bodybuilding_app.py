@@ -1948,6 +1948,19 @@ def post_status():
     content = request.form.get('content', '').strip()
     community_id_raw = request.form.get('community_id')
     community_id = int(community_id_raw) if community_id_raw else None
+    
+    # If community_id is not in form, try to get it from referer URL
+    if not community_id:
+        referer = request.headers.get('Referer', '')
+        logger.info(f"Referer URL: {referer}")
+        if '/community_feed/' in referer:
+            try:
+                # Extract community_id from URL like /community_feed/4
+                community_id = int(referer.split('/community_feed/')[1].split('/')[0])
+                logger.info(f"Extracted community_id from referer: {community_id}")
+            except (IndexError, ValueError) as e:
+                logger.warning(f"Could not extract community_id from referer: {e}")
+    
     logger.info(f"Received post request for {username} with content: {content} in community: {community_id} (raw: {community_id_raw})")
     
     # Debug: Log all form data
