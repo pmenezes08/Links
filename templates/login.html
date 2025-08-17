@@ -13,14 +13,13 @@
         {% if error %}
             <p style="color: #ff3b30">{{ error }}</p>
         {% endif %}
-        <form method="POST" action="/login_password">
-            <input type="password" name="password" placeholder="Password" required>
-            <button type="submit" class="sleek-btn">Login</button>
-        </form>
-        <div class="login-actions">
-            <button onclick="location.href='/'" class="sleek-btn secondary">Go Back</button>
-            <button onclick="location.href='/signup'" class="sleek-btn">Sign Up</button>
-        </div>
+        		<form method="POST" action="/login_password">
+			<input type="password" name="password" placeholder="Password" required>
+			<button type="submit" class="sleek-btn">Login</button>
+		</form>
+		<div class="login-actions">
+			<button onclick="location.href='/'" class="sleek-btn secondary">Go Back</button>
+		</div>
     </div>
 </body>
 </html>

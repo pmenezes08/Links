@@ -531,7 +531,6 @@ def signup():
     last_name = request.form.get('last_name', '').strip()
     age = request.form.get('age', type=int)
     gender = request.form.get('gender', '').strip()
-    fitness_level = request.form.get('fitness_level', '').strip()
     primary_goal = request.form.get('primary_goal', '').strip()
     
     # Validation
@@ -569,9 +568,9 @@ def signup():
             
             # Insert new user
             c.execute("""
-                INSERT INTO users (username, email, password, first_name, last_name, age, gender, fitness_level, primary_goal, subscription, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'free', ?)
-            """, (username, email, hashed_password, first_name, last_name, age, gender, fitness_level, primary_goal, datetime.now().strftime('%m.%d.%y %H:%M')))
+                INSERT INTO users (username, email, password, first_name, last_name, age, gender, primary_goal, subscription, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'free', ?)
+            """, (username, email, hashed_password, first_name, last_name, age, gender, primary_goal, datetime.now().strftime('%m.%d.%y %H:%M')))
             
             conn.commit()
             

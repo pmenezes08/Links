@@ -1365,7 +1365,7 @@ select:focus, input:focus {
 }
 
 .form-section h3 {
-    color: #4db6ac;
+    color: #2d8a7e;
     margin-bottom: 20px;
     font-size: 1.2em;
     font-weight: 600;
@@ -1377,7 +1377,7 @@ select:focus, input:focus {
 
 .form-group label {
     display: block;
-    color: #e0e0e0;
+    color: #2d8a7e;
     margin-bottom: 8px;
     font-weight: 500;
     font-size: 0.95em;
@@ -1466,7 +1466,7 @@ select:focus, input:focus {
 }
 
 .login-link a {
-    color: #4db6ac;
+    color: #2d8a7e;
     text-decoration: none;
     font-weight: 500;
 }
@@ -1480,6 +1480,19 @@ select:focus, input:focus {
     gap: 15px;
     justify-content: center;
     margin-top: 20px;
+}
+
+.signup-btn {
+    background: linear-gradient(135deg, #2d8a7e, #1a5f56) !important;
+    color: white !important;
+    border: none !important;
+    font-weight: 600 !important;
+}
+
+.signup-btn:hover {
+    background: linear-gradient(135deg, #1a5f56, #0f3d37) !important;
+    transform: translateY(-2px) !important;
+    box-shadow: 0 6px 15px rgba(45, 138, 126, 0.3) !important;
 }
 
 .error-message {

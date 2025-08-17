@@ -15,7 +15,10 @@
 				<input type="text" name="username" placeholder="Enter your username" required>
 				<button type="submit" class="sleek-btn">User Login</button>
 			</form>
-			            <div class="login-options">
+			<div class="login-actions">
+				<button onclick="location.href='{{ url_for('signup') }}'" class="sleek-btn signup-btn">Sign Up</button>
+			</div>
+			<div class="login-options">
                 <button onclick="location.href='{{ url_for('business_login') }}'" class="sleek-btn">Business Login</button>
                 <button onclick="location.href='{{ url_for('login_x') }}'" class="sleek-btn">Sign In with X</button>
             </div>
