@@ -2989,17 +2989,17 @@ select:focus, input:focus {
 
 .admin-header h1 {
     color: #ffffff;
-    font-size: 2.5em;
-    margin-bottom: 10px;
+    font-size: 1.8em;
+    margin-bottom: 8px;
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 15px;
+    gap: 12px;
 }
 
 .admin-subtitle {
     color: #9fb0b5;
-    font-size: 1.1em;
+    font-size: 0.9em;
     margin: 0;
 }
 
@@ -3055,10 +3055,11 @@ select:focus, input:focus {
 
 .quick-actions h2 {
     color: #ffffff;
-    margin-bottom: 20px;
+    margin-bottom: 15px;
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
+    font-size: 1.2em;
 }
 
 .action-buttons {
@@ -3071,15 +3072,15 @@ select:focus, input:focus {
     background: linear-gradient(135deg, #4db6ac, #37a69c);
     color: #ffffff;
     border: none;
-    padding: 12px 20px;
-    border-radius: 8px;
+    padding: 10px 16px;
+    border-radius: 6px;
     cursor: pointer;
-    font-size: 0.9em;
+    font-size: 0.85em;
     font-weight: 500;
     transition: all 0.3s ease;
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
 }
 
 .action-btn:hover {
@@ -3088,8 +3089,10 @@ select:focus, input:focus {
 }
 
 .action-btn.small {
-    padding: 8px 12px;
-    font-size: 0.8em;
+    padding: 6px 10px;
+    font-size: 0.75em;
+    min-width: 32px;
+    justify-content: center;
 }
 
 .action-btn.danger {
@@ -3123,7 +3126,8 @@ select:focus, input:focus {
     margin: 0;
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
+    font-size: 1.1em;
 }
 
 .section-actions {
@@ -3183,21 +3187,21 @@ select:focus, input:focus {
 }
 
 .user-avatar {
-    width: 50px;
-    height: 50px;
+    width: 40px;
+    height: 40px;
     background: linear-gradient(135deg, #4db6ac, #37a69c);
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
     color: #ffffff;
-    font-size: 1.2em;
+    font-size: 1em;
 }
 
 .user-info h4 {
     color: #ffffff;
-    margin: 0 0 5px 0;
-    font-size: 1.1em;
+    margin: 0 0 4px 0;
+    font-size: 0.95em;
 }
 
 .subscription-badge {
