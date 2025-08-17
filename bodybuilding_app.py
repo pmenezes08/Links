@@ -1128,7 +1128,7 @@ def admin():
                         c.execute("DELETE FROM user_communities WHERE user_id=(SELECT rowid FROM users WHERE username=?)", (user_to_delete,))
                         c.execute("DELETE FROM saved_data WHERE username=?", (user_to_delete,))
                         c.execute("DELETE FROM messages WHERE sender=?", (user_to_delete,))
-                        c.execute("DELETE FROM messages WHERE recipient=?", (user_to_delete,))
+                        c.execute("DELETE FROM messages WHERE receiver=?", (user_to_delete,))
                         
                         # Finally delete the user
                         c.execute("DELETE FROM users WHERE username=?", (user_to_delete,))
