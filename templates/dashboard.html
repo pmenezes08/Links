@@ -34,18 +34,6 @@
 			{% if name == 'admin' %}
 			<button onclick="location.href='{{ url_for('admin') }}'" class="sleek-btn compact pill">Admin Page</button>
 			{% endif %}
-			
-			<!-- Dynamic Community Buttons -->
-			{% if communities %}
-			<div class="community-buttons-section">
-				<h3>Your Communities</h3>
-				{% for community in communities %}
-				<button onclick="location.href='{{ url_for('community_feed', community_id=community.id) }}'" class="sleek-btn compact pill community-btn">
-					{{ community.name }} ({{ community.type }})
-				</button>
-				{% endfor %}
-			</div>
-			{% endif %}
 		</div>
 	</div>
 	<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
