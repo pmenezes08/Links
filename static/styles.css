@@ -5413,147 +5413,270 @@ select:focus {
         display: flex;
         align-items: flex-start;
         justify-content: center;
-        padding-top: 20px;
-        padding-bottom: 20px;
+        padding-top: 10px;
+        padding-bottom: 10px;
     }
     
     .modal-content {
         margin: 0;
         width: 95%;
         max-width: 95%;
-        max-height: 90vh;
+        max-height: 95vh;
         height: auto;
-        border-radius: 12px;
-        padding: 15px;
+        border-radius: 16px;
+        padding: 0;
         position: relative;
-        overflow-y: auto;
-        /* Ensure close button is always visible */
-        padding-top: 50px;
+        overflow: hidden;
+        background: #2d3839;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
     }
     
-    /* Make close button more accessible on mobile */
+    /* Seamless close button integrated into modal header */
     .close {
-        position: fixed;
-        top: 25px;
-        right: 20px;
-        background: rgba(0, 0, 0, 0.8);
+        position: absolute;
+        top: 15px;
+        right: 15px;
+        background: rgba(0, 0, 0, 0.6);
         color: #ffffff;
-        width: 40px;
-        height: 40px;
+        width: 32px;
+        height: 32px;
         border-radius: 50%;
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 24px;
-        z-index: 2001;
-        border: 2px solid rgba(255, 255, 255, 0.3);
-        backdrop-filter: blur(10px);
-        /* Ensure it's always clickable */
-        min-width: 44px;
-        min-height: 44px;
+        font-size: 18px;
+        z-index: 10;
+        border: none;
+        backdrop-filter: blur(8px);
+        transition: all 0.2s ease;
+        /* Subtle and non-disruptive */
+        opacity: 0.8;
     }
     
     .close:hover,
     .close:focus {
-        background: rgba(0, 0, 0, 0.9);
+        background: rgba(0, 0, 0, 0.8);
         color: #ffffff;
-        border-color: rgba(255, 255, 255, 0.5);
+        opacity: 1;
+        transform: scale(1.1);
+    }
+    
+    /* Modal header with integrated close button */
+    .modal-header {
+        background: linear-gradient(135deg, #4db6ac, #37a69c);
+        padding: 20px 50px 20px 20px;
+        border-radius: 16px 16px 0 0;
+        position: relative;
+        margin-bottom: 0;
+        border-bottom: none;
+    }
+    
+    .modal-header h2 {
+        color: #ffffff;
+        margin: 0;
+        font-size: 1.2em;
+        font-weight: 600;
+    }
+    
+    /* Modal body with proper padding */
+    .modal-body {
+        padding: 20px;
+        max-height: calc(95vh - 80px);
+        overflow-y: auto;
+        background: #2d3839;
     }
     
     /* Modal post adjustments for mobile */
     .modal .post {
+        background: transparent;
         padding: 0;
         margin-bottom: 15px;
         padding-bottom: 15px;
-        padding-right: 0; /* Remove right padding since close button is fixed */
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        box-shadow: none;
+    }
+    
+    .modal .post:last-child {
+        border-bottom: none;
+        margin-bottom: 0;
     }
     
     .modal .post-header {
-        margin-bottom: 8px;
+        margin-bottom: 12px;
         padding-bottom: 8px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
     }
     
     .modal .post p {
-        font-size: 14px;
-        line-height: 1.5;
-        margin: 8px 0;
+        font-size: 15px;
+        line-height: 1.6;
+        margin: 12px 0;
+        color: #ffffff;
     }
     
     /* Modal replies adjustments */
     .modal .reply {
-        padding: 10px;
-        margin: 8px 0;
-        font-size: 13px;
+        background: rgba(255, 255, 255, 0.05);
+        padding: 12px;
+        margin: 10px 0;
+        font-size: 14px;
+        border-radius: 8px;
+        border-left: 3px solid #4db6ac;
     }
     
     .modal .reply-form {
-        margin-top: 15px;
-        padding-top: 15px;
+        margin-top: 20px;
+        padding-top: 20px;
+        border-top: 1px solid rgba(255, 255, 255, 0.1);
     }
     
     .modal .reply-input {
-        padding: 10px;
-        font-size: 16px; /* Prevent zoom on iOS */
-        margin-bottom: 10px;
+        background: rgba(255, 255, 255, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        border-radius: 8px;
+        color: #ffffff;
+        padding: 12px;
+        width: 100%;
+        box-sizing: border-box;
+        margin-bottom: 12px;
+        font-size: 16px;
+    }
+    
+    .modal .reply-input:focus {
+        outline: none;
+        border-color: #4db6ac;
+        background: rgba(255, 255, 255, 0.15);
     }
     
     .modal .reply-btn {
-        padding: 10px 16px;
+        background: #4db6ac;
+        border: none;
+        color: #ffffff;
+        padding: 12px 20px;
+        border-radius: 8px;
         font-size: 14px;
-        min-height: 44px; /* Touch-friendly */
+        cursor: pointer;
+        transition: background 0.2s ease;
+        font-weight: 500;
+    }
+    
+    .modal .reply-btn:hover {
+        background: #37a69c;
     }
     
     /* Ensure modal content doesn't overflow */
+    .modal .post-image {
+        margin: 12px 0;
+        border-radius: 8px;
+        overflow: hidden;
+    }
+    
     .modal .post-image img {
-        max-height: 200px;
+        max-height: 250px;
         width: 100%;
         object-fit: cover;
+        display: block;
+    }
+    
+    .modal .reply-image {
+        margin: 8px 0;
+        border-radius: 6px;
+        overflow: hidden;
     }
     
     .modal .reply-image img {
-        max-height: 150px;
+        max-height: 180px;
         width: 100%;
         object-fit: cover;
+        display: block;
+    }
+    
+    /* Smooth scrolling for modal content */
+    .modal-body {
+        scroll-behavior: smooth;
+        -webkit-overflow-scrolling: touch;
     }
 }
 
 /* Extra small mobile devices */
 @media (max-width: 480px) {
     .modal {
-        padding-top: 10px;
-        padding-bottom: 10px;
+        padding-top: 5px;
+        padding-bottom: 5px;
     }
     
     .modal-content {
         width: 98%;
         max-width: 98%;
-        padding: 12px;
-        padding-top: 45px;
-        max-height: 95vh;
+        max-height: 98vh;
+        border-radius: 12px;
     }
     
     .close {
-        top: 15px;
-        right: 15px;
-        width: 36px;
-        height: 36px;
-        font-size: 20px;
-        min-width: 44px;
-        min-height: 44px;
+        top: 12px;
+        right: 12px;
+        width: 28px;
+        height: 28px;
+        font-size: 16px;
     }
     
-    .modal .post {
-        margin-bottom: 12px;
-        padding-bottom: 12px;
+    .modal-header {
+        padding: 16px 40px 16px 16px;
+        border-radius: 12px 12px 0 0;
+    }
+    
+    .modal-header h2 {
+        font-size: 1.1em;
+    }
+    
+    .modal-body {
+        padding: 16px;
+        max-height: calc(98vh - 70px);
     }
     
     .modal .post p {
-        font-size: 13px;
+        font-size: 14px;
     }
     
     .modal .reply {
-        padding: 8px;
-        font-size: 12px;
+        padding: 10px;
+        font-size: 13px;
+    }
+    
+    .modal .post-image img {
+        max-height: 200px;
+    }
+    
+    .modal .reply-image img {
+        max-height: 150px;
+    }
+}
+
+/* Landscape mobile orientation */
+@media (max-width: 768px) and (orientation: landscape) {
+    .modal {
+        padding-top: 5px;
+        padding-bottom: 5px;
+    }
+    
+    .modal-content {
+        max-height: 90vh;
+    }
+    
+    .modal-body {
+        max-height: calc(90vh - 70px);
+    }
+    
+    .close {
+        top: 10px;
+        right: 10px;
+        width: 26px;
+        height: 26px;
+        font-size: 14px;
+    }
+    
+    .modal-header {
+        padding: 12px 36px 12px 12px;
     }
     
     .modal .post-image img {
@@ -5565,69 +5688,31 @@ select:focus {
     }
 }
 
-/* Landscape mobile orientation */
-@media (max-width: 768px) and (orientation: landscape) {
-    .modal {
-        padding-top: 10px;
-        padding-bottom: 10px;
-    }
-    
-    .modal-content {
-        max-height: 85vh;
-        padding-top: 40px;
-    }
-    
-    .close {
-        top: 15px;
-        right: 15px;
-        width: 32px;
-        height: 32px;
-        font-size: 18px;
-        min-width: 44px;
-        min-height: 44px;
-    }
-    
-    .modal .post-image img {
-        max-height: 150px;
-    }
-    
-    .modal .reply-image img {
-        max-height: 100px;
-    }
-}
-
 /* Ensure modal is always accessible */
 .modal {
     /* Prevent body scroll when modal is open */
     overflow: hidden;
 }
 
-.modal-content {
-    /* Ensure content is scrollable if needed */
-    overflow-y: auto;
-    /* Smooth scrolling */
-    scroll-behavior: smooth;
-}
-
 /* Modal backdrop improvements */
 .modal {
-    backdrop-filter: blur(4px);
-    -webkit-backdrop-filter: blur(4px);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
 }
 
 /* Animation for modal appearance */
 .modal.show {
-    animation: modalFadeIn 0.3s ease;
+    animation: modalSlideIn 0.3s ease;
 }
 
-@keyframes modalFadeIn {
+@keyframes modalSlideIn {
     from {
         opacity: 0;
-        transform: scale(0.9);
+        transform: translateY(20px) scale(0.95);
     }
     to {
         opacity: 1;
-        transform: scale(1);
+        transform: translateY(0) scale(1);
     }
 }
 
@@ -5638,21 +5723,15 @@ select:focus {
     -webkit-tap-highlight-color: transparent;
 }
 
-/* Prevent modal from being too tall */
-.modal-content {
-    /* Use viewport height with safe area consideration */
-    max-height: calc(100vh - 40px);
-}
-
 /* Safe area support for notched devices */
 @supports (padding: max(0px)) {
     .modal {
-        padding-top: max(20px, env(safe-area-inset-top));
-        padding-bottom: max(20px, env(safe-area-inset-bottom));
+        padding-top: max(10px, env(safe-area-inset-top));
+        padding-bottom: max(10px, env(safe-area-inset-bottom));
     }
     
     .close {
-        top: max(25px, env(safe-area-inset-top) + 5px);
-        right: max(20px, env(safe-area-inset-right) + 5px);
+        top: max(15px, env(safe-area-inset-top) + 5px);
+        right: max(15px, env(safe-area-inset-right) + 5px);
     }
 }

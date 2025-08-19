@@ -1835,12 +1835,38 @@ function initMobileModalImprovements() {
                 $('#postModal').addClass('show');
             }, 10);
             
-            // Ensure close button is always visible
+            // Ensure modal content is properly structured
+            const modalContent = document.querySelector('.modal-content');
             const closeBtn = document.querySelector('.modal .close');
-            if (closeBtn) {
-                closeBtn.style.display = 'flex';
-                closeBtn.style.position = 'fixed';
-                closeBtn.style.zIndex = '2001';
+            
+            if (modalContent && closeBtn) {
+                // Ensure close button is positioned correctly within modal
+                closeBtn.style.position = 'absolute';
+                closeBtn.style.zIndex = '10';
+                
+                // Add modal header if it doesn't exist
+                if (!document.querySelector('.modal-header')) {
+                    const header = document.createElement('div');
+                    header.className = 'modal-header';
+                    header.innerHTML = '<h2>Post Details</h2>';
+                    modalContent.insertBefore(header, modalContent.firstChild);
+                }
+                
+                // Ensure modal body exists
+                if (!document.querySelector('.modal-body')) {
+                    const body = document.createElement('div');
+                    body.className = 'modal-body';
+                    
+                    // Move all content except header to body
+                    const content = Array.from(modalContent.children);
+                    content.forEach(child => {
+                        if (!child.classList.contains('modal-header') && !child.classList.contains('close')) {
+                            body.appendChild(child);
+                        }
+                    });
+                    
+                    modalContent.appendChild(body);
+                }
             }
         });
         
@@ -1878,20 +1904,15 @@ function initMobileModalImprovements() {
                 // Recalculate modal position and size
                 const modal = document.querySelector('.modal');
                 const modalContent = document.querySelector('.modal-content');
-                const closeBtn = document.querySelector('.modal .close');
+                const modalBody = document.querySelector('.modal-body');
                 
-                if (modal && modalContent && closeBtn) {
+                if (modal && modalContent && modalBody) {
                     // Ensure modal content fits in viewport
                     const viewportHeight = window.innerHeight;
-                    const modalHeight = modalContent.offsetHeight;
+                    const headerHeight = 60; // Approximate header height
+                    const maxBodyHeight = viewportHeight - headerHeight - 20; // 20px for padding
                     
-                    if (modalHeight > viewportHeight - 40) {
-                        modalContent.style.maxHeight = (viewportHeight - 40) + 'px';
-                    }
-                    
-                    // Ensure close button is positioned correctly
-                    closeBtn.style.position = 'fixed';
-                    closeBtn.style.zIndex = '2001';
+                    modalBody.style.maxHeight = maxBodyHeight + 'px';
                 }
             }, 500);
         });
@@ -1899,11 +1920,13 @@ function initMobileModalImprovements() {
         // Handle window resize
         window.addEventListener('resize', function() {
             if ($('#postModal').is(':visible')) {
-                const modalContent = document.querySelector('.modal-content');
+                const modalBody = document.querySelector('.modal-body');
                 const viewportHeight = window.innerHeight;
+                const headerHeight = 60;
+                const maxBodyHeight = viewportHeight - headerHeight - 20;
                 
-                if (modalContent) {
-                    modalContent.style.maxHeight = (viewportHeight - 40) + 'px';
+                if (modalBody) {
+                    modalBody.style.maxHeight = maxBodyHeight + 'px';
                 }
             }
         });
