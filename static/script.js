@@ -1683,3 +1683,121 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 });
+
+// ===== MOBILE IMAGE LOADING FIXES =====
+
+// Enhanced mobile image loading
+function initMobileImageLoading() {
+    const isMobile = window.innerWidth <= 768;
+    
+    if (isMobile) {
+        console.log('Mobile image loading optimizations enabled');
+        
+        // Handle image loading errors
+        const images = document.querySelectorAll('img');
+        images.forEach(img => {
+            // Add loading error handler
+            img.addEventListener('error', function() {
+                console.log('Image failed to load:', this.src);
+                // Show a placeholder or retry
+                this.style.display = 'none';
+                this.parentElement.style.background = '#2d3839';
+                this.parentElement.innerHTML = '<div style="padding: 20px; text-align: center; color: #9fb0b5;">Image could not be loaded</div>';
+            });
+            
+            // Add loading success handler
+            img.addEventListener('load', function() {
+                console.log('Image loaded successfully:', this.src);
+                this.style.opacity = '1';
+                this.style.transition = 'opacity 0.3s ease';
+            });
+            
+            // Set initial opacity for smooth loading
+            img.style.opacity = '0';
+            
+            // Force image loading for mobile
+            if (img.dataset.src) {
+                img.src = img.dataset.src;
+            }
+        });
+        
+        // Retry failed images
+        function retryFailedImages() {
+            const failedImages = document.querySelectorAll('img[style*="display: none"]');
+            failedImages.forEach(img => {
+                const originalSrc = img.src;
+                img.src = '';
+                setTimeout(() => {
+                    img.src = originalSrc;
+                    img.style.display = 'block';
+                }, 1000);
+            });
+        }
+        
+        // Retry after 3 seconds
+        setTimeout(retryFailedImages, 3000);
+        
+        // Handle orientation changes
+        window.addEventListener('orientationchange', function() {
+            setTimeout(() => {
+                // Reload images after orientation change
+                const images = document.querySelectorAll('img');
+                images.forEach(img => {
+                    const src = img.src;
+                    img.src = '';
+                    setTimeout(() => {
+                        img.src = src;
+                    }, 100);
+                });
+            }, 500);
+        });
+    }
+}
+
+// Enhanced image preloading for mobile
+function preloadImages() {
+    const isMobile = window.innerWidth <= 768;
+    
+    if (isMobile) {
+        const images = document.querySelectorAll('img[src]');
+        images.forEach(img => {
+            // Create a new image object to preload
+            const preloadImg = new Image();
+            preloadImg.onload = function() {
+                // Image preloaded successfully
+                console.log('Image preloaded:', img.src);
+            };
+            preloadImg.onerror = function() {
+                console.log('Image preload failed:', img.src);
+            };
+            preloadImg.src = img.src;
+        });
+    }
+}
+
+// Initialize mobile image loading
+document.addEventListener('DOMContentLoaded', function() {
+    initMobileImageLoading();
+    preloadImages();
+    
+    // Handle dynamic content (for posts loaded via AJAX)
+    const observer = new MutationObserver(function(mutations) {
+        mutations.forEach(function(mutation) {
+            if (mutation.type === 'childList') {
+                const newImages = mutation.target.querySelectorAll('img');
+                if (newImages.length > 0) {
+                    initMobileImageLoading();
+                }
+            }
+        });
+    });
+    
+    // Observe the posts container for new images
+    const postsContainer = document.querySelector('.posts');
+    if (postsContainer) {
+        observer.observe(postsContainer, {
+            childList: true,
+            subtree: true
+        });
+    }
+});

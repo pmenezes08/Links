@@ -5236,8 +5236,8 @@ select:focus {
     }
 }
 
-/* High DPI Displays */
-@media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+/* High DPI Displays - Desktop Only */
+@media (-webkit-min-device-pixel-ratio: 2) and (min-width: 769px), (min-resolution: 192dpi) and (min-width: 769px) {
     .post-image img {
         image-rendering: -webkit-optimize-contrast;
         image-rendering: crisp-edges;
@@ -5286,5 +5286,120 @@ select:focus {
     .chat-header,
     .chat-input-area {
         background: #2d3839;
+    }
+}
+
+/* Mobile Image Optimizations */
+@media (max-width: 768px) {
+    .post-image {
+        margin: 12px 0;
+        border-radius: 8px;
+        overflow: hidden;
+        max-width: 100%;
+        background: #1a2526;
+        position: relative;
+        /* Ensure proper image display on mobile */
+        display: block;
+        line-height: 0;
+    }
+    
+    .post-image img {
+        width: 100%;
+        height: auto;
+        max-height: 300px; /* Smaller max height for mobile */
+        object-fit: cover;
+        display: block;
+        /* Mobile-specific image rendering */
+        image-rendering: auto;
+        -webkit-image-rendering: auto;
+        /* Ensure images load properly */
+        vertical-align: top;
+        /* Prevent layout shifts */
+        aspect-ratio: auto;
+    }
+    
+    /* Community header images on mobile */
+    .community-header-image {
+        margin: 0;
+        border-radius: 0;
+        overflow: hidden;
+        max-width: 100%;
+        background: #1a2526;
+    }
+    
+    .community-header-image img {
+        width: 100%;
+        height: auto;
+        max-height: 200px;
+        object-fit: cover;
+        display: block;
+        image-rendering: auto;
+        -webkit-image-rendering: auto;
+    }
+    
+    /* Ensure all images in posts are visible */
+    .post img {
+        max-width: 100%;
+        height: auto;
+        display: block;
+        image-rendering: auto;
+        -webkit-image-rendering: auto;
+    }
+    
+    /* Modal images */
+    .modal .post-image img {
+        max-height: 250px;
+        width: 100%;
+        height: auto;
+        object-fit: cover;
+        display: block;
+        image-rendering: auto;
+        -webkit-image-rendering: auto;
+    }
+}
+
+/* Extra small mobile devices */
+@media (max-width: 480px) {
+    .post-image img {
+        max-height: 250px; /* Even smaller for very small screens */
+    }
+    
+    .community-header-image img {
+        max-height: 150px;
+    }
+    
+    .modal .post-image img {
+        max-height: 200px;
+    }
+}
+
+/* Ensure images load on all mobile browsers */
+@media (max-width: 768px) {
+    /* Force image display on mobile */
+    img {
+        image-rendering: auto !important;
+        -webkit-image-rendering: auto !important;
+        -moz-image-rendering: auto !important;
+        -ms-image-rendering: auto !important;
+    }
+    
+    /* Specific fixes for iOS Safari */
+    .post-image img,
+    .community-header-image img,
+    .modal img {
+        -webkit-transform: translateZ(0);
+        transform: translateZ(0);
+        /* Force hardware acceleration */
+        -webkit-backface-visibility: hidden;
+        backface-visibility: hidden;
+    }
+}
+
+/* Android Chrome specific fixes */
+@media (max-width: 768px) and (-webkit-min-device-pixel-ratio: 1) {
+    .post-image img,
+    .community-header-image img {
+        image-rendering: -webkit-optimize-contrast;
+        image-rendering: optimize-contrast;
     }
 }
