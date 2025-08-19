@@ -576,7 +576,7 @@ document.addEventListener('DOMContentLoaded', function() {
         function buildModalContent(postData) {
             const repliesHtml = postData.replies.map(reply => {
                 const replyImageHtml = reply.image_path ? 
-                    `<div class="reply-image"><img src="/static/${reply.image_path}" alt="Reply image" loading="lazy"></div>` : '';
+                    `<div class="reply-image"><img src="/uploads/${reply.image_path.replace('uploads/', '')}" alt="Reply image" loading="lazy" onerror="console.log('Reply image failed to load:', this.src); this.style.display='none'; this.parentElement.innerHTML='<div style=\'padding: 20px; text-align: center; color: #9fb0b5;\'>Image could not be loaded</div>';" onload="console.log('Reply image loaded successfully:', this.src);"></div>` : '';
                 
                 console.log("Building reply HTML for:", reply.username, "Current user:", sessionStorage.getItem('username'));
                 console.log("Should show delete button:", reply.username === sessionStorage.getItem('username'));
@@ -609,7 +609,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }).join('');
 
             const imageHtml = postData.image_path ? 
-                `<div class="post-image"><img src="/static/${postData.image_path}" alt="Post image" loading="lazy"></div>` : '';
+                `<div class="post-image"><img src="/uploads/${postData.image_path.replace('uploads/', '')}" alt="Post image" loading="lazy" onerror="console.log('Modal image failed to load:', this.src); this.style.display='none'; this.parentElement.innerHTML='<div style=\'padding: 20px; text-align: center; color: #9fb0b5;\'>Image could not be loaded</div>';" onload="console.log('Modal image loaded successfully:', this.src);"></div>` : '';
             
             return `
                 <div class="post" data-post-id="${postData.id}">
@@ -1696,10 +1696,21 @@ function initMobileImageLoading() {
         
         // Handle image loading errors
         const images = document.querySelectorAll('img');
-        images.forEach(img => {
+        console.log(`Found ${images.length} images on page`);
+        
+        images.forEach((img, index) => {
+            console.log(`Image ${index + 1}:`, {
+                src: img.src,
+                alt: img.alt,
+                className: img.className,
+                parentElement: img.parentElement.className
+            });
+            
             // Add loading error handler
             img.addEventListener('error', function() {
                 console.log('Image failed to load:', this.src);
+                console.log('Image element:', this);
+                console.log('Parent element:', this.parentElement);
                 // Show a placeholder or retry
                 this.style.display = 'none';
                 this.parentElement.style.background = '#2d3839';
@@ -1720,13 +1731,18 @@ function initMobileImageLoading() {
             if (img.dataset.src) {
                 img.src = img.dataset.src;
             }
+            
+            // Log the current src to see what path is being used
+            console.log(`Image ${index + 1} current src:`, img.src);
         });
         
         // Retry failed images
         function retryFailedImages() {
             const failedImages = document.querySelectorAll('img[style*="display: none"]');
+            console.log(`Retrying ${failedImages.length} failed images`);
             failedImages.forEach(img => {
                 const originalSrc = img.src;
+                console.log('Retrying image:', originalSrc);
                 img.src = '';
                 setTimeout(() => {
                     img.src = originalSrc;
