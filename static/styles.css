@@ -3560,7 +3560,7 @@ select:focus, input:focus {
 
 .admin-dashboard .dropdown-content {
     display: none;
-    background: #ff0000 !important;
+    background: #2d3839;
     position: absolute;
     top: 60px;
     left: 0;
@@ -3568,8 +3568,7 @@ select:focus, input:focus {
     border-radius: 0 0 8px 0;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
     z-index: 9999;
-    border: 3px solid #00ff00;
-    min-height: 100px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .admin-dashboard .dropdown-content a {
@@ -3623,5 +3622,625 @@ select:focus, input:focus {
         margin-left: 0;
         margin-top: 60px;
         max-width: 100%;
+    }
+}
+
+/* Mobile and Desktop Optimization */
+
+/* ===== MOBILE-FIRST RESPONSIVE DESIGN ===== */
+
+/* Extra Small Devices (phones, 320px and up) */
+@media (max-width: 480px) {
+    /* General Layout */
+    body {
+        font-size: 14px;
+        line-height: 1.4;
+    }
+    
+    .container {
+        padding: 10px;
+        margin: 0;
+        max-width: 100%;
+        min-height: 100vh;
+    }
+    
+    /* Dashboard pages */
+    .dashboard-page .container,
+    .premium-dashboard-page .container {
+        margin-left: 0;
+        margin-right: 0;
+        max-width: 100%;
+        padding: 10px;
+    }
+    
+    /* Headers */
+    h1 {
+        font-size: 24px;
+        margin-bottom: 10px;
+    }
+    
+    h2 {
+        font-size: 20px;
+        margin-bottom: 15px;
+    }
+    
+    /* Forms and Inputs */
+    .selection {
+        width: 100%;
+        max-width: 100%;
+        margin: 10px 0;
+    }
+    
+    select, input {
+        padding: 12px;
+        font-size: 16px; /* Prevents zoom on iOS */
+        border-radius: 8px;
+    }
+    
+    /* Buttons */
+    .sleek-btn {
+        padding: 12px 16px;
+        font-size: 16px;
+        max-width: 100%;
+        border-radius: 8px;
+        margin: 8px 0;
+    }
+    
+    .sleek-btn.pill {
+        padding: 14px 20px;
+        font-size: 16px;
+        border-radius: 12px;
+    }
+    
+    /* Sidebar */
+    .sidebar {
+        width: 100%;
+        height: 60px;
+        position: fixed;
+        top: 0;
+        left: 0;
+        z-index: 1000;
+        background: #1a2526;
+    }
+    
+    .menu-btn {
+        font-size: 20px;
+        padding: 15px;
+        width: 60px;
+        height: 60px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    
+    .dropdown-content {
+        top: 60px;
+        left: 0;
+        width: 100%;
+        border-radius: 0;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    }
+    
+    /* Dashboard Actions */
+    .dashboard-actions {
+        padding: 0 10px;
+        gap: 10px;
+        margin-top: 20px;
+    }
+    
+    /* Posts and Content */
+    .post {
+        margin-bottom: 15px;
+        padding: 12px;
+        border-radius: 8px;
+    }
+    
+    .post-content {
+        font-size: 14px;
+        line-height: 1.5;
+    }
+    
+    .reply {
+        margin: 8px 0;
+        padding: 8px;
+        border-radius: 6px;
+    }
+    
+    /* Reactions */
+    .reactions {
+        gap: 8px;
+        margin-top: 8px;
+    }
+    
+    .reaction-btn {
+        padding: 6px 10px;
+        font-size: 14px;
+        border-radius: 6px;
+    }
+    
+    /* Messages */
+    .messages-container {
+        height: calc(100vh - 60px);
+        margin-top: 60px;
+    }
+    
+    .messages-header {
+        padding: 10px 15px;
+        height: 50px;
+    }
+    
+    .user-selection-panel {
+        width: 100%;
+        transform: translateX(-100%);
+    }
+    
+    .chat-panel {
+        width: 100%;
+        min-width: auto;
+    }
+    
+    .chat-messages {
+        padding: 10px;
+    }
+    
+    .message-content {
+        max-width: 80%;
+        padding: 8px 12px;
+        font-size: 14px;
+    }
+    
+    .chat-input-area {
+        padding: 10px;
+    }
+    
+    .chat-input {
+        padding: 10px;
+        font-size: 16px;
+    }
+    
+    /* Admin Dashboard */
+    .admin-dashboard {
+        margin-left: 0;
+        margin-top: 60px;
+        padding: 10px;
+        max-width: 100%;
+    }
+    
+    .admin-header h1 {
+        font-size: 1.8em;
+    }
+    
+    .stats-grid {
+        grid-template-columns: 1fr;
+        gap: 10px;
+    }
+    
+    .stat-card {
+        padding: 15px;
+    }
+    
+    .users-grid,
+    .communities-grid {
+        grid-template-columns: 1fr;
+        gap: 10px;
+    }
+    
+    /* Modals */
+    .modal-content {
+        margin: 5% auto;
+        width: 95%;
+        max-height: 90vh;
+        padding: 15px;
+    }
+    
+    .modal-header h2 {
+        font-size: 1.2em;
+    }
+    
+    /* Community Feed */
+    .community-header {
+        padding: 15px;
+        text-align: center;
+    }
+    
+    .community-header h1 {
+        font-size: 1.5em;
+    }
+    
+    .members-btn {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        padding: 6px 10px;
+        font-size: 12px;
+    }
+    
+    /* Profile */
+    .profile-section {
+        padding: 15px;
+    }
+    
+    .profile-info {
+        flex-direction: column;
+        gap: 15px;
+    }
+    
+    .profile-avatar {
+        width: 80px;
+        height: 80px;
+    }
+}
+
+/* Small Devices (tablets, 481px and up) */
+@media (min-width: 481px) and (max-width: 768px) {
+    .container {
+        padding: 15px;
+        max-width: 100%;
+    }
+    
+    .dashboard-page .container,
+    .premium-dashboard-page .container {
+        margin-left: 0;
+        margin-right: 0;
+        max-width: 100%;
+        padding: 15px;
+    }
+    
+    h1 {
+        font-size: 28px;
+    }
+    
+    h2 {
+        font-size: 24px;
+    }
+    
+    .sleek-btn {
+        padding: 12px 20px;
+        font-size: 15px;
+    }
+    
+    .dashboard-actions {
+        padding: 0 20px;
+        gap: 12px;
+    }
+    
+    .sidebar {
+        width: 100%;
+        height: 60px;
+    }
+    
+    .admin-dashboard {
+        margin-left: 0;
+        margin-top: 60px;
+        padding: 15px;
+    }
+    
+    .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 15px;
+    }
+    
+    .users-grid,
+    .communities-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 15px;
+    }
+    
+    .messages-container {
+        height: calc(100vh - 60px);
+        margin-top: 60px;
+    }
+}
+
+/* Medium Devices (tablets, 769px and up) */
+@media (min-width: 769px) and (max-width: 1024px) {
+    .container {
+        padding: 20px;
+        max-width: 90%;
+    }
+    
+    .dashboard-page .container,
+    .premium-dashboard-page .container {
+        margin-left: 70px;
+        margin-right: 20px;
+        max-width: calc(100% - 90px);
+    }
+    
+    .sidebar {
+        width: 70px;
+        height: 100%;
+    }
+    
+    .admin-dashboard {
+        margin-left: 70px;
+        padding: 20px;
+        max-width: calc(100% - 70px);
+    }
+    
+    .stats-grid {
+        grid-template-columns: repeat(3, 1fr);
+        gap: 20px;
+    }
+    
+    .users-grid,
+    .communities-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 20px;
+    }
+    
+    .messages-container {
+        max-width: 95%;
+        margin: 0 auto;
+    }
+    
+    .user-selection-panel {
+        width: 350px;
+    }
+    
+    .chat-panel {
+        min-width: 600px;
+    }
+}
+
+/* Large Devices (desktops, 1025px and up) */
+@media (min-width: 1025px) {
+    .container {
+        padding: 30px;
+        max-width: 1200px;
+    }
+    
+    .dashboard-page .container,
+    .premium-dashboard-page .container {
+        margin-left: 70px;
+        margin-right: 30px;
+        max-width: calc(100% - 100px);
+    }
+    
+    .sidebar {
+        width: 70px;
+        height: 100%;
+    }
+    
+    .admin-dashboard {
+        margin-left: 70px;
+        padding: 30px;
+        max-width: calc(100% - 70px);
+    }
+    
+    .stats-grid {
+        grid-template-columns: repeat(4, 1fr);
+        gap: 25px;
+    }
+    
+    .users-grid,
+    .communities-grid {
+        grid-template-columns: repeat(3, 1fr);
+        gap: 25px;
+    }
+    
+    .messages-container {
+        max-width: 1800px;
+        margin: 0 auto;
+    }
+    
+    .user-selection-panel {
+        width: 450px;
+    }
+    
+    .chat-panel {
+        min-width: 900px;
+    }
+}
+
+/* Extra Large Devices (large desktops, 1441px and up) */
+@media (min-width: 1441px) {
+    .container {
+        max-width: 1400px;
+    }
+    
+    .messages-container {
+        max-width: 2000px;
+    }
+    
+    .user-selection-panel {
+        width: 500px;
+    }
+    
+    .chat-panel {
+        min-width: 1000px;
+    }
+}
+
+/* ===== TOUCH-FRIENDLY ELEMENTS ===== */
+
+/* Ensure minimum touch target size (44px) */
+.sleek-btn,
+.menu-btn,
+.reaction-btn,
+.delete-post,
+.delete-reply,
+.member-item,
+.user-item {
+    min-height: 44px;
+    min-width: 44px;
+}
+
+/* Improve touch feedback */
+.sleek-btn:active,
+.menu-btn:active,
+.reaction-btn:active {
+    transform: scale(0.95);
+    transition: transform 0.1s ease;
+}
+
+/* ===== IMPROVED NAVIGATION ===== */
+
+/* Mobile navigation improvements */
+@media (max-width: 768px) {
+    /* Prevent body scroll when modal is open */
+    body.modal-open {
+        overflow: hidden;
+    }
+    
+    /* Better dropdown positioning */
+    .dropdown-content {
+        position: fixed;
+        top: 60px;
+        left: 0;
+        width: 100%;
+        max-height: calc(100vh - 60px);
+        overflow-y: auto;
+        border-radius: 0;
+    }
+    
+    /* Improved menu button */
+    .menu-btn {
+        position: relative;
+        z-index: 1001;
+    }
+    
+    /* Better modal handling */
+    .modal {
+        padding: 10px;
+    }
+    
+    .modal-content {
+        border-radius: 12px;
+        max-height: 90vh;
+        overflow-y: auto;
+    }
+}
+
+/* ===== PERFORMANCE OPTIMIZATIONS ===== */
+
+/* Reduce motion for users who prefer it */
+@media (prefers-reduced-motion: reduce) {
+    * {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+    .sleek-btn {
+        border: 2px solid #ffffff;
+    }
+    
+    .post,
+    .reply {
+        border: 1px solid #ffffff;
+    }
+}
+
+/* ===== ACCESSIBILITY IMPROVEMENTS ===== */
+
+/* Focus indicators */
+.sleek-btn:focus,
+.menu-btn:focus,
+input:focus,
+select:focus {
+    outline: 2px solid #4db6ac;
+    outline-offset: 2px;
+}
+
+/* Screen reader only text */
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+/* ===== PRINT STYLES ===== */
+
+@media print {
+    .sidebar,
+    .menu-btn,
+    .dropdown-content,
+    .chat-input-area,
+    .reactions {
+        display: none !important;
+    }
+    
+    .container {
+        margin: 0;
+        padding: 20px;
+        max-width: 100%;
+    }
+    
+    body {
+        background: white;
+        color: black;
+    }
+    
+    .post,
+    .reply {
+        border: 1px solid #ccc;
+        margin-bottom: 10px;
+        padding: 10px;
+    }
+}
+
+/* ===== LANDSCAPE ORIENTATION ===== */
+
+@media (max-width: 768px) and (orientation: landscape) {
+    .messages-container {
+        height: calc(100vh - 50px);
+        margin-top: 50px;
+    }
+    
+    .messages-header {
+        height: 40px;
+        padding: 8px 15px;
+    }
+    
+    .chat-input-area {
+        padding: 8px;
+    }
+    
+    .modal-content {
+        margin: 2% auto;
+        max-height: 96vh;
+    }
+}
+
+/* ===== DARK MODE SUPPORT ===== */
+
+@media (prefers-color-scheme: dark) {
+    /* The app already uses dark theme, but we can enhance it */
+    .sleek-btn {
+        background: #2d3839;
+    }
+    
+    .sleek-btn:hover {
+        background: #3a4647;
+    }
+}
+
+/* ===== SAFE AREA SUPPORT (for notched devices) ===== */
+
+@supports (padding: max(0px)) {
+    .container {
+        padding-left: max(20px, env(safe-area-inset-left));
+        padding-right: max(20px, env(safe-area-inset-right));
+        padding-top: max(20px, env(safe-area-inset-top));
+        padding-bottom: max(20px, env(safe-area-inset-bottom));
+    }
+    
+    .sidebar {
+        padding-top: max(0px, env(safe-area-inset-top));
+        padding-bottom: max(0px, env(safe-area-inset-bottom));
+    }
+    
+    .messages-container {
+        padding-top: max(60px, env(safe-area-inset-top));
+        padding-bottom: max(0px, env(safe-area-inset-bottom));
     }
 }

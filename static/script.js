@@ -924,3 +924,263 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 });
+
+// ===== MOBILE OPTIMIZATION =====
+
+// Mobile-specific enhancements
+function initMobileOptimizations() {
+    const isMobile = window.innerWidth <= 768;
+    const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+    
+    if (isMobile || isTouch) {
+        console.log('Mobile optimizations enabled');
+        
+        // Prevent zoom on double tap
+        let lastTouchEnd = 0;
+        document.addEventListener('touchend', function (event) {
+            const now = (new Date()).getTime();
+            if (now - lastTouchEnd <= 300) {
+                event.preventDefault();
+            }
+            lastTouchEnd = now;
+        }, false);
+        
+        // Better touch feedback for buttons
+        const touchButtons = document.querySelectorAll('.sleek-btn, .menu-btn, .reaction-btn');
+        touchButtons.forEach(button => {
+            button.addEventListener('touchstart', function() {
+                this.style.transform = 'scale(0.95)';
+            });
+            
+            button.addEventListener('touchend', function() {
+                this.style.transform = 'scale(1)';
+            });
+        });
+        
+        // Swipe gestures for mobile navigation
+        let startX = 0;
+        let startY = 0;
+        
+        document.addEventListener('touchstart', function(e) {
+            startX = e.touches[0].clientX;
+            startY = e.touches[0].clientY;
+        });
+        
+        document.addEventListener('touchend', function(e) {
+            if (!startX || !startY) return;
+            
+            const endX = e.changedTouches[0].clientX;
+            const endY = e.changedTouches[0].clientY;
+            
+            const diffX = startX - endX;
+            const diffY = startY - endY;
+            
+            // Swipe left to right (show menu)
+            if (diffX < -50 && Math.abs(diffY) < 50) {
+                const menuBtn = document.querySelector('.menu-btn');
+                if (menuBtn) {
+                    menuBtn.click();
+                }
+            }
+            
+            // Swipe right to left (hide menu)
+            if (diffX > 50 && Math.abs(diffY) < 50) {
+                const dropdown = document.querySelector('.dropdown-content');
+                if (dropdown && dropdown.style.display === 'block') {
+                    dropdown.style.display = 'none';
+                }
+            }
+            
+            startX = 0;
+            startY = 0;
+        });
+        
+        // Better modal handling for mobile
+        const modals = document.querySelectorAll('.modal');
+        modals.forEach(modal => {
+            modal.addEventListener('touchmove', function(e) {
+                e.preventDefault();
+            }, { passive: false });
+        });
+        
+        // Close modals with swipe down
+        modals.forEach(modal => {
+            let startY = 0;
+            let currentY = 0;
+            
+            modal.addEventListener('touchstart', function(e) {
+                startY = e.touches[0].clientY;
+            });
+            
+            modal.addEventListener('touchmove', function(e) {
+                currentY = e.touches[0].clientY;
+                const diffY = currentY - startY;
+                
+                if (diffY > 50) {
+                    this.style.transform = `translateY(${diffY}px)`;
+                }
+            });
+            
+            modal.addEventListener('touchend', function(e) {
+                const diffY = currentY - startY;
+                if (diffY > 100) {
+                    this.style.display = 'none';
+                } else {
+                    this.style.transform = 'translateY(0)';
+                }
+            });
+        });
+    }
+}
+
+// Responsive image handling
+function initResponsiveImages() {
+    const images = document.querySelectorAll('img');
+    images.forEach(img => {
+        img.addEventListener('load', function() {
+            this.style.opacity = '1';
+        });
+        
+        // Lazy loading for images
+        if ('IntersectionObserver' in window) {
+            const imageObserver = new IntersectionObserver((entries, observer) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        const img = entry.target;
+                        img.src = img.dataset.src;
+                        img.classList.remove('lazy');
+                        imageObserver.unobserve(img);
+                    }
+                });
+            });
+            
+            imageObserver.observe(img);
+        }
+    });
+}
+
+// Better form handling for mobile
+function initMobileForms() {
+    const forms = document.querySelectorAll('form');
+    forms.forEach(form => {
+        // Prevent zoom on input focus (iOS)
+        const inputs = form.querySelectorAll('input, select, textarea');
+        inputs.forEach(input => {
+            input.addEventListener('focus', function() {
+                if (this.type !== 'file') {
+                    this.style.fontSize = '16px';
+                }
+            });
+            
+            input.addEventListener('blur', function() {
+                if (this.type !== 'file') {
+                    this.style.fontSize = '';
+                }
+            });
+        });
+        
+        // Better form validation for mobile
+        form.addEventListener('submit', function(e) {
+            const requiredFields = form.querySelectorAll('[required]');
+            let isValid = true;
+            
+            requiredFields.forEach(field => {
+                if (!field.value.trim()) {
+                    isValid = false;
+                    field.style.borderColor = '#ff4444';
+                    
+                    // Show error message
+                    let errorMsg = field.parentNode.querySelector('.error-message');
+                    if (!errorMsg) {
+                        errorMsg = document.createElement('div');
+                        errorMsg.className = 'error-message';
+                        errorMsg.style.color = '#ff4444';
+                        errorMsg.style.fontSize = '12px';
+                        errorMsg.style.marginTop = '5px';
+                        field.parentNode.appendChild(errorMsg);
+                    }
+                    errorMsg.textContent = 'This field is required';
+                } else {
+                    field.style.borderColor = '';
+                    const errorMsg = field.parentNode.querySelector('.error-message');
+                    if (errorMsg) {
+                        errorMsg.remove();
+                    }
+                }
+            });
+            
+            if (!isValid) {
+                e.preventDefault();
+                // Scroll to first error
+                const firstError = form.querySelector('[style*="border-color: rgb(255, 68, 68)"]');
+                if (firstError) {
+                    firstError.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+            }
+        });
+    });
+}
+
+// Performance optimizations
+function initPerformanceOptimizations() {
+    // Debounce scroll events
+    let scrollTimeout;
+    window.addEventListener('scroll', function() {
+        if (scrollTimeout) {
+            clearTimeout(scrollTimeout);
+        }
+        scrollTimeout = setTimeout(function() {
+            // Handle scroll-based actions here
+        }, 100);
+    });
+    
+    // Optimize animations for mobile
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        document.body.style.setProperty('--transition-duration', '0.01ms');
+    }
+    
+    // Better memory management
+    window.addEventListener('beforeunload', function() {
+        // Clean up any intervals or timeouts
+        const intervals = window.intervals || [];
+        intervals.forEach(clearInterval);
+    });
+}
+
+// Initialize all mobile optimizations
+document.addEventListener('DOMContentLoaded', function() {
+    initMobileOptimizations();
+    initResponsiveImages();
+    initMobileForms();
+    initPerformanceOptimizations();
+    
+    // Handle orientation changes
+    window.addEventListener('orientationchange', function() {
+        setTimeout(function() {
+            // Recalculate layouts after orientation change
+            window.dispatchEvent(new Event('resize'));
+        }, 100);
+    });
+    
+    // Handle viewport changes
+    let viewport = document.querySelector('meta[name="viewport"]');
+    if (viewport) {
+        // Ensure proper viewport for mobile
+        if (window.innerWidth <= 768) {
+            viewport.setAttribute('content', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no');
+        }
+    }
+});
+
+// Service Worker for offline support (if needed)
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function() {
+        navigator.serviceWorker.register('/sw.js')
+            .then(function(registration) {
+                console.log('SW registered: ', registration);
+            })
+            .catch(function(registrationError) {
+                console.log('SW registration failed: ', registrationError);
+            });
+    });
+}
