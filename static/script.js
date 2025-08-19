@@ -240,8 +240,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 success: function(data) {
                     console.log("Post submission response:", data);
                     if (data.success) {
-                        const imageHtml = data.post.image_path ? 
-                            `<div class="post-image"><img src="/static/${data.post.image_path}" alt="Post image" loading="lazy"></div>` : '';
+                                    const imageHtml = data.post.image_path ?
+                `<div class="post-image"><img src="/uploads/${data.post.image_path.replace('uploads/', '')}" alt="Post image" loading="lazy" onerror="console.log('Image failed to load:', this.src); this.style.display='none'; this.parentElement.innerHTML='<div style=\'padding: 20px; text-align: center; color: #9fb0b5;\'>Image could not be loaded</div>';" onload="console.log('Image loaded successfully:', this.src);"></div>` : '';
                         
                         const postHtml = `
                             <div class="post clickable-post" data-post-id="${data.post.id}">
@@ -501,7 +501,8 @@ document.addEventListener('DOMContentLoaded', function() {
             const $post = $(this);
             
             // Show modal immediately with basic post info
-            const postImageHtml = $post.find('.post-image').length ? $post.find('.post-image').prop('outerHTML') : '';
+            const postImageHtml = $post.find('.post-image').length ? 
+            $post.find('.post-image').prop('outerHTML').replace('/static/', '/uploads/').replace('uploads/uploads/', 'uploads/') : '';
             const basicPostHtml = `
                 <div class="post" data-post-id="${postId}">
                     <div class="post-header">

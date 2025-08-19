@@ -3010,6 +3010,49 @@ def not_found_error(e):
     logger.error(f"404 Not Found error: {str(e)}")
     return render_template('error.html', error="Page not found. Please check the URL or return to the homepage."), 404
 
+# Add this after the existing routes, before the error handlers
+
+@app.route('/uploads/<path:filename>')
+def uploaded_file(filename):
+    """Serve uploaded images with proper headers for mobile compatibility"""
+    try:
+        # Log the request for debugging
+        logger.info(f"Image request: {filename} from {request.headers.get('User-Agent', 'Unknown')}")
+        
+        # Construct the full path
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        
+        # Check if file exists
+        if not os.path.exists(file_path):
+            logger.error(f"Image file not found: {file_path}")
+            return "Image not found", 404
+        
+        # Get file info
+        file_size = os.path.getsize(file_path)
+        logger.info(f"Serving image: {filename}, size: {file_size} bytes")
+        
+        # Set proper headers for mobile compatibility
+        response = send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+        response.headers['Cache-Control'] = 'public, max-age=31536000'  # Cache for 1 year
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        response.headers['Content-Type'] = 'image/jpeg'  # Will be overridden by Flask if needed
+        
+        return response
+        
+    except Exception as e:
+        logger.error(f"Error serving image {filename}: {str(e)}")
+        return "Error serving image", 500
+
+@app.route('/static/uploads/<path:filename>')
+def static_uploaded_file(filename):
+    """Alternative route for static uploads"""
+    try:
+        logger.info(f"Static image request: {filename}")
+        return send_from_directory('static/uploads', filename)
+    except Exception as e:
+        logger.error(f"Error serving static image {filename}: {str(e)}")
+        return "Error serving image", 500
+
 if __name__ == '__main__':
     # Ensure database exists and is properly initialized
     try:
