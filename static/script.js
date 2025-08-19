@@ -1818,3 +1818,99 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 });
+
+// ===== MOBILE MODAL IMPROVEMENTS =====
+
+// Enhanced modal handling for mobile
+function initMobileModalImprovements() {
+    const isMobile = window.innerWidth <= 768;
+    
+    if (isMobile) {
+        console.log('Mobile modal improvements enabled');
+        
+        // Handle modal opening
+        $(document).on('click', '.clickable-post', function() {
+            // Add show class for animation
+            setTimeout(() => {
+                $('#postModal').addClass('show');
+            }, 10);
+            
+            // Ensure close button is always visible
+            const closeBtn = document.querySelector('.modal .close');
+            if (closeBtn) {
+                closeBtn.style.display = 'flex';
+                closeBtn.style.position = 'fixed';
+                closeBtn.style.zIndex = '2001';
+            }
+        });
+        
+        // Handle modal closing
+        $(document).on('click', '.modal .close', function() {
+            $('#postModal').removeClass('show');
+            setTimeout(() => {
+                $('#postModal').hide();
+            }, 300);
+        });
+        
+        // Close modal when clicking outside
+        $(document).on('click', '.modal', function(e) {
+            if (e.target === this) {
+                $('#postModal').removeClass('show');
+                setTimeout(() => {
+                    $('#postModal').hide();
+                }, 300);
+            }
+        });
+        
+        // Close modal on escape key
+        $(document).on('keydown', function(e) {
+            if (e.key === 'Escape' && $('#postModal').is(':visible')) {
+                $('#postModal').removeClass('show');
+                setTimeout(() => {
+                    $('#postModal').hide();
+                }, 300);
+            }
+        });
+        
+        // Handle orientation changes
+        window.addEventListener('orientationchange', function() {
+            setTimeout(() => {
+                // Recalculate modal position and size
+                const modal = document.querySelector('.modal');
+                const modalContent = document.querySelector('.modal-content');
+                const closeBtn = document.querySelector('.modal .close');
+                
+                if (modal && modalContent && closeBtn) {
+                    // Ensure modal content fits in viewport
+                    const viewportHeight = window.innerHeight;
+                    const modalHeight = modalContent.offsetHeight;
+                    
+                    if (modalHeight > viewportHeight - 40) {
+                        modalContent.style.maxHeight = (viewportHeight - 40) + 'px';
+                    }
+                    
+                    // Ensure close button is positioned correctly
+                    closeBtn.style.position = 'fixed';
+                    closeBtn.style.zIndex = '2001';
+                }
+            }, 500);
+        });
+        
+        // Handle window resize
+        window.addEventListener('resize', function() {
+            if ($('#postModal').is(':visible')) {
+                const modalContent = document.querySelector('.modal-content');
+                const viewportHeight = window.innerHeight;
+                
+                if (modalContent) {
+                    modalContent.style.maxHeight = (viewportHeight - 40) + 'px';
+                }
+            }
+        });
+    }
+}
+
+// Initialize mobile modal improvements
+document.addEventListener('DOMContentLoaded', function() {
+    initMobileModalImprovements();
+});
