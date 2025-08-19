@@ -129,7 +129,7 @@
 						} else {
 							response.communities.forEach(function(community) {
 								const communityBtn = $(`
-									<button class="community-btn" onclick="location.href='/community_feed/${community.id}'">
+									<button class="community-btn" onclick="event.stopPropagation(); window.location.href='/community_feed/${community.id}';">
 										${community.name} - Social Feed
 									</button>
 								`);

@@ -492,6 +492,16 @@ document.addEventListener('DOMContentLoaded', function() {
 
         // Handle post clicks to open modal
         $postContainer.on('click', '.clickable-post', function(e) {
+            // Don't open modal if clicking on navigation buttons, community buttons, or other interactive elements
+            if ($(e.target).closest('.community-btn, .edit-community-btn, .delete-community-btn, .go-back-btn, .sleek-btn, .action-btn, .reaction-btn, .delete-post, .reply-form, .reply-btn, .reply-input, .menu-btn, .dropdown-content a').length) {
+                return;
+            }
+            
+            // Add show class for animation
+            setTimeout(() => {
+                $('#postModal').addClass('show');
+            }, 10);
+            
             // Don't open modal if clicking on buttons or forms
             if ($(e.target).closest('.reaction-btn, .delete-post, .reply-form, .reply-btn, .reply-input').length) {
                 return;
@@ -1829,7 +1839,12 @@ function initMobileModalImprovements() {
         console.log('Mobile modal improvements enabled');
         
         // Handle modal opening
-        $(document).on('click', '.clickable-post', function() {
+        $(document).on('click', '.clickable-post', function(e) {
+            // Don't open modal if clicking on navigation buttons, community buttons, or other interactive elements
+            if ($(e.target).closest('.community-btn, .edit-community-btn, .delete-community-btn, .go-back-btn, .sleek-btn, .action-btn, .reaction-btn, .delete-post, .reply-form, .reply-btn, .reply-input, .menu-btn, .dropdown-content a').length) {
+                return;
+            }
+            
             // Add show class for animation
             setTimeout(() => {
                 $('#postModal').addClass('show');

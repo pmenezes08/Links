@@ -329,7 +329,7 @@
 			$('#closeModal, #cancelCommunityBtn').click(function() {
 				$('#communityModal').fadeOut(300);
 			});
-			
+
 			// Close modal when clicking outside
 			$('#communityModal').click(function(e) {
 				if (e.target === this) {
@@ -449,15 +449,15 @@
 								
 								const communityCard = $(`
 									<div class="community-card">
-										<button class="community-btn" onclick="location.href='/community_feed/${community.id}'">
+										<button class="community-btn" onclick="event.stopPropagation(); window.location.href='/community_feed/${community.id}';">
 											${community.name} - Social Feed
 										</button>
 										${joinCodeSection}
 										<div class="community-actions">
-											<button class="edit-community-btn" onclick="editCommunity(${community.id}, '${community.name}', '${community.type}')">
+											<button class="edit-community-btn" onclick="event.stopPropagation(); editCommunity(${community.id}, '${community.name}', '${community.type}');">
 												<i class="fas fa-edit"></i> Edit
 											</button>
-											<button class="delete-community-btn" onclick="deleteCommunity(${community.id}, '${community.name}')">
+											<button class="delete-community-btn" onclick="event.stopPropagation(); deleteCommunity(${community.id}, '${community.name}');">
 												<i class="fas fa-trash"></i> Delete
 											</button>
 										</div>
