@@ -924,3 +924,319 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 });
+
+// Mobile-specific improvements
+(function() {
+    'use strict';
+    
+    // Check if device is mobile
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth <= 768;
+    
+    // Mobile menu improvements
+    if (isMobile) {
+        // Prevent body scroll when menu is open on mobile
+        const $menuBtn = $('.menu-btn');
+        const $dropdown = $('.dropdown-content');
+        const $body = $('body');
+        
+        $menuBtn.on('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            if ($dropdown.is(':visible')) {
+                $dropdown.slideUp(200);
+                $body.removeClass('menu-open');
+            } else {
+                $dropdown.slideDown(200);
+                $body.addClass('menu-open');
+            }
+        });
+        
+        // Close menu when clicking outside
+        $(document).on('click', function(e) {
+            const $target = $(e.target);
+            if (!$target.closest('.sidebar').length && $dropdown.is(':visible')) {
+                $dropdown.slideUp(200);
+                $body.removeClass('menu-open');
+            }
+        });
+        
+        // Close menu on escape key
+        $(document).on('keydown', function(e) {
+            if (e.key === 'Escape' && $dropdown.is(':visible')) {
+                $dropdown.slideUp(200);
+                $body.removeClass('menu-open');
+            }
+        });
+        
+        // Add touch feedback to buttons
+        $('.sleek-btn, .menu-btn, .dropdown-content a').on('touchstart', function() {
+            $(this).addClass('touch-active');
+        }).on('touchend touchcancel', function() {
+            $(this).removeClass('touch-active');
+        });
+        
+        // Improve form interactions on mobile
+        $('input, select, textarea').on('focus', function() {
+            // Scroll to input on focus to prevent keyboard covering it
+            setTimeout(() => {
+                $(this).get(0).scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }, 300);
+        });
+        
+        // Prevent zoom on input focus (iOS)
+        $('input, select, textarea').on('focus', function() {
+            if (this.type !== 'file') {
+                $(this).css('font-size', '16px');
+            }
+        });
+        
+        // Optimize modal interactions
+        $('.modal, .popup').on('show.bs.modal', function() {
+            $body.addClass('modal-open');
+        }).on('hidden.bs.modal', function() {
+            $body.removeClass('modal-open');
+        });
+        
+        // Improve chat scrolling
+        const $chatMessages = $('.chat-messages');
+        if ($chatMessages.length) {
+            // Auto-scroll to bottom on new messages
+            const scrollToBottom = () => {
+                $chatMessages.scrollTop($chatMessages[0].scrollHeight);
+            };
+            
+            // Scroll to bottom initially
+            setTimeout(scrollToBottom, 100);
+            
+            // Observe for new messages
+            const observer = new MutationObserver(scrollToBottom);
+            observer.observe($chatMessages[0], { childList: true, subtree: true });
+        }
+        
+        // Improve user selection panel on mobile
+        const $userSelectionPanel = $('.user-selection-panel');
+        const $mobileMenuBtn = $('.mobile-menu-btn');
+        
+        if ($userSelectionPanel.length && $mobileMenuBtn.length) {
+            $mobileMenuBtn.on('click', function(e) {
+                e.preventDefault();
+                $userSelectionPanel.toggleClass('show');
+            });
+            
+            // Close panel when clicking outside
+            $(document).on('click', function(e) {
+                const $target = $(e.target);
+                if (!$target.closest('.user-selection-panel').length && 
+                    !$target.closest('.mobile-menu-btn').length && 
+                    $userSelectionPanel.hasClass('show')) {
+                    $userSelectionPanel.removeClass('show');
+                }
+            });
+        }
+        
+        // Improve tab navigation on mobile
+        $('.tab-btn').on('click', function() {
+            const $this = $(this);
+            const target = $this.data('target');
+            
+            // Remove active class from all tabs
+            $('.tab-btn').removeClass('active');
+            $('.tab-content').removeClass('active');
+            
+            // Add active class to clicked tab
+            $this.addClass('active');
+            $('#' + target).addClass('active');
+        });
+        
+        // Add pull-to-refresh functionality for feeds
+        let startY = 0;
+        let currentY = 0;
+        let pullDistance = 0;
+        const pullThreshold = 80;
+        
+        $('.posts, .feed-content').on('touchstart', function(e) {
+            if ($(this).scrollTop() === 0) {
+                startY = e.originalEvent.touches[0].clientY;
+            }
+        }).on('touchmove', function(e) {
+            if ($(this).scrollTop() === 0) {
+                currentY = e.originalEvent.touches[0].clientY;
+                pullDistance = currentY - startY;
+                
+                if (pullDistance > 0 && pullDistance < pullThreshold) {
+                    e.preventDefault();
+                    $(this).css('transform', `translateY(${pullDistance}px)`);
+                }
+            }
+        }).on('touchend', function(e) {
+            if (pullDistance > pullThreshold) {
+                // Trigger refresh
+                location.reload();
+            } else {
+                $(this).css('transform', 'translateY(0)');
+            }
+            pullDistance = 0;
+        });
+        
+        // Improve image loading on mobile
+        $('img').on('load', function() {
+            $(this).addClass('loaded');
+        }).on('error', function() {
+            $(this).addClass('error');
+        });
+        
+        // Add loading states for better UX
+        $('form').on('submit', function() {
+            const $submitBtn = $(this).find('button[type="submit"]');
+            if ($submitBtn.length) {
+                $submitBtn.prop('disabled', true).text('Loading...');
+            }
+        });
+        
+        // Improve accessibility on mobile
+        $('button, a').on('focus', function() {
+            $(this).addClass('focus-visible');
+        }).on('blur', function() {
+            $(this).removeClass('focus-visible');
+        });
+        
+        // Add haptic feedback for important actions (if supported)
+        if ('vibrate' in navigator) {
+            $('.sleek-btn, .menu-btn').on('click', function() {
+                navigator.vibrate(50);
+            });
+        }
+        
+        // Optimize performance on mobile
+        let resizeTimeout;
+        $(window).on('resize', function() {
+            clearTimeout(resizeTimeout);
+            resizeTimeout = setTimeout(function() {
+                // Recalculate layouts after resize
+                $('.container').each(function() {
+                    $(this).css('min-height', `calc(100vh - ${$('.sidebar').outerHeight()}px)`);
+                });
+            }, 250);
+        });
+        
+        // Improve keyboard navigation
+        $(document).on('keydown', function(e) {
+            // Tab navigation improvements
+            if (e.key === 'Tab') {
+                $('body').addClass('keyboard-navigation');
+            }
+        });
+        
+        $(document).on('mousedown touchstart', function() {
+            $('body').removeClass('keyboard-navigation');
+        });
+        
+        // Add CSS classes for mobile-specific styling
+        $('body').addClass('mobile-device');
+        
+        // Handle orientation changes
+        window.addEventListener('orientationchange', function() {
+            setTimeout(function() {
+                // Recalculate viewport heights
+                const vh = window.innerHeight * 0.01;
+                document.documentElement.style.setProperty('--vh', `${vh}px`);
+                
+                // Recalculate container heights
+                $('.container, .chat-container, .messages-container').each(function() {
+                    const sidebarHeight = $('.sidebar').outerHeight();
+                    $(this).css('height', `calc(100vh - ${sidebarHeight}px)`);
+                });
+            }, 100);
+        });
+        
+        // Initialize viewport height variable
+        const vh = window.innerHeight * 0.01;
+        document.documentElement.style.setProperty('--vh', `${vh}px`);
+    }
+    
+    // Desktop-specific improvements
+    if (!isMobile) {
+        // Hover effects for desktop
+        $('.sleek-btn, .menu-btn').on('mouseenter', function() {
+            $(this).addClass('hover');
+        }).on('mouseleave', function() {
+            $(this).removeClass('hover');
+        });
+        
+        // Desktop menu hover behavior
+        $('.sidebar').on('mouseenter', function() {
+            $('.dropdown-content').slideDown(200);
+        }).on('mouseleave', function() {
+            $('.dropdown-content').slideUp(200);
+        });
+    }
+    
+    // Universal improvements for all devices
+    // Prevent double-tap zoom on buttons
+    $('button, a').on('touchend', function(e) {
+        e.preventDefault();
+        $(this).click();
+    });
+    
+    // Improve form validation feedback
+    $('form').on('submit', function(e) {
+        const $form = $(this);
+        const $inputs = $form.find('input[required], select[required], textarea[required]');
+        let isValid = true;
+        
+        $inputs.each(function() {
+            if (!$(this).val().trim()) {
+                isValid = false;
+                $(this).addClass('error');
+            } else {
+                $(this).removeClass('error');
+            }
+        });
+        
+        if (!isValid) {
+            e.preventDefault();
+            // Show error message
+            if (!$('.form-error').length) {
+                $form.prepend('<div class="form-error">Please fill in all required fields.</div>');
+            }
+        }
+    });
+    
+    // Remove error class on input
+    $('input, select, textarea').on('input change', function() {
+        $(this).removeClass('error');
+        $('.form-error').remove();
+    });
+    
+    // Add loading states
+    $(document).on('click', '.sleek-btn', function() {
+        const $btn = $(this);
+        if (!$btn.prop('disabled')) {
+            $btn.addClass('loading');
+            setTimeout(() => {
+                $btn.removeClass('loading');
+            }, 2000);
+        }
+    });
+    
+    // Improve accessibility
+    $('button, a').attr('tabindex', '0');
+    
+    // Add keyboard shortcuts
+    $(document).on('keydown', function(e) {
+        // Ctrl/Cmd + K to focus search
+        if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+            e.preventDefault();
+            $('input[type="search"], input[placeholder*="search"]').first().focus();
+        }
+        
+        // Escape to close modals
+        if (e.key === 'Escape') {
+            $('.modal, .popup').hide();
+            $('.dropdown-content').hide();
+        }
+    });
+    
+    console.log('Mobile optimizations loaded. Device type:', isMobile ? 'Mobile' : 'Desktop');
+})();
