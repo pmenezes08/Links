@@ -159,9 +159,19 @@
             const container = document.getElementById('muscle-groups-view');
             container.innerHTML = '';
 
+            // Only show muscle groups that have exercises
             const muscleGroupNames = ['Chest', 'Back', 'Shoulders', 'Biceps', 'Triceps', 'Legs', 'Core', 'Cardio', 'Other'];
+            const groupsWithExercises = muscleGroupNames.filter(muscleGroup => {
+                const exercisesInGroup = muscleGroups[muscleGroup] || [];
+                return exercisesInGroup.length > 0;
+            });
             
-            muscleGroupNames.forEach(function(muscleGroup) {
+            if (groupsWithExercises.length === 0) {
+                container.innerHTML = '<p style="color: #b0b8b9; text-align: center; font-size: 0.7rem;">No exercises added yet. Click "Add Exercise" to get started!</p>';
+                return;
+            }
+            
+            groupsWithExercises.forEach(function(muscleGroup) {
                 const exercisesInGroup = muscleGroups[muscleGroup] || [];
                 const exerciseCount = exercisesInGroup.length;
                 
