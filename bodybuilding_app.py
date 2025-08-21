@@ -3344,14 +3344,22 @@ def delete_set():
 # Workout Management Routes
 @app.route('/create_workout', methods=['POST'])
 def create_workout():
+    print(f"Debug: create_workout called")
+    print(f"Debug: session username: {session.get('username')}")
+    print(f"Debug: form data: {request.form}")
+    
     if 'username' not in session:
+        print(f"Debug: User not logged in")
         return jsonify({'success': False, 'error': 'Not logged in'})
     
     try:
         name = request.form.get('name')
         day = request.form.get('day')
         
+        print(f"Debug: name={name}, day={day}")
+        
         if not name or not day:
+            print(f"Debug: Missing required fields")
             return jsonify({'success': False, 'error': 'Missing required fields'})
         
         conn = sqlite3.connect('users.db')

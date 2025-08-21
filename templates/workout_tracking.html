@@ -221,6 +221,7 @@
             // Create workout form
             $('#create-workout-form').submit(function(e) {
                 e.preventDefault();
+                console.log('Create workout form submitted');
                 createWorkout();
             });
 
@@ -541,13 +542,22 @@
 
         // Workouts Functions
         function loadWorkouts() {
+            console.log('Loading workouts...');
             $.ajax({
                 url: '/get_workouts',
                 method: 'GET',
                 success: function(response) {
+                    console.log('Load workouts response:', response);
                     if (response.success) {
                         displayWorkouts(response.workouts);
+                    } else {
+                        console.log('Failed to load workouts:', response.error);
+                        $('#workouts-list').html('<p style="color: #b0b8b9; text-align: center; padding: 20px;">No workouts found. Create your first workout above!</p>');
                     }
+                },
+                error: function(xhr, status, error) {
+                    console.log('Load workouts error:', { xhr, status, error });
+                    $('#workouts-list').html('<p style="color: #b0b8b9; text-align: center; padding: 20px;">Error loading workouts. Please try again.</p>');
                 }
             });
         }
@@ -576,6 +586,13 @@
             const name = $('#workout-name').val();
             const day = $('#workout-day').val();
             
+            console.log('Creating workout:', { name, day });
+            
+            if (!name || !day) {
+                alert('Please enter workout name and select a day');
+                return;
+            }
+            
             $.ajax({
                 url: '/create_workout',
                 method: 'POST',
@@ -584,11 +601,19 @@
                     day: day
                 },
                 success: function(response) {
+                    console.log('Create workout response:', response);
                     if (response.success) {
                         $('#workout-name').val('');
                         $('#workout-day').val('');
                         loadWorkouts();
+                        alert('Workout created successfully!');
+                    } else {
+                        alert('Error creating workout: ' + (response.error || 'Unknown error'));
                     }
+                },
+                error: function(xhr, status, error) {
+                    console.log('Create workout error:', { xhr, status, error });
+                    alert('Error creating workout: ' + error);
                 }
             });
         }
