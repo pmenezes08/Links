@@ -3395,13 +3395,4 @@ def delete_set():
         return jsonify({'success': False, 'error': str(e)})
 
 if __name__ == '__main__':
-    # Ensure database exists and is properly initialized
-    try:
-        ensure_database_exists()
-        logger.info("Database initialization completed successfully")
-    except Exception as e:
-        logger.error(f"Failed to initialize database: {e}")
-        print(f"ERROR: Database initialization failed: {e}")
-        sys.exit(1)
-    
     app.run(debug=False, host='0.0.0.0', port=8080)
