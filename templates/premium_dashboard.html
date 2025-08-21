@@ -17,6 +17,8 @@
             <a href="{{ url_for('feed') }}">Social</a>
             <a href="{{ url_for('communities') }}">Your Communities</a>
             <a href="{{ url_for('your_sports') }}">Your Sports</a>
+            <a href="{{ url_for('user_chat') }}">Messages</a>
+            <a href="{{ url_for('profile') }}">Profile</a>
             {% if session['username'] == 'admin' %}
             <a href="{{ url_for('admin') }}">Admin Dashboard</a>
             <a href="{{ url_for('admin_profile') }}">Admin Profile</a>
@@ -28,10 +30,8 @@
         <h2 class="low-profile-header">Premium Dashboard - {{ name }}</h2>
         <div class="dashboard-actions">
             <button onclick="location.href='{{ url_for('feed') }}'" class="sleek-btn compact pill">Social</button>
-            <button onclick="location.href='{{ url_for('user_chat') }}'" class="sleek-btn compact pill">Messages</button>
             <button onclick="location.href='{{ url_for('communities') }}'" class="sleek-btn compact pill">Your Communities</button>
             <button onclick="location.href='{{ url_for('your_sports') }}'" class="sleek-btn compact pill">Your Sports</button>
-            <button onclick="location.href='{{ url_for('profile') }}'" class="sleek-btn compact pill">Profile</button>
         </div>
         <div id="result" class="result"></div>
         <button onclick="location.href='/premium_dashboard'" class="go-back-btn"></button>
