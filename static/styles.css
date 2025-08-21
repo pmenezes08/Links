@@ -8033,41 +8033,38 @@ input::after {
 
 /* Exercise Management Styles */
 .muscle-group-section {
-    margin-bottom: 30px;
+    margin-bottom: 40px;
 }
 
 .muscle-group-title {
     color: #ffffff;
-    font-size: 1.2rem;
-    font-weight: 600;
-    margin-bottom: 15px;
-    padding-bottom: 8px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+    font-size: 1.1rem;
+    font-weight: 500;
+    margin-bottom: 12px;
+    opacity: 0.9;
 }
 
 .exercise-row {
-    background: rgba(255, 255, 255, 0.02);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 8px;
-    margin-bottom: 8px;
+    margin-bottom: 4px;
     transition: all 0.2s ease;
 }
 
 .exercise-row:hover {
-    background: rgba(255, 255, 255, 0.05);
+    background: rgba(255, 255, 255, 0.02);
 }
 
 .exercise-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 12px 16px;
+    padding: 8px 0;
     cursor: pointer;
     transition: all 0.2s ease;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .exercise-header:hover {
-    background: rgba(255, 255, 255, 0.03);
+    border-bottom-color: rgba(255, 255, 255, 0.1);
 }
 
 .exercise-info {
@@ -8078,16 +8075,16 @@ input::after {
 
 .exercise-name {
     color: #ffffff;
-    font-size: 1rem;
-    font-weight: 500;
+    font-size: 0.95rem;
+    font-weight: 400;
 }
 
 .exercise-count {
-    color: rgba(255, 255, 255, 0.6);
-    font-size: 0.8rem;
-    background: rgba(255, 255, 255, 0.1);
-    padding: 2px 8px;
-    border-radius: 12px;
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 0.75rem;
+    background: rgba(255, 255, 255, 0.05);
+    padding: 1px 6px;
+    border-radius: 8px;
 }
 
 .exercise-actions {
@@ -8097,21 +8094,28 @@ input::after {
 }
 
 .action-btn.small {
-    padding: 6px 12px;
-    font-size: 0.75rem;
+    padding: 4px 8px;
+    font-size: 0.7rem;
     min-width: auto;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.action-btn.small:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.2);
 }
 
 .toggle-icon {
-    color: rgba(255, 255, 255, 0.6);
-    font-size: 0.8rem;
+    color: rgba(255, 255, 255, 0.4);
+    font-size: 0.7rem;
     transition: transform 0.2s ease;
 }
 
 .weight-history-dropdown {
-    border-top: 1px solid rgba(255, 255, 255, 0.1);
-    background: rgba(0, 0, 0, 0.2);
-    padding: 16px;
+    padding: 8px 0 8px 20px;
+    border-left: 1px solid rgba(255, 255, 255, 0.1);
+    margin-left: 10px;
 }
 
 .weight-history {
@@ -8134,34 +8138,33 @@ input::after {
 }
 
 .weight-history {
-    margin: 15px 0;
-    padding: 15px 0;
-    border-top: 1px solid rgba(255, 255, 255, 0.1);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    margin: 0;
+    padding: 0;
+    border: none;
 }
 
 .weight-entry {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 8px 0;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    padding: 4px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
 }
 
 .delete-weight-btn {
-    background: rgba(255, 107, 107, 0.1);
-    border: 1px solid rgba(255, 107, 107, 0.3);
+    background: rgba(255, 107, 107, 0.05);
+    border: 1px solid rgba(255, 107, 107, 0.2);
     color: #ff6b6b;
-    padding: 4px 8px;
-    border-radius: 4px;
+    padding: 2px 6px;
+    border-radius: 3px;
     cursor: pointer;
-    font-size: 0.75rem;
+    font-size: 0.65rem;
     transition: all 0.2s ease;
     display: flex;
     align-items: center;
     justify-content: center;
-    min-width: 24px;
-    height: 24px;
+    min-width: 20px;
+    height: 20px;
 }
 
 .delete-weight-btn:hover {
@@ -8176,22 +8179,22 @@ input::after {
 
 .weight-value {
     color: #ffffff;
-    font-size: 0.9rem;
-    font-weight: 500;
+    font-size: 0.8rem;
+    font-weight: 400;
 }
 
 .weight-date {
-    color: rgba(255, 255, 255, 0.5);
-    font-size: 0.75rem;
+    color: rgba(255, 255, 255, 0.4);
+    font-size: 0.7rem;
     font-weight: 400;
 }
 
 .no-weights {
-    color: rgba(255, 255, 255, 0.5);
-    font-size: 0.85rem;
+    color: rgba(255, 255, 255, 0.4);
+    font-size: 0.75rem;
     font-style: italic;
     text-align: center;
-    padding: 10px 0;
+    padding: 6px 0;
 }
 
 .exercise-actions {
