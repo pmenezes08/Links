@@ -867,7 +867,9 @@
             
             // Check if exercise is already in the workout
             checkExerciseInWorkout(exerciseId, function(isDuplicate) {
+                console.log('Duplicate check result:', isDuplicate);
                 if (isDuplicate) {
+                    console.log('Exercise is duplicate, showing alert');
                     alert('This exercise is already included in the workout. You can only update the existing entry.');
                     return;
                 }
@@ -909,6 +911,7 @@
         }
 
         function checkExerciseInWorkout(exerciseId, callback) {
+            console.log('Checking if exercise', exerciseId, 'is already in workout', currentWorkoutId);
             $.ajax({
                 url: '/check_exercise_in_workout',
                 method: 'GET',
@@ -917,7 +920,9 @@
                     exercise_id: exerciseId
                 },
                 success: function(response) {
+                    console.log('Check exercise response:', response);
                     if (response.success) {
+                        console.log('Exercise is duplicate:', response.is_duplicate);
                         callback(response.is_duplicate);
                     } else {
                         console.log('Error checking exercise in workout: ' + (response.error || 'Unknown error'));
