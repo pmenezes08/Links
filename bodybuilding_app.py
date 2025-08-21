@@ -3064,9 +3064,15 @@ def add_exercise():
         username = session.get('username')
         name = request.form.get('name')
         muscle_group = request.form.get('muscle_group', 'Other')
+        weight = request.form.get('weight')
+        reps = request.form.get('reps')
+        date = request.form.get('date')
         
         if not name:
             return jsonify({'success': False, 'error': 'Exercise name is required'})
+        
+        if not all([weight, reps, date]):
+            return jsonify({'success': False, 'error': 'Weight, reps, and date are required'})
         
         conn = sqlite3.connect('users.db')
         cursor = conn.cursor()
@@ -3124,6 +3130,14 @@ def add_exercise():
         
         exercise_id = cursor.lastrowid
         print(f"Debug: Inserted exercise with ID: {exercise_id}")
+        
+        # Insert the initial weight entry
+        cursor.execute('''
+            INSERT INTO exercise_sets (exercise_id, weight, reps, created_at)
+            VALUES (?, ?, ?, ?)
+        ''', (exercise_id, weight, reps, date))
+        
+        print(f"Debug: Added initial weight entry: {weight}kg x {reps} reps on {date}")
         
         conn.commit()
         conn.close()

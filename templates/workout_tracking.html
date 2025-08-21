@@ -173,6 +173,18 @@
                             <option value="Other">Other</option>
                         </select>
                     </div>
+                    <div class="form-group">
+                        <label for="modal-exercise-weight">Weight (kg)</label>
+                        <input type="number" id="modal-exercise-weight" placeholder="e.g., 80" min="0" step="0.1" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="modal-exercise-reps">Reps</label>
+                        <input type="number" id="modal-exercise-reps" placeholder="e.g., 8" min="1" max="50" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="modal-exercise-date">Date</label>
+                        <input type="date" id="modal-exercise-date" required>
+                    </div>
                     <div class="form-actions">
                         <button type="submit" class="submit-btn">
                             <i class="fas fa-plus"></i> Add Exercise
@@ -286,6 +298,7 @@
             // Set default date to today
             $('#log-weight-date').val(new Date().toISOString().split('T')[0]);
             $('#modal-workout-date').val(new Date().toISOString().split('T')[0]);
+            $('#modal-exercise-date').val(new Date().toISOString().split('T')[0]);
 
             // Load initial data
             loadMuscleGroups();
@@ -1001,8 +1014,11 @@
         function addExercise() {
             const name = $('#modal-exercise-name').val();
             const muscleGroup = $('#modal-muscle-group').val();
+            const weight = $('#modal-exercise-weight').val();
+            const reps = $('#modal-exercise-reps').val();
+            const date = $('#modal-exercise-date').val();
             
-            if (!name || !muscleGroup) {
+            if (!name || !muscleGroup || !weight || !reps || !date) {
                 alert('Please fill in all fields');
                 return;
             }
@@ -1012,7 +1028,10 @@
                 method: 'POST',
                 data: {
                     name: name,
-                    muscle_group: muscleGroup
+                    muscle_group: muscleGroup,
+                    weight: weight,
+                    reps: reps,
+                    date: date
                 },
                 success: function(response) {
                     if (response.success) {
