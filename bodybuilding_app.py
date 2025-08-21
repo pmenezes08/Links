@@ -3480,18 +3480,12 @@ def get_workout_details():
         conn = sqlite3.connect('users.db')
         cursor = conn.cursor()
         
-        # Get user ID
-        cursor.execute('SELECT id FROM users WHERE username = ?', (session['username'],))
-        user = cursor.fetchone()
-        if not user:
-            return jsonify({'success': False, 'error': 'User not found'})
-        
         # Get workout details
         cursor.execute('''
             SELECT w.id, w.name, w.day, w.created_at
             FROM workouts w
-            WHERE w.id = ? AND w.user_id = ?
-        ''', (workout_id, user[0]))
+            WHERE w.id = ? AND w.username = ?
+        ''', (workout_id, session['username']))
         
         workout_row = cursor.fetchone()
         if not workout_row:
@@ -3547,31 +3541,11 @@ def add_exercise_to_workout():
         conn = sqlite3.connect('users.db')
         cursor = conn.cursor()
         
-        # Create workout_exercises table if it doesn't exist
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS workout_exercises (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                workout_id INTEGER NOT NULL,
-                exercise_id INTEGER NOT NULL,
-                sets INTEGER NOT NULL,
-                reps INTEGER NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (workout_id) REFERENCES workouts (id),
-                FOREIGN KEY (exercise_id) REFERENCES exercises (id)
-            )
-        ''')
-        
-        # Get user ID
-        cursor.execute('SELECT id FROM users WHERE username = ?', (session['username'],))
-        user = cursor.fetchone()
-        if not user:
-            return jsonify({'success': False, 'error': 'User not found'})
-        
         # Verify workout belongs to user
         cursor.execute('''
             SELECT id FROM workouts 
-            WHERE id = ? AND user_id = ?
-        ''', (workout_id, user[0]))
+            WHERE id = ? AND username = ?
+        ''', (workout_id, session['username']))
         
         if not cursor.fetchone():
             return jsonify({'success': False, 'error': 'Workout not found'})
@@ -3604,18 +3578,12 @@ def remove_exercise_from_workout():
         conn = sqlite3.connect('users.db')
         cursor = conn.cursor()
         
-        # Get user ID
-        cursor.execute('SELECT id FROM users WHERE username = ?', (session['username'],))
-        user = cursor.fetchone()
-        if not user:
-            return jsonify({'success': False, 'error': 'User not found'})
-        
         # Verify workout exercise belongs to user
         cursor.execute('''
             SELECT we.id FROM workout_exercises we
             JOIN workouts w ON we.workout_id = w.id
-            WHERE we.id = ? AND w.user_id = ?
-        ''', (workout_exercise_id, user[0]))
+            WHERE we.id = ? AND w.username = ?
+        ''', (workout_exercise_id, session['username']))
         
         if not cursor.fetchone():
             return jsonify({'success': False, 'error': 'Workout exercise not found'})
@@ -3645,17 +3613,11 @@ def delete_workout():
         conn = sqlite3.connect('users.db')
         cursor = conn.cursor()
         
-        # Get user ID
-        cursor.execute('SELECT id FROM users WHERE username = ?', (session['username'],))
-        user = cursor.fetchone()
-        if not user:
-            return jsonify({'success': False, 'error': 'User not found'})
-        
         # Verify workout belongs to user
         cursor.execute('''
             SELECT id FROM workouts 
-            WHERE id = ? AND user_id = ?
-        ''', (workout_id, user[0]))
+            WHERE id = ? AND username = ?
+        ''', (workout_id, session['username']))
         
         if not cursor.fetchone():
             return jsonify({'success': False, 'error': 'Workout not found'})
