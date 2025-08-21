@@ -1025,32 +1025,7 @@ def update_weight():
         logger.error(f"Error updating weight for {username}: {str(e)}")
         return jsonify({'success': False, 'error': f'Unexpected error: {str(e)}'}), 500
 
-@app.route('/delete_workout', methods=['POST'])
-@login_required
-def delete_workout():
-    username = session['username']
-    workout_id = request.form.get('workout_id')
-    logger.debug(f"Delete workout request for {username}: {request.form}")
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            c.execute("SELECT subscription FROM users WHERE username=?", (username,))
-            user = c.fetchone()
-            if not user or user['subscription'] != 'premium':
-                logger.error(f"User {username} lacks premium subscription for workout deletion")
-                return jsonify({'success': False, 'error': 'Premium subscription required.'}), 403
-            c.execute("SELECT id FROM saved_workouts WHERE id=? AND username=?", (workout_id, username))
-            result = c.fetchone()
-            if not result:
-                logger.error(f"Workout {workout_id} not found or unauthorized for {username}")
-                return jsonify({'success': False, 'error': 'Workout not found or unauthorized.'}), 404
-            c.execute("DELETE FROM saved_workouts WHERE id=? AND username=?", (workout_id, username))
-            conn.commit()
-            logger.info(f"Workout {workout_id} deleted successfully for {username}")
-        return jsonify({'success': True}), 200
-    except Exception as e:
-        logger.error(f"Error deleting workout for {username}: {str(e)}")
-        return jsonify({'success': False, 'error': f'Unexpected error: {str(e)}'}), 500
+# Old delete_workout route removed - replaced with new one below
 
 @app.route('/delete_weight', methods=['POST'])
 @login_required
