@@ -3864,7 +3864,7 @@ Keep pushing! 💯"""
         # Share to each selected community
         for community_id in communities:
             cursor.execute('''
-                INSERT INTO posts (username, community_id, content, created_at)
+                INSERT INTO posts (username, community_id, content, timestamp)
                 VALUES (?, ?, ?, datetime('now'))
             ''', (username, community_id, post_content))
         
@@ -3918,7 +3918,7 @@ Consistency is key! 🔥"""
         # Share to each selected community
         for community_id in communities:
             cursor.execute('''
-                INSERT INTO posts (username, community_id, content, created_at)
+                INSERT INTO posts (username, community_id, content, timestamp)
                 VALUES (?, ?, ?, datetime('now'))
             ''', (username, community_id, post_content))
         
@@ -4021,7 +4021,7 @@ def share_individual_workout():
         # Share to each selected community
         for community_id in communities:
             cursor.execute('''
-                INSERT INTO posts (username, community_id, content, created_at)
+                INSERT INTO posts (username, community_id, content, timestamp)
                 VALUES (?, ?, ?, datetime('now'))
             ''', (username, community_id, content))
         
