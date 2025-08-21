@@ -3061,16 +3061,13 @@ def add_exercise():
     try:
         username = session.get('username')
         name = request.form.get('name')
-        weight = request.form.get('weight')
         muscle_group = request.form.get('muscle_group', 'Other')
         
-        if not all([name, weight]):
-            return jsonify({'success': False, 'error': 'Name and weight are required'})
+        if not name:
+            return jsonify({'success': False, 'error': 'Exercise name is required'})
         
         conn = sqlite3.connect('users.db')
         cursor = conn.cursor()
-        
-
         
         # Create exercises table if it doesn't exist
         cursor.execute('''
@@ -3078,7 +3075,6 @@ def add_exercise():
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 username TEXT NOT NULL,
                 name TEXT NOT NULL,
-                weight REAL NOT NULL,
                 muscle_group TEXT NOT NULL DEFAULT "Other"
             )
         ''')
@@ -3089,23 +3085,17 @@ def add_exercise():
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 exercise_id INTEGER NOT NULL,
                 weight REAL NOT NULL,
+                reps INTEGER NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (exercise_id) REFERENCES exercises (id) ON DELETE CASCADE
             )
         ''')
         
         # Insert the exercise
         cursor.execute('''
-            INSERT INTO exercises (username, name, weight, muscle_group)
-            VALUES (?, ?, ?, ?)
-        ''', (username, name, weight, muscle_group))
-        
-        exercise_id = cursor.lastrowid
-        
-        # Add initial set
-        cursor.execute('''
-            INSERT INTO exercise_sets (exercise_id, weight)
-            VALUES (?, ?)
-        ''', (exercise_id, weight))
+            INSERT INTO exercises (username, name, muscle_group)
+            VALUES (?, ?, ?)
+        ''', (username, name, muscle_group))
         
         conn.commit()
         conn.close()
@@ -3126,8 +3116,8 @@ def get_workout_exercises():
         
         # Get exercises with their sets
         cursor.execute('''
-            SELECT e.id, e.name, e.weight, e.muscle_group,
-                   es.id as set_id, es.weight as set_weight
+            SELECT e.id, e.name, e.muscle_group,
+                   es.id as set_id, es.weight as set_weight, es.reps as set_reps
             FROM exercises e
             LEFT JOIN exercise_sets es ON e.id = es.exercise_id
             WHERE e.username = ?
@@ -3141,40 +3131,34 @@ def get_workout_exercises():
             return jsonify({'success': False, 'error': 'No exercises found'})
         
         # Group exercises by muscle group
-        muscle_groups = {}
+        exercises = []
+        current_exercise = None
+        
         for row in rows:
             exercise_id = row[0]
-            muscle_group = row[3]  # muscle_group is at index 3
+            exercise_name = row[1]
+            muscle_group = row[2]  # muscle_group is now at index 2
             
-            if muscle_group not in muscle_groups:
-                muscle_groups[muscle_group] = []
-            
-            # Check if exercise already exists in this muscle group
-            existing_exercise = None
-            for exercise in muscle_groups[muscle_group]:
-                if exercise['id'] == exercise_id:
-                    existing_exercise = exercise
-                    break
-            
-            if not existing_exercise:
-                exercise_data = {
+            # If this is a new exercise
+            if not current_exercise or current_exercise['id'] != exercise_id:
+                current_exercise = {
                     'id': exercise_id,
-                    'name': row[1],
-                    'weight': row[2],
+                    'name': exercise_name,
                     'muscle_group': muscle_group,
                     'sets_data': []
                 }
-                muscle_groups[muscle_group].append(exercise_data)
-                existing_exercise = exercise_data
+                exercises.append(current_exercise)
             
-            if row[4]:  # If there's a set (set_id is at index 4)
-                existing_exercise['sets_data'].append({
-                    'id': row[4],
+            # Add set data if it exists
+            if row[3]:  # If there's a set (set_id is at index 3)
+                current_exercise['sets_data'].append({
+                    'id': row[3],
                     'exercise_id': exercise_id,
-                    'weight': row[5]
+                    'weight': row[4],
+                    'reps': row[5]
                 })
         
-        return jsonify({'success': True, 'muscle_groups': muscle_groups})
+        return jsonify({'success': True, 'exercises': exercises})
         
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
