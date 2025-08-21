@@ -1424,12 +1424,24 @@
                 success: function(response) {
                     if (response.success && response.communities) {
                         const communitiesHtml = response.communities.map(community => `
-                            <div class="community-option">
+                            <div class="community-option" data-community-id="${community.id}">
                                 <input type="checkbox" id="${containerId}-community-${community.id}" value="${community.id}">
                                 <label for="${containerId}-community-${community.id}">${community.name}</label>
                             </div>
                         `).join('');
                         $(`#${containerId}`).html(communitiesHtml);
+                        
+                        // Add click handlers for the new button-style community options
+                        $(`#${containerId} .community-option`).click(function() {
+                            const checkbox = $(this).find('input[type="checkbox"]');
+                            const isChecked = checkbox.prop('checked');
+                            
+                            // Toggle checkbox
+                            checkbox.prop('checked', !isChecked);
+                            
+                            // Toggle selected class
+                            $(this).toggleClass('selected', !isChecked);
+                        });
                     } else {
                         $(`#${containerId}`).html('<p>No communities found.</p>');
                     }
