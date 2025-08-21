@@ -630,18 +630,25 @@
         }
 
         function loadExercisesForWorkout() {
+            console.log('loadExercisesForWorkout called');
             $.ajax({
                 url: '/get_workout_exercises',
                 method: 'GET',
                 success: function(response) {
                     console.log('Load exercises for workout response:', response);
                     console.log('Response.exercises:', response.exercises);
+                    console.log('Response.exercises type:', typeof response.exercises);
+                    console.log('Response.exercises is array:', Array.isArray(response.exercises));
+                    console.log('Response.exercises length:', response.exercises ? response.exercises.length : 'undefined');
                     
                     if (response.success && response.exercises && Array.isArray(response.exercises) && response.exercises.length > 0) {
+                        console.log('Creating options for exercises:', response.exercises);
                         const options = response.exercises.map(exercise => 
                             `<option value="${exercise.id}">${exercise.name} (${exercise.muscle_group})</option>`
                         ).join('');
+                        console.log('Generated options HTML:', options);
                         $('#workout-exercise-select').html('<option value="">Select exercise</option>' + options);
+                        console.log('Updated workout-exercise-select dropdown');
                     } else {
                         console.log('No exercises available for workout');
                         $('#workout-exercise-select').html('<option value="">No exercises available - Add exercises first</option>');

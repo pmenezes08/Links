@@ -3098,9 +3098,13 @@ def add_exercise():
             VALUES (?, ?, ?)
         ''', (username, name, muscle_group))
         
+        exercise_id = cursor.lastrowid
+        print(f"Debug: Inserted exercise with ID: {exercise_id}")
+        
         conn.commit()
         conn.close()
         
+        print(f"Debug: Exercise added successfully for user {username}")
         return jsonify({'success': True})
         
     except Exception as e:
@@ -3162,9 +3166,12 @@ def get_workout_exercises():
                     'reps': row[5]
                 })
         
+        print(f"Debug: Returning {len(exercises)} exercises for user {username}")
+        print(f"Debug: Exercises data: {exercises}")
         return jsonify({'success': True, 'exercises': exercises})
         
     except Exception as e:
+        print(f"Debug: Error in get_workout_exercises: {str(e)}")
         return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/edit_exercise', methods=['POST'])
