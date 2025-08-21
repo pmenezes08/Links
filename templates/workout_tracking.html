@@ -94,7 +94,11 @@
     <script>
         // Load muscle groups on page load
         $(document).ready(function() {
-            loadMuscleGroups();
+            console.log('Document ready, loading muscle groups...');
+            setTimeout(function() {
+                console.log('Loading muscle groups after timeout...');
+                loadMuscleGroups();
+            }, 1000);
         });
 
         function toggleExerciseForm() {
@@ -150,15 +154,20 @@
                 method: 'GET',
                 success: function(response) {
                     console.log('Load muscle groups response:', response);
+                    console.log('Response type:', typeof response);
+                    console.log('Response keys:', Object.keys(response));
+                    
                     if (response.success) {
+                        console.log('Success is true, calling displayMuscleGroups');
                         displayMuscleGroups(response.muscle_groups);
                     } else {
-                        console.log('No exercises found');
+                        console.log('Success is false, showing error message');
                         document.getElementById('muscle-groups-view').innerHTML = '<p style="color: #b0b8b9; text-align: center; font-size: 0.8rem;">No exercises added yet. Click "Add Exercise" to get started!</p>';
                     }
                 },
                 error: function(xhr, status, error) {
                     console.log('Error loading muscle groups:', { xhr, status, error });
+                    console.log('XHR response:', xhr.responseText);
                 }
             });
         }
@@ -166,6 +175,14 @@
         function displayMuscleGroups(muscleGroups) {
             console.log('Displaying muscle groups:', muscleGroups);
             const container = document.getElementById('muscle-groups-view');
+            console.log('Container element:', container);
+            console.log('Container exists:', !!container);
+            
+            if (!container) {
+                console.error('Container element not found!');
+                return;
+            }
+            
             container.innerHTML = '';
 
             // Only show muscle groups that have exercises
