@@ -6967,31 +6967,44 @@ select:focus {
 
 /* ===== GLOBAL STYLES ===== */
 
-* {
+/* Remove ALL underlines and border lines from EVERYTHING */
+*,
+*::before,
+*::after {
     text-decoration: none !important;
     border-bottom: none !important;
+    border-top: none !important;
+    border-left: none !important;
+    border-right: none !important;
+    text-decoration-line: none !important;
+    text-decoration-style: none !important;
+    text-decoration-color: transparent !important;
 }
 
-a, a:hover, a:focus, a:active, a:visited {
+/* Specific element overrides */
+a, a:hover, a:focus, a:active, a:visited,
+button, button:hover, button:focus, button:active,
+input, textarea, select,
+div, span, p, h1, h2, h3, h4, h5, h6,
+li, ul, ol, nav, header, footer, main, section, article {
     text-decoration: none !important;
     border-bottom: none !important;
-}
-
-button, button:hover, button:focus, button:active {
-    text-decoration: none !important;
-    border-bottom: none !important;
-}
-
-input, textarea, select {
-    text-decoration: none !important;
-    border-bottom: none !important;
+    text-decoration-line: none !important;
+    text-decoration-style: none !important;
+    text-decoration-color: transparent !important;
 }
 
 /* Remove any remaining underlines */
 .text-decoration-underline,
 [style*="text-decoration: underline"],
-[style*="text-decoration:underline"] {
+[style*="text-decoration:underline"],
+[style*="border-bottom"],
+[style*="border-bottom:"] {
     text-decoration: none !important;
+    border-bottom: none !important;
+    text-decoration-line: none !important;
+    text-decoration-style: none !important;
+    text-decoration-color: transparent !important;
 }
 
 /* Remove all border-bottom lines */
@@ -7001,6 +7014,21 @@ input, textarea, select {
 .border-bottom-2,
 .border-bottom-3,
 .border-bottom-4,
-.border-bottom-5 {
+.border-bottom-5,
+.border,
+.border-1,
+.border-2,
+.border-3,
+.border-4,
+.border-5 {
     border-bottom: none !important;
+    border: none !important;
+}
+
+/* Force remove any remaining lines */
+hr, .hr, .divider, .line, .border-line {
+    display: none !important;
+    border: none !important;
+    height: 0 !important;
+    background: none !important;
 }
