@@ -4065,8 +4065,12 @@ def share_individual_workout():
         print(f"Debug: user_message = '{user_message}'")
         
         # Create post content with clean format
-        # Extract just the workout name (remove date part)
-        workout_name = name.split(' - ')[0] if ' - ' in name else name
+        # Extract just the workout name (remove any date or extra parts)
+        workout_name = name
+        if ' - ' in name:
+            workout_name = name.split(' - ')[0]
+        elif ' Push Day' in name:
+            workout_name = name.split(' Push Day')[0]
         
         content = f"{workout_name}\n\n"
         content += f"{date}\n"
@@ -4074,9 +4078,8 @@ def share_individual_workout():
         if exercises:
             exercise_list = exercises.split(',')
             for exercise in exercise_list:
-                # Clean up the exercise format - extract just the exercise name and details
+                # Clean up the exercise format
                 exercise_clean = exercise.strip()
-                # Remove the " (weight x sets x reps)" part and just show exercise name
                 if '(' in exercise_clean:
                     exercise_name = exercise_clean.split(' (')[0].strip()
                     exercise_details = exercise_clean.split('(')[1].split(')')[0].strip()
