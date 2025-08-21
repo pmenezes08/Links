@@ -3852,14 +3852,18 @@ def share_progress():
         initial_1rm = one_rms[0]
         progress_percentage = ((current_1rm - initial_1rm) / initial_1rm * 100) if initial_1rm > 0 else 0
         
+        # Get user message if provided
+        user_message = request.form.get('user_message', '').strip()
+        
         # Create post content
-        post_content = f"""💪 Progress Update: {exercise_name}
-
-📊 Current 1RM: {current_1rm:.1f} kg
-📈 Progress: {progress_percentage:.1f}%
-🏋️ Sets logged: {len(rows)}
-
-Keep pushing! 💯"""
+        post_content = f"Progress Update: {exercise_name}\n"
+        post_content += f"Current 1RM: {current_1rm:.1f} kg\n"
+        post_content += f"Progress: {progress_percentage:.1f}%\n"
+        post_content += f"Sets logged: {len(rows)}"
+        
+        # Add user message if provided
+        if user_message:
+            post_content = f"{user_message}\n\n{post_content}"
         
         # Share to each selected community
         for community_id in communities:
@@ -3906,14 +3910,18 @@ def share_workouts():
         ''', (username,))
         total_exercises = cursor.fetchone()[0]
         
+        # Get user message if provided
+        user_message = request.form.get('user_message', '').strip()
+        
         # Create post content
-        post_content = f"""🏋️ Workout Summary
-
-📊 Total workouts: {total_workouts}
-📅 This week: {workouts_this_week}
-💪 Total exercises: {total_exercises}
-
-Consistency is key! 🔥"""
+        post_content = f"Workout Summary\n"
+        post_content += f"Total workouts: {total_workouts}\n"
+        post_content += f"This week: {workouts_this_week}\n"
+        post_content += f"Total exercises: {total_exercises}"
+        
+        # Add user message if provided
+        if user_message:
+            post_content = f"{user_message}\n\n{post_content}"
         
         # Share to each selected community
         for community_id in communities:
@@ -4008,15 +4016,22 @@ def share_individual_workout():
         
         name, date, exercise_count, exercises = row
         
+        # Get user message if provided
+        user_message = request.form.get('user_message', '').strip()
+        
         # Create post content
-        content = f"💪 **{name}** - {date}\n\n"
-        content += f"**Exercises:** {exercise_count}\n"
+        content = f"{name} - {date}\n"
+        content += f"Exercises: {exercise_count}\n"
         
         if exercises:
             exercise_list = exercises.split(',')
-            content += "\n**Workout Details:**\n"
+            content += "\nWorkout Details:\n"
             for exercise in exercise_list:
                 content += f"• {exercise}\n"
+        
+        # Add user message if provided
+        if user_message:
+            content = f"{user_message}\n\n{content}"
         
         # Share to each selected community
         for community_id in communities:

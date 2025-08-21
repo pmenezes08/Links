@@ -373,6 +373,8 @@
                         </div>
                     </div>
                     <div class="share-options">
+                        <h4>Add Your Message (Optional)</h4>
+                        <textarea id="progress-message" placeholder="Add a personal message to your progress share..." rows="3" maxlength="500"></textarea>
                         <h4>Share to Communities</h4>
                         <div id="communities-list" class="communities-list">
                             <!-- User's communities will be loaded here -->
@@ -406,6 +408,8 @@
                         </div>
                     </div>
                     <div class="share-options">
+                        <h4>Add Your Message (Optional)</h4>
+                        <textarea id="workout-message" placeholder="Add a personal message to your workout share..." rows="3" maxlength="500"></textarea>
                         <h4>Share to Communities</h4>
                         <div id="workout-communities-list" class="communities-list">
                             <!-- User's communities will be loaded here -->
@@ -1440,6 +1444,10 @@
             const formData = new FormData();
             formData.append('exercise_id', exerciseId);
             formData.append('time_range', timeRange);
+            const userMessage = $('#progress-message').val().trim();
+            if (userMessage) {
+                formData.append('user_message', userMessage);
+            }
             selectedCommunities.forEach(communityId => {
                 formData.append('communities', communityId);
             });
@@ -1482,6 +1490,10 @@
                 // Share individual workout
                 const formData = new FormData();
                 formData.append('workout_id', workoutId);
+                const userMessage = $('#workout-message').val().trim();
+                if (userMessage) {
+                    formData.append('user_message', userMessage);
+                }
                 selectedCommunities.forEach(communityId => {
                     formData.append('communities', communityId);
                 });
@@ -1507,6 +1519,10 @@
             } else {
                 // Share all workouts summary
                 const formData = new FormData();
+                const userMessage = $('#workout-message').val().trim();
+                if (userMessage) {
+                    formData.append('user_message', userMessage);
+                }
                 selectedCommunities.forEach(communityId => {
                     formData.append('communities', communityId);
                 });
