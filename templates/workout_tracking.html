@@ -1287,10 +1287,10 @@
             generateProgressSummary();
             loadUserCommunities('communities-list');
             
-            // Capture the graph as an image
+            // Capture the graph as an image with longer delay to ensure chart is rendered
             setTimeout(() => {
                 captureProgressGraph();
-            }, 500);
+            }, 1500);
         }
 
         function closeShareProgressModal() {
@@ -1298,27 +1298,25 @@
         }
 
         function captureProgressGraph() {
-            const canvas = document.getElementById('progressChart');
             console.log('Attempting to capture graph...');
-            console.log('Canvas element:', canvas);
             
-            if (canvas) {
+            // Get the chart instance
+            const chartCanvas = document.getElementById('progressChart');
+            if (chartCanvas && window.progressChart) {
                 try {
-                    // Wait a bit for the chart to be fully rendered
-                    setTimeout(() => {
-                        // Convert canvas to data URL
-                        const graphImage = canvas.toDataURL('image/png');
-                        console.log('Graph image data length:', graphImage.length);
-                        console.log('Graph image preview:', graphImage.substring(0, 100) + '...');
-                        
-                        $('#share-progress-modal').data('graph-image', graphImage);
-                        console.log('Graph captured successfully');
-                    }, 1000);
+                    // Export chart as image using Chart.js
+                    const imageData = window.progressChart.toBase64Image('image/png', 1.0);
+                    console.log('Graph exported successfully');
+                    console.log('Image data length:', imageData.length);
+                    
+                    $('#share-progress-modal').data('graph-image', imageData);
+                    console.log('Graph stored in modal data');
+                    
                 } catch (error) {
-                    console.error('Error capturing graph:', error);
+                    console.error('Error exporting graph:', error);
                 }
             } else {
-                console.log('No progress chart found');
+                console.log('No chart instance found');
             }
         }
 
@@ -1943,7 +1941,7 @@
                 progressChart.destroy();
             }
 
-            progressChart = new Chart(ctx, {
+            window.progressChart = new Chart(ctx, {
                 type: 'line',
                 data: {
                     labels: data.labels,
