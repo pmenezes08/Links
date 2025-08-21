@@ -36,52 +36,57 @@
             </button>
         </div>
 
-        <!-- Workouts Tab (Input Section) -->
-        <div id="workouts" class="tab-content active">
+        <!-- Performance Tracking Tab (Read-only View) -->
+        <div id="performance-tracking" class="tab-content active">
+            <div class="performance-tracking-container">
+                <div class="header-section">
+                    <h3>Your Performance Overview</h3>
+                    <button class="add-btn" onclick="openAddExerciseModal()">
+                        <i class="fas fa-plus"></i> Add Exercise
+                    </button>
+                </div>
+                
+                <div class="overview-section">
+                    <p class="overview-text">Your 1RM data is automatically calculated from your logged sets. Add exercises and log your performance to see your progress here.</p>
+                </div>
+
+                <div class="exercises-section">
+                    <div id="muscle-groups-view" class="muscle-groups-view">
+                        <!-- Muscle groups will be loaded here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Exercise Management Tab -->
+        <div id="exercise-management" class="tab-content">
+            <div class="exercise-management-container">
+                <div class="header-section">
+                    <h3>Exercise Management</h3>
+                    <button class="add-btn" onclick="openAddExerciseModal()">
+                        <i class="fas fa-plus"></i> Add Exercise
+                    </button>
+                </div>
+                
+                <div class="exercises-list-section">
+                    <div id="exercises-management-list" class="exercises-list">
+                        <!-- Exercises will be loaded here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Workouts Tab (Optional) -->
+        <div id="workouts" class="tab-content">
             <div class="workouts-container">
-                <!-- Create New Workout -->
-                <div class="create-workout-section">
-                    <h3>Create New Workout</h3>
-                    <form id="create-workout-form" class="workout-form">
-                        <div class="form-row">
-                            <input type="text" id="workout-name" placeholder="Workout name (e.g., Push Day)" required>
-                            <input type="date" id="workout-date" required>
-                        </div>
-                        <button type="submit" class="submit-btn">
-                            <i class="fas fa-plus"></i> Create Workout
-                        </button>
-                    </form>
-                </div>
-
-
-
-                <!-- Add Exercise Section -->
-                <div class="add-exercise-section">
-                    <h3>Add New Exercise</h3>
-                    <form id="add-exercise-form" class="exercise-form">
-                        <div class="form-row">
-                            <input type="text" id="exercise-name" placeholder="Exercise name" required>
-                            <select id="muscle-group" required>
-                                <option value="">Select muscle group</option>
-                                <option value="Chest">Chest</option>
-                                <option value="Back">Back</option>
-                                <option value="Shoulders">Shoulders</option>
-                                <option value="Biceps">Biceps</option>
-                                <option value="Triceps">Triceps</option>
-                                <option value="Legs">Legs</option>
-                                <option value="Core">Core</option>
-                                <option value="Other">Other</option>
-                            </select>
-                        </div>
-                        <button type="submit" class="submit-btn">
-                            <i class="fas fa-plus"></i> Add Exercise
-                        </button>
-                    </form>
-                </div>
-
-                <!-- Workouts List -->
-                <div class="workouts-list-section">
+                <div class="header-section">
                     <h3>Your Workouts</h3>
+                    <button class="add-btn" onclick="openCreateWorkoutModal()">
+                        <i class="fas fa-plus"></i> Create Workout
+                    </button>
+                </div>
+                
+                <div class="workouts-list-section">
                     <div id="workouts-list" class="workouts-list">
                         <!-- Workouts will be loaded here -->
                     </div>
@@ -89,24 +94,7 @@
             </div>
         </div>
 
-        <!-- Performance Tracking Tab (Read-only View) -->
-        <div id="weight-tracking" class="tab-content">
-            <div class="weight-tracking-container">
-                <!-- 1RM Overview -->
-                <div class="overview-section">
-                    <h3>Your 1 Rep Max Overview</h3>
-                    <p class="overview-text">Your 1RM data is automatically calculated from your workout sets. Add exercises and complete workouts to see your progress here.</p>
-                </div>
 
-                <!-- Exercise List -->
-                <div class="exercises-section">
-                    <h3>Your Exercises</h3>
-                    <div id="muscle-groups-view" class="muscle-groups-view">
-                        <!-- Muscle groups will be loaded here -->
-                    </div>
-                </div>
-            </div>
-        </div>
     </div>
 
     <!-- Exercise Detail Modal -->
@@ -156,6 +144,107 @@
         </div>
     </div>
 
+    <!-- Add Exercise Modal -->
+    <div id="add-exercise-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Add New Exercise</h3>
+                <button class="close-btn" onclick="closeAddExerciseModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <form id="add-exercise-form" class="exercise-form">
+                    <div class="form-group">
+                        <label for="modal-exercise-name">Exercise Name</label>
+                        <input type="text" id="modal-exercise-name" placeholder="e.g., Bench Press" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="modal-muscle-group">Muscle Group</label>
+                        <select id="modal-muscle-group" required>
+                            <option value="">Select muscle group</option>
+                            <option value="Chest">Chest</option>
+                            <option value="Back">Back</option>
+                            <option value="Shoulders">Shoulders</option>
+                            <option value="Biceps">Biceps</option>
+                            <option value="Triceps">Triceps</option>
+                            <option value="Legs">Legs</option>
+                            <option value="Core">Core</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" class="submit-btn">
+                            <i class="fas fa-plus"></i> Add Exercise
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create Workout Modal -->
+    <div id="create-workout-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Create New Workout</h3>
+                <button class="close-btn" onclick="closeCreateWorkoutModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <form id="create-workout-form" class="workout-form">
+                    <div class="form-group">
+                        <label for="modal-workout-name">Workout Name</label>
+                        <input type="text" id="modal-workout-name" placeholder="e.g., Push Day" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="modal-workout-date">Date</label>
+                        <input type="date" id="modal-workout-date" required>
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" class="submit-btn">
+                            <i class="fas fa-plus"></i> Create Workout
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Log Weight Modal -->
+    <div id="log-weight-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="log-weight-exercise-name">Log Weight</h3>
+                <button class="close-btn" onclick="closeLogWeightModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <form id="log-weight-form" class="weight-form">
+                    <div class="form-group">
+                        <label for="log-weight-value">Weight (kg)</label>
+                        <input type="number" id="log-weight-value" placeholder="e.g., 80" min="0" step="0.1" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="log-weight-reps">Reps</label>
+                        <input type="number" id="log-weight-reps" placeholder="e.g., 8" min="1" max="50" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="log-weight-date">Date</label>
+                        <input type="date" id="log-weight-date" required>
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" class="submit-btn">
+                            <i class="fas fa-plus"></i> Log Weight
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
     <!-- Workout Detail Modal -->
     <div id="workout-modal" class="modal">
         <div class="modal-content">
@@ -192,13 +281,16 @@
         </div>
     </div>
 
-    <!-- Removed script.js to avoid conflicts -->
     <script>
         $(document).ready(function() {
+            // Set default date to today
+            $('#log-weight-date').val(new Date().toISOString().split('T')[0]);
+            $('#modal-workout-date').val(new Date().toISOString().split('T')[0]);
+
             // Load initial data
             loadMuscleGroups();
+            loadExercisesManagement();
             loadWorkouts();
-            loadExercisesForWorkout();
 
             // Tab switching
             $('.tab-btn').click(function() {
@@ -208,6 +300,22 @@
                 const tabId = $(this).data('tab');
                 $('.tab-content').removeClass('active');
                 $('#' + tabId).addClass('active');
+            });
+
+            // Modal event handlers
+            $('#add-exercise-form').submit(function(e) {
+                e.preventDefault();
+                addExercise();
+            });
+
+            $('#create-workout-form').submit(function(e) {
+                e.preventDefault();
+                createWorkout();
+            });
+
+            $('#log-weight-form').submit(function(e) {
+                e.preventDefault();
+                logWeight();
             });
 
             // Add exercise form
@@ -795,6 +903,170 @@
                     },
                     error: function(xhr, status, error) {
                         alert('Error removing exercise: ' + error);
+                    }
+                });
+            }
+        }
+
+        // Modal Functions
+        function openAddExerciseModal() {
+            $('#add-exercise-modal').show();
+            $('#modal-exercise-name').val('');
+            $('#modal-muscle-group').val('');
+        }
+
+        function closeAddExerciseModal() {
+            $('#add-exercise-modal').hide();
+        }
+
+        function openCreateWorkoutModal() {
+            $('#create-workout-modal').show();
+            $('#modal-workout-name').val('');
+            $('#modal-workout-date').val(new Date().toISOString().split('T')[0]);
+        }
+
+        function closeCreateWorkoutModal() {
+            $('#create-workout-modal').hide();
+        }
+
+        function openLogWeightModal(exerciseId, exerciseName) {
+            $('#log-weight-modal').show();
+            $('#log-weight-exercise-name').text(exerciseName);
+            $('#log-weight-form').data('exercise-id', exerciseId);
+            $('#log-weight-value').val('');
+            $('#log-weight-reps').val('');
+            $('#log-weight-date').val(new Date().toISOString().split('T')[0]);
+        }
+
+        function closeLogWeightModal() {
+            $('#log-weight-modal').hide();
+        }
+
+        // New Functions for Exercise Management
+        function loadExercisesManagement() {
+            $.ajax({
+                url: '/get_user_exercises',
+                method: 'GET',
+                success: function(response) {
+                    if (response.success && response.exercises) {
+                        displayExercisesManagement(response.exercises);
+                    } else {
+                        $('#exercises-management-list').html('<p style="color: #b0b8b9; text-align: center; padding: 20px;">No exercises found. Add your first exercise to get started!</p>');
+                    }
+                },
+                error: function(xhr, status, error) {
+                    $('#exercises-management-list').html('<p style="color: #b0b8b9; text-align: center; padding: 20px;">Error loading exercises. Please try again.</p>');
+                }
+            });
+        }
+
+        function displayExercisesManagement(exercises) {
+            const exercisesHtml = exercises.map(exercise => `
+                <div class="exercise-card">
+                    <div class="exercise-info">
+                        <h4>${exercise.name}</h4>
+                        <span class="muscle-group">${exercise.muscle_group}</span>
+                    </div>
+                    <div class="exercise-actions">
+                        <button onclick="openLogWeightModal(${exercise.id}, '${exercise.name}')" class="action-btn">
+                            <i class="fas fa-plus"></i> Log Weight
+                        </button>
+                        <button onclick="deleteExercise(${exercise.id})" class="action-btn delete">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+            
+            $('#exercises-management-list').html(exercisesHtml);
+        }
+
+        function addExercise() {
+            const name = $('#modal-exercise-name').val();
+            const muscleGroup = $('#modal-muscle-group').val();
+            
+            if (!name || !muscleGroup) {
+                alert('Please fill in all fields');
+                return;
+            }
+            
+            $.ajax({
+                url: '/add_exercise',
+                method: 'POST',
+                data: {
+                    name: name,
+                    muscle_group: muscleGroup
+                },
+                success: function(response) {
+                    if (response.success) {
+                        closeAddExerciseModal();
+                        loadMuscleGroups();
+                        loadExercisesManagement();
+                        alert('Exercise added successfully!');
+                    } else {
+                        alert('Error adding exercise: ' + (response.error || 'Unknown error'));
+                    }
+                },
+                error: function(xhr, status, error) {
+                    alert('Error adding exercise: ' + error);
+                }
+            });
+        }
+
+        function logWeight() {
+            const exerciseId = $('#log-weight-form').data('exercise-id');
+            const weight = $('#log-weight-value').val();
+            const reps = $('#log-weight-reps').val();
+            const date = $('#log-weight-date').val();
+            
+            if (!weight || !reps || !date) {
+                alert('Please fill in all fields');
+                return;
+            }
+            
+            $.ajax({
+                url: '/add_set',
+                method: 'POST',
+                data: {
+                    exercise_id: exerciseId,
+                    weight: weight,
+                    reps: reps,
+                    date: date
+                },
+                success: function(response) {
+                    if (response.success) {
+                        closeLogWeightModal();
+                        loadMuscleGroups();
+                        alert('Weight logged successfully!');
+                    } else {
+                        alert('Error logging weight: ' + (response.error || 'Unknown error'));
+                    }
+                },
+                error: function(xhr, status, error) {
+                    alert('Error logging weight: ' + error);
+                }
+            });
+        }
+
+        function deleteExercise(exerciseId) {
+            if (confirm('Are you sure you want to delete this exercise? This will also delete all associated weight logs.')) {
+                $.ajax({
+                    url: '/delete_exercise',
+                    method: 'POST',
+                    data: {
+                        exercise_id: exerciseId
+                    },
+                    success: function(response) {
+                        if (response.success) {
+                            loadMuscleGroups();
+                            loadExercisesManagement();
+                            alert('Exercise deleted successfully!');
+                        } else {
+                            alert('Error deleting exercise: ' + (response.error || 'Unknown error'));
+                        }
+                    },
+                    error: function(xhr, status, error) {
+                        alert('Error deleting exercise: ' + error);
                     }
                 });
             }
