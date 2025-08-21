@@ -7003,7 +7003,7 @@ li, ul, ol, nav, header, footer, main, section, article {
 
 .workout-container {
     min-height: 100vh;
-    background: #0a0a0a !important;
+    background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%) !important;
     color: #ffffff !important;
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif !important;
     padding: 0 !important;
