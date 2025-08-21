@@ -1437,14 +1437,19 @@
             const exerciseId = $('#exercise-select').val();
             const timeRange = $('#time-range').val();
 
+            const formData = new FormData();
+            formData.append('exercise_id', exerciseId);
+            formData.append('time_range', timeRange);
+            selectedCommunities.forEach(communityId => {
+                formData.append('communities', communityId);
+            });
+
             $.ajax({
                 url: '/share_progress',
                 method: 'POST',
-                data: {
-                    exercise_id: exerciseId,
-                    time_range: timeRange,
-                    communities: selectedCommunities
-                },
+                data: formData,
+                processData: false,
+                contentType: false,
                 success: function(response) {
                     if (response.success) {
                         closeShareProgressModal();
@@ -1475,13 +1480,18 @@
             
             if (workoutId) {
                 // Share individual workout
+                const formData = new FormData();
+                formData.append('workout_id', workoutId);
+                selectedCommunities.forEach(communityId => {
+                    formData.append('communities', communityId);
+                });
+                
                 $.ajax({
                     url: '/share_individual_workout',
                     method: 'POST',
-                    data: {
-                        workout_id: workoutId,
-                        communities: selectedCommunities
-                    },
+                    data: formData,
+                    processData: false,
+                    contentType: false,
                     success: function(response) {
                         if (response.success) {
                             closeShareWorkoutsModal();
@@ -1496,12 +1506,17 @@
                 });
             } else {
                 // Share all workouts summary
+                const formData = new FormData();
+                selectedCommunities.forEach(communityId => {
+                    formData.append('communities', communityId);
+                });
+                
                 $.ajax({
                     url: '/share_workouts',
                     method: 'POST',
-                    data: {
-                        communities: selectedCommunities
-                    },
+                    data: formData,
+                    processData: false,
+                    contentType: false,
                     success: function(response) {
                         if (response.success) {
                             closeShareWorkoutsModal();
