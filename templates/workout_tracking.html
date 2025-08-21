@@ -73,6 +73,9 @@
                                 <option value="365">Last year</option>
                                 <option value="all">All time</option>
                             </select>
+                            <button class="share-btn" onclick="openShareProgressModal()" title="Share Progress">
+                                <i class="fas fa-share-alt"></i>
+                            </button>
                         </div>
                     </div>
                     <div class="chart-container">
@@ -111,9 +114,14 @@
             <div class="workouts-container">
                 <div class="header-section">
                     <h3>Your Workouts</h3>
-                    <button class="add-btn" onclick="openCreateWorkoutModal()">
-                        <i class="fas fa-plus"></i> Create Workout
-                    </button>
+                    <div class="header-actions">
+                        <button class="add-btn" onclick="openCreateWorkoutModal()">
+                            <i class="fas fa-plus"></i> Create Workout
+                        </button>
+                        <button class="share-btn" onclick="openShareWorkoutsModal()" title="Share Workouts">
+                            <i class="fas fa-share-alt"></i>
+                        </button>
+                    </div>
                 </div>
                 
                 <div class="workouts-list-section">
@@ -348,6 +356,72 @@
                         </button>
                     </div>
                 </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Share Progress Modal -->
+    <div id="share-progress-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Share Progress</h3>
+                <button class="close-btn" onclick="closeShareProgressModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="share-content">
+                    <div class="share-preview">
+                        <h4>Progress Summary</h4>
+                        <div id="progress-summary">
+                            <!-- Progress summary will be generated here -->
+                        </div>
+                    </div>
+                    <div class="share-options">
+                        <h4>Share to Communities</h4>
+                        <div id="communities-list" class="communities-list">
+                            <!-- User's communities will be loaded here -->
+                        </div>
+                    </div>
+                    <div class="share-actions">
+                        <button class="share-submit-btn" onclick="shareProgress()">
+                            <i class="fas fa-share-alt"></i> Share Progress
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Share Workouts Modal -->
+    <div id="share-workouts-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Share Workouts</h3>
+                <button class="close-btn" onclick="closeShareWorkoutsModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="share-content">
+                    <div class="share-preview">
+                        <h4>Workout Summary</h4>
+                        <div id="workout-summary">
+                            <!-- Workout summary will be generated here -->
+                        </div>
+                    </div>
+                    <div class="share-options">
+                        <h4>Share to Communities</h4>
+                        <div id="workout-communities-list" class="communities-list">
+                            <!-- User's communities will be loaded here -->
+                        </div>
+                    </div>
+                    <div class="share-actions">
+                        <button class="share-submit-btn" onclick="shareWorkouts()">
+                            <i class="fas fa-share-alt"></i> Share Workouts
+                        </button>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -1192,6 +1266,185 @@
                 },
                 error: function(xhr, status, error) {
                     alert('Error updating exercise: ' + error);
+                }
+            });
+        }
+
+        // Share Progress Functions
+        function openShareProgressModal() {
+            $('#share-progress-modal').show();
+            generateProgressSummary();
+            loadUserCommunities('communities-list');
+        }
+
+        function closeShareProgressModal() {
+            $('#share-progress-modal').hide();
+        }
+
+        function openShareWorkoutsModal() {
+            $('#share-workouts-modal').show();
+            generateWorkoutSummary();
+            loadUserCommunities('workout-communities-list');
+        }
+
+        function closeShareWorkoutsModal() {
+            $('#share-workouts-modal').hide();
+        }
+
+        function generateProgressSummary() {
+            const exerciseId = $('#exercise-select').val();
+            const timeRange = $('#time-range').val();
+            
+            if (!exerciseId) {
+                $('#progress-summary').html('<p>Please select an exercise first to generate progress summary.</p>');
+                return;
+            }
+
+            $.ajax({
+                url: '/get_progress_summary',
+                method: 'GET',
+                data: {
+                    exercise_id: exerciseId,
+                    time_range: timeRange
+                },
+                success: function(response) {
+                    if (response.success) {
+                        const summary = response.summary;
+                        const summaryHtml = `
+                            <div class="summary-item">
+                                <strong>${summary.exercise_name}</strong>
+                                <div class="summary-stats">
+                                    <span>Current 1RM: ${summary.current_1rm} kg</span>
+                                    <span>Progress: ${summary.progress_percentage}%</span>
+                                    <span>Sets logged: ${summary.total_sets}</span>
+                                </div>
+                            </div>
+                        `;
+                        $('#progress-summary').html(summaryHtml);
+                    } else {
+                        $('#progress-summary').html('<p>Error loading progress summary.</p>');
+                    }
+                },
+                error: function() {
+                    $('#progress-summary').html('<p>Error loading progress summary.</p>');
+                }
+            });
+        }
+
+        function generateWorkoutSummary() {
+            $.ajax({
+                url: '/get_workout_summary',
+                method: 'GET',
+                success: function(response) {
+                    if (response.success) {
+                        const summary = response.summary;
+                        const summaryHtml = `
+                            <div class="summary-item">
+                                <strong>Recent Workouts</strong>
+                                <div class="summary-stats">
+                                    <span>Total workouts: ${summary.total_workouts}</span>
+                                    <span>This week: ${summary.workouts_this_week}</span>
+                                    <span>Total exercises: ${summary.total_exercises}</span>
+                                </div>
+                            </div>
+                        `;
+                        $('#workout-summary').html(summaryHtml);
+                    } else {
+                        $('#workout-summary').html('<p>Error loading workout summary.</p>');
+                    }
+                },
+                error: function() {
+                    $('#workout-summary').html('<p>Error loading workout summary.</p>');
+                }
+            });
+        }
+
+        function loadUserCommunities(containerId) {
+            $.ajax({
+                url: '/get_user_communities',
+                method: 'GET',
+                success: function(response) {
+                    if (response.success && response.communities) {
+                        const communitiesHtml = response.communities.map(community => `
+                            <div class="community-option">
+                                <input type="checkbox" id="community-${community.id}" value="${community.id}">
+                                <label for="community-${community.id}">${community.name}</label>
+                            </div>
+                        `).join('');
+                        $(`#${containerId}`).html(communitiesHtml);
+                    } else {
+                        $(`#${containerId}`).html('<p>No communities found.</p>');
+                    }
+                },
+                error: function() {
+                    $(`#${containerId}`).html('<p>Error loading communities.</p>');
+                }
+            });
+        }
+
+        function shareProgress() {
+            const selectedCommunities = [];
+            $('#communities-list input:checked').each(function() {
+                selectedCommunities.push($(this).val());
+            });
+
+            if (selectedCommunities.length === 0) {
+                alert('Please select at least one community to share to.');
+                return;
+            }
+
+            const exerciseId = $('#exercise-select').val();
+            const timeRange = $('#time-range').val();
+
+            $.ajax({
+                url: '/share_progress',
+                method: 'POST',
+                data: {
+                    exercise_id: exerciseId,
+                    time_range: timeRange,
+                    communities: selectedCommunities
+                },
+                success: function(response) {
+                    if (response.success) {
+                        closeShareProgressModal();
+                        alert('Progress shared successfully!');
+                    } else {
+                        alert('Error sharing progress: ' + (response.error || 'Unknown error'));
+                    }
+                },
+                error: function(xhr, status, error) {
+                    alert('Error sharing progress: ' + error);
+                }
+            });
+        }
+
+        function shareWorkouts() {
+            const selectedCommunities = [];
+            $('#workout-communities-list input:checked').each(function() {
+                selectedCommunities.push($(this).val());
+            });
+
+            if (selectedCommunities.length === 0) {
+                alert('Please select at least one community to share to.');
+                return;
+            }
+
+            $.ajax({
+                url: '/share_workouts',
+                method: 'POST',
+                data: {
+                    communities: selectedCommunities
+                },
+                success: function(response) {
+                    if (response.success) {
+                        closeShareWorkoutsModal();
+                        alert('Workouts shared successfully!');
+                    } else {
+                        alert('Error sharing workouts: ' + (response.error || 'Unknown error'));
+                    }
+                },
+                error: function(xhr, status, error) {
+                    alert('Error sharing workouts: ' + error);
                 }
             });
         }

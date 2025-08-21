@@ -8411,3 +8411,134 @@ input::after {
     background: rgba(77, 182, 172, 0.2);
     border-color: rgba(77, 182, 172, 0.5);
 }
+
+/* Share Button Styles */
+.share-btn {
+    background: rgba(77, 182, 172, 0.1);
+    border: 1px solid rgba(77, 182, 172, 0.3);
+    color: #4db6ac;
+    padding: 6px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.8rem;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.share-btn:hover {
+    background: rgba(77, 182, 172, 0.2);
+    border-color: rgba(77, 182, 172, 0.5);
+    transform: translateY(-1px);
+}
+
+.header-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+/* Share Modal Styles */
+.share-content {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.share-preview {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    padding: 12px;
+}
+
+.share-preview h4 {
+    color: #4db6ac;
+    font-size: 0.9rem;
+    margin: 0 0 8px 0;
+}
+
+.summary-item {
+    color: #ffffff;
+    font-size: 0.8rem;
+}
+
+.summary-stats {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: 6px;
+}
+
+.summary-stats span {
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 0.75rem;
+}
+
+.share-options h4 {
+    color: #4db6ac;
+    font-size: 0.9rem;
+    margin: 0 0 8px 0;
+}
+
+.communities-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 150px;
+    overflow-y: auto;
+}
+
+.community-option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.community-option:hover {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(255, 255, 255, 0.1);
+}
+
+.community-option input[type="checkbox"] {
+    margin: 0;
+}
+
+.community-option label {
+    color: #ffffff;
+    font-size: 0.8rem;
+    cursor: pointer;
+    margin: 0;
+}
+
+.share-actions {
+    display: flex;
+    justify-content: center;
+}
+
+.share-submit-btn {
+    background: rgba(77, 182, 172, 0.1);
+    border: 1px solid rgba(77, 182, 172, 0.3);
+    color: #4db6ac;
+    padding: 8px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.8rem;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.share-submit-btn:hover {
+    background: rgba(77, 182, 172, 0.2);
+    border-color: rgba(77, 182, 172, 0.5);
+    transform: translateY(-1px);
+}

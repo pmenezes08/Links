@@ -3691,6 +3691,245 @@ def update_exercise_in_workout():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
+@app.route('/get_progress_summary', methods=['GET'])
+@login_required
+def get_progress_summary():
+    try:
+        username = session.get('username')
+        exercise_id = request.args.get('exercise_id')
+        time_range = request.args.get('time_range', 'all')
+        
+        if not exercise_id:
+            return jsonify({'success': False, 'error': 'Exercise ID is required'})
+        
+        conn = sqlite3.connect('users.db')
+        cursor = conn.cursor()
+        
+        # Get exercise name
+        cursor.execute('SELECT name FROM exercises WHERE id = ? AND username = ?', (exercise_id, username))
+        exercise = cursor.fetchone()
+        if not exercise:
+            return jsonify({'success': False, 'error': 'Exercise not found'})
+        
+        exercise_name = exercise[0]
+        
+        # Build date filter
+        date_filter = ""
+        if time_range != 'all':
+            date_filter = f"AND created_at >= date('now', '-{time_range} days')"
+        
+        # Get all weight entries for the exercise
+        cursor.execute(f'''
+            SELECT weight, reps, created_at
+            FROM exercise_sets 
+            WHERE exercise_id = ? {date_filter}
+            ORDER BY created_at ASC
+        ''', (exercise_id,))
+        
+        rows = cursor.fetchall()
+        conn.close()
+        
+        if not rows:
+            return jsonify({
+                'success': True,
+                'summary': {
+                    'exercise_name': exercise_name,
+                    'current_1rm': 0,
+                    'progress_percentage': 0,
+                    'total_sets': 0
+                }
+            })
+        
+        # Calculate 1RM for each entry
+        one_rms = []
+        for row in rows:
+            weight, reps, date = row
+            one_rm = weight * (1 + reps / 30)  # Epley formula
+            one_rms.append(one_rm)
+        
+        current_1rm = max(one_rms)
+        initial_1rm = one_rms[0] if one_rms else 0
+        progress_percentage = ((current_1rm - initial_1rm) / initial_1rm * 100) if initial_1rm > 0 else 0
+        
+        return jsonify({
+            'success': True,
+            'summary': {
+                'exercise_name': exercise_name,
+                'current_1rm': round(current_1rm, 1),
+                'progress_percentage': round(progress_percentage, 1),
+                'total_sets': len(rows)
+            }
+        })
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/get_workout_summary', methods=['GET'])
+@login_required
+def get_workout_summary():
+    try:
+        username = session.get('username')
+        
+        conn = sqlite3.connect('users.db')
+        cursor = conn.cursor()
+        
+        # Get total workouts
+        cursor.execute('SELECT COUNT(*) FROM workouts WHERE username = ?', (username,))
+        total_workouts = cursor.fetchone()[0]
+        
+        # Get workouts this week
+        cursor.execute('''
+            SELECT COUNT(*) FROM workouts 
+            WHERE username = ? AND date >= date('now', '-7 days')
+        ''', (username,))
+        workouts_this_week = cursor.fetchone()[0]
+        
+        # Get total exercises in workouts
+        cursor.execute('''
+            SELECT COUNT(*) FROM workout_exercises we
+            JOIN workouts w ON we.workout_id = w.id
+            WHERE w.username = ?
+        ''', (username,))
+        total_exercises = cursor.fetchone()[0]
+        
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'summary': {
+                'total_workouts': total_workouts,
+                'workouts_this_week': workouts_this_week,
+                'total_exercises': total_exercises
+            }
+        })
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/share_progress', methods=['POST'])
+@login_required
+def share_progress():
+    try:
+        username = session.get('username')
+        exercise_id = request.form.get('exercise_id')
+        time_range = request.form.get('time_range')
+        communities = request.form.getlist('communities')
+        
+        if not exercise_id or not communities:
+            return jsonify({'success': False, 'error': 'Missing required fields'})
+        
+        conn = sqlite3.connect('users.db')
+        cursor = conn.cursor()
+        
+        # Get exercise name
+        cursor.execute('SELECT name FROM exercises WHERE id = ? AND username = ?', (exercise_id, username))
+        exercise = cursor.fetchone()
+        if not exercise:
+            return jsonify({'success': False, 'error': 'Exercise not found'})
+        
+        exercise_name = exercise[0]
+        
+        # Get progress data
+        date_filter = ""
+        if time_range != 'all':
+            date_filter = f"AND created_at >= date('now', '-{time_range} days')"
+        
+        cursor.execute(f'''
+            SELECT weight, reps, created_at
+            FROM exercise_sets 
+            WHERE exercise_id = ? {date_filter}
+            ORDER BY created_at ASC
+        ''', (exercise_id,))
+        
+        rows = cursor.fetchall()
+        
+        if not rows:
+            return jsonify({'success': False, 'error': 'No progress data found'})
+        
+        # Calculate summary
+        one_rms = [weight * (1 + reps / 30) for weight, reps, date in rows]
+        current_1rm = max(one_rms)
+        initial_1rm = one_rms[0]
+        progress_percentage = ((current_1rm - initial_1rm) / initial_1rm * 100) if initial_1rm > 0 else 0
+        
+        # Create post content
+        post_content = f"""💪 Progress Update: {exercise_name}
+
+📊 Current 1RM: {current_1rm:.1f} kg
+📈 Progress: {progress_percentage:.1f}%
+🏋️ Sets logged: {len(rows)}
+
+Keep pushing! 💯"""
+        
+        # Share to each selected community
+        for community_id in communities:
+            cursor.execute('''
+                INSERT INTO posts (username, community_id, content, created_at)
+                VALUES (?, ?, ?, datetime('now'))
+            ''', (username, community_id, post_content))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({'success': True})
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/share_workouts', methods=['POST'])
+@login_required
+def share_workouts():
+    try:
+        username = session.get('username')
+        communities = request.form.getlist('communities')
+        
+        if not communities:
+            return jsonify({'success': False, 'error': 'No communities selected'})
+        
+        conn = sqlite3.connect('users.db')
+        cursor = conn.cursor()
+        
+        # Get workout summary
+        cursor.execute('SELECT COUNT(*) FROM workouts WHERE username = ?', (username,))
+        total_workouts = cursor.fetchone()[0]
+        
+        cursor.execute('''
+            SELECT COUNT(*) FROM workouts 
+            WHERE username = ? AND date >= date('now', '-7 days')
+        ''', (username,))
+        workouts_this_week = cursor.fetchone()[0]
+        
+        cursor.execute('''
+            SELECT COUNT(*) FROM workout_exercises we
+            JOIN workouts w ON we.workout_id = w.id
+            WHERE w.username = ?
+        ''', (username,))
+        total_exercises = cursor.fetchone()[0]
+        
+        # Create post content
+        post_content = f"""🏋️ Workout Summary
+
+📊 Total workouts: {total_workouts}
+📅 This week: {workouts_this_week}
+💪 Total exercises: {total_exercises}
+
+Consistency is key! 🔥"""
+        
+        # Share to each selected community
+        for community_id in communities:
+            cursor.execute('''
+                INSERT INTO posts (username, community_id, content, created_at)
+                VALUES (?, ?, ?, datetime('now'))
+            ''', (username, community_id, post_content))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({'success': True})
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
 # Workout Management Routes
 @app.route('/create_workout', methods=['POST'])
 def create_workout():
