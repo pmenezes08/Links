@@ -494,7 +494,7 @@ def business_login_required(f):
 
 # Routes
 @app.route('/', methods=['GET', 'POST'])
-@csrf.exempt
+# @csrf.exempt
 def index():
     print("Entering index route")
     logger.info(f"Request method: {request.method}")
@@ -546,7 +546,7 @@ def authorized():
         abort(500)
 
 @app.route('/signup', methods=['GET', 'POST'])
-@csrf.exempt
+# @csrf.exempt
 def signup():
     """User registration page"""
     if request.method == 'GET':
@@ -669,7 +669,7 @@ def logout():
 
 
 @app.route('/login_password', methods=['GET', 'POST'])
-@csrf.exempt
+# @csrf.exempt
 def login_password():
     print("Entering login_password route")
     if 'username' not in session:
@@ -1518,7 +1518,7 @@ def nutrition():
                         You're Grok, built by xAI - create personalized nutrition plans based on the user's profile. Use the following information if provided:
                         - Gender (e.g., Male, Female, Non-binary, Prefer not to say)
                         - Age (e.g., 25 years)
-                        - Weight (e.g., 150 lbs or 68 kg)
+                        - Weight (e.g., 150 lbs or 68 kg) 
                         - Height (e.g., 5'7" or 170 cm)
                         - Activity Level (e.g., Sedentary, Lightly active, Moderately active, Very active, Extremely active)
                         - Nutrition Goal (e.g., Lose weight, Gain muscle, Maintain current weight, Improve energy, Manage a specific health condition)
@@ -2340,7 +2340,7 @@ def post_status():
 
 @app.route('/post_reply', methods=['POST'])
 @login_required
-@csrf.exempt
+# @csrf.exempt
 def post_reply():
     username = session['username']
     
