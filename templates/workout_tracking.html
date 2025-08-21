@@ -49,17 +49,7 @@
                     </form>
                 </div>
 
-                <!-- Date Range Selector -->
-                <div class="date-selector-section">
-                    <h3>View Workouts</h3>
-                    <div class="date-range">
-                        <input type="date" id="start-date" placeholder="Start Date">
-                        <span>to</span>
-                        <input type="date" id="end-date" placeholder="End Date">
-                        <button id="filter-dates" class="filter-btn">Filter</button>
-                        <button id="show-all" class="filter-btn">Show All</button>
-                    </div>
-                </div>
+
 
                 <!-- Add Exercise Section -->
                 <div class="add-exercise-section">
@@ -229,19 +219,7 @@
                 createWorkout();
             });
 
-            // Date range filter
-            $('#filter-dates').click(function() {
-                const startDate = $('#start-date').val();
-                const endDate = $('#end-date').val();
-                loadWorkouts(startDate, endDate);
-            });
 
-            // Show all workouts
-            $('#show-all').click(function() {
-                $('#start-date').val('');
-                $('#end-date').val('');
-                loadWorkouts();
-            });
 
             // Add set form
             $('#add-set-form').submit(function(e) {
@@ -591,16 +569,11 @@
         }
 
         // Workouts Functions
-        function loadWorkouts(startDate = null, endDate = null) {
-            console.log('Loading workouts for date range:', { startDate, endDate });
-            const data = {};
-            if (startDate) data.start_date = startDate;
-            if (endDate) data.end_date = endDate;
-            
+        function loadWorkouts() {
+            console.log('Loading workouts...');
             $.ajax({
                 url: '/get_workouts',
                 method: 'GET',
-                data: data,
                 success: function(response) {
                     console.log('Load workouts response:', response);
                     if (response.success) {

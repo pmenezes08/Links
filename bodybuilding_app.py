@@ -3198,6 +3198,13 @@ def get_workout_exercises():
         
         print(f"Debug: Returning {len(exercises)} exercises for user {username}")
         print(f"Debug: Exercises data: {exercises}")
+        
+        # Debug: Check if exercises have sets_data
+        for exercise in exercises:
+            print(f"Debug: Exercise {exercise['name']} has {len(exercise['sets_data'])} sets")
+            if exercise['sets_data']:
+                print(f"Debug: First set: {exercise['sets_data'][0]}")
+        
         return jsonify({'success': True, 'exercises': exercises})
         
     except Exception as e:
@@ -3438,30 +3445,16 @@ def get_workouts():
         conn = sqlite3.connect('users.db')
         cursor = conn.cursor()
         
-        # Get workouts with optional date range filtering
-        start_date = request.args.get('start_date')
-        end_date = request.args.get('end_date')
-        
-        if start_date and end_date:
-            cursor.execute('''
-                SELECT w.id, w.name, w.date, w.created_at,
-                       COUNT(we.id) as exercise_count
-                FROM workouts w
-                LEFT JOIN workout_exercises we ON w.id = we.workout_id
-                WHERE w.username = ? AND w.date BETWEEN ? AND ?
-                GROUP BY w.id
-                ORDER BY w.date DESC
-            ''', (session['username'], start_date, end_date))
-        else:
-            cursor.execute('''
-                SELECT w.id, w.name, w.date, w.created_at,
-                       COUNT(we.id) as exercise_count
-                FROM workouts w
-                LEFT JOIN workout_exercises we ON w.id = we.workout_id
-                WHERE w.username = ?
-                GROUP BY w.id
-                ORDER BY w.date DESC
-            ''', (session['username'],))
+        # Get workouts
+        cursor.execute('''
+            SELECT w.id, w.name, w.date, w.created_at,
+                   COUNT(we.id) as exercise_count
+            FROM workouts w
+            LEFT JOIN workout_exercises we ON w.id = we.workout_id
+            WHERE w.username = ?
+            GROUP BY w.id
+            ORDER BY w.date DESC
+        ''', (session['username'],))
         
         workouts = []
         for row in cursor.fetchall():

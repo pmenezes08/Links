@@ -7011,8 +7011,8 @@ li, ul, ol, nav, header, footer, main, section, article {
 }
 
 .workout-header {
-    background: rgba(255, 255, 255, 0.02);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    background: rgba(77, 182, 172, 0.05);
+    border-bottom: 1px solid rgba(77, 182, 172, 0.1);
     padding: 8px 0;
 }
 
@@ -7028,7 +7028,7 @@ li, ul, ol, nav, header, footer, main, section, article {
 .workout-header h1 {
     font-size: 1.1rem;
     font-weight: 400;
-    color: #ffffff;
+    color: #4db6ac;
     margin: 0;
 }
 
@@ -7039,7 +7039,7 @@ li, ul, ol, nav, header, footer, main, section, article {
     padding: 8px 15px;
     display: flex;
     gap: 6px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    border-bottom: 1px solid rgba(77, 182, 172, 0.1);
 }
 
 .tab-btn {
@@ -7063,7 +7063,7 @@ li, ul, ol, nav, header, footer, main, section, article {
 }
 
 .tab-btn.active {
-    background: rgba(255, 255, 255, 0.1);
+    background: #4db6ac;
     color: #ffffff;
 }
 
