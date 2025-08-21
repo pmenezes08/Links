@@ -48,6 +48,22 @@
                         <input type="text" id="exercise-name" class="form-control" placeholder="e.g., Bench Press">
                     </div>
                     <div class="form-group">
+                        <label for="muscle-group">Muscle Group</label>
+                        <select id="muscle-group" class="form-control">
+                            <option value="Chest">Chest</option>
+                            <option value="Back">Back</option>
+                            <option value="Shoulders">Shoulders</option>
+                            <option value="Biceps">Biceps</option>
+                            <option value="Triceps">Triceps</option>
+                            <option value="Legs">Legs</option>
+                            <option value="Core">Core</option>
+                            <option value="Cardio">Cardio</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
                         <label for="exercise-weight">Weight (kg)</label>
                         <input type="number" id="exercise-weight" class="form-control" placeholder="0">
                     </div>
@@ -79,10 +95,11 @@
 
         function addExercise() {
             const name = document.getElementById('exercise-name').value;
+            const muscleGroup = document.getElementById('muscle-group').value;
             const weight = document.getElementById('exercise-weight').value;
             const sets = document.getElementById('exercise-sets').value;
 
-            if (!name || !weight || !sets) {
+            if (!name || !muscleGroup || !weight || !sets) {
                 alert('Please fill in all fields');
                 return;
             }
@@ -92,12 +109,14 @@
                 method: 'POST',
                 data: {
                     name: name,
+                    muscle_group: muscleGroup,
                     weight: weight,
                     sets: sets
                 },
                 success: function(response) {
                     if (response.success) {
                         document.getElementById('exercise-name').value = '';
+                        document.getElementById('muscle-group').value = 'Chest'; // Reset to default
                         document.getElementById('exercise-weight').value = '';
                         document.getElementById('exercise-sets').value = '';
                         document.getElementById('exercise-form').classList.remove('show');
@@ -112,13 +131,13 @@
             });
         }
 
-        function loadExercises() {
-                    $.ajax({
-            url: '/get_user_exercises',
-            method: 'GET',
+                function loadExercises() {
+            $.ajax({
+                url: '/get_user_exercises',
+                method: 'GET',
                 success: function(response) {
                     if (response.success) {
-                        displayExercises(response.exercises);
+                        displayExercises(response.muscle_groups);
                     } else {
                         console.log('No exercises found');
                         document.getElementById('exercises-list').innerHTML = '<p style="color: #b0b8b9; text-align: center; font-size: 0.8rem;">No exercises added yet. Click "Add Exercise" to get started!</p>';
@@ -130,49 +149,62 @@
             });
         }
 
-        function displayExercises(exercises) {
+        function displayExercises(muscleGroups) {
             const container = document.getElementById('exercises-list');
             container.innerHTML = '';
 
-            exercises.forEach(function(exercise) {
-                const exerciseHtml = `
-                    <div class="exercise-item" data-id="${exercise.id}">
-                        <div class="exercise-header">
-                            <h3 class="exercise-name">${exercise.name}</h3>
-                            <p class="exercise-date">${exercise.date}</p>
-                        </div>
-                        <div class="exercise-stats">
-                            <div class="stat-item">
-                                <span class="stat-label">Current Weight</span>
-                                <span class="stat-value">${exercise.weight} kg</span>
-                            </div>
-                            <div class="stat-item">
-                                <span class="stat-label">Total Sets</span>
-                                <span class="stat-value">${exercise.sets}</span>
-                            </div>
-                        </div>
-                        <div class="exercise-actions">
-                            <button class="action-btn" onclick="editExercise(${exercise.id})">
-                                <i class="fas fa-edit"></i> Edit
-                            </button>
-                            <button class="action-btn" onclick="addSet(${exercise.id})">
-                                <i class="fas fa-plus"></i> Add Set
-                            </button>
-                            <button class="action-btn delete" onclick="deleteExercise(${exercise.id})">
-                                <i class="fas fa-trash"></i> Delete
-                            </button>
-                        </div>
-                        <div class="workout-sets">
-                            <div id="sets-${exercise.id}">
-                                ${displaySets(exercise.sets_data)}
-                            </div>
-                            <button class="add-set-btn" onclick="addSet(${exercise.id})">
-                                <i class="fas fa-plus"></i> Add New Set
-                            </button>
-                        </div>
+            // Sort muscle groups alphabetically
+            const sortedMuscleGroups = Object.keys(muscleGroups).sort();
+
+            sortedMuscleGroups.forEach(function(muscleGroup) {
+                const exercisesInGroup = muscleGroups[muscleGroup];
+                const muscleGroupHeader = `
+                    <div class="muscle-group-header">
+                        <h3>${muscleGroup}</h3>
                     </div>
                 `;
-                container.innerHTML += exerciseHtml;
+                container.innerHTML += muscleGroupHeader;
+
+                exercisesInGroup.forEach(function(exercise) {
+                    const exerciseHtml = `
+                        <div class="exercise-item" data-id="${exercise.id}">
+                            <div class="exercise-header">
+                                <h3 class="exercise-name">${exercise.name}</h3>
+                                <p class="exercise-date">${exercise.date}</p>
+                            </div>
+                            <div class="exercise-stats">
+                                <div class="stat-item">
+                                    <span class="stat-label">Current Weight</span>
+                                    <span class="stat-value">${exercise.weight} kg</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="stat-label">Total Sets</span>
+                                    <span class="stat-value">${exercise.sets}</span>
+                                </div>
+                            </div>
+                            <div class="exercise-actions">
+                                <button class="action-btn" onclick="editExercise(${exercise.id})">
+                                    <i class="fas fa-edit"></i> Edit
+                                </button>
+                                <button class="action-btn" onclick="addSet(${exercise.id})">
+                                    <i class="fas fa-plus"></i> Add Set
+                                </button>
+                                <button class="action-btn delete" onclick="deleteExercise(${exercise.id})">
+                                    <i class="fas fa-trash"></i> Delete
+                                </button>
+                            </div>
+                            <div class="workout-sets">
+                                <div id="sets-${exercise.id}">
+                                    ${displaySets(exercise.sets_data)}
+                                </div>
+                                <button class="add-set-btn" onclick="addSet(${exercise.id})">
+                                    <i class="fas fa-plus"></i> Add New Set
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                    container.innerHTML += exerciseHtml;
+                });
             });
         }
 

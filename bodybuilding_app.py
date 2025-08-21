@@ -3088,6 +3088,7 @@ def add_exercise():
         name = request.form.get('name')
         weight = request.form.get('weight')
         sets = request.form.get('sets')
+        muscle_group = request.form.get('muscle_group', 'Other')  # Default to 'Other' if not specified
         
         if not all([name, weight, sets]):
             return jsonify({'success': False, 'error': 'All fields are required'})
@@ -3103,6 +3104,7 @@ def add_exercise():
                 name TEXT NOT NULL,
                 weight REAL NOT NULL,
                 sets INTEGER NOT NULL,
+                muscle_group TEXT NOT NULL,
                 date_created TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
@@ -3120,9 +3122,9 @@ def add_exercise():
         
         # Insert the exercise
         cursor.execute('''
-            INSERT INTO exercises (username, name, weight, sets)
-            VALUES (?, ?, ?, ?)
-        ''', (username, name, weight, sets))
+            INSERT INTO exercises (username, name, weight, sets, muscle_group)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (username, name, weight, sets, muscle_group))
         
         exercise_id = cursor.lastrowid
         
@@ -3151,12 +3153,12 @@ def get_user_exercises():
         
         # Get exercises with their sets
         cursor.execute('''
-            SELECT e.id, e.name, e.weight, e.sets, e.date_created,
+            SELECT e.id, e.name, e.weight, e.sets, e.muscle_group, e.date_created,
                    es.id as set_id, es.weight as set_weight, es.date_created as set_date
             FROM exercises e
             LEFT JOIN exercise_sets es ON e.id = es.exercise_id
             WHERE e.username = ?
-            ORDER BY e.date_created DESC, es.date_created DESC
+            ORDER BY e.muscle_group, e.date_created DESC, es.date_created DESC
         ''', (username,))
         
         rows = cursor.fetchall()
@@ -3165,29 +3167,44 @@ def get_user_exercises():
         if not rows:
             return jsonify({'success': False, 'error': 'No exercises found'})
         
-        # Group exercises and their sets
-        exercises = {}
+        # Group exercises by muscle group
+        muscle_groups = {}
         for row in rows:
             exercise_id = row[0]
-            if exercise_id not in exercises:
-                exercises[exercise_id] = {
+            muscle_group = row[4]
+            
+            if muscle_group not in muscle_groups:
+                muscle_groups[muscle_group] = []
+            
+            # Check if exercise already exists in this muscle group
+            existing_exercise = None
+            for exercise in muscle_groups[muscle_group]:
+                if exercise['id'] == exercise_id:
+                    existing_exercise = exercise
+                    break
+            
+            if not existing_exercise:
+                exercise_data = {
                     'id': exercise_id,
                     'name': row[1],
                     'weight': row[2],
                     'sets': row[3],
-                    'date': row[4][:10] if row[4] else 'Unknown',
+                    'muscle_group': muscle_group,
+                    'date': row[5][:10] if row[5] else 'Unknown',
                     'sets_data': []
                 }
+                muscle_groups[muscle_group].append(exercise_data)
+                existing_exercise = exercise_data
             
-            if row[5]:  # If there's a set
-                exercises[exercise_id]['sets_data'].append({
-                    'id': row[5],
+            if row[6]:  # If there's a set
+                existing_exercise['sets_data'].append({
+                    'id': row[6],
                     'exercise_id': exercise_id,
-                    'weight': row[6],
-                    'date': row[7][:10] if row[7] else 'Unknown'
+                    'weight': row[7],
+                    'date': row[8][:10] if row[8] else 'Unknown'
                 })
         
-        return jsonify({'success': True, 'exercises': list(exercises.values())})
+        return jsonify({'success': True, 'muscle_groups': muscle_groups})
         
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
