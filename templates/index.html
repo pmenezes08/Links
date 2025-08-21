@@ -1,31 +1,57 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-	<meta charset="UTF-8">
-	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>Workout X</title>
-	<link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>WorkoutX - Your Fitness Journey</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
 </head>
-<body class="login-page">
-	<div id="intro-popup" class="popup">
-		<div class="popup-content">
-			<h2>Workout X</h2>
-			<p>Choose how you want to sign in</p>
-			<form method="POST" action="/">
-				<input type="text" name="username" placeholder="Enter your username" required>
-				<button type="submit" class="sleek-btn">User Login</button>
-			</form>
-			<div class="login-actions">
-				<button onclick="location.href='{{ url_for('signup') }}'" class="sleek-btn signup-btn">Sign Up</button>
-			</div>
-			<div class="login-options">
-                <button onclick="location.href='{{ url_for('business_login') }}'" class="sleek-btn">Business Login</button>
-                <button onclick="location.href='{{ url_for('login_x') }}'" class="sleek-btn">Sign In with X</button>
+<body>
+    <div class="login-container">
+        <div class="login-card slide-up">
+            <img src="{{ url_for('static', filename='logo.jpg') }}" alt="WorkoutX" class="login-logo">
+            <h1 class="login-title">WorkoutX</h1>
+            <p class="text-center text-muted mb-md">Your personal fitness companion</p>
+            
+            <form method="POST" action="/" class="form">
+                <div class="form-group">
+                    <input type="text" 
+                           name="username" 
+                           class="form-input" 
+                           placeholder="Username" 
+                           required 
+                           autocomplete="username">
+                </div>
+                
+                <button type="submit" class="btn btn-primary btn-full">
+                    Continue
+                </button>
+            </form>
+            
+            <div class="mt-md">
+                <button onclick="location.href='{{ url_for('signup') }}'" 
+                        class="btn btn-secondary btn-full">
+                    Create Account
+                </button>
             </div>
-			{% if error %}
-				<p style="color:#ff4444; margin-top:10px;">{{ error }}</p>
-			{% endif %}
-		</div>
-	</div>
+            
+            <div class="flex flex-col gap-md mt-md">
+                <button onclick="location.href='{{ url_for('business_login') }}'" 
+                        class="btn btn-ghost btn-full">
+                    Business Login
+                </button>
+                <button onclick="location.href='{{ url_for('login_x') }}'" 
+                        class="btn btn-ghost btn-full">
+                    Sign in with X
+                </button>
+            </div>
+            
+            {% if error %}
+                <div class="alert alert-danger mt-md fade-in">
+                    {{ error }}
+                </div>
+            {% endif %}
+        </div>
+    </div>
 </body>
 </html>
