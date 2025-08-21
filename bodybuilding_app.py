@@ -3984,10 +3984,18 @@ def get_individual_workout_summary():
 @app.route('/share_individual_workout', methods=['POST'])
 @login_required
 def share_individual_workout():
+    print("=== SHARE INDIVIDUAL WORKOUT DEBUG ===")
+    print(f"Form data: {request.form}")
+    print(f"Form keys: {list(request.form.keys())}")
+    
     try:
         username = session.get('username')
         workout_id = request.form.get('workout_id')
         communities = request.form.getlist('communities')
+        
+        print(f"Username: {username}")
+        print(f"Workout ID: {workout_id}")
+        print(f"Communities: {communities}")
         
         if not workout_id:
             return jsonify({'success': False, 'error': 'Workout ID is required'})
@@ -4377,6 +4385,10 @@ def get_user_exercises():
 
 
 
+
+@app.route('/test_version')
+def test_version():
+    return jsonify({'version': '1755799275', 'message': 'Updated version loaded'})
 
 if __name__ == '__main__':
     app.run(debug=False, host='0.0.0.0', port=8080)
