@@ -3103,7 +3103,7 @@ def add_exercise():
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 username TEXT NOT NULL,
                 name TEXT NOT NULL,
-                week TEXT NOT NULL,
+                date TEXT NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
@@ -3393,11 +3393,11 @@ def create_workout():
     
     try:
         name = request.form.get('name')
-        week = request.form.get('week')
+        date = request.form.get('date')
         
-        print(f"Debug: name={name}, week={week}")
+        print(f"Debug: name={name}, date={date}")
         
-        if not name or not week:
+        if not name or not date:
             print(f"Debug: Missing required fields")
             return jsonify({'success': False, 'error': 'Missing required fields'})
         
@@ -3418,9 +3418,9 @@ def create_workout():
         
         # Insert workout
         cursor.execute('''
-            INSERT INTO workouts (username, name, week)
+            INSERT INTO workouts (username, name, date)
             VALUES (?, ?, ?)
-        ''', (session['username'], name, week))
+        ''', (session['username'], name, date))
         
         conn.commit()
         conn.close()
@@ -3439,36 +3439,37 @@ def get_workouts():
         conn = sqlite3.connect('users.db')
         cursor = conn.cursor()
         
-        # Get workouts with optional week filtering
-        week_filter = request.args.get('week', 'all')
+        # Get workouts with optional date range filtering
+        start_date = request.args.get('start_date')
+        end_date = request.args.get('end_date')
         
-        if week_filter == 'all':
+        if start_date and end_date:
             cursor.execute('''
-                SELECT w.id, w.name, w.week, w.created_at,
+                SELECT w.id, w.name, w.date, w.created_at,
+                       COUNT(we.id) as exercise_count
+                FROM workouts w
+                LEFT JOIN workout_exercises we ON w.id = we.workout_id
+                WHERE w.username = ? AND w.date BETWEEN ? AND ?
+                GROUP BY w.id
+                ORDER BY w.date DESC
+            ''', (session['username'], start_date, end_date))
+        else:
+            cursor.execute('''
+                SELECT w.id, w.name, w.date, w.created_at,
                        COUNT(we.id) as exercise_count
                 FROM workouts w
                 LEFT JOIN workout_exercises we ON w.id = we.workout_id
                 WHERE w.username = ?
                 GROUP BY w.id
-                ORDER BY w.created_at DESC
+                ORDER BY w.date DESC
             ''', (session['username'],))
-        else:
-            cursor.execute('''
-                SELECT w.id, w.name, w.week, w.created_at,
-                       COUNT(we.id) as exercise_count
-                FROM workouts w
-                LEFT JOIN workout_exercises we ON w.id = we.workout_id
-                WHERE w.username = ? AND w.week = ?
-                GROUP BY w.id
-                ORDER BY w.created_at DESC
-            ''', (session['username'], week_filter))
         
         workouts = []
         for row in cursor.fetchall():
             workout = {
                 'id': row[0],
                 'name': row[1],
-                'week': row[2],
+                'date': row[2],
                 'created_at': row[3],
                 'exercise_count': row[4]
             }
@@ -3495,7 +3496,7 @@ def get_workout_details():
         
         # Get workout details
         cursor.execute('''
-            SELECT w.id, w.name, w.week, w.created_at
+            SELECT w.id, w.name, w.date, w.created_at
             FROM workouts w
             WHERE w.id = ? AND w.username = ?
         ''', (workout_id, session['username']))
@@ -3507,7 +3508,7 @@ def get_workout_details():
         workout = {
             'id': workout_row[0],
             'name': workout_row[1],
-            'week': workout_row[2],
+            'date': workout_row[2],
             'created_at': workout_row[3],
             'exercises': []
         }

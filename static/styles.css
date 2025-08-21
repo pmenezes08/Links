@@ -7726,8 +7726,8 @@ li, ul, ol, nav, header, footer, main, section, article {
     }
 }
 
-/* Week selector styles */
-.week-selector-section {
+/* Date selector styles */
+.date-selector-section {
     background: rgba(255, 255, 255, 0.05);
     border-radius: 10px;
     padding: 15px;
@@ -7736,14 +7736,20 @@ li, ul, ol, nav, header, footer, main, section, article {
     border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-.week-selector-section h3 {
+.date-selector-section h3 {
     margin: 0 0 10px 0;
     font-size: 1rem;
     color: #b0b8b9;
 }
 
-#week-selector {
-    width: 100%;
+.date-range {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.date-range input[type="date"] {
     padding: 8px 12px;
     background: rgba(255, 255, 255, 0.1);
     border: 1px solid rgba(255, 255, 255, 0.2);
@@ -7752,10 +7758,31 @@ li, ul, ol, nav, header, footer, main, section, article {
     font-size: 0.9rem;
 }
 
-#week-selector:focus {
+.date-range input[type="date"]:focus {
     outline: none;
     border-color: #4db6ac;
     box-shadow: 0 0 0 2px rgba(77, 182, 172, 0.2);
+}
+
+.date-range span {
+    color: #b0b8b9;
+    font-size: 0.9rem;
+}
+
+.filter-btn {
+    background: #4db6ac;
+    color: #ffffff;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: all 0.3s ease;
+}
+
+.filter-btn:hover {
+    background: #37a69c;
+    transform: translateY(-1px);
 }
 
 /* Remove emoji from validation messages */
@@ -7782,8 +7809,8 @@ input::after {
     content: none !important;
 }
 
-/* Update workout-week class */
-.workout-week {
+/* Update workout-date class */
+.workout-date {
     color: #4db6ac;
     font-size: 0.8rem;
     font-weight: 500;
