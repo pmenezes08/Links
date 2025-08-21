@@ -3393,6 +3393,49 @@ def delete_set():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
+@app.route('/delete_weight_entry', methods=['POST'])
+@login_required
+def delete_weight_entry():
+    try:
+        username = session.get('username')
+        exercise_id = request.form.get('exercise_id')
+        date = request.form.get('date')
+        weight = request.form.get('weight')
+        reps = request.form.get('reps')
+        
+        if not all([exercise_id, date, weight, reps]):
+            return jsonify({'success': False, 'error': 'All fields are required'})
+        
+        conn = sqlite3.connect('users.db')
+        cursor = conn.cursor()
+        
+        # Verify the exercise belongs to the user
+        cursor.execute('''
+            SELECT id FROM exercises 
+            WHERE id = ? AND username = ?
+        ''', (exercise_id, username))
+        
+        if not cursor.fetchone():
+            return jsonify({'success': False, 'error': 'Exercise not found'})
+        
+        # Delete the specific weight entry
+        cursor.execute('''
+            DELETE FROM exercise_sets 
+            WHERE exercise_id = ? AND weight = ? AND reps = ? AND created_at = ?
+        ''', (exercise_id, weight, reps, date))
+        
+        deleted_count = cursor.rowcount
+        conn.commit()
+        conn.close()
+        
+        if deleted_count == 0:
+            return jsonify({'success': False, 'error': 'Weight entry not found'})
+        
+        return jsonify({'success': True})
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
 # Workout Management Routes
 @app.route('/create_workout', methods=['POST'])
 def create_workout():

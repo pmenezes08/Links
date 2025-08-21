@@ -350,21 +350,11 @@
         function formatDate(dateString) {
             if (!dateString) return '';
             const date = new Date(dateString);
-            const today = new Date();
-            const yesterday = new Date(today);
-            yesterday.setDate(yesterday.getDate() - 1);
-            
-            if (date.toDateString() === today.toDateString()) {
-                return 'Today';
-            } else if (date.toDateString() === yesterday.toDateString()) {
-                return 'Yesterday';
-            } else {
-                return date.toLocaleDateString('en-US', { 
-                    month: 'short', 
-                    day: 'numeric',
-                    year: date.getFullYear() !== today.getFullYear() ? 'numeric' : undefined
-                });
-            }
+            return date.toLocaleDateString('en-US', { 
+                month: 'short', 
+                day: 'numeric',
+                year: date.getFullYear()
+            });
         }
 
         // Performance Tracking Functions (Read-only)
@@ -967,6 +957,9 @@
                         <div class="weight-entry">
                             <span class="weight-value">${entry.weight} kg × ${entry.reps} reps</span>
                             <span class="weight-date">${formatDate(entry.date)}</span>
+                            <button onclick="deleteWeightEntry(${exercise.id}, '${entry.date}', ${entry.weight}, ${entry.reps})" class="delete-weight-btn" title="Delete this weight entry">
+                                <i class="fas fa-trash"></i>
+                            </button>
                         </div>
                     `).join('')
                     : '<div class="no-weights">No weights logged yet</div>';
@@ -1082,6 +1075,33 @@
                     },
                     error: function(xhr, status, error) {
                         alert('Error deleting exercise: ' + error);
+                    }
+                });
+            }
+        }
+
+        function deleteWeightEntry(exerciseId, date, weight, reps) {
+            if (confirm(`Are you sure you want to delete this weight entry: ${weight} kg × ${reps} reps on ${formatDate(date)}?`)) {
+                $.ajax({
+                    url: '/delete_weight_entry',
+                    method: 'POST',
+                    data: {
+                        exercise_id: exerciseId,
+                        date: date,
+                        weight: weight,
+                        reps: reps
+                    },
+                    success: function(response) {
+                        if (response.success) {
+                            loadMuscleGroups();
+                            loadExercisesManagement();
+                            alert('Weight entry deleted successfully!');
+                        } else {
+                            alert('Error deleting weight entry: ' + (response.error || 'Unknown error'));
+                        }
+                    },
+                    error: function(xhr, status, error) {
+                        alert('Error deleting weight entry: ' + error);
                     }
                 });
             }
