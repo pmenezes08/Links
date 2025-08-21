@@ -2337,10 +2337,21 @@ def post_status():
 
 @app.route('/post_reply', methods=['POST'])
 @login_required
+@csrf.exempt
 def post_reply():
     username = session['username']
+    
+    # Debug CSRF token
+    logger.info(f"CSRF validation for user {username}")
+    logger.info(f"Request form data: {dict(request.form)}")
+    logger.info(f"Request headers: {dict(request.headers)}")
+    
     if not validate_csrf():
+        logger.error(f"CSRF validation failed for user {username}")
         return jsonify({'success': False, 'error': 'Invalid CSRF token'}), 400
+    
+    logger.info(f"CSRF validation passed for user {username}")
+    
     post_id = request.form.get('post_id', type=int)
     content = request.form.get('content', '').strip()
     logger.debug(f"Received reply request for {username} to post {post_id} with content: {content}")

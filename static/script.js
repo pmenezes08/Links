@@ -889,6 +889,12 @@ document.addEventListener('DOMContentLoaded', function() {
                     formData.append('image', imageFile);
                 }
 
+                // Debug form data
+                console.log('Form data contents:');
+                for (let [key, value] of formData.entries()) {
+                    console.log(`${key}: ${value}`);
+                }
+
                 console.log("Submitting reply in modal:", { postId, content });
                 $.ajax({
                     url: '/post_reply',
