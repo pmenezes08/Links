@@ -8412,6 +8412,22 @@ input::after {
     border-color: rgba(77, 182, 172, 0.5);
 }
 
+/* Share Modal Styles */
+#share-workouts-modal .modal-content,
+#share-progress-modal .modal-content {
+    max-width: 500px;
+    width: 90%;
+    margin: 5% auto;
+    box-sizing: border-box;
+}
+
+#share-workouts-modal .modal-body,
+#share-progress-modal .modal-body {
+    padding: 20px;
+    max-width: 100%;
+    overflow: hidden;
+}
+
 /* Share Button Styles */
 .share-btn {
     background: rgba(77, 182, 172, 0.1);
@@ -8444,6 +8460,15 @@ input::after {
     display: flex;
     flex-direction: column;
     gap: 16px;
+    max-width: 100%;
+    overflow: hidden;
+}
+
+.share-options {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    max-width: 100%;
 }
 
 .share-preview {
@@ -8483,7 +8508,7 @@ input::after {
 }
 
 .share-options textarea {
-    width: 100%;
+    width: calc(100% - 24px);
     background: rgba(255, 255, 255, 0.05);
     border: 2px solid #4db6ac !important;
     border-radius: 6px;
@@ -8494,6 +8519,8 @@ input::after {
     margin-bottom: 16px;
     font-family: inherit;
     min-height: 80px;
+    max-width: 100%;
+    box-sizing: border-box;
 }
 
 .share-options textarea:focus {

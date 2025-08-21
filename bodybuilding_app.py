@@ -4036,13 +4036,15 @@ def share_individual_workout():
             exercise_list = exercises.split(',')
             content += "\nWorkout Details:\n"
             for exercise in exercise_list:
-                content += f"• {exercise}\n"
+                # Clean up the exercise format
+                exercise_clean = exercise.strip()
+                content += f"• {exercise_clean}\n"
         
         # Add user message if provided
         if user_message:
             content = f"{user_message}\n\n{content}"
         
-        print(f"Debug: Final content = '{content}'")
+        print(f"Debug: Final workout content = '{content}'")
         
         # Share to each selected community
         for community_id in communities:
