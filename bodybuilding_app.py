@@ -3855,8 +3855,8 @@ def share_progress():
         # Get user message if provided
         user_message = request.form.get('user_message', '').strip()
         
-        # Create post content
-        post_content = f"Progress Update: {exercise_name}\n"
+        # Create post content with proper spacing
+        post_content = f"Progress Update: {exercise_name}\n\n"
         post_content += f"Current 1RM: {current_1rm:.1f} kg\n"
         post_content += f"Progress: {progress_percentage:.1f}%\n"
         post_content += f"Sets logged: {len(rows)}"
@@ -3913,8 +3913,8 @@ def share_workouts():
         # Get user message if provided
         user_message = request.form.get('user_message', '').strip()
         
-        # Create post content
-        post_content = f"Workout Summary\n"
+        # Create post content with proper spacing
+        post_content = f"Workout Summary\n\n"
         post_content += f"Total workouts: {total_workouts}\n"
         post_content += f"This week: {workouts_this_week}\n"
         post_content += f"Total exercises: {total_exercises}"
@@ -4028,13 +4028,13 @@ def share_individual_workout():
         user_message = request.form.get('user_message', '').strip()
         print(f"Debug: user_message = '{user_message}'")
         
-        # Create post content
-        content = f"{name} - {date}\n"
-        content += f"Exercises: {exercise_count}\n"
+        # Create post content with proper spacing
+        content = f"{name} - {date}\n\n"
+        content += f"Exercises: {exercise_count}\n\n"
         
         if exercises:
             exercise_list = exercises.split(',')
-            content += "\nWorkout Details:\n"
+            content += "Workout Details:\n"
             for exercise in exercise_list:
                 # Clean up the exercise format
                 exercise_clean = exercise.strip()
