@@ -7829,12 +7829,12 @@ input::after {
     border-radius: 4px;
     font-size: 0.7rem;
     font-weight: normal;
-    white-space: nowrap;
     z-index: 1000;
     pointer-events: none;
     margin-bottom: 8px;
-    max-width: 200px;
-    word-wrap: break-word;
+    max-width: 250px;
+    text-align: center;
+    line-height: 1.2;
 }
 
 [title]:hover::before {
