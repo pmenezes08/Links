@@ -8325,3 +8325,14 @@ input::after {
     background: rgba(255, 107, 107, 0.2);
     border-color: rgba(255, 107, 107, 0.5);
 }
+
+.action-btn.edit {
+    background: rgba(77, 182, 172, 0.1);
+    border-color: rgba(77, 182, 172, 0.3);
+    color: #4db6ac;
+}
+
+.action-btn.edit:hover {
+    background: rgba(77, 182, 172, 0.2);
+    border-color: rgba(77, 182, 172, 0.5);
+}

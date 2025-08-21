@@ -842,7 +842,10 @@
                             <span class="exercise-sets">${exercise.weight} kg × ${exercise.sets} sets × ${exercise.reps} reps</span>
                         </div>
                         <div class="exercise-actions">
-                            <button onclick="removeExerciseFromWorkout(${exercise.id})" class="action-btn">
+                            <button onclick="editExerciseInWorkout(${exercise.id}, '${exercise.exercise_name}', ${exercise.weight}, ${exercise.sets}, ${exercise.reps})" class="action-btn edit" title="Edit exercise">
+                                <i class="fas fa-edit"></i>
+                            </button>
+                            <button onclick="removeExerciseFromWorkout(${exercise.id})" class="action-btn" title="Remove exercise">
                                 <i class="fas fa-trash"></i>
                             </button>
                         </div>
@@ -932,6 +935,77 @@
                 error: function(xhr, status, error) {
                     console.log('Error checking exercise in workout: ' + error);
                     callback(false, null); // Allow adding if check fails
+                }
+            });
+        }
+
+        function editExerciseInWorkout(exerciseId, exerciseName, currentWeight, currentSets, currentReps) {
+            // Populate the form with current values
+            $('#workout-weight').val(currentWeight);
+            $('#workout-sets').val(currentSets);
+            $('#workout-reps').val(currentReps);
+            
+            // Show a dialog to confirm the edit
+            const message = `Edit ${exerciseName}\n\nCurrent: ${currentWeight} kg × ${currentSets} sets × ${currentReps} reps\n\nPlease update the values below and click "Update Exercise" to save changes.`;
+            alert(message);
+            
+            // Change the form submission to update instead of add
+            $('#add-exercise-to-workout-form').off('submit').on('submit', function(e) {
+                e.preventDefault();
+                updateExistingExerciseInWorkout(exerciseId);
+            });
+            
+            // Change the submit button text
+            $('#add-exercise-to-workout-form .submit-btn').html('<i class="fas fa-save"></i> Update Exercise');
+        }
+
+        function updateExistingExerciseInWorkout(exerciseId) {
+            const weight = $('#workout-weight').val();
+            const sets = $('#workout-sets').val();
+            const reps = $('#workout-reps').val();
+            
+            if (!weight || !sets || !reps) {
+                alert('Please fill in all fields');
+                return;
+            }
+            
+            $.ajax({
+                url: '/update_exercise_in_workout',
+                method: 'POST',
+                data: {
+                    workout_exercise_id: exerciseId,
+                    weight: weight,
+                    sets: sets,
+                    reps: reps
+                },
+                success: function(response) {
+                    if (response.success) {
+                        // Clear the form
+                        $('#workout-exercise-select').val('');
+                        $('#workout-weight').val('');
+                        $('#workout-sets').val('');
+                        $('#workout-reps').val('');
+                        
+                        // Reset the form submission handler
+                        $('#add-exercise-to-workout-form').off('submit').on('submit', function(e) {
+                            e.preventDefault();
+                            addExerciseToWorkout();
+                        });
+                        
+                        // Reset the submit button text
+                        $('#add-exercise-to-workout-form .submit-btn').html('<i class="fas fa-plus"></i> Add to Workout');
+                        
+                        // Refresh the workout details
+                        loadWorkoutDetails(currentWorkoutId);
+                        loadWorkouts();
+                        
+                        alert('Exercise updated successfully!');
+                    } else {
+                        alert('Error updating exercise: ' + (response.error || 'Unknown error'));
+                    }
+                },
+                error: function(xhr, status, error) {
+                    alert('Error updating exercise: ' + error);
                 }
             });
         }
