@@ -99,13 +99,17 @@
 
         function toggleExerciseForm() {
             const form = document.getElementById('exercise-form');
+            console.log('Toggling exercise form, current display:', form.style.display);
             form.classList.toggle('show');
+            console.log('Form show class:', form.classList.contains('show'));
         }
 
         function addExercise() {
             const name = document.getElementById('exercise-name').value;
             const muscleGroup = document.getElementById('muscle-group').value;
             const weight = document.getElementById('exercise-weight').value;
+
+            console.log('Adding exercise:', { name, muscleGroup, weight });
 
             if (!name || !muscleGroup || !weight) {
                 alert('Please fill in all fields');
@@ -121,6 +125,7 @@
                     weight: weight
                 },
                 success: function(response) {
+                    console.log('Add exercise response:', response);
                     if (response.success) {
                         document.getElementById('exercise-name').value = '';
                         document.getElementById('muscle-group').value = 'Chest'; // Reset to default
@@ -131,8 +136,9 @@
                         alert('Error adding exercise: ' + response.error);
                     }
                 },
-                error: function() {
-                    alert('Error adding exercise');
+                error: function(xhr, status, error) {
+                    console.log('Add exercise error:', { xhr, status, error });
+                    alert('Error adding exercise: ' + error);
                 }
             });
         }
