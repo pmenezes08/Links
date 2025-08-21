@@ -4028,17 +4028,25 @@ def share_individual_workout():
         user_message = request.form.get('user_message', '').strip()
         print(f"Debug: user_message = '{user_message}'")
         
-        # Create post content with proper spacing
-        content = f"{name} - {date}\n\n"
-        content += f"Exercises: {exercise_count}\n\n"
+        # Create post content with clean format
+        # Extract just the workout name (remove date part)
+        workout_name = name.split(' - ')[0] if ' - ' in name else name
+        
+        content = f"{workout_name}\n\n"
+        content += f"{date}\n"
         
         if exercises:
             exercise_list = exercises.split(',')
-            content += "Workout Details:\n"
             for exercise in exercise_list:
-                # Clean up the exercise format
+                # Clean up the exercise format - extract just the exercise name and details
                 exercise_clean = exercise.strip()
-                content += f"• {exercise_clean}\n"
+                # Remove the " (weight x sets x reps)" part and just show exercise name
+                if '(' in exercise_clean:
+                    exercise_name = exercise_clean.split(' (')[0].strip()
+                    exercise_details = exercise_clean.split('(')[1].split(')')[0].strip()
+                    content += f"{exercise_name} ({exercise_details})\n"
+                else:
+                    content += f"{exercise_clean}\n"
         
         # Add user message if provided
         if user_message:
