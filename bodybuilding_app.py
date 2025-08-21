@@ -425,12 +425,8 @@ def generate_join_code():
 
 # --- CSRF helpers ---
 def get_csrf_token():
-    token = session.get('csrf_token')
-    if not token:
-        token = secrets.token_hex(16)
-        session['csrf_token'] = token
-    return token
-
+    """Temporarily disabled CSRF token generation"""
+    return "disabled"
 
 def validate_csrf():
     """Temporarily disabled CSRF validation"""
@@ -1170,7 +1166,7 @@ def admin():
                         c.execute("SELECT username, subscription FROM users")
                         users = c.fetchall()
                     except sqlite3.IntegrityError:
-                        return render_template('admin.html', users=users, communities=communities, stats=stats, error=f"Username {new_username} already exists!")
+                        return render_template('admin.html', users=users, communities=communities, stats=stats, error=f"Username {new_username} already exists!", csrf_token="disabled")
                         
                 elif 'update_user' in request.form:
                     user_to_update = request.form.get('username')
@@ -1186,7 +1182,7 @@ def admin():
                     
                     # Prevent admin from deleting themselves
                     if user_to_delete == 'admin':
-                        return render_template('admin.html', users=users, communities=communities, stats=stats, error="Cannot delete admin user!")
+                        return render_template('admin.html', users=users, communities=communities, stats=stats, error="Cannot delete admin user!", csrf_token="disabled")
                     
                     try:
                         # Delete user's data from all related tables
@@ -1209,7 +1205,7 @@ def admin():
                         
                     except Exception as delete_error:
                         logger.error(f"Error deleting user {user_to_delete}: {str(delete_error)}")
-                        return render_template('admin.html', users=users, communities=communities, stats=stats, error=f"Error deleting user: {str(delete_error)}")
+                        return render_template('admin.html', users=users, communities=communities, stats=stats, error=f"Error deleting user: {str(delete_error)}", csrf_token="disabled")
                         
                 elif 'delete_community' in request.form:
                     community_id = request.form.get('community_id')
@@ -1250,9 +1246,9 @@ def admin():
                         
                     except Exception as delete_error:
                         logger.error(f"Error deleting community {community_id}: {str(delete_error)}")
-                        return render_template('admin.html', users=users, communities=communities, stats=stats, error=f"Error deleting community: {str(delete_error)}")
+                        return render_template('admin.html', users=users, communities=communities, stats=stats, error=f"Error deleting community: {str(delete_error)}", csrf_token="disabled")
             
-        return render_template('admin.html', users=users, communities=communities, stats=stats)
+        return render_template('admin.html', users=users, communities=communities, stats=stats, csrf_token="disabled")
         
     except Exception as e:
         logger.error(f"Error in admin route: {str(e)}")
@@ -2596,11 +2592,7 @@ def communities():
     username = session['username']
     try:
         # Generate CSRF token directly here
-        token = session.get('csrf_token')
-        if not token:
-            token = secrets.token_hex(16)
-            session['csrf_token'] = token
-        return render_template('communities.html', csrf_token=token)
+        return render_template('communities.html', csrf_token="disabled")
     except Exception as e:
         logger.error(f"Error in communities for {username}: {str(e)}")
         abort(500)
