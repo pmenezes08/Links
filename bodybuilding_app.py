@@ -3071,15 +3071,9 @@ def add_exercise():
         conn = sqlite3.connect('users.db')
         cursor = conn.cursor()
         
-        # Drop and recreate all workout-related tables to ensure correct schema
-        cursor.execute('DROP TABLE IF EXISTS workout_exercises')
-        cursor.execute('DROP TABLE IF EXISTS workouts')
-        cursor.execute('DROP TABLE IF EXISTS exercise_sets')
-        cursor.execute('DROP TABLE IF EXISTS exercises')
-        
-        # Create exercises table
+        # Create tables if they don't exist
         cursor.execute('''
-            CREATE TABLE exercises (
+            CREATE TABLE IF NOT EXISTS exercises (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 username TEXT NOT NULL,
                 name TEXT NOT NULL,
@@ -3087,9 +3081,8 @@ def add_exercise():
             )
         ''')
         
-        # Create exercise_sets table
         cursor.execute('''
-            CREATE TABLE exercise_sets (
+            CREATE TABLE IF NOT EXISTS exercise_sets (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 exercise_id INTEGER NOT NULL,
                 weight REAL NOT NULL,
@@ -3099,9 +3092,8 @@ def add_exercise():
             )
         ''')
         
-        # Create workouts table
         cursor.execute('''
-            CREATE TABLE workouts (
+            CREATE TABLE IF NOT EXISTS workouts (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 username TEXT NOT NULL,
                 name TEXT NOT NULL,
@@ -3110,9 +3102,8 @@ def add_exercise():
             )
         ''')
         
-        # Create workout_exercises table
         cursor.execute('''
-            CREATE TABLE workout_exercises (
+            CREATE TABLE IF NOT EXISTS workout_exercises (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 workout_id INTEGER NOT NULL,
                 exercise_id INTEGER NOT NULL,
