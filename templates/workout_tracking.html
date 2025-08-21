@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Workout Tracking</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v='1.1') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="{{ url_for('static', filename='script.js', v='1.1') }}"></script>
+</head>
+<body>
+    <!-- Sidebar Menu -->
+    <div class="sidebar">
+        <button class="menu-btn">☰ Menu</button>
+        <div class="dropdown-content">
+            <a href="{{ url_for('dashboard') }}">Dashboard</a>
+            <a href="{{ url_for('free_workouts') }}">Free Workouts</a>
+            <a href="{{ url_for('premium_dashboard') }}">Premium Dashboard</a>
+            <a href="{{ url_for('feed') }}">Social</a>
+            <a href="{{ url_for('your_sports') }}">Your Sports</a>
+            <a href="{{ url_for('logout') }}">Logout</a>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="container">
+        <div class="page-header">
+            <button onclick="window.location.href='{{ url_for('gym') }}'" class="back-btn">
+                <i class="fas fa-arrow-left"></i> Back to Gym
+            </button>
+            <h1>Workout Tracking</h1>
+        </div>
+        
+        <div class="tracking-content">
+            <!-- Quick Stats -->
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-icon">
+                        <i class="fas fa-calendar-check"></i>
+                    </div>
+                    <div class="stat-content">
+                        <h3>Workouts This Week</h3>
+                        <p class="stat-number">3</p>
+                    </div>
+                </div>
+                
+                <div class="stat-card">
+                    <div class="stat-icon">
+                        <i class="fas fa-clock"></i>
+                    </div>
+                    <div class="stat-content">
+                        <h3>Total Time</h3>
+                        <p class="stat-number">2h 15m</p>
+                    </div>
+                </div>
+                
+                <div class="stat-card">
+                    <div class="stat-icon">
+                        <i class="fas fa-fire"></i>
+                    </div>
+                    <div class="stat-content">
+                        <h3>Calories Burned</h3>
+                        <p class="stat-number">1,250</p>
+                    </div>
+                </div>
+                
+                <div class="stat-card">
+                    <div class="stat-icon">
+                        <i class="fas fa-trophy"></i>
+                    </div>
+                    <div class="stat-content">
+                        <h3>Current Streak</h3>
+                        <p class="stat-number">5 days</p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Recent Workouts -->
+            <div class="recent-workouts">
+                <h2>Recent Workouts</h2>
+                <div class="workout-list">
+                    <div class="workout-item">
+                        <div class="workout-date">
+                            <span class="date">Today</span>
+                            <span class="time">2:30 PM</span>
+                        </div>
+                        <div class="workout-details">
+                            <h4>Upper Body Strength</h4>
+                            <p>45 minutes • 8 exercises</p>
+                        </div>
+                        <div class="workout-actions">
+                            <button class="view-btn" onclick="viewWorkout(1)">
+                                <i class="fas fa-eye"></i> View
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="workout-item">
+                        <div class="workout-date">
+                            <span class="date">Yesterday</span>
+                            <span class="time">6:15 PM</span>
+                        </div>
+                        <div class="workout-details">
+                            <h4>Lower Body Power</h4>
+                            <p>60 minutes • 6 exercises</p>
+                        </div>
+                        <div class="workout-actions">
+                            <button class="view-btn" onclick="viewWorkout(2)">
+                                <i class="fas fa-eye"></i> View
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="workout-item">
+                        <div class="workout-date">
+                            <span class="date">2 days ago</span>
+                            <span class="time">7:00 AM</span>
+                        </div>
+                        <div class="workout-details">
+                            <h4>Cardio Session</h4>
+                            <p>30 minutes • HIIT</p>
+                        </div>
+                        <div class="workout-actions">
+                            <button class="view-btn" onclick="viewWorkout(3)">
+                                <i class="fas fa-eye"></i> View
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Start New Workout -->
+            <div class="start-workout-section">
+                <h2>Start New Workout</h2>
+                <div class="workout-options">
+                    <button class="workout-option-btn" onclick="startQuickWorkout()">
+                        <i class="fas fa-bolt"></i>
+                        <span>Quick Workout</span>
+                        <small>15-30 minutes</small>
+                    </button>
+                    
+                    <button class="workout-option-btn" onclick="startCustomWorkout()">
+                        <i class="fas fa-edit"></i>
+                        <span>Custom Workout</span>
+                        <small>Build your own</small>
+                    </button>
+                    
+                    <button class="workout-option-btn" onclick="startGeneratedWorkout()">
+                        <i class="fas fa-magic"></i>
+                        <span>Generated Workout</span>
+                        <small>AI-powered</small>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        function viewWorkout(id) {
+            alert(`Viewing workout ${id}. This feature will be implemented soon.`);
+        }
+        
+        function startQuickWorkout() {
+            alert('Starting quick workout. This feature will be implemented soon.');
+        }
+        
+        function startCustomWorkout() {
+            alert('Starting custom workout. This feature will be implemented soon.');
+        }
+        
+        function startGeneratedWorkout() {
+            window.location.href = '{{ url_for("workout_generator") }}';
+        }
+    </script>
+</body>
+</html>

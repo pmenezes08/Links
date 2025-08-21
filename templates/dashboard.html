@@ -10,17 +10,12 @@
 	<div class="sidebar">
 		<button class="menu-btn">☰ Menu</button>
 		<div class="dropdown-content">
-			<a href="/profile">Profile</a>
-			{% if session['username'] == 'admin' %}
-			<a href="/admin">Admin Dashboard</a>
-			<a href="/admin_profile">Admin Profile</a>
-			{% endif %}
-			<a href="/user_chat">Messages</a>
-			<a href="/premium_dashboard">Premium Dashboard</a>
-			<a href="/feed">Social</a>
-			<a href="/communities">Your Communities</a>
-			<a href="/subscribe">Subscribe</a>
-			<a href="/logout">Logout</a>
+			<a href="{{ url_for('dashboard') }}">Dashboard</a>
+			<a href="{{ url_for('free_workouts') }}">Free Workouts</a>
+			<a href="{{ url_for('premium_dashboard') }}">Premium Dashboard</a>
+			<a href="{{ url_for('feed') }}">Social</a>
+			<a href="{{ url_for('your_sports') }}">Your Sports</a>
+			<a href="{{ url_for('logout') }}">Logout</a>
 		</div>
 	</div>
 	<div class="container">

@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gym</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v='1.1') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="{{ url_for('static', filename='script.js', v='1.1') }}"></script>
+</head>
+<body>
+    <!-- Sidebar Menu -->
+    <div class="sidebar">
+        <button class="menu-btn">☰ Menu</button>
+        <div class="dropdown-content">
+            <a href="{{ url_for('dashboard') }}">Dashboard</a>
+            <a href="{{ url_for('free_workouts') }}">Free Workouts</a>
+            <a href="{{ url_for('premium_dashboard') }}">Premium Dashboard</a>
+            <a href="{{ url_for('feed') }}">Social</a>
+            <a href="{{ url_for('your_sports') }}">Your Sports</a>
+            <a href="{{ url_for('logout') }}">Logout</a>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="container">
+        <div class="page-header">
+            <button onclick="window.location.href='{{ url_for('your_sports') }}'" class="back-btn">
+                <i class="fas fa-arrow-left"></i> Back to Sports
+            </button>
+            <h1>Gym</h1>
+        </div>
+        
+        <div class="gym-sections">
+            <!-- Workout Generator Section -->
+            <div class="gym-section-card" onclick="window.location.href='{{ url_for('workout_generator') }}'">
+                <div class="section-icon">
+                    <i class="fas fa-magic"></i>
+                </div>
+                <div class="section-content">
+                    <h3>Workout Generator</h3>
+                    <p>Generate personalized workout plans based on your goals and fitness level</p>
+                    <div class="section-features">
+                        <span class="feature-tag">AI-Powered</span>
+                        <span class="feature-tag">Personalized</span>
+                        <span class="feature-tag">Multiple Goals</span>
+                    </div>
+                </div>
+                <div class="section-arrow">
+                    <i class="fas fa-chevron-right"></i>
+                </div>
+            </div>
+            
+            <!-- Workout Tracking Section -->
+            <div class="gym-section-card" onclick="window.location.href='{{ url_for('workout_tracking') }}'">
+                <div class="section-icon">
+                    <i class="fas fa-chart-line"></i>
+                </div>
+                <div class="section-content">
+                    <h3>Workout Tracking</h3>
+                    <p>Track your workouts, progress, and performance over time</p>
+                    <div class="section-features">
+                        <span class="feature-tag">Progress Tracking</span>
+                        <span class="feature-tag">Analytics</span>
+                        <span class="feature-tag">History</span>
+                    </div>
+                </div>
+                <div class="section-arrow">
+                    <i class="fas fa-chevron-right"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

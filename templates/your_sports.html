@@ -1,148 +1,83 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-	<meta charset="UTF-8">
-	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>Your Communities</title>
-	<link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
-	<meta name="csrf-token" content="{{ csrf_token }}">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Your Sports</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v='1.1') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="{{ url_for('static', filename='script.js', v='1.1') }}"></script>
 </head>
 <body>
-	<div class="sidebar">
-		<button class="menu-btn">☰ Menu<span id="unread-badge" class="unread-badge">0</span></button>
-		<div class="dropdown-content">
-			{% if session['username'] == 'admin' %}
-			<a href="/admin">Admin Dashboard</a>
-			{% endif %}
-			<a href="/profile">Profile</a>
-			<a href="/user_chat">Messages</a>
-			<a href="/premium_dashboard">Premium Dashboard</a>
-			<a href="/communities">Your Communities</a>
-			<a href="/nutrition">Nutrition</a>
-			<a href="/blood_test_analysis">Blood Test Analysis</a>
-			<a href="/chat">Chat with Grok</a>
-			<a href="/health_news">Health News</a>
-			<a href="/subscribe">Subscribe</a>
-			<a href="/logout">Logout</a>
-		</div>
-	</div>
-	<div class="container">
-		<h1>Your Communities</h1>
-		
-		<!-- Community Creation Section -->
-		<div class="community-creation-section">
-			<button id="buildCommunityBtn" class="build-community-btn">Build your community</button>
-			
-			<div id="communityForm" class="community-form" style="display: none;">
-				<h3>Create New Community</h3>
-				<form id="createCommunityForm">
-					<div class="form-group">
-						<label for="communityType">Community Type:</label>
-						<select id="communityType" name="type" required>
-							<option value="">Select a type...</option>
-							<option value="Gym">Gym</option>
-							<option value="Golf">Golf</option>
-							<option value="Running Club">Running Club</option>
-						</select>
-					</div>
-					<div class="form-group">
-						<label for="communityName">Community Name:</label>
-						<input type="text" id="communityName" name="name" placeholder="Enter community name..." required>
-					</div>
-					<div class="form-actions">
-						<button type="submit" class="create-community-btn">Create your community</button>
-						<button type="button" id="cancelCommunityBtn" class="cancel-btn">Cancel</button>
-					</div>
-				</form>
-			</div>
-		</div>
+    <!-- Sidebar Menu -->
+    <div class="sidebar">
+        <button class="menu-btn">☰ Menu</button>
+        <div class="dropdown-content">
+            <a href="{{ url_for('dashboard') }}">Dashboard</a>
+            <a href="{{ url_for('free_workouts') }}">Free Workouts</a>
+            <a href="{{ url_for('premium_dashboard') }}">Premium Dashboard</a>
+            <a href="{{ url_for('feed') }}">Social</a>
+            <a href="{{ url_for('your_sports') }}">Your Sports</a>
+            <a href="{{ url_for('logout') }}">Logout</a>
+        </div>
+    </div>
 
-		<!-- User's Communities Section -->
-		<div class="user-communities-section">
-			<h3>Your Communities</h3>
-			<div id="communitiesList" class="communities-list">
-				<!-- Communities will be loaded here -->
-			</div>
-		</div>
-
-		<button onclick="location.href='/dashboard'" class="go-back-btn">Back</button>
-	</div>
-
-	<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-	<script src="{{ url_for('static', filename='script.js') }}"></script>
-	<script>
-		$(document).ready(function() {
-			// Load user's communities
-			loadUserCommunities();
-
-			// Toggle community creation form
-			$('#buildCommunityBtn').click(function() {
-				$('#communityForm').slideToggle();
-			});
-
-			$('#cancelCommunityBtn').click(function() {
-				$('#communityForm').slideUp();
-			});
-
-			// Handle community creation
-			$('#createCommunityForm').submit(function(e) {
-				e.preventDefault();
-				
-				const formData = {
-					name: $('#communityName').val(),
-					type: $('#communityType').val(),
-					csrf_token: $('meta[name="csrf-token"]').attr('content')
-				};
-
-				$.ajax({
-					url: '/create_community',
-					method: 'POST',
-					data: formData,
-					success: function(response) {
-						if (response.success) {
-							alert('Community created successfully! Join code: ' + response.join_code);
-							$('#communityForm').slideUp();
-							$('#createCommunityForm')[0].reset();
-							loadUserCommunities(); // Reload communities
-						} else {
-							alert('Error: ' + response.error);
-						}
-					},
-					error: function() {
-						alert('Error creating community. Please try again.');
-					}
-				});
-			});
-		});
-
-		function loadUserCommunities() {
-			$.ajax({
-				url: '/get_user_communities',
-				method: 'GET',
-				success: function(response) {
-					if (response.success) {
-						const communitiesList = $('#communitiesList');
-						communitiesList.empty();
-						
-						if (response.communities.length === 0) {
-							communitiesList.html('<p class="no-communities">You haven\'t joined any communities yet.</p>');
-						} else {
-							response.communities.forEach(function(community) {
-								const communityBtn = $(`
-									<button class="community-btn" onclick="event.stopPropagation(); window.location.href='/community_feed/${community.id}';">
-										${community.name} - Social Feed
-									</button>
-								`);
-								communitiesList.append(communityBtn);
-							});
-						}
-					}
-				},
-				error: function() {
-					$('#communitiesList').html('<p class="error">Error loading communities.</p>');
-				}
-			});
-		}
-	</script>
+    <!-- Main Content -->
+    <div class="container">
+        <h1>Your Sports</h1>
+        
+        <div class="sports-grid">
+            <!-- Gym Card -->
+            <div class="sport-card" onclick="window.location.href='{{ url_for('gym') }}'">
+                <div class="sport-icon">
+                    <i class="fas fa-dumbbell"></i>
+                </div>
+                <h3>Gym</h3>
+                <p>Workout generator and tracking</p>
+            </div>
+            
+            <!-- Future Sports Cards (placeholder) -->
+            <div class="sport-card disabled">
+                <div class="sport-icon">
+                    <i class="fas fa-running"></i>
+                </div>
+                <h3>Running</h3>
+                <p>Coming soon</p>
+            </div>
+            
+            <div class="sport-card disabled">
+                <div class="sport-icon">
+                    <i class="fas fa-swimming-pool"></i>
+                </div>
+                <h3>Swimming</h3>
+                <p>Coming soon</p>
+            </div>
+            
+            <div class="sport-card disabled">
+                <div class="sport-icon">
+                    <i class="fas fa-bicycle"></i>
+                </div>
+                <h3>Cycling</h3>
+                <p>Coming soon</p>
+            </div>
+            
+            <div class="sport-card disabled">
+                <div class="sport-icon">
+                    <i class="fas fa-basketball-ball"></i>
+                </div>
+                <h3>Basketball</h3>
+                <p>Coming soon</p>
+            </div>
+            
+            <div class="sport-card disabled">
+                <div class="sport-icon">
+                    <i class="fas fa-futbol"></i>
+                </div>
+                <h3>Soccer</h3>
+                <p>Coming soon</p>
+            </div>
+        </div>
+    </div>
 </body>
 </html>

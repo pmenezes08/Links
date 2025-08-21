@@ -3062,6 +3062,30 @@ def static_uploaded_file(filename):
         logger.error(f"Error serving static image {filename}: {str(e)}")
         return "Error serving image", 500
 
+@app.route('/your_sports')
+@login_required
+def your_sports():
+    username = session.get('username')
+    return render_template('your_sports.html', username=username)
+
+@app.route('/gym')
+@login_required
+def gym():
+    username = session.get('username')
+    return render_template('gym.html', username=username)
+
+@app.route('/workout_generator')
+@login_required
+def workout_generator():
+    username = session.get('username')
+    return render_template('workout_generator.html', username=username)
+
+@app.route('/workout_tracking')
+@login_required
+def workout_tracking():
+    username = session.get('username')
+    return render_template('workout_tracking.html', username=username)
+
 if __name__ == '__main__':
     # Ensure database exists and is properly initialized
     try:
