@@ -3930,6 +3930,49 @@ Consistency is key! 🔥"""
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
+@app.route('/get_individual_workout_summary', methods=['GET'])
+@login_required
+def get_individual_workout_summary():
+    try:
+        username = session.get('username')
+        workout_id = request.args.get('workout_id')
+        
+        if not workout_id:
+            return jsonify({'success': False, 'error': 'Workout ID is required'})
+        
+        conn = sqlite3.connect('users.db')
+        cursor = conn.cursor()
+        
+        # Get workout details
+        cursor.execute('''
+            SELECT w.name, w.date, COUNT(we.id) as exercise_count, SUM(we.sets) as total_sets
+            FROM workouts w
+            LEFT JOIN workout_exercises we ON w.id = we.workout_id
+            WHERE w.id = ? AND w.username = ?
+            GROUP BY w.id
+        ''', (workout_id, username))
+        
+        row = cursor.fetchone()
+        conn.close()
+        
+        if not row:
+            return jsonify({'success': False, 'error': 'Workout not found'})
+        
+        name, date, exercise_count, total_sets = row
+        
+        return jsonify({
+            'success': True,
+            'summary': {
+                'name': name,
+                'date': date,
+                'exercise_count': exercise_count or 0,
+                'total_sets': total_sets or 0
+            }
+        })
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
 # Workout Management Routes
 @app.route('/create_workout', methods=['POST'])
 def create_workout():

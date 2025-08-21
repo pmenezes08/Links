@@ -8542,3 +8542,39 @@ input::after {
     border-color: rgba(77, 182, 172, 0.5);
     transform: translateY(-1px);
 }
+
+/* Workout Item Layout */
+.workout-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 8px;
+    transition: all 0.2s ease;
+}
+
+.workout-item:hover {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(255, 255, 255, 0.12);
+}
+
+.workout-content {
+    flex: 1;
+    cursor: pointer;
+}
+
+.workout-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.share-btn.small {
+    padding: 4px 8px;
+    font-size: 0.7rem;
+    border-radius: 4px;
+    min-width: auto;
+}

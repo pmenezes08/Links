@@ -114,14 +114,9 @@
             <div class="workouts-container">
                 <div class="header-section">
                     <h3>Your Workouts</h3>
-                    <div class="header-actions">
-                        <button class="add-btn" onclick="openCreateWorkoutModal()">
-                            <i class="fas fa-plus"></i> Create Workout
-                        </button>
-                        <button class="share-btn" onclick="openShareWorkoutsModal()" title="Share Workouts">
-                            <i class="fas fa-share-alt"></i>
-                        </button>
-                    </div>
+                    <button class="add-btn" onclick="openCreateWorkoutModal()">
+                        <i class="fas fa-plus"></i> Create Workout
+                    </button>
                 </div>
                 
                 <div class="workouts-list-section">
@@ -828,16 +823,23 @@
         function displayWorkouts(workouts) {
             const html = workouts && workouts.length > 0 ? 
                 workouts.map(workout => `
-                    <div class="workout-item" onclick="openWorkoutModal(${workout.id}, '${workout.name}')">
-                        <div class="workout-header">
-                            <h4 class="workout-name">${workout.name}</h4>
-                            <span class="workout-date">${formatDate(workout.date)}</span>
-                        </div>
-                        <div class="workout-stats">
-                            <div class="stat">
-                                <span class="stat-label">Exercises</span>
-                                <span class="stat-value">${workout.exercise_count || 0}</span>
+                    <div class="workout-item">
+                        <div class="workout-content" onclick="openWorkoutModal(${workout.id}, '${workout.name}')">
+                            <div class="workout-header">
+                                <h4 class="workout-name">${workout.name}</h4>
+                                <span class="workout-date">${formatDate(workout.date)}</span>
                             </div>
+                            <div class="workout-stats">
+                                <div class="stat">
+                                    <span class="stat-label">Exercises</span>
+                                    <span class="stat-value">${workout.exercise_count || 0}</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="workout-actions">
+                            <button class="share-btn small" onclick="event.stopPropagation(); openShareWorkoutModal(${workout.id}, '${workout.name}')" title="Share this workout">
+                                <i class="fas fa-share-alt"></i>
+                            </button>
                         </div>
                     </div>
                 `).join('') : '<p>No workouts found for selected date range</p>';
@@ -1287,6 +1289,12 @@
             loadUserCommunities('workout-communities-list');
         }
 
+        function openShareWorkoutModal(workoutId, workoutName) {
+            $('#share-workouts-modal').show();
+            generateIndividualWorkoutSummary(workoutId, workoutName);
+            loadUserCommunities('workout-communities-list');
+        }
+
         function closeShareWorkoutsModal() {
             $('#share-workouts-modal').hide();
         }
@@ -1359,6 +1367,35 @@
             });
         }
 
+        function generateIndividualWorkoutSummary(workoutId, workoutName) {
+            $.ajax({
+                url: '/get_individual_workout_summary',
+                method: 'GET',
+                data: { workout_id: workoutId },
+                success: function(response) {
+                    if (response.success) {
+                        const summary = response.summary;
+                        const summaryHtml = `
+                            <div class="summary-item">
+                                <strong>${workoutName}</strong>
+                                <div class="summary-stats">
+                                    <span>Date: ${summary.date}</span>
+                                    <span>Exercises: ${summary.exercise_count}</span>
+                                    <span>Total sets: ${summary.total_sets}</span>
+                                </div>
+                            </div>
+                        `;
+                        $('#workout-summary').html(summaryHtml);
+                    } else {
+                        $('#workout-summary').html('<p>Error loading workout summary.</p>');
+                    }
+                },
+                error: function() {
+                    $('#workout-summary').html('<p>Error loading workout summary.</p>');
+                }
+            });
+        }
+
         function loadUserCommunities(containerId) {
             $.ajax({
                 url: '/get_user_communities',
@@ -1367,8 +1404,8 @@
                     if (response.success && response.communities) {
                         const communitiesHtml = response.communities.map(community => `
                             <div class="community-option">
-                                <input type="checkbox" id="community-${community.id}" value="${community.id}">
-                                <label for="community-${community.id}">${community.name}</label>
+                                <input type="checkbox" id="${containerId}-community-${community.id}" value="${community.id}">
+                                <label for="${containerId}-community-${community.id}">${community.name}</label>
                             </div>
                         `).join('');
                         $(`#${containerId}`).html(communitiesHtml);
