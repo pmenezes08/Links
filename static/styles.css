@@ -6342,64 +6342,82 @@ select:focus {
 /* ===== WORKOUT TRACKING ===== */
 
 .tracking-content {
-    max-width: 600px;
+    max-width: 700px;
     margin: 0 auto;
+    padding: 0 20px;
 }
 
 .tracking-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 15px;
-    padding: 10px;
-    background: #2d3839;
-    border-radius: 6px;
-    border: 1px solid #3a4a4b;
+    margin-bottom: 30px;
+    padding: 0;
+    background: none;
+    border: none;
 }
 
 .tracking-header h2 {
     color: #ffffff;
-    font-size: 0.9rem;
+    font-size: 1.4rem;
     margin: 0;
-    font-weight: 600;
+    font-weight: 300;
+    letter-spacing: 0.5px;
 }
 
 .add-exercise-btn {
-    background: #4db6ac;
+    background: linear-gradient(135deg, #4db6ac 0%, #37a69c 100%);
     color: white;
     border: none;
-    padding: 4px 8px;
-    border-radius: 3px;
-    font-size: 0.65rem;
+    padding: 8px 16px;
+    border-radius: 20px;
+    font-size: 0.75rem;
     cursor: pointer;
     transition: all 0.3s ease;
     display: flex;
     align-items: center;
-    gap: 3px;
+    gap: 6px;
+    font-weight: 500;
+    box-shadow: 0 2px 10px rgba(77, 182, 172, 0.3);
 }
 
 .add-exercise-btn:hover {
-    background: #37a69c;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(77, 182, 172, 0.4);
 }
 
 .exercise-form {
-    background: #2d3839;
-    border-radius: 6px;
-    padding: 10px;
-    margin-bottom: 15px;
-    border: 1px solid #3a4a4b;
+    background: rgba(45, 56, 57, 0.6);
+    backdrop-filter: blur(10px);
+    border-radius: 16px;
+    padding: 24px;
+    margin-bottom: 30px;
+    border: 1px solid rgba(77, 182, 172, 0.2);
     display: none;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
 }
 
 .exercise-form.show {
     display: block;
+    animation: fadeInUp 0.3s ease;
+}
+
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 .form-row {
     display: flex;
-    gap: 8px;
-    margin-bottom: 8px;
-    align-items: center;
+    gap: 16px;
+    margin-bottom: 16px;
+    align-items: flex-end;
 }
 
 .form-group {
@@ -6409,25 +6427,30 @@ select:focus {
 .form-group label {
     display: block;
     color: #b0b8b9;
-    font-size: 0.6rem;
-    margin-bottom: 2px;
+    font-size: 0.7rem;
+    margin-bottom: 6px;
     font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
 }
 
 .form-control {
     width: 100%;
-    padding: 4px 6px;
-    border: 1px solid #3a4a4b;
-    border-radius: 3px;
-    font-size: 0.65rem;
-    background: #1a2324;
+    padding: 12px 16px;
+    border: 1px solid rgba(77, 182, 172, 0.3);
+    border-radius: 12px;
+    font-size: 0.8rem;
+    background: rgba(26, 35, 36, 0.8);
     color: #ffffff;
-    transition: border-color 0.3s ease;
+    transition: all 0.3s ease;
+    backdrop-filter: blur(5px);
 }
 
 .form-control:focus {
     outline: none;
     border-color: #4db6ac;
+    box-shadow: 0 0 0 3px rgba(77, 182, 172, 0.1);
+    background: rgba(26, 35, 36, 0.9);
 }
 
 .form-control::placeholder {
@@ -6435,105 +6458,140 @@ select:focus {
 }
 
 .submit-btn {
-    background: #4db6ac;
+    background: linear-gradient(135deg, #4db6ac 0%, #37a69c 100%);
     color: white;
     border: none;
-    padding: 4px 8px;
-    border-radius: 3px;
-    font-size: 0.65rem;
+    padding: 12px 24px;
+    border-radius: 12px;
+    font-size: 0.8rem;
     cursor: pointer;
     transition: all 0.3s ease;
-    margin-top: 8px;
+    margin-top: 16px;
+    font-weight: 500;
+    box-shadow: 0 2px 10px rgba(77, 182, 172, 0.3);
 }
 
 .submit-btn:hover {
-    background: #37a69c;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(77, 182, 172, 0.4);
 }
 
 .exercises-list {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 20px;
 }
 
 .exercise-item {
-    background: #2d3839;
-    border-radius: 6px;
-    padding: 8px;
-    border: 1px solid #3a4a4b;
+    background: rgba(45, 56, 57, 0.4);
+    backdrop-filter: blur(10px);
+    border-radius: 16px;
+    padding: 20px;
+    border: 1px solid rgba(77, 182, 172, 0.15);
     transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+.exercise-item::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, #4db6ac 0%, #37a69c 100%);
+    transform: scaleX(0);
+    transition: transform 0.3s ease;
+}
+
+.exercise-item:hover::before {
+    transform: scaleX(1);
 }
 
 .exercise-item:hover {
-    border-color: #4db6ac;
+    border-color: rgba(77, 182, 172, 0.3);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
 }
 
 .exercise-header {
     display: flex;
     justify-content: space-between;
-    align-items: center;
-    margin-bottom: 6px;
+    align-items: flex-start;
+    margin-bottom: 16px;
 }
 
 .exercise-name {
     color: #ffffff;
-    font-size: 0.75rem;
-    font-weight: 600;
+    font-size: 1.1rem;
+    font-weight: 500;
     margin: 0;
+    letter-spacing: 0.3px;
 }
 
 .exercise-date {
     color: #b0b8b9;
-    font-size: 0.6rem;
+    font-size: 0.7rem;
     margin: 0;
+    font-weight: 400;
+    opacity: 0.8;
 }
 
 .exercise-stats {
     display: flex;
-    gap: 12px;
-    margin-bottom: 6px;
+    gap: 24px;
+    margin-bottom: 16px;
 }
 
 .stat-item {
     display: flex;
     flex-direction: column;
-    align-items: center;
+    align-items: flex-start;
 }
 
 .stat-label {
     color: #b0b8b9;
-    font-size: 0.55rem;
-    margin-bottom: 1px;
+    font-size: 0.65rem;
+    margin-bottom: 4px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    opacity: 0.8;
 }
 
 .stat-value {
     color: #4db6ac;
-    font-size: 0.7rem;
+    font-size: 1.2rem;
     font-weight: 600;
+    letter-spacing: 0.5px;
 }
 
 .exercise-actions {
     display: flex;
-    gap: 6px;
+    gap: 8px;
     justify-content: flex-end;
-    margin-bottom: 6px;
+    margin-bottom: 16px;
 }
 
 .action-btn {
-    background: #1a2324;
+    background: rgba(26, 35, 36, 0.6);
     color: #b0b8b9;
-    border: 1px solid #3a4a4b;
-    padding: 3px 6px;
-    border-radius: 2px;
-    font-size: 0.55rem;
+    border: 1px solid rgba(77, 182, 172, 0.2);
+    padding: 6px 12px;
+    border-radius: 8px;
+    font-size: 0.65rem;
     cursor: pointer;
     transition: all 0.3s ease;
+    font-weight: 500;
+    backdrop-filter: blur(5px);
 }
 
 .action-btn:hover {
     background: #4db6ac;
     color: white;
     border-color: #4db6ac;
+    transform: translateY(-1px);
 }
 
 .action-btn.delete:hover {
@@ -6542,42 +6600,58 @@ select:focus {
 }
 
 .workout-sets {
-    margin-top: 6px;
-    padding-top: 6px;
-    border-top: 1px solid #3a4a4b;
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid rgba(77, 182, 172, 0.15);
 }
 
 .set-item {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 3px 0;
-    font-size: 0.65rem;
+    padding: 8px 0;
+    font-size: 0.75rem;
+    transition: all 0.3s ease;
+}
+
+.set-item:hover {
+    background: rgba(77, 182, 172, 0.05);
+    border-radius: 8px;
+    padding: 8px 12px;
+    margin: 0 -12px;
 }
 
 .set-number {
     color: #b0b8b9;
     font-weight: 500;
+    font-size: 0.7rem;
 }
 
 .set-weight {
     color: #4db6ac;
     font-weight: 600;
+    font-size: 0.8rem;
 }
 
 .set-actions {
     display: flex;
-    gap: 4px;
+    gap: 6px;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.set-item:hover .set-actions {
+    opacity: 1;
 }
 
 .set-btn {
     background: none;
     border: none;
     color: #b0b8b9;
-    font-size: 0.6rem;
+    font-size: 0.7rem;
     cursor: pointer;
-    padding: 1px 3px;
-    border-radius: 2px;
+    padding: 4px 6px;
+    border-radius: 4px;
     transition: all 0.3s ease;
 }
 
@@ -6591,22 +6665,25 @@ select:focus {
 }
 
 .add-set-btn {
-    background: #1a2324;
+    background: rgba(77, 182, 172, 0.1);
     color: #4db6ac;
-    border: 1px solid #3a4a4b;
-    padding: 3px 6px;
-    border-radius: 2px;
-    font-size: 0.55rem;
+    border: 1px solid rgba(77, 182, 172, 0.3);
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-size: 0.7rem;
     cursor: pointer;
     transition: all 0.3s ease;
-    margin-top: 6px;
+    margin-top: 12px;
     width: 100%;
+    font-weight: 500;
+    backdrop-filter: blur(5px);
 }
 
 .add-set-btn:hover {
     background: #4db6ac;
     color: white;
     border-color: #4db6ac;
+    transform: translateY(-1px);
 }
 
 /* ===== RESPONSIVE DESIGN ===== */
@@ -6660,18 +6737,34 @@ select:focus {
         font-size: 0.6rem;
     }
     
+    .tracking-content {
+        padding: 0 15px;
+    }
+    
+    .tracking-header h2 {
+        font-size: 1.2rem;
+    }
+    
+    .exercise-form {
+        padding: 20px;
+    }
+    
     .form-row {
         flex-direction: column;
-        gap: 6px;
+        gap: 12px;
     }
     
     .exercise-stats {
         flex-wrap: wrap;
-        gap: 8px;
+        gap: 16px;
     }
     
     .exercise-actions {
         flex-wrap: wrap;
+    }
+    
+    .exercise-item {
+        padding: 16px;
     }
 }
 
@@ -6718,19 +6811,44 @@ select:focus {
         margin-bottom: 4px;
     }
     
+    .tracking-content {
+        padding: 0 10px;
+    }
+    
     .tracking-header {
         flex-direction: column;
-        gap: 8px;
+        gap: 12px;
         align-items: stretch;
+    }
+    
+    .tracking-header h2 {
+        font-size: 1.1rem;
+    }
+    
+    .exercise-form {
+        padding: 16px;
     }
     
     .exercise-stats {
         flex-direction: column;
-        gap: 6px;
+        gap: 12px;
     }
     
     .stat-item {
         flex-direction: row;
         justify-content: space-between;
+        align-items: center;
+    }
+    
+    .exercise-item {
+        padding: 12px;
+    }
+    
+    .exercise-name {
+        font-size: 1rem;
+    }
+    
+    .stat-value {
+        font-size: 1rem;
     }
 }
