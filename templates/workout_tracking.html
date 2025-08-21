@@ -118,7 +118,7 @@
                 <div class="exercise-stats">
                     <div class="stat-card">
                         <h4>1 Rep Max</h4>
-                        <div class="stat-value" id="one-rep-max" title="Estimated using Epley formula: Weight × (1 + Reps ÷ 30)">-</div>
+                        <div class="stat-value" id="one-rep-max" title="Estimated using Epley formula">-</div>
                         <div class="stat-formula">Estimated from your sets</div>
                     </div>
                     <div class="stat-card">
@@ -395,7 +395,7 @@
                                 <div class="exercise-stats">
                                                             <div class="stat">
                             <span class="stat-label">1 Rep Max</span>
-                            <span class="stat-value" title="Estimated using Epley formula: Weight × (1 + Reps ÷ 30)">${oneRepMax > 0 ? oneRepMax + ' kg' : 'No data'}</span>
+                            <span class="stat-value" title="Estimated using Epley formula">${oneRepMax > 0 ? oneRepMax + ' kg' : 'No data'}</span>
                         </div>
                                     <div class="stat">
                                         <span class="stat-label">Max Weight</span>
@@ -509,7 +509,7 @@
             }
             
             $('#one-rep-max').text(oneRepMax > 0 ? oneRepMax + ' kg' : 'No data');
-            $('#one-rep-max').attr('title', 'Estimated using Epley formula: Weight × (1 + Reps ÷ 30)');
+            $('#one-rep-max').attr('title', 'Estimated using Epley formula');
             
             // Display sets history
             const setsHtml = exercise.sets_data.length > 0 ? 
