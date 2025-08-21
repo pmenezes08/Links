@@ -3162,6 +3162,9 @@ def get_user_exercises():
         rows = cursor.fetchall()
         conn.close()
         
+        print(f"Debug: Found {len(rows)} rows for user {username}")
+        print(f"Debug: First row: {rows[0] if rows else 'No rows'}")
+        
         if not rows:
             return jsonify({'success': False, 'error': 'No exercises found'})
         
@@ -3169,7 +3172,7 @@ def get_user_exercises():
         muscle_groups = {}
         for row in rows:
             exercise_id = row[0]
-            muscle_group = row[4]
+            muscle_group = row[3]  # muscle_group is at index 3
             
             if muscle_group not in muscle_groups:
                 muscle_groups[muscle_group] = []
@@ -3192,13 +3195,14 @@ def get_user_exercises():
                 muscle_groups[muscle_group].append(exercise_data)
                 existing_exercise = exercise_data
             
-            if row[4]:  # If there's a set
+            if row[4]:  # If there's a set (set_id is at index 4)
                 existing_exercise['sets_data'].append({
                     'id': row[4],
                     'exercise_id': exercise_id,
                     'weight': row[5]
                 })
         
+        print(f"Debug: Final muscle_groups: {muscle_groups}")
         return jsonify({'success': True, 'muscle_groups': muscle_groups})
         
     except Exception as e:
