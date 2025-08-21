@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Workout Tracking</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}?v=1.3">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}?v=1.4">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 </head>
@@ -22,55 +22,18 @@
 
         <!-- Tab Navigation -->
         <div class="tab-navigation">
-            <button class="tab-btn active" data-tab="weight-tracking">
-                <i class="fas fa-dumbbell"></i>
-                Weight Tracking
-            </button>
             <button class="tab-btn" data-tab="workouts">
                 <i class="fas fa-calendar-alt"></i>
                 Workouts
             </button>
+            <button class="tab-btn active" data-tab="weight-tracking">
+                <i class="fas fa-dumbbell"></i>
+                Weight Tracking
+            </button>
         </div>
 
-        <!-- Weight Tracking Tab -->
-        <div id="weight-tracking" class="tab-content active">
-            <div class="weight-tracking-container">
-                <!-- Add Exercise Section -->
-                <div class="add-exercise-section">
-                    <h3>Add New Exercise</h3>
-                    <form id="add-exercise-form" class="exercise-form">
-                        <div class="form-row">
-                            <input type="text" id="exercise-name" placeholder="Exercise name" required>
-                            <select id="muscle-group" required>
-                                <option value="">Select muscle group</option>
-                                <option value="Chest">Chest</option>
-                                <option value="Back">Back</option>
-                                <option value="Shoulders">Shoulders</option>
-                                <option value="Biceps">Biceps</option>
-                                <option value="Triceps">Triceps</option>
-                                <option value="Legs">Legs</option>
-                                <option value="Core">Core</option>
-                                <option value="Other">Other</option>
-                            </select>
-                        </div>
-                        <button type="submit" class="submit-btn">
-                            <i class="fas fa-plus"></i> Add Exercise
-                        </button>
-                    </form>
-                </div>
-
-                <!-- Exercise List -->
-                <div class="exercises-section">
-                    <h3>Your Exercises</h3>
-                    <div id="muscle-groups-view" class="muscle-groups-view">
-                        <!-- Muscle groups will be loaded here -->
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Workouts Tab -->
-        <div id="workouts" class="tab-content">
+        <!-- Workouts Tab (Input Section) -->
+        <div id="workouts" class="tab-content active">
             <div class="workouts-container">
                 <!-- Create New Workout -->
                 <div class="create-workout-section">
@@ -95,11 +58,54 @@
                     </form>
                 </div>
 
+                <!-- Add Exercise Section -->
+                <div class="add-exercise-section">
+                    <h3>Add New Exercise</h3>
+                    <form id="add-exercise-form" class="exercise-form">
+                        <div class="form-row">
+                            <input type="text" id="exercise-name" placeholder="Exercise name" required>
+                            <select id="muscle-group" required>
+                                <option value="">Select muscle group</option>
+                                <option value="Chest">Chest</option>
+                                <option value="Back">Back</option>
+                                <option value="Shoulders">Shoulders</option>
+                                <option value="Biceps">Biceps</option>
+                                <option value="Triceps">Triceps</option>
+                                <option value="Legs">Legs</option>
+                                <option value="Core">Core</option>
+                                <option value="Other">Other</option>
+                            </select>
+                        </div>
+                        <button type="submit" class="submit-btn">
+                            <i class="fas fa-plus"></i> Add Exercise
+                        </button>
+                    </form>
+                </div>
+
                 <!-- Workouts List -->
                 <div class="workouts-list-section">
                     <h3>Your Workouts</h3>
                     <div id="workouts-list" class="workouts-list">
                         <!-- Workouts will be loaded here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Weight Tracking Tab (Read-only View) -->
+        <div id="weight-tracking" class="tab-content">
+            <div class="weight-tracking-container">
+                <!-- 1RM Overview -->
+                <div class="overview-section">
+                    <h3>Your 1 Rep Max Overview</h3>
+                    <p class="overview-text">Your 1RM data is automatically calculated from your workout sets. Add exercises and complete workouts to see your progress here.</p>
+                </div>
+
+                <!-- Exercise List -->
+                <div class="exercises-section">
+                    <h3>Your Exercises</h3>
+                    <div id="muscle-groups-view" class="muscle-groups-view">
+                        <!-- Muscle groups will be loaded here -->
                     </div>
                 </div>
             </div>
@@ -231,7 +237,7 @@
             });
         });
 
-        // Weight Tracking Functions
+        // Weight Tracking Functions (Read-only)
         function loadMuscleGroups() {
             console.log('Loading muscle groups...');
             $.ajax({
@@ -243,12 +249,12 @@
                         displayMuscleGroups(response.exercises);
                     } else {
                         console.log('Failed to load muscle groups:', response.error);
-                        $('#muscle-groups-view').html('<p>No exercises found. Add your first exercise above!</p>');
+                        $('#muscle-groups-view').html('<p style="color: #b0b8b9; text-align: center; padding: 20px;">No exercises found. Add exercises in the Workouts tab to see your 1RM data here!</p>');
                     }
                 },
                 error: function(xhr, status, error) {
                     console.log('Load muscle groups error:', { xhr, status, error });
-                    $('#muscle-groups-view').html('<p>Error loading exercises. Please try again.</p>');
+                    $('#muscle-groups-view').html('<p style="color: #b0b8b9; text-align: center; padding: 20px;">Error loading exercises. Please try again.</p>');
                 }
             });
         }
@@ -258,7 +264,7 @@
             
             if (!exercises || !Array.isArray(exercises)) {
                 console.log('No exercises found or invalid data structure');
-                $('#muscle-groups-view').html('<p style="color: #b0b8b9; text-align: center; padding: 20px;">No exercises found. Add your first exercise above!</p>');
+                $('#muscle-groups-view').html('<p style="color: #b0b8b9; text-align: center; padding: 20px;">No exercises found. Add exercises in the Workouts tab to see your 1RM data here!</p>');
                 return;
             }
             
@@ -272,7 +278,7 @@
             });
 
             if (Object.keys(muscleGroups).length === 0) {
-                $('#muscle-groups-view').html('<p style="color: #b0b8b9; text-align: center; padding: 20px;">No exercises found. Add your first exercise above!</p>');
+                $('#muscle-groups-view').html('<p style="color: #b0b8b9; text-align: center; padding: 20px;">No exercises found. Add exercises in the Workouts tab to see your 1RM data here!</p>');
                 return;
             }
 
@@ -347,6 +353,12 @@
                             Math.max(...setsData.map(set => set.weight || 0)) : 0;
                         const maxWeightSet = setsData.find(set => set.weight === maxWeight);
                         
+                        // Calculate 1RM using Epley formula
+                        let oneRepMax = 0;
+                        if (maxWeightSet) {
+                            oneRepMax = Math.round(maxWeightSet.weight * (1 + maxWeightSet.reps / 30));
+                        }
+                        
                         return `
                             <div class="exercise-item" onclick="openExerciseModal(${exercise.id}, '${exercise.name}')">
                                 <div class="exercise-header">
@@ -354,12 +366,12 @@
                                 </div>
                                 <div class="exercise-stats">
                                     <div class="stat">
-                                        <span class="stat-label">Max Weight</span>
-                                        <span class="stat-value">${maxWeight > 0 ? maxWeight + ' lbs' : 'No data'}</span>
+                                        <span class="stat-label">1 Rep Max</span>
+                                        <span class="stat-value">${oneRepMax > 0 ? oneRepMax + ' lbs' : 'No data'}</span>
                                     </div>
                                     <div class="stat">
-                                        <span class="stat-label">Best Set</span>
-                                        <span class="stat-value">${maxWeightSet ? maxWeightSet.reps + ' reps' : 'No data'}</span>
+                                        <span class="stat-label">Max Weight</span>
+                                        <span class="stat-value">${maxWeight > 0 ? maxWeight + ' lbs' : 'No data'}</span>
                                     </div>
                                     <div class="stat">
                                         <span class="stat-label">Total Sets</span>
@@ -379,6 +391,7 @@
             loadMuscleGroups();
         }
 
+        // Workouts Functions (Input Section)
         function addExercise() {
             const name = $('#exercise-name').val();
             const muscleGroup = $('#muscle-group').val();
