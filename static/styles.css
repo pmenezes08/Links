@@ -7032,3 +7032,75 @@ hr, .hr, .divider, .line, .border-line {
     height: 0 !important;
     background: none !important;
 }
+
+/* ===== BUTTON UNDERLINE REMOVAL ===== */
+
+/* Remove ALL underlines from buttons */
+button,
+button:hover,
+button:focus,
+button:active,
+button:visited,
+.btn,
+.btn:hover,
+.btn:focus,
+.btn:active,
+.action-btn,
+.action-btn:hover,
+.action-btn:focus,
+.action-btn:active,
+.action-btn:visited,
+.add-exercise-btn,
+.add-exercise-btn:hover,
+.add-exercise-btn:focus,
+.add-exercise-btn:active,
+.add-exercise-btn:visited,
+.submit-btn,
+.submit-btn:hover,
+.submit-btn:focus,
+.submit-btn:active,
+.submit-btn:visited,
+.back-btn,
+.back-btn:hover,
+.back-btn:focus,
+.back-btn:active,
+.back-btn:visited,
+.add-set-btn,
+.add-set-btn:hover,
+.add-set-btn:focus,
+.add-set-btn:active,
+.add-set-btn:visited,
+.set-btn,
+.set-btn:hover,
+.set-btn:focus,
+.set-btn:active,
+.set-btn:visited,
+.menu-btn,
+.menu-btn:hover,
+.menu-btn:focus,
+.menu-btn:active,
+.menu-btn:visited {
+    text-decoration: none !important;
+    text-decoration-line: none !important;
+    text-decoration-style: none !important;
+    text-decoration-color: transparent !important;
+    border-bottom: none !important;
+    border: none !important;
+    outline: none !important;
+}
+
+/* Force remove any button underlines */
+[type="button"],
+[type="submit"],
+[type="reset"],
+input[type="button"],
+input[type="submit"],
+input[type="reset"] {
+    text-decoration: none !important;
+    text-decoration-line: none !important;
+    text-decoration-style: none !important;
+    text-decoration-color: transparent !important;
+    border-bottom: none !important;
+    border: none !important;
+    outline: none !important;
+}
