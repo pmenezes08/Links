@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Workout Tracking</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}?v=1.2">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}?v=1.3">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 </head>
@@ -188,7 +188,7 @@
         </div>
     </div>
 
-    <script src="{{ url_for('static', filename='script.js') }}?v=1.2"></script>
+    <script src="{{ url_for('static', filename='script.js') }}?v=1.3"></script>
     <script>
         $(document).ready(function() {
             // Load initial data
@@ -233,13 +233,22 @@
 
         // Weight Tracking Functions
         function loadMuscleGroups() {
+            console.log('Loading muscle groups...');
             $.ajax({
                 url: '/get_workout_exercises',
                 method: 'GET',
                 success: function(response) {
+                    console.log('Load muscle groups response:', response);
                     if (response.success) {
                         displayMuscleGroups(response.exercises);
+                    } else {
+                        console.log('Failed to load muscle groups:', response.error);
+                        $('#muscle-groups-view').html('<p>No exercises found. Add your first exercise above!</p>');
                     }
+                },
+                error: function(xhr, status, error) {
+                    console.log('Load muscle groups error:', { xhr, status, error });
+                    $('#muscle-groups-view').html('<p>Error loading exercises. Please try again.</p>');
                 }
             });
         }
@@ -342,6 +351,13 @@
             const name = $('#exercise-name').val();
             const muscleGroup = $('#muscle-group').val();
             
+            console.log('Adding exercise:', { name, muscleGroup });
+            
+            if (!name || !muscleGroup) {
+                alert('Please fill in all fields');
+                return;
+            }
+            
             $.ajax({
                 url: '/add_exercise',
                 method: 'POST',
@@ -350,12 +366,20 @@
                     muscle_group: muscleGroup
                 },
                 success: function(response) {
+                    console.log('Add exercise response:', response);
                     if (response.success) {
                         $('#exercise-name').val('');
                         $('#muscle-group').val('');
                         loadMuscleGroups();
                         loadExercisesForWorkout();
+                        alert('Exercise added successfully!');
+                    } else {
+                        alert('Error adding exercise: ' + (response.error || 'Unknown error'));
                     }
+                },
+                error: function(xhr, status, error) {
+                    console.log('Add exercise error:', { xhr, status, error });
+                    alert('Error adding exercise: ' + error);
                 }
             });
         }
