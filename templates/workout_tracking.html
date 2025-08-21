@@ -67,10 +67,6 @@
                         <label for="exercise-weight">Weight (kg)</label>
                         <input type="number" id="exercise-weight" class="form-control" placeholder="0">
                     </div>
-                    <div class="form-group">
-                        <label for="exercise-sets">Sets</label>
-                        <input type="number" id="exercise-sets" class="form-control" placeholder="0">
-                    </div>
                 </div>
                 <button class="submit-btn" onclick="addExercise()">Add Exercise</button>
             </div>
@@ -97,9 +93,8 @@
             const name = document.getElementById('exercise-name').value;
             const muscleGroup = document.getElementById('muscle-group').value;
             const weight = document.getElementById('exercise-weight').value;
-            const sets = document.getElementById('exercise-sets').value;
 
-            if (!name || !muscleGroup || !weight || !sets) {
+            if (!name || !muscleGroup || !weight) {
                 alert('Please fill in all fields');
                 return;
             }
@@ -110,15 +105,13 @@
                 data: {
                     name: name,
                     muscle_group: muscleGroup,
-                    weight: weight,
-                    sets: sets
+                    weight: weight
                 },
                 success: function(response) {
                     if (response.success) {
                         document.getElementById('exercise-name').value = '';
                         document.getElementById('muscle-group').value = 'Chest'; // Reset to default
                         document.getElementById('exercise-weight').value = '';
-                        document.getElementById('exercise-sets').value = '';
                         document.getElementById('exercise-form').classList.remove('show');
                         loadExercises();
                     } else {
@@ -179,7 +172,7 @@
                                 </div>
                                 <div class="stat-item">
                                     <span class="stat-label">Total Sets</span>
-                                    <span class="stat-value">${exercise.sets}</span>
+                                    <span class="stat-value">${exercise.sets_data.length}</span>
                                 </div>
                             </div>
                             <div class="exercise-actions">
