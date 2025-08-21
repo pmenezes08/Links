@@ -3080,9 +3080,10 @@ def add_exercise():
             )
         ''')
         
-        # Create exercise_sets table if it doesn't exist
+        # Drop and recreate exercise_sets table to ensure correct schema
+        cursor.execute('DROP TABLE IF EXISTS exercise_sets')
         cursor.execute('''
-            CREATE TABLE IF NOT EXISTS exercise_sets (
+            CREATE TABLE exercise_sets (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 exercise_id INTEGER NOT NULL,
                 weight REAL NOT NULL,
