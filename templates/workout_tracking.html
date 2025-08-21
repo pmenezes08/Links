@@ -325,6 +325,11 @@
             // Modal event handlers
             $('#add-exercise-form').submit(function(e) {
                 e.preventDefault();
+                console.log('Form submit event triggered');
+                console.log('Form element:', this);
+                console.log('Form fields before addExercise:');
+                console.log('Name field:', $('#modal-exercise-name').val());
+                console.log('Name field element:', $('#modal-exercise-name')[0]);
                 addExercise();
             });
 
@@ -978,26 +983,35 @@
         }
 
         function addExercise() {
-            const name = $('#modal-exercise-name').val();
-            const muscleGroup = $('#modal-muscle-group').val();
-            const weight = $('#modal-exercise-weight').val();
-            const reps = $('#modal-exercise-reps').val();
-            const date = $('#modal-exercise-date').val();
-            
-            console.log('addExercise called with values:', { name, muscleGroup, weight, reps, date });
-            console.log('Field values:', {
-                name: $('#modal-exercise-name').val(),
-                muscleGroup: $('#modal-muscle-group').val(),
-                weight: $('#modal-exercise-weight').val(),
-                reps: $('#modal-exercise-reps').val(),
-                date: $('#modal-exercise-date').val()
-            });
-            
-            if (!name || !muscleGroup || !weight || !reps || !date) {
-                console.log('Validation failed - missing fields');
-                alert('Please fill in all fields');
-                return;
-            }
+            // Add a small delay to ensure form values are properly set
+            setTimeout(() => {
+                const name = $('#modal-exercise-name').val();
+                const muscleGroup = $('#modal-muscle-group').val();
+                const weight = $('#modal-exercise-weight').val();
+                const reps = $('#modal-exercise-reps').val();
+                const date = $('#modal-exercise-date').val();
+                
+                console.log('addExercise called with values:', { name, muscleGroup, weight, reps, date });
+                console.log('Field values:', {
+                    name: $('#modal-exercise-name').val(),
+                    muscleGroup: $('#modal-muscle-group').val(),
+                    weight: $('#modal-exercise-weight').val(),
+                    reps: $('#modal-exercise-reps').val(),
+                    date: $('#modal-exercise-date').val()
+                });
+                
+                if (!name || !muscleGroup || !weight || !reps || !date) {
+                    console.log('Validation failed - missing fields');
+                    console.log('Empty fields:', {
+                        name: !name,
+                        muscleGroup: !muscleGroup,
+                        weight: !weight,
+                        reps: !reps,
+                        date: !date
+                    });
+                    alert('Please fill in all fields');
+                    return;
+                }
             
             $.ajax({
                 url: '/add_exercise',
@@ -1023,6 +1037,7 @@
                     alert('Error adding exercise: ' + error);
                 }
             });
+            }, 100); // Close setTimeout
         }
 
         function logWeight() {
