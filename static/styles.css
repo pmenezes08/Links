@@ -7109,11 +7109,11 @@ li, ul, ol, nav, header, footer, main, section, article {
 .workouts-container {
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 8px;
     background: rgba(255, 255, 255, 0.02);
     border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 16px;
-    padding: 20px;
+    border-radius: 12px;
+    padding: 12px;
     backdrop-filter: blur(20px);
 }
 
@@ -7137,13 +7137,13 @@ li, ul, ol, nav, header, footer, main, section, article {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding-bottom: 12px;
+    padding-bottom: 8px;
     border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .header-section h3 {
     color: #ffffff;
-    font-size: 1.1rem;
+    font-size: 1rem;
     margin: 0;
     font-weight: 500;
 }
@@ -7152,15 +7152,15 @@ li, ul, ol, nav, header, footer, main, section, article {
     background: rgba(255, 255, 255, 0.08);
     color: #ffffff;
     border: 1px solid rgba(255, 255, 255, 0.15);
-    padding: 6px 12px;
-    border-radius: 6px;
+    padding: 4px 8px;
+    border-radius: 4px;
     cursor: pointer;
-    font-size: 0.8rem;
+    font-size: 0.7rem;
     font-weight: 500;
     transition: all 0.2s ease;
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 4px;
 }
 
 .add-btn:hover {
@@ -8029,20 +8029,20 @@ input::after {
 
 /* Exercise Management Styles - Apple Design Principles */
 .muscle-group-section {
-    margin-bottom: 20px;
+    margin-bottom: 12px;
 }
 
 .muscle-group-title {
     color: #ffffff;
-    font-size: 1.1rem;
+    font-size: 0.95rem;
     font-weight: 600;
-    margin-bottom: 10px;
+    margin-bottom: 6px;
     opacity: 0.95;
     letter-spacing: -0.02em;
 }
 
 .exercise-row {
-    margin-bottom: 6px;
+    margin-bottom: 3px;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
@@ -8054,11 +8054,11 @@ input::after {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 10px 14px;
+    padding: 6px 10px;
     cursor: pointer;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     background: rgba(255, 255, 255, 0.03);
-    border-radius: 8px;
+    border-radius: 6px;
     border: 1px solid rgba(255, 255, 255, 0.08);
     backdrop-filter: blur(20px);
 }
@@ -8072,22 +8072,22 @@ input::after {
 .exercise-info {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 8px;
 }
 
 .exercise-name {
     color: #ffffff;
-    font-size: 0.95rem;
+    font-size: 0.85rem;
     font-weight: 500;
     letter-spacing: -0.01em;
 }
 
 .exercise-count {
     color: rgba(255, 255, 255, 0.6);
-    font-size: 0.75rem;
+    font-size: 0.65rem;
     background: rgba(255, 255, 255, 0.08);
-    padding: 3px 8px;
-    border-radius: 16px;
+    padding: 2px 6px;
+    border-radius: 12px;
     font-weight: 500;
     letter-spacing: 0.02em;
 }
@@ -8095,16 +8095,16 @@ input::after {
 .exercise-actions {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
 }
 
 .action-btn.small {
-    padding: 6px 12px;
-    font-size: 0.75rem;
+    padding: 4px 8px;
+    font-size: 0.65rem;
     min-width: auto;
     background: rgba(255, 255, 255, 0.08);
     border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: 6px;
+    border-radius: 4px;
     font-weight: 500;
     letter-spacing: 0.02em;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -8119,15 +8119,15 @@ input::after {
 
 .toggle-icon {
     color: rgba(255, 255, 255, 0.5);
-    font-size: 0.75rem;
+    font-size: 0.65rem;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .weight-history-dropdown {
-    padding: 12px 16px;
-    margin-top: 6px;
+    padding: 8px 12px;
+    margin-top: 4px;
     background: rgba(255, 255, 255, 0.02);
-    border-radius: 8px;
+    border-radius: 6px;
     border: 1px solid rgba(255, 255, 255, 0.06);
     backdrop-filter: blur(20px);
 }
@@ -8161,10 +8161,10 @@ input::after {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 8px 12px;
-    margin-bottom: 6px;
+    padding: 5px 8px;
+    margin-bottom: 4px;
     background: rgba(255, 255, 255, 0.03);
-    border-radius: 6px;
+    border-radius: 4px;
     border: 1px solid rgba(255, 255, 255, 0.06);
     transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -8178,16 +8178,16 @@ input::after {
     background: rgba(255, 107, 107, 0.08);
     border: 1px solid rgba(255, 107, 107, 0.2);
     color: #ff6b6b;
-    padding: 6px 10px;
-    border-radius: 6px;
+    padding: 3px 6px;
+    border-radius: 4px;
     cursor: pointer;
-    font-size: 0.7rem;
+    font-size: 0.6rem;
     transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     display: flex;
     align-items: center;
     justify-content: center;
-    min-width: 24px;
-    height: 24px;
+    min-width: 18px;
+    height: 18px;
 }
 
 .delete-weight-btn:hover {
@@ -8203,26 +8203,26 @@ input::after {
 
 .weight-value {
     color: #ffffff;
-    font-size: 0.9rem;
+    font-size: 0.75rem;
     font-weight: 500;
     letter-spacing: -0.01em;
 }
 
 .weight-date {
     color: rgba(255, 255, 255, 0.5);
-    font-size: 0.8rem;
+    font-size: 0.65rem;
     font-weight: 400;
     letter-spacing: 0.02em;
 }
 
 .no-weights {
     color: rgba(255, 255, 255, 0.4);
-    font-size: 0.8rem;
+    font-size: 0.7rem;
     font-style: italic;
     text-align: center;
-    padding: 16px;
+    padding: 8px;
     background: rgba(255, 255, 255, 0.02);
-    border-radius: 8px;
+    border-radius: 6px;
     border: 1px solid rgba(255, 255, 255, 0.06);
 }
 
