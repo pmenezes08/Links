@@ -7003,7 +7003,7 @@ li, ul, ol, nav, header, footer, main, section, article {
 
 .workout-container {
     min-height: 100vh;
-    background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%) !important;
+    background: #0a0a0a !important;
     color: #ffffff !important;
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif !important;
     padding: 0 !important;
@@ -7011,10 +7011,9 @@ li, ul, ol, nav, header, footer, main, section, article {
 }
 
 .workout-header {
-    background: rgba(77, 182, 172, 0.05);
-    backdrop-filter: blur(5px);
-    border-bottom: 1px solid rgba(77, 182, 172, 0.1);
-    padding: 10px 0;
+    background: rgba(255, 255, 255, 0.02);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    padding: 8px 0;
 }
 
 .header-content {
@@ -7027,9 +7026,9 @@ li, ul, ol, nav, header, footer, main, section, article {
 }
 
 .workout-header h1 {
-    font-size: 1.3rem;
-    font-weight: 600;
-    color: #4db6ac;
+    font-size: 1.1rem;
+    font-weight: 400;
+    color: #ffffff;
     margin: 0;
 }
 
@@ -7037,37 +7036,35 @@ li, ul, ol, nav, header, footer, main, section, article {
 .tab-navigation {
     max-width: 1000px;
     margin: 0 auto;
-    padding: 10px 15px;
+    padding: 8px 15px;
     display: flex;
-    gap: 8px;
-    border-bottom: 1px solid rgba(77, 182, 172, 0.1);
+    gap: 6px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .tab-btn {
-    background: rgba(77, 182, 172, 0.05);
-    border: 1px solid rgba(77, 182, 172, 0.2);
-    color: #b0b8b9;
-    padding: 8px 16px;
-    border-radius: 6px;
+    background: transparent;
+    border: none;
+    color: #666666;
+    padding: 6px 12px;
+    border-radius: 4px;
     cursor: pointer;
-    transition: all 0.3s ease;
+    transition: all 0.2s ease;
     display: flex;
     align-items: center;
-    gap: 6px;
-    font-size: 0.8rem;
-    font-weight: 500;
+    gap: 4px;
+    font-size: 0.75rem;
+    font-weight: 400;
 }
 
 .tab-btn:hover {
-    background: rgba(77, 182, 172, 0.1);
+    background: rgba(255, 255, 255, 0.05);
     color: #ffffff;
-    transform: translateY(-1px);
 }
 
 .tab-btn.active {
-    background: #4db6ac;
+    background: rgba(255, 255, 255, 0.1);
     color: #ffffff;
-    border-color: #4db6ac;
 }
 
 .tab-btn i {
@@ -7310,18 +7307,16 @@ li, ul, ol, nav, header, footer, main, section, article {
 }
 
 .workout-item {
-    background: rgba(77, 182, 172, 0.03);
-    border: 1px solid rgba(77, 182, 172, 0.15);
-    border-radius: 8px;
-    padding: 12px;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.03);
+    border-radius: 6px;
+    padding: 10px;
     cursor: pointer;
-    transition: all 0.3s ease;
-    backdrop-filter: blur(5px);
+    transition: all 0.2s ease;
 }
 
 .workout-item:hover {
-    background: rgba(77, 182, 172, 0.08);
-    transform: translateY(-1px);
+    background: rgba(255, 255, 255, 0.05);
 }
 
 .workout-header {
@@ -7332,9 +7327,9 @@ li, ul, ol, nav, header, footer, main, section, article {
 }
 
 .workout-name {
-    color: #4db6ac;
-    font-size: 0.9rem;
-    font-weight: 600;
+    color: #ffffff;
+    font-size: 0.85rem;
+    font-weight: 400;
     margin: 0;
 }
 
@@ -7811,7 +7806,7 @@ input::after {
 
 /* Update workout-date class */
 .workout-date {
-    color: #4db6ac;
-    font-size: 0.8rem;
-    font-weight: 500;
+    color: #666666;
+    font-size: 0.7rem;
+    font-weight: 400;
 }

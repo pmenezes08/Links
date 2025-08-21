@@ -185,7 +185,7 @@
                             <select id="workout-exercise-select" required>
                                 <option value="">Select exercise</option>
                             </select>
-                            <input type="number" id="workout-weight" placeholder="Weight (lbs)" min="0" step="0.5" required>
+                            <input type="number" id="workout-weight" placeholder="Weight (kg)" min="0" step="0.1" required>
                             <input type="number" id="workout-sets" placeholder="Sets" min="1" max="10" required>
                             <input type="number" id="workout-reps" placeholder="Reps" min="1" max="50" required>
                         </div>
@@ -256,6 +256,27 @@
             });
         });
 
+        // Utility Functions
+        function formatDate(dateString) {
+            if (!dateString) return '';
+            const date = new Date(dateString);
+            const today = new Date();
+            const yesterday = new Date(today);
+            yesterday.setDate(yesterday.getDate() - 1);
+            
+            if (date.toDateString() === today.toDateString()) {
+                return 'Today';
+            } else if (date.toDateString() === yesterday.toDateString()) {
+                return 'Yesterday';
+            } else {
+                return date.toLocaleDateString('en-US', { 
+                    month: 'short', 
+                    day: 'numeric',
+                    year: date.getFullYear() !== today.getFullYear() ? 'numeric' : undefined
+                });
+            }
+        }
+
         // Weight Tracking Functions (Read-only)
         function loadMuscleGroups() {
             console.log('Loading muscle groups...');
@@ -311,24 +332,24 @@
 
             const html = Object.keys(muscleGroups).map(group => {
                 const exercisesInGroup = muscleGroups[group];
-                const maxWeight = Math.max(...exercisesInGroup.map(ex => 
-                    ex.sets_data && ex.sets_data.length > 0 ? Math.max(...ex.sets_data.map(set => set.weight || 0)) : 0
-                ));
-                
-                return `
-                    <div class="muscle-group-card" onclick="showExercises('${group}')">
-                        <div class="muscle-group-header">
-                            <h3>${group}</h3>
-                            <span class="exercise-count">${exercisesInGroup.length} exercises</span>
-                        </div>
-                        <div class="muscle-group-stats">
-                            <div class="stat">
-                                <span class="stat-label">Max Weight</span>
-                                <span class="stat-value">${maxWeight > 0 ? maxWeight + ' lbs' : 'No data'}</span>
+                                        const maxWeight = Math.max(...exercisesInGroup.map(ex => 
+                            ex.sets_data && ex.sets_data.length > 0 ? Math.max(...ex.sets_data.map(set => set.weight || 0)) : 0
+                        ));
+                        
+                        return `
+                            <div class="muscle-group-card" onclick="showExercises('${group}')">
+                                <div class="muscle-group-header">
+                                    <h3>${group}</h3>
+                                    <span class="exercise-count">${exercisesInGroup.length} exercises</span>
+                                </div>
+                                <div class="muscle-group-stats">
+                                    <div class="stat">
+                                        <span class="stat-label">Max Weight</span>
+                                        <span class="stat-value">${maxWeight > 0 ? maxWeight + ' kg' : 'No data'}</span>
+                                    </div>
+                                </div>
                             </div>
-                        </div>
-                    </div>
-                `;
+                        `;
             }).join('');
 
             $('#muscle-groups-view').html(html);
@@ -602,7 +623,7 @@
                     <div class="workout-item" onclick="openWorkoutModal(${workout.id}, '${workout.name}')">
                         <div class="workout-header">
                             <h4 class="workout-name">${workout.name}</h4>
-                            <span class="workout-date">${workout.date}</span>
+                            <span class="workout-date">${formatDate(workout.date)}</span>
                         </div>
                         <div class="workout-stats">
                             <div class="stat">
@@ -718,7 +739,7 @@
                     <div class="workout-exercise-item">
                         <div class="exercise-info">
                             <span class="exercise-name">${exercise.exercise_name}</span>
-                            <span class="exercise-sets">${exercise.weight} lbs × ${exercise.sets} sets × ${exercise.reps} reps</span>
+                            <span class="exercise-sets">${exercise.weight} kg × ${exercise.sets} sets × ${exercise.reps} reps</span>
                         </div>
                         <div class="exercise-actions">
                             <button onclick="removeExerciseFromWorkout(${exercise.id})" class="action-btn">

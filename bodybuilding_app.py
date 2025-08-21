@@ -3150,14 +3150,14 @@ def get_workout_exercises():
         conn = sqlite3.connect('users.db')
         cursor = conn.cursor()
         
-        # Get exercises with their sets
+        # Get exercises with their workout data (actual weights used)
         cursor.execute('''
             SELECT e.id, e.name, e.muscle_group,
-                   es.id as set_id, es.weight as set_weight, es.reps as set_reps
+                   we.weight as set_weight, we.reps as set_reps, we.created_at
             FROM exercises e
-            LEFT JOIN exercise_sets es ON e.id = es.exercise_id
+            LEFT JOIN workout_exercises we ON e.id = we.exercise_id
             WHERE e.username = ?
-            ORDER BY e.muscle_group, e.name
+            ORDER BY e.muscle_group, e.name, we.created_at DESC
         ''', (username,))
         
         rows = cursor.fetchall()
@@ -3176,7 +3176,7 @@ def get_workout_exercises():
         for row in rows:
             exercise_id = row[0]
             exercise_name = row[1]
-            muscle_group = row[2]  # muscle_group is now at index 2
+            muscle_group = row[2]
             
             # If this is a new exercise
             if not current_exercise or current_exercise['id'] != exercise_id:
@@ -3188,13 +3188,12 @@ def get_workout_exercises():
                 }
                 exercises.append(current_exercise)
             
-            # Add set data if it exists
-            if row[3]:  # If there's a set (set_id is at index 3)
+            # Add workout data if it exists
+            if row[3]:  # If there's weight data
                 current_exercise['sets_data'].append({
-                    'id': row[3],
-                    'exercise_id': exercise_id,
-                    'weight': row[4],
-                    'reps': row[5]
+                    'weight': row[3],
+                    'reps': row[4],
+                    'created_at': row[5]
                 })
         
         print(f"Debug: Returning {len(exercises)} exercises for user {username}")
