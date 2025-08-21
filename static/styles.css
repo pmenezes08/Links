@@ -1,6 +1,6 @@
 /* General styles */
 body {
-    background: linear-gradient(135deg, #1c2526, #2d3839);
+    background: #000000;
     color: #ffffff;
     font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
     margin: 0;
@@ -8,8 +8,13 @@ body {
     overflow-x: hidden;
 }
 
-/* Login page specific background */
-body.login-page {
+/* Consistent black background for all pages */
+body.login-page,
+body.dashboard-page,
+body.premium-dashboard-page,
+body.feed-page,
+body.communities-page,
+body.sports-page {
     background: #000000;
 }
 
@@ -79,7 +84,7 @@ label {
     display: block;
     font-size: 16px;
     font-weight: 400;
-    color: #d1d4d6;
+    color: #4db6ac;
     margin-bottom: 8px;
 }
 
@@ -88,14 +93,21 @@ select, input {
     padding: 10px;
     font-size: 14px;
     line-height: 1.5;
-    background: rgba(255, 255, 255, 0.1);
-    border: none;
+    background: rgba(77, 182, 172, 0.1);
+    border: 1px solid rgba(77, 182, 172, 0.3);
     border-radius: 6px;
     color: #ffffff;
     font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
     appearance: none;
-    transition: background 0.3s ease;
+    transition: all 0.3s ease;
     box-sizing: border-box;
+}
+
+select:focus, input:focus {
+    outline: none;
+    border-color: #4db6ac;
+    background: rgba(77, 182, 172, 0.15);
+    box-shadow: 0 0 0 2px rgba(77, 182, 172, 0.2);
 }
 
 select option {
@@ -110,16 +122,16 @@ select:focus, input:focus {
 
 /* Buttons */
 .sleek-btn {
-    background: #2d3839;
-    border: none;
-    border-radius: 4px;
-    color: #ffffff;
+    background: rgba(77, 182, 172, 0.1);
+    border: 1px solid #4db6ac;
+    border-radius: 6px;
+    color: #4db6ac;
     padding: 8px 16px;
     font-size: 14px;
     font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
     font-weight: 400;
     cursor: pointer;
-    transition: background 0.3s ease;
+    transition: all 0.3s ease;
     text-transform: uppercase;
     letter-spacing: 1px;
     margin: 8px auto;
@@ -133,18 +145,21 @@ select:focus, input:focus {
 }
 
 .sleek-btn:hover {
-    background: #3a4647;
+    background: #4db6ac;
+    color: #000000;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(77, 182, 172, 0.3);
 }
 
 .sleek-btn.small {
     background: #4db6ac;
-    border: none;
-    color: #ffffff;
+    border: 1px solid #4db6ac;
+    color: #000000;
     padding: 8px 16px;
     border-radius: 6px;
     font-size: 0.9em;
     cursor: pointer;
-    transition: background 0.2s ease;
+    transition: all 0.2s ease;
     width: auto;
     margin: 0;
     text-transform: none;
@@ -153,6 +168,8 @@ select:focus, input:focus {
 
 .sleek-btn.small:hover {
     background: #37a69c;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(77, 182, 172, 0.3);
 }
 
 #x-login-btn {
@@ -176,10 +193,10 @@ select:focus, input:focus {
 }
 
 .go-back-btn {
-    background: #2d3839;
-    border: none;
+    background: rgba(77, 182, 172, 0.1);
+    border: 1px solid #4db6ac;
     border-radius: 50%;
-    color: #ffffff;
+    color: #4db6ac;
     width: 25px;
     height: 25px;
     padding: 0;
@@ -187,7 +204,7 @@ select:focus, input:focus {
     font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
     font-weight: 400;
     cursor: pointer;
-    transition: background 0.3s ease;
+    transition: all 0.3s ease;
     position: absolute;
     top: 10px;
     right: 10px;
@@ -201,7 +218,10 @@ select:focus, input:focus {
 }
 
 .go-back-btn:hover {
-    background: #3a4647;
+    background: #4db6ac;
+    color: #000000;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(77, 182, 172, 0.3);
 }
 
 /* Result and error messages */
@@ -362,17 +382,17 @@ select:focus, input:focus {
     left: 0;
     height: 100vh;
     width: 60px;
-    background: #1a2526;
+    background: #000000;
     transition: width 0.3s;
     z-index: 1000;
     overflow: visible;
-    border-right: 1px solid rgba(255, 255, 255, 0.1);
+    border-right: 1px solid rgba(77, 182, 172, 0.3);
 }
 
 .menu-btn {
-    background: rgba(255, 255, 255, 0.05);
-    border: none;
-    color: #e0e0e0;
+    background: rgba(77, 182, 172, 0.1);
+    border: 1px solid rgba(77, 182, 172, 0.3);
+    color: #4db6ac;
     font-size: 16px;
     padding: 12px 8px;
     cursor: pointer;
@@ -384,20 +404,21 @@ select:focus, input:focus {
     transition: all 0.3s ease;
     font-weight: 500;
     letter-spacing: 0.5px;
-    border-radius: 4px;
+    border-radius: 6px;
     margin: 8px 4px;
     width: calc(100% - 8px);
 }
 
 .menu-btn:hover {
-    color: #ffffff;
-    background: rgba(255, 255, 255, 0.1);
+    color: #000000;
+    background: #4db6ac;
     transform: scale(1.05);
+    box-shadow: 0 4px 12px rgba(77, 182, 172, 0.3);
 }
 
 .dropdown-content {
     display: none;
-    background: #2d3839;
+    background: #000000;
     position: absolute;
     top: 60px;
     left: 60px;
@@ -405,22 +426,22 @@ select:focus, input:focus {
     box-shadow: 2px 2px 6px rgba(0, 0, 0, 0.2);
     z-index: 1001;
     border-radius: 0 8px 8px 0;
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(77, 182, 172, 0.3);
     overflow: hidden;
 }
 
 .dropdown-content a {
-    color: #e0e0e0;
+    color: #4db6ac;
     padding: 10px 15px;
     display: block;
     text-decoration: none;
     font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
     font-size: 0.9em;
-    transition: background 0.3s ease;
+    transition: all 0.3s ease;
 }
 
 .dropdown-content a:hover {
-    background: #3a4647;
+    background: rgba(77, 182, 172, 0.1);
     color: #ffffff;
 }
 
@@ -446,12 +467,12 @@ select:focus, input:focus {
 
 /* Your Sports-specific styles */
 .sports-content {
-    background: #2d3839;
+    background: rgba(77, 182, 172, 0.05);
     padding: 15px;
     border-radius: 6px;
     max-width: 800px;
     margin: 0 auto;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+    border: 1px solid rgba(77, 182, 172, 0.2);
     overflow: visible;
 }
 
