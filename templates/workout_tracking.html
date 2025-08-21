@@ -266,10 +266,12 @@
                     console.log('Response type:', typeof response);
                     console.log('Response.success:', response.success);
                     console.log('Response.exercises:', response.exercises);
+                    console.log('Response.exercises length:', response.exercises ? response.exercises.length : 'undefined');
                     
-                    if (response.success && response.exercises) {
+                    if (response.success && response.exercises && response.exercises.length > 0) {
+                        console.log('Found exercises, displaying muscle groups');
                         displayMuscleGroups(response.exercises);
-                    } else if (response.success && !response.exercises) {
+                    } else if (response.success && (!response.exercises || response.exercises.length === 0)) {
                         // No exercises found but request was successful
                         console.log('No exercises found in database');
                         $('#muscle-groups-view').html('<p style="color: #b0b8b9; text-align: center; padding: 20px;">No exercises found. Add exercises in the Workouts tab to see your 1RM data here!</p>');
