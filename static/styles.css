@@ -1064,7 +1064,7 @@ select:focus, input:focus {
 .member-avatar {
     width: 40px;
     height: 40px;
-    background: linear-gradient(135deg, #4db6ac, #37a69c);
+    background: linear-gradient(135deg, #10B981, #059669);
     border-radius: 50%;
     display: flex;
     align-items: center;
@@ -1089,7 +1089,7 @@ select:focus, input:focus {
 }
 
 .owner-badge {
-    background: #4db6ac;
+    background: #10B981;
     color: #ffffff;
     padding: 2px 8px;
     border-radius: 10px;
@@ -1143,7 +1143,7 @@ select:focus, input:focus {
 
 .member-input:focus {
     outline: none;
-    border-color: #4db6ac;
+    border-color: #10B981;
     box-shadow: 0 0 0 2px rgba(77, 182, 172, 0.2);
 }
 
@@ -1186,7 +1186,7 @@ select:focus, input:focus {
 }
 
 #postModal .modal-content .modal-header {
-    background: linear-gradient(135deg, #4db6ac, #37a69c);
+    background: linear-gradient(135deg, #10B981, #059669);
     padding: 20px;
     border-radius: 12px 12px 0 0;
     margin-bottom: 0;
@@ -1232,7 +1232,7 @@ select:focus, input:focus {
     border-radius: 6px;
     margin: 8px 0;
     font-size: 0.9em;
-    border-left: 3px solid #4db6ac;
+    border-left: 3px solid #10B981;
 }
 
 .modal .reply-form {
@@ -1434,7 +1434,7 @@ select:focus, input:focus {
 
 .tab-btn.active {
     background: #2d3839; /* Active tab matches sidebar */
-    color: #4db6ac; /* App theme color for active tab */
+    color: #10B981; /* App theme color for active tab */
 }
 
 .tab-btn.active::after {
@@ -1444,7 +1444,7 @@ select:focus, input:focus {
     left: 0;
     right: 0;
     height: 2px;
-    background: #4db6ac; /* App theme color underline */
+    background: #10B981; /* App theme color underline */
 }
 
 .tab-content {
@@ -1494,7 +1494,7 @@ select:focus, input:focus {
 .user-avatar {
     width: 40px;
     height: 40px;
-    background: #4db6ac; /* App theme color */
+    background: #10B981; /* App theme color */
     border-radius: 50%;
     display: flex;
     align-items: center;
@@ -1570,7 +1570,7 @@ select:focus, input:focus {
 .member-avatar {
     width: 36px;
     height: 36px;
-    background: #4db6ac; /* App theme color */
+    background: #10B981; /* App theme color */
     border-radius: 50%;
     display: flex;
     align-items: center;
@@ -1605,7 +1605,7 @@ select:focus, input:focus {
 
 .join-community-btn {
     display: inline-block;
-    background: linear-gradient(135deg, #4db6ac, #37a69c);
+    background: linear-gradient(135deg, #10B981, #059669);
     color: #ffffff;
     padding: 10px 20px;
     border-radius: 25px;
@@ -1622,7 +1622,7 @@ select:focus, input:focus {
 }
 
 .join-community-link {
-    color: #4db6ac;
+    color: #10B981;
     text-decoration: none;
     font-weight: 500;
 }
@@ -1674,7 +1674,7 @@ select:focus, input:focus {
 .chat-user-avatar {
     width: 40px;
     height: 40px;
-    background: linear-gradient(135deg, #4db6ac, #37a69c);
+    background: linear-gradient(135deg, #10B981, #059669);
     border-radius: 50%;
     display: flex;
     align-items: center;
@@ -1727,7 +1727,7 @@ select:focus, input:focus {
 }
 
 .own-message .message-content {
-    background: #4db6ac; /* App theme color for own messages */
+    background: #10B981; /* App theme color for own messages */
     color: #ffffff;
     border-bottom-right-radius: 2px;
     margin-left: auto;
@@ -1788,7 +1788,7 @@ select:focus, input:focus {
 
 #messageInput:focus {
     outline: none;
-    box-shadow: 0 0 0 1px #4db6ac;
+    box-shadow: 0 0 0 1px #10B981;
 }
 
 #messageInput::placeholder {
@@ -1798,7 +1798,7 @@ select:focus, input:focus {
 .send-btn {
     width: 40px;
     height: 40px;
-    background: #4db6ac; /* App theme color */
+    background: #10B981; /* App theme color */
     border: none;
     border-radius: 50%;
     color: #ffffff;
@@ -1811,7 +1811,7 @@ select:focus, input:focus {
 }
 
 .send-btn:hover {
-    background: #37a69c;
+    background: #059669;
     transform: scale(1.05);
 }
 
@@ -1974,7 +1974,7 @@ select:focus, input:focus {
 
 .welcome-icon {
     font-size: 4em;
-    color: #4db6ac;
+    color: #10B981;
     margin-bottom: 20px;
 }
 
@@ -2105,7 +2105,7 @@ select:focus, input:focus {
 }
 
 .post-btn {
-    background: linear-gradient(135deg, #4db6ac, #37a69c);
+    background: linear-gradient(135deg, #10B981, #059669);
     color: white;
     border: none;
     padding: 12px 24px;
@@ -2117,7 +2117,7 @@ select:focus, input:focus {
 }
 
 .post-btn:hover {
-    background: linear-gradient(135deg, #37a69c, #2d8a7e);
+    background: linear-gradient(135deg, #059669, #047857);
     transform: translateY(-1px);
     box-shadow: 0 4px 12px rgba(77, 182, 172, 0.3);
 }
@@ -2989,7 +2989,7 @@ select:focus, input:focus {
 }
 
 .join-community-section h3 {
-    color: #2d8a7e;
+    color: #047857;
     margin-bottom: 20px;
     font-size: 1.3em;
     font-weight: 600;
@@ -3144,7 +3144,7 @@ select:focus, input:focus {
 
 .stat-icon {
     font-size: 2.5em;
-    color: #4db6ac;
+    color: #10B981;
     margin-bottom: 15px;
 }
 
@@ -3186,7 +3186,7 @@ select:focus, input:focus {
 }
 
 .action-btn {
-    background: linear-gradient(135deg, #4db6ac, #37a69c);
+    background: linear-gradient(135deg, #10B981, #059669);
     color: #ffffff;
     border: none;
     padding: 10px 16px;
@@ -3306,7 +3306,7 @@ select:focus, input:focus {
 .user-avatar {
     width: 40px;
     height: 40px;
-    background: linear-gradient(135deg, #4db6ac, #37a69c);
+    background: linear-gradient(135deg, #10B981, #059669);
     border-radius: 50%;
     display: flex;
     align-items: center;
@@ -3374,7 +3374,7 @@ select:focus, input:focus {
 .community-icon {
     width: 50px;
     height: 50px;
-    background: linear-gradient(135deg, #4db6ac, #37a69c);
+    background: linear-gradient(135deg, #10B981, #059669);
     border-radius: 50%;
     display: flex;
     align-items: center;
@@ -3471,7 +3471,7 @@ select:focus, input:focus {
 }
 
 #postModal .modal-content .modal-header {
-    background: linear-gradient(135deg, #4db6ac, #37a69c);
+    background: linear-gradient(135deg, #10B981, #059669);
     padding: 20px;
     border-radius: 12px 12px 0 0;
     margin-bottom: 0;
@@ -3537,7 +3537,7 @@ select:focus, input:focus {
 .form-group input:focus,
 .form-group select:focus {
     outline: none;
-    border-color: #4db6ac;
+    border-color: #10B981;
     box-shadow: 0 0 0 2px rgba(77, 182, 172, 0.2);
 }
 
@@ -3550,7 +3550,7 @@ select:focus, input:focus {
 }
 
 .btn-primary {
-    background: linear-gradient(135deg, #4db6ac, #37a69c);
+    background: linear-gradient(135deg, #10B981, #059669);
     color: #ffffff;
     border: none;
     padding: 12px 24px;
@@ -3613,7 +3613,7 @@ select:focus, input:focus {
 .member-avatar {
     width: 40px;
     height: 40px;
-    background: linear-gradient(135deg, #4db6ac, #37a69c);
+    background: linear-gradient(135deg, #10B981, #059669);
     border-radius: 50%;
     display: flex;
     align-items: center;
@@ -4294,7 +4294,7 @@ select:focus, input:focus {
 .menu-btn:focus,
 input:focus,
 select:focus {
-    outline: 2px solid #4db6ac;
+    outline: 2px solid #10B981;
     outline-offset: 2px;
 }
 
@@ -4532,7 +4532,7 @@ select:focus {
     left: 0;
     right: 0;
     height: 2px;
-    background: linear-gradient(90deg, #4db6ac, #37a69c);
+    background: linear-gradient(90deg, #10B981, #059669);
     opacity: 0;
     transition: opacity 0.3s ease;
 }
@@ -4558,7 +4558,7 @@ select:focus {
 }
 
 .post-header strong {
-    color: #4db6ac;
+    color: #10B981;
     font-weight: 600;
     font-size: 14px;
 }
@@ -4633,9 +4633,9 @@ select:focus {
 }
 
 .reaction-btn.active {
-    background: #4db6ac;
+    background: #10B981;
     color: #ffffff;
-    border-color: #4db6ac;
+    border-color: #10B981;
 }
 
 .reaction-btn i {
@@ -4671,7 +4671,7 @@ select:focus {
 }
 
 .reply-indicator:hover {
-    color: #4db6ac;
+    color: #10B981;
     background: rgba(77, 182, 172, 0.1);
 }
 
@@ -4749,7 +4749,7 @@ select:focus {
 }
 
 .messages-header h2 i {
-    color: #4db6ac;
+    color: #10B981;
     font-size: 20px;
 }
 
@@ -4803,7 +4803,7 @@ select:focus {
 
 .tab-btn.active {
     background: #2d3839;
-    color: #4db6ac;
+    color: #10B981;
 }
 
 .tab-btn.active::after {
@@ -4813,7 +4813,7 @@ select:focus {
     left: 0;
     right: 0;
     height: 3px;
-    background: #4db6ac;
+    background: #10B981;
 }
 
 .tab-btn i {
@@ -4859,7 +4859,7 @@ select:focus {
 .user-avatar {
     width: 48px;
     height: 48px;
-    background: linear-gradient(135deg, #4db6ac, #37a69c);
+    background: linear-gradient(135deg, #10B981, #059669);
     border-radius: 50%;
     display: flex;
     align-items: center;
@@ -4900,7 +4900,7 @@ select:focus {
 .chat-header .user-avatar {
     width: 40px;
     height: 40px;
-    background: linear-gradient(135deg, #4db6ac, #37a69c);
+    background: linear-gradient(135deg, #10B981, #059669);
     border-radius: 50%;
     display: flex;
     align-items: center;
@@ -4965,7 +4965,7 @@ select:focus {
 }
 
 .message.sent .message-content {
-    background: #4db6ac;
+    background: #10B981;
     color: #ffffff;
 }
 
@@ -5015,7 +5015,7 @@ select:focus {
 
 .chat-input:focus {
     outline: none;
-    border-color: #4db6ac;
+    border-color: #10B981;
     background: #1a2526;
 }
 
@@ -5024,7 +5024,7 @@ select:focus {
 }
 
 .send-btn {
-    background: #4db6ac;
+    background: #10B981;
     color: #ffffff;
     border: none;
     border-radius: 50%;
@@ -5040,7 +5040,7 @@ select:focus {
 }
 
 .send-btn:hover {
-    background: #37a69c;
+    background: #059669;
     transform: scale(1.05);
 }
 
@@ -5616,7 +5616,7 @@ select:focus {
     
     /* Modal header with integrated close button */
     .modal-header {
-        background: linear-gradient(135deg, #4db6ac, #37a69c);
+        background: linear-gradient(135deg, #10B981, #059669);
         padding: 20px 50px 20px 20px;
         border-radius: 16px 16px 0 0;
         position: relative;
@@ -5674,7 +5674,7 @@ select:focus {
         margin: 10px 0;
         font-size: 14px;
         border-radius: 8px;
-        border-left: 3px solid #4db6ac;
+        border-left: 3px solid #10B981;
     }
     
     .modal .reply-form {
@@ -5697,12 +5697,12 @@ select:focus {
     
     .modal .reply-input:focus {
         outline: none;
-        border-color: #4db6ac;
+        border-color: #10B981;
         background: rgba(255, 255, 255, 0.15);
     }
     
     .modal .reply-btn {
-        background: #4db6ac;
+        background: #10B981;
         border: none;
         color: #ffffff;
         padding: 12px 20px;
@@ -5714,7 +5714,7 @@ select:focus {
     }
     
     .modal .reply-btn:hover {
-        background: #37a69c;
+        background: #059669;
     }
     
     /* Ensure modal content doesn't overflow */
@@ -5923,7 +5923,7 @@ select:focus {
 
 /* Modal header */
 .modal-header {
-    background: linear-gradient(135deg, #4db6ac, #37a69c);
+    background: linear-gradient(135deg, #10B981, #059669);
     padding: 20px 25px;
     border-radius: 16px 16px 0 0;
     display: flex;
@@ -6019,7 +6019,7 @@ select:focus {
     margin: 12px 0;
     font-size: 14px;
     border-radius: 8px;
-    border-left: 3px solid #4db6ac;
+    border-left: 3px solid #10B981;
 }
 
 .modal .reply-form {
@@ -6042,12 +6042,12 @@ select:focus {
 
 .modal .reply-input:focus {
     outline: none;
-    border-color: #4db6ac;
+    border-color: #10B981;
     background: rgba(255, 255, 255, 0.15);
 }
 
 .modal .reply-btn {
-    background: #4db6ac;
+    background: #10B981;
     border: none;
     color: #ffffff;
     padding: 12px 20px;
@@ -6059,7 +6059,7 @@ select:focus {
 }
 
 .modal .reply-btn:hover {
-    background: #37a69c;
+    background: #059669;
 }
 
 /* Modal images */
@@ -6169,7 +6169,7 @@ select:focus {
     left: 0;
     right: 0;
     height: 2px;
-    background: linear-gradient(135deg, #4db6ac 0%, #37a69c 100%);
+    background: linear-gradient(135deg, #10B981 0%, #059669 100%);
     transform: scaleX(0);
     transition: transform 0.3s ease;
 }
@@ -6180,7 +6180,7 @@ select:focus {
 
 .sport-card:hover {
     transform: translateY(-1px);
-    border-color: #4db6ac;
+    border-color: #10B981;
 }
 
 .sport-card.disabled {
@@ -6200,7 +6200,7 @@ select:focus {
 
 .sport-icon {
     font-size: 1.2rem;
-    color: #4db6ac;
+    color: #10B981;
     margin-bottom: 8px;
     transition: transform 0.3s ease;
 }
@@ -6251,8 +6251,8 @@ select:focus {
 }
 
 .back-btn:hover {
-    background: #4db6ac;
-    border-color: #4db6ac;
+    background: #10B981;
+    border-color: #10B981;
     transform: translateX(-1px);
 }
 
@@ -6288,7 +6288,7 @@ select:focus {
     left: 0;
     width: 3px;
     height: 100%;
-    background: linear-gradient(135deg, #4db6ac 0%, #37a69c 100%);
+    background: linear-gradient(135deg, #10B981 0%, #059669 100%);
     transition: width 0.3s ease;
 }
 
@@ -6298,11 +6298,11 @@ select:focus {
 
 .gym-section-card:hover {
     transform: translateX(2px);
-    border-color: #4db6ac;
+    border-color: #10B981;
 }
 
 .section-icon {
-    background: linear-gradient(135deg, #4db6ac 0%, #37a69c 100%);
+    background: linear-gradient(135deg, #10B981 0%, #059669 100%);
     color: white;
     width: 32px;
     height: 32px;
@@ -6349,7 +6349,7 @@ select:focus {
 }
 
 .section-arrow {
-    color: #4db6ac;
+    color: #10B981;
     font-size: 0.7rem;
     transition: transform 0.3s ease;
 }
@@ -6385,7 +6385,7 @@ select:focus {
 }
 
 .add-exercise-btn {
-    background: linear-gradient(135deg, #4db6ac 0%, #37a69c 100%);
+    background: linear-gradient(135deg, #10B981 0%, #059669 100%);
     color: white;
     border: none;
     padding: 8px 16px;
@@ -6467,7 +6467,7 @@ select:focus {
 
 .form-control:focus {
     outline: none;
-    border-color: #4db6ac;
+    border-color: #10B981;
     box-shadow: 0 0 0 3px rgba(77, 182, 172, 0.1);
     background: rgba(26, 35, 36, 0.9);
 }
@@ -6477,7 +6477,7 @@ select:focus {
 }
 
 .submit-btn {
-    background: linear-gradient(135deg, #4db6ac 0%, #37a69c 100%);
+    background: linear-gradient(135deg, #10B981 0%, #059669 100%);
     color: white;
     border: none;
     padding: 12px 24px;
@@ -6558,7 +6558,7 @@ select:focus {
 }
 
 .stat-value {
-    color: #4db6ac;
+    color: #10B981;
     font-size: 1rem;
     font-weight: 600;
     letter-spacing: 0.3px;
@@ -6585,9 +6585,9 @@ select:focus {
 }
 
 .action-btn:hover {
-    background: #4db6ac;
+    background: #10B981;
     color: white;
-    border-color: #4db6ac;
+    border-color: #10B981;
     transform: translateY(-1px);
 }
 
@@ -6624,7 +6624,7 @@ select:focus {
 }
 
 .set-weight {
-    color: #4db6ac;
+    color: #10B981;
     font-weight: 600;
     font-size: 0.8rem;
 }
@@ -6652,7 +6652,7 @@ select:focus {
 }
 
 .set-btn:hover {
-    background: #4db6ac;
+    background: #10B981;
     color: white;
 }
 
@@ -6662,7 +6662,7 @@ select:focus {
 
 .add-set-btn {
     background: rgba(77, 182, 172, 0.1);
-    color: #4db6ac;
+    color: #10B981;
     border: 1px solid rgba(77, 182, 172, 0.3);
     padding: 8px 16px;
     border-radius: 8px;
@@ -6676,9 +6676,9 @@ select:focus {
 }
 
 .add-set-btn:hover {
-    background: #4db6ac;
+    background: #10B981;
     color: white;
-    border-color: #4db6ac;
+    border-color: #10B981;
     transform: translateY(-1px);
 }
 
@@ -6695,7 +6695,7 @@ select:focus {
 }
 
 .muscle-group-header h3 {
-    color: #4db6ac;
+    color: #10B981;
     font-size: 1.3rem;
     font-weight: 600;
     margin: 0;
@@ -6712,7 +6712,7 @@ select:focus {
     left: 0;
     width: 100%;
     height: 2px;
-    background: linear-gradient(90deg, #4db6ac 0%, transparent 100%);
+    background: linear-gradient(90deg, #10B981 0%, transparent 100%);
     border-radius: 1px;
 }
 
@@ -6918,7 +6918,7 @@ select:focus {
 }
 
 .muscle-group-card .muscle-group-header h3 {
-    color: #4db6ac;
+    color: #10B981;
     font-size: 0.9rem;
     font-weight: 600;
     margin: 0;
@@ -6967,14 +6967,14 @@ select:focus {
 }
 
 .view-header .back-btn:hover {
-    background: #4db6ac;
+    background: #10B981;
     color: white;
-    border-color: #4db6ac;
+    border-color: #10B981;
     transform: translateY(-1px);
 }
 
 .view-header h3 {
-    color: #4db6ac;
+    color: #10B981;
     font-size: 1.1rem;
     font-weight: 600;
     margin: 0;
@@ -7233,7 +7233,7 @@ li, ul, ol, nav, header, footer, main, section, article {
 }
 
 .overview-section h3 {
-    color: #4db6ac;
+    color: #10B981;
     font-size: 1rem;
     font-weight: 600;
     margin: 0 0 10px 0;
@@ -7505,7 +7505,7 @@ li, ul, ol, nav, header, footer, main, section, article {
 }
 
 .modal-header h3 {
-    color: #4db6ac;
+    color: #10B981;
     font-size: 1.1rem;
     font-weight: 600;
     margin: 0;
@@ -7548,7 +7548,7 @@ li, ul, ol, nav, header, footer, main, section, article {
 }
 
 .stat-card h4 {
-    color: #4db6ac;
+    color: #10B981;
     font-size: 0.9rem;
     font-weight: 600;
     margin: 0 0 10px 0;
@@ -7584,7 +7584,7 @@ li, ul, ol, nav, header, footer, main, section, article {
 }
 
 .calc-btn {
-    background: #4db6ac;
+    background: #10B981;
     color: #ffffff;
     border: none;
     border-radius: 4px;
@@ -7595,7 +7595,7 @@ li, ul, ol, nav, header, footer, main, section, article {
 }
 
 .calc-btn:hover {
-    background: #37a69c;
+    background: #059669;
 }
 
 .calc-result {
@@ -7614,7 +7614,7 @@ li, ul, ol, nav, header, footer, main, section, article {
 }
 
 .sets-history h4 {
-    color: #4db6ac;
+    color: #10B981;
     font-size: 0.9rem;
     font-weight: 600;
     margin: 0 0 10px 0;
@@ -7676,7 +7676,7 @@ li, ul, ol, nav, header, footer, main, section, article {
 }
 
 .add-set-section h4 {
-    color: #4db6ac;
+    color: #10B981;
     font-size: 0.9rem;
     font-weight: 600;
     margin: 0 0 10px 0;
@@ -7694,7 +7694,7 @@ li, ul, ol, nav, header, footer, main, section, article {
 }
 
 .workout-exercises h4 {
-    color: #4db6ac;
+    color: #10B981;
     font-size: 0.9rem;
     font-weight: 600;
     margin: 0 0 10px 0;
@@ -7735,7 +7735,7 @@ li, ul, ol, nav, header, footer, main, section, article {
 }
 
 .add-exercise-to-workout h4 {
-    color: #4db6ac;
+    color: #10B981;
     font-size: 0.9rem;
     font-weight: 600;
     margin: 0 0 10px 0;
@@ -7773,7 +7773,7 @@ li, ul, ol, nav, header, footer, main, section, article {
 }
 
 .view-header h3 {
-    color: #4db6ac;
+    color: #10B981;
     font-size: 1rem;
     font-weight: 600;
     margin: 0;
@@ -7879,7 +7879,7 @@ li, ul, ol, nav, header, footer, main, section, article {
 
 .date-range input[type="date"]:focus {
     outline: none;
-    border-color: #4db6ac;
+    border-color: #10B981;
     box-shadow: 0 0 0 2px rgba(77, 182, 172, 0.2);
 }
 
@@ -7889,7 +7889,7 @@ li, ul, ol, nav, header, footer, main, section, article {
 }
 
 .filter-btn {
-    background: #4db6ac;
+    background: #10B981;
     color: #ffffff;
     border: none;
     padding: 8px 16px;
@@ -7900,7 +7900,7 @@ li, ul, ol, nav, header, footer, main, section, article {
 }
 
 .filter-btn:hover {
-    background: #37a69c;
+    background: #059669;
     transform: translateY(-1px);
 }
 
@@ -8329,7 +8329,7 @@ input::after {
 .action-btn.edit {
     background: rgba(77, 182, 172, 0.1);
     border-color: rgba(77, 182, 172, 0.3);
-    color: #4db6ac;
+    color: #10B981;
 }
 
 .action-btn.edit:hover {
@@ -8402,7 +8402,7 @@ input::after {
     width: 100%;
     background: rgba(77, 182, 172, 0.1);
     border: 1px solid rgba(77, 182, 172, 0.3);
-    color: #4db6ac;
+    color: #10B981;
     cursor: pointer;
     transition: all 0.2s ease;
 }
@@ -8432,7 +8432,7 @@ input::after {
 .share-btn {
     background: rgba(77, 182, 172, 0.1);
     border: 1px solid rgba(77, 182, 172, 0.3);
-    color: #4db6ac;
+    color: #10B981;
     padding: 6px 10px;
     border-radius: 4px;
     cursor: pointer;
@@ -8479,7 +8479,7 @@ input::after {
 }
 
 .share-preview h4 {
-    color: #4db6ac;
+    color: #10B981;
     font-size: 0.9rem;
     margin: 0 0 8px 0;
 }
@@ -8502,7 +8502,7 @@ input::after {
 }
 
 .share-options h4 {
-    color: #4db6ac;
+    color: #10B981;
     font-size: 0.9rem;
     margin: 0 0 8px 0;
 }
@@ -8510,7 +8510,7 @@ input::after {
 .share-options textarea {
     width: calc(100% - 24px);
     background: rgba(255, 255, 255, 0.05);
-    border: 2px solid #4db6ac !important;
+    border: 2px solid #10B981 !important;
     border-radius: 6px;
     padding: 8px 12px;
     color: #ffffff;
@@ -8564,7 +8564,7 @@ input::after {
 .community-option.selected {
     background: rgba(77, 182, 172, 0.15);
     border-color: rgba(77, 182, 172, 0.4);
-    color: #4db6ac;
+    color: #10B981;
 }
 
 .community-option input[type="checkbox"] {
@@ -8585,7 +8585,7 @@ input::after {
 }
 
 .community-option.selected label {
-    color: #4db6ac;
+    color: #10B981;
 }
 
 .share-actions {
@@ -8596,7 +8596,7 @@ input::after {
 .share-submit-btn {
     background: rgba(77, 182, 172, 0.1);
     border: 1px solid rgba(77, 182, 172, 0.3);
-    color: #4db6ac;
+    color: #10B981;
     padding: 8px 16px;
     border-radius: 6px;
     cursor: pointer;
