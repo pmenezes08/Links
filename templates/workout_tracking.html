@@ -188,7 +188,7 @@
         </div>
     </div>
 
-    <script src="{{ url_for('static', filename='script.js') }}?v=1.3"></script>
+    <!-- Removed script.js to avoid conflicts -->
     <script>
         $(document).ready(function() {
             // Load initial data
@@ -254,6 +254,14 @@
         }
 
         function displayMuscleGroups(exercises) {
+            console.log('Displaying muscle groups with exercises:', exercises);
+            
+            if (!exercises || !Array.isArray(exercises)) {
+                console.log('No exercises found or invalid data structure');
+                $('#muscle-groups-view').html('<p style="color: #b0b8b9; text-align: center; padding: 20px;">No exercises found. Add your first exercise above!</p>');
+                return;
+            }
+            
             const muscleGroups = {};
             
             exercises.forEach(exercise => {
@@ -263,10 +271,15 @@
                 muscleGroups[exercise.muscle_group].push(exercise);
             });
 
+            if (Object.keys(muscleGroups).length === 0) {
+                $('#muscle-groups-view').html('<p style="color: #b0b8b9; text-align: center; padding: 20px;">No exercises found. Add your first exercise above!</p>');
+                return;
+            }
+
             const html = Object.keys(muscleGroups).map(group => {
                 const exercisesInGroup = muscleGroups[group];
                 const maxWeight = Math.max(...exercisesInGroup.map(ex => 
-                    ex.sets_data.length > 0 ? Math.max(...ex.sets_data.map(set => set.weight)) : 0
+                    ex.sets_data && ex.sets_data.length > 0 ? Math.max(...ex.sets_data.map(set => set.weight || 0)) : 0
                 ));
                 
                 return `
@@ -302,6 +315,24 @@
         }
 
         function displayExercisesForGroup(exercises, muscleGroup) {
+            console.log('Displaying exercises for group:', muscleGroup, exercises);
+            
+            if (!exercises || !Array.isArray(exercises) || exercises.length === 0) {
+                const html = `
+                    <div class="view-header">
+                        <button class="back-btn" onclick="showMuscleGroups()">
+                            <i class="fas fa-arrow-left"></i> Back to Muscle Groups
+                        </button>
+                        <h3>${muscleGroup} Exercises</h3>
+                    </div>
+                    <div class="exercises-list">
+                        <p style="color: #b0b8b9; text-align: center; padding: 20px;">No exercises in this muscle group yet.</p>
+                    </div>
+                `;
+                $('#muscle-groups-view').html(html);
+                return;
+            }
+            
             const html = `
                 <div class="view-header">
                     <button class="back-btn" onclick="showMuscleGroups()">
@@ -311,9 +342,10 @@
                 </div>
                 <div class="exercises-list">
                     ${exercises.map(exercise => {
-                        const maxWeight = exercise.sets_data.length > 0 ? 
-                            Math.max(...exercise.sets_data.map(set => set.weight)) : 0;
-                        const maxWeightSet = exercise.sets_data.find(set => set.weight === maxWeight);
+                        const setsData = exercise.sets_data || [];
+                        const maxWeight = setsData.length > 0 ? 
+                            Math.max(...setsData.map(set => set.weight || 0)) : 0;
+                        const maxWeightSet = setsData.find(set => set.weight === maxWeight);
                         
                         return `
                             <div class="exercise-item" onclick="openExerciseModal(${exercise.id}, '${exercise.name}')">
@@ -331,7 +363,7 @@
                                     </div>
                                     <div class="stat">
                                         <span class="stat-label">Total Sets</span>
-                                        <span class="stat-value">${exercise.sets_data.length}</span>
+                                        <span class="stat-value">${setsData.length}</span>
                                     </div>
                                 </div>
                             </div>
@@ -545,12 +577,20 @@
                 url: '/get_workout_exercises',
                 method: 'GET',
                 success: function(response) {
-                    if (response.success) {
+                    console.log('Load exercises for workout response:', response);
+                    if (response.success && response.exercises && Array.isArray(response.exercises)) {
                         const options = response.exercises.map(exercise => 
                             `<option value="${exercise.id}">${exercise.name} (${exercise.muscle_group})</option>`
                         ).join('');
                         $('#workout-exercise-select').html('<option value="">Select exercise</option>' + options);
+                    } else {
+                        console.log('No exercises available for workout');
+                        $('#workout-exercise-select').html('<option value="">No exercises available</option>');
                     }
+                },
+                error: function(xhr, status, error) {
+                    console.log('Load exercises for workout error:', { xhr, status, error });
+                    $('#workout-exercise-select').html('<option value="">Error loading exercises</option>');
                 }
             });
         }
