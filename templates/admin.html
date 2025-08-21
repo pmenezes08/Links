@@ -33,13 +33,13 @@
         .admin-header p {
             font-size: 14px;
             margin: 8px 0 0 0;
-            color: #4db6ac;
+            color: #ffffff;
             opacity: 0.8;
         }
         
         .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            display: flex;
+            flex-wrap: wrap;
             gap: 12px;
             margin-bottom: 20px;
         }
@@ -50,18 +50,20 @@
             border: 1px solid #4db6ac;
             border-radius: 8px;
             text-align: center;
+            flex: 1;
+            min-width: 120px;
         }
         
         .stat-card h3 {
             font-size: 20px;
             margin: 0;
-            color: #4db6ac;
+            color: #ffffff;
         }
         
         .stat-card p {
             font-size: 12px;
             margin: 4px 0 0 0;
-            color: #4db6ac;
+            color: #ffffff;
             opacity: 0.8;
         }
         
