@@ -7083,7 +7083,7 @@ li, ul, ol, nav, header, footer, main, section, article {
     display: block;
 }
 
-/* Weight Tracking Styles */
+/* Performance Tracking Styles */
 .weight-tracking-container,
 .workouts-container {
     display: flex;
