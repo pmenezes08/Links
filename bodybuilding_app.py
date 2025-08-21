@@ -3266,9 +3266,9 @@ def delete_exercise():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
-@app.route('/add_set', methods=['POST'])
+@app.route('/log_weight_set', methods=['POST'])
 @login_required
-def add_set():
+def log_weight_set():
     try:
         username = session.get('username')
         exercise_id = request.form.get('exercise_id')
