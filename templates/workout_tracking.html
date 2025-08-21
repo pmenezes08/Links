@@ -245,8 +245,16 @@
                 method: 'GET',
                 success: function(response) {
                     console.log('Load muscle groups response:', response);
-                    if (response.success) {
+                    console.log('Response type:', typeof response);
+                    console.log('Response.success:', response.success);
+                    console.log('Response.exercises:', response.exercises);
+                    
+                    if (response.success && response.exercises) {
                         displayMuscleGroups(response.exercises);
+                    } else if (response.success && !response.exercises) {
+                        // No exercises found but request was successful
+                        console.log('No exercises found in database');
+                        $('#muscle-groups-view').html('<p style="color: #b0b8b9; text-align: center; padding: 20px;">No exercises found. Add exercises in the Workouts tab to see your 1RM data here!</p>');
                     } else {
                         console.log('Failed to load muscle groups:', response.error);
                         $('#muscle-groups-view').html('<p style="color: #b0b8b9; text-align: center; padding: 20px;">No exercises found. Add exercises in the Workouts tab to see your 1RM data here!</p>');
@@ -591,14 +599,16 @@
                 method: 'GET',
                 success: function(response) {
                     console.log('Load exercises for workout response:', response);
-                    if (response.success && response.exercises && Array.isArray(response.exercises)) {
+                    console.log('Response.exercises:', response.exercises);
+                    
+                    if (response.success && response.exercises && Array.isArray(response.exercises) && response.exercises.length > 0) {
                         const options = response.exercises.map(exercise => 
                             `<option value="${exercise.id}">${exercise.name} (${exercise.muscle_group})</option>`
                         ).join('');
                         $('#workout-exercise-select').html('<option value="">Select exercise</option>' + options);
                     } else {
                         console.log('No exercises available for workout');
-                        $('#workout-exercise-select').html('<option value="">No exercises available</option>');
+                        $('#workout-exercise-select').html('<option value="">No exercises available - Add exercises first</option>');
                     }
                 },
                 error: function(xhr, status, error) {

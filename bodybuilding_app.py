@@ -3127,8 +3127,11 @@ def get_workout_exercises():
         rows = cursor.fetchall()
         conn.close()
         
+        print(f"Debug: Found {len(rows)} rows for user {username}")
+        print(f"Debug: First few rows: {rows[:3]}")
+        
         if not rows:
-            return jsonify({'success': False, 'error': 'No exercises found'})
+            return jsonify({'success': True, 'exercises': []})
         
         # Group exercises by muscle group
         exercises = []
