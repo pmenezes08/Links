@@ -775,19 +775,45 @@ select:focus, input:focus {
 /* Container adjustments for feed page */
 .container.feed {
     justify-content: flex-start;
-    align-items: stretch;
-    text-align: left;
+    align-items: center;
+    text-align: center;
     padding: 20px;
     max-width: 800px;
     margin: 0 auto;
-    min-height: auto;
-    display: block;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
 }
 
 /* Ensure feed content is properly visible */
 .container.feed .posts {
     width: 100%;
     max-width: 100%;
+    margin-top: 20px;
+}
+
+/* Feed header styling */
+.container.feed h1 {
+    margin-bottom: 20px;
+    color: #ffffff;
+    font-size: 36px;
+    font-weight: 600;
+}
+
+/* Composer card styling for feed */
+.container.feed .composer-card {
+    width: 100%;
+    max-width: 650px;
+    margin-bottom: 20px;
+}
+
+/* Posts container styling */
+.container.feed .posts.timeline {
+    width: 100%;
+    max-width: 650px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
 }
 
 /* Fix for mobile feed layout */
@@ -796,11 +822,21 @@ select:focus, input:focus {
         padding: 15px;
         margin: 0;
         max-width: 100%;
+        min-height: auto;
     }
     
     .container.feed h1 {
         text-align: center;
         margin-bottom: 20px;
+        font-size: 28px;
+    }
+    
+    .container.feed .composer-card {
+        max-width: 100%;
+    }
+    
+    .container.feed .posts.timeline {
+        max-width: 100%;
     }
 }
 
@@ -1097,15 +1133,49 @@ select:focus, input:focus {
 
 .modal-content {
     background: #2d3839;
-    margin: 5% auto;
+    margin: 2% auto;
     padding: 20px;
     border-radius: 12px;
     width: 90%;
     max-width: 600px;
-    max-height: 80vh;
+    max-height: 90vh;
     overflow-y: auto;
     position: relative;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    display: flex;
+    flex-direction: column;
+}
+
+/* Ensure modal content is properly sized */
+.modal-content .modal-header {
+    flex-shrink: 0;
+    margin-bottom: 15px;
+}
+
+.modal-content .modal-body {
+    flex: 1;
+    overflow-y: auto;
+    min-height: 0;
+}
+
+/* Post modal specific styling */
+#postModal .modal-content {
+    max-height: 85vh;
+    padding: 0;
+    overflow: hidden;
+}
+
+#postModal .modal-content .modal-header {
+    background: linear-gradient(135deg, #4db6ac, #37a69c);
+    padding: 20px;
+    border-radius: 12px 12px 0 0;
+    margin-bottom: 0;
+}
+
+#postModal .modal-content .modal-body {
+    padding: 20px;
+    max-height: calc(85vh - 80px);
+    overflow-y: auto;
 }
 
 .close {
@@ -3348,13 +3418,49 @@ select:focus, input:focus {
 
 .modal-content {
     background: #2d3839;
-    margin: 5% auto;
-    padding: 0;
+    margin: 2% auto;
+    padding: 20px;
     border-radius: 12px;
     width: 90%;
-    max-width: 500px;
+    max-width: 600px;
+    max-height: 90vh;
+    overflow-y: auto;
     position: relative;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    display: flex;
+    flex-direction: column;
+}
+
+/* Ensure modal content is properly sized */
+.modal-content .modal-header {
+    flex-shrink: 0;
+    margin-bottom: 15px;
+}
+
+.modal-content .modal-body {
+    flex: 1;
+    overflow-y: auto;
+    min-height: 0;
+}
+
+/* Post modal specific styling */
+#postModal .modal-content {
+    max-height: 85vh;
+    padding: 0;
+    overflow: hidden;
+}
+
+#postModal .modal-content .modal-header {
+    background: linear-gradient(135deg, #4db6ac, #37a69c);
+    padding: 20px;
+    border-radius: 12px 12px 0 0;
+    margin-bottom: 0;
+}
+
+#postModal .modal-content .modal-body {
+    padding: 20px;
+    max-height: calc(85vh - 80px);
+    overflow-y: auto;
 }
 
 .modal-header {
