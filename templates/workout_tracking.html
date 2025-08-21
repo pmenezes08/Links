@@ -945,35 +945,61 @@
         }
 
         function displayExercisesManagement(exercises) {
-            const exercisesHtml = exercises.map(exercise => {
-                const weightHistoryHtml = exercise.weight_history && exercise.weight_history.length > 0 
-                    ? exercise.weight_history.map(entry => `
-                        <div class="weight-entry">
-                            <span class="weight-value">${entry.weight} kg × ${entry.reps} reps</span>
-                            <span class="weight-date">${formatDate(entry.date)}</span>
-                            <button onclick="deleteWeightEntry(${exercise.id}, '${entry.date}', ${entry.weight}, ${entry.reps})" class="delete-weight-btn" title="Delete this weight entry">
-                                <i class="fas fa-trash"></i>
-                            </button>
+            // Group exercises by muscle group
+            const muscleGroups = {};
+            exercises.forEach(exercise => {
+                if (!muscleGroups[exercise.muscle_group]) {
+                    muscleGroups[exercise.muscle_group] = [];
+                }
+                muscleGroups[exercise.muscle_group].push(exercise);
+            });
+            
+            const exercisesHtml = Object.keys(muscleGroups).map(muscleGroup => {
+                const exercisesInGroup = muscleGroups[muscleGroup];
+                const exercisesList = exercisesInGroup.map(exercise => {
+                    const weightHistoryHtml = exercise.weight_history && exercise.weight_history.length > 0 
+                        ? exercise.weight_history.map(entry => `
+                            <div class="weight-entry">
+                                <span class="weight-value">${entry.weight} kg × ${entry.reps} reps</span>
+                                <span class="weight-date">${formatDate(entry.date)}</span>
+                                <button onclick="deleteWeightEntry(${exercise.id}, '${entry.date}', ${entry.weight}, ${entry.reps})" class="delete-weight-btn" title="Delete this weight entry">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </div>
+                        `).join('')
+                        : '<div class="no-weights">No weights logged yet</div>';
+                    
+                    return `
+                        <div class="exercise-row" data-exercise-id="${exercise.id}">
+                            <div class="exercise-header" onclick="toggleWeightHistory(${exercise.id})">
+                                <div class="exercise-info">
+                                    <span class="exercise-name">${exercise.name}</span>
+                                    <span class="exercise-count">${exercise.weight_history ? exercise.weight_history.length : 0} entries</span>
+                                </div>
+                                <div class="exercise-actions">
+                                    <button onclick="event.stopPropagation(); openLogWeightModal(${exercise.id}, '${exercise.name}')" class="action-btn small">
+                                        <i class="fas fa-plus"></i> Add Weight
+                                    </button>
+                                    <button onclick="event.stopPropagation(); deleteExercise(${exercise.id})" class="action-btn small delete">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                    <i class="fas fa-chevron-down toggle-icon" id="toggle-${exercise.id}"></i>
+                                </div>
+                            </div>
+                            <div class="weight-history-dropdown" id="history-${exercise.id}" style="display: none;">
+                                <div class="weight-history">
+                                    ${weightHistoryHtml}
+                                </div>
+                            </div>
                         </div>
-                    `).join('')
-                    : '<div class="no-weights">No weights logged yet</div>';
+                    `;
+                }).join('');
                 
                 return `
-                    <div class="exercise-card">
-                        <div class="exercise-info">
-                            <h4>${exercise.name}</h4>
-                            <span class="muscle-group">${exercise.muscle_group}</span>
-                        </div>
-                        <div class="weight-history">
-                            ${weightHistoryHtml}
-                        </div>
-                        <div class="exercise-actions">
-                            <button onclick="openLogWeightModal(${exercise.id}, '${exercise.name}')" class="action-btn">
-                                <i class="fas fa-plus"></i> Log Weight
-                            </button>
-                            <button onclick="deleteExercise(${exercise.id})" class="action-btn delete">
-                                <i class="fas fa-trash"></i>
-                            </button>
+                    <div class="muscle-group-section">
+                        <h3 class="muscle-group-title">${muscleGroup}</h3>
+                        <div class="exercises-list">
+                            ${exercisesList}
                         </div>
                     </div>
                 `;
@@ -1097,6 +1123,19 @@
                         alert('Error deleting exercise: ' + error);
                     }
                 });
+            }
+        }
+
+        function toggleWeightHistory(exerciseId) {
+            const dropdown = $(`#history-${exerciseId}`);
+            const toggleIcon = $(`#toggle-${exerciseId}`);
+            
+            if (dropdown.is(':visible')) {
+                dropdown.slideUp(200);
+                toggleIcon.removeClass('fa-chevron-up').addClass('fa-chevron-down');
+            } else {
+                dropdown.slideDown(200);
+                toggleIcon.removeClass('fa-chevron-down').addClass('fa-chevron-up');
             }
         }
 

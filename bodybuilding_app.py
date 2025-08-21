@@ -3077,6 +3077,15 @@ def add_exercise():
         conn = sqlite3.connect('users.db')
         cursor = conn.cursor()
         
+        # Check if exercise already exists for this user
+        cursor.execute('''
+            SELECT id FROM exercises 
+            WHERE username = ? AND name = ? AND muscle_group = ?
+        ''', (username, name, muscle_group))
+        
+        if cursor.fetchone():
+            return jsonify({'success': False, 'error': 'Exercise already exists'})
+        
         # Create tables if they don't exist
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS exercises (
