@@ -3152,14 +3152,18 @@ def get_workout_exercises():
         conn = sqlite3.connect('users.db')
         cursor = conn.cursor()
         
-        # Get exercises with their workout data (actual weights used)
+        # Get exercises with data from both exercise_sets (Exercise Management) and workout_exercises (Workouts)
         cursor.execute('''
             SELECT e.id, e.name, e.muscle_group,
-                   we.weight as set_weight, we.reps as set_reps, we.created_at
+                   COALESCE(es.weight, we.weight) as set_weight,
+                   COALESCE(es.reps, we.reps) as set_reps,
+                   COALESCE(es.created_at, we.created_at) as created_at,
+                   CASE WHEN es.id IS NOT NULL THEN 'exercise_management' ELSE 'workout' END as source
             FROM exercises e
+            LEFT JOIN exercise_sets es ON e.id = es.exercise_id
             LEFT JOIN workout_exercises we ON e.id = we.exercise_id
             WHERE e.username = ?
-            ORDER BY e.muscle_group, e.name, we.created_at DESC
+            ORDER BY e.muscle_group, e.name, COALESCE(es.created_at, we.created_at) DESC
         ''', (username,))
         
         rows = cursor.fetchall()
@@ -3190,12 +3194,13 @@ def get_workout_exercises():
                 }
                 exercises.append(current_exercise)
             
-            # Add workout data if it exists
+            # Add set data if it exists (from either Exercise Management or Workouts)
             if row[3]:  # If there's weight data
                 current_exercise['sets_data'].append({
                     'weight': row[3],
                     'reps': row[4],
-                    'created_at': row[5]
+                    'created_at': row[5],
+                    'source': row[6]  # 'exercise_management' or 'workout'
                 })
         
         print(f"Debug: Returning {len(exercises)} exercises for user {username}")
