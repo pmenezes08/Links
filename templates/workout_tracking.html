@@ -961,22 +961,36 @@
         }
 
         function displayExercisesManagement(exercises) {
-            const exercisesHtml = exercises.map(exercise => `
-                <div class="exercise-card">
-                    <div class="exercise-info">
-                        <h4>${exercise.name}</h4>
-                        <span class="muscle-group">${exercise.muscle_group}</span>
+            const exercisesHtml = exercises.map(exercise => {
+                const weightHistoryHtml = exercise.weight_history && exercise.weight_history.length > 0 
+                    ? exercise.weight_history.map(entry => `
+                        <div class="weight-entry">
+                            <span class="weight-value">${entry.weight} kg × ${entry.reps} reps</span>
+                            <span class="weight-date">${formatDate(entry.date)}</span>
+                        </div>
+                    `).join('')
+                    : '<div class="no-weights">No weights logged yet</div>';
+                
+                return `
+                    <div class="exercise-card">
+                        <div class="exercise-info">
+                            <h4>${exercise.name}</h4>
+                            <span class="muscle-group">${exercise.muscle_group}</span>
+                        </div>
+                        <div class="weight-history">
+                            ${weightHistoryHtml}
+                        </div>
+                        <div class="exercise-actions">
+                            <button onclick="openLogWeightModal(${exercise.id}, '${exercise.name}')" class="action-btn">
+                                <i class="fas fa-plus"></i> Log Weight
+                            </button>
+                            <button onclick="deleteExercise(${exercise.id})" class="action-btn delete">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
                     </div>
-                    <div class="exercise-actions">
-                        <button onclick="openLogWeightModal(${exercise.id}, '${exercise.name}')" class="action-btn">
-                            <i class="fas fa-plus"></i> Log Weight
-                        </button>
-                        <button onclick="deleteExercise(${exercise.id})" class="action-btn delete">
-                            <i class="fas fa-trash"></i>
-                        </button>
-                    </div>
-                </div>
-            `).join('');
+                `;
+            }).join('');
             
             $('#exercises-management-list').html(exercisesHtml);
         }

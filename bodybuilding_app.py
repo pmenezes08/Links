@@ -3661,23 +3661,45 @@ def get_user_exercises():
         conn = sqlite3.connect('users.db')
         cursor = conn.cursor()
         
-        # Get all exercises for the user
+        # Get all exercises with their weight history
         cursor.execute('''
-            SELECT id, name, muscle_group
-            FROM exercises
-            WHERE username = ?
-            ORDER BY name
+            SELECT e.id, e.name, e.muscle_group,
+                   es.weight, es.reps, es.created_at
+            FROM exercises e
+            LEFT JOIN exercise_sets es ON e.id = es.exercise_id
+            WHERE e.username = ?
+            ORDER BY e.name, es.created_at DESC
         ''', (username,))
         
-        exercises = []
-        for row in cursor.fetchall():
-            exercises.append({
-                'id': row[0],
-                'name': row[1],
-                'muscle_group': row[2]
-            })
-        
+        rows = cursor.fetchall()
         conn.close()
+        
+        # Group exercises with their weight history
+        exercises = []
+        current_exercise = None
+        
+        for row in rows:
+            exercise_id = row[0]
+            exercise_name = row[1]
+            muscle_group = row[2]
+            
+            # If this is a new exercise
+            if not current_exercise or current_exercise['id'] != exercise_id:
+                current_exercise = {
+                    'id': exercise_id,
+                    'name': exercise_name,
+                    'muscle_group': muscle_group,
+                    'weight_history': []
+                }
+                exercises.append(current_exercise)
+            
+            # Add weight data if it exists
+            if row[3]:  # If there's weight data
+                current_exercise['weight_history'].append({
+                    'weight': row[3],
+                    'reps': row[4],
+                    'date': row[5]
+                })
         
         return jsonify({'success': True, 'exercises': exercises})
         
