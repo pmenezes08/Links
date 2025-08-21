@@ -1133,6 +1133,13 @@ def admin():
     </body>
     </html>
     """.format(session.get('username', 'Unknown'))
+
+@app.route('/admin_test')
+@login_required
+def admin_test():
+    if session['username'] != 'admin':
+        return redirect(url_for('index'))
+    return "Admin test route is working!"
                     
 
 @app.route('/profile')
