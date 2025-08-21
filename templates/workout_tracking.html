@@ -31,146 +31,292 @@
             </button>
             <h1>Workout Tracking</h1>
         </div>
-        
+
         <div class="tracking-content">
-            <!-- Quick Stats -->
-            <div class="stats-grid">
-                <div class="stat-card">
-                    <div class="stat-icon">
-                        <i class="fas fa-calendar-check"></i>
-                    </div>
-                    <div class="stat-content">
-                        <h3>Workouts This Week</h3>
-                        <p class="stat-number">3</p>
-                    </div>
-                </div>
-                
-                <div class="stat-card">
-                    <div class="stat-icon">
-                        <i class="fas fa-clock"></i>
-                    </div>
-                    <div class="stat-content">
-                        <h3>Total Time</h3>
-                        <p class="stat-number">2h 15m</p>
-                    </div>
-                </div>
-                
-                <div class="stat-card">
-                    <div class="stat-icon">
-                        <i class="fas fa-fire"></i>
-                    </div>
-                    <div class="stat-content">
-                        <h3>Calories Burned</h3>
-                        <p class="stat-number">1,250</p>
-                    </div>
-                </div>
-                
-                <div class="stat-card">
-                    <div class="stat-icon">
-                        <i class="fas fa-trophy"></i>
-                    </div>
-                    <div class="stat-content">
-                        <h3>Current Streak</h3>
-                        <p class="stat-number">5 days</p>
-                    </div>
-                </div>
+            <div class="tracking-header">
+                <h2>Your Exercises</h2>
+                <button class="add-exercise-btn" onclick="toggleExerciseForm()">
+                    <i class="fas fa-plus"></i> Add Exercise
+                </button>
             </div>
-            
-            <!-- Recent Workouts -->
-            <div class="recent-workouts">
-                <h2>Recent Workouts</h2>
-                <div class="workout-list">
-                    <div class="workout-item">
-                        <div class="workout-date">
-                            <span class="date">Today</span>
-                            <span class="time">2:30 PM</span>
-                        </div>
-                        <div class="workout-details">
-                            <h4>Upper Body Strength</h4>
-                            <p>45 minutes • 8 exercises</p>
-                        </div>
-                        <div class="workout-actions">
-                            <button class="view-btn" onclick="viewWorkout(1)">
-                                <i class="fas fa-eye"></i> View
-                            </button>
-                        </div>
+
+            <!-- Add Exercise Form -->
+            <div id="exercise-form" class="exercise-form">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="exercise-name">Exercise Name</label>
+                        <input type="text" id="exercise-name" class="form-control" placeholder="e.g., Bench Press">
                     </div>
-                    
-                    <div class="workout-item">
-                        <div class="workout-date">
-                            <span class="date">Yesterday</span>
-                            <span class="time">6:15 PM</span>
-                        </div>
-                        <div class="workout-details">
-                            <h4>Lower Body Power</h4>
-                            <p>60 minutes • 6 exercises</p>
-                        </div>
-                        <div class="workout-actions">
-                            <button class="view-btn" onclick="viewWorkout(2)">
-                                <i class="fas fa-eye"></i> View
-                            </button>
-                        </div>
+                    <div class="form-group">
+                        <label for="exercise-weight">Weight (kg)</label>
+                        <input type="number" id="exercise-weight" class="form-control" placeholder="0">
                     </div>
-                    
-                    <div class="workout-item">
-                        <div class="workout-date">
-                            <span class="date">2 days ago</span>
-                            <span class="time">7:00 AM</span>
-                        </div>
-                        <div class="workout-details">
-                            <h4>Cardio Session</h4>
-                            <p>30 minutes • HIIT</p>
-                        </div>
-                        <div class="workout-actions">
-                            <button class="view-btn" onclick="viewWorkout(3)">
-                                <i class="fas fa-eye"></i> View
-                            </button>
-                        </div>
+                    <div class="form-group">
+                        <label for="exercise-sets">Sets</label>
+                        <input type="number" id="exercise-sets" class="form-control" placeholder="0">
                     </div>
                 </div>
+                <button class="submit-btn" onclick="addExercise()">Add Exercise</button>
             </div>
-            
-            <!-- Start New Workout -->
-            <div class="start-workout-section">
-                <h2>Start New Workout</h2>
-                <div class="workout-options">
-                    <button class="workout-option-btn" onclick="startQuickWorkout()">
-                        <i class="fas fa-bolt"></i>
-                        <span>Quick Workout</span>
-                        <small>15-30 minutes</small>
-                    </button>
-                    
-                    <button class="workout-option-btn" onclick="startCustomWorkout()">
-                        <i class="fas fa-edit"></i>
-                        <span>Custom Workout</span>
-                        <small>Build your own</small>
-                    </button>
-                    
-                    <button class="workout-option-btn" onclick="startGeneratedWorkout()">
-                        <i class="fas fa-magic"></i>
-                        <span>Generated Workout</span>
-                        <small>AI-powered</small>
-                    </button>
-                </div>
+
+            <!-- Exercises List -->
+            <div id="exercises-list" class="exercises-list">
+                <!-- Exercises will be loaded here -->
             </div>
         </div>
     </div>
-    
+
     <script>
-        function viewWorkout(id) {
-            alert(`Viewing workout ${id}. This feature will be implemented soon.`);
+        // Load exercises on page load
+        $(document).ready(function() {
+            loadExercises();
+        });
+
+        function toggleExerciseForm() {
+            const form = document.getElementById('exercise-form');
+            form.classList.toggle('show');
         }
-        
-        function startQuickWorkout() {
-            alert('Starting quick workout. This feature will be implemented soon.');
+
+        function addExercise() {
+            const name = document.getElementById('exercise-name').value;
+            const weight = document.getElementById('exercise-weight').value;
+            const sets = document.getElementById('exercise-sets').value;
+
+            if (!name || !weight || !sets) {
+                alert('Please fill in all fields');
+                return;
+            }
+
+            $.ajax({
+                url: '/add_exercise',
+                method: 'POST',
+                data: {
+                    name: name,
+                    weight: weight,
+                    sets: sets
+                },
+                success: function(response) {
+                    if (response.success) {
+                        document.getElementById('exercise-name').value = '';
+                        document.getElementById('exercise-weight').value = '';
+                        document.getElementById('exercise-sets').value = '';
+                        document.getElementById('exercise-form').classList.remove('show');
+                        loadExercises();
+                    } else {
+                        alert('Error adding exercise: ' + response.error);
+                    }
+                },
+                error: function() {
+                    alert('Error adding exercise');
+                }
+            });
         }
-        
-        function startCustomWorkout() {
-            alert('Starting custom workout. This feature will be implemented soon.');
+
+        function loadExercises() {
+            $.ajax({
+                url: '/get_exercises',
+                method: 'GET',
+                success: function(response) {
+                    if (response.success) {
+                        displayExercises(response.exercises);
+                    } else {
+                        console.log('No exercises found');
+                        document.getElementById('exercises-list').innerHTML = '<p style="color: #b0b8b9; text-align: center; font-size: 0.8rem;">No exercises added yet. Click "Add Exercise" to get started!</p>';
+                    }
+                },
+                error: function() {
+                    console.log('Error loading exercises');
+                }
+            });
         }
-        
-        function startGeneratedWorkout() {
-            window.location.href = '{{ url_for("workout_generator") }}';
+
+        function displayExercises(exercises) {
+            const container = document.getElementById('exercises-list');
+            container.innerHTML = '';
+
+            exercises.forEach(function(exercise) {
+                const exerciseHtml = `
+                    <div class="exercise-item" data-id="${exercise.id}">
+                        <div class="exercise-header">
+                            <h3 class="exercise-name">${exercise.name}</h3>
+                            <p class="exercise-date">${exercise.date}</p>
+                        </div>
+                        <div class="exercise-stats">
+                            <div class="stat-item">
+                                <span class="stat-label">Current Weight</span>
+                                <span class="stat-value">${exercise.weight} kg</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">Total Sets</span>
+                                <span class="stat-value">${exercise.sets}</span>
+                            </div>
+                        </div>
+                        <div class="exercise-actions">
+                            <button class="action-btn" onclick="editExercise(${exercise.id})">
+                                <i class="fas fa-edit"></i> Edit
+                            </button>
+                            <button class="action-btn" onclick="addSet(${exercise.id})">
+                                <i class="fas fa-plus"></i> Add Set
+                            </button>
+                            <button class="action-btn delete" onclick="deleteExercise(${exercise.id})">
+                                <i class="fas fa-trash"></i> Delete
+                            </button>
+                        </div>
+                        <div class="workout-sets">
+                            <div id="sets-${exercise.id}">
+                                ${displaySets(exercise.sets_data)}
+                            </div>
+                            <button class="add-set-btn" onclick="addSet(${exercise.id})">
+                                <i class="fas fa-plus"></i> Add New Set
+                            </button>
+                        </div>
+                    </div>
+                `;
+                container.innerHTML += exerciseHtml;
+            });
+        }
+
+        function displaySets(setsData) {
+            if (!setsData || setsData.length === 0) {
+                return '<p style="color: #b0b8b9; font-size: 0.7rem; text-align: center;">No sets recorded yet</p>';
+            }
+
+            let setsHtml = '';
+            setsData.forEach(function(set, index) {
+                setsHtml += `
+                    <div class="set-item">
+                        <span class="set-number">Set ${index + 1}</span>
+                        <span class="set-weight">${set.weight} kg</span>
+                        <div class="set-actions">
+                            <button class="set-btn" onclick="editSet(${set.exercise_id}, ${set.id})">
+                                <i class="fas fa-edit"></i>
+                            </button>
+                            <button class="set-btn delete" onclick="deleteSet(${set.exercise_id}, ${set.id})">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
+                    </div>
+                `;
+            });
+            return setsHtml;
+        }
+
+        function editExercise(exerciseId) {
+            const newName = prompt('Enter new exercise name:');
+            if (newName) {
+                $.ajax({
+                    url: '/edit_exercise',
+                    method: 'POST',
+                    data: {
+                        exercise_id: exerciseId,
+                        name: newName
+                    },
+                    success: function(response) {
+                        if (response.success) {
+                            loadExercises();
+                        } else {
+                            alert('Error updating exercise: ' + response.error);
+                        }
+                    },
+                    error: function() {
+                        alert('Error updating exercise');
+                    }
+                });
+            }
+        }
+
+        function deleteExercise(exerciseId) {
+            if (confirm('Are you sure you want to delete this exercise?')) {
+                $.ajax({
+                    url: '/delete_exercise',
+                    method: 'POST',
+                    data: {
+                        exercise_id: exerciseId
+                    },
+                    success: function(response) {
+                        if (response.success) {
+                            loadExercises();
+                        } else {
+                            alert('Error deleting exercise: ' + response.error);
+                        }
+                    },
+                    error: function() {
+                        alert('Error deleting exercise');
+                    }
+                });
+            }
+        }
+
+        function addSet(exerciseId) {
+            const weight = prompt('Enter weight for this set (kg):');
+            if (weight && !isNaN(weight)) {
+                $.ajax({
+                    url: '/add_set',
+                    method: 'POST',
+                    data: {
+                        exercise_id: exerciseId,
+                        weight: weight
+                    },
+                    success: function(response) {
+                        if (response.success) {
+                            loadExercises();
+                        } else {
+                            alert('Error adding set: ' + response.error);
+                        }
+                    },
+                    error: function() {
+                        alert('Error adding set');
+                    }
+                });
+            }
+        }
+
+        function editSet(exerciseId, setId) {
+            const newWeight = prompt('Enter new weight for this set (kg):');
+            if (newWeight && !isNaN(newWeight)) {
+                $.ajax({
+                    url: '/edit_set',
+                    method: 'POST',
+                    data: {
+                        exercise_id: exerciseId,
+                        set_id: setId,
+                        weight: newWeight
+                    },
+                    success: function(response) {
+                        if (response.success) {
+                            loadExercises();
+                        } else {
+                            alert('Error updating set: ' + response.error);
+                        }
+                    },
+                    error: function() {
+                        alert('Error updating set');
+                    }
+                });
+            }
+        }
+
+        function deleteSet(exerciseId, setId) {
+            if (confirm('Are you sure you want to delete this set?')) {
+                $.ajax({
+                    url: '/delete_set',
+                    method: 'POST',
+                    data: {
+                        exercise_id: exerciseId,
+                        set_id: setId
+                    },
+                    success: function(response) {
+                        if (response.success) {
+                            loadExercises();
+                        } else {
+                            alert('Error deleting set: ' + response.error);
+                        }
+                    },
+                    error: function() {
+                        alert('Error deleting set');
+                    }
+                });
+            }
         }
     </script>
 </body>

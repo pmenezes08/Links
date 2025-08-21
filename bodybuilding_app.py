@@ -3086,6 +3086,295 @@ def workout_tracking():
     username = session.get('username')
     return render_template('workout_tracking.html', username=username)
 
+# ===== WORKOUT TRACKING ROUTES =====
+
+@app.route('/add_exercise', methods=['POST'])
+@login_required
+def add_exercise():
+    try:
+        username = session.get('username')
+        name = request.form.get('name')
+        weight = request.form.get('weight')
+        sets = request.form.get('sets')
+        
+        if not all([name, weight, sets]):
+            return jsonify({'success': False, 'error': 'All fields are required'})
+        
+        conn = sqlite3.connect('users.db')
+        cursor = conn.cursor()
+        
+        # Create exercises table if it doesn't exist
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS exercises (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT NOT NULL,
+                name TEXT NOT NULL,
+                weight REAL NOT NULL,
+                sets INTEGER NOT NULL,
+                date_created TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        # Create exercise_sets table if it doesn't exist
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS exercise_sets (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                exercise_id INTEGER NOT NULL,
+                weight REAL NOT NULL,
+                date_created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (exercise_id) REFERENCES exercises (id) ON DELETE CASCADE
+            )
+        ''')
+        
+        # Insert the exercise
+        cursor.execute('''
+            INSERT INTO exercises (username, name, weight, sets)
+            VALUES (?, ?, ?, ?)
+        ''', (username, name, weight, sets))
+        
+        exercise_id = cursor.lastrowid
+        
+        # Add initial set
+        cursor.execute('''
+            INSERT INTO exercise_sets (exercise_id, weight)
+            VALUES (?, ?)
+        ''', (exercise_id, weight))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({'success': True})
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/get_exercises', methods=['GET'])
+@login_required
+def get_exercises():
+    try:
+        username = session.get('username')
+        
+        conn = sqlite3.connect('users.db')
+        cursor = conn.cursor()
+        
+        # Get exercises with their sets
+        cursor.execute('''
+            SELECT e.id, e.name, e.weight, e.sets, e.date_created,
+                   es.id as set_id, es.weight as set_weight, es.date_created as set_date
+            FROM exercises e
+            LEFT JOIN exercise_sets es ON e.id = es.exercise_id
+            WHERE e.username = ?
+            ORDER BY e.date_created DESC, es.date_created DESC
+        ''', (username,))
+        
+        rows = cursor.fetchall()
+        conn.close()
+        
+        if not rows:
+            return jsonify({'success': False, 'error': 'No exercises found'})
+        
+        # Group exercises and their sets
+        exercises = {}
+        for row in rows:
+            exercise_id = row[0]
+            if exercise_id not in exercises:
+                exercises[exercise_id] = {
+                    'id': exercise_id,
+                    'name': row[1],
+                    'weight': row[2],
+                    'sets': row[3],
+                    'date': row[4][:10] if row[4] else 'Unknown',
+                    'sets_data': []
+                }
+            
+            if row[5]:  # If there's a set
+                exercises[exercise_id]['sets_data'].append({
+                    'id': row[5],
+                    'exercise_id': exercise_id,
+                    'weight': row[6],
+                    'date': row[7][:10] if row[7] else 'Unknown'
+                })
+        
+        return jsonify({'success': True, 'exercises': list(exercises.values())})
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/edit_exercise', methods=['POST'])
+@login_required
+def edit_exercise():
+    try:
+        username = session.get('username')
+        exercise_id = request.form.get('exercise_id')
+        name = request.form.get('name')
+        
+        if not all([exercise_id, name]):
+            return jsonify({'success': False, 'error': 'Exercise ID and name are required'})
+        
+        conn = sqlite3.connect('users.db')
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            UPDATE exercises 
+            SET name = ? 
+            WHERE id = ? AND username = ?
+        ''', (name, exercise_id, username))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({'success': True})
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/delete_exercise', methods=['POST'])
+@login_required
+def delete_exercise():
+    try:
+        username = session.get('username')
+        exercise_id = request.form.get('exercise_id')
+        
+        if not exercise_id:
+            return jsonify({'success': False, 'error': 'Exercise ID is required'})
+        
+        conn = sqlite3.connect('users.db')
+        cursor = conn.cursor()
+        
+        # Delete the exercise (sets will be deleted automatically due to CASCADE)
+        cursor.execute('''
+            DELETE FROM exercises 
+            WHERE id = ? AND username = ?
+        ''', (exercise_id, username))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({'success': True})
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/add_set', methods=['POST'])
+@login_required
+def add_set():
+    try:
+        username = session.get('username')
+        exercise_id = request.form.get('exercise_id')
+        weight = request.form.get('weight')
+        
+        if not all([exercise_id, weight]):
+            return jsonify({'success': False, 'error': 'Exercise ID and weight are required'})
+        
+        conn = sqlite3.connect('users.db')
+        cursor = conn.cursor()
+        
+        # Verify the exercise belongs to the user
+        cursor.execute('''
+            SELECT id FROM exercises 
+            WHERE id = ? AND username = ?
+        ''', (exercise_id, username))
+        
+        if not cursor.fetchone():
+            return jsonify({'success': False, 'error': 'Exercise not found'})
+        
+        # Add the set
+        cursor.execute('''
+            INSERT INTO exercise_sets (exercise_id, weight)
+            VALUES (?, ?)
+        ''', (exercise_id, weight))
+        
+        # Update the exercise's current weight
+        cursor.execute('''
+            UPDATE exercises 
+            SET weight = ? 
+            WHERE id = ?
+        ''', (weight, exercise_id))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({'success': True})
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/edit_set', methods=['POST'])
+@login_required
+def edit_set():
+    try:
+        username = session.get('username')
+        exercise_id = request.form.get('exercise_id')
+        set_id = request.form.get('set_id')
+        weight = request.form.get('weight')
+        
+        if not all([exercise_id, set_id, weight]):
+            return jsonify({'success': False, 'error': 'All fields are required'})
+        
+        conn = sqlite3.connect('users.db')
+        cursor = conn.cursor()
+        
+        # Verify the exercise belongs to the user
+        cursor.execute('''
+            SELECT id FROM exercises 
+            WHERE id = ? AND username = ?
+        ''', (exercise_id, username))
+        
+        if not cursor.fetchone():
+            return jsonify({'success': False, 'error': 'Exercise not found'})
+        
+        # Update the set
+        cursor.execute('''
+            UPDATE exercise_sets 
+            SET weight = ? 
+            WHERE id = ? AND exercise_id = ?
+        ''', (weight, set_id, exercise_id))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({'success': True})
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/delete_set', methods=['POST'])
+@login_required
+def delete_set():
+    try:
+        username = session.get('username')
+        exercise_id = request.form.get('exercise_id')
+        set_id = request.form.get('set_id')
+        
+        if not all([exercise_id, set_id]):
+            return jsonify({'success': False, 'error': 'Exercise ID and set ID are required'})
+        
+        conn = sqlite3.connect('users.db')
+        cursor = conn.cursor()
+        
+        # Verify the exercise belongs to the user
+        cursor.execute('''
+            SELECT id FROM exercises 
+            WHERE id = ? AND username = ?
+        ''', (exercise_id, username))
+        
+        if not cursor.fetchone():
+            return jsonify({'success': False, 'error': 'Exercise not found'})
+        
+        # Delete the set
+        cursor.execute('''
+            DELETE FROM exercise_sets 
+            WHERE id = ? AND exercise_id = ?
+        ''', (set_id, exercise_id))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({'success': True})
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
 if __name__ == '__main__':
     # Ensure database exists and is properly initialized
     try:
