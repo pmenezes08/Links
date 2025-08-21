@@ -3069,9 +3069,10 @@ def add_exercise():
         conn = sqlite3.connect('users.db')
         cursor = conn.cursor()
         
-        # Create exercises table if it doesn't exist
+        # Drop and recreate exercises table to ensure correct schema
+        cursor.execute('DROP TABLE IF EXISTS exercises')
         cursor.execute('''
-            CREATE TABLE IF NOT EXISTS exercises (
+            CREATE TABLE exercises (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 username TEXT NOT NULL,
                 name TEXT NOT NULL,
