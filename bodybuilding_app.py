@@ -1112,8 +1112,11 @@ def delete_weight():
 @app.route('/admin', methods=['GET', 'POST'])
 @login_required
 def admin():
+    print(f"Admin route accessed by user: {session.get('username')}")
     if session['username'] != 'admin':
+        print("User is not admin, redirecting")
         return redirect(url_for('index'))
+    print("User is admin, proceeding")
     
     try:
         with get_db_connection() as conn:
@@ -1261,9 +1264,11 @@ def admin():
                         logger.error(f"Error deleting community {community_id}: {str(delete_error)}")
                         return render_template('admin.html', users=users, communities=communities, stats=stats, error=f"Error deleting community: {str(delete_error)}", csrf_token="disabled")
             
+        print("About to render admin template")
         return render_template('admin.html', users=users, communities=communities, stats=stats, csrf_token="disabled")
         
     except Exception as e:
+        print(f"Error in admin route: {str(e)}")
         logger.error(f"Error in admin route: {str(e)}")
         abort(500)
 
