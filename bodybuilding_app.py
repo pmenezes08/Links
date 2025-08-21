@@ -3140,9 +3140,9 @@ def add_exercise():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
-@app.route('/get_user_exercises', methods=['GET'])
+@app.route('/get_workout_exercises', methods=['GET'])
 @login_required
-def get_user_exercises():
+def get_workout_exercises():
     try:
         username = session.get('username')
         
