@@ -3619,18 +3619,74 @@ def check_exercise_in_workout():
         conn = sqlite3.connect('users.db')
         cursor = conn.cursor()
         
-        # Check if the exercise is already in the workout
+        # Check if the exercise is already in the workout and get its details
         cursor.execute('''
-            SELECT COUNT(*) 
+            SELECT we.id, we.weight, we.sets, we.reps, e.name
             FROM workout_exercises we
             JOIN workouts w ON we.workout_id = w.id
+            JOIN exercises e ON we.exercise_id = e.id
             WHERE we.workout_id = ? AND we.exercise_id = ? AND w.username = ?
         ''', (workout_id, exercise_id, username))
         
-        count = cursor.fetchone()[0]
+        row = cursor.fetchone()
         conn.close()
         
-        return jsonify({'success': True, 'is_duplicate': count > 0})
+        if row:
+            return jsonify({
+                'success': True, 
+                'is_duplicate': True,
+                'existing_exercise': {
+                    'id': row[0],
+                    'weight': row[1],
+                    'sets': row[2],
+                    'reps': row[3],
+                    'name': row[4]
+                }
+            })
+        else:
+            return jsonify({'success': True, 'is_duplicate': False})
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/update_exercise_in_workout', methods=['POST'])
+@login_required
+def update_exercise_in_workout():
+    try:
+        username = session.get('username')
+        workout_exercise_id = request.form.get('workout_exercise_id')
+        weight = request.form.get('weight')
+        sets = request.form.get('sets')
+        reps = request.form.get('reps')
+        
+        if not all([workout_exercise_id, weight, sets, reps]):
+            return jsonify({'success': False, 'error': 'All fields are required'})
+        
+        conn = sqlite3.connect('users.db')
+        cursor = conn.cursor()
+        
+        # Verify the workout exercise belongs to the user
+        cursor.execute('''
+            SELECT we.id 
+            FROM workout_exercises we
+            JOIN workouts w ON we.workout_id = w.id
+            WHERE we.id = ? AND w.username = ?
+        ''', (workout_exercise_id, username))
+        
+        if not cursor.fetchone():
+            return jsonify({'success': False, 'error': 'Workout exercise not found'})
+        
+        # Update the workout exercise
+        cursor.execute('''
+            UPDATE workout_exercises 
+            SET weight = ?, sets = ?, reps = ?
+            WHERE id = ?
+        ''', (weight, sets, reps, workout_exercise_id))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({'success': True})
         
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})

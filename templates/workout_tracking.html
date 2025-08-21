@@ -866,11 +866,11 @@
             }
             
             // Check if exercise is already in the workout
-            checkExerciseInWorkout(exerciseId, function(isDuplicate) {
+            checkExerciseInWorkout(exerciseId, function(isDuplicate, existingExercise) {
                 console.log('Duplicate check result:', isDuplicate);
                 if (isDuplicate) {
-                    console.log('Exercise is duplicate, showing alert');
-                    alert('This exercise is already included in the workout. You can only update the existing entry.');
+                    console.log('Exercise is duplicate, showing update dialog');
+                    showUpdateExerciseDialog(existingExercise, weight, sets, reps);
                     return;
                 }
                 
@@ -923,17 +923,55 @@
                     console.log('Check exercise response:', response);
                     if (response.success) {
                         console.log('Exercise is duplicate:', response.is_duplicate);
-                        callback(response.is_duplicate);
+                        callback(response.is_duplicate, response.existing_exercise);
                     } else {
                         console.log('Error checking exercise in workout: ' + (response.error || 'Unknown error'));
-                        callback(false); // Allow adding if check fails
+                        callback(false, null); // Allow adding if check fails
                     }
                 },
                 error: function(xhr, status, error) {
                     console.log('Error checking exercise in workout: ' + error);
-                    callback(false); // Allow adding if check fails
+                    callback(false, null); // Allow adding if check fails
                 }
             });
+        }
+
+        function showUpdateExerciseDialog(existingExercise, newWeight, newSets, newReps) {
+            const message = `${existingExercise.name} is already in this workout.\n\nCurrent: ${existingExercise.weight} kg × ${existingExercise.sets} sets × ${existingExercise.reps} reps\nNew: ${newWeight} kg × ${newSets} sets × ${newReps} reps\n\nWould you like to update the existing entry?`;
+            
+            if (confirm(message)) {
+                // Update the existing exercise
+                $.ajax({
+                    url: '/update_exercise_in_workout',
+                    method: 'POST',
+                    data: {
+                        workout_exercise_id: existingExercise.id,
+                        weight: newWeight,
+                        sets: newSets,
+                        reps: newReps
+                    },
+                    success: function(response) {
+                        if (response.success) {
+                            // Clear the form
+                            $('#workout-exercise-select').val('');
+                            $('#workout-weight').val('');
+                            $('#workout-sets').val('');
+                            $('#workout-reps').val('');
+                            
+                            // Refresh the workout details
+                            loadWorkoutDetails(currentWorkoutId);
+                            loadWorkouts();
+                            
+                            alert('Exercise updated successfully!');
+                        } else {
+                            alert('Error updating exercise: ' + (response.error || 'Unknown error'));
+                        }
+                    },
+                    error: function(xhr, status, error) {
+                        alert('Error updating exercise: ' + error);
+                    }
+                });
+            }
         }
 
         function checkAndUpdateOneRM(exerciseId, weight, reps, callback) {
