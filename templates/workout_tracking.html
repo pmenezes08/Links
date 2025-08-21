@@ -113,9 +113,9 @@
         }
 
         function loadExercises() {
-            $.ajax({
-                url: '/get_exercises',
-                method: 'GET',
+                    $.ajax({
+            url: '/get_user_exercises',
+            method: 'GET',
                 success: function(response) {
                     if (response.success) {
                         displayExercises(response.exercises);
