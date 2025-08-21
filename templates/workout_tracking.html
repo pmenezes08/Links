@@ -10,9 +10,10 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}?v=1755799274">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
         // Force cache refresh
-        window.cacheVersion = '1.6';
+        window.cacheVersion = '1.7';
     </script>
 </head>
 <body>
@@ -55,6 +56,28 @@
                 
                 <div class="overview-section">
                     <p class="overview-text">Your 1RM data is automatically calculated from your logged sets. Add exercises and log your performance to see your progress here.</p>
+                </div>
+
+                <!-- Analytics Section -->
+                <div class="analytics-section">
+                    <div class="analytics-header">
+                        <h4>Progress Analytics</h4>
+                        <div class="analytics-controls">
+                            <select id="exercise-select" class="analytics-select">
+                                <option value="">Select Exercise</option>
+                            </select>
+                            <select id="time-range" class="analytics-select">
+                                <option value="30">Last 30 days</option>
+                                <option value="90">Last 90 days</option>
+                                <option value="180">Last 6 months</option>
+                                <option value="365">Last year</option>
+                                <option value="all">All time</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="progressChart"></canvas>
+                    </div>
                 </div>
 
                 <div class="exercises-section">
@@ -311,6 +334,16 @@
             loadMuscleGroups();
             loadExercisesManagement();
             loadWorkouts();
+            loadAnalyticsData();
+
+            // Analytics event listeners
+            $('#exercise-select').change(function() {
+                updateProgressChart();
+            });
+
+            $('#time-range').change(function() {
+                updateProgressChart();
+            });
 
             // Tab switching
             $('.tab-btn').click(function() {
@@ -1164,6 +1197,145 @@
                     }
                 });
             }
+        }
+
+        // Analytics Functions
+        let progressChart = null;
+
+        function loadAnalyticsData() {
+            $.ajax({
+                url: '/get_user_exercises',
+                method: 'GET',
+                success: function(response) {
+                    if (response.success && response.exercises) {
+                        populateExerciseSelect(response.exercises);
+                        updateProgressChart();
+                    }
+                }
+            });
+        }
+
+        function populateExerciseSelect(exercises) {
+            const select = $('#exercise-select');
+            select.empty();
+            select.append('<option value="">Select Exercise</option>');
+            
+            exercises.forEach(exercise => {
+                select.append(`<option value="${exercise.id}">${exercise.name} (${exercise.muscle_group})</option>`);
+            });
+        }
+
+        function updateProgressChart() {
+            const exerciseId = $('#exercise-select').val();
+            const timeRange = $('#time-range').val();
+            
+            if (!exerciseId) {
+                if (progressChart) {
+                    progressChart.destroy();
+                    progressChart = null;
+                }
+                return;
+            }
+
+            $.ajax({
+                url: '/get_exercise_progress',
+                method: 'GET',
+                data: {
+                    exercise_id: exerciseId,
+                    time_range: timeRange
+                },
+                success: function(response) {
+                    if (response.success) {
+                        renderProgressChart(response.data);
+                    }
+                },
+                error: function() {
+                    console.log('Error loading progress data');
+                }
+            });
+        }
+
+        function renderProgressChart(data) {
+            const ctx = document.getElementById('progressChart').getContext('2d');
+            
+            if (progressChart) {
+                progressChart.destroy();
+            }
+
+            progressChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: data.labels,
+                    datasets: [{
+                        label: 'Max Weight (kg)',
+                        data: data.maxWeights,
+                        borderColor: '#4db6ac',
+                        backgroundColor: 'rgba(77, 182, 172, 0.1)',
+                        borderWidth: 2,
+                        fill: true,
+                        tension: 0.4,
+                        pointBackgroundColor: '#4db6ac',
+                        pointBorderColor: '#ffffff',
+                        pointBorderWidth: 2,
+                        pointRadius: 4,
+                        pointHoverRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                            titleColor: '#ffffff',
+                            bodyColor: '#ffffff',
+                            borderColor: '#4db6ac',
+                            borderWidth: 1,
+                            cornerRadius: 8,
+                            displayColors: false
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.1)'
+                            },
+                            ticks: {
+                                color: 'rgba(255, 255, 255, 0.7)',
+                                font: {
+                                    size: 11
+                                }
+                            }
+                        },
+                        y: {
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.1)'
+                            },
+                            ticks: {
+                                color: 'rgba(255, 255, 255, 0.7)',
+                                font: {
+                                    size: 11
+                                }
+                            },
+                            title: {
+                                display: true,
+                                text: 'Weight (kg)',
+                                color: 'rgba(255, 255, 255, 0.8)',
+                                font: {
+                                    size: 12
+                                }
+                            }
+                        }
+                    },
+                    interaction: {
+                        intersect: false,
+                        mode: 'index'
+                    }
+                }
+            });
         }
 
         // Close modals when clicking outside

@@ -3450,6 +3450,83 @@ def delete_weight_entry():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
+@app.route('/get_exercise_progress', methods=['GET'])
+@login_required
+def get_exercise_progress():
+    try:
+        username = session.get('username')
+        exercise_id = request.args.get('exercise_id')
+        time_range = request.args.get('time_range', 'all')
+        
+        if not exercise_id:
+            return jsonify({'success': False, 'error': 'Exercise ID is required'})
+        
+        conn = sqlite3.connect('users.db')
+        cursor = conn.cursor()
+        
+        # Build date filter
+        date_filter = ""
+        if time_range != 'all':
+            date_filter = f"AND es.created_at >= date('now', '-{time_range} days')"
+        
+        # Get weight entries for the exercise
+        cursor.execute(f'''
+            SELECT es.weight, es.reps, es.created_at
+            FROM exercise_sets es
+            JOIN exercises e ON es.exercise_id = e.id
+            WHERE e.id = ? AND e.username = ? {date_filter}
+            ORDER BY es.created_at ASC
+        ''', (exercise_id, username))
+        
+        rows = cursor.fetchall()
+        conn.close()
+        
+        if not rows:
+            return jsonify({
+                'success': True,
+                'data': {
+                    'labels': [],
+                    'maxWeights': []
+                }
+            })
+        
+        # Process data for chart
+        weight_data = {}
+        for row in rows:
+            weight, reps, date = row
+            # Calculate 1RM using Epley formula
+            one_rm = weight * (1 + reps / 30)
+            
+            if date not in weight_data:
+                weight_data[date] = []
+            weight_data[date].append(one_rm)
+        
+        # Get max 1RM for each date
+        dates = sorted(weight_data.keys())
+        labels = []
+        max_weights = []
+        
+        for date in dates:
+            max_1rm = max(weight_data[date])
+            labels.append(formatDate(date))
+            max_weights.append(round(max_1rm, 1))
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'labels': labels,
+                'maxWeights': max_weights
+            }
+        })
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+def formatDate(date_string):
+    """Format date for chart labels"""
+    date = datetime.strptime(date_string, '%Y-%m-%d')
+    return date.strftime('%b %d')
+
 # Workout Management Routes
 @app.route('/create_workout', methods=['POST'])
 def create_workout():
