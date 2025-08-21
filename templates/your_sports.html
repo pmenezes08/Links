@@ -12,13 +12,17 @@
 <body>
     <!-- Sidebar Menu -->
     <div class="sidebar">
-        <button class="menu-btn">☰ Menu</button>
+        <button class="menu-btn"><i class="fas fa-bars"></i> Menu</button>
         <div class="dropdown-content">
             <a href="{{ url_for('dashboard') }}">Dashboard</a>
             <a href="{{ url_for('free_workouts') }}">Free Workouts</a>
             <a href="{{ url_for('premium_dashboard') }}">Premium Dashboard</a>
             <a href="{{ url_for('feed') }}">Social</a>
+            <a href="{{ url_for('communities') }}">Your Communities</a>
             <a href="{{ url_for('your_sports') }}">Your Sports</a>
+            {% if session['username'] == 'admin' %}
+            <a href="{{ url_for('admin') }}">Admin Dashboard</a>
+            {% endif %}
             <a href="{{ url_for('logout') }}">Logout</a>
         </div>
     </div>
