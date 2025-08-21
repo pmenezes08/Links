@@ -1,6 +1,5 @@
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session, flash, abort, send_from_directory
-from flask_wtf.csrf import CSRFProtect, generate_csrf, validate_csrf as wtf_validate_csrf
-# from flask_oauthlib.client import OAuth
+# from flask_wtf.csrf import CSRFProtect, generate_csrf, validate_csrf as wtf_validate_csrf
 import os
 import sys
 import json
@@ -19,8 +18,9 @@ from werkzeug.security import generate_password_hash, check_password_hash
 # Initialize Flask app
 app = Flask(__name__, template_folder='templates')
 
-# Initialize CSRF protection
-csrf = CSRFProtect(app)
+# Temporarily disable CSRF protection
+# csrf = CSRFProtect(app)
+# csrf.exempt(app)  # Disable CSRF protection globally
 
 # File upload configuration
 UPLOAD_FOLDER = 'static/uploads'
@@ -2092,8 +2092,8 @@ def check_unread_messages():
 def feed():
     username = session.get('username')
     
-    # Generate CSRF token using Flask-WTF
-    token = generate_csrf()
+    # Temporarily disable CSRF token generation
+    # token = generate_csrf()
     
     try:
         with get_db_connection() as conn:
@@ -2139,7 +2139,7 @@ def feed():
                     ur = c.fetchone()
                     reply['user_reaction'] = ur['reaction_type'] if ur else None
 
-        return render_template('feed.html', posts=posts, username=username, csrf_token=token)
+        return render_template('feed.html', posts=posts, username=username)
     except Exception as e:
         logger.error(f"Error fetching feed: {str(e)}")
         abort(500)

@@ -515,9 +515,9 @@ document.addEventListener('DOMContentLoaded', function() {
             const postImageHtml = $postImage.length ? 
                 `<div class="post-image">${$postImage.html()}</div>` : '';
             
-            // Get CSRF token from meta tag
-            const csrfToken = $('meta[name="csrf-token"]').attr('content');
-            console.log('CSRF Token for modal:', csrfToken);
+            // Temporarily disable CSRF token handling
+            // const csrfToken = $('meta[name="csrf-token"]').attr('content');
+            // console.log('CSRF Token for modal:', csrfToken);
             
             const basicPostHtml = `
                 <div class="post" data-post-id="${postId}">
@@ -545,7 +545,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 <div class="replies">
                 </div>
                 <form class="reply-form" action="/post_reply" method="POST" enctype="multipart/form-data">
-                    <input type="hidden" name="csrf_token" value="${csrfToken}">
+                    <!-- <input type="hidden" name="csrf_token" value="${csrfToken}"> -->
                     <input type="hidden" name="post_id" value="${postId}">
                     <input type="text" name="content" class="reply-input" placeholder="Write a reply...">
                     <div class="reply-form-actions">
@@ -872,18 +872,18 @@ document.addEventListener('DOMContentLoaded', function() {
                 formData.append('post_id', postId);
                 formData.append('content', content);
                 
-                // Get CSRF token with fallback
-                const metaToken = $('meta[name="csrf-token"]').attr('content');
-                const inputToken = $('input[name="csrf_token"]').val();
-                const csrfToken = metaToken || inputToken;
-                console.log('CSRF Token debugging:', {
-                    metaToken: metaToken,
-                    inputToken: inputToken,
-                    finalToken: csrfToken,
-                    metaElement: $('meta[name="csrf-token"]').length,
-                    inputElement: $('input[name="csrf_token"]').length
-                });
-                formData.append('csrf_token', csrfToken);
+                // Temporarily disable CSRF token handling
+                // const metaToken = $('meta[name="csrf-token"]').attr('content');
+                // const inputToken = $('input[name="csrf_token"]').val();
+                // const csrfToken = metaToken || inputToken;
+                // console.log('CSRF Token debugging:', {
+                //     metaToken: metaToken,
+                //     inputToken: inputToken,
+                //     finalToken: csrfToken,
+                //     metaElement: $('meta[name="csrf-token"]').length,
+                //     inputElement: $('input[name="csrf_token"]').length
+                // });
+                // formData.append('csrf_token', csrfToken);
                 
                 if (imageFile) {
                     formData.append('image', imageFile);
