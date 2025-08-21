@@ -8030,65 +8030,104 @@ input::after {
 
 /* Exercise Management Styles */
 .exercise-card {
-    background: rgba(77, 182, 172, 0.03);
-    border: 1px solid rgba(77, 182, 172, 0.15);
-    border-radius: 8px;
-    padding: 15px;
-    margin-bottom: 12px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    transition: all 0.3s ease;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 16px;
+    transition: all 0.2s ease;
 }
 
 .exercise-card:hover {
-    background: rgba(77, 182, 172, 0.08);
+    background: rgba(255, 255, 255, 0.05);
     transform: translateY(-1px);
 }
 
 .exercise-info h4 {
     color: #ffffff;
-    font-size: 1rem;
-    margin: 0 0 5px 0;
+    font-size: 1.1rem;
+    margin: 0 0 8px 0;
+    font-weight: 500;
 }
 
 .exercise-info .muscle-group {
-    color: #4db6ac;
-    font-size: 0.8rem;
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 0.85rem;
+    font-weight: 400;
+}
+
+.weight-history {
+    margin: 15px 0;
+    padding: 15px 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.weight-entry {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.weight-entry:last-child {
+    border-bottom: none;
+}
+
+.weight-value {
+    color: #ffffff;
+    font-size: 0.9rem;
     font-weight: 500;
+}
+
+.weight-date {
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 0.75rem;
+    font-weight: 400;
+}
+
+.no-weights {
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 0.85rem;
+    font-style: italic;
+    text-align: center;
+    padding: 10px 0;
 }
 
 .exercise-actions {
     display: flex;
     gap: 8px;
+    margin-top: 15px;
 }
 
 .action-btn {
-    background: rgba(77, 182, 172, 0.1);
-    border: 1px solid #4db6ac;
-    color: #4db6ac;
-    padding: 6px 12px;
-    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: #ffffff;
+    padding: 8px 16px;
+    border-radius: 6px;
     cursor: pointer;
-    font-size: 0.8rem;
-    transition: all 0.3s ease;
+    font-size: 0.85rem;
+    transition: all 0.2s ease;
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 6px;
 }
 
 .action-btn:hover {
-    background: #4db6ac;
-    color: #000000;
+    background: rgba(255, 255, 255, 0.2);
+    border-color: rgba(255, 255, 255, 0.5);
+    transform: translateY(-1px);
 }
 
 .action-btn.delete {
     background: rgba(255, 107, 107, 0.1);
-    border-color: #ff6b6b;
+    border-color: rgba(255, 107, 107, 0.3);
     color: #ff6b6b;
 }
 
 .action-btn.delete:hover {
-    background: #ff6b6b;
-    color: #ffffff;
+    background: rgba(255, 107, 107, 0.2);
+    border-color: rgba(255, 107, 107, 0.5);
 }

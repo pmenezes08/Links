@@ -1051,6 +1051,7 @@
                     if (response.success) {
                         closeLogWeightModal();
                         loadMuscleGroups();
+                        loadExercisesManagement();
                         alert('Weight logged successfully!');
                     } else {
                         alert('Error logging weight: ' + (response.error || 'Unknown error'));
