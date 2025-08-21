@@ -3103,7 +3103,7 @@ def add_exercise():
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 username TEXT NOT NULL,
                 name TEXT NOT NULL,
-                day TEXT NOT NULL,
+                week TEXT NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
@@ -3393,11 +3393,11 @@ def create_workout():
     
     try:
         name = request.form.get('name')
-        day = request.form.get('day')
+        week = request.form.get('week')
         
-        print(f"Debug: name={name}, day={day}")
+        print(f"Debug: name={name}, week={week}")
         
-        if not name or not day:
+        if not name or not week:
             print(f"Debug: Missing required fields")
             return jsonify({'success': False, 'error': 'Missing required fields'})
         
@@ -3418,9 +3418,9 @@ def create_workout():
         
         # Insert workout
         cursor.execute('''
-            INSERT INTO workouts (username, name, day)
+            INSERT INTO workouts (username, name, week)
             VALUES (?, ?, ?)
-        ''', (session['username'], name, day))
+        ''', (session['username'], name, week))
         
         conn.commit()
         conn.close()
@@ -3439,23 +3439,36 @@ def get_workouts():
         conn = sqlite3.connect('users.db')
         cursor = conn.cursor()
         
-        # Get workouts
-        cursor.execute('''
-            SELECT w.id, w.name, w.day, w.created_at,
-                   COUNT(we.id) as exercise_count
-            FROM workouts w
-            LEFT JOIN workout_exercises we ON w.id = we.workout_id
-            WHERE w.username = ?
-            GROUP BY w.id
-            ORDER BY w.created_at DESC
-        ''', (session['username'],))
+        # Get workouts with optional week filtering
+        week_filter = request.args.get('week', 'all')
+        
+        if week_filter == 'all':
+            cursor.execute('''
+                SELECT w.id, w.name, w.week, w.created_at,
+                       COUNT(we.id) as exercise_count
+                FROM workouts w
+                LEFT JOIN workout_exercises we ON w.id = we.workout_id
+                WHERE w.username = ?
+                GROUP BY w.id
+                ORDER BY w.created_at DESC
+            ''', (session['username'],))
+        else:
+            cursor.execute('''
+                SELECT w.id, w.name, w.week, w.created_at,
+                       COUNT(we.id) as exercise_count
+                FROM workouts w
+                LEFT JOIN workout_exercises we ON w.id = we.workout_id
+                WHERE w.username = ? AND w.week = ?
+                GROUP BY w.id
+                ORDER BY w.created_at DESC
+            ''', (session['username'], week_filter))
         
         workouts = []
         for row in cursor.fetchall():
             workout = {
                 'id': row[0],
                 'name': row[1],
-                'day': row[2],
+                'week': row[2],
                 'created_at': row[3],
                 'exercise_count': row[4]
             }
@@ -3482,7 +3495,7 @@ def get_workout_details():
         
         # Get workout details
         cursor.execute('''
-            SELECT w.id, w.name, w.day, w.created_at
+            SELECT w.id, w.name, w.week, w.created_at
             FROM workouts w
             WHERE w.id = ? AND w.username = ?
         ''', (workout_id, session['username']))
@@ -3494,7 +3507,7 @@ def get_workout_details():
         workout = {
             'id': workout_row[0],
             'name': workout_row[1],
-            'day': workout_row[2],
+            'week': workout_row[2],
             'created_at': workout_row[3],
             'exercises': []
         }

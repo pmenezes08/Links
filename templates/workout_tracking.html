@@ -41,21 +41,38 @@
                     <form id="create-workout-form" class="workout-form">
                         <div class="form-row">
                             <input type="text" id="workout-name" placeholder="Workout name (e.g., Push Day)" required>
-                            <select id="workout-day" required>
-                                <option value="">Select day</option>
-                                <option value="Monday">Monday</option>
-                                <option value="Tuesday">Tuesday</option>
-                                <option value="Wednesday">Wednesday</option>
-                                <option value="Thursday">Thursday</option>
-                                <option value="Friday">Friday</option>
-                                <option value="Saturday">Saturday</option>
-                                <option value="Sunday">Sunday</option>
+                            <select id="workout-week" required>
+                                <option value="">Select week</option>
+                                <option value="Week 1">Week 1</option>
+                                <option value="Week 2">Week 2</option>
+                                <option value="Week 3">Week 3</option>
+                                <option value="Week 4">Week 4</option>
+                                <option value="Week 5">Week 5</option>
+                                <option value="Week 6">Week 6</option>
+                                <option value="Week 7">Week 7</option>
+                                <option value="Week 8">Week 8</option>
                             </select>
                         </div>
                         <button type="submit" class="submit-btn">
                             <i class="fas fa-plus"></i> Create Workout
                         </button>
                     </form>
+                </div>
+
+                <!-- Week Selector -->
+                <div class="week-selector-section">
+                    <h3>View Workouts</h3>
+                    <select id="week-selector">
+                        <option value="all">All Weeks</option>
+                        <option value="Week 1">Week 1</option>
+                        <option value="Week 2">Week 2</option>
+                        <option value="Week 3">Week 3</option>
+                        <option value="Week 4">Week 4</option>
+                        <option value="Week 5">Week 5</option>
+                        <option value="Week 6">Week 6</option>
+                        <option value="Week 7">Week 7</option>
+                        <option value="Week 8">Week 8</option>
+                    </select>
                 </div>
 
                 <!-- Add Exercise Section -->
@@ -223,6 +240,12 @@
                 e.preventDefault();
                 console.log('Create workout form submitted');
                 createWorkout();
+            });
+
+            // Week selector
+            $('#week-selector').change(function() {
+                const selectedWeek = $(this).val();
+                loadWorkouts(selectedWeek);
             });
 
             // Add set form
@@ -552,11 +575,12 @@
         }
 
         // Workouts Functions
-        function loadWorkouts() {
-            console.log('Loading workouts...');
+        function loadWorkouts(selectedWeek = 'all') {
+            console.log('Loading workouts for week:', selectedWeek);
             $.ajax({
                 url: '/get_workouts',
                 method: 'GET',
+                data: { week: selectedWeek },
                 success: function(response) {
                     console.log('Load workouts response:', response);
                     if (response.success) {
@@ -574,33 +598,33 @@
         }
 
         function displayWorkouts(workouts) {
-            const html = workouts.length > 0 ? 
+            const html = workouts && workouts.length > 0 ? 
                 workouts.map(workout => `
                     <div class="workout-item" onclick="openWorkoutModal(${workout.id}, '${workout.name}')">
                         <div class="workout-header">
                             <h4 class="workout-name">${workout.name}</h4>
-                            <span class="workout-day">${workout.day}</span>
+                            <span class="workout-week">${workout.week}</span>
                         </div>
                         <div class="workout-stats">
                             <div class="stat">
                                 <span class="stat-label">Exercises</span>
-                                <span class="stat-value">${workout.exercises ? workout.exercises.length : 0}</span>
+                                <span class="stat-value">${workout.exercise_count || 0}</span>
                             </div>
                         </div>
                     </div>
-                `).join('') : '<p>No workouts created yet</p>';
+                `).join('') : '<p>No workouts found for selected week</p>';
             
             $('#workouts-list').html(html);
         }
 
         function createWorkout() {
             const name = $('#workout-name').val();
-            const day = $('#workout-day').val();
+            const week = $('#workout-week').val();
             
-            console.log('Creating workout:', { name, day });
+            console.log('Creating workout:', { name, week });
             
-            if (!name || !day) {
-                alert('Please enter workout name and select a day');
+            if (!name || !week) {
+                alert('Please enter workout name and select a week');
                 return;
             }
             
@@ -609,13 +633,13 @@
                 method: 'POST',
                 data: {
                     name: name,
-                    day: day
+                    week: week
                 },
                 success: function(response) {
                     console.log('Create workout response:', response);
                     if (response.success) {
                         $('#workout-name').val('');
-                        $('#workout-day').val('');
+                        $('#workout-week').val('');
                         loadWorkouts();
                         alert('Workout created successfully!');
                     } else {

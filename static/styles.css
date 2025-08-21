@@ -7725,3 +7725,51 @@ li, ul, ol, nav, header, footer, main, section, article {
         align-items: flex-start;
     }
 }
+
+/* Week selector styles */
+.week-selector-section {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 10px;
+    padding: 15px;
+    margin: 15px 0;
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.week-selector-section h3 {
+    margin: 0 0 10px 0;
+    font-size: 1rem;
+    color: #b0b8b9;
+}
+
+#week-selector {
+    width: 100%;
+    padding: 8px 12px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 6px;
+    color: #ffffff;
+    font-size: 0.9rem;
+}
+
+#week-selector:focus {
+    outline: none;
+    border-color: #4db6ac;
+    box-shadow: 0 0 0 2px rgba(77, 182, 172, 0.2);
+}
+
+/* Remove emoji from validation messages */
+input:invalid::before {
+    content: none !important;
+}
+
+input:invalid::after {
+    content: none !important;
+}
+
+/* Update workout-week class */
+.workout-week {
+    color: #4db6ac;
+    font-size: 0.8rem;
+    font-weight: 500;
+}
