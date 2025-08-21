@@ -424,9 +424,20 @@
                     if (response.success) {
                         $('#exercise-name').val('');
                         $('#muscle-group').val('');
-                        loadMuscleGroups();
+                        
+                        // Show success message
+                        const successMsg = $('<div class="success-message" style="background: #4db6ac; color: white; padding: 10px; border-radius: 5px; margin: 10px 0; text-align: center;">Exercise added successfully! You can now add it to your workouts.</div>');
+                        $('#add-exercise-form').after(successMsg);
+                        
+                        // Remove success message after 3 seconds
+                        setTimeout(() => {
+                            successMsg.fadeOut();
+                        }, 3000);
+                        
+                        // Refresh the exercise dropdown for workouts
                         loadExercisesForWorkout();
-                        alert('Exercise added successfully!');
+                        
+                        console.log('Exercise added successfully!');
                     } else {
                         alert('Error adding exercise: ' + (response.error || 'Unknown error'));
                     }
