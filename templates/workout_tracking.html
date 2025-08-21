@@ -122,7 +122,7 @@
                         <div class="stat-formula">Estimated from your sets</div>
                     </div>
                     <div class="stat-card">
-                        <h4>Weight Calculator</h4>
+                        <h4>1RM Calculator</h4>
                         <div class="calculator">
                             <input type="number" id="percentage" placeholder="%" min="50" max="100" step="5">
                             <button onclick="calculateWeight()" class="calc-btn">Calculate</button>
@@ -140,7 +140,7 @@
                     <h4>Add New Set</h4>
                     <form id="add-set-form" class="set-form">
                         <div class="form-row">
-                            <input type="number" id="set-weight" placeholder="Weight (lbs)" required>
+                            <input type="number" id="set-weight" placeholder="Weight (kg)" required>
                             <input type="number" id="set-reps" placeholder="Reps" required>
                         </div>
                         <button type="submit" class="submit-btn">
@@ -393,11 +393,11 @@
                                 <div class="exercise-stats">
                                     <div class="stat">
                                         <span class="stat-label">1 Rep Max</span>
-                                        <span class="stat-value">${oneRepMax > 0 ? oneRepMax + ' lbs' : 'No data'}</span>
+                                        <span class="stat-value">${oneRepMax > 0 ? oneRepMax + ' kg' : 'No data'}</span>
                                     </div>
                                     <div class="stat">
                                         <span class="stat-label">Max Weight</span>
-                                        <span class="stat-value">${maxWeight > 0 ? maxWeight + ' lbs' : 'No data'}</span>
+                                        <span class="stat-value">${maxWeight > 0 ? maxWeight + ' kg' : 'No data'}</span>
                                     </div>
                                     <div class="stat">
                                         <span class="stat-label">Total Sets</span>
@@ -506,14 +506,14 @@
                 oneRepMax = Math.round(maxWeightSet.weight * (1 + maxWeightSet.reps / 30));
             }
             
-            $('#one-rep-max').text(oneRepMax > 0 ? oneRepMax + ' lbs' : 'No data');
+            $('#one-rep-max').text(oneRepMax > 0 ? oneRepMax + ' kg' : 'No data');
             
             // Display sets history
             const setsHtml = exercise.sets_data.length > 0 ? 
                 exercise.sets_data.map(set => `
                     <div class="set-item">
                         <div class="set-info">
-                            <span class="set-weight">${set.weight} lbs</span>
+                            <span class="set-weight">${set.weight} kg</span>
                             <span class="set-reps">${set.reps} reps</span>
                         </div>
                         <div class="set-actions">
@@ -537,7 +537,7 @@
             
             if (oneRepMax > 0 && percentage > 0) {
                 const calculatedWeight = Math.round(oneRepMax * (percentage / 100));
-                $('#calc-result').text(calculatedWeight + ' lbs');
+                                        $('#calc-result').text(calculatedWeight + ' kg');
             } else {
                 $('#calc-result').text('Invalid input');
             }
