@@ -3271,7 +3271,6 @@ def delete_exercise():
 @app.route('/log_weight_set', methods=['POST'])
 @login_required
 def log_weight_set():
-    # Test route to avoid conflicts
     try:
         username = session.get('username')
         exercise_id = request.form.get('exercise_id')
@@ -3682,38 +3681,7 @@ def get_user_exercises():
 
 
 
-@app.route('/delete_exercise', methods=['POST'])
-@login_required
-def delete_exercise():
-    try:
-        username = session.get('username')
-        exercise_id = request.form.get('exercise_id')
-        
-        if not exercise_id:
-            return jsonify({'success': False, 'error': 'Exercise ID is required'})
-        
-        conn = sqlite3.connect('users.db')
-        cursor = conn.cursor()
-        
-        # Verify exercise belongs to user
-        cursor.execute('''
-            SELECT id FROM exercises 
-            WHERE id = ? AND username = ?
-        ''', (exercise_id, username))
-        
-        if not cursor.fetchone():
-            return jsonify({'success': False, 'error': 'Exercise not found'})
-        
-        # Delete exercise (cascade will delete associated sets)
-        cursor.execute('DELETE FROM exercises WHERE id = ?', (exercise_id,))
-        
-        conn.commit()
-        conn.close()
-        
-        return jsonify({'success': True})
-        
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)})
+
 
 if __name__ == '__main__':
     app.run(debug=False, host='0.0.0.0', port=8080)
