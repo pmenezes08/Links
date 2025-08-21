@@ -3450,6 +3450,11 @@ def delete_weight_entry():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
+def formatDate(date_string):
+    """Format date for chart labels"""
+    date = datetime.strptime(date_string, '%Y-%m-%d')
+    return date.strftime('%b %d')
+
 @app.route('/get_exercise_progress', methods=['GET'])
 @login_required
 def get_exercise_progress():
@@ -3521,11 +3526,6 @@ def get_exercise_progress():
         
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
-
-def formatDate(date_string):
-    """Format date for chart labels"""
-    date = datetime.strptime(date_string, '%Y-%m-%d')
-    return date.strftime('%b %d')
 
 # Workout Management Routes
 @app.route('/create_workout', methods=['POST'])
