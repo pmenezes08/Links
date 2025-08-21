@@ -2099,6 +2099,13 @@ def check_unread_messages():
 @login_required
 def feed():
     username = session.get('username')
+    
+    # Generate CSRF token for the session
+    token = session.get('csrf_token')
+    if not token:
+        token = secrets.token_hex(32)
+        session['csrf_token'] = token
+    
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
@@ -2143,7 +2150,7 @@ def feed():
                     ur = c.fetchone()
                     reply['user_reaction'] = ur['reaction_type'] if ur else None
 
-        return render_template('feed.html', posts=posts, username=username)
+        return render_template('feed.html', posts=posts, username=username, csrf_token=token)
     except Exception as e:
         logger.error(f"Error fetching feed: {str(e)}")
         abort(500)
