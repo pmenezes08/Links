@@ -8336,3 +8336,78 @@ input::after {
     background: rgba(77, 182, 172, 0.2);
     border-color: rgba(77, 182, 172, 0.5);
 }
+
+/* Compact Edit Modal Styles */
+#edit-exercise-modal .modal-content {
+    max-width: 320px;
+    margin: 15% auto;
+}
+
+#edit-exercise-modal .modal-header {
+    padding: 8px 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+#edit-exercise-modal .modal-header h3 {
+    font-size: 0.8rem;
+    margin: 0;
+    color: #ffffff;
+}
+
+#edit-exercise-modal .modal-body {
+    padding: 8px 12px;
+}
+
+#edit-exercise-modal .form-group {
+    margin-bottom: 6px;
+}
+
+#edit-exercise-modal .form-group label {
+    font-size: 0.7rem;
+    margin-bottom: 3px;
+    color: rgba(255, 255, 255, 0.8);
+    display: block;
+}
+
+#edit-exercise-modal .form-row {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 8px;
+}
+
+#edit-exercise-modal .form-row input {
+    flex: 1;
+    padding: 4px 6px;
+    font-size: 0.7rem;
+    border-radius: 3px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    color: #ffffff;
+}
+
+#edit-exercise-modal .form-row input:focus {
+    outline: none;
+    border-color: rgba(77, 182, 172, 0.5);
+    background: rgba(255, 255, 255, 0.08);
+}
+
+#edit-exercise-modal .form-actions {
+    margin-top: 6px;
+}
+
+#edit-exercise-modal .submit-btn {
+    padding: 4px 8px;
+    font-size: 0.7rem;
+    border-radius: 3px;
+    width: 100%;
+    background: rgba(77, 182, 172, 0.1);
+    border: 1px solid rgba(77, 182, 172, 0.3);
+    color: #4db6ac;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+#edit-exercise-modal .submit-btn:hover {
+    background: rgba(77, 182, 172, 0.2);
+    border-color: rgba(77, 182, 172, 0.5);
+}
