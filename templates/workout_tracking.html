@@ -163,8 +163,8 @@
             <div class="modal-body">
                 <form id="add-exercise-form" class="exercise-form">
                     <div class="form-group">
-                        <label for="modal-exercise-name">Exercise Name</label>
-                        <input type="text" id="modal-exercise-name" placeholder="e.g., Bench Press" required>
+                        <label for="add-exercise-name">Exercise Name</label>
+                        <input type="text" id="add-exercise-name" placeholder="e.g., Bench Press" required>
                     </div>
                     <div class="form-group">
                         <label for="modal-muscle-group">Muscle Group</label>
@@ -328,8 +328,8 @@
                 console.log('Form submit event triggered');
                 console.log('Form element:', this);
                 console.log('Form fields before addExercise:');
-                console.log('Name field:', $('#modal-exercise-name').val());
-                console.log('Name field element:', $('#modal-exercise-name')[0]);
+                console.log('Name field:', $('#add-exercise-name').val());
+                console.log('Name field element:', $('#add-exercise-name')[0]);
                 addExercise();
             });
 
@@ -890,7 +890,7 @@
         function openAddExerciseModal() {
             console.log('Opening Add Exercise Modal...');
             $('#add-exercise-modal').show();
-            $('#modal-exercise-name').val('');
+            $('#add-exercise-name').val('');
             $('#modal-muscle-group').val('');
             $('#modal-exercise-weight').val('');
             $('#modal-exercise-reps').val('');
@@ -985,7 +985,7 @@
         function addExercise() {
             // Add a small delay to ensure form values are properly set
             setTimeout(() => {
-                const name = $('#modal-exercise-name').val();
+                const name = $('#add-exercise-name').val();
                 const muscleGroup = $('#modal-muscle-group').val();
                 const weight = $('#modal-exercise-weight').val();
                 const reps = $('#modal-exercise-reps').val();
@@ -993,7 +993,7 @@
                 
                 console.log('addExercise called with values:', { name, muscleGroup, weight, reps, date });
                 console.log('Field values:', {
-                    name: $('#modal-exercise-name').val(),
+                    name: $('#add-exercise-name').val(),
                     muscleGroup: $('#modal-muscle-group').val(),
                     weight: $('#modal-exercise-weight').val(),
                     reps: $('#modal-exercise-reps').val(),
