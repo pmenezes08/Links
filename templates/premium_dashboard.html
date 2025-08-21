@@ -2,91 +2,132 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Premium Dashboard - Links</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}?v=2.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Premium - WorkoutX</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
 </head>
-<body class="premium-dashboard-page">
-    <div class="sidebar">
-        <button class="menu-btn"><i class="fas fa-bars"></i> Menu</button>
-        <div class="dropdown-content">
-            <a href="{{ url_for('dashboard') }}">Dashboard</a>
-            <a href="{{ url_for('free_workouts') }}">Free Workouts</a>
-            <a href="{{ url_for('premium_dashboard') }}">Premium Dashboard</a>
-            <a href="{{ url_for('feed') }}">Social</a>
-            <a href="{{ url_for('communities') }}">Your Communities</a>
-            <a href="{{ url_for('your_sports') }}">Your Sports</a>
-            {% if session['username'] == 'admin' %}
-            <a href="{{ url_for('admin') }}">Admin Dashboard</a>
-            <a href="{{ url_for('admin_profile') }}">Admin Profile</a>
-            {% endif %}
-            <a href="{{ url_for('logout') }}">Logout</a>
+<body>
+    <!-- Navigation Bar -->
+    <nav class="nav">
+        <div class="nav-left">
+            <a href="{{ url_for('logout') }}" class="text-muted">Sign Out</a>
+        </div>
+        <div class="nav-title">WorkoutX Premium</div>
+        <div class="nav-right">
+            <a href="{{ url_for('profile') }}">Profile</a>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="main">
+        <div class="container">
+            <!-- Welcome Section -->
+            <div class="text-center mb-xl fade-in">
+                <h1>Welcome back, {{ username }}</h1>
+                <p class="text-muted">Premium Member ⭐</p>
+            </div>
+
+            <!-- Premium Features Grid -->
+            <h2 class="mb-md">Premium Features</h2>
+            <div class="dashboard-grid mb-xl slide-up">
+                <div class="workout-card" onclick="location.href='{{ url_for('generate_workout_page') }}'">
+                    <div class="workout-title">AI Coach</div>
+                    <p class="text-muted">Personalized workout generation</p>
+                </div>
+                <div class="workout-card" onclick="location.href='{{ url_for('blood_test_analysis') }}'">
+                    <div class="workout-title">Health Analysis</div>
+                    <p class="text-muted">Blood test insights</p>
+                </div>
+                <div class="workout-card" onclick="location.href='{{ url_for('nutrition') }}'">
+                    <div class="workout-title">Nutrition AI</div>
+                    <p class="text-muted">Custom meal planning</p>
+                </div>
+                <div class="workout-card" onclick="location.href='{{ url_for('workout_tracking') }}'">
+                    <div class="workout-title">Progress Tracking</div>
+                    <p class="text-muted">Advanced analytics</p>
+                </div>
+            </div>
+
+            <!-- Quick Actions -->
+            <h2 class="mb-md">All Features</h2>
+            <div class="list card">
+                <div class="list-item" onclick="location.href='{{ url_for('generate_workout_page') }}'">
+                    <div class="list-item-content">
+                        <div class="list-item-title">Generate Custom Workout</div>
+                        <div class="list-item-subtitle">AI-powered personalized routine</div>
+                    </div>
+                    <div class="list-item-action">→</div>
+                </div>
+                <div class="list-item" onclick="location.href='{{ url_for('saved_workouts') }}'">
+                    <div class="list-item-content">
+                        <div class="list-item-title">Saved Workouts</div>
+                        <div class="list-item-subtitle">Your custom workout library</div>
+                    </div>
+                    <div class="list-item-action">→</div>
+                </div>
+                <div class="list-item" onclick="location.href='{{ url_for('workout_tracking') }}'">
+                    <div class="list-item-content">
+                        <div class="list-item-title">Track Progress</div>
+                        <div class="list-item-subtitle">Monitor your fitness journey</div>
+                    </div>
+                    <div class="list-item-action">→</div>
+                </div>
+                <div class="list-item" onclick="location.href='{{ url_for('blood_test_analysis') }}'">
+                    <div class="list-item-content">
+                        <div class="list-item-title">Blood Test Analysis</div>
+                        <div class="list-item-subtitle">Health insights from lab results</div>
+                    </div>
+                    <div class="list-item-action">→</div>
+                </div>
+                <div class="list-item" onclick="location.href='{{ url_for('chat') }}'">
+                    <div class="list-item-content">
+                        <div class="list-item-title">AI Health Coach</div>
+                        <div class="list-item-subtitle">Chat with your personal trainer</div>
+                    </div>
+                    <div class="list-item-action">→</div>
+                </div>
+                <div class="list-item" onclick="location.href='{{ url_for('communities') }}'">
+                    <div class="list-item-content">
+                        <div class="list-item-title">Premium Communities</div>
+                        <div class="list-item-subtitle">Exclusive member groups</div>
+                    </div>
+                    <div class="list-item-action">→</div>
+                </div>
+                {% if username == 'admin' %}
+                <div class="list-item" onclick="location.href='{{ url_for('admin') }}'">
+                    <div class="list-item-content">
+                        <div class="list-item-title">Admin Dashboard</div>
+                        <div class="list-item-subtitle">System management</div>
+                    </div>
+                    <div class="list-item-action">→</div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </main>
+
+    <!-- Tab Bar -->
+    <div class="tab-bar">
+        <div class="tab-item active">
+            <div class="tab-icon">⭐</div>
+            <span>Premium</span>
+        </div>
+        <div class="tab-item" onclick="location.href='{{ url_for('free_workouts') }}'">
+            <div class="tab-icon">💪</div>
+            <span>Workouts</span>
+        </div>
+        <div class="tab-item" onclick="location.href='{{ url_for('nutrition') }}'">
+            <div class="tab-icon">🥗</div>
+            <span>Nutrition</span>
+        </div>
+        <div class="tab-item" onclick="location.href='{{ url_for('feed') }}'">
+            <div class="tab-icon">👥</div>
+            <span>Community</span>
+        </div>
+        <div class="tab-item" onclick="location.href='{{ url_for('profile') }}'">
+            <div class="tab-icon">👤</div>
+            <span>Profile</span>
         </div>
     </div>
-    <div class="container">
-        <h2 class="low-profile-header">Premium Dashboard - {{ name }}</h2>
-        <div class="dashboard-actions">
-            <button onclick="location.href='{{ url_for('feed') }}'" class="sleek-btn compact pill">Social</button>
-            <button onclick="location.href='{{ url_for('user_chat') }}'" class="sleek-btn compact pill">Messages</button>
-            <button onclick="location.href='{{ url_for('communities') }}'" class="sleek-btn compact pill">Your Communities</button>
-            <button onclick="location.href='{{ url_for('your_sports') }}'" class="sleek-btn compact pill">Your Sports</button>
-            <button onclick="location.href='{{ url_for('profile') }}'" class="sleek-btn compact pill">Profile</button>
-        </div>
-        <div id="result" class="result"></div>
-        <button onclick="location.href='/premium_dashboard'" class="go-back-btn"></button>
-    </div>
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <script src="{{ url_for('static', filename='script.js') }}"></script>
-    <script>
-        $(document).ready(function() {
-            console.log('Premium dashboard script loaded');
-            
-            let menuTimeout;
-            
-            // Show menu on button click
-            $('.menu-btn').on('click', function(e) {
-                e.preventDefault();
-                e.stopPropagation();
-                console.log('Menu clicked');
-                $('.dropdown-content').slideDown(200);
-            });
-            
-            // Keep menu open when hovering over sidebar
-            $('.sidebar').on('mouseenter', function() {
-                clearTimeout(menuTimeout);
-            });
-            
-            // Keep menu open when hovering over dropdown
-            $('.dropdown-content').on('mouseenter', function() {
-                clearTimeout(menuTimeout);
-            });
-            
-            // Close menu when leaving sidebar area
-            $('.sidebar').on('mouseleave', function() {
-                menuTimeout = setTimeout(function() {
-                    $('.dropdown-content').slideUp(200);
-                }, 300); // 300ms delay before closing
-            });
-            
-            // Close menu when leaving dropdown
-            $('.dropdown-content').on('mouseleave', function() {
-                menuTimeout = setTimeout(function() {
-                    $('.dropdown-content').slideUp(200);
-                }, 300); // 300ms delay before closing
-            });
-            
-            // Close menu on escape key
-            $(document).on('keydown', function(e) {
-                if (e.key === 'Escape') {
-                    $('.dropdown-content').slideUp(200);
-                }
-            });
-            
-            // Debug info
-            console.log('Menu button found:', $('.menu-btn').length);
-            console.log('Dropdown found:', $('.dropdown-content').length);
-        });
-    </script>
 </body>
 </html>
