@@ -3069,8 +3069,13 @@ def add_exercise():
         conn = sqlite3.connect('users.db')
         cursor = conn.cursor()
         
-        # Drop and recreate exercises table to ensure correct schema
+        # Drop and recreate all workout-related tables to ensure correct schema
+        cursor.execute('DROP TABLE IF EXISTS workout_exercises')
+        cursor.execute('DROP TABLE IF EXISTS workouts')
+        cursor.execute('DROP TABLE IF EXISTS exercise_sets')
         cursor.execute('DROP TABLE IF EXISTS exercises')
+        
+        # Create exercises table
         cursor.execute('''
             CREATE TABLE exercises (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -3080,8 +3085,7 @@ def add_exercise():
             )
         ''')
         
-        # Drop and recreate exercise_sets table to ensure correct schema
-        cursor.execute('DROP TABLE IF EXISTS exercise_sets')
+        # Create exercise_sets table
         cursor.execute('''
             CREATE TABLE exercise_sets (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -3089,6 +3093,32 @@ def add_exercise():
                 weight REAL NOT NULL,
                 reps INTEGER NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (exercise_id) REFERENCES exercises (id) ON DELETE CASCADE
+            )
+        ''')
+        
+        # Create workouts table
+        cursor.execute('''
+            CREATE TABLE workouts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT NOT NULL,
+                name TEXT NOT NULL,
+                day TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        # Create workout_exercises table
+        cursor.execute('''
+            CREATE TABLE workout_exercises (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                workout_id INTEGER NOT NULL,
+                exercise_id INTEGER NOT NULL,
+                sets INTEGER DEFAULT 0,
+                reps INTEGER DEFAULT 0,
+                weight REAL DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (workout_id) REFERENCES workouts (id) ON DELETE CASCADE,
                 FOREIGN KEY (exercise_id) REFERENCES exercises (id) ON DELETE CASCADE
             )
         ''')
@@ -3386,17 +3416,11 @@ def create_workout():
             )
         ''')
         
-        # Get user ID
-        cursor.execute('SELECT id FROM users WHERE username = ?', (session['username'],))
-        user = cursor.fetchone()
-        if not user:
-            return jsonify({'success': False, 'error': 'User not found'})
-        
         # Insert workout
         cursor.execute('''
-            INSERT INTO workouts (user_id, name, day)
+            INSERT INTO workouts (username, name, day)
             VALUES (?, ?, ?)
-        ''', (user[0], name, day))
+        ''', (session['username'], name, day))
         
         conn.commit()
         conn.close()
@@ -3415,22 +3439,16 @@ def get_workouts():
         conn = sqlite3.connect('users.db')
         cursor = conn.cursor()
         
-        # Get user ID
-        cursor.execute('SELECT id FROM users WHERE username = ?', (session['username'],))
-        user = cursor.fetchone()
-        if not user:
-            return jsonify({'success': False, 'error': 'User not found'})
-        
         # Get workouts
         cursor.execute('''
             SELECT w.id, w.name, w.day, w.created_at,
                    COUNT(we.id) as exercise_count
             FROM workouts w
             LEFT JOIN workout_exercises we ON w.id = we.workout_id
-            WHERE w.user_id = ?
+            WHERE w.username = ?
             GROUP BY w.id
             ORDER BY w.created_at DESC
-        ''', (user[0],))
+        ''', (session['username'],))
         
         workouts = []
         for row in cursor.fetchall():
