@@ -4078,6 +4078,9 @@ def share_individual_workout():
         elif ' Push Day' in name:
             workout_name = name.split(' Push Day')[0]
         
+        print(f"Debug: Original name = '{name}'")
+        print(f"Debug: Cleaned workout_name = '{workout_name}'")
+        
         content = f"{workout_name}\n\n"
         content += f"{date}\n"
         
