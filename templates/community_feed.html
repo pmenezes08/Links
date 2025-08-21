@@ -118,9 +118,14 @@
                     <div class="post clickable-post" data-post-id="{{ post.id }}">
                         <div class="post-header"><strong>@{{ post.username }}</strong><span class="timestamp">{{ post.timestamp | format_date('%m/%d/%y %I:%M %p') }}</span></div>
                         <p>{{ post.content }}</p>
-                        {% if post.image_path %}
+                        {% if post.image_path and post.image_path != 'None' and post.image_path != '' %}
                             <div class="post-image">
-                                <img src="{{ url_for('uploaded_file', filename=post.image_path.replace('uploads/', '')) }}" alt="Post image" loading="lazy" onerror="console.log('Image failed to load:', this.src); this.style.display='none'; this.parentElement.innerHTML='<div style=\'padding: 20px; text-align: center; color: #9fb0b5;\'>Image could not be loaded</div>';" onload="console.log('Image loaded successfully:', this.src);">
+                                <img src="{{ url_for('uploaded_file', filename=post.image_path.replace('uploads/', '')) if post.image_path.startswith('uploads/') else url_for('uploaded_file', filename=post.image_path) }}" 
+                                     alt="Post image" 
+                                     loading="lazy" 
+                                     onerror="console.log('Image failed to load:', this.src); this.style.display='none'; this.parentElement.innerHTML='<div style=\'padding: 20px; text-align: center; color: #9fb0b5;\'>Image could not be loaded</div>';" 
+                                     onload="console.log('Image loaded successfully:', this.src);"
+                                     style="max-width: 100%; height: auto; display: block;">
                             </div>
                         {% endif %}
                         <div class="post-actions">
