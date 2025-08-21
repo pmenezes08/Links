@@ -7759,11 +7759,26 @@ li, ul, ol, nav, header, footer, main, section, article {
 }
 
 /* Remove emoji from validation messages */
-input:invalid::before {
+input:invalid::before,
+input:invalid::after {
     content: none !important;
 }
 
-input:invalid::after {
+/* Remove emoji from browser validation messages */
+input:invalid {
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+}
+
+/* Override browser validation styling */
+input:invalid::-webkit-validation-bubble-message {
+    display: none !important;
+}
+
+/* Remove any pseudo-elements that might contain emojis */
+input::before,
+input::after {
     content: none !important;
 }
 

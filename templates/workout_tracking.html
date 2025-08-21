@@ -199,6 +199,7 @@
                             <select id="workout-exercise-select" required>
                                 <option value="">Select exercise</option>
                             </select>
+                            <input type="number" id="workout-weight" placeholder="Weight (lbs)" min="0" step="0.5" required>
                             <input type="number" id="workout-sets" placeholder="Sets" min="1" max="10" required>
                             <input type="number" id="workout-reps" placeholder="Reps" min="1" max="50" required>
                         </div>
@@ -719,7 +720,7 @@
                     <div class="workout-exercise-item">
                         <div class="exercise-info">
                             <span class="exercise-name">${exercise.exercise_name}</span>
-                            <span class="exercise-sets">${exercise.sets} sets × ${exercise.reps} reps</span>
+                            <span class="exercise-sets">${exercise.weight} lbs × ${exercise.sets} sets × ${exercise.reps} reps</span>
                         </div>
                         <div class="exercise-actions">
                             <button onclick="removeExerciseFromWorkout(${exercise.id})" class="action-btn">
@@ -736,8 +737,14 @@
             if (!currentWorkoutId) return;
             
             const exerciseId = $('#workout-exercise-select').val();
+            const weight = $('#workout-weight').val();
             const sets = $('#workout-sets').val();
             const reps = $('#workout-reps').val();
+            
+            if (!exerciseId || !weight || !sets || !reps) {
+                alert('Please fill in all fields');
+                return;
+            }
             
             $.ajax({
                 url: '/add_exercise_to_workout',
@@ -745,17 +752,27 @@
                 data: {
                     workout_id: currentWorkoutId,
                     exercise_id: exerciseId,
+                    weight: weight,
                     sets: sets,
                     reps: reps
                 },
                 success: function(response) {
                     if (response.success) {
                         $('#workout-exercise-select').val('');
+                        $('#workout-weight').val('');
                         $('#workout-sets').val('');
                         $('#workout-reps').val('');
                         loadWorkoutDetails(currentWorkoutId);
-                        loadWorkouts();
+                        
+                        // Refresh the workout list to update exercise count
+                        const selectedWeek = $('#week-selector').val() || 'all';
+                        loadWorkouts(selectedWeek);
+                    } else {
+                        alert('Error adding exercise to workout: ' + (response.error || 'Unknown error'));
                     }
+                },
+                error: function(xhr, status, error) {
+                    alert('Error adding exercise to workout: ' + error);
                 }
             });
         }
@@ -771,8 +788,16 @@
                     success: function(response) {
                         if (response.success) {
                             loadWorkoutDetails(currentWorkoutId);
-                            loadWorkouts();
+                            
+                            // Refresh the workout list to update exercise count
+                            const selectedWeek = $('#week-selector').val() || 'all';
+                            loadWorkouts(selectedWeek);
+                        } else {
+                            alert('Error removing exercise: ' + (response.error || 'Unknown error'));
                         }
+                    },
+                    error: function(xhr, status, error) {
+                        alert('Error removing exercise: ' + error);
                     }
                 });
             }

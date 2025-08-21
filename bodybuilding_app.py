@@ -3514,7 +3514,7 @@ def get_workout_details():
         
         # Get workout exercises
         cursor.execute('''
-            SELECT we.id, we.sets, we.reps, e.name as exercise_name, e.muscle_group
+            SELECT we.id, we.weight, we.sets, we.reps, e.name as exercise_name, e.muscle_group
             FROM workout_exercises we
             JOIN exercises e ON we.exercise_id = e.id
             WHERE we.workout_id = ?
@@ -3524,10 +3524,11 @@ def get_workout_details():
         for row in cursor.fetchall():
             exercise = {
                 'id': row[0],
-                'sets': row[1],
-                'reps': row[2],
-                'exercise_name': row[3],
-                'muscle_group': row[4]
+                'weight': row[1],
+                'sets': row[2],
+                'reps': row[3],
+                'exercise_name': row[4],
+                'muscle_group': row[5]
             }
             workout['exercises'].append(exercise)
         
@@ -3545,10 +3546,13 @@ def add_exercise_to_workout():
     try:
         workout_id = request.form.get('workout_id')
         exercise_id = request.form.get('exercise_id')
+        weight = request.form.get('weight')
         sets = request.form.get('sets')
         reps = request.form.get('reps')
         
-        if not all([workout_id, exercise_id, sets, reps]):
+        print(f"Debug: Adding exercise to workout - workout_id: {workout_id}, exercise_id: {exercise_id}, weight: {weight}, sets: {sets}, reps: {reps}")
+        
+        if not all([workout_id, exercise_id, weight, sets, reps]):
             return jsonify({'success': False, 'error': 'Missing required fields'})
         
         conn = sqlite3.connect('users.db')
@@ -3565,9 +3569,9 @@ def add_exercise_to_workout():
         
         # Add exercise to workout
         cursor.execute('''
-            INSERT INTO workout_exercises (workout_id, exercise_id, sets, reps)
-            VALUES (?, ?, ?, ?)
-        ''', (workout_id, exercise_id, sets, reps))
+            INSERT INTO workout_exercises (workout_id, exercise_id, weight, sets, reps)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (workout_id, exercise_id, weight, sets, reps))
         
         conn.commit()
         conn.close()
@@ -3588,6 +3592,8 @@ def remove_exercise_from_workout():
         if not workout_exercise_id:
             return jsonify({'success': False, 'error': 'Missing workout exercise ID'})
         
+        print(f"Debug: Removing workout exercise ID: {workout_exercise_id}")
+        
         conn = sqlite3.connect('users.db')
         cursor = conn.cursor()
         
@@ -3603,6 +3609,8 @@ def remove_exercise_from_workout():
         
         # Remove exercise from workout
         cursor.execute('DELETE FROM workout_exercises WHERE id = ?', (workout_exercise_id,))
+        
+        print(f"Debug: Removed workout exercise ID: {workout_exercise_id}")
         
         conn.commit()
         conn.close()
