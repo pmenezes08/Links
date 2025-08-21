@@ -85,141 +85,138 @@
 
         .admin-dashboard {
             margin-left: 80px;
-            padding: 20px;
-            max-width: 1200px;
+            padding: 16px;
+            max-width: 1000px;
         }
 
         .admin-header {
-            margin-bottom: 24px;
+            margin-bottom: 16px;
         }
 
         .admin-header h1 {
-            font-size: 24px;
+            font-size: 18px;
             font-weight: 600;
             color: #ffffff;
-            margin-bottom: 4px;
-            letter-spacing: -0.3px;
+            margin-bottom: 2px;
+            letter-spacing: -0.2px;
         }
 
         .admin-header p {
-            font-size: 14px;
-            color: rgba(255, 255, 255, 0.5);
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.4);
             font-weight: 400;
         }
 
         .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-            gap: 16px;
-            margin-bottom: 24px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 16px;
         }
 
         .stat-card {
             background: rgba(255, 255, 255, 0.02);
-            border: 1px solid rgba(255, 255, 255, 0.05);
-            border-radius: 10px;
-            padding: 16px;
+            border: 1px solid rgba(255, 255, 255, 0.03);
+            border-radius: 6px;
+            padding: 8px 12px;
             text-align: center;
-            backdrop-filter: blur(10px);
-            transition: all 0.3s ease;
+            flex: 1;
+            min-width: 100px;
         }
 
         .stat-card:hover {
-            background: rgba(255, 255, 255, 0.05);
-            transform: translateY(-2px);
+            background: rgba(255, 255, 255, 0.03);
         }
 
         .stat-card h3 {
-            font-size: 20px;
+            font-size: 16px;
             font-weight: 600;
             color: #ffffff;
-            margin-bottom: 4px;
+            margin-bottom: 2px;
         }
 
         .stat-card p {
-            font-size: 12px;
-            color: rgba(255, 255, 255, 0.5);
+            font-size: 10px;
+            color: rgba(255, 255, 255, 0.4);
             font-weight: 400;
         }
 
         .admin-section {
-            margin-bottom: 40px;
+            margin-bottom: 24px;
         }
 
         .section-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 24px;
-            padding-bottom: 16px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
         }
 
         .section-header h2 {
-            font-size: 24px;
+            font-size: 16px;
             font-weight: 600;
             color: #ffffff;
-            letter-spacing: -0.3px;
+            letter-spacing: -0.2px;
         }
 
         .search-input {
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            padding: 12px 16px;
-            border-radius: 10px;
-            font-size: 14px;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            padding: 6px 10px;
+            border-radius: 4px;
+            font-size: 12px;
             color: #ffffff;
-            width: 200px;
-            transition: all 0.3s ease;
+            width: 120px;
+            transition: all 0.2s ease;
         }
 
         .search-input:focus {
             outline: none;
             border-color: #10B981;
-            background: rgba(255, 255, 255, 0.08);
+            background: rgba(255, 255, 255, 0.05);
         }
 
         .filter-select {
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            padding: 10px 12px;
-            border-radius: 8px;
-            font-size: 13px;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            padding: 6px 10px;
+            border-radius: 4px;
+            font-size: 12px;
             color: #ffffff;
-            margin-left: 12px;
-            transition: all 0.3s ease;
+            margin-left: 8px;
+            transition: all 0.2s ease;
         }
 
         .filter-select:focus {
             outline: none;
             border-color: #10B981;
-            background: rgba(255, 255, 255, 0.08);
+            background: rgba(255, 255, 255, 0.05);
         }
 
         .users-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-            gap: 20px;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 8px;
         }
 
         .user-card {
-            background: rgba(255, 255, 255, 0.03);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 16px;
-            padding: 20px;
-            backdrop-filter: blur(20px);
-            transition: all 0.3s ease;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.03);
+            border-radius: 6px;
+            padding: 8px 10px;
+            transition: all 0.2s ease;
         }
 
         .user-card:hover {
-            background: rgba(255, 255, 255, 0.05);
-            transform: translateY(-2px);
+            background: rgba(255, 255, 255, 0.03);
         }
 
         .user-header {
             display: flex;
             align-items: center;
-            margin-bottom: 16px;
+            margin-bottom: 8px;
         }
 
         .user-avatar {
@@ -237,16 +234,16 @@
         }
 
         .user-info h4 {
-            font-size: 16px;
-            font-weight: 600;
+            font-size: 13px;
+            font-weight: 500;
             color: #ffffff;
             flex: 1;
         }
 
         .subscription-badge {
-            font-size: 12px;
-            padding: 4px 12px;
-            border-radius: 8px;
+            font-size: 10px;
+            padding: 2px 6px;
+            border-radius: 3px;
             text-transform: uppercase;
             font-weight: 500;
         }
@@ -257,41 +254,40 @@
         }
 
         .subscription-badge.free {
-            background: rgba(255, 255, 255, 0.1);
+            background: rgba(255, 255, 255, 0.05);
             color: #ffffff;
-            border: 1px solid rgba(255, 255, 255, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.1);
         }
 
         .user-actions {
             display: flex;
-            gap: 8px;
+            gap: 4px;
         }
 
         .action-btn {
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            padding: 8px 12px;
-            border-radius: 8px;
-            font-size: 12px;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            padding: 4px 6px;
+            border-radius: 3px;
+            font-size: 10px;
             color: #ffffff;
             cursor: pointer;
-            transition: all 0.3s ease;
-            font-weight: 500;
+            transition: all 0.2s ease;
+            font-weight: 400;
         }
 
         .action-btn:hover {
-            background: rgba(255, 255, 255, 0.1);
-            transform: translateY(-1px);
+            background: rgba(255, 255, 255, 0.05);
         }
 
         .action-btn.danger {
-            background: rgba(255, 59, 48, 0.1);
-            border-color: rgba(255, 59, 48, 0.3);
+            background: rgba(255, 59, 48, 0.05);
+            border-color: rgba(255, 59, 48, 0.2);
             color: #FF3B30;
         }
 
         .action-btn.danger:hover {
-            background: rgba(255, 59, 48, 0.2);
+            background: rgba(255, 59, 48, 0.1);
         }
 
         .communities-grid {
@@ -699,6 +695,19 @@
     </div>
 
     <script>
+        // Menu dropdown functionality
+        $(document).ready(function() {
+            $('.menu-btn').click(function() {
+                $('.dropdown-content').toggle();
+            });
+
+            $(document).click(function(event) {
+                if (!$(event.target).closest('.sidebar').length) {
+                    $('.dropdown-content').hide();
+                }
+            });
+        });
+
         // User search and filter
         $('#userSearch').on('input', function() {
             const searchTerm = $(this).val().toLowerCase();
