@@ -34,7 +34,7 @@
 
         <div class="tracking-content">
             <div class="tracking-header">
-                <h2>Your Exercises</h2>
+                <h2>Your Workouts</h2>
                 <button class="add-exercise-btn" onclick="toggleExerciseForm()">
                     <i class="fas fa-plus"></i> Add Exercise
                 </button>
@@ -71,17 +71,30 @@
                 <button class="submit-btn" onclick="addExercise()">Add Exercise</button>
             </div>
 
-            <!-- Exercises List -->
-            <div id="exercises-list" class="exercises-list">
-                <!-- Exercises will be loaded here -->
+            <!-- Muscle Groups View -->
+            <div id="muscle-groups-view" class="muscle-groups-view">
+                <!-- Muscle groups will be loaded here -->
+            </div>
+
+            <!-- Exercises List View -->
+            <div id="exercises-view" class="exercises-view" style="display: none;">
+                <div class="view-header">
+                    <button class="back-btn" onclick="showMuscleGroups()">
+                        <i class="fas fa-arrow-left"></i> Back to Muscle Groups
+                    </button>
+                    <h3 id="current-muscle-group">Exercises</h3>
+                </div>
+                <div id="exercises-list" class="exercises-list">
+                    <!-- Exercises will be loaded here -->
+                </div>
             </div>
         </div>
     </div>
 
     <script>
-        // Load exercises on page load
+        // Load muscle groups on page load
         $(document).ready(function() {
-            loadExercises();
+            loadMuscleGroups();
         });
 
         function toggleExerciseForm() {
@@ -113,7 +126,7 @@
                         document.getElementById('muscle-group').value = 'Chest'; // Reset to default
                         document.getElementById('exercise-weight').value = '';
                         document.getElementById('exercise-form').classList.remove('show');
-                        loadExercises();
+                        loadMuscleGroups();
                     } else {
                         alert('Error adding exercise: ' + response.error);
                     }
@@ -124,21 +137,119 @@
             });
         }
 
-                function loadExercises() {
+                function loadMuscleGroups() {
             $.ajax({
                 url: '/get_user_exercises',
                 method: 'GET',
                 success: function(response) {
                     if (response.success) {
-                        displayExercises(response.muscle_groups);
+                        displayMuscleGroups(response.muscle_groups);
                     } else {
                         console.log('No exercises found');
-                        document.getElementById('exercises-list').innerHTML = '<p style="color: #b0b8b9; text-align: center; font-size: 0.8rem;">No exercises added yet. Click "Add Exercise" to get started!</p>';
+                        document.getElementById('muscle-groups-view').innerHTML = '<p style="color: #b0b8b9; text-align: center; font-size: 0.8rem;">No exercises added yet. Click "Add Exercise" to get started!</p>';
                     }
                 },
                 error: function() {
                     console.log('Error loading exercises');
                 }
+            });
+        }
+
+        function displayMuscleGroups(muscleGroups) {
+            const container = document.getElementById('muscle-groups-view');
+            container.innerHTML = '';
+
+            const muscleGroupNames = ['Chest', 'Back', 'Shoulders', 'Biceps', 'Triceps', 'Legs', 'Core', 'Cardio', 'Other'];
+            
+            muscleGroupNames.forEach(function(muscleGroup) {
+                const exercisesInGroup = muscleGroups[muscleGroup] || [];
+                const exerciseCount = exercisesInGroup.length;
+                
+                const muscleGroupHtml = `
+                    <div class="muscle-group-card" onclick="showExercises('${muscleGroup}')">
+                        <div class="muscle-group-header">
+                            <h3>${muscleGroup}</h3>
+                            <span class="exercise-count">${exerciseCount} exercises</span>
+                        </div>
+                    </div>
+                `;
+                container.innerHTML += muscleGroupHtml;
+            });
+        }
+
+        function showExercises(muscleGroup) {
+            document.getElementById('muscle-groups-view').style.display = 'none';
+            document.getElementById('exercises-view').style.display = 'block';
+            document.getElementById('current-muscle-group').textContent = muscleGroup;
+            
+            // Load exercises for this muscle group
+            $.ajax({
+                url: '/get_user_exercises',
+                method: 'GET',
+                success: function(response) {
+                    if (response.success) {
+                        displayExercisesForGroup(response.muscle_groups[muscleGroup] || [], muscleGroup);
+                    }
+                },
+                error: function() {
+                    console.log('Error loading exercises');
+                }
+            });
+        }
+
+        function showMuscleGroups() {
+            document.getElementById('exercises-view').style.display = 'none';
+            document.getElementById('muscle-groups-view').style.display = 'block';
+            loadMuscleGroups();
+        }
+
+        function displayExercisesForGroup(exercises, muscleGroup) {
+            const container = document.getElementById('exercises-list');
+            container.innerHTML = '';
+
+            if (exercises.length === 0) {
+                container.innerHTML = '<p style="color: #b0b8b9; text-align: center; font-size: 0.8rem;">No exercises in this muscle group yet.</p>';
+                return;
+            }
+
+            exercises.forEach(function(exercise) {
+                const exerciseHtml = `
+                    <div class="exercise-item">
+                        <div class="exercise-header">
+                            <h3 class="exercise-name">${exercise.name}</h3>
+                        </div>
+                        <div class="exercise-stats">
+                            <div class="stat-item">
+                                <span class="stat-label">Current Weight</span>
+                                <span class="stat-value">${exercise.weight} kg</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">Sets</span>
+                                <span class="stat-value">${exercise.sets_data.length}</span>
+                            </div>
+                        </div>
+                        <div class="exercise-actions">
+                            <button class="action-btn" onclick="editExercise(${exercise.id})">
+                                <i class="fas fa-edit"></i> Edit
+                            </button>
+                            <button class="action-btn" onclick="addSet(${exercise.id})">
+                                <i class="fas fa-plus"></i> Add Set
+                            </button>
+                            <button class="action-btn delete" onclick="deleteExercise(${exercise.id})">
+                                <i class="fas fa-trash"></i> Delete
+                            </button>
+                        </div>
+                        <div class="workout-sets">
+                            <div id="sets-${exercise.id}">
+                                ${displaySets(exercise.sets_data)}
+                            </div>
+                            <button class="add-set-btn" onclick="addSet(${exercise.id})">
+                                <i class="fas fa-plus"></i> Add New Set
+                            </button>
+                        </div>
+                    </div>
+                `;
+                container.innerHTML += exerciseHtml;
             });
         }
 

@@ -3095,9 +3095,7 @@ def add_exercise():
         conn = sqlite3.connect('users.db')
         cursor = conn.cursor()
         
-        # Check existing exercises before adding new one
-        cursor.execute('SELECT COUNT(*) FROM exercises WHERE username = ?', (username,))
-        existing_count = cursor.fetchone()[0]
+
         
         # Create exercises table if it doesn't exist
         cursor.execute('''
@@ -3134,14 +3132,10 @@ def add_exercise():
             VALUES (?, ?)
         ''', (exercise_id, weight))
         
-        # Check total exercises after adding
-        cursor.execute('SELECT COUNT(*) FROM exercises WHERE username = ?', (username,))
-        new_count = cursor.fetchone()[0]
-        
         conn.commit()
         conn.close()
         
-        return jsonify({'success': True, 'debug': f'Exercises before: {existing_count}, after: {new_count}'})
+        return jsonify({'success': True})
         
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
