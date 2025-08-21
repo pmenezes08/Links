@@ -1300,8 +1300,18 @@
         }
 
         function openShareWorkoutModal(workoutId, workoutName) {
+            console.log('Opening share workout modal for:', workoutId, workoutName);
             $('#share-workouts-modal').data('workout-id', workoutId);
             $('#share-workouts-modal').show();
+            
+            // Clear any previous message
+            $('#workout-message').val('');
+            
+            // Check if textarea exists
+            const textarea = $('#workout-message');
+            console.log('Textarea element:', textarea.length > 0 ? 'Found' : 'Not found');
+            console.log('Textarea HTML:', textarea.prop('outerHTML'));
+            
             generateIndividualWorkoutSummary(workoutId, workoutName);
             loadUserCommunities('workout-communities-list');
         }
@@ -1493,11 +1503,19 @@
                 // Share individual workout
                 const formData = new FormData();
                 formData.append('workout_id', workoutId);
+                
+                // Debug: Check if textarea exists and get its value
+                const textarea = $('#workout-message');
+                console.log('Debug: Textarea found:', textarea.length > 0);
+                console.log('Debug: Textarea value:', textarea.val());
+                
                 const userMessage = $('#workout-message').val().trim();
                 console.log('Debug: userMessage =', userMessage);
                 if (userMessage) {
                     formData.append('user_message', userMessage);
                     console.log('Debug: Added user_message to formData');
+                } else {
+                    console.log('Debug: No user message provided');
                 }
                 selectedCommunities.forEach(communityId => {
                     formData.append('communities', communityId);
