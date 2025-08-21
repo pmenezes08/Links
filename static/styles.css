@@ -6530,13 +6530,7 @@ select:focus {
     letter-spacing: 0.3px;
 }
 
-.exercise-date {
-    color: #b0b8b9;
-    font-size: 0.7rem;
-    margin: 0;
-    font-weight: 400;
-    opacity: 0.8;
-}
+
 
 .exercise-stats {
     display: flex;
