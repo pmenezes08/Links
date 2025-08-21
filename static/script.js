@@ -873,8 +873,16 @@ document.addEventListener('DOMContentLoaded', function() {
                 formData.append('content', content);
                 
                 // Get CSRF token with fallback
-                const csrfToken = $('meta[name="csrf-token"]').attr('content') || $('input[name="csrf_token"]').val();
-                console.log('CSRF Token for reply submission:', csrfToken);
+                const metaToken = $('meta[name="csrf-token"]').attr('content');
+                const inputToken = $('input[name="csrf_token"]').val();
+                const csrfToken = metaToken || inputToken;
+                console.log('CSRF Token debugging:', {
+                    metaToken: metaToken,
+                    inputToken: inputToken,
+                    finalToken: csrfToken,
+                    metaElement: $('meta[name="csrf-token"]').length,
+                    inputElement: $('input[name="csrf_token"]').length
+                });
                 formData.append('csrf_token', csrfToken);
                 
                 if (imageFile) {

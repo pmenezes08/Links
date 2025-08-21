@@ -1,5 +1,5 @@
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session, flash, abort, send_from_directory
-from flask_wtf.csrf import CSRFProtect
+from flask_wtf.csrf import CSRFProtect, generate_csrf, validate_csrf as wtf_validate_csrf
 # from flask_oauthlib.client import OAuth
 import os
 import sys
@@ -433,20 +433,12 @@ def get_csrf_token():
 
 
 def validate_csrf():
+    """Use Flask-WTF's built-in CSRF validation"""
     try:
-        if request.method in ('POST', 'PUT', 'DELETE'):
-            sent_token = (
-                request.headers.get('X-CSRFToken')
-                or request.headers.get('X-CSRF-Token')
-                or request.form.get('csrf_token')
-            )
-            expected_token = session.get('csrf_token')
-            if not expected_token or not sent_token or sent_token != expected_token:
-                logger.warning("CSRF validation failed")
-                return False
+        wtf_validate_csrf()
         return True
     except Exception as e:
-        logger.error(f"CSRF validation error: {e}")
+        logger.warning(f"CSRF validation failed: {e}")
         return False
 
 
@@ -2100,11 +2092,8 @@ def check_unread_messages():
 def feed():
     username = session.get('username')
     
-    # Generate CSRF token for the session
-    token = session.get('csrf_token')
-    if not token:
-        token = secrets.token_hex(32)
-        session['csrf_token'] = token
+    # Generate CSRF token using Flask-WTF
+    token = generate_csrf()
     
     try:
         with get_db_connection() as conn:
