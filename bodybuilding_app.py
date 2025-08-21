@@ -81,24 +81,6 @@ except ImportError as e:
 XAI_API_URL = 'https://api.x.ai/v1/chat/completions'
 DAILY_API_LIMIT = 10
 
-# Initialize database on application startup
-try:
-    ensure_database_exists()
-    logger.info("Database initialized successfully on startup")
-except Exception as e:
-    logger.error(f"Failed to initialize database on startup: {e}")
-    print(f"WARNING: Database initialization failed on startup: {e}")
-
-# Register the format_date Jinja2 filter
-@app.template_filter('format_date')
-def format_date(date_str, format_str):
-    try:
-        dt = datetime.strptime(date_str, '%m.%d.%y %H:%M')
-        return dt.strftime(format_str)
-    except ValueError:
-        logger.error(f"Invalid date format: {date_str}")
-        return date_str
-
 # Database connection pooling with absolute path
 def get_db_connection():
     # Get the absolute path to the database file
@@ -417,6 +399,24 @@ def ensure_indexes():
 
 init_db()
 ensure_indexes()
+
+# Initialize database on application startup
+try:
+    ensure_database_exists()
+    logger.info("Database initialized successfully on startup")
+except Exception as e:
+    logger.error(f"Failed to initialize database on startup: {e}")
+    print(f"WARNING: Database initialization failed on startup: {e}")
+
+# Register the format_date Jinja2 filter
+@app.template_filter('format_date')
+def format_date(date_str, format_str):
+    try:
+        dt = datetime.strptime(date_str, '%m.%d.%y %H:%M')
+        return dt.strftime(format_str)
+    except ValueError:
+        logger.error(f"Invalid date format: {date_str}")
+        return date_str
 
 # --- File upload helpers ---
 def allowed_file(filename):
