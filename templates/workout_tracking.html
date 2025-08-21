@@ -775,7 +775,7 @@
         function loadExercisesForWorkout() {
             console.log('loadExercisesForWorkout called');
             $.ajax({
-                url: '/get_workout_exercises',
+                url: '/get_user_exercises',
                 method: 'GET',
                 success: function(response) {
                     console.log('Load exercises for workout response:', response);
