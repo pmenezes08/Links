@@ -6964,3 +6964,15 @@ select:focus {
 }
 
 /* ===== RESPONSIVE DESIGN ===== */
+
+/* ===== GLOBAL STYLES ===== */
+
+* {
+    text-decoration: none !important;
+}
+
+a:hover, a:focus, a:active {
+    text-decoration: none !important;
+}
+
+/* ===== MUSCLE GROUP CARDS ===== */
