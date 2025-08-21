@@ -1118,14 +1118,13 @@ def admin():
         return redirect(url_for('index'))
     print("User is admin, proceeding")
     
-    # Simple test - just return a basic response
-    return "Admin dashboard is working!"
-    
     try:
+        print("Getting database connection...")
         with get_db_connection() as conn:
             c = conn.cursor()
             
             # Get statistics
+            print("Getting user count...")
             c.execute("SELECT COUNT(*) FROM users")
             total_users = c.fetchone()[0]
             
