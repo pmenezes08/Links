@@ -18,6 +18,8 @@ from werkzeug.security import generate_password_hash, check_password_hash
 # Initialize Flask app
 app = Flask(__name__, template_folder='templates')
 
+# Force reload to clear any cached routes - Updated 2025-08-21 16:45
+
 # Temporarily disable CSRF protection
 # csrf = CSRFProtect(app)
 # csrf.exempt(app)  # Disable CSRF protection globally
@@ -3269,6 +3271,7 @@ def delete_exercise():
 @app.route('/log_weight_set', methods=['POST'])
 @login_required
 def log_weight_set():
+    # Test route to avoid conflicts
     try:
         username = session.get('username')
         exercise_id = request.form.get('exercise_id')
