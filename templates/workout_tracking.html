@@ -1494,8 +1494,10 @@
                 const formData = new FormData();
                 formData.append('workout_id', workoutId);
                 const userMessage = $('#workout-message').val().trim();
+                console.log('Debug: userMessage =', userMessage);
                 if (userMessage) {
                     formData.append('user_message', userMessage);
+                    console.log('Debug: Added user_message to formData');
                 }
                 selectedCommunities.forEach(communityId => {
                     formData.append('communities', communityId);

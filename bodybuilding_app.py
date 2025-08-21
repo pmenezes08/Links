@@ -4018,6 +4018,7 @@ def share_individual_workout():
         
         # Get user message if provided
         user_message = request.form.get('user_message', '').strip()
+        print(f"Debug: user_message = '{user_message}'")
         
         # Create post content
         content = f"{name} - {date}\n"
@@ -4032,6 +4033,8 @@ def share_individual_workout():
         # Add user message if provided
         if user_message:
             content = f"{user_message}\n\n{content}"
+        
+        print(f"Debug: Final content = '{content}'")
         
         # Share to each selected community
         for community_id in communities:
