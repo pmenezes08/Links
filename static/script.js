@@ -1059,7 +1059,9 @@ function initResponsiveImages() {
                 entries.forEach(entry => {
                     if (entry.isIntersecting) {
                         const img = entry.target;
-                        img.src = img.dataset.src;
+                        if (img.dataset.src && img.dataset.src !== 'undefined') {
+                            img.src = img.dataset.src;
+                        }
                         img.classList.remove('lazy');
                         imageObserver.unobserve(img);
                     }
@@ -1660,11 +1662,11 @@ document.addEventListener('DOMContentLoaded', function() {
             entries.forEach(entry => {
                 if (entry.isIntersecting) {
                     const img = entry.target;
-                    if (img.dataset.src) {
+                    if (img.dataset.src && img.dataset.src !== 'undefined') {
                         img.src = img.dataset.src;
-                        img.classList.remove('lazy');
-                        imageObserver.unobserve(img);
                     }
+                    img.classList.remove('lazy');
+                    imageObserver.unobserve(img);
                 }
             });
         });
@@ -1739,7 +1741,7 @@ function initMobileImageLoading() {
             img.style.opacity = '0';
             
             // Force image loading for mobile
-            if (img.dataset.src) {
+            if (img.dataset.src && img.dataset.src !== 'undefined') {
                 img.src = img.dataset.src;
             }
             
