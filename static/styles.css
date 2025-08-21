@@ -8578,3 +8578,21 @@ input::after {
     border-radius: 4px;
     min-width: auto;
 }
+
+.workout-title {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.workout-name {
+    margin: 0;
+    color: #ffffff;
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
+.workout-date {
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 0.75rem;
+}

@@ -3973,6 +3973,66 @@ def get_individual_workout_summary():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
+@app.route('/share_individual_workout', methods=['POST'])
+@login_required
+def share_individual_workout():
+    try:
+        username = session.get('username')
+        workout_id = request.form.get('workout_id')
+        communities = request.form.getlist('communities')
+        
+        if not workout_id:
+            return jsonify({'success': False, 'error': 'Workout ID is required'})
+        
+        if not communities:
+            return jsonify({'success': False, 'error': 'No communities selected'})
+        
+        conn = sqlite3.connect('users.db')
+        cursor = conn.cursor()
+        
+        # Get workout details
+        cursor.execute('''
+            SELECT w.name, w.date, COUNT(we.id) as exercise_count, 
+                   GROUP_CONCAT(e.name || ' (' || we.weight || 'kg x ' || we.sets || ' sets x ' || we.reps || ' reps)') as exercises
+            FROM workouts w
+            LEFT JOIN workout_exercises we ON w.id = we.workout_id
+            LEFT JOIN exercises e ON we.exercise_id = e.id
+            WHERE w.id = ? AND w.username = ?
+            GROUP BY w.id
+        ''', (workout_id, username))
+        
+        row = cursor.fetchone()
+        if not row:
+            conn.close()
+            return jsonify({'success': False, 'error': 'Workout not found'})
+        
+        name, date, exercise_count, exercises = row
+        
+        # Create post content
+        content = f"💪 **{name}** - {date}\n\n"
+        content += f"**Exercises:** {exercise_count}\n"
+        
+        if exercises:
+            exercise_list = exercises.split(',')
+            content += "\n**Workout Details:**\n"
+            for exercise in exercise_list:
+                content += f"• {exercise}\n"
+        
+        # Share to each selected community
+        for community_id in communities:
+            cursor.execute('''
+                INSERT INTO posts (username, community_id, content, created_at)
+                VALUES (?, ?, ?, datetime('now'))
+            ''', (username, community_id, content))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({'success': True})
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
 # Workout Management Routes
 @app.route('/create_workout', methods=['POST'])
 def create_workout():

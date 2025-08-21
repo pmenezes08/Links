@@ -826,13 +826,15 @@
                     <div class="workout-item">
                         <div class="workout-content" onclick="openWorkoutModal(${workout.id}, '${workout.name}')">
                             <div class="workout-header">
-                                <h4 class="workout-name">${workout.name}</h4>
-                                <span class="workout-date">${formatDate(workout.date)}</span>
-                            </div>
-                            <div class="workout-stats">
-                                <div class="stat">
-                                    <span class="stat-label">Exercises</span>
-                                    <span class="stat-value">${workout.exercise_count || 0}</span>
+                                <div class="workout-title">
+                                    <h4 class="workout-name">${workout.name}</h4>
+                                    <span class="workout-date">${formatDate(workout.date)}</span>
+                                </div>
+                                <div class="workout-stats">
+                                    <div class="stat">
+                                        <span class="stat-label">Exercises</span>
+                                        <span class="stat-value">${workout.exercise_count || 0}</span>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -1284,12 +1286,14 @@
         }
 
         function openShareWorkoutsModal() {
+            $('#share-workouts-modal').removeData('workout-id');
             $('#share-workouts-modal').show();
             generateWorkoutSummary();
             loadUserCommunities('workout-communities-list');
         }
 
         function openShareWorkoutModal(workoutId, workoutName) {
+            $('#share-workouts-modal').data('workout-id', workoutId);
             $('#share-workouts-modal').show();
             generateIndividualWorkoutSummary(workoutId, workoutName);
             loadUserCommunities('workout-communities-list');
@@ -1466,24 +1470,51 @@
                 return;
             }
 
-            $.ajax({
-                url: '/share_workouts',
-                method: 'POST',
-                data: {
-                    communities: selectedCommunities
-                },
-                success: function(response) {
-                    if (response.success) {
-                        closeShareWorkoutsModal();
-                        alert('Workouts shared successfully!');
-                    } else {
-                        alert('Error sharing workouts: ' + (response.error || 'Unknown error'));
+            // Check if this is an individual workout share
+            const workoutId = $('#share-workouts-modal').data('workout-id');
+            
+            if (workoutId) {
+                // Share individual workout
+                $.ajax({
+                    url: '/share_individual_workout',
+                    method: 'POST',
+                    data: {
+                        workout_id: workoutId,
+                        communities: selectedCommunities
+                    },
+                    success: function(response) {
+                        if (response.success) {
+                            closeShareWorkoutsModal();
+                            alert('Workout shared successfully!');
+                        } else {
+                            alert('Error sharing workout: ' + (response.error || 'Unknown error'));
+                        }
+                    },
+                    error: function(xhr, status, error) {
+                        alert('Error sharing workout: ' + error);
                     }
-                },
-                error: function(xhr, status, error) {
-                    alert('Error sharing workouts: ' + error);
-                }
-            });
+                });
+            } else {
+                // Share all workouts summary
+                $.ajax({
+                    url: '/share_workouts',
+                    method: 'POST',
+                    data: {
+                        communities: selectedCommunities
+                    },
+                    success: function(response) {
+                        if (response.success) {
+                            closeShareWorkoutsModal();
+                            alert('Workouts shared successfully!');
+                        } else {
+                            alert('Error sharing workouts: ' + (response.error || 'Unknown error'));
+                        }
+                    },
+                    error: function(xhr, status, error) {
+                        alert('Error sharing workouts: ' + error);
+                    }
+                });
+            }
         }
 
         // New Functions for Exercise Management
