@@ -7,7 +7,7 @@
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
     <title>Workout Tracking</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}?v=1755799274">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}?v=1755799275">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -426,6 +426,9 @@
     </div>
 
     <script>
+        // Cache busting
+        console.log('Workout tracking page loaded - v1755799275');
+        
         $(document).ready(function() {
             // Set default date to today
             $('#log-weight-date').val(new Date().toISOString().split('T')[0]);
