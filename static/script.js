@@ -511,8 +511,9 @@ document.addEventListener('DOMContentLoaded', function() {
             const $post = $(this);
             
             // Show modal immediately with basic post info
-            const postImageHtml = $post.find('.post-image').length ? 
-            $post.find('.post-image').prop('outerHTML').replace('/static/', '/uploads/').replace('uploads/uploads/', 'uploads/') : '';
+            const $postImage = $post.find('.post-image');
+            const postImageHtml = $postImage.length ? 
+                `<div class="post-image">${$postImage.html()}</div>` : '';
             const basicPostHtml = `
                 <div class="post" data-post-id="${postId}">
                     <div class="post-header">
@@ -585,7 +586,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         function buildModalContent(postData) {
             const repliesHtml = postData.replies.map(reply => {
-                const replyImageHtml = reply.image_path ? 
+                const replyImageHtml = (reply.image_path && reply.image_path !== 'None' && reply.image_path !== '') ? 
                     `<div class="reply-image"><img src="/uploads/${reply.image_path.replace('uploads/', '')}" alt="Reply image" loading="lazy" onerror="console.log('Reply image failed to load:', this.src); this.style.display='none'; this.parentElement.innerHTML='<div style=\'padding: 20px; text-align: center; color: #9fb0b5;\'>Image could not be loaded</div>';" onload="console.log('Reply image loaded successfully:', this.src);"></div>` : '';
                 
                 console.log("Building reply HTML for:", reply.username, "Current user:", sessionStorage.getItem('username'));
@@ -605,10 +606,10 @@ document.addEventListener('DOMContentLoaded', function() {
                                     <i class="${reply.user_reaction === 'heart' ? 'fas' : 'far'} fa-heart"></i> <span>${reply.reactions.heart || 0}</span>
                                 </button>
                                 <button class="reaction-btn thumbs-up ${reply.user_reaction === 'thumbs-up' ? 'active' : ''}" data-reaction="thumbs-up" aria-label="Thumbs up reply">
-                                    <i class="${reply.user_reaction === 'thumbs-up' ? 'fas' : 'far'} fa-thumbs-up</i> <span>${reply.reactions['thumbs-up'] || 0}</span>
+                                    <i class="${reply.user_reaction === 'thumbs-up' ? 'fas' : 'far'} fa-thumbs-up"></i> <span>${reply.reactions['thumbs-up'] || 0}</span>
                                 </button>
                                 <button class="reaction-btn thumbs-down ${reply.user_reaction === 'thumbs-down' ? 'active' : ''}" data-reaction="thumbs-down" aria-label="Thumbs down reply">
-                                    <i class="${reply.user_reaction === 'thumbs-down' ? 'fas' : 'far'} fa-thumbs-down</i> <span>${reply.reactions['thumbs-down'] || 0}</span>
+                                    <i class="${reply.user_reaction === 'thumbs-down' ? 'fas' : 'far'} fa-thumbs-down"></i> <span>${reply.reactions['thumbs-down'] || 0}</span>
                                 </button>
                             </div>
                             ${reply.username === sessionStorage.getItem('username') ? 
@@ -618,7 +619,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 `;
             }).join('');
 
-            const imageHtml = postData.image_path ? 
+            const imageHtml = (postData.image_path && postData.image_path !== 'None' && postData.image_path !== '') ? 
                 `<div class="post-image"><img src="/uploads/${postData.image_path.replace('uploads/', '')}" alt="Post image" loading="lazy" onerror="console.log('Modal image failed to load:', this.src); this.style.display='none'; this.parentElement.innerHTML='<div style=\'padding: 20px; text-align: center; color: #9fb0b5;\'>Image could not be loaded</div>';" onload="console.log('Modal image loaded successfully:', this.src);"></div>` : '';
             
             return `
