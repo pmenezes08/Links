@@ -3892,15 +3892,11 @@ def share_progress():
         user_message = request.form.get('user_message', '').strip()
         graph_image = request.form.get('graph_image', '').strip()
         
-        # Create post content with proper spacing
-        post_content = f"Progress Update: {exercise_name}\n\n"
-        post_content += f"Current 1RM: {current_1rm:.1f} kg\n"
-        post_content += f"Progress: {progress_percentage:.1f}%\n"
-        post_content += f"Sets logged: {len(rows)}"
-        
-        # Add user message if provided
+        # Create simple post content - just the exercise name if no user message
         if user_message:
-            post_content = f"{user_message}\n\n{post_content}"
+            post_content = f"{user_message}"
+        else:
+            post_content = f"Progress Update: {exercise_name}"
         
         # Save graph image if provided
         image_path = None
