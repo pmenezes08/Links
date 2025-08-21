@@ -3379,5 +3379,303 @@ def delete_set():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
+# Workout Management Routes
+@app.route('/create_workout', methods=['POST'])
+def create_workout():
+    if 'username' not in session:
+        return jsonify({'success': False, 'error': 'Not logged in'})
+    
+    try:
+        name = request.form.get('name')
+        day = request.form.get('day')
+        
+        if not name or not day:
+            return jsonify({'success': False, 'error': 'Missing required fields'})
+        
+        conn = sqlite3.connect('users.db')
+        cursor = conn.cursor()
+        
+        # Create workouts table if it doesn't exist
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS workouts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                name TEXT NOT NULL,
+                day TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users (id)
+            )
+        ''')
+        
+        # Get user ID
+        cursor.execute('SELECT id FROM users WHERE username = ?', (session['username'],))
+        user = cursor.fetchone()
+        if not user:
+            return jsonify({'success': False, 'error': 'User not found'})
+        
+        # Insert workout
+        cursor.execute('''
+            INSERT INTO workouts (user_id, name, day)
+            VALUES (?, ?, ?)
+        ''', (user[0], name, day))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({'success': True})
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/get_workouts', methods=['GET'])
+def get_workouts():
+    if 'username' not in session:
+        return jsonify({'success': False, 'error': 'Not logged in'})
+    
+    try:
+        conn = sqlite3.connect('users.db')
+        cursor = conn.cursor()
+        
+        # Get user ID
+        cursor.execute('SELECT id FROM users WHERE username = ?', (session['username'],))
+        user = cursor.fetchone()
+        if not user:
+            return jsonify({'success': False, 'error': 'User not found'})
+        
+        # Get workouts
+        cursor.execute('''
+            SELECT w.id, w.name, w.day, w.created_at,
+                   COUNT(we.id) as exercise_count
+            FROM workouts w
+            LEFT JOIN workout_exercises we ON w.id = we.workout_id
+            WHERE w.user_id = ?
+            GROUP BY w.id
+            ORDER BY w.created_at DESC
+        ''', (user[0],))
+        
+        workouts = []
+        for row in cursor.fetchall():
+            workout = {
+                'id': row[0],
+                'name': row[1],
+                'day': row[2],
+                'created_at': row[3],
+                'exercise_count': row[4]
+            }
+            workouts.append(workout)
+        
+        conn.close()
+        return jsonify({'success': True, 'workouts': workouts})
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/get_workout_details', methods=['GET'])
+def get_workout_details():
+    if 'username' not in session:
+        return jsonify({'success': False, 'error': 'Not logged in'})
+    
+    try:
+        workout_id = request.args.get('workout_id')
+        if not workout_id:
+            return jsonify({'success': False, 'error': 'Missing workout ID'})
+        
+        conn = sqlite3.connect('users.db')
+        cursor = conn.cursor()
+        
+        # Get user ID
+        cursor.execute('SELECT id FROM users WHERE username = ?', (session['username'],))
+        user = cursor.fetchone()
+        if not user:
+            return jsonify({'success': False, 'error': 'User not found'})
+        
+        # Get workout details
+        cursor.execute('''
+            SELECT w.id, w.name, w.day, w.created_at
+            FROM workouts w
+            WHERE w.id = ? AND w.user_id = ?
+        ''', (workout_id, user[0]))
+        
+        workout_row = cursor.fetchone()
+        if not workout_row:
+            return jsonify({'success': False, 'error': 'Workout not found'})
+        
+        workout = {
+            'id': workout_row[0],
+            'name': workout_row[1],
+            'day': workout_row[2],
+            'created_at': workout_row[3],
+            'exercises': []
+        }
+        
+        # Get workout exercises
+        cursor.execute('''
+            SELECT we.id, we.sets, we.reps, e.name as exercise_name, e.muscle_group
+            FROM workout_exercises we
+            JOIN exercises e ON we.exercise_id = e.id
+            WHERE we.workout_id = ?
+            ORDER BY we.id
+        ''', (workout_id,))
+        
+        for row in cursor.fetchall():
+            exercise = {
+                'id': row[0],
+                'sets': row[1],
+                'reps': row[2],
+                'exercise_name': row[3],
+                'muscle_group': row[4]
+            }
+            workout['exercises'].append(exercise)
+        
+        conn.close()
+        return jsonify({'success': True, 'workout': workout})
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/add_exercise_to_workout', methods=['POST'])
+def add_exercise_to_workout():
+    if 'username' not in session:
+        return jsonify({'success': False, 'error': 'Not logged in'})
+    
+    try:
+        workout_id = request.form.get('workout_id')
+        exercise_id = request.form.get('exercise_id')
+        sets = request.form.get('sets')
+        reps = request.form.get('reps')
+        
+        if not all([workout_id, exercise_id, sets, reps]):
+            return jsonify({'success': False, 'error': 'Missing required fields'})
+        
+        conn = sqlite3.connect('users.db')
+        cursor = conn.cursor()
+        
+        # Create workout_exercises table if it doesn't exist
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS workout_exercises (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                workout_id INTEGER NOT NULL,
+                exercise_id INTEGER NOT NULL,
+                sets INTEGER NOT NULL,
+                reps INTEGER NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (workout_id) REFERENCES workouts (id),
+                FOREIGN KEY (exercise_id) REFERENCES exercises (id)
+            )
+        ''')
+        
+        # Get user ID
+        cursor.execute('SELECT id FROM users WHERE username = ?', (session['username'],))
+        user = cursor.fetchone()
+        if not user:
+            return jsonify({'success': False, 'error': 'User not found'})
+        
+        # Verify workout belongs to user
+        cursor.execute('''
+            SELECT id FROM workouts 
+            WHERE id = ? AND user_id = ?
+        ''', (workout_id, user[0]))
+        
+        if not cursor.fetchone():
+            return jsonify({'success': False, 'error': 'Workout not found'})
+        
+        # Add exercise to workout
+        cursor.execute('''
+            INSERT INTO workout_exercises (workout_id, exercise_id, sets, reps)
+            VALUES (?, ?, ?, ?)
+        ''', (workout_id, exercise_id, sets, reps))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({'success': True})
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/remove_exercise_from_workout', methods=['POST'])
+def remove_exercise_from_workout():
+    if 'username' not in session:
+        return jsonify({'success': False, 'error': 'Not logged in'})
+    
+    try:
+        workout_exercise_id = request.form.get('workout_exercise_id')
+        
+        if not workout_exercise_id:
+            return jsonify({'success': False, 'error': 'Missing workout exercise ID'})
+        
+        conn = sqlite3.connect('users.db')
+        cursor = conn.cursor()
+        
+        # Get user ID
+        cursor.execute('SELECT id FROM users WHERE username = ?', (session['username'],))
+        user = cursor.fetchone()
+        if not user:
+            return jsonify({'success': False, 'error': 'User not found'})
+        
+        # Verify workout exercise belongs to user
+        cursor.execute('''
+            SELECT we.id FROM workout_exercises we
+            JOIN workouts w ON we.workout_id = w.id
+            WHERE we.id = ? AND w.user_id = ?
+        ''', (workout_exercise_id, user[0]))
+        
+        if not cursor.fetchone():
+            return jsonify({'success': False, 'error': 'Workout exercise not found'})
+        
+        # Remove exercise from workout
+        cursor.execute('DELETE FROM workout_exercises WHERE id = ?', (workout_exercise_id,))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({'success': True})
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/delete_workout', methods=['POST'])
+def delete_workout():
+    if 'username' not in session:
+        return jsonify({'success': False, 'error': 'Not logged in'})
+    
+    try:
+        workout_id = request.form.get('workout_id')
+        
+        if not workout_id:
+            return jsonify({'success': False, 'error': 'Missing workout ID'})
+        
+        conn = sqlite3.connect('users.db')
+        cursor = conn.cursor()
+        
+        # Get user ID
+        cursor.execute('SELECT id FROM users WHERE username = ?', (session['username'],))
+        user = cursor.fetchone()
+        if not user:
+            return jsonify({'success': False, 'error': 'User not found'})
+        
+        # Verify workout belongs to user
+        cursor.execute('''
+            SELECT id FROM workouts 
+            WHERE id = ? AND user_id = ?
+        ''', (workout_id, user[0]))
+        
+        if not cursor.fetchone():
+            return jsonify({'success': False, 'error': 'Workout not found'})
+        
+        # Delete workout exercises first (due to foreign key)
+        cursor.execute('DELETE FROM workout_exercises WHERE workout_id = ?', (workout_id,))
+        
+        # Delete workout
+        cursor.execute('DELETE FROM workouts WHERE id = ?', (workout_id,))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({'success': True})
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
 if __name__ == '__main__':
     app.run(debug=False, host='0.0.0.0', port=8080)
