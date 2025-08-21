@@ -6971,7 +6971,22 @@ select:focus {
     text-decoration: none !important;
 }
 
-a:hover, a:focus, a:active {
+a, a:hover, a:focus, a:active, a:visited {
+    text-decoration: none !important;
+}
+
+button, button:hover, button:focus, button:active {
+    text-decoration: none !important;
+}
+
+input, textarea, select {
+    text-decoration: none !important;
+}
+
+/* Remove any remaining underlines */
+.text-decoration-underline,
+[style*="text-decoration: underline"],
+[style*="text-decoration:underline"] {
     text-decoration: none !important;
 }
 
