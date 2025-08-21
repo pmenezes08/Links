@@ -3,8 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
     <title>Workout Tracking</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}?v=1.6">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}?v=1755799274">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script>
@@ -927,9 +930,15 @@
 
         // Modal Functions
         function openAddExerciseModal() {
+            console.log('Opening Add Exercise Modal...');
             $('#add-exercise-modal').show();
             $('#modal-exercise-name').val('');
             $('#modal-muscle-group').val('');
+            $('#modal-exercise-weight').val('');
+            $('#modal-exercise-reps').val('');
+            $('#modal-exercise-date').val(new Date().toISOString().split('T')[0]);
+            console.log('Modal should be visible now');
+            console.log('Modal HTML:', $('#add-exercise-modal').html());
         }
 
         function closeAddExerciseModal() {
