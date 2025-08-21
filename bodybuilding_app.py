@@ -3283,6 +3283,8 @@ def log_weight_set():
         reps = request.form.get('reps')
         date = request.form.get('date')
         
+        print(f"Debug: Logging weight - Exercise ID: {exercise_id}, Weight: {weight}, Reps: {reps}, Date: {date}")
+        
         if not all([exercise_id, weight, reps, date]):
             return jsonify({'success': False, 'error': 'All fields are required'})
         
@@ -3304,12 +3306,15 @@ def log_weight_set():
             VALUES (?, ?, ?, ?)
         ''', (exercise_id, weight, reps, date))
         
+        print(f"Debug: Weight logged successfully for exercise {exercise_id}")
+        
         conn.commit()
         conn.close()
         
         return jsonify({'success': True})
         
     except Exception as e:
+        print(f"Debug: Error logging weight: {str(e)}")
         return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/edit_set', methods=['POST'])
@@ -3700,6 +3705,12 @@ def get_user_exercises():
                     'reps': row[4],
                     'date': row[5]
                 })
+        
+        print(f"Debug: Found {len(exercises)} exercises for user {username}")
+        for exercise in exercises:
+            print(f"Debug: Exercise '{exercise['name']}' has {len(exercise['weight_history'])} weight entries")
+            if exercise['weight_history']:
+                print(f"Debug: Weight entries: {exercise['weight_history']}")
         
         return jsonify({'success': True, 'exercises': exercises})
         
