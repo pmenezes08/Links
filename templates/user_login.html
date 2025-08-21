@@ -2,202 +2,158 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>User Login - Workout X</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Sign In - Workout X</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='apple-design.css') }}">
 </head>
 <body>
-    <div class="sidebar">
-        <button class="menu-btn">☰ Menu<span id="unread-badge" class="unread-badge">0</span></button>
-        <div class="dropdown-content">
-            <a href="/" class="sidebar-link">Welcome Page</a>
-            {% if session.get('username') %}
-                <a href="/profile" class="sidebar-link">Profile</a>
-                <a href="/user_chat" class="sidebar-link">Messages</a>
-                <a href="/premium_dashboard" class="sidebar-link">Premium Dashboard</a>
-                <a href="/my_workouts" class="sidebar-link">Workouts</a>
-                <a href="/nutrition" class="sidebar-link">Nutrition</a>
-                <a href="/blood_test_analysis" class="sidebar-link">Blood Test Analysis</a>
-                <a href="/chat" class="sidebar-link">Chat with Grok</a>
-                <a href="/health_news" class="sidebar-link">Health News</a>
-                <a href="/communities" class="sidebar-link">Your Communities</a>
-                <a href="/subscribe" class="sidebar-link">Subscribe</a>
-                <a href="/logout" class="sidebar-link">Logout</a>
-            {% endif %}
-        </div>
+    <div class="page-container">
+        <main class="main-content">
+            <div class="container">
+                <div class="flex flex-col items-center justify-center min-h-screen">
+                    <!-- Logo/Brand -->
+                    <div class="text-center mb-6">
+                        <h1 class="font-bold mb-2">Workout X</h1>
+                        <p class="text-secondary">Sign in to your account</p>
+                    </div>
+
+                    <!-- Login Form -->
+                    <div class="card w-full max-w-md">
+                        {% if error %}
+                            <div class="alert alert-error mb-4">
+                                {{ error }}
+                            </div>
+                        {% endif %}
+
+                        <form method="POST" class="space-y-4">
+                            {{ csrf_token() }}
+                            
+                            <div class="form-group">
+                                <label for="username" class="form-label">Username</label>
+                                <input 
+                                    type="text" 
+                                    id="username"
+                                    name="username" 
+                                    class="form-input" 
+                                    placeholder="Enter your username" 
+                                    required
+                                    autocomplete="username"
+                                >
+                            </div>
+
+                            <div class="form-group">
+                                <label for="password" class="form-label">Password</label>
+                                <input 
+                                    type="password" 
+                                    id="password"
+                                    name="password" 
+                                    class="form-input" 
+                                    placeholder="Enter your password" 
+                                    required
+                                    autocomplete="current-password"
+                                >
+                            </div>
+
+                            <button type="submit" class="btn btn-primary w-full">
+                                Sign In
+                            </button>
+                        </form>
+
+                        <div class="mt-6 text-center">
+                            <a href="/" class="btn btn-secondary">
+                                Back to Home
+                            </a>
+                        </div>
+                    </div>
+
+                    <!-- Footer -->
+                    <div class="text-center mt-8">
+                        <p class="text-tertiary text-sm">
+                            Secure authentication powered by Workout X
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </main>
     </div>
-    <div class="container">
-        <div class="popup-content">
-            <h2>User Login</h2>
-            {% if error %}
-                <p style="color: #ff4444;">{{ error }}</p>
-            {% endif %}
-            <form method="POST">
-                {{ csrf_token() }} <!-- Add CSRF protection if using Flask-WTF -->
-                <input type="text" name="username" placeholder="Enter your username" required>
-                <input type="password" name="password" placeholder="Enter your password" required>
-                <button type="submit" class="sleek-btn">Login</button>
-            </form>
-            <button onclick="location.href='/'" class="go-back-btn">Back</button>
-        </div>
-    </div>
+
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <script src="{{ url_for('static', filename='script.js') }}"></script>
     <script>
         $(document).ready(function() {
-            $('.menu-btn').click(function() {
-                $('.dropdown-content').toggle();
+            // Focus on username field on page load
+            $('#username').focus();
+            
+            // Form submission handling
+            $('form').on('submit', function() {
+                const submitBtn = $(this).find('button[type="submit"]');
+                submitBtn.prop('disabled', true).html('<span class="spinner"></span> Signing In...');
             });
-            $(window).resize(function() {
-                if ($(window).width() > 768) {
-                    $('.dropdown-content').hide();
-                }
+            
+            // Input focus effects
+            $('.form-input').on('focus', function() {
+                $(this).parent().addClass('focused');
+            }).on('blur', function() {
+                $(this).parent().removeClass('focused');
             });
-
-            // Check for unread messages if logged in
-            function checkUnreadMessages() {
-                if (sessionStorage.getItem('username')) {
-                    $.get('/check_unread_messages', function(data) {
-                        const unreadCount = data.unread_count;
-                        const badge = $('#unread-badge');
-                        if (unreadCount > 0) {
-                            badge.text(unreadCount > 9 ? '9+' : unreadCount);
-                            badge.removeClass('hidden');
-                        } else {
-                            badge.addClass('hidden');
-                        }
-                    }).fail(function(xhr, status, error) {
-                        console.error('Error checking unread messages:', error);
-                    });
-                }
-            }
-
-            checkUnreadMessages();
-            setInterval(checkUnreadMessages, 5000);
         });
     </script>
+
     <style>
-        * {
-            font-family: Arial, Helvetica, sans-serif;
+        /* Additional styles for login page */
+        .space-y-4 > * + * {
+            margin-top: var(--space-4);
         }
-        .sidebar {
-            position: fixed;
-            top: 0;
-            left: 0;
-            height: 100%;
-            width: 60px;
-            background: #1a2526;
-            transition: width 0.3s;
-            z-index: 1000;
+        
+        .space-y-6 > * + * {
+            margin-top: var(--space-6);
         }
-        .menu-btn {
-            background: none;
-            border: none;
-            color: #e0e0e0;
-            font-size: 24px;
-            padding: 15px;
-            cursor: pointer;
-            width: 100%;
-            text-align: left;
+        
+        .max-w-md {
+            max-width: 28rem;
         }
-        .unread-badge {
-            display: inline-block;
-            background: #ff4444;
-            color: #fff;
-            font-size: 0.6em;
-            font-weight: bold;
-            width: 16px;
-            height: 16px;
-            border-radius: 50%;
-            text-align: center;
-            line-height: 16px;
-            margin-left: 8px;
-            position: relative;
-            top: -2px;
+        
+        .text-secondary {
+            color: var(--text-secondary);
         }
-        .unread-badge.hidden {
-            display: none;
+        
+        .text-tertiary {
+            color: var(--text-tertiary);
         }
-        .dropdown-content {
-            display: none;
-            background: #2d3839;
-            position: absolute;
-            top: 60px;
-            left: 0;
-            width: 200px;
-            box-shadow: 2px 2px 6px rgba(0, 0, 0, 0.2);
+        
+        .text-sm {
+            font-size: var(--font-size-sm);
         }
-        .dropdown-content a, .dropdown-content a.sidebar-link {
-            color: #e0e0e0;
-            padding: 10px 15px;
-            display: block;
-            text-decoration: none;
-            font-size: 0.9em;
+        
+        /* Enhanced focus states */
+        .form-group.focused .form-label {
+            color: var(--accent-blue);
         }
-        .dropdown-content a:hover, .dropdown-content a.sidebar-link:hover {
-            background: #3a4647;
+        
+        /* Smooth transitions */
+        .card {
+            animation: fadeInUp 0.6s ease-out;
         }
-        .container {
-            max-width: 90%;
-            margin: 0 auto;
-            padding: 20px;
-            text-align: center;
-            min-height: 100vh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
+        
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
-        .popup-content {
-            background: #2d3839;
-            padding: 20px;
-            border-radius: 8px;
-            width: 100%;
-            max-width: 400px;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-        }
-        form {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-            align-items: center;
-        }
-        input {
-            width: 100%;
-            max-width: 300px;
-            background: #3a4647;
-            color: #e0e0e0;
-            border: none;
-            padding: 8px;
-            border-radius: 4px;
-            font-size: 0.9em;
-        }
-        .sleek-btn, .go-back-btn {
-            background: #3a4647;
-            color: #e0e0e0;
-            border: none;
-            padding: 8px 16px;
-            border-radius: 4px;
-            cursor: pointer;
-            margin: 5px;
-            font-size: 0.9em;
-            transition: opacity 0.2s ease;
-        }
-        .sleek-btn:hover, .go-back-btn:hover {
-            opacity: 0.8;
-        }
-        h2 {
-            color: #e0e0e0;
-            font-size: 1.5em;
-            margin-bottom: 15px;
-        }
-        @media (max-width: 768px) {
-            .sidebar { width: 100%; height: 60px; }
-            .menu-btn { font-size: 20px; padding: 10px; }
-            .dropdown-content { top: 60px; width: 100%; left: 0; }
-            .container { padding: 10px; }
-            h2 { font-size: 1.3em; }
-            input, .sleek-btn, .go-back-btn { font-size: 0.9em; padding: 6px 12px; }
-            .popup-content { padding: 15px; max-width: 300px; }
+        
+        /* Mobile optimizations */
+        @media (max-width: 480px) {
+            .card {
+                margin: 0 var(--space-3);
+            }
+            
+            h1 {
+                font-size: var(--font-size-3xl);
+            }
         }
     </style>
 </body>

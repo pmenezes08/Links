@@ -2,130 +2,225 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Admin Profile - Workout X</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}?v=6.0">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='apple-design.css') }}">
 </head>
 <body>
-    <div class="sidebar">
-        <button class="menu-btn">☰ Menu</button>
-        <div class="dropdown-content">
-            <a href="{{ url_for('dashboard') }}">Dashboard</a>
-            <a href="{{ url_for('admin') }}">Admin Dashboard</a>
-            <a href="{{ url_for('admin_profile') }}">Admin Profile</a>
-            <a href="{{ url_for('feed') }}">Social</a>
-            <a href="{{ url_for('communities') }}">Your Communities</a>
-            <a href="{{ url_for('logout') }}">Logout</a>
-        </div>
-    </div>
+    <div class="page-container">
+        <!-- Navigation -->
+        <nav class="navbar">
+            <div class="navbar-container">
+                <a href="{{ url_for('dashboard') }}" class="navbar-brand">Workout X</a>
+                <div class="navbar-nav">
+                    <a href="{{ url_for('dashboard') }}" class="nav-link">Dashboard</a>
+                    <a href="{{ url_for('admin') }}" class="nav-link">Admin</a>
+                    <a href="{{ url_for('admin_profile') }}" class="nav-link active">Profile</a>
+                    <a href="{{ url_for('feed') }}" class="nav-link">Social</a>
+                    <a href="{{ url_for('communities') }}" class="nav-link">Communities</a>
+                    <a href="{{ url_for('logout') }}" class="nav-link">Logout</a>
+                </div>
+            </div>
+        </nav>
 
-    <div class="container">
-        <div class="admin-profile-header">
-            <h1><i class="fas fa-user-shield"></i> Admin Profile</h1>
-            <p class="admin-subtitle">System Administrator Dashboard</p>
-        </div>
+        <!-- Main Content -->
+        <main class="main-content">
+            <div class="container">
+                <!-- Page Header -->
+                <div class="text-center mb-6">
+                    <h1>Admin Profile</h1>
+                    <p class="text-secondary">System Administrator Dashboard</p>
+                </div>
 
-        <div class="admin-profile-content">
-            <div class="admin-info-section">
-                <h2>Administrator Information</h2>
-                <div class="admin-info-grid">
-                    <div class="info-item">
-                        <label>Username:</label>
-                        <span>{{ admin_info.username }}</span>
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <!-- Administrator Information -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h2 class="card-title">Administrator Information</h2>
+                            <p class="card-subtitle">Account details and settings</p>
+                        </div>
+                        <div class="card-body">
+                            <div class="space-y-4">
+                                <div class="flex justify-between items-center py-3 border-b border-primary">
+                                    <span class="text-secondary">Username</span>
+                                    <span class="font-medium">{{ admin_info.username }}</span>
+                                </div>
+                                <div class="flex justify-between items-center py-3 border-b border-primary">
+                                    <span class="text-secondary">Email</span>
+                                    <span class="font-medium">{{ admin_info.email }}</span>
+                                </div>
+                                <div class="flex justify-between items-center py-3 border-b border-primary">
+                                    <span class="text-secondary">Full Name</span>
+                                    <span class="font-medium">{{ admin_info.first_name }} {{ admin_info.last_name }}</span>
+                                </div>
+                                <div class="flex justify-between items-center py-3 border-b border-primary">
+                                    <span class="text-secondary">Subscription</span>
+                                    <span class="px-3 py-1 bg-accent-green text-white rounded-full text-sm font-medium">
+                                        {{ admin_info.subscription }}
+                                    </span>
+                                </div>
+                                <div class="flex justify-between items-center py-3">
+                                    <span class="text-secondary">Account Created</span>
+                                    <span class="font-medium">{{ admin_info.created_at }}</span>
+                                </div>
+                            </div>
+                        </div>
                     </div>
-                    <div class="info-item">
-                        <label>Email:</label>
-                        <span>{{ admin_info.email }}</span>
+
+                    <!-- System Statistics -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h2 class="card-title">System Statistics</h2>
+                            <p class="card-subtitle">Platform overview and metrics</p>
+                        </div>
+                        <div class="card-body">
+                            <div class="grid grid-cols-2 gap-4">
+                                <div class="text-center p-4 bg-tertiary rounded-lg">
+                                    <div class="text-2xl font-bold text-accent-blue mb-1">{{ stats.total_users }}</div>
+                                    <div class="text-sm text-secondary">Total Users</div>
+                                </div>
+                                <div class="text-center p-4 bg-tertiary rounded-lg">
+                                    <div class="text-2xl font-bold text-accent-green mb-1">{{ stats.total_posts }}</div>
+                                    <div class="text-sm text-secondary">Total Posts</div>
+                                </div>
+                                <div class="text-center p-4 bg-tertiary rounded-lg">
+                                    <div class="text-2xl font-bold text-accent-orange mb-1">{{ stats.total_communities }}</div>
+                                    <div class="text-sm text-secondary">Communities</div>
+                                </div>
+                                <div class="text-center p-4 bg-tertiary rounded-lg">
+                                    <div class="text-2xl font-bold text-accent-purple mb-1">{{ stats.premium_users }}</div>
+                                    <div class="text-sm text-secondary">Premium Users</div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
-                    <div class="info-item">
-                        <label>Full Name:</label>
-                        <span>{{ admin_info.first_name }} {{ admin_info.last_name }}</span>
+                </div>
+
+                <!-- Administrative Actions -->
+                <div class="card mt-6">
+                    <div class="card-header">
+                        <h2 class="card-title">Administrative Actions</h2>
+                        <p class="card-subtitle">Quick access to management tools</p>
                     </div>
-                    <div class="info-item">
-                        <label>Subscription:</label>
-                        <span class="premium-badge">{{ admin_info.subscription }}</span>
-                    </div>
-                    <div class="info-item">
-                        <label>Account Created:</label>
-                        <span>{{ admin_info.created_at }}</span>
+                    <div class="card-body">
+                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                            <a href="{{ url_for('admin') }}" class="btn btn-secondary flex-col h-24">
+                                <span class="text-lg mb-1">Dashboard</span>
+                                <span class="text-sm text-secondary">Admin Panel</span>
+                            </a>
+                            <a href="{{ url_for('feed') }}" class="btn btn-secondary flex-col h-24">
+                                <span class="text-lg mb-1">Social Feed</span>
+                                <span class="text-sm text-secondary">View Posts</span>
+                            </a>
+                            <a href="{{ url_for('communities') }}" class="btn btn-secondary flex-col h-24">
+                                <span class="text-lg mb-1">Communities</span>
+                                <span class="text-sm text-secondary">Manage Groups</span>
+                            </a>
+                            <a href="{{ url_for('dashboard') }}" class="btn btn-secondary flex-col h-24">
+                                <span class="text-lg mb-1">Main Dashboard</span>
+                                <span class="text-sm text-secondary">User View</span>
+                            </a>
+                        </div>
                     </div>
                 </div>
             </div>
-
-            <div class="admin-stats-section">
-                <h2>System Statistics</h2>
-                <div class="stats-grid">
-                    <div class="stat-card">
-                        <div class="stat-icon">
-                            <i class="fas fa-users"></i>
-                        </div>
-                        <div class="stat-content">
-                            <h3>{{ stats.total_users }}</h3>
-                            <p>Total Users</p>
-                        </div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-icon">
-                            <i class="fas fa-comments"></i>
-                        </div>
-                        <div class="stat-content">
-                            <h3>{{ stats.total_posts }}</h3>
-                            <p>Total Posts</p>
-                        </div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-icon">
-                            <i class="fas fa-users-cog"></i>
-                        </div>
-                        <div class="stat-content">
-                            <h3>{{ stats.total_communities }}</h3>
-                            <p>Communities</p>
-                        </div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-icon">
-                            <i class="fas fa-crown"></i>
-                        </div>
-                        <div class="stat-content">
-                            <h3>{{ stats.premium_users }}</h3>
-                            <p>Premium Users</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="admin-actions-section">
-                <h2>Administrative Actions</h2>
-                <div class="admin-actions-grid">
-                    <button onclick="location.href='{{ url_for('admin') }}'" class="admin-action-btn">
-                        <i class="fas fa-tachometer-alt"></i>
-                        <span>Admin Dashboard</span>
-                    </button>
-                    <button onclick="location.href='{{ url_for('feed') }}'" class="admin-action-btn">
-                        <i class="fas fa-stream"></i>
-                        <span>View Social Feed</span>
-                    </button>
-                    <button onclick="location.href='{{ url_for('communities') }}'" class="admin-action-btn">
-                        <i class="fas fa-users"></i>
-                        <span>Manage Communities</span>
-                    </button>
-                    <button onclick="location.href='{{ url_for('dashboard') }}'" class="admin-action-btn">
-                        <i class="fas fa-home"></i>
-                        <span>Main Dashboard</span>
-                    </button>
-                </div>
-            </div>
-        </div>
+        </main>
     </div>
 
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script>
         $(document).ready(function() {
-            $('.menu-btn').click(function() {
-                $('.dropdown-content').toggle();
+            // Add hover effects to action buttons
+            $('.btn').hover(
+                function() {
+                    $(this).addClass('hover');
+                },
+                function() {
+                    $(this).removeClass('hover');
+                }
+            );
+            
+            // Smooth scrolling for anchor links
+            $('a[href^="#"]').on('click', function(e) {
+                e.preventDefault();
+                const target = $(this.getAttribute('href'));
+                if (target.length) {
+                    $('html, body').animate({
+                        scrollTop: target.offset().top - 80
+                    }, 300);
+                }
             });
         });
     </script>
+
+    <style>
+        /* Additional styles for admin profile */
+        .border-primary {
+            border-color: var(--border-primary);
+        }
+        
+        .bg-tertiary {
+            background: var(--bg-tertiary);
+        }
+        
+        .text-accent-blue {
+            color: var(--accent-blue);
+        }
+        
+        .text-accent-green {
+            color: var(--accent-green);
+        }
+        
+        .text-accent-orange {
+            color: var(--accent-orange);
+        }
+        
+        .text-accent-purple {
+            color: var(--accent-purple);
+        }
+        
+        .bg-accent-green {
+            background: var(--accent-green);
+        }
+        
+        .rounded-full {
+            border-radius: var(--radius-full);
+        }
+        
+        .text-2xl {
+            font-size: var(--font-size-2xl);
+        }
+        
+        .h-24 {
+            height: 6rem;
+        }
+        
+        .flex-col {
+            flex-direction: column;
+        }
+        
+        /* Responsive grid adjustments */
+        @media (max-width: 1024px) {
+            .lg\:grid-cols-2 {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .md\:grid-cols-2 {
+                grid-template-columns: 1fr;
+            }
+            
+            .lg\:grid-cols-4 {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+        
+        @media (max-width: 480px) {
+            .lg\:grid-cols-4 {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
 </body>
 </html>

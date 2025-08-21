@@ -2,268 +2,288 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Admin Dashboard - Workout X</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='apple-design.css') }}">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 </head>
 <body>
-    <div class="sidebar">
-        <button class="menu-btn">☰ Menu</button>
-        <div class="dropdown-content">
-            <a href="/admin">Admin Dashboard</a>
-            <a href="/profile">Profile</a>
-            <a href="/premium_dashboard">Premium Dashboard</a>
-            <a href="/feed">Social</a>
-            <a href="/communities">Your Communities</a>
-            <a href="/logout">Logout</a>
-        </div>
-    </div>
-    
-    <div class="container admin-dashboard">
-        <div class="admin-header">
-            <h1><i class="fas fa-shield-alt"></i> Admin Dashboard</h1>
-            <p class="admin-subtitle">Manage users, communities, and monitor platform statistics</p>
-        </div>
-
-        {% if error %}
-            <div class="error-message">
-                <i class="fas fa-exclamation-triangle"></i>
-                <p>{{ error }}</p>
-            </div>
-        {% endif %}
-
-        <!-- Quick Actions -->
-        <div class="quick-actions">
-            <h2><i class="fas fa-bolt"></i> Quick Actions</h2>
-            <div class="action-buttons">
-                <button onclick="showStatsModal()" class="action-btn">
-                    <i class="fas fa-chart-bar"></i>
-                    View Statistics
-                </button>
-                <button onclick="showAddUserModal()" class="action-btn">
-                    <i class="fas fa-user-plus"></i>
-                    Add User
-                </button>
-                <button onclick="showAddCommunityModal()" class="action-btn">
-                    <i class="fas fa-plus-circle"></i>
-                    Create Community
-                </button>
-                <button onclick="exportData()" class="action-btn">
-                    <i class="fas fa-download"></i>
-                    Export Data
-                </button>
-            </div>
-        </div>
-
-
-
-        <!-- User Management Section -->
-        <div class="admin-section">
-            <div class="section-header">
-                <h2><i class="fas fa-users"></i> User Management</h2>
-                <div class="section-actions">
-                    <input type="text" id="userSearch" placeholder="Search users..." class="search-input">
-                    <select id="userFilter" class="filter-select">
-                        <option value="all">All Users</option>
-                        <option value="premium">Premium Only</option>
-                        <option value="free">Free Only</option>
-                    </select>
+    <div class="page-container">
+        <!-- Navigation -->
+        <nav class="navbar">
+            <div class="navbar-container">
+                <a href="{{ url_for('dashboard') }}" class="navbar-brand">Workout X</a>
+                <div class="navbar-nav">
+                    <a href="{{ url_for('admin') }}" class="nav-link active">Admin</a>
+                    <a href="{{ url_for('admin_profile') }}" class="nav-link">Profile</a>
+                    <a href="{{ url_for('feed') }}" class="nav-link">Social</a>
+                    <a href="{{ url_for('communities') }}" class="nav-link">Communities</a>
+                    <a href="{{ url_for('logout') }}" class="nav-link">Logout</a>
                 </div>
             </div>
-            
-            <div class="users-grid" id="usersGrid">
-                {% for user in users %}
-                <div class="user-card" data-username="{{ user[0] }}" data-subscription="{{ user[1] }}">
-                    <div class="user-header">
-                        <div class="user-avatar">
-                            <i class="fas fa-user"></i>
-                        </div>
-                        <div class="user-info">
-                            <h4>{{ user[0] }}</h4>
-                            <span class="subscription-badge {{ user[1] }}">
-                                {{ user[1]|title }}
-                            </span>
-                        </div>
-                    </div>
-                    <div class="user-actions">
-                        <button onclick="showPasswordModal('{{ user[0] }}')" class="action-btn small">
-                            <i class="fas fa-key"></i>
-                        </button>
-                        <button onclick="showUserDetails('{{ user[0] }}')" class="action-btn small">
-                            <i class="fas fa-eye"></i>
-                        </button>
-                        {% if user[0] != 'admin' %}
-                        <button onclick="deleteUser('{{ user[0] }}')" class="action-btn small danger">
-                            <i class="fas fa-trash"></i>
-                        </button>
-                        {% endif %}
-                    </div>
-                </div>
-                {% endfor %}
-            </div>
-        </div>
+        </nav>
 
-        <!-- Community Management Section -->
-        <div class="admin-section">
-            <div class="section-header">
-                <h2><i class="fas fa-layer-group"></i> Community Management</h2>
-                <div class="section-actions">
-                    <input type="text" id="communitySearch" placeholder="Search communities..." class="search-input">
+        <!-- Main Content -->
+        <main class="main-content">
+            <div class="container">
+                <!-- Page Header -->
+                <div class="text-center mb-6">
+                    <h1>Admin Dashboard</h1>
+                    <p class="text-secondary">Manage users, communities, and monitor platform statistics</p>
                 </div>
-            </div>
-            
-            <div class="communities-grid" id="communitiesGrid">
-                {% for community in communities %}
-                <div class="community-card" data-name="{{ community.name }}">
-                    <div class="community-header">
-                        <div class="community-icon">
-                            <i class="fas fa-users"></i>
-                        </div>
-                        <div class="community-info">
-                            <h4>{{ community.name }}</h4>
-                            <p class="community-type">{{ community.type }}</p>
-                        </div>
+
+                {% if error %}
+                    <div class="alert alert-error mb-6">
+                        {{ error }}
                     </div>
-                    <div class="community-details">
-                        <div class="detail-item">
-                            <span class="label">Creator:</span>
-                            <span class="value">{{ community.creator_username }}</span>
-                        </div>
-                        <div class="detail-item">
-                            <span class="label">Members:</span>
-                            <span class="value">{{ community.member_count }}</span>
-                        </div>
-                        <div class="detail-item">
-                            <span class="label">Join Code:</span>
-                            <span class="value join-code">{{ community.join_code }}</span>
-                            <button onclick="copyJoinCode('{{ community.join_code }}')" class="copy-btn" title="Copy">
-                                <i class="fas fa-copy"></i>
+                {% endif %}
+
+                <!-- Quick Actions -->
+                <div class="card mb-6">
+                    <div class="card-header">
+                        <h2 class="card-title">Quick Actions</h2>
+                        <p class="card-subtitle">Common administrative tasks</p>
+                    </div>
+                    <div class="card-body">
+                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                            <button onclick="showStatsModal()" class="btn btn-secondary flex-col h-20">
+                                <span class="text-lg mb-1">Statistics</span>
+                                <span class="text-sm text-secondary">View Metrics</span>
+                            </button>
+                            <button onclick="showAddUserModal()" class="btn btn-secondary flex-col h-20">
+                                <span class="text-lg mb-1">Add User</span>
+                                <span class="text-sm text-secondary">Create Account</span>
+                            </button>
+                            <button onclick="showAddCommunityModal()" class="btn btn-secondary flex-col h-20">
+                                <span class="text-lg mb-1">Create Community</span>
+                                <span class="text-sm text-secondary">New Group</span>
+                            </button>
+                            <button onclick="exportData()" class="btn btn-secondary flex-col h-20">
+                                <span class="text-lg mb-1">Export Data</span>
+                                <span class="text-sm text-secondary">Download</span>
                             </button>
                         </div>
                     </div>
-                                         <div class="community-actions">
-                         <button onclick="location.href='/community_feed/{{ community.id }}'" class="action-btn small">
-                             <i class="fas fa-eye"></i>
-                         </button>
-                         <button onclick="showCommunityMembers('{{ community.id }}', '{{ community.name }}')" class="action-btn small">
-                             <i class="fas fa-users"></i>
-                         </button>
-                         <button onclick="deleteCommunity({{ community.id }}, '{{ community.name }}')" class="action-btn small danger">
-                             <i class="fas fa-trash"></i>
-                         </button>
-                     </div>
                 </div>
-                {% endfor %}
+
+                <!-- User Management -->
+                <div class="card mb-6">
+                    <div class="card-header">
+                        <h2 class="card-title">User Management</h2>
+                        <p class="card-subtitle">Manage platform users and accounts</p>
+                    </div>
+                    <div class="card-body">
+                        <div class="flex flex-col md:flex-row gap-4 mb-6">
+                            <div class="flex-1">
+                                <input type="text" id="userSearch" placeholder="Search users..." class="form-input">
+                            </div>
+                            <div class="w-full md:w-48">
+                                <select id="userFilter" class="form-input form-select">
+                                    <option value="all">All Users</option>
+                                    <option value="premium">Premium Only</option>
+                                    <option value="free">Free Only</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" id="usersGrid">
+                            {% for user in users %}
+                            <div class="card bg-tertiary" data-username="{{ user[0] }}" data-subscription="{{ user[1] }}">
+                                <div class="card-body">
+                                    <div class="flex items-center justify-between mb-4">
+                                        <div class="flex items-center gap-3">
+                                            <div class="w-10 h-10 bg-accent-blue rounded-full flex items-center justify-center text-white font-medium">
+                                                {{ user[0][0].upper() }}
+                                            </div>
+                                            <div>
+                                                <h4 class="font-medium">{{ user[0] }}</h4>
+                                                <span class="px-2 py-1 text-xs rounded-full {{ 'bg-accent-green text-white' if user[1] == 'premium' else 'bg-secondary text-secondary' }}">
+                                                    {{ user[1]|title }}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="flex gap-2">
+                                        <button onclick="showPasswordModal('{{ user[0] }}')" class="btn btn-sm btn-secondary flex-1">
+                                            Password
+                                        </button>
+                                        <button onclick="showUserDetails('{{ user[0] }}')" class="btn btn-sm btn-secondary flex-1">
+                                            Details
+                                        </button>
+                                        {% if user[0] != 'admin' %}
+                                        <button onclick="deleteUser('{{ user[0] }}')" class="btn btn-sm btn-danger">
+                                            Delete
+                                        </button>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Community Management -->
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="card-title">Community Management</h2>
+                        <p class="card-subtitle">Manage platform communities and groups</p>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-6">
+                            <input type="text" id="communitySearch" placeholder="Search communities..." class="form-input">
+                        </div>
+                        
+                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" id="communitiesGrid">
+                            {% for community in communities %}
+                            <div class="card bg-tertiary" data-name="{{ community.name }}">
+                                <div class="card-body">
+                                    <div class="flex items-center justify-between mb-4">
+                                        <div class="flex items-center gap-3">
+                                            <div class="w-10 h-10 bg-accent-orange rounded-full flex items-center justify-center text-white font-medium">
+                                                {{ community.name[0].upper() }}
+                                            </div>
+                                            <div>
+                                                <h4 class="font-medium">{{ community.name }}</h4>
+                                                <p class="text-sm text-secondary">{{ community.type }}</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="space-y-2 mb-4">
+                                        <div class="flex justify-between text-sm">
+                                            <span class="text-secondary">Creator:</span>
+                                            <span>{{ community.creator_username }}</span>
+                                        </div>
+                                        <div class="flex justify-between text-sm">
+                                            <span class="text-secondary">Members:</span>
+                                            <span>{{ community.member_count }}</span>
+                                        </div>
+                                        <div class="flex justify-between text-sm items-center">
+                                            <span class="text-secondary">Join Code:</span>
+                                            <div class="flex items-center gap-2">
+                                                <span class="font-mono text-xs">{{ community.join_code }}</span>
+                                                <button onclick="copyJoinCode('{{ community.join_code }}')" class="btn btn-sm btn-secondary">
+                                                    Copy
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="flex gap-2">
+                                        <a href="/community_feed/{{ community.id }}" class="btn btn-sm btn-secondary flex-1">
+                                            View
+                                        </a>
+                                        <button onclick="showCommunityMembers('{{ community.id }}', '{{ community.name }}')" class="btn btn-sm btn-secondary flex-1">
+                                            Members
+                                        </button>
+                                        <button onclick="deleteCommunity({{ community.id }}, '{{ community.name }}')" class="btn btn-sm btn-danger">
+                                            Delete
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
             </div>
-        </div>
+        </main>
     </div>
 
     <!-- Password Update Modal -->
     <div id="passwordModal" class="modal">
         <div class="modal-content">
-            <div class="modal-header">
-                <h3><i class="fas fa-key"></i> Update Password</h3>
-                <span class="close" onclick="closePasswordModal()">&times;</span>
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">Update Password</h3>
+                    <button onclick="closePasswordModal()" class="btn btn-sm btn-secondary">Close</button>
+                </div>
+                <div class="card-body">
+                    <form id="passwordForm" class="space-y-4">
+                        <div class="form-group">
+                            <label for="targetUsername" class="form-label">Username</label>
+                            <input type="text" id="targetUsername" class="form-input" readonly>
+                        </div>
+                        <div class="form-group">
+                            <label for="newPassword" class="form-label">New Password</label>
+                            <input type="password" id="newPassword" class="form-input" required minlength="6">
+                        </div>
+                        <div class="form-group">
+                            <label for="confirmPassword" class="form-label">Confirm Password</label>
+                            <input type="password" id="confirmPassword" class="form-input" required minlength="6">
+                        </div>
+                        <div class="flex gap-3">
+                            <button type="button" onclick="closePasswordModal()" class="btn btn-secondary flex-1">Cancel</button>
+                            <button type="submit" class="btn btn-primary flex-1">Update Password</button>
+                        </div>
+                    </form>
+                </div>
             </div>
-            <form id="passwordForm">
-                <div class="form-group">
-                    <label for="targetUsername">Username:</label>
-                    <input type="text" id="targetUsername" readonly>
-                </div>
-                <div class="form-group">
-                    <label for="newPassword">New Password:</label>
-                    <input type="password" id="newPassword" required minlength="6">
-                </div>
-                <div class="form-group">
-                    <label for="confirmPassword">Confirm Password:</label>
-                    <input type="password" id="confirmPassword" required minlength="6">
-                </div>
-                <div class="form-actions">
-                    <button type="button" onclick="closePasswordModal()" class="btn-secondary">Cancel</button>
-                    <button type="submit" class="btn-primary">Update Password</button>
-                </div>
-            </form>
         </div>
     </div>
 
     <!-- Add User Modal -->
     <div id="addUserModal" class="modal">
         <div class="modal-content">
-            <div class="modal-header">
-                <h3><i class="fas fa-user-plus"></i> Add New User</h3>
-                <span class="close" onclick="closeAddUserModal()">&times;</span>
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">Add New User</h3>
+                    <button onclick="closeAddUserModal()" class="btn btn-sm btn-secondary">Close</button>
+                </div>
+                <div class="card-body">
+                    <form id="addUserForm" method="POST" class="space-y-4">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <div class="form-group">
+                            <label for="newUsername" class="form-label">Username</label>
+                            <input type="text" name="new_username" id="newUsername" class="form-input" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="newUserPassword" class="form-label">Password</label>
+                            <input type="password" name="new_password" id="newUserPassword" class="form-input" required minlength="6">
+                        </div>
+                        <div class="form-group">
+                            <label for="newUserSubscription" class="form-label">Subscription</label>
+                            <select name="new_subscription" id="newUserSubscription" class="form-input form-select">
+                                <option value="free">Free</option>
+                                <option value="premium">Premium</option>
+                            </select>
+                        </div>
+                        <div class="flex gap-3">
+                            <button type="button" onclick="closeAddUserModal()" class="btn btn-secondary flex-1">Cancel</button>
+                            <button type="submit" name="add_user" class="btn btn-primary flex-1">Add User</button>
+                        </div>
+                    </form>
+                </div>
             </div>
-            <form id="addUserForm" method="POST">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <div class="form-group">
-                    <label for="newUsername">Username:</label>
-                    <input type="text" name="new_username" id="newUsername" required>
-                </div>
-                <div class="form-group">
-                    <label for="newUserPassword">Password:</label>
-                    <input type="password" name="new_password" id="newUserPassword" required minlength="6">
-                </div>
-                <div class="form-group">
-                    <label for="newUserSubscription">Subscription:</label>
-                    <select name="new_subscription" id="newUserSubscription">
-                        <option value="free">Free</option>
-                        <option value="premium">Premium</option>
-                    </select>
-                </div>
-                <div class="form-actions">
-                    <button type="button" onclick="closeAddUserModal()" class="btn-secondary">Cancel</button>
-                    <button type="submit" name="add_user" class="btn-primary">Add User</button>
-                </div>
-            </form>
         </div>
     </div>
 
     <!-- Statistics Modal -->
     <div id="statsModal" class="modal">
         <div class="modal-content">
-            <div class="modal-header">
-                <h3><i class="fas fa-chart-bar"></i> Platform Statistics</h3>
-                <span class="close" onclick="closeStatsModal()">&times;</span>
-            </div>
-            <div class="stats-modal-content">
-                <div class="stats-grid">
-                    <div class="stat-card">
-                        <div class="stat-icon">
-                            <i class="fas fa-users"></i>
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">Platform Statistics</h3>
+                    <button onclick="closeStatsModal()" class="btn btn-sm btn-secondary">Close</button>
+                </div>
+                <div class="card-body">
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="text-center p-4 bg-tertiary rounded-lg">
+                            <div class="text-2xl font-bold text-accent-blue mb-1">{{ stats.total_users }}</div>
+                            <div class="text-sm text-secondary">Total Users</div>
                         </div>
-                        <div class="stat-content">
-                            <h3>{{ stats.total_users }}</h3>
-                            <p>Total Users</p>
+                        <div class="text-center p-4 bg-tertiary rounded-lg">
+                            <div class="text-2xl font-bold text-accent-orange mb-1">{{ stats.total_communities }}</div>
+                            <div class="text-sm text-secondary">Communities</div>
                         </div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-icon">
-                            <i class="fas fa-layer-group"></i>
+                        <div class="text-center p-4 bg-tertiary rounded-lg">
+                            <div class="text-2xl font-bold text-accent-green mb-1">{{ stats.premium_users }}</div>
+                            <div class="text-sm text-secondary">Premium Users</div>
                         </div>
-                        <div class="stat-content">
-                            <h3>{{ stats.total_communities }}</h3>
-                            <p>Communities</p>
-                        </div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-icon">
-                            <i class="fas fa-crown"></i>
-                        </div>
-                        <div class="stat-content">
-                            <h3>{{ stats.premium_users }}</h3>
-                            <p>Premium Users</p>
-                        </div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-icon">
-                            <i class="fas fa-comments"></i>
-                        </div>
-                        <div class="stat-content">
-                            <h3>{{ stats.total_posts }}</h3>
-                            <p>Total Posts</p>
+                        <div class="text-center p-4 bg-tertiary rounded-lg">
+                            <div class="text-2xl font-bold text-accent-purple mb-1">{{ stats.total_posts }}</div>
+                            <div class="text-sm text-secondary">Total Posts</div>
                         </div>
                     </div>
                 </div>
@@ -274,18 +294,23 @@
     <!-- Community Members Modal -->
     <div id="membersModal" class="modal">
         <div class="modal-content">
-            <div class="modal-header">
-                <h3><i class="fas fa-users"></i> Community Members</h3>
-                <span class="close" onclick="closeMembersModal()">&times;</span>
-            </div>
-            <div id="membersList" class="members-list">
-                <!-- Members will be loaded here -->
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">Community Members</h3>
+                    <button onclick="closeMembersModal()" class="btn btn-sm btn-secondary">Close</button>
+                </div>
+                <div class="card-body">
+                    <div id="membersList" class="space-y-3">
+                        <!-- Members will be loaded here -->
+                    </div>
+                </div>
             </div>
         </div>
     </div>
 
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script>
-        // Statistics Modal Functions
+        // Modal Functions
         function showStatsModal() {
             document.getElementById('statsModal').style.display = 'block';
         }
@@ -294,7 +319,6 @@
             document.getElementById('statsModal').style.display = 'none';
         }
 
-        // Password Update Functions
         function showPasswordModal(username) {
             document.getElementById('targetUsername').value = username;
             document.getElementById('passwordModal').style.display = 'block';
@@ -305,52 +329,6 @@
             document.getElementById('passwordForm').reset();
         }
 
-        document.getElementById('passwordForm').addEventListener('submit', function(e) {
-            e.preventDefault();
-            updateUserPassword();
-        });
-
-        function updateUserPassword() {
-            const username = document.getElementById('targetUsername').value;
-            const newPassword = document.getElementById('newPassword').value;
-            const confirmPassword = document.getElementById('confirmPassword').value;
-            
-            if (newPassword !== confirmPassword) {
-                alert('Passwords do not match!');
-                return;
-            }
-            
-            if (newPassword.length < 6) {
-                alert('Password must be at least 6 characters long!');
-                return;
-            }
-            
-            const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
-            
-            fetch('/update_user_password', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                    'X-CSRFToken': csrfToken
-                },
-                body: `username=${encodeURIComponent(username)}&new_password=${encodeURIComponent(newPassword)}&csrf_token=${csrfToken}`
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    alert(data.message);
-                    closePasswordModal();
-                } else {
-                    alert('Error: ' + data.error);
-                }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                alert('Error updating password. Please try again.');
-            });
-        }
-
-        // Add User Functions
         function showAddUserModal() {
             document.getElementById('addUserModal').style.display = 'block';
         }
@@ -360,280 +338,256 @@
             document.getElementById('addUserForm').reset();
         }
 
-        // Community Members Functions
         function showCommunityMembers(communityId, communityName) {
             document.getElementById('membersModal').style.display = 'block';
-            loadCommunityMembers(communityId, communityName);
+            // Load members via AJAX
+            $.get(`/get_community_members/${communityId}`, function(data) {
+                const membersList = document.getElementById('membersList');
+                membersList.innerHTML = '';
+                
+                data.members.forEach(member => {
+                    const memberDiv = document.createElement('div');
+                    memberDiv.className = 'flex items-center justify-between p-3 bg-tertiary rounded-lg';
+                    memberDiv.innerHTML = `
+                        <div class="flex items-center gap-3">
+                            <div class="w-8 h-8 bg-accent-blue rounded-full flex items-center justify-center text-white text-sm font-medium">
+                                ${member.username[0].toUpperCase()}
+                            </div>
+                            <span class="font-medium">${member.username}</span>
+                        </div>
+                        <span class="text-sm text-secondary">${member.joined_date}</span>
+                    `;
+                    membersList.appendChild(memberDiv);
+                });
+            });
         }
 
         function closeMembersModal() {
             document.getElementById('membersModal').style.display = 'none';
         }
 
-        function loadCommunityMembers(communityId, communityName) {
-            const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
-            
-            fetch('/get_community_members', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                    'X-CSRFToken': csrfToken
-                },
-                body: `community_id=${communityId}&csrf_token=${csrfToken}`
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    displayCommunityMembers(data.members, communityName);
-                } else {
-                    document.getElementById('membersList').innerHTML = '<p class="error">Error loading members</p>';
-                }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                document.getElementById('membersList').innerHTML = '<p class="error">Error loading members</p>';
-            });
-        }
-
-        function displayCommunityMembers(members, communityName) {
-            const membersList = document.getElementById('membersList');
-            let html = `<h4>${communityName} Members (${members.length})</h4>`;
-            
-            if (members.length === 0) {
-                html += '<p class="no-members">No members found</p>';
-            } else {
-                html += '<div class="members-grid">';
-                members.forEach(member => {
-                    html += `
-                        <div class="member-item">
-                            <div class="member-avatar">
-                                <i class="fas fa-user"></i>
-                            </div>
-                            <div class="member-info">
-                                <div class="member-name">${member.username}</div>
-                                <div class="member-joined">Joined: ${member.joined_date}</div>
-                            </div>
-                        </div>
-                    `;
-                });
-                html += '</div>';
-            }
-            
-            membersList.innerHTML = html;
-        }
-
-        // Search and Filter Functions
-        document.getElementById('userSearch').addEventListener('input', function() {
-            filterUsers();
-        });
-
-        document.getElementById('userFilter').addEventListener('change', function() {
-            filterUsers();
-        });
-
-        function filterUsers() {
-            const searchTerm = document.getElementById('userSearch').value.toLowerCase();
-            const filterValue = document.getElementById('userFilter').value;
-            const userCards = document.querySelectorAll('.user-card');
-            
-            userCards.forEach(card => {
-                const username = card.dataset.username.toLowerCase();
-                const subscription = card.dataset.subscription;
-                const matchesSearch = username.includes(searchTerm);
-                const matchesFilter = filterValue === 'all' || subscription === filterValue;
-                
-                card.style.display = matchesSearch && matchesFilter ? 'block' : 'none';
-            });
-        }
-
-        document.getElementById('communitySearch').addEventListener('input', function() {
-            const searchTerm = this.value.toLowerCase();
-            const communityCards = document.querySelectorAll('.community-card');
-            
-            communityCards.forEach(card => {
-                const name = card.dataset.name.toLowerCase();
-                card.style.display = name.includes(searchTerm) ? 'block' : 'none';
-            });
-        });
-
-        // Utility Functions
-        function copyJoinCode(joinCode) {
-            navigator.clipboard.writeText(joinCode).then(function() {
-                showNotification('Join code copied to clipboard!', 'success');
-            });
-        }
-
+        // User Management Functions
         function deleteUser(username) {
-            if (confirm(`Are you sure you want to delete user "${username}"? This action cannot be undone.`)) {
-                const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
-                const form = document.createElement('form');
-                form.method = 'POST';
-                form.innerHTML = `
-                    <input type="hidden" name="username" value="${username}">
-                    <input type="hidden" name="delete_user" value="1">
-                    <input type="hidden" name="csrf_token" value="${csrfToken}">
-                `;
-                document.body.appendChild(form);
-                form.submit();
-            }
-        }
-
-        function deleteCommunity(communityId, communityName) {
-            if (confirm(`Are you sure you want to delete the community "${communityName}"?\n\nThis will permanently delete the community and all its posts. This action cannot be undone.`)) {
-                const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
-                const form = document.createElement('form');
-                form.method = 'POST';
-                form.innerHTML = `
-                    <input type="hidden" name="community_id" value="${communityId}">
-                    <input type="hidden" name="delete_community" value="1">
-                    <input type="hidden" name="csrf_token" value="${csrfToken}">
-                `;
-                document.body.appendChild(form);
-                form.submit();
+            if (confirm(`Are you sure you want to delete user "${username}"?`)) {
+                $.post('/delete_user', {
+                    username: username,
+                    csrf_token: $('meta[name="csrf-token"]').attr('content')
+                }, function(response) {
+                    if (response.success) {
+                        location.reload();
+                    } else {
+                        alert('Error deleting user: ' + response.error);
+                    }
+                });
             }
         }
 
         function showUserDetails(username) {
             // Implement user details view
-            alert(`User details for ${username} - Feature coming soon!`);
+            alert('User details for: ' + username);
         }
 
-        function exportData() {
-            // Implement data export
-            alert('Data export feature coming soon!');
+        // Community Management Functions
+        function deleteCommunity(communityId, communityName) {
+            if (confirm(`Are you sure you want to delete community "${communityName}"?`)) {
+                $.post('/delete_community', {
+                    community_id: communityId,
+                    csrf_token: $('meta[name="csrf-token"]').attr('content')
+                }, function(response) {
+                    if (response.success) {
+                        location.reload();
+                    } else {
+                        alert('Error deleting community: ' + response.error);
+                    }
+                });
+            }
         }
 
-        function showAddCommunityModal() {
-            // Implement add community modal
-            alert('Add community feature coming soon!');
+        function copyJoinCode(code) {
+            navigator.clipboard.writeText(code).then(function() {
+                alert('Join code copied to clipboard: ' + code);
+            });
         }
 
-        function showNotification(message, type = 'info') {
-            const notification = document.createElement('div');
-            notification.className = `notification ${type}`;
-            notification.textContent = message;
-            notification.style.cssText = `
-                position: fixed;
-                top: 20px;
-                right: 20px;
-                background: ${type === 'success' ? '#28a745' : '#007bff'};
-                color: white;
-                padding: 12px 20px;
-                border-radius: 4px;
-                z-index: 10000;
-                animation: slideIn 0.3s ease;
-            `;
-            document.body.appendChild(notification);
+        // Search and Filter Functions
+        $('#userSearch').on('input', function() {
+            const searchTerm = $(this).val().toLowerCase();
+            $('.card[data-username]').each(function() {
+                const username = $(this).data('username').toLowerCase();
+                $(this).toggle(username.includes(searchTerm));
+            });
+        });
+
+        $('#userFilter').on('change', function() {
+            const filter = $(this).val();
+            $('.card[data-username]').each(function() {
+                const subscription = $(this).data('subscription');
+                if (filter === 'all' || subscription === filter) {
+                    $(this).show();
+                } else {
+                    $(this).hide();
+                }
+            });
+        });
+
+        $('#communitySearch').on('input', function() {
+            const searchTerm = $(this).val().toLowerCase();
+            $('.card[data-name]').each(function() {
+                const name = $(this).data('name').toLowerCase();
+                $(this).toggle(name.includes(searchTerm));
+            });
+        });
+
+        // Form Submissions
+        $('#passwordForm').on('submit', function(e) {
+            e.preventDefault();
+            const newPassword = $('#newPassword').val();
+            const confirmPassword = $('#confirmPassword').val();
             
-            setTimeout(() => {
-                notification.remove();
-            }, 3000);
-        }
+            if (newPassword !== confirmPassword) {
+                alert('Passwords do not match');
+                return;
+            }
+            
+            $.post('/update_user_password', {
+                username: $('#targetUsername').val(),
+                new_password: newPassword,
+                csrf_token: $('meta[name="csrf-token"]').attr('content')
+            }, function(response) {
+                if (response.success) {
+                    alert('Password updated successfully');
+                    closePasswordModal();
+                } else {
+                    alert('Error updating password: ' + response.error);
+                }
+            });
+        });
 
         // Close modals when clicking outside
-        window.onclick = function(event) {
-            const modals = document.querySelectorAll('.modal');
-            modals.forEach(modal => {
-                if (event.target === modal) {
-                    modal.style.display = 'none';
-                }
-            });
+        $(window).on('click', function(e) {
+            if (e.target.classList.contains('modal')) {
+                e.target.style.display = 'none';
+            }
+        });
+
+        // Close modals with Escape key
+        $(document).on('keydown', function(e) {
+            if (e.key === 'Escape') {
+                $('.modal').hide();
+            }
+        });
+
+        // Export data function
+        function exportData() {
+            alert('Export functionality would be implemented here');
         }
 
-        // Add CSS animations
-        const style = document.createElement('style');
-        style.textContent = `
-            @keyframes slideIn {
-                from { transform: translateX(100%); opacity: 0; }
-                to { transform: translateX(0); opacity: 1; }
-            }
-        `;
-        document.head.appendChild(style);
-
-        // Menu dropdown functionality
-        $(document).ready(function() {
-            $('.menu-btn').click(function() {
-                $('.dropdown-content').toggle();
-            });
-            
-            $(window).resize(function() {
-                if ($(window).width() > 768) {
-                    $('.dropdown-content').hide();
-                }
-            });
-            
-            // Close dropdown when clicking outside
-            $(document).click(function(event) {
-                if (!$(event.target).closest('.sidebar').length) {
-                    $('.dropdown-content').hide();
-                }
-            });
-        });
-
-        // Fallback vanilla JavaScript for menu
-        document.addEventListener('DOMContentLoaded', function() {
-            const menuBtn = document.querySelector('.menu-btn');
-            const dropdownContent = document.querySelector('.dropdown-content');
-            const sidebar = document.querySelector('.sidebar');
-            
-            console.log('Menu button found:', menuBtn);
-            console.log('Dropdown content found:', dropdownContent);
-            console.log('Sidebar found:', sidebar);
-            
-            if (sidebar) {
-                const sidebarRect = sidebar.getBoundingClientRect();
-                const sidebarStyles = window.getComputedStyle(sidebar);
-                console.log('Sidebar position:', {
-                    top: sidebarRect.top,
-                    left: sidebarRect.left,
-                    width: sidebarRect.width,
-                    height: sidebarRect.height
-                });
-                console.log('Sidebar styles:', {
-                    position: sidebarStyles.position,
-                    zIndex: sidebarStyles.zIndex
-                });
-            }
-            
-            if (menuBtn && dropdownContent) {
-                menuBtn.addEventListener('click', function(e) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    console.log('Menu button clicked!');
-                    const currentDisplay = dropdownContent.style.display;
-                    dropdownContent.style.display = currentDisplay === 'block' ? 'none' : 'block';
-                    console.log('Dropdown display set to:', dropdownContent.style.display);
-                    
-                    // Debug: Check dropdown position and visibility
-                    if (dropdownContent.style.display === 'block') {
-                        const rect = dropdownContent.getBoundingClientRect();
-                        const styles = window.getComputedStyle(dropdownContent);
-                        console.log('Dropdown position:', {
-                            top: rect.top,
-                            left: rect.left,
-                            width: rect.width,
-                            height: rect.height,
-                            visible: rect.width > 0 && rect.height > 0
-                        });
-                        console.log('Dropdown styles:', {
-                            display: styles.display,
-                            position: styles.position,
-                            zIndex: styles.zIndex,
-                            backgroundColor: styles.backgroundColor,
-                            visibility: styles.visibility,
-                            opacity: styles.opacity
-                        });
-                    }
-                });
-                
-                // Close dropdown when clicking outside
-                document.addEventListener('click', function(event) {
-                    if (!event.target.closest('.sidebar')) {
-                        dropdownContent.style.display = 'none';
-                    }
-                });
-            }
-        });
+        // Show add community modal function
+        function showAddCommunityModal() {
+            alert('Add community functionality would be implemented here');
+        }
     </script>
+
+    <style>
+        /* Additional styles for admin dashboard */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(4px);
+        }
+
+        .modal-content {
+            position: relative;
+            margin: 5% auto;
+            width: 90%;
+            max-width: 500px;
+        }
+
+        .bg-tertiary {
+            background: var(--bg-tertiary);
+        }
+
+        .text-accent-blue {
+            color: var(--accent-blue);
+        }
+
+        .text-accent-green {
+            color: var(--accent-green);
+        }
+
+        .text-accent-orange {
+            color: var(--accent-orange);
+        }
+
+        .text-accent-purple {
+            color: var(--accent-purple);
+        }
+
+        .bg-accent-blue {
+            background: var(--accent-blue);
+        }
+
+        .bg-accent-orange {
+            background: var(--accent-orange);
+        }
+
+        .bg-accent-green {
+            background: var(--accent-green);
+        }
+
+        .bg-secondary {
+            background: var(--bg-secondary);
+        }
+
+        .text-secondary {
+            color: var(--text-secondary);
+        }
+
+        .font-mono {
+            font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+        }
+
+        .text-xs {
+            font-size: var(--font-size-xs);
+        }
+
+        .h-20 {
+            height: 5rem;
+        }
+
+        .space-y-2 > * + * {
+            margin-top: var(--space-2);
+        }
+
+        .space-y-3 > * + * {
+            margin-top: var(--space-3);
+        }
+
+        .space-y-4 > * + * {
+            margin-top: var(--space-4);
+        }
+
+        .flex-1 {
+            flex: 1;
+        }
+
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            .modal-content {
+                margin: 10% auto;
+                width: 95%;
+            }
+            
+            .grid-cols-2 {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
 </body>
 </html>
