@@ -10,225 +10,243 @@
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <style>
         .admin-dashboard {
-            padding: 10px;
-            max-width: 1200px;
+            padding: 15px;
+            max-width: 1400px;
             margin: 0 auto;
+            background: #000000;
         }
         
         .admin-header {
-            margin-bottom: 15px;
-            padding: 10px;
-            background: rgba(255,255,255,0.05);
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #000000;
+            border: 1px solid #4db6ac;
             border-radius: 8px;
         }
         
         .admin-header h1 {
-            font-size: 18px;
+            font-size: 22px;
             margin: 0;
             color: #4db6ac;
         }
         
         .admin-header p {
-            font-size: 12px;
-            margin: 5px 0 0 0;
-            opacity: 0.7;
+            font-size: 14px;
+            margin: 8px 0 0 0;
+            color: #4db6ac;
+            opacity: 0.8;
         }
         
         .stats-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-            gap: 8px;
-            margin-bottom: 15px;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 12px;
+            margin-bottom: 20px;
         }
         
         .stat-card {
-            background: rgba(255,255,255,0.05);
-            padding: 8px;
-            border-radius: 6px;
+            background: #000000;
+            padding: 12px;
+            border: 1px solid #4db6ac;
+            border-radius: 8px;
             text-align: center;
         }
         
         .stat-card h3 {
-            font-size: 16px;
+            font-size: 20px;
             margin: 0;
             color: #4db6ac;
         }
         
         .stat-card p {
-            font-size: 10px;
-            margin: 2px 0 0 0;
-            opacity: 0.7;
+            font-size: 12px;
+            margin: 4px 0 0 0;
+            color: #4db6ac;
+            opacity: 0.8;
         }
         
         .admin-section {
-            margin-bottom: 15px;
+            margin-bottom: 20px;
         }
         
         .section-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 8px;
-            padding: 5px 0;
-            border-bottom: 1px solid rgba(255,255,255,0.1);
+            margin-bottom: 12px;
+            padding: 8px 0;
+            border-bottom: 1px solid #4db6ac;
         }
         
         .section-header h2 {
-            font-size: 14px;
+            font-size: 16px;
             margin: 0;
             color: #4db6ac;
         }
         
         .search-input {
-            background: rgba(255,255,255,0.1);
-            border: none;
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-size: 11px;
-            color: white;
-            width: 120px;
+            background: #000000;
+            border: 1px solid #4db6ac;
+            padding: 6px 10px;
+            border-radius: 6px;
+            font-size: 13px;
+            color: #4db6ac;
+            width: 140px;
         }
         
         .filter-select {
-            background: rgba(255,255,255,0.1);
-            border: none;
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-size: 11px;
-            color: white;
-            margin-left: 5px;
+            background: #000000;
+            border: 1px solid #4db6ac;
+            padding: 6px 10px;
+            border-radius: 6px;
+            font-size: 13px;
+            color: #4db6ac;
+            margin-left: 8px;
         }
         
         .users-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-            gap: 6px;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 10px;
         }
         
         .user-card {
-            background: rgba(255,255,255,0.05);
-            padding: 6px;
-            border-radius: 4px;
-            font-size: 11px;
+            background: #000000;
+            padding: 10px;
+            border: 1px solid #4db6ac;
+            border-radius: 6px;
+            font-size: 13px;
         }
         
         .user-header {
             display: flex;
             align-items: center;
-            margin-bottom: 4px;
+            margin-bottom: 6px;
         }
         
         .user-avatar {
-            width: 16px;
-            height: 16px;
+            width: 20px;
+            height: 20px;
             background: #4db6ac;
             border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
-            margin-right: 6px;
-            font-size: 8px;
+            margin-right: 8px;
+            font-size: 10px;
+            color: #000000;
         }
         
         .user-info h4 {
-            font-size: 11px;
+            font-size: 13px;
             margin: 0;
             flex: 1;
+            color: #4db6ac;
         }
         
         .subscription-badge {
-            font-size: 9px;
-            padding: 1px 4px;
-            border-radius: 3px;
+            font-size: 10px;
+            padding: 2px 6px;
+            border-radius: 4px;
             text-transform: uppercase;
         }
         
         .subscription-badge.premium {
             background: #4db6ac;
-            color: black;
+            color: #000000;
         }
         
         .subscription-badge.free {
-            background: rgba(255,255,255,0.2);
-            color: white;
+            background: #000000;
+            color: #4db6ac;
+            border: 1px solid #4db6ac;
         }
         
         .user-actions {
             display: flex;
-            gap: 3px;
+            gap: 5px;
         }
         
         .action-btn {
-            background: rgba(255,255,255,0.1);
-            border: none;
-            padding: 2px 4px;
-            border-radius: 3px;
-            font-size: 9px;
-            color: white;
+            background: #000000;
+            border: 1px solid #4db6ac;
+            padding: 4px 6px;
+            border-radius: 4px;
+            font-size: 11px;
+            color: #4db6ac;
             cursor: pointer;
-            transition: background 0.2s;
+            transition: all 0.2s;
         }
         
         .action-btn:hover {
-            background: rgba(255,255,255,0.2);
+            background: #4db6ac;
+            color: #000000;
         }
         
         .action-btn.danger {
-            background: rgba(255,0,0,0.3);
+            background: #000000;
+            border: 1px solid #ff4444;
+            color: #ff4444;
         }
         
         .action-btn.danger:hover {
-            background: rgba(255,0,0,0.5);
+            background: #ff4444;
+            color: #000000;
         }
         
         .communities-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-            gap: 6px;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 10px;
         }
         
         .community-card {
-            background: rgba(255,255,255,0.05);
-            padding: 6px;
-            border-radius: 4px;
-            font-size: 11px;
+            background: #000000;
+            padding: 10px;
+            border: 1px solid #4db6ac;
+            border-radius: 6px;
+            font-size: 13px;
         }
         
         .community-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 4px;
+            margin-bottom: 6px;
         }
         
         .community-name {
-            font-size: 11px;
+            font-size: 13px;
             font-weight: bold;
             color: #4db6ac;
         }
         
         .community-type {
-            font-size: 9px;
-            opacity: 0.7;
+            font-size: 11px;
+            color: #4db6ac;
+            opacity: 0.8;
         }
         
         .community-details {
-            font-size: 9px;
+            font-size: 11px;
+            color: #4db6ac;
             opacity: 0.8;
-            margin-bottom: 4px;
+            margin-bottom: 6px;
         }
         
         .community-actions {
             display: flex;
-            gap: 3px;
+            gap: 5px;
         }
         
         .error-message {
-            background: rgba(255,0,0,0.2);
-            padding: 6px;
-            border-radius: 4px;
-            font-size: 11px;
-            margin-bottom: 10px;
+            background: #000000;
+            border: 1px solid #ff4444;
+            padding: 8px;
+            border-radius: 6px;
+            font-size: 13px;
+            margin-bottom: 15px;
+            color: #ff4444;
         }
         
         .modal {
@@ -239,86 +257,99 @@
             top: 0;
             width: 100%;
             height: 100%;
-            background-color: rgba(0,0,0,0.8);
+            background-color: rgba(0,0,0,0.9);
         }
         
         .modal-content {
-            background: #1a2526;
+            background: #000000;
+            border: 1px solid #4db6ac;
             margin: 5% auto;
-            padding: 15px;
+            padding: 20px;
             border-radius: 8px;
             width: 90%;
-            max-width: 400px;
-            font-size: 12px;
+            max-width: 450px;
+            font-size: 14px;
         }
         
         .modal-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 10px;
+            margin-bottom: 15px;
         }
         
         .modal-header h3 {
-            font-size: 14px;
+            font-size: 16px;
             margin: 0;
             color: #4db6ac;
         }
         
         .close {
-            color: #aaa;
-            font-size: 20px;
+            color: #4db6ac;
+            font-size: 24px;
             font-weight: bold;
             cursor: pointer;
         }
         
         .close:hover {
-            color: white;
+            color: #ffffff;
         }
         
         .form-group {
-            margin-bottom: 8px;
+            margin-bottom: 12px;
         }
         
         .form-group label {
             display: block;
-            font-size: 11px;
-            margin-bottom: 3px;
+            font-size: 13px;
+            margin-bottom: 5px;
+            color: #4db6ac;
         }
         
         .form-group input, .form-group select {
             width: 100%;
-            padding: 4px 6px;
-            border: none;
-            border-radius: 4px;
-            background: rgba(255,255,255,0.1);
-            color: white;
-            font-size: 11px;
+            padding: 8px 10px;
+            border: 1px solid #4db6ac;
+            border-radius: 6px;
+            background: #000000;
+            color: #4db6ac;
+            font-size: 13px;
         }
         
         .modal-actions {
             display: flex;
-            gap: 8px;
+            gap: 10px;
             justify-content: flex-end;
-            margin-top: 10px;
+            margin-top: 15px;
         }
         
         .btn {
-            padding: 4px 8px;
-            border: none;
-            border-radius: 4px;
-            font-size: 11px;
+            padding: 8px 12px;
+            border: 1px solid #4db6ac;
+            border-radius: 6px;
+            font-size: 13px;
             cursor: pointer;
+            transition: all 0.2s;
         }
         
         .btn-primary {
             background: #4db6ac;
-            color: black;
+            color: #000000;
+        }
+        
+        .btn-primary:hover {
+            background: #000000;
+            color: #4db6ac;
         }
         
         .btn-secondary {
-            background: rgba(255,255,255,0.2);
-            color: white;
+            background: #000000;
+            color: #4db6ac;
+        }
+        
+        .btn-secondary:hover {
+            background: #4db6ac;
+            color: #000000;
         }
     </style>
 </head>
