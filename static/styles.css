@@ -1609,7 +1609,7 @@ select:focus, input:focus {
 }
 
 .join-community-link:hover {
-    text-decoration: underline;
+    /* text-decoration: underline; */
 }
 
 /* Chat Panel - WhatsApp Style */
@@ -2771,7 +2771,7 @@ select:focus, input:focus {
 }
 
 .login-link a:hover {
-    text-decoration: underline;
+    /* text-decoration: underline; */
 }
 
 .login-actions {

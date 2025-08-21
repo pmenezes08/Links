@@ -391,7 +391,7 @@
                     },
                     success: function(response) {
                         if (response.success) {
-                            loadExercises();
+                            loadMuscleGroups();
                         } else {
                             alert('Error updating exercise: ' + response.error);
                         }
@@ -404,6 +404,7 @@
         }
 
         function deleteExercise(exerciseId) {
+            console.log('Deleting exercise:', exerciseId);
             if (confirm('Are you sure you want to delete this exercise?')) {
                 $.ajax({
                     url: '/delete_exercise',
@@ -412,14 +413,17 @@
                         exercise_id: exerciseId
                     },
                     success: function(response) {
+                        console.log('Delete exercise response:', response);
                         if (response.success) {
-                            loadExercises();
+                            console.log('Exercise deleted successfully, reloading muscle groups');
+                            loadMuscleGroups();
                         } else {
                             alert('Error deleting exercise: ' + response.error);
                         }
                     },
-                    error: function() {
-                        alert('Error deleting exercise');
+                    error: function(xhr, status, error) {
+                        console.log('Delete exercise error:', { xhr, status, error });
+                        alert('Error deleting exercise: ' + error);
                     }
                 });
             }
@@ -437,7 +441,7 @@
                     },
                     success: function(response) {
                         if (response.success) {
-                            loadExercises();
+                            loadMuscleGroups();
                         } else {
                             alert('Error adding set: ' + response.error);
                         }
@@ -462,7 +466,7 @@
                     },
                     success: function(response) {
                         if (response.success) {
-                            loadExercises();
+                            loadMuscleGroups();
                         } else {
                             alert('Error updating set: ' + response.error);
                         }
@@ -485,7 +489,7 @@
                     },
                     success: function(response) {
                         if (response.success) {
-                            loadExercises();
+                            loadMuscleGroups();
                         } else {
                             alert('Error deleting set: ' + response.error);
                         }
