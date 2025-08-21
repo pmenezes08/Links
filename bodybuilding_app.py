@@ -3162,9 +3162,6 @@ def get_workout_exercises():
         rows = cursor.fetchall()
         conn.close()
         
-        print(f"Debug: Found {len(rows)} rows for user {username}")
-        print(f"Debug: First row: {rows[0] if rows else 'No rows'}")
-        
         if not rows:
             return jsonify({'success': False, 'error': 'No exercises found'})
         
@@ -3202,7 +3199,6 @@ def get_workout_exercises():
                     'weight': row[5]
                 })
         
-        print(f"Debug: Final muscle_groups: {muscle_groups}")
         return jsonify({'success': True, 'muscle_groups': muscle_groups})
         
     except Exception as e:
@@ -3240,16 +3236,10 @@ def edit_exercise():
 @login_required
 def delete_exercise():
     try:
-        print("=== DELETE EXERCISE ROUTE CALLED ===")
         username = session.get('username')
         exercise_id = request.form.get('exercise_id')
         
-        print(f"Username: {username}")
-        print(f"Exercise ID: {exercise_id}")
-        print(f"Request form data: {request.form}")
-        
         if not exercise_id:
-            print("Error: Exercise ID is required")
             return jsonify({'success': False, 'error': 'Exercise ID is required'})
         
         conn = sqlite3.connect('users.db')
@@ -3261,17 +3251,12 @@ def delete_exercise():
             WHERE id = ? AND username = ?
         ''', (exercise_id, username))
         
-        deleted_count = cursor.rowcount
-        print(f"Deleted {deleted_count} exercises")
-        
         conn.commit()
         conn.close()
         
-        print("Delete successful")
         return jsonify({'success': True})
         
     except Exception as e:
-        print(f"Delete exercise error: {str(e)}")
         return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/add_set', methods=['POST'])

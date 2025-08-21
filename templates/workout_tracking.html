@@ -94,11 +94,7 @@
     <script>
         // Load muscle groups on page load
         $(document).ready(function() {
-            console.log('Document ready, loading muscle groups...');
-            setTimeout(function() {
-                console.log('Loading muscle groups after timeout...');
-                loadMuscleGroups();
-            }, 1000);
+            loadMuscleGroups();
         });
 
         function toggleExerciseForm() {
@@ -148,40 +144,25 @@
         }
 
                 function loadMuscleGroups() {
-            console.log('Loading muscle groups...');
             $.ajax({
                 url: '/get_workout_exercises',
                 method: 'GET',
                 success: function(response) {
-                    console.log('Load muscle groups response:', response);
-                    console.log('Response type:', typeof response);
-                    console.log('Response keys:', Object.keys(response));
-                    
                     if (response.success) {
-                        console.log('Success is true, calling displayMuscleGroups');
                         displayMuscleGroups(response.muscle_groups);
                     } else {
-                        console.log('Success is false, showing error message');
                         document.getElementById('muscle-groups-view').innerHTML = '<p style="color: #b0b8b9; text-align: center; font-size: 0.8rem;">No exercises added yet. Click "Add Exercise" to get started!</p>';
                     }
                 },
                 error: function(xhr, status, error) {
-                    console.log('Error loading muscle groups:', { xhr, status, error });
-                    console.log('XHR response:', xhr.responseText);
+                    console.log('Error loading muscle groups:', error);
                 }
             });
         }
 
         function displayMuscleGroups(muscleGroups) {
-            console.log('Displaying muscle groups:', muscleGroups);
             const container = document.getElementById('muscle-groups-view');
-            console.log('Container element:', container);
-            console.log('Container exists:', !!container);
-            
-            if (!container) {
-                console.error('Container element not found!');
-                return;
-            }
+            if (!container) return;
             
             container.innerHTML = '';
 
@@ -189,24 +170,19 @@
             const muscleGroupNames = ['Chest', 'Back', 'Shoulders', 'Biceps', 'Triceps', 'Legs', 'Core', 'Cardio', 'Other'];
             const groupsWithExercises = muscleGroupNames.filter(muscleGroup => {
                 const exercisesInGroup = muscleGroups[muscleGroup] || [];
-                console.log(`Muscle group ${muscleGroup}:`, exercisesInGroup);
                 return exercisesInGroup.length > 0;
             });
             
-            console.log('Groups with exercises:', groupsWithExercises);
-            
             if (groupsWithExercises.length === 0) {
-                console.log('No groups with exercises, showing empty message');
                 container.innerHTML = '<p style="color: #b0b8b9; text-align: center; font-size: 0.7rem;">No exercises added yet. Click "Add Exercise" to get started!</p>';
                 return;
             }
             
-            groupsWithExercises.forEach(function(muscleGroup) {
+            const html = groupsWithExercises.map(muscleGroup => {
                 const exercisesInGroup = muscleGroups[muscleGroup] || [];
                 const exerciseCount = exercisesInGroup.length;
-                console.log(`Creating card for ${muscleGroup} with ${exerciseCount} exercises`);
                 
-                const muscleGroupHtml = `
+                return `
                     <div class="muscle-group-card" onclick="showExercises('${muscleGroup}')">
                         <div class="muscle-group-header">
                             <h3>${muscleGroup}</h3>
@@ -214,10 +190,9 @@
                         </div>
                     </div>
                 `;
-                container.innerHTML += muscleGroupHtml;
-            });
+            }).join('');
             
-            console.log('Final container HTML:', container.innerHTML);
+            container.innerHTML = html;
         }
 
         function showExercises(muscleGroup) {
@@ -380,18 +355,15 @@
         }
 
         function refreshCurrentView() {
-            console.log('Refreshing current view...');
             const muscleGroupsView = document.getElementById('muscle-groups-view');
             const exercisesView = document.getElementById('exercises-view');
             
             if (exercisesView.style.display === 'block') {
                 // We're in exercises view, refresh the current muscle group
                 const currentMuscleGroup = document.getElementById('current-muscle-group').textContent;
-                console.log('Refreshing exercises for muscle group:', currentMuscleGroup);
                 showExercises(currentMuscleGroup);
             } else {
                 // We're in muscle groups view, refresh muscle groups
-                console.log('Refreshing muscle groups view');
                 loadMuscleGroups();
             }
         }
