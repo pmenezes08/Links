@@ -3087,7 +3087,7 @@ def add_exercise():
         username = session.get('username')
         name = request.form.get('name')
         weight = request.form.get('weight')
-        muscle_group = request.form.get('muscle_group', 'Other')  # Default to 'Other' if not specified
+        muscle_group = request.form.get('muscle_group', 'Other')
         
         if not all([name, weight]):
             return jsonify({'success': False, 'error': 'Name and weight are required'})
@@ -3095,61 +3095,27 @@ def add_exercise():
         conn = sqlite3.connect('users.db')
         cursor = conn.cursor()
         
-        # Check if exercises table exists and get its current schema
-        cursor.execute("PRAGMA table_info(exercises)")
-        columns = [column[1] for column in cursor.fetchall()]
+        # Drop existing tables if they exist and recreate with correct schema
+        cursor.execute('DROP TABLE IF EXISTS exercise_sets')
+        cursor.execute('DROP TABLE IF EXISTS exercises')
         
-        if not columns:
-            # Table doesn't exist, create it with new schema
-            cursor.execute('''
-                CREATE TABLE exercises (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    username TEXT NOT NULL,
-                    name TEXT NOT NULL,
-                    weight REAL NOT NULL,
-                    muscle_group TEXT DEFAULT "Other",
-                    date_created TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            ''')
-        else:
-            # Table exists, check if we need to migrate
-            if 'muscle_group' not in columns:
-                cursor.execute('ALTER TABLE exercises ADD COLUMN muscle_group TEXT DEFAULT "Other"')
-            
-            # Check if sets column exists and remove it if it does
-            if 'sets' in columns:
-                # Create new table without sets column
-                cursor.execute('''
-                    CREATE TABLE exercises_new (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        username TEXT NOT NULL,
-                        name TEXT NOT NULL,
-                        weight REAL NOT NULL,
-                        muscle_group TEXT DEFAULT "Other",
-                        date_created TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                    )
-                ''')
-                
-                # Copy data from old table to new table
-                cursor.execute('''
-                    INSERT INTO exercises_new (id, username, name, weight, muscle_group, date_created)
-                    SELECT id, username, name, weight, 
-                           COALESCE(muscle_group, 'Other') as muscle_group, 
-                           date_created
-                    FROM exercises
-                ''')
-                
-                # Drop old table and rename new table
-                cursor.execute('DROP TABLE exercises')
-                cursor.execute('ALTER TABLE exercises_new RENAME TO exercises')
-        
-        # Create exercise_sets table if it doesn't exist
+        # Create exercises table with correct schema
         cursor.execute('''
-            CREATE TABLE IF NOT EXISTS exercise_sets (
+            CREATE TABLE exercises (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT NOT NULL,
+                name TEXT NOT NULL,
+                weight REAL NOT NULL,
+                muscle_group TEXT NOT NULL DEFAULT "Other"
+            )
+        ''')
+        
+        # Create exercise_sets table
+        cursor.execute('''
+            CREATE TABLE exercise_sets (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 exercise_id INTEGER NOT NULL,
                 weight REAL NOT NULL,
-                date_created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (exercise_id) REFERENCES exercises (id) ON DELETE CASCADE
             )
         ''')
@@ -3187,12 +3153,12 @@ def get_user_exercises():
         
         # Get exercises with their sets
         cursor.execute('''
-            SELECT e.id, e.name, e.weight, e.muscle_group, e.date_created,
-                   es.id as set_id, es.weight as set_weight, es.date_created as set_date
+            SELECT e.id, e.name, e.weight, e.muscle_group,
+                   es.id as set_id, es.weight as set_weight
             FROM exercises e
             LEFT JOIN exercise_sets es ON e.id = es.exercise_id
             WHERE e.username = ?
-            ORDER BY e.muscle_group, e.date_created DESC, es.date_created DESC
+            ORDER BY e.muscle_group, e.name
         ''', (username,))
         
         rows = cursor.fetchall()
@@ -3223,18 +3189,16 @@ def get_user_exercises():
                     'name': row[1],
                     'weight': row[2],
                     'muscle_group': muscle_group,
-                    'date': row[4][:10] if row[4] else 'Unknown',
                     'sets_data': []
                 }
                 muscle_groups[muscle_group].append(exercise_data)
                 existing_exercise = exercise_data
             
-            if row[5]:  # If there's a set
+            if row[4]:  # If there's a set
                 existing_exercise['sets_data'].append({
-                    'id': row[5],
+                    'id': row[4],
                     'exercise_id': exercise_id,
-                    'weight': row[6],
-                    'date': row[7][:10] if row[7] else 'Unknown'
+                    'weight': row[5]
                 })
         
         return jsonify({'success': True, 'muscle_groups': muscle_groups})
