@@ -3527,6 +3527,84 @@ def get_exercise_progress():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
+@app.route('/get_exercise_one_rm', methods=['GET'])
+@login_required
+def get_exercise_one_rm():
+    try:
+        username = session.get('username')
+        exercise_id = request.args.get('exercise_id')
+        
+        if not exercise_id:
+            return jsonify({'success': False, 'error': 'Exercise ID is required'})
+        
+        conn = sqlite3.connect('users.db')
+        cursor = conn.cursor()
+        
+        # Get all weight entries for the exercise and calculate max 1RM
+        cursor.execute('''
+            SELECT es.weight, es.reps
+            FROM exercise_sets es
+            JOIN exercises e ON es.exercise_id = e.id
+            WHERE e.id = ? AND e.username = ?
+            ORDER BY es.created_at DESC
+        ''', (exercise_id, username))
+        
+        rows = cursor.fetchall()
+        conn.close()
+        
+        if not rows:
+            return jsonify({'success': True, 'one_rm': 0})
+        
+        # Calculate 1RM for each entry and find the maximum
+        max_one_rm = 0
+        for row in rows:
+            weight, reps = row
+            one_rm = weight * (1 + reps / 30)  # Epley formula
+            max_one_rm = max(max_one_rm, one_rm)
+        
+        return jsonify({'success': True, 'one_rm': round(max_one_rm, 1)})
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/update_exercise_one_rm', methods=['POST'])
+@login_required
+def update_exercise_one_rm():
+    try:
+        username = session.get('username')
+        exercise_id = request.form.get('exercise_id')
+        weight = request.form.get('weight')
+        reps = request.form.get('reps')
+        
+        if not all([exercise_id, weight, reps]):
+            return jsonify({'success': False, 'error': 'All fields are required'})
+        
+        conn = sqlite3.connect('users.db')
+        cursor = conn.cursor()
+        
+        # Verify the exercise belongs to the user
+        cursor.execute('''
+            SELECT id FROM exercises 
+            WHERE id = ? AND username = ?
+        ''', (exercise_id, username))
+        
+        if not cursor.fetchone():
+            return jsonify({'success': False, 'error': 'Exercise not found'})
+        
+        # Add the new weight entry to exercise_sets
+        cursor.execute('''
+            INSERT INTO exercise_sets (exercise_id, weight, reps, created_at)
+            VALUES (?, ?, ?, date('now'))
+        ''', (exercise_id, weight, reps))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({'success': True})
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
 # Workout Management Routes
 @app.route('/create_workout', methods=['POST'])
 def create_workout():

@@ -865,32 +865,97 @@
                 return;
             }
             
+            // Check if weight exceeds current 1RM before adding to workout
+            checkAndUpdateOneRM(exerciseId, weight, reps, function(shouldProceed) {
+                if (shouldProceed) {
+                    $.ajax({
+                        url: '/add_exercise_to_workout',
+                        method: 'POST',
+                        data: {
+                            workout_id: currentWorkoutId,
+                            exercise_id: exerciseId,
+                            weight: weight,
+                            sets: sets,
+                            reps: reps
+                        },
+                        success: function(response) {
+                            if (response.success) {
+                                $('#workout-exercise-select').val('');
+                                $('#workout-weight').val('');
+                                $('#workout-sets').val('');
+                                $('#workout-reps').val('');
+                                loadWorkoutDetails(currentWorkoutId);
+                                
+                                // Refresh the workout list to update exercise count
+                                loadWorkouts();
+                            } else {
+                                alert('Error adding exercise to workout: ' + (response.error || 'Unknown error'));
+                            }
+                        },
+                        error: function(xhr, status, error) {
+                            alert('Error adding exercise to workout: ' + error);
+                        }
+                    });
+                }
+            });
+        }
+
+        function checkAndUpdateOneRM(exerciseId, weight, reps, callback) {
+            // Calculate 1RM for the input weight and reps
+            const inputOneRM = weight * (1 + reps / 30);
+            
+            // Get current 1RM for the exercise
             $.ajax({
-                url: '/add_exercise_to_workout',
-                method: 'POST',
-                data: {
-                    workout_id: currentWorkoutId,
-                    exercise_id: exerciseId,
-                    weight: weight,
-                    sets: sets,
-                    reps: reps
-                },
+                url: '/get_exercise_one_rm',
+                method: 'GET',
+                data: { exercise_id: exerciseId },
                 success: function(response) {
                     if (response.success) {
-                        $('#workout-exercise-select').val('');
-                        $('#workout-weight').val('');
-                        $('#workout-sets').val('');
-                        $('#workout-reps').val('');
-                        loadWorkoutDetails(currentWorkoutId);
+                        const currentOneRM = response.one_rm || 0;
                         
-                        // Refresh the workout list to update exercise count
-                        loadWorkouts();
+                        if (inputOneRM > currentOneRM) {
+                            // Show confirmation dialog
+                            const confirmMessage = `Your input weight (${weight} kg × ${reps} reps) results in a 1RM of ${inputOneRM.toFixed(1)} kg, which is higher than your current 1RM of ${currentOneRM.toFixed(1)} kg.\n\nWould you like to update your 1RM in the Exercise Management tab?`;
+                            
+                            if (confirm(confirmMessage)) {
+                                // Update the 1RM in Exercise Management
+                                $.ajax({
+                                    url: '/update_exercise_one_rm',
+                                    method: 'POST',
+                                    data: {
+                                        exercise_id: exerciseId,
+                                        weight: weight,
+                                        reps: reps
+                                    },
+                                    success: function(updateResponse) {
+                                        if (updateResponse.success) {
+                                            alert('1RM updated successfully!');
+                                            // Refresh the Exercise Management view
+                                            loadExercisesManagement();
+                                        } else {
+                                            alert('Error updating 1RM: ' + (updateResponse.error || 'Unknown error'));
+                                        }
+                                        callback(true); // Proceed with adding to workout
+                                    },
+                                    error: function(xhr, status, error) {
+                                        alert('Error updating 1RM: ' + error);
+                                        callback(true); // Proceed with adding to workout anyway
+                                    }
+                                });
+                            } else {
+                                callback(true); // Proceed with adding to workout without updating 1RM
+                            }
+                        } else {
+                            callback(true); // Weight doesn't exceed 1RM, proceed normally
+                        }
                     } else {
-                        alert('Error adding exercise to workout: ' + (response.error || 'Unknown error'));
+                        console.log('Error getting current 1RM: ' + (response.error || 'Unknown error'));
+                        callback(true); // Proceed with adding to workout anyway
                     }
                 },
                 error: function(xhr, status, error) {
-                    alert('Error adding exercise to workout: ' + error);
+                    console.log('Error getting current 1RM: ' + error);
+                    callback(true); // Proceed with adding to workout anyway
                 }
             });
         }
