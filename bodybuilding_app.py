@@ -3095,24 +3095,53 @@ def add_exercise():
         conn = sqlite3.connect('users.db')
         cursor = conn.cursor()
         
-        # Check if muscle_group column exists, if not add it
+        # Check if exercises table exists and get its current schema
         cursor.execute("PRAGMA table_info(exercises)")
         columns = [column[1] for column in cursor.fetchall()]
         
-        if 'muscle_group' not in columns:
-            cursor.execute('ALTER TABLE exercises ADD COLUMN muscle_group TEXT DEFAULT "Other"')
-        
-        # Create exercises table if it doesn't exist
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS exercises (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT NOT NULL,
-                name TEXT NOT NULL,
-                weight REAL NOT NULL,
-                muscle_group TEXT DEFAULT "Other",
-                date_created TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
+        if not columns:
+            # Table doesn't exist, create it with new schema
+            cursor.execute('''
+                CREATE TABLE exercises (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    weight REAL NOT NULL,
+                    muscle_group TEXT DEFAULT "Other",
+                    date_created TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+        else:
+            # Table exists, check if we need to migrate
+            if 'muscle_group' not in columns:
+                cursor.execute('ALTER TABLE exercises ADD COLUMN muscle_group TEXT DEFAULT "Other"')
+            
+            # Check if sets column exists and remove it if it does
+            if 'sets' in columns:
+                # Create new table without sets column
+                cursor.execute('''
+                    CREATE TABLE exercises_new (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        username TEXT NOT NULL,
+                        name TEXT NOT NULL,
+                        weight REAL NOT NULL,
+                        muscle_group TEXT DEFAULT "Other",
+                        date_created TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                ''')
+                
+                # Copy data from old table to new table
+                cursor.execute('''
+                    INSERT INTO exercises_new (id, username, name, weight, muscle_group, date_created)
+                    SELECT id, username, name, weight, 
+                           COALESCE(muscle_group, 'Other') as muscle_group, 
+                           date_created
+                    FROM exercises
+                ''')
+                
+                # Drop old table and rename new table
+                cursor.execute('DROP TABLE exercises')
+                cursor.execute('ALTER TABLE exercises_new RENAME TO exercises')
         
         # Create exercise_sets table if it doesn't exist
         cursor.execute('''
