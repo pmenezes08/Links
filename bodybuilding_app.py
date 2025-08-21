@@ -4060,6 +4060,12 @@ def share_individual_workout():
         
         name, date, exercise_count, exercises = row
         
+        print(f"Debug: Raw data from database:")
+        print(f"  name = '{name}'")
+        print(f"  date = '{date}'")
+        print(f"  exercise_count = {exercise_count}")
+        print(f"  exercises = '{exercises}'")
+        
         # Get user message if provided
         user_message = request.form.get('user_message', '').strip()
         print(f"Debug: user_message = '{user_message}'")
