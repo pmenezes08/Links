@@ -1299,11 +1299,24 @@
 
         function captureProgressGraph() {
             const canvas = document.getElementById('progressChart');
+            console.log('Attempting to capture graph...');
+            console.log('Canvas element:', canvas);
+            
             if (canvas) {
-                // Convert canvas to data URL
-                const graphImage = canvas.toDataURL('image/png');
-                $('#share-progress-modal').data('graph-image', graphImage);
-                console.log('Graph captured successfully');
+                try {
+                    // Wait a bit for the chart to be fully rendered
+                    setTimeout(() => {
+                        // Convert canvas to data URL
+                        const graphImage = canvas.toDataURL('image/png');
+                        console.log('Graph image data length:', graphImage.length);
+                        console.log('Graph image preview:', graphImage.substring(0, 100) + '...');
+                        
+                        $('#share-progress-modal').data('graph-image', graphImage);
+                        console.log('Graph captured successfully');
+                    }, 1000);
+                } catch (error) {
+                    console.error('Error capturing graph:', error);
+                }
             } else {
                 console.log('No progress chart found');
             }
