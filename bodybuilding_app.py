@@ -3605,6 +3605,36 @@ def update_exercise_one_rm():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
+@app.route('/check_exercise_in_workout', methods=['GET'])
+@login_required
+def check_exercise_in_workout():
+    try:
+        username = session.get('username')
+        workout_id = request.args.get('workout_id')
+        exercise_id = request.args.get('exercise_id')
+        
+        if not all([workout_id, exercise_id]):
+            return jsonify({'success': False, 'error': 'Workout ID and Exercise ID are required'})
+        
+        conn = sqlite3.connect('users.db')
+        cursor = conn.cursor()
+        
+        # Check if the exercise is already in the workout
+        cursor.execute('''
+            SELECT COUNT(*) 
+            FROM workout_exercises we
+            JOIN workouts w ON we.workout_id = w.id
+            WHERE we.workout_id = ? AND we.exercise_id = ? AND w.username = ?
+        ''', (workout_id, exercise_id, username))
+        
+        count = cursor.fetchone()[0]
+        conn.close()
+        
+        return jsonify({'success': True, 'is_duplicate': count > 0})
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
 # Workout Management Routes
 @app.route('/create_workout', methods=['POST'])
 def create_workout():
