@@ -4092,6 +4092,8 @@ def share_individual_workout():
             content = f"{user_message}\n\n{content}"
         
         print(f"Debug: Final workout content = '{content}'")
+        print(f"Debug: Content length = {len(content)}")
+        print(f"Debug: Content lines = {content.split(chr(10))}")
         
         # Share to each selected community
         for community_id in communities:
@@ -4437,7 +4439,7 @@ def get_user_exercises():
 
 @app.route('/test_version')
 def test_version():
-    return jsonify({'version': '1755799275', 'message': 'Updated version loaded'})
+    return jsonify({'version': '1755799276', 'message': 'Updated version loaded with format fix'})
 
 @app.route('/test_database')
 def test_database():
@@ -4472,6 +4474,32 @@ def test_database():
         
     except Exception as e:
         return jsonify({'error': str(e)})
+
+@app.route('/test_format')
+def test_format():
+    # Simulate the format generation
+    workout_name = "Wod v3 Push Day"
+    date = "2025-08-21"
+    
+    # Extract clean workout name
+    clean_name = workout_name
+    if ' - ' in workout_name:
+        clean_name = workout_name.split(' - ')[0]
+    elif ' Push Day' in workout_name:
+        clean_name = workout_name.split(' Push Day')[0]
+    
+    content = f"{clean_name}\n\n"
+    content += f"{date}\n"
+    content += "Hack Squat (40.0kg x 2 sets x 12 reps)\n"
+    content += "Bench Press (150.0kg x 1 sets x 1 reps)\n"
+    
+    return jsonify({
+        'original_name': workout_name,
+        'clean_name': clean_name,
+        'date': date,
+        'final_content': content,
+        'content_lines': content.split('\n')
+    })
 
 if __name__ == '__main__':
     app.run(debug=False, host='0.0.0.0', port=8080)
