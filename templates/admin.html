@@ -91,7 +91,8 @@
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            min-height: 100vh;
+            min-height: calc(100vh - 48px);
+            margin: 0 auto 0 80px;
         }
 
         .admin-header {
@@ -196,26 +197,26 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 12px;
-            padding-bottom: 8px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            margin-bottom: 16px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
         }
 
         .section-header h2 {
-            font-size: 16px;
+            font-size: 18px;
             font-weight: 600;
             color: #ffffff;
             letter-spacing: -0.2px;
         }
 
         .search-input {
-            background: rgba(255, 255, 255, 0.03);
-            border: 1px solid rgba(255, 255, 255, 0.05);
-            padding: 6px 10px;
-            border-radius: 4px;
-            font-size: 12px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 13px;
             color: #ffffff;
-            width: 120px;
+            width: 160px;
             transition: all 0.2s ease;
         }
 
@@ -226,13 +227,13 @@
         }
 
         .filter-select {
-            background: rgba(255, 255, 255, 0.03);
-            border: 1px solid rgba(255, 255, 255, 0.05);
-            padding: 6px 10px;
-            border-radius: 4px;
-            font-size: 12px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 13px;
             color: #ffffff;
-            margin-left: 8px;
+            margin-left: 10px;
             transition: all 0.2s ease;
         }
 
@@ -244,53 +245,56 @@
 
         .users-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-            gap: 8px;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 12px;
+            margin-top: 16px;
         }
 
         .user-card {
-            background: rgba(255, 255, 255, 0.02);
-            border: 1px solid rgba(255, 255, 255, 0.03);
-            border-radius: 6px;
-            padding: 8px 10px;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            padding: 12px;
             transition: all 0.2s ease;
         }
 
         .user-card:hover {
-            background: rgba(255, 255, 255, 0.03);
+            background: rgba(255, 255, 255, 0.05);
+            border-color: rgba(255, 255, 255, 0.1);
         }
 
         .user-header {
             display: flex;
             align-items: center;
-            margin-bottom: 8px;
+            margin-bottom: 10px;
         }
 
         .user-avatar {
-            width: 28px;
-            height: 28px;
+            width: 32px;
+            height: 32px;
             background: #4db6ac;
             border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
-            margin-right: 10px;
-            font-size: 12px;
+            margin-right: 12px;
+            font-size: 14px;
             color: #ffffff;
             font-weight: 600;
         }
 
         .user-info h4 {
-            font-size: 13px;
+            font-size: 14px;
             font-weight: 500;
             color: #ffffff;
             flex: 1;
+            margin: 0;
         }
 
         .subscription-badge {
-            font-size: 10px;
-            padding: 2px 6px;
-            border-radius: 3px;
+            font-size: 11px;
+            padding: 3px 8px;
+            border-radius: 4px;
             text-transform: uppercase;
             font-weight: 500;
         }
@@ -301,40 +305,41 @@
         }
 
         .subscription-badge.free {
-            background: rgba(255, 255, 255, 0.05);
+            background: rgba(255, 255, 255, 0.08);
             color: #ffffff;
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.15);
         }
 
         .user-actions {
             display: flex;
-            gap: 4px;
+            gap: 6px;
         }
 
         .action-btn {
-            background: rgba(255, 255, 255, 0.03);
-            border: 1px solid rgba(255, 255, 255, 0.05);
-            padding: 4px 6px;
-            border-radius: 3px;
-            font-size: 10px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            padding: 6px 8px;
+            border-radius: 4px;
+            font-size: 11px;
             color: #ffffff;
             cursor: pointer;
             transition: all 0.2s ease;
-            font-weight: 400;
+            font-weight: 500;
         }
 
         .action-btn:hover {
-            background: rgba(255, 255, 255, 0.05);
+            background: rgba(255, 255, 255, 0.08);
+            border-color: #4db6ac;
         }
 
         .action-btn.danger {
-            background: rgba(255, 59, 48, 0.05);
-            border-color: rgba(255, 59, 48, 0.2);
+            background: rgba(255, 59, 48, 0.08);
+            border-color: rgba(255, 59, 48, 0.3);
             color: #FF3B30;
         }
 
         .action-btn.danger:hover {
-            background: rgba(255, 59, 48, 0.1);
+            background: rgba(255, 59, 48, 0.15);
         }
 
         .communities-grid {
@@ -414,11 +419,13 @@
         .modal-content {
             background: rgba(0, 0, 0, 0.95);
             border: 1px solid rgba(255, 255, 255, 0.1);
-            margin: 5% auto;
-            padding: 32px;
-            border-radius: 20px;
-            width: 90%;
-            max-width: 500px;
+            margin: 3% auto;
+            padding: 24px;
+            border-radius: 16px;
+            width: 95%;
+            max-width: 800px;
+            max-height: 85vh;
+            overflow-y: auto;
             backdrop-filter: blur(20px);
         }
 
