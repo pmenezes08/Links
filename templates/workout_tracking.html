@@ -73,7 +73,7 @@
                                 <option value="365">Last year</option>
                                 <option value="all">All time</option>
                             </select>
-                            <button class="share-btn" onclick="openShareProgressModal()" title="Share Progress">
+                            <button class="share-btn" onclick="openShareProgressModal()" title="Share Progress Graph">
                                 <i class="fas fa-share-alt"></i>
                             </button>
                         </div>
@@ -1286,10 +1286,27 @@
             $('#share-progress-modal').show();
             generateProgressSummary();
             loadUserCommunities('communities-list');
+            
+            // Capture the graph as an image
+            setTimeout(() => {
+                captureProgressGraph();
+            }, 500);
         }
 
         function closeShareProgressModal() {
             $('#share-progress-modal').hide();
+        }
+
+        function captureProgressGraph() {
+            const canvas = document.getElementById('progressChart');
+            if (canvas) {
+                // Convert canvas to data URL
+                const graphImage = canvas.toDataURL('image/png');
+                $('#share-progress-modal').data('graph-image', graphImage);
+                console.log('Graph captured successfully');
+            } else {
+                console.log('No progress chart found');
+            }
         }
 
         function openShareWorkoutsModal() {
@@ -1473,6 +1490,13 @@
             if (userMessage) {
                 formData.append('user_message', userMessage);
             }
+            
+            // Add graph image if available
+            const graphImage = $('#share-progress-modal').data('graph-image');
+            if (graphImage) {
+                formData.append('graph_image', graphImage);
+            }
+            
             selectedCommunities.forEach(communityId => {
                 formData.append('communities', communityId);
             });

@@ -3888,8 +3888,9 @@ def share_progress():
         initial_1rm = one_rms[0]
         progress_percentage = ((current_1rm - initial_1rm) / initial_1rm * 100) if initial_1rm > 0 else 0
         
-        # Get user message if provided
+        # Get user message and graph image if provided
         user_message = request.form.get('user_message', '').strip()
+        graph_image = request.form.get('graph_image', '').strip()
         
         # Create post content with proper spacing
         post_content = f"Progress Update: {exercise_name}\n\n"
@@ -3901,12 +3902,39 @@ def share_progress():
         if user_message:
             post_content = f"{user_message}\n\n{post_content}"
         
+        # Save graph image if provided
+        image_path = None
+        if graph_image and graph_image.startswith('data:image'):
+            try:
+                # Extract base64 data
+                import base64
+                image_data = graph_image.split(',')[1]
+                image_bytes = base64.b64decode(image_data)
+                
+                # Generate filename
+                import os
+                from datetime import datetime
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                filename = f"progress_graph_{username}_{exercise_id}_{timestamp}.png"
+                filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                
+                # Save image
+                with open(filepath, 'wb') as f:
+                    f.write(image_bytes)
+                
+                image_path = f"uploads/{filename}"
+                print(f"Debug: Saved graph image to {image_path}")
+                
+            except Exception as e:
+                print(f"Debug: Error saving graph image: {e}")
+                image_path = None
+        
         # Share to each selected community
         for community_id in communities:
             cursor.execute('''
-                INSERT INTO posts (username, community_id, content, timestamp)
-                VALUES (?, ?, ?, datetime('now'))
-            ''', (username, community_id, post_content))
+                INSERT INTO posts (username, community_id, content, image_path, timestamp)
+                VALUES (?, ?, ?, ?, datetime('now'))
+            ''', (username, community_id, post_content, image_path))
         
         conn.commit()
         conn.close()
