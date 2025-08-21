@@ -1118,82 +1118,21 @@ def admin():
         return redirect(url_for('index'))
     print("User is admin, proceeding")
     
-    try:
-        print("Getting database connection...")
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            
-            # Simple test - just get basic stats
-            print("Getting basic stats...")
-            try:
-                c.execute("SELECT COUNT(*) FROM users")
-                total_users = c.fetchone()[0]
-            except Exception as e:
-                print(f"Error getting user count: {e}")
-                total_users = 0
-                
-            try:
-                c.execute("SELECT COUNT(*) FROM users WHERE subscription = 'premium'")
-                premium_users = c.fetchone()[0]
-            except Exception as e:
-                print(f"Error getting premium users: {e}")
-                premium_users = 0
-                
-            try:
-                c.execute("SELECT COUNT(*) FROM communities")
-                total_communities = c.fetchone()[0]
-            except Exception as e:
-                print(f"Error getting communities: {e}")
-                total_communities = 0
-                
-            try:
-                c.execute("SELECT COUNT(*) FROM posts")
-                total_posts = c.fetchone()[0]
-            except Exception as e:
-                print(f"Error getting posts: {e}")
-                total_posts = 0
-            
-            stats = {
-                'total_users': total_users,
-                'premium_users': premium_users,
-                'total_communities': total_communities,
-                'total_posts': total_posts
-            }
-            
-            # Get users list
-            try:
-                c.execute("SELECT username, subscription FROM users ORDER BY username")
-                users = c.fetchall()
-            except Exception as e:
-                print(f"Error getting users: {e}")
-                users = []
-            
-            # Get all communities with member counts
-            try:
-                c.execute("""
-                    SELECT c.id, c.name, c.type, c.creator_username, c.join_code,
-                           COUNT(uc.user_id) as member_count
-                    FROM communities c
-                    LEFT JOIN user_communities uc ON c.id = uc.community_id
-                    GROUP BY c.id, c.name, c.type, c.creator_username, c.join_code
-                    ORDER BY c.name
-                """)
-                communities_raw = c.fetchall()
-                
-                # Convert to list of dictionaries for easier template access
-                communities = []
-                for community in communities_raw:
-                    communities.append({
-                        'id': community[0],
-                        'name': community[1],
-                        'type': community[2],
-                        'creator_username': community[3],
-                        'join_code': community[4],
-                        'member_count': community[5]
-                    })
-            except Exception as e:
-                print(f"Error getting communities: {e}")
-                communities = []
+    # Simple test - just return basic HTML
+    return """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Admin Dashboard</title>
+    </head>
+    <body>
+        <h1>Admin Dashboard</h1>
+        <p>Admin dashboard is working!</p>
+        <p>User: {}</p>
+        <a href="/">Back to Home</a>
+    </body>
+    </html>
+    """.format(session.get('username', 'Unknown'))
             
             if request.method == 'POST':
                 if 'add_user' in request.form:
