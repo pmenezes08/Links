@@ -1,5 +1,11 @@
 // static/script.js
 
+function handleImageError(imgElement) {
+    console.log('Image failed to load:', imgElement.src);
+    imgElement.style.display = 'none';
+    imgElement.parentElement.innerHTML = '<div style="padding: 20px; text-align: center; color: #9fb0b5;">Image could not be loaded</div>';
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     console.log("script.js loaded, jQuery version:", jQuery.fn.jquery);
 
@@ -241,7 +247,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     console.log("Post submission response:", data);
                     if (data.success) {
                                     const imageHtml = data.post.image_path ?
-                `<div class="post-image"><img src="/uploads/${data.post.image_path.replace('uploads/', '')}" alt="Post image" loading="lazy" onerror="console.log('Image failed to load:', this.src); this.style.display='none'; this.parentElement.innerHTML='<div style=\'padding: 20px; text-align: center; color: #9fb0b5;\'>Image could not be loaded</div>';" onload="console.log('Image loaded successfully:', this.src);"></div>` : '';
+                `<div class="post-image"><img src="/uploads/${data.post.image_path.replace('uploads/', '')}" alt="Post image" loading="lazy" onerror="handleImageError(this)" onload="console.log('Image loaded successfully:', this.src);"></div>` : '';
                         
                         const postHtml = `
                             <div class="post clickable-post" data-post-id="${data.post.id}">
@@ -592,7 +598,7 @@ document.addEventListener('DOMContentLoaded', function() {
         function buildModalContent(postData) {
             const repliesHtml = postData.replies.map(reply => {
                 const replyImageHtml = (reply.image_path && reply.image_path !== 'None' && reply.image_path !== '') ? 
-                    `<div class="reply-image"><img src="/uploads/${reply.image_path.replace('uploads/', '')}" alt="Reply image" loading="lazy" onerror="console.log('Reply image failed to load:', this.src); this.style.display='none'; this.parentElement.innerHTML='<div style=\'padding: 20px; text-align: center; color: #9fb0b5;\'>Image could not be loaded</div>';" onload="console.log('Reply image loaded successfully:', this.src);"></div>` : '';
+                    `<div class="reply-image"><img src="/uploads/${reply.image_path.replace('uploads/', '')}" alt="Reply image" loading="lazy" onerror="handleImageError(this)" onload="console.log('Reply image loaded successfully:', this.src);"></div>` : '';
                 
                 console.log("Building reply HTML for:", reply.username, "Current user:", sessionStorage.getItem('username'));
                 console.log("Should show delete button:", reply.username === sessionStorage.getItem('username'));
@@ -625,7 +631,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }).join('');
 
             const imageHtml = (postData.image_path && postData.image_path !== 'None' && postData.image_path !== '') ? 
-                `<div class="post-image"><img src="/uploads/${postData.image_path.replace('uploads/', '')}" alt="Post image" loading="lazy" onerror="console.log('Modal image failed to load:', this.src); this.style.display='none'; this.parentElement.innerHTML='<div style=\'padding: 20px; text-align: center; color: #9fb0b5;\'>Image could not be loaded</div>';" onload="console.log('Modal image loaded successfully:', this.src);"></div>` : '';
+                `<div class="post-image"><img src="/uploads/${postData.image_path.replace('uploads/', '')}" alt="Post image" loading="lazy" onerror="handleImageError(this)" onload="console.log('Modal image loaded successfully:', this.src);"></div>` : '';
             
             return `
                 <div class="post" data-post-id="${postData.id}">
