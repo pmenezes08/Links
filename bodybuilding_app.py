@@ -376,6 +376,13 @@ def init_db():
                           FOREIGN KEY (workout_id) REFERENCES workouts (id) ON DELETE CASCADE,
                           FOREIGN KEY (exercise_id) REFERENCES exercises (id) ON DELETE CASCADE)''')
 
+            # Add info column to communities table if it doesn't exist
+            try:
+                c.execute("SELECT info FROM communities LIMIT 1")
+            except sqlite3.OperationalError:
+                logger.info("Adding info column to communities table...")
+                c.execute("ALTER TABLE communities ADD COLUMN info TEXT")
+            
             conn.commit()
             logger.info("Database initialization completed successfully")
             
@@ -4519,17 +4526,46 @@ def test_database():
         cursor.execute("SELECT COUNT(*) FROM exercise_sets")
         sets_count = cursor.fetchone()[0]
         
+        # Check communities table structure
+        cursor.execute("PRAGMA table_info(communities)")
+        community_columns = cursor.fetchall()
+        
         conn.close()
         
         return jsonify({
             'tables': [table[0] for table in tables],
             'exercise_count': exercise_count,
             'workout_count': workout_count,
-            'sets_count': sets_count
+            'sets_count': sets_count,
+            'community_columns': [col[1] for col in community_columns]
         })
         
     except Exception as e:
         return jsonify({'error': str(e)})
+
+@app.route('/fix_communities_table')
+def fix_communities_table():
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Check if info column exists
+        cursor.execute("PRAGMA table_info(communities)")
+        columns = [col[1] for col in cursor.fetchall()]
+        
+        if 'info' not in columns:
+            logger.info("Adding info column to communities table...")
+            cursor.execute("ALTER TABLE communities ADD COLUMN info TEXT")
+            conn.commit()
+            return jsonify({'success': True, 'message': 'Info column added successfully'})
+        else:
+            return jsonify({'success': True, 'message': 'Info column already exists'})
+        
+        conn.close()
+        
+    except Exception as e:
+        logger.error(f"Error fixing communities table: {e}")
+        return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/test_format')
 def test_format():
