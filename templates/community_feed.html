@@ -388,14 +388,14 @@
                     <span>Announcement</span>
                 </div>
                 <div class="announcement-meta">
-                    <span class="announcement-date">{{ community.info_updated_at if community.info_updated_at else 'Recently' }}</span>
+                    <span class="announcement-date">Recently</span>
                     <button class="mark-read-btn" onclick="markAnnouncementRead()" title="Mark as read">
                         <i class="fas fa-check"></i>
                     </button>
                 </div>
             </div>
             <div class="announcement-content">
-                {{ community.info | replace('\n', '<br>') | safe }}
+                {{ community.info }}
             </div>
         </div>
         {% endif %}
