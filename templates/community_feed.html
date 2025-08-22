@@ -418,6 +418,99 @@
                 position: static;
             }
         }
+        
+        /* Poll Display Styles */
+        .poll-container {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            padding: 16px;
+            margin: 12px 0;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .poll-question {
+            font-weight: 600;
+            margin-bottom: 12px;
+            color: #ffffff;
+        }
+        
+        .poll-question i {
+            color: #4db6ac;
+            margin-right: 8px;
+        }
+        
+        .poll-options {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        
+        .poll-option {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 6px;
+            padding: 12px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .poll-option:hover {
+            background: rgba(255, 255, 255, 0.08);
+            border-color: #4db6ac;
+        }
+        
+        .poll-option-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        
+        .poll-option-text {
+            color: #ffffff;
+            font-weight: 500;
+        }
+        
+        .poll-option-votes {
+            color: #9fb0b5;
+            font-size: 12px;
+        }
+        
+        .poll-progress-bar {
+            height: 4px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 2px;
+            overflow: hidden;
+        }
+        
+        .poll-progress-fill {
+            height: 100%;
+            background: #4db6ac;
+            transition: width 0.3s ease;
+        }
+        
+        .poll-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .poll-total {
+            color: #9fb0b5;
+            font-size: 12px;
+        }
+        
+        .poll-voted {
+            color: #4db6ac;
+            font-size: 12px;
+        }
+        
+        .poll-voted i {
+            margin-right: 4px;
+        }
 
         /* Admin Announcements Styles */
         .community-actions {
@@ -990,6 +1083,35 @@
                     <div class="post clickable-post" data-post-id="{{ post.id }}">
                         <div class="post-header"><strong>@{{ post.username }}</strong><span class="timestamp">{{ post.timestamp | format_date('%m/%d/%y %I:%M %p') }}</span></div>
                         <p>{{ post.content }}</p>
+                        
+                        <!-- Poll Display -->
+                        {% if post.poll %}
+                        <div class="poll-container">
+                            <div class="poll-question">
+                                <i class="fas fa-poll-h"></i> {{ post.poll.question }}
+                            </div>
+                            <div class="poll-options">
+                                {% for option in post.poll.options %}
+                                <div class="poll-option" data-poll-id="{{ post.poll.id }}" data-option-id="{{ option.id }}">
+                                    <div class="poll-option-bar">
+                                        <div class="poll-option-text">{{ option.option_text }}</div>
+                                        <div class="poll-option-votes">{{ option.votes }} votes</div>
+                                    </div>
+                                    <div class="poll-progress-bar">
+                                        <div class="poll-progress-fill" style="width: {{ (option.votes / post.poll.total_votes * 100) if post.poll.total_votes > 0 else 0 }}%"></div>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </div>
+                            <div class="poll-footer">
+                                <span class="poll-total">{{ post.poll.total_votes }} total votes</span>
+                                {% if post.poll.user_vote %}
+                                <span class="poll-voted"><i class="fas fa-check"></i> You voted</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% endif %}
+                        
                         {% if post.image_path and post.image_path != 'None' and post.image_path != '' %}
                             <div class="post-image">
                                 <img src="{{ url_for('uploaded_file', filename=post.image_path.replace('uploads/', '')) if post.image_path.startswith('uploads/') else url_for('uploaded_file', filename=post.image_path) }}" 
