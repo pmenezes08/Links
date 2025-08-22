@@ -289,13 +289,7 @@
             display: block;
         }
         
-        .poll-item {
-            background: rgba(45, 138, 126, 0.05);
-            border: 1px solid rgba(45, 138, 126, 0.2);
-            border-radius: 8px;
-            padding: 15px;
-            margin-bottom: 15px;
-        }
+
         
         .poll-item-header {
             display: flex;
@@ -1005,6 +999,12 @@
         }
         
         /* Poll items styling - compact like announcements */
+        #activePollsList,
+        #historicalPollsList {
+            text-align: left !important;
+            display: block !important;
+        }
+        
         .poll-item {
             background: rgba(45, 138, 126, 0.05);
             border: 1px solid rgba(45, 138, 126, 0.2);
@@ -1012,8 +1012,10 @@
             padding: 12px;
             margin-bottom: 10px;
             max-width: 500px;
-            margin-left: 0;
-            margin-right: 0;
+            margin-left: 0 !important;
+            margin-right: 0 !important;
+            display: block !important;
+            text-align: left !important;
         }
         
         .poll-item-header {
