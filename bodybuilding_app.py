@@ -288,6 +288,7 @@ def init_db():
                           location TEXT,
                           background_path TEXT,
                           info TEXT,
+                          info_updated_at TEXT,
                           template TEXT DEFAULT 'default',
                           background_color TEXT DEFAULT '#2d3839',
                           text_color TEXT DEFAULT '#ffffff',
@@ -382,6 +383,13 @@ def init_db():
             except sqlite3.OperationalError:
                 logger.info("Adding info column to communities table...")
                 c.execute("ALTER TABLE communities ADD COLUMN info TEXT")
+            
+            # Add info_updated_at column to communities table if it doesn't exist
+            try:
+                c.execute("SELECT info_updated_at FROM communities LIMIT 1")
+            except sqlite3.OperationalError:
+                logger.info("Adding info_updated_at column to communities table...")
+                c.execute("ALTER TABLE communities ADD COLUMN info_updated_at TEXT")
             
             conn.commit()
             logger.info("Database initialization completed successfully")
@@ -4619,12 +4627,12 @@ def save_community_info():
         if session['username'] != community['creator_username'] and session['username'] != 'admin':
             return jsonify({'success': False, 'error': 'Unauthorized'})
         
-        # Update community info
+        # Update community info with timestamp
         cursor.execute('''
             UPDATE communities 
-            SET info = ? 
+            SET info = ?, info_updated_at = ? 
             WHERE id = ?
-        ''', (info, community_id))
+        ''', (info, datetime.now().strftime('%Y-%m-%d %H:%M:%S'), community_id))
         
         conn.commit()
         conn.close()
