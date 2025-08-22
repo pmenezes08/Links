@@ -5604,12 +5604,30 @@ def save_community_announcement():
             )
         ''')
         
-        # Add announcement_id column if it doesn't exist
+        # Add missing columns to community_files table if they don't exist
         try:
             cursor.execute("SELECT announcement_id FROM community_files LIMIT 1")
         except:
             logger.info("Adding announcement_id column to community_files table...")
             cursor.execute("ALTER TABLE community_files ADD COLUMN announcement_id INTEGER")
+        
+        try:
+            cursor.execute("SELECT file_path FROM community_files LIMIT 1")
+        except:
+            logger.info("Adding file_path column to community_files table...")
+            cursor.execute("ALTER TABLE community_files ADD COLUMN file_path TEXT")
+        
+        try:
+            cursor.execute("SELECT uploaded_by FROM community_files LIMIT 1")
+        except:
+            logger.info("Adding uploaded_by column to community_files table...")
+            cursor.execute("ALTER TABLE community_files ADD COLUMN uploaded_by TEXT")
+        
+        try:
+            cursor.execute("SELECT uploaded_at FROM community_files LIMIT 1")
+        except:
+            logger.info("Adding uploaded_at column to community_files table...")
+            cursor.execute("ALTER TABLE community_files ADD COLUMN uploaded_at TEXT")
         
         # Check if user is admin or community creator
         cursor.execute('''
@@ -5678,6 +5696,7 @@ def save_community_announcement():
 def get_community_announcements():
     try:
         community_id = request.args.get('community_id')
+        logger.info(f"Getting announcements for community_id: {community_id}")
         
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -5689,8 +5708,11 @@ def get_community_announcements():
             ORDER BY created_at DESC
         ''', (community_id,))
         
+        rows = cursor.fetchall()
+        logger.info(f"Found {len(rows)} announcements for community {community_id}")
+        
         announcements = []
-        for row in cursor.fetchall():
+        for row in rows:
             # Get files for this announcement
             cursor.execute('''
                 SELECT id, filename, file_path, uploaded_by, uploaded_at
