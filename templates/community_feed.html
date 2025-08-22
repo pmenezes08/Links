@@ -501,6 +501,24 @@
             align-items: center;
             flex-wrap: wrap;
         }
+        
+        .community-actions .sleek-btn {
+            background-color: {{ community.accent_color or '#4db6ac' }} !important;
+            color: {{ community.text_color or '#ffffff' }} !important;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        
+        .community-actions .sleek-btn:hover {
+            opacity: 0.8;
+        }
 
         .admin-info-btn {
             background-color: {{ community.accent_color or '#4db6ac' }} !important;
@@ -1400,25 +1418,6 @@
             setupPollHandlers();
         });
         
-        // Poll functionality
-        function addSidebarPollOption() {
-            const optionsContainer = document.getElementById('sidebarPollOptions');
-            const optionCount = optionsContainer.children.length;
-            
-            if (optionCount >= 6) {
-                alert('Maximum 6 options allowed');
-                return;
-            }
-            
-            const newOption = document.createElement('input');
-            newOption.type = 'text';
-            newOption.name = 'options[]';
-            newOption.placeholder = `Option ${optionCount + 1}`;
-            newOption.required = true;
-            
-            optionsContainer.appendChild(newOption);
-        }
-        
         function setupPollHandlers() {
             // Polls modal form submission
             document.getElementById('pollsModalForm').addEventListener('submit', function(e) {
@@ -2055,7 +2054,7 @@
             }
         }
 
-        // Polls Modal Functions
+        // Polls Modal Functions - Global Scope
         function showPollsModal() {
             document.getElementById('pollsModal').style.display = 'block';
             loadActivePolls();
