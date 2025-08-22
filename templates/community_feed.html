@@ -601,10 +601,10 @@
             background: #c82333;
         }
         
-        /* Announcement Styles */
+        /* Announcement Styles - Matching Polls Layout */
         .announcement-item {
-            background: #1a1a1a;
-            border: 1px solid #333;
+            background: rgba(45, 138, 126, 0.05);
+            border: 1px solid rgba(45, 138, 126, 0.2);
             border-radius: 8px;
             padding: 15px;
             margin-bottom: 15px;
@@ -613,17 +613,24 @@
         .announcement-header {
             display: flex;
             justify-content: space-between;
-            align-items: center;
+            align-items: flex-start;
             margin-bottom: 10px;
         }
         
+        .announcement-meta {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
         .announcement-date {
-            color: #9fb0b5;
             font-size: 12px;
+            color: {{ community.text_color or '#ffffff' }}aa;
         }
         
         .announcement-content {
-            color: #ffffff;
+            font-weight: 500;
+            color: {{ community.text_color or '#ffffff' }};
             line-height: 1.5;
             margin-bottom: 10px;
         }
@@ -632,41 +639,61 @@
             margin-top: 10px;
         }
         
+        .announcement-files h4 {
+            font-size: 14px;
+            font-weight: 600;
+            color: {{ community.text_color or '#ffffff' }};
+            margin-bottom: 8px;
+        }
+        
         .announcement-file {
             display: flex;
+            justify-content: space-between;
             align-items: center;
-            gap: 8px;
-            padding: 8px;
-            background: #2a2a2a;
-            border-radius: 4px;
+            padding: 8px 12px;
+            background: rgba(77, 182, 172, 0.05);
+            border: 1px solid rgba(77, 182, 172, 0.2);
+            border-radius: 6px;
             margin-bottom: 5px;
+            transition: all 0.2s ease;
+        }
+        
+        .announcement-file:hover {
+            background: rgba(45, 138, 126, 0.15);
+            border-color: {{ community.accent_color or '#2d8a7e' }};
         }
         
         .announcement-file i {
-            color: #4db6ac;
+            color: {{ community.accent_color or '#2d8a7e' }};
         }
         
         .announcement-file a {
-            color: #4db6ac;
+            color: {{ community.text_color or '#ffffff' }};
             text-decoration: none;
+            font-weight: 500;
         }
         
         .announcement-file a:hover {
-            text-decoration: underline;
+            color: {{ community.accent_color or '#2d8a7e' }};
         }
         
         .delete-announcement-btn {
             background: transparent;
             color: #9fb0b5;
-            border: none;
+            border: 1px solid #9fb0b5;
+            border-radius: 4px;
             padding: 4px 8px;
             cursor: pointer;
             font-size: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
             transition: all 0.2s ease;
         }
         
         .delete-announcement-btn:hover {
-            color: #dc3545;
+            background: #9fb0b5;
+            color: #1a1a1a;
         }
         
         .delete-file-btn:hover {
@@ -1161,21 +1188,27 @@
             const announcementsHTML = announcements.map(announcement => `
                 <div class="announcement-item">
                     <div class="announcement-header">
-                        <span class="announcement-date"><i class="fas fa-calendar-alt"></i> ${announcement.created_at}</span>
-                        <button onclick="deleteAnnouncement(${announcement.id})" class="delete-announcement-btn">
-                            <i class="fas fa-trash"></i> Delete
-                        </button>
-                    </div>
-                    <div class="announcement-content">
-                        <i class="fas fa-bullhorn"></i> ${announcement.content}
+                        <div class="announcement-content">
+                            <i class="fas fa-bullhorn"></i> ${announcement.content}
+                        </div>
+                        <div class="announcement-meta">
+                            <div class="announcement-date">
+                                <i class="fas fa-calendar-alt"></i> ${announcement.created_at}
+                            </div>
+                            <button onclick="deleteAnnouncement(${announcement.id})" class="delete-announcement-btn" title="Delete Announcement">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
                     </div>
                     ${announcement.files && announcement.files.length > 0 ? `
                         <div class="announcement-files">
                             <h4><i class="fas fa-paperclip"></i> Attached Files:</h4>
                             ${announcement.files.map(file => `
                                 <div class="announcement-file">
-                                    <i class="fas fa-file"></i>
-                                    <a href="/download_announcement_file/${file.id}" target="_blank">${file.filename}</a>
+                                    <div style="display: flex; align-items: center; gap: 8px;">
+                                        <i class="fas fa-file"></i>
+                                        <a href="/download_announcement_file/${file.id}" target="_blank">${file.filename}</a>
+                                    </div>
                                     <button onclick="deleteCommunityFile(${file.id})" class="delete-file-btn" style="background: transparent; color: #9fb0b5; border: none; cursor: pointer; font-size: 12px; transition: all 0.2s ease;">
                                         <i class="fas fa-trash"></i>
                                     </button>
