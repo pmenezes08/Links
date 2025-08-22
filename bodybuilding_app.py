@@ -5875,5 +5875,44 @@ def debug_table_structure():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
+@app.route('/cleanup_missing_images')
+@login_required
+def cleanup_missing_images():
+    """Clean up database references to missing image files"""
+    if session.get('username') != 'admin':
+        return "Access denied", 403
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Get all posts with image_path
+            c.execute("SELECT id, image_path FROM posts WHERE image_path IS NOT NULL AND image_path != '' AND image_path != 'None'")
+            posts = c.fetchall()
+            
+            cleaned_count = 0
+            for post in posts:
+                image_path = post['image_path']
+                # Clean the path
+                clean_path = image_path.replace('uploads/uploads/', '').replace('uploads/', '')
+                full_path = os.path.join(app.config['UPLOAD_FOLDER'], clean_path)
+                
+                # Check if file exists
+                if not os.path.exists(full_path):
+                    logger.info(f"Cleaning missing image reference: {image_path} for post {post['id']}")
+                    c.execute("UPDATE posts SET image_path = NULL WHERE id = ?", (post['id'],))
+                    cleaned_count += 1
+            
+            conn.commit()
+            return jsonify({
+                'success': True,
+                'message': f'Cleaned {cleaned_count} missing image references',
+                'cleaned_count': cleaned_count
+            })
+            
+    except Exception as e:
+        logger.error(f"Error cleaning missing images: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
+
 if __name__ == '__main__':
     app.run(debug=False, host='0.0.0.0', port=8080)
