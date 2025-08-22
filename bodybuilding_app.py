@@ -219,7 +219,10 @@ def init_db():
                 ('age', 'INTEGER'),
                 ('fitness_level', 'TEXT'),
                 ('primary_goal', 'TEXT'),
-                ('created_at', 'TEXT')
+                ('created_at', 'TEXT'),
+                ('country', 'TEXT'),
+                ('city', 'TEXT'),
+                ('industry', 'TEXT')
             ]
             
             for column_name, column_type in columns_to_add:
@@ -1332,17 +1335,93 @@ def profile():
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
-            c.execute("SELECT subscription, username, gender, weight, height, blood_type, muscle_mass, bmi FROM users WHERE username=?", (username,))
+            c.execute("SELECT username, email, subscription, age, gender, weight, height, blood_type, muscle_mass, bmi, country, city, industry FROM users WHERE username=?", (username,))
             user = c.fetchone()
-            c.execute("SELECT type, data, timestamp FROM saved_data WHERE username=? ORDER BY timestamp DESC", (username,))
-            saved_items = c.fetchall()
         if user:
-            profile_data = dict(user)
-            return render_template('profile.html', profile_data=profile_data, saved_items=saved_items, subscription=user['subscription'])
+            return render_template('profile.html', username=username, user=user)
         return render_template('index.html', error="User profile not found!")
     except Exception as e:
         logger.error(f"Error in profile for {username}: {str(e)}")
         abort(500)
+
+@app.route('/update_password', methods=['POST'])
+@login_required
+def update_password():
+    username = session['username']
+    current_password = request.form.get('current_password')
+    new_password = request.form.get('new_password')
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT password FROM users WHERE username=?", (username,))
+            user = c.fetchone()
+            
+            if not user:
+                return jsonify({'success': False, 'error': 'User not found'})
+            
+            if user['password'] != current_password:
+                return jsonify({'success': False, 'error': 'Current password is incorrect'})
+            
+            c.execute("UPDATE users SET password=? WHERE username=?", (new_password, username))
+            conn.commit()
+            
+            return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"Error updating password for {username}: {str(e)}")
+        return jsonify({'success': False, 'error': 'Server error'})
+
+@app.route('/update_email', methods=['POST'])
+@login_required
+def update_email():
+    username = session['username']
+    new_email = request.form.get('new_email')
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Check if email is already taken
+            c.execute("SELECT username FROM users WHERE email=? AND username!=?", (new_email, username))
+            existing_user = c.fetchone()
+            if existing_user:
+                return jsonify({'success': False, 'error': 'Email is already in use'})
+            
+            c.execute("UPDATE users SET email=? WHERE username=?", (new_email, username))
+            conn.commit()
+            
+            return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"Error updating email for {username}: {str(e)}")
+        return jsonify({'success': False, 'error': 'Server error'})
+
+@app.route('/update_personal_info', methods=['POST'])
+@login_required
+def update_personal_info():
+    username = session['username']
+    age = request.form.get('age')
+    gender = request.form.get('gender')
+    weight = request.form.get('weight')
+    country = request.form.get('country')
+    city = request.form.get('city')
+    industry = request.form.get('industry')
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Convert age and weight to appropriate types
+            age = int(age) if age else None
+            weight = float(weight) if weight else None
+            
+            c.execute("""UPDATE users SET age=?, gender=?, weight=?, country=?, city=?, industry=? 
+                        WHERE username=?""", (age, gender, weight, country, city, industry, username))
+            conn.commit()
+            
+            return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"Error updating personal info for {username}: {str(e)}")
+        return jsonify({'success': False, 'error': 'Server error'})
 
 @app.route('/edit_profile', methods=['GET', 'POST'])
 @login_required

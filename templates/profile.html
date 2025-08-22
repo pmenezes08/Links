@@ -4,19 +4,670 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Profile - Workout X</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v='2.0') }}">
+    <style>
+        /* Profile Page Styles - Apple Design Principles */
+        body {
+            background-color: #000000 !important;
+            color: #ffffff !important;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
+        }
+
+        .profile-container {
+            margin-left: 80px;
+            padding: 24px;
+            max-width: 800px;
+            margin: 0 auto;
+            position: relative;
+            left: 40px;
+            background: #000000;
+            min-height: 100vh;
+        }
+
+        @media (max-width: 768px) {
+            .profile-container {
+                margin-left: 0;
+                padding: 16px;
+                left: 0;
+            }
+        }
+
+        .profile-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 32px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .profile-title {
+            font-size: 28px;
+            font-weight: 600;
+            color: #ffffff;
+            margin: 0;
+        }
+
+        .profile-subtitle {
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 16px;
+            margin: 4px 0 0 0;
+        }
+
+        /* Menu Dropdown */
+        .menu-dropdown {
+            position: relative;
+            display: inline-block;
+        }
+
+        .menu-btn {
+            background: #4db6ac;
+            color: #ffffff;
+            border: none;
+            padding: 12px 16px;
+            border-radius: 8px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .menu-btn:hover {
+            background: #37a69c;
+        }
+
+        .menu-content {
+            display: none;
+            position: absolute;
+            right: 0;
+            background: #1a2526;
+            border: 1px solid #4db6ac;
+            border-radius: 8px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            backdrop-filter: blur(20px);
+            z-index: 1000;
+            min-width: 200px;
+            margin-top: 8px;
+        }
+
+        .menu-content.show {
+            display: block;
+        }
+
+        .menu-item {
+            color: #ffffff;
+            padding: 12px 16px;
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: background 0.2s ease;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .menu-item:last-child {
+            border-bottom: none;
+        }
+
+        .menu-item:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .menu-item.logout {
+            color: #ff6b6b;
+        }
+
+        /* Profile Sections */
+        .profile-section {
+            background: #1a2526;
+            border: 1px solid #4db6ac;
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 24px;
+        }
+
+        .section-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 20px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .section-icon {
+            color: #4db6ac;
+            font-size: 20px;
+        }
+
+        .section-title {
+            font-size: 20px;
+            font-weight: 600;
+            color: #ffffff;
+            margin: 0;
+        }
+
+        /* Form Styles */
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-label {
+            display: block;
+            color: #ffffff;
+            font-size: 14px;
+            font-weight: 500;
+            margin-bottom: 8px;
+        }
+
+        .form-input {
+            width: 100%;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            padding: 12px 16px;
+            color: #ffffff;
+            font-size: 14px;
+            transition: all 0.2s ease;
+            box-sizing: border-box;
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: #4db6ac;
+            background: rgba(255, 255, 255, 0.08);
+        }
+
+        .form-input::placeholder {
+            color: rgba(255, 255, 255, 0.5);
+        }
+
+        .form-select {
+            width: 100%;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            padding: 12px 16px;
+            color: #ffffff;
+            font-size: 14px;
+            transition: all 0.2s ease;
+            cursor: pointer;
+        }
+
+        .form-select:focus {
+            outline: none;
+            border-color: #4db6ac;
+            background: rgba(255, 255, 255, 0.08);
+        }
+
+        .form-select option {
+            background: #1a2526;
+            color: #ffffff;
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+
+        @media (max-width: 768px) {
+            .form-row {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Button Styles */
+        .btn {
+            background: #4db6ac;
+            color: #ffffff;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn:hover {
+            background: #37a69c;
+            transform: translateY(-1px);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.1);
+            color: #ffffff;
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .btn-danger {
+            background: #ff6b6b;
+            color: #ffffff;
+        }
+
+        .btn-danger:hover {
+            background: #ff5252;
+        }
+
+        /* Status Messages */
+        .status-message {
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 16px;
+            font-size: 14px;
+            display: none;
+        }
+
+        .status-success {
+            background: rgba(76, 182, 172, 0.2);
+            border: 1px solid #4db6ac;
+            color: #4db6ac;
+        }
+
+        .status-error {
+            background: rgba(255, 107, 107, 0.2);
+            border: 1px solid #ff6b6b;
+            color: #ff6b6b;
+        }
+
+        /* Current Info Display */
+        .current-info {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+
+        .info-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .info-item:last-child {
+            border-bottom: none;
+        }
+
+        .info-label {
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 14px;
+        }
+
+        .info-value {
+            color: #ffffff;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .subscription-badge {
+            background: #4db6ac;
+            color: #ffffff;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 500;
+            text-transform: uppercase;
+        }
+
+        .subscription-badge.free {
+            background: rgba(255, 255, 255, 0.2);
+        }
+    </style>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 </head>
 <body>
-    <div class="container">
-        <h1>Your Profile, {{ name }}</h1>
-        <p><b>Subscription:</b> {{ subscription }}</p>
-        <p><b>Email:</b> {{ email }}</p>
-        {% if subscription == 'free' %}
-            <button onclick="location.href='/subscribe'" class="sleek-btn">Upgrade to Premium</button>
-        {% endif %}
-        <button onclick="location.href='/premium_dashboard'" class="sleek-btn">Dashboard</button>
-        <button onclick="location.href='/nutrition'" class="sleek-btn">Nutrition</button>
-        <button onclick="location.href='/'" class="sleek-btn">Go Back</button>
+    <div class="profile-container">
+        <!-- Header with Menu -->
+        <div class="profile-header">
+            <div>
+                <h1 class="profile-title">Profile</h1>
+                <p class="profile-subtitle">Manage your account settings</p>
+            </div>
+            
+            <!-- Menu Dropdown -->
+            <div class="menu-dropdown">
+                <button class="menu-btn" onclick="toggleMenu()">
+                    <i class="fas fa-bars"></i>
+                    Menu
+                </button>
+                <div class="menu-content" id="menuContent">
+                    {% if username == 'admin' %}
+                    <a href="/admin" class="menu-item">
+                        <i class="fas fa-cog"></i>
+                        Admin Dashboard
+                    </a>
+                    <a href="/admin_profile" class="menu-item">
+                        <i class="fas fa-user-shield"></i>
+                        Admin Profile
+                    </a>
+                    {% endif %}
+                    <a href="/profile" class="menu-item">
+                        <i class="fas fa-user"></i>
+                        Profile
+                    </a>
+                    <a href="/messages" class="menu-item">
+                        <i class="fas fa-envelope"></i>
+                        Messages
+                    </a>
+                    <a href="/premium_dashboard" class="menu-item">
+                        <i class="fas fa-tachometer-alt"></i>
+                        Main Dashboard
+                    </a>
+                    <a href="/feed" class="menu-item">
+                        <i class="fas fa-users"></i>
+                        Social
+                    </a>
+                    <a href="/communities" class="menu-item">
+                        <i class="fas fa-layer-group"></i>
+                        Your Communities
+                    </a>
+                    <a href="/your_sports" class="menu-item">
+                        <i class="fas fa-dumbbell"></i>
+                        Your Sports
+                    </a>
+                    <a href="/logout" class="menu-item logout">
+                        <i class="fas fa-sign-out-alt"></i>
+                        Logout
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Current Account Info -->
+        <div class="profile-section">
+            <div class="section-header">
+                <i class="fas fa-user-circle section-icon"></i>
+                <h2 class="section-title">Account Information</h2>
+            </div>
+            
+            <div class="current-info">
+                <div class="info-item">
+                    <span class="info-label">Username</span>
+                    <span class="info-value">{{ username }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Email</span>
+                    <span class="info-value">{{ user.email or 'Not set' }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Subscription</span>
+                    <span class="subscription-badge {{ user.subscription or 'free' }}">{{ user.subscription or 'Free' }}</span>
+                </div>
+                {% if user.subscription == 'free' %}
+                <div class="info-item">
+                    <span class="info-label">Upgrade</span>
+                    <button onclick="location.href='/subscribe'" class="btn">
+                        <i class="fas fa-crown"></i>
+                        Upgrade to Premium
+                    </button>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Password Update -->
+        <div class="profile-section">
+            <div class="section-header">
+                <i class="fas fa-lock section-icon"></i>
+                <h2 class="section-title">Update Password</h2>
+            </div>
+            
+            <div id="passwordStatus" class="status-message"></div>
+            
+            <form id="passwordForm">
+                <div class="form-group">
+                    <label class="form-label">Current Password</label>
+                    <input type="password" id="currentPassword" class="form-input" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">New Password</label>
+                    <input type="password" id="newPassword" class="form-input" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Confirm New Password</label>
+                    <input type="password" id="confirmPassword" class="form-input" required>
+                </div>
+                <button type="submit" class="btn">
+                    <i class="fas fa-key"></i>
+                    Update Password
+                </button>
+            </form>
+        </div>
+
+        <!-- Email Update -->
+        <div class="profile-section">
+            <div class="section-header">
+                <i class="fas fa-envelope section-icon"></i>
+                <h2 class="section-title">Update Email</h2>
+            </div>
+            
+            <div id="emailStatus" class="status-message"></div>
+            
+            <form id="emailForm">
+                <div class="form-group">
+                    <label class="form-label">New Email Address</label>
+                    <input type="email" id="newEmail" class="form-input" required>
+                </div>
+                <button type="submit" class="btn">
+                    <i class="fas fa-envelope"></i>
+                    Update Email
+                </button>
+            </form>
+        </div>
+
+        <!-- Personal Information -->
+        <div class="profile-section">
+            <div class="section-header">
+                <i class="fas fa-user-edit section-icon"></i>
+                <h2 class="section-title">Personal Information</h2>
+            </div>
+            
+            <div id="personalStatus" class="status-message"></div>
+            
+            <form id="personalForm">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Age</label>
+                        <input type="number" id="age" class="form-input" min="13" max="120" value="{{ user.age or '' }}">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Gender</label>
+                        <select id="gender" class="form-select">
+                            <option value="">Select gender</option>
+                            <option value="male" {{ 'selected' if user.gender == 'male' else '' }}>Male</option>
+                            <option value="female" {{ 'selected' if user.gender == 'female' else '' }}>Female</option>
+                            <option value="other" {{ 'selected' if user.gender == 'other' else '' }}>Other</option>
+                            <option value="prefer_not_to_say" {{ 'selected' if user.gender == 'prefer_not_to_say' else '' }}>Prefer not to say</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Weight (kg)</label>
+                    <input type="number" id="weight" class="form-input" min="30" max="300" step="0.1" value="{{ user.weight or '' }}">
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Country</label>
+                        <input type="text" id="country" class="form-input" value="{{ user.country or '' }}">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">City</label>
+                        <input type="text" id="city" class="form-input" value="{{ user.city or '' }}">
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Industry of Work</label>
+                    <select id="industry" class="form-select">
+                        <option value="">Select industry</option>
+                        <option value="technology" {{ 'selected' if user.industry == 'technology' else '' }}>Technology</option>
+                        <option value="healthcare" {{ 'selected' if user.industry == 'healthcare' else '' }}>Healthcare</option>
+                        <option value="finance" {{ 'selected' if user.industry == 'finance' else '' }}>Finance</option>
+                        <option value="education" {{ 'selected' if user.industry == 'education' else '' }}>Education</option>
+                        <option value="retail" {{ 'selected' if user.industry == 'retail' else '' }}>Retail</option>
+                        <option value="manufacturing" {{ 'selected' if user.industry == 'manufacturing' else '' }}>Manufacturing</option>
+                        <option value="consulting" {{ 'selected' if user.industry == 'consulting' else '' }}>Consulting</option>
+                        <option value="marketing" {{ 'selected' if user.industry == 'marketing' else '' }}>Marketing</option>
+                        <option value="legal" {{ 'selected' if user.industry == 'legal' else '' }}>Legal</option>
+                        <option value="government" {{ 'selected' if user.industry == 'government' else '' }}>Government</option>
+                        <option value="non_profit" {{ 'selected' if user.industry == 'non_profit' else '' }}>Non-profit</option>
+                        <option value="other" {{ 'selected' if user.industry == 'other' else '' }}>Other</option>
+                    </select>
+                </div>
+                
+                <button type="submit" class="btn">
+                    <i class="fas fa-save"></i>
+                    Save Personal Information
+                </button>
+            </form>
+        </div>
     </div>
+
+    <script>
+        // Menu Dropdown
+        function toggleMenu() {
+            const menuContent = document.getElementById('menuContent');
+            menuContent.classList.toggle('show');
+        }
+
+        // Close menu when clicking outside
+        window.onclick = function(event) {
+            const menuDropdown = document.querySelector('.menu-dropdown');
+            if (!menuDropdown.contains(event.target)) {
+                document.getElementById('menuContent').classList.remove('show');
+            }
+        }
+
+        // Password Update
+        document.getElementById('passwordForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const currentPassword = document.getElementById('currentPassword').value;
+            const newPassword = document.getElementById('newPassword').value;
+            const confirmPassword = document.getElementById('confirmPassword').value;
+            
+            if (newPassword !== confirmPassword) {
+                showStatus('passwordStatus', 'New passwords do not match', 'error');
+                return;
+            }
+            
+            if (newPassword.length < 6) {
+                showStatus('passwordStatus', 'Password must be at least 6 characters long', 'error');
+                return;
+            }
+            
+            fetch('/update_password', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-CSRFToken': '{{ csrf_token }}'
+                },
+                body: `current_password=${encodeURIComponent(currentPassword)}&new_password=${encodeURIComponent(newPassword)}`
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showStatus('passwordStatus', 'Password updated successfully!', 'success');
+                    document.getElementById('passwordForm').reset();
+                } else {
+                    showStatus('passwordStatus', data.error || 'Error updating password', 'error');
+                }
+            })
+            .catch(error => {
+                showStatus('passwordStatus', 'Error updating password', 'error');
+            });
+        });
+
+        // Email Update
+        document.getElementById('emailForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const newEmail = document.getElementById('newEmail').value;
+            
+            fetch('/update_email', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-CSRFToken': '{{ csrf_token }}'
+                },
+                body: `new_email=${encodeURIComponent(newEmail)}`
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showStatus('emailStatus', 'Email updated successfully!', 'success');
+                    document.getElementById('emailForm').reset();
+                } else {
+                    showStatus('emailStatus', data.error || 'Error updating email', 'error');
+                }
+            })
+            .catch(error => {
+                showStatus('emailStatus', 'Error updating email', 'error');
+            });
+        });
+
+        // Personal Information Update
+        document.getElementById('personalForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData();
+            formData.append('age', document.getElementById('age').value);
+            formData.append('gender', document.getElementById('gender').value);
+            formData.append('weight', document.getElementById('weight').value);
+            formData.append('country', document.getElementById('country').value);
+            formData.append('city', document.getElementById('city').value);
+            formData.append('industry', document.getElementById('industry').value);
+            formData.append('csrf_token', '{{ csrf_token }}');
+            
+            fetch('/update_personal_info', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showStatus('personalStatus', 'Personal information updated successfully!', 'success');
+                } else {
+                    showStatus('personalStatus', data.error || 'Error updating personal information', 'error');
+                }
+            })
+            .catch(error => {
+                showStatus('personalStatus', 'Error updating personal information', 'error');
+            });
+        });
+
+        // Status message helper
+        function showStatus(elementId, message, type) {
+            const element = document.getElementById(elementId);
+            element.textContent = message;
+            element.className = `status-message status-${type}`;
+            element.style.display = 'block';
+            
+            setTimeout(() => {
+                element.style.display = 'none';
+            }, 5000);
+        }
+    </script>
 </body>
 </html>
