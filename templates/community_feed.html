@@ -921,7 +921,7 @@
             <img src="{% if community.background_path.startswith('http') %}{{ community.background_path }}{% else %}{{ url_for('static', filename=community.background_path) }}{% endif %}" 
                  alt="{{ community.name }} Header" 
                  class="header-image"
-                 onerror="console.log('Header image failed to load:', this.src); this.style.display='none';"
+                 onerror="console.log('Header image failed to load:', this.src); this.style.display='none'; this.parentElement.style.display='none';"
                  onload="console.log('Header image loaded successfully:', this.src);">
         </div>
         {% endif %}

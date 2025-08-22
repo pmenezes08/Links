@@ -3631,6 +3631,12 @@ def community_background_file(filename):
     """Serve community background images"""
     try:
         logger.info(f"Community background request: {filename}")
+        # Check if file exists
+        import os
+        file_path = os.path.join('static', 'community_backgrounds', filename)
+        if not os.path.exists(file_path):
+            logger.warning(f"Community background file not found: {file_path}")
+            return "Image not found", 404
         return send_from_directory('static/community_backgrounds', filename)
     except Exception as e:
         logger.error(f"Error serving community background {filename}: {str(e)}")
