@@ -246,36 +246,7 @@
             </div>
         </div>
 
-        <!-- Admin Info Section (only visible to admin/creator) -->
-        {% if username == community.creator_username or username == 'admin' %}
-        <div class="admin-info-section" id="adminInfoSection" style="display: none;">
-            <div class="admin-info-header">
-                <h3><i class="fas fa-info-circle"></i> Community Information</h3>
-                <button class="close-admin-info" onclick="hideAdminInfo()">
-                    <i class="fas fa-times"></i>
-                </button>
-            </div>
-            <div class="admin-info-content">
-                <div class="info-section">
-                    <h4>Important Information</h4>
-                    <textarea id="communityInfo" placeholder="Add important information for community members..." rows="4">{{ community.info or '' }}</textarea>
-                    <button onclick="saveCommunityInfo()" class="sleek-btn small">Save Info</button>
-                </div>
-                <div class="files-section">
-                    <h4>Important Files</h4>
-                    <div class="file-upload-area">
-                        <input type="file" id="communityFile" multiple accept=".pdf,.doc,.docx,.txt,.jpg,.jpeg,.png,.gif">
-                        <label for="communityFile" class="file-upload-label">
-                            <i class="fas fa-upload"></i> Upload Files
-                        </label>
-                    </div>
-                    <div id="communityFiles" class="community-files">
-                        <!-- Files will be loaded here -->
-                    </div>
-                </div>
-            </div>
-        </div>
-        {% endif %}
+
 
         <!-- Composer -->
         <div class="composer-card">
@@ -377,6 +348,43 @@
             </div>
         </div>
     </div>
+
+    <!-- Admin Info Lateral Modal -->
+    {% if username == community.creator_username or username == 'admin' %}
+    <div id="adminInfoModal" class="lateral-modal">
+        <div class="lateral-modal-content">
+            <div class="lateral-modal-header">
+                <h3><i class="fas fa-cog"></i> Community Management</h3>
+                <button class="close-lateral-modal" onclick="closeAdminInfoModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="lateral-modal-body">
+                <div class="admin-section">
+                    <h4><i class="fas fa-info-circle"></i> Important Information</h4>
+                    <textarea id="communityInfo" placeholder="Add important information for community members..." rows="6">{{ community.info or '' }}</textarea>
+                    <button onclick="saveCommunityInfo()" class="admin-btn">
+                        <i class="fas fa-save"></i> Save Information
+                    </button>
+                </div>
+                
+                <div class="admin-section">
+                    <h4><i class="fas fa-file-upload"></i> Important Files</h4>
+                    <div class="file-upload-zone">
+                        <input type="file" id="communityFile" multiple accept=".pdf,.doc,.docx,.txt,.jpg,.jpeg,.png,.gif">
+                        <label for="communityFile" class="file-drop-zone">
+                            <i class="fas fa-cloud-upload-alt"></i>
+                            <span>Drop files here or click to upload</span>
+                        </label>
+                    </div>
+                    <div id="communityFiles" class="files-list">
+                        <!-- Files will be loaded here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
 
     <script>
         // Ensure members modal is hidden by default
