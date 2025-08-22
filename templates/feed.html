@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Social</title>
     <!-- <meta name="csrf-token" content="{{ csrf_token }}"> -->
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v='1.1') }}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}?v=2.0">
     <style>
         body {
             background-color: #000000 !important;
@@ -34,7 +34,7 @@
     </style>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <meta name="current-username" content="{{ username }}">
-    <script src="{{ url_for('static', filename='script.js', v='1.1') }}"></script>
+    <script src="{{ url_for('static', filename='script.js') }}?v=2.0"></script>
 </head>
 <body>
     <!-- Sidebar Menu -->
@@ -137,5 +137,56 @@
             </div>
         </div>
     </div>
+
+    <script>
+        $(document).ready(function() {
+            console.log('Feed page script loaded');
+            
+            let menuTimeout;
+            
+            // Show menu on button click
+            $('.menu-btn').on('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                console.log('Menu clicked');
+                $('.dropdown-content').slideDown(200);
+            });
+            
+            // Keep menu open when hovering over sidebar
+            $('.sidebar').on('mouseenter', function() {
+                clearTimeout(menuTimeout);
+            });
+            
+            // Keep menu open when hovering over dropdown
+            $('.dropdown-content').on('mouseenter', function() {
+                clearTimeout(menuTimeout);
+            });
+            
+            // Close menu when leaving sidebar area
+            $('.sidebar').on('mouseleave', function() {
+                menuTimeout = setTimeout(function() {
+                    $('.dropdown-content').slideUp(200);
+                }, 300); // 300ms delay before closing
+            });
+            
+            // Close menu when leaving dropdown
+            $('.dropdown-content').on('mouseleave', function() {
+                menuTimeout = setTimeout(function() {
+                    $('.dropdown-content').slideUp(200);
+                }, 300); // 300ms delay before closing
+            });
+            
+            // Close menu on escape key
+            $(document).on('keydown', function(e) {
+                if (e.key === 'Escape') {
+                    $('.dropdown-content').slideUp(200);
+                }
+            });
+            
+            // Debug info
+            console.log('Menu button found:', $('.menu-btn').length);
+            console.log('Dropdown found:', $('.dropdown-content').length);
+        });
+    </script>
 </body>
 </html>
