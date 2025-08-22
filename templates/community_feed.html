@@ -57,6 +57,34 @@
             border-color: {{ community.accent_color or '#4db6ac' }} !important;
         }
 
+        /* Community Header Layout */
+        .community-header {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            margin-bottom: 30px;
+            padding: 20px;
+            position: relative;
+        }
+
+        .community-title-section {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .community-title-section h1 {
+            margin-bottom: 8px;
+            margin-top: 0;
+        }
+
+        .community-title-section .community-type {
+            margin-bottom: 0;
+            margin-top: 0;
+        }
+
         /* Admin Announcements Styles */
         .community-actions {
             display: flex;
@@ -572,8 +600,10 @@
         </div>
         {% endif %}
         <div class="community-header">
-            <h1>{{ community.name }}</h1>
-            <p class="community-type">{{ community.type }} Community</p>
+            <div class="community-title-section">
+                <h1>{{ community.name }}</h1>
+                <p class="community-type">{{ community.type }} Community</p>
+            </div>
             <div class="community-actions">
                 <button class="members-btn" onclick="showMembersModal()">
                     <i class="fas fa-users"></i> Members
