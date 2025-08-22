@@ -238,7 +238,7 @@ def init_db():
             # Insert admin user
             logger.info("Inserting admin user...")
             c.execute("INSERT OR IGNORE INTO users (username, email, subscription, password, first_name, last_name, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                      ('admin', 'admin@workoutx.com', 'premium', '12345', 'Admin', 'User', datetime.now().strftime('%m.%d.%y %H:%M')))
+                      ('admin', 'admin@cpoint.com', 'premium', '12345', 'Admin', 'User', datetime.now().strftime('%m.%d.%y %H:%M')))
             
             # Create posts table
             logger.info("Creating posts table...")

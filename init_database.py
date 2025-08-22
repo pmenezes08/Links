@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Database initialization script for PythonAnywhere deployment.
-This script creates all necessary tables for the WorkoutX application.
+This script creates all necessary tables for the C.Point application.
 """
 
 import sqlite3
