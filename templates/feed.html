@@ -7,6 +7,31 @@
     <!-- <meta name="csrf-token" content="{{ csrf_token }}"> -->
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v='1.1') }}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+        body {
+            background-color: #000000 !important;
+        }
+        
+        .container.feed {
+            background-color: #000000 !important;
+        }
+        
+        .composer-card, .post {
+            background-color: #1a2526 !important;
+            border-color: #4db6ac !important;
+        }
+        
+        .composer-input {
+            background-color: rgba(255, 255, 255, 0.05) !important;
+            color: #ffffff !important;
+            border-color: rgba(255, 255, 255, 0.2) !important;
+        }
+        
+        .composer-input:focus {
+            border-color: #4db6ac !important;
+            background-color: rgba(255, 255, 255, 0.08) !important;
+        }
+    </style>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <meta name="current-username" content="{{ username }}">
     <script src="{{ url_for('static', filename='script.js', v='1.1') }}"></script>
