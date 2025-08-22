@@ -98,260 +98,139 @@
         .reaction-btn.active {
             color: #ffffff !important;
             background-color: #4db6ac !important;
-            border-color: #4db6ac !important;
-        }
-        
-        .delete-post {
-            color: #dc3545 !important;
-            background-color: #ffffff !important;
-            border: 1px solid #dc3545 !important;
-            padding: 4px 8px !important;
-            border-radius: 4px !important;
-            transition: all 0.2s ease !important;
-        }
-        
-        .delete-post:hover {
-            background-color: #dc3545 !important;
-            color: #ffffff !important;
-        }
-        
-        .reply-indicator {
-            color: #6c757d !important;
-        }
-        
-        .composer-input::placeholder {
-            color: #adb5bd !important;
-        }
-        
-        .composer-input {
-            background-color: #ffffff !important;
-            border: 1px solid #dee2e6 !important;
-            color: #495057 !important;
-        }
-        
-        .composer-input:focus {
-            border-color: #4db6ac !important;
-            box-shadow: 0 0 0 2px rgba(77, 182, 172, 0.1) !important;
-        }
-        
-        .members-btn {
-            background-color: #ffffff !important;
-            color: #2d8a7e !important;
-            border: 1px solid #4db6ac !important;
-            transition: all 0.2s ease !important;
-        }
-        
-        .members-btn:hover {
-            background-color: #4db6ac !important;
-            color: #ffffff !important;
-        }
-        
-        .admin-info-btn, .edit-community-btn {
-            background-color: #4db6ac !important;
-            color: #ffffff !important;
-            border: 1px solid #4db6ac !important;
-            transition: all 0.2s ease !important;
-        }
-        
-        .admin-info-btn:hover, .edit-community-btn:hover {
-            background-color: #37a69c !important;
-            border-color: #37a69c !important;
         }
         
         .sleek-btn {
             background-color: #4db6ac !important;
             color: #ffffff !important;
-            border: 1px solid #4db6ac !important;
         }
         
         .sleek-btn:hover {
             background-color: #37a69c !important;
-            border-color: #37a69c !important;
+        }
+        
+        .composer-card, .post {
+            background-color: #ffffff !important;
+            border: 1px solid #dee2e6 !important;
+            color: #495057 !important;
+        }
+        
+        .composer-input {
+            background-color: #ffffff !important;
+            color: #000000 !important;
+            border-color: #4db6ac !important;
+        }
+        
+        .post-header strong {
+            color: #2d8a7e !important;
+        }
+        
+        .post p {
+            color: #495057 !important;
+        }
+        
+        .timestamp {
+            color: #6c757d !important;
+        }
+        
+        .community-header h1 {
+            color: #2d8a7e !important;
+        }
+        
+        .community-type {
+            color: #6c757d !important;
+        }
+        
+        .members-btn, .admin-info-btn, .edit-community-btn, .polls-btn {
+            background-color: #4db6ac !important;
+            color: #ffffff !important;
+            border: 1px solid #4db6ac !important;
+        }
+        
+        .members-btn:hover, .admin-info-btn:hover, .edit-community-btn:hover, .polls-btn:hover {
+            background-color: #37a69c !important;
         }
         {% endif %}
 
-        /* Community Header Layout */
-        .community-header {
+        /* Community Actions Button Styles */
+        .community-actions {
             display: flex;
-            flex-direction: column;
+            gap: 10px;
             align-items: center;
-            text-align: center;
-            margin-bottom: 30px;
-            padding: 20px;
-            position: relative;
+            flex-wrap: wrap;
         }
-
-        .community-title-section {
+        
+        .members-btn, .admin-info-btn, .edit-community-btn, .polls-btn {
             display: flex;
-            flex-direction: column;
             align-items: center;
-            margin-bottom: 15px;
-        }
-
-        .community-title-section h1 {
-            margin-bottom: 8px;
-            margin-top: 0;
-        }
-
-        .community-title-section .community-type {
-            margin-bottom: 0;
-            margin-top: 0;
-        }
-
-        /* Fix members button positioning */
-        .members-btn {
-            position: static !important;
-            margin: 0 5px;
-        }
-
-        .admin-info-btn {
-            margin: 0 5px;
-        }
-
-        .edit-community-btn {
-            background-color: {{ community.accent_color or '#4db6ac' }} !important;
-            color: {{ community.text_color or '#ffffff' }} !important;
-            border: none;
-            padding: 8px 12px;
+            gap: 8px;
+            padding: 8px 16px;
             border-radius: 6px;
-            font-size: 12px;
+            font-size: 14px;
+            font-weight: 500;
+            text-decoration: none;
+            border: none;
             cursor: pointer;
             transition: all 0.2s ease;
-            display: flex;
-            align-items: center;
-            gap: 4px;
-            margin: 0 5px;
+            background-color: {{ community.accent_color or '#4db6ac' }};
+            color: {{ community.text_color or '#ffffff' }};
         }
-
-        .edit-community-btn:hover {
-            opacity: 0.8;
+        
+        .members-btn:hover, .admin-info-btn:hover, .edit-community-btn:hover, .polls-btn:hover {
+            background-color: {{ community.accent_color or '#4db6ac' }}dd;
+            transform: translateY(-1px);
         }
-
-        /* Edit Community Modal Styles */
-        #editCommunityModal .modal-content {
-            max-width: 600px;
-            width: 90%;
-        }
-
-        #editCommunityModal .form-group {
-            margin-bottom: 20px;
-        }
-
-        #editCommunityModal label {
-            display: block;
-            margin-bottom: 8px;
-            font-weight: 500;
-            color: {{ '#333333' if community.template == 'light' else '#ffffff' }};
-        }
-
-        #editCommunityModal input,
-        #editCommunityModal textarea,
-        #editCommunityModal select {
-            width: 100%;
-            padding: 10px;
-            border: 1px solid {{ '#cccccc' if community.template == 'light' else '#4db6ac' }};
-            border-radius: 6px;
-            background-color: {{ '#ffffff' if community.template == 'light' else '#1a2526' }};
-            color: {{ '#333333' if community.template == 'light' else '#ffffff' }};
+        
+        .members-btn i, .admin-info-btn i, .edit-community-btn i, .polls-btn i {
             font-size: 14px;
         }
 
-        #editCommunityModal input:focus,
-        #editCommunityModal textarea:focus,
-        #editCommunityModal select:focus {
-            outline: none;
-            border-color: #4db6ac;
-            box-shadow: 0 0 0 2px rgba(77, 182, 172, 0.2);
-        }
-
-        .file-upload-section {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            margin-bottom: 10px;
-        }
-
-        .selected-file-name {
-            color: #4db6ac;
-            font-size: 12px;
-        }
-
-        .current-background-preview img {
-            border: 1px solid #ddd;
-            object-fit: cover;
-        }
-
-        .form-actions {
-            display: flex;
-            gap: 10px;
-            justify-content: flex-end;
-            margin-top: 20px;
-        }
-
-        .btn-secondary {
-            background-color: #666666;
-        }
-        
-
-        
-        /* Compact Poll Display Styles */
+        /* Poll Styles */
         .poll-container-compact {
-            background: rgba(255, 255, 255, 0.03);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 6px;
+            background: rgba(77, 182, 172, 0.1);
+            border: 1px solid {{ community.accent_color or '#4db6ac' }};
+            border-radius: 8px;
             padding: 12px;
-            margin: 8px 0;
-            width: 250px;
-            float: right;
-            margin-left: 16px;
+            margin: 10px 0;
         }
         
         .poll-question-compact {
             font-weight: 600;
             margin-bottom: 8px;
-            color: #ffffff;
-            font-size: 14px;
-        }
-        
-        .poll-question-compact i {
-            color: #4db6ac;
-            margin-right: 6px;
+            color: {{ community.text_color or '#ffffff' }};
         }
         
         .poll-options-compact {
             display: flex;
             flex-direction: column;
-            gap: 4px;
+            gap: 6px;
         }
         
         .poll-option-compact {
-            background: rgba(255, 255, 255, 0.02);
-            border: 1px solid rgba(255, 255, 255, 0.05);
-            border-radius: 4px;
-            padding: 6px 8px;
-            cursor: pointer;
-            transition: all 0.2s ease;
             display: flex;
             justify-content: space-between;
             align-items: center;
+            padding: 8px 12px;
+            background: rgba(77, 182, 172, 0.05);
+            border: 1px solid rgba(77, 182, 172, 0.2);
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s ease;
         }
         
         .poll-option-compact:hover {
-            background: rgba(255, 255, 255, 0.08);
-            border-color: #4db6ac;
+            background: rgba(77, 182, 172, 0.15);
+            border-color: {{ community.accent_color or '#4db6ac' }};
         }
         
         .poll-option-text-compact {
-            color: #ffffff;
-            font-size: 12px;
-            flex: 1;
+            font-weight: 500;
+            color: {{ community.text_color or '#ffffff' }};
         }
         
         .poll-option-votes-compact {
-            color: #4db6ac;
-            font-size: 11px;
             font-weight: 600;
-            margin-left: 8px;
+            color: {{ community.accent_color or '#4db6ac' }};
         }
         
         .poll-footer-compact {
@@ -360,21 +239,38 @@
             align-items: center;
             margin-top: 8px;
             padding-top: 8px;
-            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            border-top: 1px solid rgba(77, 182, 172, 0.2);
         }
         
         .poll-total-compact {
-            color: #9fb0b5;
-            font-size: 11px;
+            font-size: 12px;
+            color: {{ community.text_color or '#ffffff' }}aa;
         }
         
         .poll-voted-compact {
-            color: #4db6ac;
-            font-size: 11px;
+            color: {{ community.accent_color or '#4db6ac' }};
+            font-size: 12px;
         }
 
         /* Polls Modal Styles */
+        #pollsModal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+        }
+        
         #pollsModal .modal-content {
+            background-color: {{ community.card_color or '#1a2526' }};
+            margin: 5% auto;
+            padding: 20px;
+            border: 1px solid {{ community.accent_color or '#4db6ac' }};
+            border-radius: 8px;
+            width: 80%;
             max-width: 600px;
             max-height: 80vh;
             overflow-y: auto;
@@ -382,29 +278,23 @@
         
         .polls-tabs {
             display: flex;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            border-bottom: 1px solid {{ community.accent_color or '#4db6ac' }};
             margin-bottom: 20px;
         }
         
         .poll-tab {
-            background: none;
-            border: none;
-            color: #9fb0b5;
-            padding: 12px 20px;
+            padding: 10px 20px;
             cursor: pointer;
-            font-size: 14px;
-            font-weight: 500;
+            border: none;
+            background: none;
+            color: {{ community.text_color or '#ffffff' }};
             border-bottom: 2px solid transparent;
             transition: all 0.2s ease;
         }
         
-        .poll-tab:hover {
-            color: #ffffff;
-        }
-        
         .poll-tab.active {
-            color: #4db6ac;
-            border-bottom-color: #4db6ac;
+            border-bottom-color: {{ community.accent_color or '#4db6ac' }};
+            color: {{ community.accent_color or '#4db6ac' }};
         }
         
         .poll-tab-content {
@@ -416,582 +306,128 @@
         }
         
         .poll-item {
-            background: rgba(255, 255, 255, 0.03);
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: rgba(77, 182, 172, 0.05);
+            border: 1px solid rgba(77, 182, 172, 0.2);
             border-radius: 8px;
-            padding: 16px;
-            margin-bottom: 12px;
+            padding: 15px;
+            margin-bottom: 15px;
         }
         
         .poll-item-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 12px;
+            margin-bottom: 10px;
         }
         
         .poll-item-question {
             font-weight: 600;
-            color: #ffffff;
-            font-size: 16px;
+            color: {{ community.text_color or '#ffffff' }};
         }
         
         .poll-item-date {
-            color: #9fb0b5;
             font-size: 12px;
+            color: {{ community.text_color or '#ffffff' }}aa;
         }
         
         .poll-item-options {
             display: flex;
             flex-direction: column;
             gap: 8px;
+            margin-bottom: 10px;
         }
         
         .poll-item-option {
-            background: rgba(255, 255, 255, 0.02);
-            border: 1px solid rgba(255, 255, 255, 0.05);
-            border-radius: 6px;
-            padding: 10px;
-            cursor: pointer;
-            transition: all 0.2s ease;
             display: flex;
             justify-content: space-between;
             align-items: center;
+            padding: 8px 12px;
+            background: rgba(77, 182, 172, 0.05);
+            border: 1px solid rgba(77, 182, 172, 0.2);
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s ease;
         }
         
         .poll-item-option:hover {
-            background: rgba(255, 255, 255, 0.08);
-            border-color: #4db6ac;
+            background: rgba(77, 182, 172, 0.15);
+            border-color: {{ community.accent_color or '#4db6ac' }};
         }
         
         .poll-item-option-text {
-            color: #ffffff;
-            font-size: 14px;
+            font-weight: 500;
+            color: {{ community.text_color or '#ffffff' }};
         }
         
         .poll-item-option-votes {
-            color: #4db6ac;
-            font-size: 12px;
             font-weight: 600;
+            color: {{ community.accent_color or '#4db6ac' }};
         }
         
         .poll-item-footer {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-top: 12px;
-            padding-top: 12px;
-            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            padding-top: 10px;
+            border-top: 1px solid rgba(77, 182, 172, 0.2);
         }
         
         .poll-item-total {
-            color: #9fb0b5;
             font-size: 12px;
+            color: {{ community.text_color or '#ffffff' }}aa;
         }
         
         .poll-item-voted {
-            color: #4db6ac;
+            color: {{ community.accent_color or '#4db6ac' }};
             font-size: 12px;
         }
 
-        /* Admin Announcements Styles */
-        .community-actions {
+        /* File Upload Styles */
+        .file-upload-container {
             display: flex;
+            align-items: center;
             gap: 10px;
-            align-items: center;
-            flex-wrap: wrap;
         }
         
-        .polls-btn {
-            background-color: {{ community.accent_color or '#4db6ac' }} !important;
-            color: {{ community.text_color or '#ffffff' }} !important;
-            border: none;
-            padding: 8px 12px;
-            border-radius: 6px;
-            font-size: 12px;
-            cursor: pointer;
-            transition: all 0.2s ease;
+        .file-upload-btn {
             display: flex;
             align-items: center;
-            gap: 4px;
-            margin: 0 5px;
-        }
-        
-        .polls-btn:hover {
-            opacity: 0.8;
-        }
-
-        .admin-info-btn {
-            background-color: {{ community.accent_color or '#4db6ac' }} !important;
-            color: {{ community.text_color or '#ffffff' }} !important;
-            border: none;
-            padding: 8px 12px;
-            border-radius: 6px;
-            font-size: 12px;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            display: flex;
-            align-items: center;
-            gap: 4px;
-        }
-
-        .admin-info-btn:hover {
-            opacity: 0.8;
-        }
-
-        .admin-info-btn.has-notifications {
-            background-color: #4db6ac !important; /* Light turquoise for unread */
-        }
-
-        .admin-info-btn.read {
-            background-color: #2d8a7e !important; /* Dark turquoise for read */
-        }
-
-        /* Announcement Display Styles */
-        .announcement-card {
-            background-color: {{ community.card_color or '#1a2526' }} !important;
-            border: 1px solid {{ community.accent_color or '#4db6ac' }} !important;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            overflow: hidden;
-        }
-
-        .announcement-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 12px 16px;
-            background: rgba(255, 255, 255, 0.05);
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-        }
-
-        .announcement-title {
-            display: flex;
-            align-items: center;
-        }
-
-        .announcement-title i {
-            color: {{ community.accent_color or '#4db6ac' }} !important;
-            margin-right: 8px;
-        }
-
-        .announcement-title span {
-            color: {{ community.text_color or '#ffffff' }} !important;
-            font-weight: 600;
-            font-size: 14px;
-        }
-
-        .announcement-meta {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
-
-        .announcement-date {
-            color: rgba(255, 255, 255, 0.6) !important;
-            font-size: 12px;
-            font-weight: 400;
-        }
-
-        .mark-read-btn {
-            background: none;
-            border: none;
-            color: {{ community.accent_color or '#4db6ac' }} !important;
-            cursor: pointer;
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-size: 12px;
-            transition: all 0.2s ease;
-        }
-
-        .mark-read-btn:hover {
-            background: rgba(255, 255, 255, 0.1);
-        }
-
-        .announcement-content {
-            padding: 16px;
-            color: {{ community.text_color or '#ffffff' }} !important;
-            font-size: 14px;
-            line-height: 1.6;
-            white-space: pre-wrap;
-        }
-
-        /* Current Announcement in Modal */
-        .current-announcement-section {
-            margin-bottom: 30px;
-            padding: 16px;
-            background: rgba(255, 255, 255, 0.03);
-            border-radius: 8px;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-        }
-
-        .announcement-display {
-            background: rgba(255, 255, 255, 0.02);
-            border-radius: 6px;
-            overflow: hidden;
-        }
-
-        .announcement-display .announcement-meta {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 12px 16px;
-            background: rgba(255, 255, 255, 0.05);
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-        }
-
-        .announcement-display .announcement-date {
-            color: rgba(255, 255, 255, 0.6) !important;
-            font-size: 12px;
-            font-weight: 400;
-        }
-
-        .announcement-display .announcement-content {
-            padding: 16px;
-            color: {{ community.text_color or '#ffffff' }} !important;
-            font-size: 14px;
-            line-height: 1.6;
-            white-space: pre-wrap;
-        }
-
-        /* Compact Announcement System */
-        .section-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 12px;
-        }
-
-        .view-all-btn {
-            background: none;
-            border: none;
-            color: {{ community.accent_color or '#4db6ac' }} !important;
-            cursor: pointer;
-            font-size: 12px;
-            padding: 4px 8px;
-            border-radius: 4px;
-            transition: all 0.2s ease;
-        }
-
-        .view-all-btn:hover {
-            background: rgba(255, 255, 255, 0.1);
-        }
-
-        .latest-announcement-preview {
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 6px;
-            padding: 12px;
-            cursor: pointer;
-            transition: all 0.2s ease;
-        }
-
-        .latest-announcement-preview:hover {
-            background: rgba(255, 255, 255, 0.08);
-        }
-
-        .preview-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 8px;
-        }
-
-        .preview-date {
-            color: rgba(255, 255, 255, 0.6) !important;
-            font-size: 11px;
-        }
-
-        .preview-badge {
-            background: {{ community.accent_color or '#4db6ac' }} !important;
-            color: white !important;
-            font-size: 10px;
-            padding: 2px 6px;
-            border-radius: 10px;
-        }
-
-        .preview-content {
-            color: {{ community.text_color or '#ffffff' }} !important;
-            font-size: 13px;
-            line-height: 1.4;
-        }
-
-        .no-announcements {
-            text-align: center;
-            padding: 20px;
-            color: rgba(255, 255, 255, 0.5) !important;
-            font-size: 14px;
-        }
-
-        .no-announcements i {
-            font-size: 24px;
-            margin-bottom: 8px;
-            display: block;
-        }
-
-        /* File Description Input */
-        .file-description-input {
-            margin-top: 8px;
-        }
-
-        .file-description-input input {
-            width: 100%;
-            background: rgba(255, 255, 255, 0.05) !important;
-            color: {{ community.text_color or '#ffffff' }} !important;
-            border: 1px solid {{ community.accent_color or '#4db6ac' }} !important;
-            border-radius: 4px;
-            padding: 8px 12px;
-            font-size: 13px;
-        }
-
-        .file-description-input input::placeholder {
-            color: rgba(255, 255, 255, 0.5) !important;
-        }
-
-        /* Announcements Modal */
-        .announcements-modal {
-            max-width: 600px;
-            max-height: 80vh;
-        }
-
-        .announcement-item {
-            background: rgba(255, 255, 255, 0.03);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 6px;
-            padding: 16px;
-            margin-bottom: 12px;
-        }
-
-        .announcement-item-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 8px;
-        }
-
-        .announcement-actions {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .delete-announcement-btn {
-            background: none;
-            border: none;
-            color: #ff6b6b !important;
-            cursor: pointer;
-            padding: 4px 6px;
-            border-radius: 3px;
-            font-size: 12px;
-            transition: all 0.2s ease;
-        }
-
-        .delete-announcement-btn:hover {
-            background: rgba(255, 107, 107, 0.1);
-        }
-
-        .announcement-item-date {
-            color: rgba(255, 255, 255, 0.6) !important;
-            font-size: 12px;
-        }
-
-        .announcement-item-content {
-            color: {{ community.text_color or '#ffffff' }} !important;
-            font-size: 14px;
-            line-height: 1.5;
-            white-space: pre-wrap;
-        }
-
-        /* Lateral Modal Styles */
-        .lateral-modal {
-            position: fixed;
-            top: 0;
-            right: -400px;
-            width: 400px;
-            height: 100vh;
-            background-color: {{ community.card_color or '#1a2526' }} !important;
-            border-left: 1px solid {{ community.accent_color or '#4db6ac' }} !important;
-            z-index: 1000;
-            transition: right 0.3s ease;
-            overflow-y: auto;
-        }
-
-        .lateral-modal.open {
-            right: 0;
-        }
-
-        .lateral-modal-content {
-            height: 100%;
-            display: flex;
-            flex-direction: column;
-        }
-
-        .lateral-modal-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 20px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-            background: rgba(255, 255, 255, 0.03);
-        }
-
-        .lateral-modal-header h3 {
-            color: {{ community.text_color or '#ffffff' }} !important;
-            font-size: 18px;
-            margin: 0;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .close-lateral-modal {
-            background: none;
-            border: none;
-            color: {{ community.text_color or '#ffffff' }} !important;
-            cursor: pointer;
-            font-size: 18px;
-            padding: 4px;
-        }
-
-        .lateral-modal-body {
-            flex: 1;
-            padding: 20px;
-            overflow-y: auto;
-        }
-
-        .admin-section {
-            margin-bottom: 30px;
-        }
-
-        .admin-section h4 {
-            color: {{ community.text_color or '#ffffff' }} !important;
-            font-size: 16px;
-            margin: 0 0 12px 0;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }
-
-        #communityInfo {
-            width: 100%;
-            background-color: rgba(255, 255, 255, 0.05) !important;
-            color: {{ community.text_color or '#ffffff' }} !important;
-            border: 1px solid {{ community.accent_color or '#4db6ac' }} !important;
-            border-radius: 6px;
-            padding: 12px;
-            font-size: 14px;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            font-weight: 400;
-            line-height: 1.5;
-            resize: vertical;
-            margin-bottom: 12px;
-            min-height: 120px;
-        }
-
-        .admin-btn {
-            background-color: {{ community.accent_color or '#4db6ac' }} !important;
-            color: {{ community.text_color or '#ffffff' }} !important;
-            border: none;
-            padding: 10px 16px;
-            border-radius: 6px;
-            font-size: 14px;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            width: 100%;
             justify-content: center;
-        }
-
-        .admin-btn:hover {
-            opacity: 0.8;
-        }
-
-        .file-upload-zone {
-            border: 2px dashed {{ community.accent_color or '#4db6ac' }} !important;
-            border-radius: 8px;
-            padding: 20px;
-            text-align: center;
-            margin-bottom: 16px;
+            width: 40px;
+            height: 40px;
+            background-color: {{ community.accent_color or '#4db6ac' }};
+            color: {{ community.text_color or '#ffffff' }};
+            border: none;
+            border-radius: 50%;
+            cursor: pointer;
             transition: all 0.2s ease;
         }
-
-        .file-upload-zone:hover {
-            background: rgba(255, 255, 255, 0.02);
+        
+        .file-upload-btn:hover {
+            background-color: {{ community.accent_color or '#4db6ac' }}dd;
+            transform: scale(1.05);
         }
-
-        .file-upload-zone input[type="file"] {
-            display: none;
-        }
-
-        .file-drop-zone {
-            color: {{ community.accent_color or '#4db6ac' }} !important;
-            cursor: pointer;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 8px;
-            font-size: 14px;
-        }
-
-        .file-drop-zone i {
-            font-size: 24px;
-        }
-
-        .files-list {
-            display: grid;
-            gap: 8px;
-        }
-
-        .community-file {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            background: rgba(255, 255, 255, 0.05);
-            border-radius: 6px;
-            padding: 10px 12px;
-        }
-
-        .file-info {
-            display: flex;
-            align-items: flex-start;
-            gap: 8px;
-            color: {{ community.text_color or '#ffffff' }} !important;
-            font-size: 13px;
-        }
-
-        .file-details {
-            display: flex;
-            flex-direction: column;
-            gap: 2px;
-        }
-
-        .file-name {
-            font-weight: 500;
-        }
-
-        .file-description {
-            font-size: 11px;
-            color: rgba(255, 255, 255, 0.6) !important;
-            font-style: italic;
-        }
-
-        .file-actions {
-            display: flex;
-            gap: 6px;
-        }
-
-        .file-action-btn {
-            background: none;
-            border: none;
-            color: {{ community.accent_color or '#4db6ac' }} !important;
-            cursor: pointer;
-            padding: 4px 6px;
+        
+        .selected-file-name {
             font-size: 12px;
-            border-radius: 3px;
+            color: {{ community.text_color or '#ffffff' }}aa;
+            max-width: 200px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
-
+        
+        .file-action-btn {
+            background: rgba(255, 255, 255, 0.1);
+            color: {{ community.text_color or '#ffffff' }};
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            padding: 4px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s ease;
+        }
+        
         .file-action-btn:hover {
             background: rgba(255, 255, 255, 0.1);
         }
@@ -1147,6 +583,11 @@
         
         function updatePollDisplay(pollOptionElement, pollResults) {
             const pollContainer = pollOptionElement.closest('.poll-container-compact');
+            if (!pollContainer) {
+                console.error('Poll container not found');
+                return;
+            }
+            
             const totalVotes = pollResults.reduce((sum, option) => sum + option.votes, 0);
             
             // Update each option
@@ -1154,7 +595,9 @@
                 const optionElement = pollContainer.querySelector(`[data-option-id="${option.id}"]`);
                 if (optionElement) {
                     const votesElement = optionElement.querySelector('.poll-option-votes-compact');
-                    votesElement.textContent = option.votes;
+                    if (votesElement) {
+                        votesElement.textContent = option.votes;
+                    }
                 }
             });
             
@@ -1194,8 +637,8 @@
         </div>
     </div>
 
-            <!-- Main Content -->
-        <div class="container feed">
+    <!-- Main Content -->
+    <div class="container feed">
         {% if community.background_path %}
         <div class="community-header-image">
             <img src="{% if community.background_path.startswith('http') %}{{ community.background_path }}{% else %}{{ url_for('static', filename=community.background_path) }}{% endif %}" 
@@ -1227,8 +670,6 @@
                 {% endif %}
             </div>
         </div>
-
-
 
         <!-- Composer -->
         <div class="composer-card">
@@ -1314,8 +755,6 @@
                 <p>No posts yet in {{ community.name }}. Be the first!</p>
             {% endif %}
         </div>
-        
-        </div>
     </div>
 
     <!-- Post Modal -->
@@ -1357,153 +796,96 @@
         </div>
     </div>
 
-    <!-- Admin Announcements Lateral Modal -->
-    {% if username == community.creator_username or username == 'admin' %}
-    <div id="adminInfoModal" class="lateral-modal">
-        <div class="lateral-modal-content">
-            <div class="lateral-modal-header">
-                <h3><i class="fas fa-bullhorn"></i> Community Announcements</h3>
-                <button class="close-lateral-modal" onclick="closeAdminInfoModal()">
-                    <i class="fas fa-times"></i>
-                </button>
-            </div>
-            <div class="lateral-modal-body">
-                <!-- Announcements Section -->
-                <div class="admin-section">
-                    <div class="section-header">
-                        <h4><i class="fas fa-bullhorn"></i> Announcements</h4>
-                        <button class="view-all-btn" onclick="showAnnouncementsModal()">
-                            <i class="fas fa-history"></i> View All
-                        </button>
-                    </div>
-                    
-                    <!-- Latest Announcement Preview -->
-                    {% if community.info and community.info.strip() %}
-                    <div class="latest-announcement-preview" onclick="showAnnouncementsModal()">
-                        <div class="preview-header">
-                            <span class="preview-date">{{ community.info_updated_at if community.info_updated_at else 'Recently' }}</span>
-                            <span class="preview-badge">Latest</span>
-                        </div>
-                        <div class="preview-content">
-                            {{ community.info[:100] }}{% if community.info|length > 100 %}...{% endif %}
-                        </div>
-                    </div>
-                    {% else %}
-                    <div class="no-announcements">
-                        <i class="fas fa-bullhorn"></i>
-                        <span>No announcements yet</span>
-                    </div>
-                    {% endif %}
-                </div>
-                
-                <div class="admin-section">
-                    <h4><i class="fas fa-edit"></i> New Announcement</h4>
-                    <textarea id="communityInfo" placeholder="Write an announcement for community members..." rows="4"></textarea>
-                    <button onclick="saveCommunityInfo()" class="admin-btn">
-                        <i class="fas fa-paper-plane"></i> Publish Announcement
-                    </button>
-                </div>
-                
-                <div class="admin-section">
-                    <h4><i class="fas fa-paperclip"></i> Attached Files</h4>
-                    <div class="file-upload-zone">
-                        <input type="file" id="communityFile" multiple accept=".pdf,.doc,.docx,.txt,.jpg,.jpeg,.png,.gif">
-                        <label for="communityFile" class="file-drop-zone">
-                            <i class="fas fa-cloud-upload-alt"></i>
-                            <span>Drop files here or click to upload</span>
-                        </label>
-                    </div>
-                    <div class="file-description-input">
-                        <input type="text" id="fileDescription" placeholder="Describe what this file relates to..." maxlength="100">
-                    </div>
-                    <div id="communityFiles" class="files-list">
-                        <!-- Files will be loaded here -->
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    {% endif %}
-
-    <!-- Announcements History Modal -->
-    <div id="announcementsModal" class="modal">
-        <div class="modal-content announcements-modal">
+    <!-- Admin Info Modal -->
+    <div id="adminInfoModal" class="modal" style="display: none;">
+        <div class="modal-content admin-info-modal">
             <div class="modal-header">
-                <h2><i class="fas fa-history"></i> Announcement History</h2>
-                <span class="close" onclick="closeAnnouncementsModal()">&times;</span>
+                <h2><i class="fas fa-bullhorn"></i> Announcements</h2>
+                <span class="close" onclick="closeAdminInfoModal()">&times;</span>
             </div>
             <div class="modal-body">
-                <div id="announcementsList">
-                    <!-- Announcements will be loaded here -->
+                <div class="announcement-form">
+                    <h3>Create New Announcement</h3>
+                    <textarea id="announcementText" placeholder="Enter announcement text..." rows="4"></textarea>
+                    <div class="file-upload-section">
+                        <h4>Upload Files</h4>
+                        <input type="file" id="announcementFiles" multiple>
+                        <div id="fileList"></div>
+                    </div>
+                    <button onclick="saveAnnouncement()" class="sleek-btn">Publish Announcement</button>
+                </div>
+                <div class="announcements-history">
+                    <h3>Recent Announcements</h3>
+                    <div id="announcementsList">
+                        <!-- Announcements will be loaded here -->
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 
     <!-- Edit Community Modal -->
-    <div id="editCommunityModal" class="modal">
-        <div class="modal-content">
+    <div id="editCommunityModal" class="modal" style="display: none;">
+        <div class="modal-content edit-community-modal">
             <div class="modal-header">
                 <h2><i class="fas fa-edit"></i> Edit Community</h2>
                 <span class="close" onclick="closeEditCommunityModal()">&times;</span>
             </div>
             <div class="modal-body">
-                <form id="editCommunityForm">
+                <form id="editCommunityForm" enctype="multipart/form-data">
                     <div class="form-group">
-                        <label for="communityName">Community Name</label>
+                        <label for="communityName">Community Name:</label>
                         <input type="text" id="communityName" name="name" value="{{ community.name }}" required>
                     </div>
                     <div class="form-group">
-                        <label for="communityDescription">Description</label>
+                        <label for="communityDescription">Description:</label>
                         <textarea id="communityDescription" name="description" rows="3">{{ community.description or '' }}</textarea>
                     </div>
                     <div class="form-group">
-                        <label for="communityLocation">Location</label>
-                        <input type="text" id="communityLocation" name="location" value="{{ community.location or '' }}">
+                        <label for="communityType">Type:</label>
+                        <select id="communityType" name="type">
+                            <option value="Fitness" {{ 'selected' if community.type == 'Fitness' else '' }}>Fitness</option>
+                            <option value="Nutrition" {{ 'selected' if community.type == 'Nutrition' else '' }}>Nutrition</option>
+                            <option value="Wellness" {{ 'selected' if community.type == 'Wellness' else '' }}>Wellness</option>
+                            <option value="Sports" {{ 'selected' if community.type == 'Sports' else '' }}>Sports</option>
+                            <option value="General" {{ 'selected' if community.type == 'General' else '' }}>General</option>
+                        </select>
                     </div>
                     <div class="form-group">
-                        <label for="communityBackground">Background Image</label>
-                        <div class="file-upload-section">
-                            <input type="file" id="communityBackgroundFile" name="background_file" accept="image/*" style="display: none;">
-                            <button type="button" class="btn btn-secondary" onclick="document.getElementById('communityBackgroundFile').click()">
-                                <i class="fas fa-upload"></i> Choose Image
-                            </button>
-                            <span id="selectedBackgroundFile" class="selected-file-name"></span>
-                        </div>
-                        <div class="current-background" style="margin-top: 10px;">
-                            <label>Current Background:</label>
-                            {% if community.background_path %}
-                                <div class="current-background-preview">
-                                    <img src="{% if community.background_path.startswith('http') %}{{ community.background_path }}{% else %}{{ url_for('static', filename=community.background_path) }}{% endif %}" 
-                                         alt="Current background" style="max-width: 200px; max-height: 100px; border-radius: 4px;">
-                                </div>
-                            {% else %}
-                                <span style="color: #666;">No background image set</span>
-                            {% endif %}
-                        </div>
+                        <label for="communityBackgroundFile">Background Image:</label>
+                        <input type="file" id="communityBackgroundFile" name="background" accept="image/*">
+                        <span id="selectedBackgroundFile"></span>
                     </div>
                     <div class="form-group">
-                        <label for="communityTemplate">Template</label>
+                        <label for="communityTemplate">Theme:</label>
                         <select id="communityTemplate" name="template">
-                            <option value="default" {{ 'selected' if community.template == 'default' else '' }}>Default</option>
                             <option value="dark" {{ 'selected' if community.template == 'dark' else '' }}>Dark</option>
                             <option value="light" {{ 'selected' if community.template == 'light' else '' }}>Light</option>
                         </select>
                     </div>
-                    <div class="form-actions">
-                        <button type="submit" class="btn">Save Changes</button>
-                        <button type="button" class="btn btn-secondary" onclick="closeEditCommunityModal()">Cancel</button>
+                    <div class="form-group">
+                        <label for="communityCardColor">Card Color:</label>
+                        <input type="color" id="communityCardColor" name="card_color" value="{{ community.card_color or '#1a2526' }}">
                     </div>
+                    <div class="form-group">
+                        <label for="communityAccentColor">Accent Color:</label>
+                        <input type="color" id="communityAccentColor" name="accent_color" value="{{ community.accent_color or '#4db6ac' }}">
+                    </div>
+                    <div class="form-group">
+                        <label for="communityTextColor">Text Color:</label>
+                        <input type="color" id="communityTextColor" name="text_color" value="{{ community.text_color or '#ffffff' }}">
+                    </div>
+                    <button type="submit" class="sleek-btn">Save Changes</button>
                 </form>
             </div>
         </div>
     </div>
 
-    <!-- Polls Display Modal -->
-    <div id="pollsModal" class="modal">
+    <!-- Polls Modal -->
+    <div id="pollsModal" class="modal" style="display: none;">
         <div class="modal-content">
             <div class="modal-header">
-                <h2>Polls</h2>
+                <h2><i class="fas fa-poll-h"></i> Polls</h2>
                 <span class="close" onclick="closePollsModal()">&times;</span>
             </div>
             <div class="modal-body">
@@ -1525,28 +907,23 @@
                     </div>
                 </div>
                 
-                <div id="createPollTab" class="poll-tab-content">
-                    <form id="pollsModalForm">
+                <div id="createPollsTab" class="poll-tab-content">
+                    <form id="pollsModalForm" enctype="multipart/form-data">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                         <input type="hidden" name="community_id" value="{{ community.id }}">
                         <div class="form-group">
-                            <label for="modalPollContent">Post Content (Optional)</label>
-                            <textarea id="modalPollContent" name="content" placeholder="Add some context..." rows="2"></textarea>
+                            <label for="pollQuestion">Question:</label>
+                            <input type="text" id="pollQuestion" name="question" required>
                         </div>
                         <div class="form-group">
-                            <label for="modalPollQuestion">Poll Question *</label>
-                            <input type="text" id="modalPollQuestion" name="question" placeholder="What would you like to ask?" required>
-                        </div>
-                        <div class="form-group">
-                            <label>Poll Options *</label>
+                            <label>Options:</label>
                             <div id="modalPollOptions">
                                 <input type="text" name="options[]" placeholder="Option 1" required>
                                 <input type="text" name="options[]" placeholder="Option 2" required>
                             </div>
-                            <button type="button" onclick="addModalPollOption()" class="btn-secondary small">+ Add Option</button>
+                            <button type="button" onclick="addModalPollOption()" class="sleek-btn small">Add Option</button>
                         </div>
-                        <div class="form-actions">
-                            <button type="submit" class="btn">Create Poll</button>
-                        </div>
+                        <button type="submit" class="sleek-btn">Create Poll</button>
                     </form>
                 </div>
             </div>
@@ -1554,187 +931,6 @@
     </div>
 
     <script>
-        // Edit Community Functions - Global Scope
-        function showEditCommunityModal() {
-            document.getElementById('editCommunityModal').style.display = 'block';
-        }
-
-        function closeEditCommunityModal() {
-            document.getElementById('editCommunityModal').style.display = 'none';
-        }
-
-        // Polls Modal Functions - Global Scope
-        function showPollsModal() {
-            document.getElementById('pollsModal').style.display = 'block';
-            loadActivePolls();
-        }
-        
-        function closePollsModal() {
-            document.getElementById('pollsModal').style.display = 'none';
-        }
-        
-        function switchPollTab(tabName) {
-            // Remove active class from all tabs and content
-            document.querySelectorAll('.poll-tab').forEach(tab => tab.classList.remove('active'));
-            document.querySelectorAll('.poll-tab-content').forEach(content => content.classList.remove('active'));
-            
-            // Add active class to selected tab and content
-            document.querySelector(`[onclick="switchPollTab('${tabName}')"]`).classList.add('active');
-            document.getElementById(`${tabName}PollsTab`).classList.add('active');
-            
-            // Load content based on tab
-            if (tabName === 'active') {
-                loadActivePolls();
-            } else if (tabName === 'historical') {
-                loadHistoricalPolls();
-            }
-        }
-        
-        function loadActivePolls() {
-            fetch('/get_active_polls')
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        displayPolls(data.polls, 'activePollsList');
-                    } else {
-                        document.getElementById('activePollsList').innerHTML = '<p>No active polls found.</p>';
-                    }
-                })
-                .catch(error => {
-                    console.error('Error loading active polls:', error);
-                    document.getElementById('activePollsList').innerHTML = '<p>Error loading polls.</p>';
-                });
-        }
-        
-        function loadHistoricalPolls() {
-            fetch('/get_historical_polls')
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        displayPolls(data.polls, 'historicalPollsList');
-                    } else {
-                        document.getElementById('historicalPollsList').innerHTML = '<p>No historical polls found.</p>';
-                    }
-                })
-                .catch(error => {
-                    console.error('Error loading historical polls:', error);
-                    document.getElementById('historicalPollsList').innerHTML = '<p>Error loading polls.</p>';
-                });
-        }
-        
-        function displayPolls(polls, containerId) {
-            const container = document.getElementById(containerId);
-            
-            if (!polls || polls.length === 0) {
-                container.innerHTML = '<p>No polls found.</p>';
-                return;
-            }
-            
-            const pollsHTML = polls.map(poll => `
-                <div class="poll-item">
-                    <div class="poll-item-header">
-                        <div class="poll-item-question">${poll.question}</div>
-                        <div class="poll-item-date">${poll.created_at}</div>
-                    </div>
-                    <div class="poll-item-options">
-                        ${poll.options.map(option => `
-                            <div class="poll-item-option" data-poll-id="${poll.id}" data-option-id="${option.id}">
-                                <div class="poll-item-option-text">${option.option_text}</div>
-                                <div class="poll-item-option-votes">${option.votes}</div>
-                            </div>
-                        `).join('')}
-                    </div>
-                    <div class="poll-item-footer">
-                        <div class="poll-item-total">${poll.total_votes} total votes</div>
-                        ${poll.user_vote ? '<div class="poll-item-voted"><i class="fas fa-check"></i> You voted</div>' : ''}
-                    </div>
-                </div>
-            `).join('');
-            
-            container.innerHTML = pollsHTML;
-            
-            // Add click handlers for voting
-            container.querySelectorAll('.poll-item-option').forEach(option => {
-                option.addEventListener('click', function() {
-                    const pollId = this.dataset.pollId;
-                    const optionId = this.dataset.optionId;
-                    voteOnPoll(pollId, optionId, this);
-                });
-            });
-        }
-        
-        function addModalPollOption() {
-            const optionsContainer = document.getElementById('modalPollOptions');
-            const optionCount = optionsContainer.children.length;
-            
-            if (optionCount >= 6) {
-                alert('Maximum 6 options allowed');
-                return;
-            }
-            
-            const newOption = document.createElement('input');
-            newOption.type = 'text';
-            newOption.name = 'options[]';
-            newOption.placeholder = `Option ${optionCount + 1}`;
-            newOption.required = true;
-            
-            optionsContainer.appendChild(newOption);
-        }
-        
-        function voteOnPoll(pollId, optionId, pollOptionElement) {
-            fetch('/vote_poll', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    poll_id: pollId,
-                    option_id: optionId
-                })
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    updatePollDisplay(pollOptionElement, data.poll_results);
-                } else {
-                    alert('Error voting: ' + data.error);
-                }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                alert('Error voting on poll');
-            });
-        }
-        
-        function updatePollDisplay(pollOptionElement, pollResults) {
-            const pollContainer = pollOptionElement.closest('.poll-container-compact');
-            const totalVotes = pollResults.reduce((sum, option) => sum + option.votes, 0);
-            
-            // Update each option
-            pollResults.forEach(option => {
-                const optionElement = pollContainer.querySelector(`[data-option-id="${option.id}"]`);
-                if (optionElement) {
-                    const votesElement = optionElement.querySelector('.poll-option-votes-compact');
-                    votesElement.textContent = option.votes;
-                }
-            });
-            
-            // Update total votes
-            const totalElement = pollContainer.querySelector('.poll-total-compact');
-            if (totalElement) {
-                totalElement.textContent = `${totalVotes} votes`;
-            }
-            
-            // Add voted indicator
-            const pollFooter = pollContainer.querySelector('.poll-footer-compact');
-            if (pollFooter && !pollFooter.querySelector('.poll-voted-compact')) {
-                const votedSpan = document.createElement('span');
-                votedSpan.className = 'poll-voted-compact';
-                votedSpan.innerHTML = '<i class="fas fa-check"></i>';
-                pollFooter.appendChild(votedSpan);
-            }
-        }
-
         // Handle background file selection
         document.addEventListener('DOMContentLoaded', function() {
             const backgroundFileInput = document.getElementById('communityBackgroundFile');
@@ -1798,607 +994,7 @@
                     alert('Error creating poll');
                 });
             });
-            
-            // Poll option voting (for compact polls)
-            document.addEventListener('click', function(e) {
-                if (e.target.closest('.poll-option-compact')) {
-                    const pollOption = e.target.closest('.poll-option-compact');
-                    const pollId = pollOption.dataset.pollId;
-                    const optionId = pollOption.dataset.optionId;
-                    
-                    voteOnPoll(pollId, optionId, pollOption);
-                }
-            });
         }
-        
-        function voteOnPoll(pollId, optionId, pollOptionElement) {
-            const formData = new FormData();
-            formData.append('poll_id', pollId);
-            formData.append('option_id', optionId);
-            
-            fetch('/vote_poll', {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    updatePollDisplay(pollOptionElement, data.poll_results);
-                } else {
-                    alert('Error voting: ' + data.error);
-                }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                alert('Error voting on poll');
-            });
-        }
-        
-        function updatePollDisplay(pollOptionElement, pollResults) {
-            const pollContainer = pollOptionElement.closest('.poll-container-compact');
-            const totalVotes = pollResults.reduce((sum, option) => sum + option.votes, 0);
-            
-            // Update each option
-            pollResults.forEach(option => {
-                const optionElement = pollContainer.querySelector(`[data-option-id="${option.id}"]`);
-                if (optionElement) {
-                    const votesElement = optionElement.querySelector('.poll-option-votes-compact');
-                    votesElement.textContent = option.votes;
-                }
-            });
-            
-            // Update total votes
-            const totalElement = pollContainer.querySelector('.poll-total-compact');
-            if (totalElement) {
-                totalElement.textContent = `${totalVotes} votes`;
-            }
-            
-            // Add voted indicator
-            const pollFooter = pollContainer.querySelector('.poll-footer-compact');
-            if (pollFooter && !pollFooter.querySelector('.poll-voted-compact')) {
-                const votedSpan = document.createElement('span');
-                votedSpan.className = 'poll-voted-compact';
-                votedSpan.innerHTML = '<i class="fas fa-check"></i>';
-                pollFooter.appendChild(votedSpan);
-            }
-        }
-            
-            // Handle edit community form submission
-            const editCommunityForm = document.getElementById('editCommunityForm');
-            if (editCommunityForm) {
-                editCommunityForm.addEventListener('submit', function(e) {
-                    e.preventDefault();
-                    
-                    const formData = new FormData(this);
-                    formData.append('community_id', {{ community.id }});
-                    formData.append('csrf_token', '{{ csrf_token }}');
-                    
-                    // Add background file if selected
-                    const backgroundFile = document.getElementById('communityBackgroundFile').files[0];
-                    if (backgroundFile) {
-                        formData.append('background_file', backgroundFile);
-                    }
-                    
-                    $.ajax({
-                        url: '/update_community',
-                        method: 'POST',
-                        data: formData,
-                        processData: false,
-                        contentType: false,
-                        success: function(response) {
-                            if (response.success) {
-                                alert('Community updated successfully!');
-                                closeEditCommunityModal();
-                                // Reload the page to show changes
-                                location.reload();
-                            } else {
-                                alert('Error updating community: ' + response.error);
-                            }
-                        },
-                        error: function() {
-                            alert('Error updating community');
-                        }
-                    });
-                });
-            }
-        });
-
-        // Admin Announcements Functions
-        function showAdminInfoModal() {
-            document.getElementById('adminInfoModal').classList.add('open');
-        }
-
-        function closeAdminInfoModal() {
-            document.getElementById('adminInfoModal').classList.remove('open');
-        }
-
-        function saveCommunityInfo() {
-            const info = document.getElementById('communityInfo').value;
-            
-            $.ajax({
-                url: '/save_community_info',
-                method: 'POST',
-                data: {
-                    community_id: {{ community.id }},
-                    info: info,
-                    csrf_token: '{{ csrf_token }}'
-                },
-                success: function(response) {
-                    if (response.success) {
-                        alert('Announcement published successfully!');
-                        // Clear the textarea
-                        document.getElementById('communityInfo').value = '';
-                        // Update the preview without refreshing
-                        updateAnnouncementPreview(info);
-                        // Update notifications
-                        checkForNotifications();
-                    } else {
-                        alert('Error saving information: ' + response.error);
-                    }
-                },
-                error: function() {
-                    alert('Error saving community information');
-                }
-            });
-        }
-
-        function updateAnnouncementPreview(content) {
-            const previewContainer = document.querySelector('.latest-announcement-preview');
-            if (previewContainer) {
-                const previewContent = previewContainer.querySelector('.preview-content');
-                const previewDate = previewContainer.querySelector('.preview-date');
-                
-                if (previewContent) {
-                    previewContent.textContent = content.length > 100 ? content.substring(0, 100) + '...' : content;
-                }
-                if (previewDate) {
-                    previewDate.textContent = 'Just now';
-                }
-            } else {
-                // If no preview exists, create one
-                const announcementsSection = document.querySelector('.admin-section');
-                if (announcementsSection) {
-                    const newPreview = document.createElement('div');
-                    newPreview.className = 'latest-announcement-preview';
-                    newPreview.onclick = function() { showAnnouncementsModal(); };
-                    newPreview.innerHTML = `
-                        <div class="preview-header">
-                            <span class="preview-date">Just now</span>
-                            <span class="preview-badge">Latest</span>
-                        </div>
-                        <div class="preview-content">
-                            ${content.length > 100 ? content.substring(0, 100) + '...' : content}
-                        </div>
-                    `;
-                    
-                    // Replace the "no announcements" message or add after the section header
-                    const noAnnouncements = announcementsSection.querySelector('.no-announcements');
-                    if (noAnnouncements) {
-                        noAnnouncements.replaceWith(newPreview);
-                    } else {
-                        const sectionHeader = announcementsSection.querySelector('.section-header');
-                        if (sectionHeader) {
-                            sectionHeader.after(newPreview);
-                        }
-                    }
-                }
-            }
-        }
-
-        function markAnnouncementRead() {
-            // Store in localStorage that user has read this announcement
-            localStorage.setItem('announcement_read_{{ community.id }}', 'true');
-            // Update button styling to show as read
-            const btn = document.querySelector('.admin-info-btn');
-            if (btn) {
-                btn.classList.remove('has-notifications');
-                btn.classList.add('read');
-            }
-        }
-
-        function showAnnouncementsModal() {
-            document.getElementById('announcementsModal').style.display = 'block';
-            loadAnnouncementsHistory();
-        }
-
-        function closeAnnouncementsModal() {
-            document.getElementById('announcementsModal').style.display = 'none';
-        }
-
-        function loadAnnouncementsHistory() {
-            // Load announcements from the database
-            $.ajax({
-                url: '/get_community_announcements',
-                method: 'GET',
-                data: {
-                    community_id: {{ community.id }}
-                },
-                success: function(response) {
-                    if (response.success) {
-                        displayAnnouncements(response.announcements);
-                    } else {
-                        console.log('Error loading announcements:', response.error);
-                    }
-                },
-                error: function() {
-                    console.log('Error loading announcements');
-                }
-            });
-        }
-
-        function displayAnnouncements(announcements) {
-            const announcementsList = document.getElementById('announcementsList');
-            
-            if (!announcements || announcements.length === 0) {
-                announcementsList.innerHTML = '<div class="no-announcements"><i class="fas fa-bullhorn"></i><span>No announcements yet</span></div>';
-                return;
-            }
-
-            let html = '';
-            announcements.forEach((announcement, index) => {
-                const isLatest = index === 0;
-                const badgeText = isLatest ? 'Latest' : 'Previous';
-                const deleteButton = isLatest ? `<button class="delete-announcement-btn" onclick="deleteAnnouncement(${announcement.id})" title="Delete announcement"><i class="fas fa-trash"></i></button>` : '';
-                
-                html += `
-                    <div class="announcement-item">
-                        <div class="announcement-item-header">
-                            <span class="announcement-item-date">${announcement.created_at}</span>
-                            <div class="announcement-actions">
-                                <span class="preview-badge">${badgeText}</span>
-                                ${deleteButton}
-                            </div>
-                        </div>
-                        <div class="announcement-item-content">
-                            ${announcement.content.replace(/\n/g, '<br>')}
-                        </div>
-                    </div>
-                `;
-            });
-            
-            announcementsList.innerHTML = html;
-        }
-
-        function deleteAnnouncement(announcementId) {
-            if (!confirm('Are you sure you want to delete this announcement?')) {
-                return;
-            }
-
-
-
-
-
-            $.ajax({
-                url: '/delete_community_announcement',
-                method: 'POST',
-                data: {
-                    announcement_id: announcementId,
-                    community_id: {{ community.id }},
-                    csrf_token: '{{ csrf_token }}'
-                },
-                success: function(response) {
-                    if (response.success) {
-                        alert('Announcement deleted successfully!');
-                        loadAnnouncementsHistory();
-                        // Update the preview without refreshing
-                        updatePreviewAfterDelete();
-                    } else {
-                        alert('Error deleting announcement: ' + response.error);
-                    }
-                },
-                error: function() {
-                    alert('Error deleting announcement');
-                }
-            });
-        }
-
-        function updatePreviewAfterDelete() {
-            // Get the latest announcement to update the preview
-            $.ajax({
-                url: '/get_community_announcements',
-                method: 'GET',
-                data: {
-                    community_id: {{ community.id }}
-                },
-                success: function(response) {
-                    if (response.success && response.announcements.length > 0) {
-                        const latest = response.announcements[0];
-                        updateAnnouncementPreview(latest.content);
-                    } else {
-                        // No announcements left, show "no announcements" message
-                        const previewContainer = document.querySelector('.latest-announcement-preview');
-                        if (previewContainer) {
-                            const noAnnouncements = document.createElement('div');
-                            noAnnouncements.className = 'no-announcements';
-                            noAnnouncements.innerHTML = '<i class="fas fa-bullhorn"></i><span>No announcements yet</span>';
-                            previewContainer.replaceWith(noAnnouncements);
-                        }
-                    }
-                },
-                error: function() {
-                    console.log('Error updating preview after delete');
-                }
-            });
-        }
-
-        // Check for unread announcements on page load
-        document.addEventListener('DOMContentLoaded', function() {
-            checkForNotifications();
-        });
-
-        function checkForNotifications() {
-            const hasAnnouncement = {{ 'true' if community.info and community.info.strip() else 'false' }};
-            const hasBeenRead = localStorage.getItem('announcement_read_{{ community.id }}') === 'true';
-            
-            const btn = document.querySelector('.admin-info-btn');
-            if (btn) {
-                if (hasAnnouncement) {
-                    if (hasBeenRead) {
-                        btn.classList.add('read');
-                    } else {
-                        btn.classList.add('has-notifications');
-                    }
-                }
-            }
-        }
-
-        function loadCommunityFiles() {
-            $.ajax({
-                url: '/get_community_files',
-                method: 'GET',
-                data: {
-                    community_id: {{ community.id }}
-                },
-                success: function(response) {
-                    if (response.success) {
-                        displayCommunityFiles(response.files);
-                    }
-                },
-                error: function() {
-                    console.log('Error loading community files');
-                }
-            });
-        }
-
-        function displayCommunityFiles(files) {
-            const container = document.getElementById('communityFiles');
-            
-            if (!files || files.length === 0) {
-                container.innerHTML = '<p style="color: rgba(255,255,255,0.6); font-size: 12px; text-align: center;">No files uploaded yet</p>';
-                return;
-            }
-
-            const filesHtml = files.map(file => `
-                <div class="community-file">
-                    <div class="file-info">
-                        <i class="fas fa-file"></i>
-                        <div class="file-details">
-                            <span class="file-name">${file.filename}</span>
-                            ${file.description ? `<span class="file-description">${file.description}</span>` : ''}
-                        </div>
-                    </div>
-                    <div class="file-actions">
-                        <button class="file-action-btn" onclick="downloadFile('${file.filename}')" title="Download">
-                            <i class="fas fa-download"></i>
-                        </button>
-                        <button class="file-action-btn" onclick="deleteFile('${file.filename}')" title="Delete">
-                            <i class="fas fa-trash"></i>
-                        </button>
-                    </div>
-                </div>
-            `).join('');
-
-            container.innerHTML = filesHtml;
-        }
-
-        // File upload handling
-        document.getElementById('communityFile').addEventListener('change', function(e) {
-            const files = e.target.files;
-            if (files.length > 0) {
-                uploadCommunityFiles(files);
-            }
-        });
-
-        function uploadCommunityFiles(files) {
-            const formData = new FormData();
-            formData.append('community_id', {{ community.id }});
-            formData.append('csrf_token', '{{ csrf_token }}');
-            
-            const description = document.getElementById('fileDescription').value.trim();
-            if (description) {
-                formData.append('description', description);
-            }
-            
-            for (let i = 0; i < files.length; i++) {
-                formData.append('files', files[i]);
-            }
-
-            $.ajax({
-                url: '/upload_community_files',
-                method: 'POST',
-                data: formData,
-                processData: false,
-                contentType: false,
-                success: function(response) {
-                    if (response.success) {
-                        alert('Files uploaded successfully!');
-                        loadCommunityFiles();
-                        document.getElementById('communityFile').value = '';
-                        document.getElementById('fileDescription').value = '';
-                    } else {
-                        alert('Error uploading files: ' + response.error);
-                    }
-                },
-                error: function() {
-                    alert('Error uploading files');
-                }
-            });
-        }
-
-        function downloadFile(filename) {
-            window.open(`/download_community_file/${filename}?community_id={{ community.id }}`, '_blank');
-        }
-
-        function deleteFile(filename) {
-            if (confirm('Are you sure you want to delete this file?')) {
-                $.ajax({
-                    url: '/delete_community_file',
-                    method: 'POST',
-                    data: {
-                        community_id: {{ community.id }},
-                        filename: filename,
-                        csrf_token: '{{ csrf_token }}'
-                    },
-                    success: function(response) {
-                        if (response.success) {
-                            alert('File deleted successfully!');
-                            loadCommunityFiles();
-                        } else {
-                            alert('Error deleting file: ' + response.error);
-                        }
-                    },
-                    error: function() {
-                        alert('Error deleting file');
-                    }
-                });
-            }
-        }
-
-        function showMembersModal() {
-            const modal = document.getElementById('membersModal');
-            if (modal) {
-                modal.style.display = 'block';
-                loadMembers();
-            }
-        }
-
-        function closeMembersModal() {
-            const modal = document.getElementById('membersModal');
-            if (modal) {
-                modal.style.display = 'none';
-            }
-        }
-
-        function loadMembers() {
-            fetch('/get_community_members', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                    'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').content
-                },
-                body: 'community_id={{ community.id }}'
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    displayMembers(data.members);
-                } else {
-                    document.getElementById('membersList').innerHTML = '<p class="error">Error loading members</p>';
-                }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                document.getElementById('membersList').innerHTML = '<p class="error">Error loading members</p>';
-            });
-        }
-
-        function displayMembers(members) {
-            const membersList = document.getElementById('membersList');
-            if (members.length === 0) {
-                membersList.innerHTML = '<p class="no-members">No members found</p>';
-                return;
-            }
-
-            let html = '<div class="members-grid">';
-            members.forEach(member => {
-                const isOwner = member.username === '{{ community.creator_username }}';
-                const canRemove = ('{{ username }}' === '{{ community.creator_username }}' || '{{ username }}' === 'admin') && !isOwner;
-                
-                html += `
-                    <div class="member-item">
-                        <div class="member-avatar">
-                            <i class="fas fa-user"></i>
-                        </div>
-                        <div class="member-info">
-                            <div class="member-name">${member.username}${isOwner ? ' <span class="owner-badge">Owner</span>' : ''}</div>
-                            <div class="member-joined">Joined: ${member.joined_date}</div>
-                        </div>
-                        ${canRemove ? `<button class="remove-member-btn" onclick="removeMember('${member.username}')"><i class="fas fa-times"></i></button>` : ''}
-                    </div>
-                `;
-            });
-            html += '</div>';
-            membersList.innerHTML = html;
-        }
-
-        function addMember() {
-            const username = document.getElementById('newMemberUsername').value.trim();
-            if (!username) {
-                alert('Please enter a username');
-                return;
-            }
-
-            fetch('/add_community_member', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                    'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').content
-                },
-                body: `community_id={{ community.id }}&username=${encodeURIComponent(username)}`
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    document.getElementById('newMemberUsername').value = '';
-                    loadMembers();
-                    alert('Member added successfully!');
-                } else {
-                    alert(data.error || 'Error adding member');
-                }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                alert('Error adding member');
-            });
-        }
-
-        function removeMember(username) {
-            if (!confirm(`Are you sure you want to remove ${username} from this community?`)) {
-                return;
-            }
-
-            fetch('/remove_community_member', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                    'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').content
-                },
-                body: `community_id={{ community.id }}&username=${encodeURIComponent(username)}`
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    loadMembers();
-                    alert('Member removed successfully!');
-                } else {
-                    alert(data.error || 'Error removing member');
-                }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                alert('Error removing member');
-            });
-        }
-
-        // Close modal when clicking outside
-        window.onclick = function(event) {
-            const membersModal = document.getElementById('membersModal');
-            if (event.target === membersModal) {
-                closeMembersModal();
-            }
-        }
-
-
     </script>
 </body>
 </html>
