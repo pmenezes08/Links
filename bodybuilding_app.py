@@ -5592,54 +5592,21 @@ def save_community_announcement():
             )
         ''')
         
+        # Drop and recreate community_files table with correct structure
+        cursor.execute("DROP TABLE IF EXISTS community_files")
         cursor.execute('''
-            CREATE TABLE IF NOT EXISTS community_files (
+            CREATE TABLE community_files (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 announcement_id INTEGER NOT NULL,
+                community_id INTEGER NOT NULL,
                 filename TEXT NOT NULL,
                 file_path TEXT NOT NULL,
                 uploaded_by TEXT NOT NULL,
                 uploaded_at TEXT NOT NULL,
+                upload_date TEXT NOT NULL,
                 FOREIGN KEY (announcement_id) REFERENCES community_announcements (id) ON DELETE CASCADE
             )
         ''')
-        
-        # Add missing columns to community_files table if they don't exist
-        try:
-            cursor.execute("SELECT announcement_id FROM community_files LIMIT 1")
-        except:
-            logger.info("Adding announcement_id column to community_files table...")
-            cursor.execute("ALTER TABLE community_files ADD COLUMN announcement_id INTEGER")
-        
-        try:
-            cursor.execute("SELECT file_path FROM community_files LIMIT 1")
-        except:
-            logger.info("Adding file_path column to community_files table...")
-            cursor.execute("ALTER TABLE community_files ADD COLUMN file_path TEXT")
-        
-        try:
-            cursor.execute("SELECT uploaded_by FROM community_files LIMIT 1")
-        except:
-            logger.info("Adding uploaded_by column to community_files table...")
-            cursor.execute("ALTER TABLE community_files ADD COLUMN uploaded_by TEXT")
-        
-        try:
-            cursor.execute("SELECT uploaded_at FROM community_files LIMIT 1")
-        except:
-            logger.info("Adding uploaded_at column to community_files table...")
-            cursor.execute("ALTER TABLE community_files ADD COLUMN uploaded_at TEXT")
-        
-        try:
-            cursor.execute("SELECT community_id FROM community_files LIMIT 1")
-        except:
-            logger.info("Adding community_id column to community_files table...")
-            cursor.execute("ALTER TABLE community_files ADD COLUMN community_id INTEGER")
-        
-        try:
-            cursor.execute("SELECT upload_date FROM community_files LIMIT 1")
-        except:
-            logger.info("Adding upload_date column to community_files table...")
-            cursor.execute("ALTER TABLE community_files ADD COLUMN upload_date TEXT")
         
         # Check if user is admin or community creator
         cursor.execute('''
