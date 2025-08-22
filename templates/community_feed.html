@@ -340,32 +340,33 @@
         .poll-item-header {
             display: flex;
             justify-content: space-between;
-            align-items: center;
+            align-items: flex-start;
             margin-bottom: 10px;
-            position: relative;
+        }
+        
+        .poll-item-meta {
+            display: flex;
+            align-items: center;
+            gap: 10px;
         }
         
         .close-poll-btn {
-            background: #dc3545;
-            color: white;
-            border: none;
-            border-radius: 50%;
-            width: 24px;
-            height: 24px;
+            background: transparent;
+            color: #9fb0b5;
+            border: 1px solid #9fb0b5;
+            border-radius: 4px;
+            padding: 4px 8px;
             cursor: pointer;
             font-size: 12px;
             display: flex;
             align-items: center;
             justify-content: center;
             transition: all 0.2s ease;
-            position: absolute;
-            top: 0;
-            right: 0;
         }
         
         .close-poll-btn:hover {
-            background: #c82333;
-            transform: scale(1.1);
+            background: #9fb0b5;
+            color: #1a1a1a;
         }
         
         .poll-item-question {
@@ -696,12 +697,14 @@
                 <div class="poll-item">
                     <div class="poll-item-header">
                         <div class="poll-item-question">${poll.question}</div>
-                        <div class="poll-item-date">${poll.created_at}</div>
-                        ${(poll.created_by === '{{ username }}' || '{{ username }}' === 'admin') ? 
-                            `<button class="close-poll-btn" onclick="closePoll(${poll.id})" title="Close Poll">
-                                <i class="fas fa-times"></i>
-                            </button>` : ''
-                        }
+                        <div class="poll-item-meta">
+                            <div class="poll-item-date">${poll.created_at}</div>
+                            ${(poll.created_by === '{{ username }}' || '{{ username }}' === 'admin') ? 
+                                `<button class="close-poll-btn" onclick="closePoll(${poll.id})" title="Close Poll">
+                                    <i class="fas fa-lock"></i>
+                                </button>` : ''
+                            }
+                        </div>
                     </div>
                     <div class="poll-item-options">
                         ${poll.options.map(option => `
