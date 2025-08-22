@@ -1068,6 +1068,12 @@
     
     <!-- Global Poll Functions - Available Immediately -->
     <script>
+        function handleImageError(imgElement, originalPath, cleanPath) {
+            console.log('Image failed to load:', imgElement.src, 'Original path:', originalPath, 'Clean path:', cleanPath);
+            imgElement.style.display = 'none';
+            imgElement.parentElement.innerHTML = '<div style="padding: 20px; text-align: center; color: #9fb0b5;">Image could not be loaded</div>';
+        }
+        
         function showPollsModal() {
             document.getElementById('pollsModal').style.display = 'block';
             loadActivePolls();
@@ -1813,7 +1819,7 @@
                                 <img src="{{ url_for('uploaded_file', filename=clean_path) }}" 
                                      alt="Post image" 
                                      loading="lazy" 
-                                     onerror="console.log('Image failed to load:', this.src, 'Original path:', '{{ post.image_path }}', 'Clean path:', '{{ clean_path }}'); this.style.display='none'; this.parentElement.innerHTML='<div style=\"padding: 20px; text-align: center; color: #9fb0b5;\">Image could not be loaded</div>';" 
+                                     onerror="handleImageError(this, '{{ post.image_path }}', '{{ clean_path }}')" 
                                      onload="console.log('Image loaded successfully:', this.src);"
                                      style="max-width: 100%; height: auto; display: block;">
                             </div>
