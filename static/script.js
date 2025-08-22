@@ -232,6 +232,12 @@ document.addEventListener('DOMContentLoaded', function() {
             formData.append('content', content);
             formData.append('csrf_token', $('meta[name="csrf-token"]').attr('content'));
             
+            // Add community_id if it exists in the form
+            const communityId = $postForm.find('input[name="community_id"]').val();
+            if (communityId) {
+                formData.append('community_id', communityId);
+            }
+            
             if (imageFile) {
                 formData.append('image', imageFile);
             }
@@ -247,7 +253,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     console.log("Post submission response:", data);
                     if (data.success) {
                                     const imageHtml = data.post.image_path ?
-                `<div class="post-image"><img src="/uploads/${data.post.image_path.replace('uploads/', '')}" alt="Post image" loading="lazy" onerror="handleImageError(this)" onload="console.log('Image loaded successfully:', this.src);"></div>` : '';
+                `<div class="post-image"><img src="/uploads/${data.post.image_path.replace('uploads/', '')}" alt="Post image" loading="lazy" onerror="handleImageError(this)" onload="console.log('Image loaded successfully:', this.src);" style="display: block;"></div>` : '';
                         
                         const postHtml = `
                             <div class="post clickable-post" data-post-id="${data.post.id}">
@@ -631,7 +637,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }).join('');
 
             const imageHtml = (postData.image_path && postData.image_path !== 'None' && postData.image_path !== '') ? 
-                `<div class="post-image"><img src="/uploads/${postData.image_path.replace('uploads/', '')}" alt="Post image" loading="lazy" onerror="handleImageError(this)" onload="console.log('Modal image loaded successfully:', this.src);"></div>` : '';
+                `<div class="post-image"><img src="/uploads/${postData.image_path.replace('uploads/', '')}" alt="Post image" loading="lazy" onerror="handleImageError(this)" onload="console.log('Modal image loaded successfully:', this.src);" style="display: block;"></div>` : '';
             
             return `
                 <div class="post" data-post-id="${postData.id}">
