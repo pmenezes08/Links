@@ -32,97 +32,83 @@
             background-color: rgba(255, 255, 255, 0.08) !important;
         }
         
-        /* Poll Styles */
-        .poll-container {
-            background: rgba(255, 255, 255, 0.05);
-            border-radius: 8px;
-            padding: 16px;
-            margin: 12px 0;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-        }
-        
-        .poll-question {
-            font-weight: 600;
-            margin-bottom: 12px;
-            color: #ffffff;
-        }
-        
-        .poll-question i {
-            color: #4db6ac;
-            margin-right: 8px;
-        }
-        
-        .poll-options {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-        }
-        
-        .poll-option {
+        /* Compact Poll Styles */
+        .poll-container-compact {
             background: rgba(255, 255, 255, 0.03);
             border: 1px solid rgba(255, 255, 255, 0.1);
             border-radius: 6px;
             padding: 12px;
-            cursor: pointer;
-            transition: all 0.2s ease;
+            margin: 8px 0;
+            width: 250px;
+            float: right;
+            margin-left: 16px;
         }
         
-        .poll-option:hover {
+        .poll-question-compact {
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #ffffff;
+            font-size: 14px;
+        }
+        
+        .poll-question-compact i {
+            color: #4db6ac;
+            margin-right: 6px;
+        }
+        
+        .poll-options-compact {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        
+        .poll-option-compact {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 4px;
+            padding: 6px 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .poll-option-compact:hover {
             background: rgba(255, 255, 255, 0.08);
             border-color: #4db6ac;
         }
         
-        .poll-option-bar {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 8px;
-        }
-        
-        .poll-option-text {
+        .poll-option-text-compact {
             color: #ffffff;
-            font-weight: 500;
-        }
-        
-        .poll-option-votes {
-            color: #9fb0b5;
             font-size: 12px;
+            flex: 1;
         }
         
-        .poll-progress-bar {
-            height: 4px;
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 2px;
-            overflow: hidden;
+        .poll-option-votes-compact {
+            color: #4db6ac;
+            font-size: 11px;
+            font-weight: 600;
+            margin-left: 8px;
         }
         
-        .poll-progress-fill {
-            height: 100%;
-            background: #4db6ac;
-            transition: width 0.3s ease;
-        }
-        
-        .poll-footer {
+        .poll-footer-compact {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-top: 12px;
-            padding-top: 12px;
+            margin-top: 8px;
+            padding-top: 8px;
             border-top: 1px solid rgba(255, 255, 255, 0.1);
         }
         
-        .poll-total {
+        .poll-total-compact {
             color: #9fb0b5;
-            font-size: 12px;
+            font-size: 11px;
         }
         
-        .poll-voted {
+        .poll-voted-compact {
             color: #4db6ac;
-            font-size: 12px;
-        }
-        
-        .poll-voted i {
-            margin-right: 4px;
+            font-size: 11px;
         }
         
         /* Poll Modal Styles */
@@ -189,132 +175,7 @@
             margin-top: 20px;
         }
         
-        /* Right Sidebar Layout */
-        .main-content {
-            display: flex;
-            gap: 20px;
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-        
-        .container.feed {
-            flex: 1;
-            max-width: 800px;
-        }
-        
-        .right-sidebar {
-            width: 300px;
-            flex-shrink: 0;
-        }
-        
-        .poll-sidebar-card {
-            background: #1a2526;
-            border: 1px solid #4db6ac;
-            border-radius: 8px;
-            padding: 20px;
-            position: sticky;
-            top: 20px;
-        }
-        
-        .poll-sidebar-card h3 {
-            color: #ffffff;
-            margin-bottom: 16px;
-            font-size: 16px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        
-        .poll-sidebar-card h3 i {
-            color: #4db6ac;
-        }
-        
-        .poll-sidebar-card .form-group {
-            margin-bottom: 16px;
-        }
-        
-        .poll-sidebar-card label {
-            display: block;
-            margin-bottom: 6px;
-            color: #ffffff;
-            font-weight: 500;
-            font-size: 14px;
-        }
-        
-        .poll-sidebar-card input,
-        .poll-sidebar-card textarea {
-            width: 100%;
-            padding: 8px 10px;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            border-radius: 6px;
-            background: rgba(255, 255, 255, 0.05);
-            color: #ffffff;
-            font-size: 13px;
-            box-sizing: border-box;
-        }
-        
-        .poll-sidebar-card input:focus,
-        .poll-sidebar-card textarea:focus {
-            outline: none;
-            border-color: #4db6ac;
-            box-shadow: 0 0 0 2px rgba(77, 182, 172, 0.2);
-        }
-        
-        .poll-sidebar-card textarea {
-            resize: vertical;
-            min-height: 60px;
-        }
-        
-        #sidebarPollOptions {
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-            margin-bottom: 8px;
-        }
-        
-        .btn-secondary.small {
-            padding: 6px 12px;
-            font-size: 12px;
-        }
-        
-        .poll-sidebar-card .form-actions {
-            margin-top: 16px;
-            justify-content: center;
-        }
-        
-        .poll-sidebar-card .btn {
-            width: 100%;
-            padding: 10px;
-            background: #4db6ac;
-            color: #ffffff;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 14px;
-            font-weight: 500;
-            transition: all 0.2s ease;
-        }
-        
-        .poll-sidebar-card .btn:hover {
-            background: #37a69c;
-        }
-        
-        /* Mobile responsive */
-        @media (max-width: 1200px) {
-            .main-content {
-                flex-direction: column;
-            }
-            
-            .right-sidebar {
-                width: 100%;
-                order: -1;
-            }
-            
-            .poll-sidebar-card {
-                position: static;
-            }
-        }
+
     </style>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <meta name="current-username" content="{{ username }}">
@@ -340,8 +201,7 @@
     </div>
 
     <!-- Main Content -->
-    <div class="main-content">
-        <div class="container feed">
+    <div class="container feed">
 
         <!-- Composer -->
         <div class="composer-card">
@@ -357,6 +217,9 @@
                                 <input type="file" id="image-upload" name="image" accept="image/*" style="display: none;">
                                 <span id="selected-file-name" class="selected-file-name"></span>
                             </div>
+                            <button type="button" class="sleek-btn small" onclick="showPollModal()">
+                                <i class="fas fa-poll-h"></i> Poll
+                            </button>
                             <button type="submit" class="sleek-btn small">Post</button>
                         </div>
                     </div>
@@ -374,27 +237,22 @@
                         
                         <!-- Poll Display -->
                         {% if post.poll %}
-                        <div class="poll-container">
-                            <div class="poll-question">
+                        <div class="poll-container-compact">
+                            <div class="poll-question-compact">
                                 <i class="fas fa-poll-h"></i> {{ post.poll.question }}
                             </div>
-                            <div class="poll-options">
+                            <div class="poll-options-compact">
                                 {% for option in post.poll.options %}
-                                <div class="poll-option" data-poll-id="{{ post.poll.id }}" data-option-id="{{ option.id }}">
-                                    <div class="poll-option-bar">
-                                        <div class="poll-option-text">{{ option.option_text }}</div>
-                                        <div class="poll-option-votes">{{ option.votes }} votes</div>
-                                    </div>
-                                    <div class="poll-progress-bar">
-                                        <div class="poll-progress-fill" style="width: {{ (option.votes / post.poll.total_votes * 100) if post.poll.total_votes > 0 else 0 }}%"></div>
-                                    </div>
+                                <div class="poll-option-compact" data-poll-id="{{ post.poll.id }}" data-option-id="{{ option.id }}">
+                                    <div class="poll-option-text-compact">{{ option.option_text }}</div>
+                                    <div class="poll-option-votes-compact">{{ option.votes }}</div>
                                 </div>
                                 {% endfor %}
                             </div>
-                            <div class="poll-footer">
-                                <span class="poll-total">{{ post.poll.total_votes }} total votes</span>
+                            <div class="poll-footer-compact">
+                                <span class="poll-total-compact">{{ post.poll.total_votes }} votes</span>
                                 {% if post.poll.user_vote %}
-                                <span class="poll-voted"><i class="fas fa-check"></i> You voted</span>
+                                <span class="poll-voted-compact"><i class="fas fa-check"></i></span>
                                 {% endif %}
                             </div>
                         </div>
@@ -434,34 +292,6 @@
             {% else %}
                 <p>No posts yet. Be the first!</p>
             {% endif %}
-        </div>
-        
-        <!-- Right Sidebar for Poll Creation -->
-        <div class="right-sidebar">
-            <div class="poll-sidebar-card">
-                <h3><i class="fas fa-poll-h"></i> Create Poll</h3>
-                <form id="pollSidebarForm">
-                    <div class="form-group">
-                        <label for="sidebarPollContent">Post Content (Optional)</label>
-                        <textarea id="sidebarPollContent" name="content" placeholder="Add some context..." rows="2"></textarea>
-                    </div>
-                    <div class="form-group">
-                        <label for="sidebarPollQuestion">Poll Question *</label>
-                        <input type="text" id="sidebarPollQuestion" name="question" placeholder="What would you like to ask?" required>
-                    </div>
-                    <div class="form-group">
-                        <label>Poll Options *</label>
-                        <div id="sidebarPollOptions">
-                            <input type="text" name="options[]" placeholder="Option 1" required>
-                            <input type="text" name="options[]" placeholder="Option 2" required>
-                        </div>
-                        <button type="button" onclick="addSidebarPollOption()" class="btn-secondary small">+ Add Option</button>
-                    </div>
-                    <div class="form-actions">
-                        <button type="submit" class="btn">Create Poll</button>
-                    </div>
-                </form>
-            </div>
         </div>
     </div>
 
@@ -601,24 +431,6 @@
             optionsContainer.appendChild(newOption);
         }
         
-        function addSidebarPollOption() {
-            const optionsContainer = document.getElementById('sidebarPollOptions');
-            const optionCount = optionsContainer.children.length;
-            
-            if (optionCount >= 6) {
-                alert('Maximum 6 options allowed');
-                return;
-            }
-            
-            const newOption = document.createElement('input');
-            newOption.type = 'text';
-            newOption.name = 'options[]';
-            newOption.placeholder = `Option ${optionCount + 1}`;
-            newOption.required = true;
-            
-            optionsContainer.appendChild(newOption);
-        }
-        
         function setupPollHandlers() {
             // Poll form submission (modal)
             document.getElementById('pollForm').addEventListener('submit', function(e) {
@@ -646,42 +458,10 @@
                 });
             });
             
-            // Sidebar poll form submission
-            document.getElementById('pollSidebarForm').addEventListener('submit', function(e) {
-                e.preventDefault();
-                
-                const formData = new FormData(this);
-                
-                fetch('/create_poll', {
-                    method: 'POST',
-                    body: formData
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        alert('Poll created successfully!');
-                        this.reset();
-                        // Reset to 2 options
-                        const optionsContainer = document.getElementById('sidebarPollOptions');
-                        optionsContainer.innerHTML = `
-                            <input type="text" name="options[]" placeholder="Option 1" required>
-                            <input type="text" name="options[]" placeholder="Option 2" required>
-                        `;
-                        location.reload(); // Refresh to show new poll
-                    } else {
-                        alert('Error creating poll: ' + data.error);
-                    }
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                    alert('Error creating poll');
-                });
-            });
-            
-            // Poll option voting
+            // Poll option voting (for compact polls)
             document.addEventListener('click', function(e) {
-                if (e.target.closest('.poll-option')) {
-                    const pollOption = e.target.closest('.poll-option');
+                if (e.target.closest('.poll-option-compact')) {
+                    const pollOption = e.target.closest('.poll-option-compact');
                     const pollId = pollOption.dataset.pollId;
                     const optionId = pollOption.dataset.optionId;
                     
@@ -714,33 +494,30 @@
         }
         
         function updatePollDisplay(pollOptionElement, pollResults) {
-            const pollContainer = pollOptionElement.closest('.poll-container');
+            const pollContainer = pollOptionElement.closest('.poll-container-compact');
             const totalVotes = pollResults.reduce((sum, option) => sum + option.votes, 0);
             
             // Update each option
             pollResults.forEach(option => {
                 const optionElement = pollContainer.querySelector(`[data-option-id="${option.id}"]`);
                 if (optionElement) {
-                    const votesElement = optionElement.querySelector('.poll-option-votes');
-                    const progressFill = optionElement.querySelector('.poll-progress-fill');
-                    
-                    votesElement.textContent = `${option.votes} votes`;
-                    progressFill.style.width = `${(option.votes / totalVotes * 100) || 0}%`;
+                    const votesElement = optionElement.querySelector('.poll-option-votes-compact');
+                    votesElement.textContent = option.votes;
                 }
             });
             
             // Update total votes
-            const totalElement = pollContainer.querySelector('.poll-total');
+            const totalElement = pollContainer.querySelector('.poll-total-compact');
             if (totalElement) {
-                totalElement.textContent = `${totalVotes} total votes`;
+                totalElement.textContent = `${totalVotes} votes`;
             }
             
             // Add voted indicator
-            const pollFooter = pollContainer.querySelector('.poll-footer');
-            if (pollFooter && !pollFooter.querySelector('.poll-voted')) {
+            const pollFooter = pollContainer.querySelector('.poll-footer-compact');
+            if (pollFooter && !pollFooter.querySelector('.poll-voted-compact')) {
                 const votedSpan = document.createElement('span');
-                votedSpan.className = 'poll-voted';
-                votedSpan.innerHTML = '<i class="fas fa-check"></i> You voted';
+                votedSpan.className = 'poll-voted-compact';
+                votedSpan.innerHTML = '<i class="fas fa-check"></i>';
                 pollFooter.appendChild(votedSpan);
             }
         }
