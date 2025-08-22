@@ -5600,6 +5600,34 @@ def save_community_announcement():
             VALUES (?, ?, ?, ?)
         ''', (community_id, content, session['username'], datetime.now().strftime('%m.%d.%y %H:%M')))
         
+        announcement_id = cursor.lastrowid
+        
+        # Handle file uploads
+        files = request.files.getlist('files')
+        uploaded_files = []
+        
+        for file in files:
+            if file and file.filename:
+                # Create unique filename
+                filename = secure_filename(file.filename)
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                unique_filename = f"{timestamp}_{filename}"
+                
+                # Save file to uploads directory
+                file_path = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
+                file.save(file_path)
+                
+                # Save file info to database
+                cursor.execute('''
+                    INSERT INTO community_files (announcement_id, filename, file_path, uploaded_by, uploaded_at)
+                    VALUES (?, ?, ?, ?, ?)
+                ''', (announcement_id, filename, unique_filename, session['username'], datetime.now().strftime('%m.%d.%y %H:%M')))
+                
+                uploaded_files.append({
+                    'filename': filename,
+                    'file_path': unique_filename
+                })
+        
         # Update community info to show the latest announcement
         cursor.execute('''
             UPDATE communities 
@@ -5610,7 +5638,7 @@ def save_community_announcement():
         conn.commit()
         conn.close()
         
-        return jsonify({'success': True})
+        return jsonify({'success': True, 'files': uploaded_files})
         
     except Exception as e:
         logger.error(f"Error saving community announcement: {e}")
@@ -5633,11 +5661,30 @@ def get_community_announcements():
         
         announcements = []
         for row in cursor.fetchall():
+            # Get files for this announcement
+            cursor.execute('''
+                SELECT id, filename, file_path, uploaded_by, uploaded_at
+                FROM community_files 
+                WHERE announcement_id = ?
+                ORDER BY uploaded_at DESC
+            ''', (row['id'],))
+            
+            files = []
+            for file_row in cursor.fetchall():
+                files.append({
+                    'id': file_row['id'],
+                    'filename': file_row['filename'],
+                    'file_path': file_row['file_path'],
+                    'uploaded_by': file_row['uploaded_by'],
+                    'uploaded_at': file_row['uploaded_at']
+                })
+            
             announcements.append({
                 'id': row['id'],
                 'content': row['content'],
                 'created_by': row['created_by'],
-                'created_at': row['created_at']
+                'created_at': row['created_at'],
+                'files': files
             })
         
         conn.close()
@@ -5709,6 +5756,35 @@ def delete_community_announcement():
     except Exception as e:
         logger.error(f"Error deleting community announcement: {e}")
         return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/download_community_file/<int:file_id>')
+def download_community_file(file_id):
+    """Download a community file"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT filename, file_path FROM community_files 
+            WHERE id = ?
+        ''', (file_id,))
+        
+        file_data = cursor.fetchone()
+        conn.close()
+        
+        if not file_data:
+            return "File not found", 404
+        
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], file_data['file_path'])
+        
+        if not os.path.exists(file_path):
+            return "File not found", 404
+        
+        return send_from_directory(app.config['UPLOAD_FOLDER'], file_data['file_path'], as_attachment=True, download_name=file_data['filename'])
+        
+    except Exception as e:
+        logger.error(f"Error downloading community file: {e}")
+        return "Error downloading file", 500
 
 if __name__ == '__main__':
     app.run(debug=False, host='0.0.0.0', port=8080)
