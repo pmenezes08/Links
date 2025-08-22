@@ -491,6 +491,40 @@
             background: rgba(45, 138, 126, 0.2) !important;
             border-color: {{ community.accent_color or '#2d8a7e' }} !important;
         }
+        
+        /* Member list styles */
+        .member-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            margin-bottom: 5px;
+        }
+        
+        .member-item:last-child {
+            border-bottom: none;
+        }
+        
+        .member-item span {
+            font-weight: 500;
+            color: {{ community.text_color or '#ffffff' }};
+        }
+        
+        .remove-member-btn {
+            background: #dc3545;
+            color: white;
+            border: none;
+            padding: 4px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s ease;
+        }
+        
+        .remove-member-btn:hover {
+            background: #c82333;
+        }
     </style>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
@@ -775,22 +809,34 @@
         }
         
         function loadMembers() {
-            fetch('/get_community_members/{{ community.id }}')
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        const membersList = document.getElementById('membersList');
-                        const membersHTML = data.members.map(member => `
-                            <div class="member-item">
-                                <span>@${member.username}</span>
-                                ${member.username !== '{{ username }}' && ('{{ username }}' === '{{ community.creator_username }}' || '{{ username }}' === 'admin') ? 
-                                    `<button onclick="removeMember('${member.username}')" class="remove-member-btn">Remove</button>` : ''}
-                            </div>
-                        `).join('');
-                        membersList.innerHTML = membersHTML;
-                    }
-                })
-                .catch(error => console.error('Error loading members:', error));
+            const formData = new FormData();
+            formData.append('community_id', '{{ community.id }}');
+            
+            fetch('/get_community_members', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    const membersList = document.getElementById('membersList');
+                    const membersHTML = data.members.map(member => `
+                        <div class="member-item">
+                            <span>@${member.username}</span>
+                            ${member.username !== '{{ username }}' && ('{{ username }}' === '{{ community.creator_username }}' || '{{ username }}' === 'admin') ? 
+                                `<button onclick="removeMember('${member.username}')" class="remove-member-btn">Remove</button>` : ''}
+                        </div>
+                    `).join('');
+                    membersList.innerHTML = membersHTML;
+                } else {
+                    console.error('Error loading members:', data.error);
+                    document.getElementById('membersList').innerHTML = '<p>Error loading members: ' + data.error + '</p>';
+                }
+            })
+            .catch(error => {
+                console.error('Error loading members:', error);
+                document.getElementById('membersList').innerHTML = '<p>Error loading members</p>';
+            });
         }
         
         function addMember() {
