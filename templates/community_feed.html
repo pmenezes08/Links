@@ -1037,15 +1037,15 @@
                 <p class="community-type">{{ community.type }} Community</p>
             </div>
             <div class="community-actions">
-                <button class="polls-btn" onclick="showPollsModal()">
-                    <i class="fas fa-poll-h"></i> Polls
-                </button>
                 <button class="members-btn" onclick="showMembersModal()">
                     <i class="fas fa-users"></i> Members
                 </button>
                 {% if username == community.creator_username or username == 'admin' %}
                 <button class="admin-info-btn" onclick="showAdminInfoModal()">
                     <i class="fas fa-bullhorn"></i> Announcements
+                </button>
+                <button class="polls-btn" onclick="showPollsModal()">
+                    <i class="fas fa-poll-h"></i> Polls
                 </button>
                 <button class="edit-community-btn" onclick="showEditCommunityModal()">
                     <i class="fas fa-edit"></i> Edit Community
@@ -1387,6 +1387,178 @@
 
         function closeEditCommunityModal() {
             document.getElementById('editCommunityModal').style.display = 'none';
+        }
+
+        // Polls Modal Functions - Global Scope
+        function showPollsModal() {
+            document.getElementById('pollsModal').style.display = 'block';
+            loadActivePolls();
+        }
+        
+        function closePollsModal() {
+            document.getElementById('pollsModal').style.display = 'none';
+        }
+        
+        function switchPollTab(tabName) {
+            // Remove active class from all tabs and content
+            document.querySelectorAll('.poll-tab').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('.poll-tab-content').forEach(content => content.classList.remove('active'));
+            
+            // Add active class to selected tab and content
+            document.querySelector(`[onclick="switchPollTab('${tabName}')"]`).classList.add('active');
+            document.getElementById(`${tabName}PollsTab`).classList.add('active');
+            
+            // Load content based on tab
+            if (tabName === 'active') {
+                loadActivePolls();
+            } else if (tabName === 'historical') {
+                loadHistoricalPolls();
+            }
+        }
+        
+        function loadActivePolls() {
+            fetch('/get_active_polls')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        displayPolls(data.polls, 'activePollsList');
+                    } else {
+                        document.getElementById('activePollsList').innerHTML = '<p>No active polls found.</p>';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading active polls:', error);
+                    document.getElementById('activePollsList').innerHTML = '<p>Error loading polls.</p>';
+                });
+        }
+        
+        function loadHistoricalPolls() {
+            fetch('/get_historical_polls')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        displayPolls(data.polls, 'historicalPollsList');
+                    } else {
+                        document.getElementById('historicalPollsList').innerHTML = '<p>No historical polls found.</p>';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading historical polls:', error);
+                    document.getElementById('historicalPollsList').innerHTML = '<p>Error loading polls.</p>';
+                });
+        }
+        
+        function displayPolls(polls, containerId) {
+            const container = document.getElementById(containerId);
+            
+            if (!polls || polls.length === 0) {
+                container.innerHTML = '<p>No polls found.</p>';
+                return;
+            }
+            
+            const pollsHTML = polls.map(poll => `
+                <div class="poll-item">
+                    <div class="poll-item-header">
+                        <div class="poll-item-question">${poll.question}</div>
+                        <div class="poll-item-date">${poll.created_at}</div>
+                    </div>
+                    <div class="poll-item-options">
+                        ${poll.options.map(option => `
+                            <div class="poll-item-option" data-poll-id="${poll.id}" data-option-id="${option.id}">
+                                <div class="poll-item-option-text">${option.option_text}</div>
+                                <div class="poll-item-option-votes">${option.votes}</div>
+                            </div>
+                        `).join('')}
+                    </div>
+                    <div class="poll-item-footer">
+                        <div class="poll-item-total">${poll.total_votes} total votes</div>
+                        ${poll.user_vote ? '<div class="poll-item-voted"><i class="fas fa-check"></i> You voted</div>' : ''}
+                    </div>
+                </div>
+            `).join('');
+            
+            container.innerHTML = pollsHTML;
+            
+            // Add click handlers for voting
+            container.querySelectorAll('.poll-item-option').forEach(option => {
+                option.addEventListener('click', function() {
+                    const pollId = this.dataset.pollId;
+                    const optionId = this.dataset.optionId;
+                    voteOnPoll(pollId, optionId, this);
+                });
+            });
+        }
+        
+        function addModalPollOption() {
+            const optionsContainer = document.getElementById('modalPollOptions');
+            const optionCount = optionsContainer.children.length;
+            
+            if (optionCount >= 6) {
+                alert('Maximum 6 options allowed');
+                return;
+            }
+            
+            const newOption = document.createElement('input');
+            newOption.type = 'text';
+            newOption.name = 'options[]';
+            newOption.placeholder = `Option ${optionCount + 1}`;
+            newOption.required = true;
+            
+            optionsContainer.appendChild(newOption);
+        }
+        
+        function voteOnPoll(pollId, optionId, pollOptionElement) {
+            fetch('/vote_poll', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    poll_id: pollId,
+                    option_id: optionId
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    updatePollDisplay(pollOptionElement, data.poll_results);
+                } else {
+                    alert('Error voting: ' + data.error);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Error voting on poll');
+            });
+        }
+        
+        function updatePollDisplay(pollOptionElement, pollResults) {
+            const pollContainer = pollOptionElement.closest('.poll-container-compact');
+            const totalVotes = pollResults.reduce((sum, option) => sum + option.votes, 0);
+            
+            // Update each option
+            pollResults.forEach(option => {
+                const optionElement = pollContainer.querySelector(`[data-option-id="${option.id}"]`);
+                if (optionElement) {
+                    const votesElement = optionElement.querySelector('.poll-option-votes-compact');
+                    votesElement.textContent = option.votes;
+                }
+            });
+            
+            // Update total votes
+            const totalElement = pollContainer.querySelector('.poll-total-compact');
+            if (totalElement) {
+                totalElement.textContent = `${totalVotes} votes`;
+            }
+            
+            // Add voted indicator
+            const pollFooter = pollContainer.querySelector('.poll-footer-compact');
+            if (pollFooter && !pollFooter.querySelector('.poll-voted-compact')) {
+                const votedSpan = document.createElement('span');
+                votedSpan.className = 'poll-voted-compact';
+                votedSpan.innerHTML = '<i class="fas fa-check"></i>';
+                pollFooter.appendChild(votedSpan);
+            }
         }
 
         // Handle background file selection
@@ -2052,177 +2224,7 @@
             }
         }
 
-        // Polls Modal Functions - Global Scope
-        function showPollsModal() {
-            document.getElementById('pollsModal').style.display = 'block';
-            loadActivePolls();
-        }
-        
-        function closePollsModal() {
-            document.getElementById('pollsModal').style.display = 'none';
-        }
-        
-        function switchPollTab(tabName) {
-            // Remove active class from all tabs and content
-            document.querySelectorAll('.poll-tab').forEach(tab => tab.classList.remove('active'));
-            document.querySelectorAll('.poll-tab-content').forEach(content => content.classList.remove('active'));
-            
-            // Add active class to selected tab and content
-            document.querySelector(`[onclick="switchPollTab('${tabName}')"]`).classList.add('active');
-            document.getElementById(`${tabName}PollsTab`).classList.add('active');
-            
-            // Load content based on tab
-            if (tabName === 'active') {
-                loadActivePolls();
-            } else if (tabName === 'historical') {
-                loadHistoricalPolls();
-            }
-        }
-        
-        function loadActivePolls() {
-            fetch('/get_active_polls')
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        displayPolls(data.polls, 'activePollsList');
-                    } else {
-                        document.getElementById('activePollsList').innerHTML = '<p>No active polls found.</p>';
-                    }
-                })
-                .catch(error => {
-                    console.error('Error loading active polls:', error);
-                    document.getElementById('activePollsList').innerHTML = '<p>Error loading polls.</p>';
-                });
-        }
-        
-        function loadHistoricalPolls() {
-            fetch('/get_historical_polls')
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        displayPolls(data.polls, 'historicalPollsList');
-                    } else {
-                        document.getElementById('historicalPollsList').innerHTML = '<p>No historical polls found.</p>';
-                    }
-                })
-                .catch(error => {
-                    console.error('Error loading historical polls:', error);
-                    document.getElementById('historicalPollsList').innerHTML = '<p>Error loading polls.</p>';
-                });
-        }
-        
-        function displayPolls(polls, containerId) {
-            const container = document.getElementById(containerId);
-            
-            if (!polls || polls.length === 0) {
-                container.innerHTML = '<p>No polls found.</p>';
-                return;
-            }
-            
-            const pollsHTML = polls.map(poll => `
-                <div class="poll-item">
-                    <div class="poll-item-header">
-                        <div class="poll-item-question">${poll.question}</div>
-                        <div class="poll-item-date">${poll.created_at}</div>
-                    </div>
-                    <div class="poll-item-options">
-                        ${poll.options.map(option => `
-                            <div class="poll-item-option" data-poll-id="${poll.id}" data-option-id="${option.id}">
-                                <div class="poll-item-option-text">${option.option_text}</div>
-                                <div class="poll-item-option-votes">${option.votes}</div>
-                            </div>
-                        `).join('')}
-                    </div>
-                    <div class="poll-item-footer">
-                        <div class="poll-item-total">${poll.total_votes} total votes</div>
-                        ${poll.user_vote ? '<div class="poll-item-voted"><i class="fas fa-check"></i> You voted</div>' : ''}
-                    </div>
-                </div>
-            `).join('');
-            
-            container.innerHTML = pollsHTML;
-            
-            // Add click handlers for voting
-            container.querySelectorAll('.poll-item-option').forEach(option => {
-                option.addEventListener('click', function() {
-                    const pollId = this.dataset.pollId;
-                    const optionId = this.dataset.optionId;
-                    voteOnPoll(pollId, optionId, this);
-                });
-            });
-        }
-        
-        function addModalPollOption() {
-            const optionsContainer = document.getElementById('modalPollOptions');
-            const optionCount = optionsContainer.children.length;
-            
-            if (optionCount >= 6) {
-                alert('Maximum 6 options allowed');
-                return;
-            }
-            
-            const newOption = document.createElement('input');
-            newOption.type = 'text';
-            newOption.name = 'options[]';
-            newOption.placeholder = `Option ${optionCount + 1}`;
-            newOption.required = true;
-            
-            optionsContainer.appendChild(newOption);
-        }
-        
-        function voteOnPoll(pollId, optionId, pollOptionElement) {
-            fetch('/vote_poll', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    poll_id: pollId,
-                    option_id: optionId
-                })
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    updatePollDisplay(pollOptionElement, data.poll_results);
-                } else {
-                    alert('Error voting: ' + data.error);
-                }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                alert('Error voting on poll');
-            });
-        }
-        
-        function updatePollDisplay(pollOptionElement, pollResults) {
-            const pollContainer = pollOptionElement.closest('.poll-container-compact');
-            const totalVotes = pollResults.reduce((sum, option) => sum + option.votes, 0);
-            
-            // Update each option
-            pollResults.forEach(option => {
-                const optionElement = pollContainer.querySelector(`[data-option-id="${option.id}"]`);
-                if (optionElement) {
-                    const votesElement = optionElement.querySelector('.poll-option-votes-compact');
-                    votesElement.textContent = option.votes;
-                }
-            });
-            
-            // Update total votes
-            const totalElement = pollContainer.querySelector('.poll-total-compact');
-            if (totalElement) {
-                totalElement.textContent = `${totalVotes} votes`;
-            }
-            
-            // Add voted indicator
-            const pollFooter = pollContainer.querySelector('.poll-footer-compact');
-            if (pollFooter && !pollFooter.querySelector('.poll-voted-compact')) {
-                const votedSpan = document.createElement('span');
-                votedSpan.className = 'poll-voted-compact';
-                votedSpan.innerHTML = '<i class="fas fa-check"></i>';
-                pollFooter.appendChild(votedSpan);
-            }
-        }
+
     </script>
 </body>
 </html>
