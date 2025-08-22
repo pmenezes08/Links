@@ -18,6 +18,14 @@ from werkzeug.security import generate_password_hash, check_password_hash
 # Initialize Flask app
 app = Flask(__name__, template_folder='templates')
 
+# Custom template filters
+@app.template_filter('nl2br')
+def nl2br_filter(text):
+    """Convert newlines to <br> tags"""
+    if text is None:
+        return ''
+    return text.replace('\n', '<br>')
+
 # Force reload to clear any cached routes - Updated 2025-08-21 16:50 - CLEAR CACHE
 
 # Temporarily disable CSRF protection
@@ -2968,10 +2976,10 @@ def join_community():
         return jsonify({'success': False, 'error': 'An error occurred while joining the community'})
 
 @app.route('/community_feed/<int:community_id>')
-# @login_required  # Temporarily disabled for debugging
+@login_required
 def community_feed(community_id):
     """Community-specific social feed"""
-    username = session.get('username', 'admin')  # Fallback to admin for debugging
+    username = session.get('username')
     
     try:
         with get_db_connection() as conn:

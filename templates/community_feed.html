@@ -395,7 +395,7 @@
                 </div>
             </div>
             <div class="announcement-content">
-                {{ community.info }}
+                {{ community.info | nl2br | safe }}
             </div>
         </div>
         {% endif %}
