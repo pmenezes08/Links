@@ -431,6 +431,63 @@
         .file-action-btn:hover {
             background: rgba(255, 255, 255, 0.1);
         }
+        
+        /* Poll Creation Styles */
+        .vote-settings {
+            margin: 10px 0;
+        }
+        
+        .checkbox-label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            margin-bottom: 5px;
+        }
+        
+        .checkbox-label input[type="checkbox"] {
+            margin: 0;
+        }
+        
+        .poll-option-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+        
+        .poll-option-row input {
+            flex: 1;
+        }
+        
+        .remove-option-btn {
+            background: #dc3545;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            cursor: pointer;
+            font-size: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .remove-option-btn:hover {
+            background: #c82333;
+        }
+        
+        /* Vote toggle styles */
+        .poll-option-compact.voted {
+            background: rgba(77, 182, 172, 0.2) !important;
+            border-color: {{ community.accent_color or '#4db6ac' }} !important;
+        }
+        
+        .poll-item-option.voted {
+            background: rgba(77, 182, 172, 0.2) !important;
+            border-color: {{ community.accent_color or '#4db6ac' }} !important;
+        }
     </style>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
@@ -513,7 +570,7 @@
                     </div>
                     <div class="poll-item-options">
                         ${poll.options.map(option => `
-                            <div class="poll-item-option" data-poll-id="${poll.id}" data-option-id="${option.id}">
+                            <div class="poll-item-option ${option.user_voted ? 'voted' : ''}" data-poll-id="${poll.id}" data-option-id="${option.id}">
                                 <div class="poll-item-option-text">${option.option_text}</div>
                                 <div class="poll-item-option-votes">${option.votes}</div>
                             </div>
@@ -547,16 +604,51 @@
                 return;
             }
             
-            const newOption = document.createElement('input');
-            newOption.type = 'text';
-            newOption.name = 'options[]';
-            newOption.placeholder = `Option ${optionCount + 1}`;
-            newOption.required = true;
+            const newOptionRow = document.createElement('div');
+            newOptionRow.className = 'poll-option-row';
+            newOptionRow.innerHTML = `
+                <input type="text" name="options[]" placeholder="Option ${optionCount + 1}" required>
+                <button type="button" class="remove-option-btn" onclick="removeModalPollOption(this)">×</button>
+            `;
             
-            optionsContainer.appendChild(newOption);
+            optionsContainer.appendChild(newOptionRow);
+            
+            // Show remove buttons for all options when we have more than 2
+            if (optionCount >= 2) {
+                document.querySelectorAll('.remove-option-btn').forEach(btn => {
+                    btn.style.display = 'flex';
+                });
+            }
+        }
+        
+        function removeModalPollOption(button) {
+            const optionsContainer = document.getElementById('modalPollOptions');
+            const optionCount = optionsContainer.children.length;
+            
+            if (optionCount <= 2) {
+                alert('Minimum 2 options required');
+                return;
+            }
+            
+            button.parentElement.remove();
+            
+            // Hide remove buttons if we're back to 2 options
+            if (optionCount <= 3) {
+                document.querySelectorAll('.remove-option-btn').forEach(btn => {
+                    btn.style.display = 'none';
+                });
+            }
+            
+            // Update placeholders
+            document.querySelectorAll('#modalPollOptions input').forEach((input, index) => {
+                input.placeholder = `Option ${index + 1}`;
+            });
         }
         
         function voteOnPoll(pollId, optionId, pollOptionElement) {
+            // Check if user already voted on this option
+            const isVoted = pollOptionElement.classList.contains('voted');
+            
             fetch('/vote_poll', {
                 method: 'POST',
                 headers: {
@@ -564,13 +656,16 @@
                 },
                 body: JSON.stringify({
                     poll_id: pollId,
-                    option_id: optionId
+                    option_id: optionId,
+                    toggle_vote: isVoted
                 })
             })
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
                     updatePollDisplay(pollOptionElement, data.poll_results);
+                    // Toggle the voted class
+                    pollOptionElement.classList.toggle('voted');
                 } else {
                     alert('Error voting: ' + data.error);
                 }
@@ -930,22 +1025,23 @@
                 <h1>{{ community.name }}</h1>
                 <p class="community-type">{{ community.type }} Community</p>
             </div>
-            <div class="community-actions">
-                <button class="members-btn" onclick="showMembersModal()">
-                    <i class="fas fa-users"></i> Members
-                </button>
-                {% if username == community.creator_username or username == 'admin' %}
-                <button class="admin-info-btn" onclick="showAdminInfoModal()">
-                    <i class="fas fa-bullhorn"></i> Announcements
-                </button>
-                <button class="polls-btn" onclick="showPollsModal()">
-                    <i class="fas fa-poll-h"></i> Polls
-                </button>
-                <button class="edit-community-btn" onclick="showEditCommunityModal()">
-                    <i class="fas fa-edit"></i> Edit Community
-                </button>
-                {% endif %}
-            </div>
+        </div>
+        
+        <div class="community-actions">
+            <button class="members-btn" onclick="showMembersModal()">
+                <i class="fas fa-users"></i> Members
+            </button>
+            {% if username == community.creator_username or username == 'admin' %}
+            <button class="admin-info-btn" onclick="showAdminInfoModal()">
+                <i class="fas fa-bullhorn"></i> Announcements
+            </button>
+            <button class="polls-btn" onclick="showPollsModal()">
+                <i class="fas fa-poll-h"></i> Polls
+            </button>
+            <button class="edit-community-btn" onclick="showEditCommunityModal()">
+                <i class="fas fa-edit"></i> Edit Community
+            </button>
+            {% endif %}
         </div>
 
         <!-- Composer -->
@@ -1193,10 +1289,26 @@
                             <input type="text" id="pollQuestion" name="question" required>
                         </div>
                         <div class="form-group">
+                            <label>Vote Settings:</label>
+                            <div class="vote-settings">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" name="single_vote" value="true" checked>
+                                    <span>Single vote per user</span>
+                                </label>
+                                <small>Uncheck to allow multiple votes per user</small>
+                            </div>
+                        </div>
+                        <div class="form-group">
                             <label>Options:</label>
                             <div id="modalPollOptions">
-                                <input type="text" name="options[]" placeholder="Option 1" required>
-                                <input type="text" name="options[]" placeholder="Option 2" required>
+                                <div class="poll-option-row">
+                                    <input type="text" name="options[]" placeholder="Option 1" required>
+                                    <button type="button" class="remove-option-btn" onclick="removeModalPollOption(this)" style="display: none;">×</button>
+                                </div>
+                                <div class="poll-option-row">
+                                    <input type="text" name="options[]" placeholder="Option 2" required>
+                                    <button type="button" class="remove-option-btn" onclick="removeModalPollOption(this)" style="display: none;">×</button>
+                                </div>
                             </div>
                             <button type="button" onclick="addModalPollOption()" class="sleek-btn small">Add Option</button>
                         </div>

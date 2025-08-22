@@ -423,15 +423,16 @@ def init_db():
             
             # Create polls table
             logger.info("Creating polls table...")
-            c.execute('''CREATE TABLE IF NOT EXISTS polls
-                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
-                          post_id INTEGER NOT NULL,
-                          question TEXT NOT NULL,
-                          created_by TEXT NOT NULL,
-                          created_at TEXT NOT NULL,
-                          expires_at TEXT,
-                          is_active BOOLEAN DEFAULT 1,
-                          FOREIGN KEY (post_id) REFERENCES posts (id) ON DELETE CASCADE)''')
+            c.execute('''        CREATE TABLE IF NOT EXISTS polls
+        (id INTEGER PRIMARY KEY AUTOINCREMENT,
+         post_id INTEGER NOT NULL,
+         question TEXT NOT NULL,
+         created_by TEXT NOT NULL,
+         created_at TEXT NOT NULL,
+         expires_at TEXT,
+         is_active BOOLEAN DEFAULT 1,
+         single_vote BOOLEAN DEFAULT 1,
+         FOREIGN KEY (post_id) REFERENCES posts (id) ON DELETE CASCADE)''')
             
             # Create poll_options table
             logger.info("Creating poll_options table...")
@@ -2673,9 +2674,12 @@ def create_poll():
                       (username, content, None, timestamp, community_id))
             post_id = c.lastrowid
             
+            # Get single vote setting
+            single_vote = request.form.get('single_vote', 'true').lower() == 'true'
+            
             # Create the poll
-            c.execute("INSERT INTO polls (post_id, question, created_by, created_at) VALUES (?, ?, ?, ?)",
-                      (post_id, question, username, timestamp))
+            c.execute("INSERT INTO polls (post_id, question, created_by, created_at, single_vote) VALUES (?, ?, ?, ?, ?)",
+                      (post_id, question, username, timestamp, single_vote))
             poll_id = c.lastrowid
             
             # Create poll options
@@ -2701,9 +2705,11 @@ def vote_poll():
         data = request.get_json()
         poll_id = data.get('poll_id')
         option_id = data.get('option_id')
+        toggle_vote = data.get('toggle_vote', False)  # New parameter for vote toggling
     else:
         poll_id = request.form.get('poll_id', type=int)
         option_id = request.form.get('option_id', type=int)
+        toggle_vote = request.form.get('toggle_vote', False)
     
     if not poll_id or not option_id:
         return jsonify({'success': False, 'error': 'Invalid poll or option ID'})
@@ -2719,28 +2725,40 @@ def vote_poll():
             if not poll_data:
                 return jsonify({'success': False, 'error': 'Poll not found or inactive'})
             
-            # Check if user already voted
-            c.execute("SELECT id FROM poll_votes WHERE poll_id = ? AND username = ?", (poll_id, username))
+            # Check if user already voted on this specific option
+            c.execute("SELECT id FROM poll_votes WHERE poll_id = ? AND username = ? AND option_id = ?", (poll_id, username, option_id))
+            existing_vote_on_option = c.fetchone()
+            
+            # Check if user already voted on this poll
+            c.execute("SELECT id, option_id FROM poll_votes WHERE poll_id = ? AND username = ?", (poll_id, username))
             existing_vote = c.fetchone()
             
-            if existing_vote:
-                # Update existing vote
+            if toggle_vote and existing_vote_on_option:
+                # Remove vote from this option
+                c.execute("DELETE FROM poll_votes WHERE poll_id = ? AND username = ? AND option_id = ?", (poll_id, username, option_id))
+                message = "Vote removed!"
+            elif existing_vote and poll_data['single_vote']:
+                # Update existing vote (single vote mode)
                 c.execute("UPDATE poll_votes SET option_id = ?, voted_at = ? WHERE poll_id = ? AND username = ?",
                           (option_id, datetime.now().strftime('%m.%d.%y %H:%M'), poll_id, username))
-            else:
+                message = "Vote updated!"
+            elif not existing_vote:
                 # Create new vote
                 c.execute("INSERT INTO poll_votes (poll_id, option_id, username, voted_at) VALUES (?, ?, ?, ?)",
                           (poll_id, option_id, username, datetime.now().strftime('%m.%d.%y %H:%M')))
+                message = "Vote recorded successfully!"
+            else:
+                # Multiple vote mode - add another vote
+                c.execute("INSERT INTO poll_votes (poll_id, option_id, username, voted_at) VALUES (?, ?, ?, ?)",
+                          (poll_id, option_id, username, datetime.now().strftime('%m.%d.%y %H:%M')))
+                message = "Vote added!"
             
             # Update vote count for the selected option
             c.execute("UPDATE poll_options SET votes = (SELECT COUNT(*) FROM poll_votes WHERE option_id = ?) WHERE id = ?", (option_id, option_id))
             
-            # Update vote count for the previously selected option (if any)
-            if existing_vote:
-                c.execute("SELECT option_id FROM poll_votes WHERE poll_id = ? AND username = ?", (poll_id, username))
-                old_option = c.fetchone()
-                if old_option and old_option['option_id'] != option_id:
-                    c.execute("UPDATE poll_options SET votes = (SELECT COUNT(*) FROM poll_votes WHERE option_id = ?) WHERE id = ?", (old_option['option_id'], old_option['option_id']))
+            # Update vote count for the previously selected option (if any and in single vote mode)
+            if existing_vote and poll_data['single_vote'] and existing_vote['option_id'] != option_id:
+                c.execute("UPDATE poll_options SET votes = (SELECT COUNT(*) FROM poll_votes WHERE option_id = ?) WHERE id = ?", (existing_vote['option_id'], existing_vote['option_id']))
             
             conn.commit()
             
@@ -2756,7 +2774,7 @@ def vote_poll():
             
             return jsonify({
                 'success': True, 
-                'message': 'Vote recorded successfully!',
+                'message': message,
                 'poll_results': [dict(row) for row in poll_results]
             })
             
@@ -2775,11 +2793,12 @@ def get_poll_results(poll_id):
             c.execute("""
                 SELECT po.id, po.option_text, po.votes, 
                        (SELECT COUNT(*) FROM poll_votes WHERE poll_id = ?) as total_votes,
-                       (SELECT option_id FROM poll_votes WHERE poll_id = ? AND username = ?) as user_vote
+                       (SELECT option_id FROM poll_votes WHERE poll_id = ? AND username = ?) as user_vote,
+                       (SELECT COUNT(*) FROM poll_votes WHERE poll_id = ? AND username = ? AND option_id = po.id) as user_voted
                 FROM poll_options po 
                 WHERE po.poll_id = ?
                 ORDER BY po.id
-            """, (poll_id, poll_id, session['username'], poll_id))
+            """, (poll_id, poll_id, session['username'], poll_id, session['username'], poll_id))
             
             poll_results = c.fetchall()
             
@@ -2840,6 +2859,59 @@ def get_active_polls():
     except Exception as e:
         logger.error(f"Error getting active polls: {str(e)}")
         return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/remove_poll_option', methods=['POST'])
+@login_required
+def remove_poll_option():
+    """Remove a poll option (only poll creator can do this)"""
+    username = session['username']
+    
+    if request.is_json:
+        data = request.get_json()
+        option_id = data.get('option_id')
+    else:
+        option_id = request.form.get('option_id', type=int)
+    
+    if not option_id:
+        return jsonify({'success': False, 'error': 'Invalid option ID'})
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Check if user is the poll creator
+            c.execute("""
+                SELECT p.created_by, po.poll_id 
+                FROM poll_options po 
+                JOIN polls p ON po.poll_id = p.id 
+                WHERE po.id = ?
+            """, (option_id,))
+            poll_data = c.fetchone()
+            
+            if not poll_data:
+                return jsonify({'success': False, 'error': 'Option not found'})
+            
+            if poll_data['created_by'] != username and username != 'admin':
+                return jsonify({'success': False, 'error': 'Only poll creator can remove options'})
+            
+            # Check if this is the last option
+            c.execute("SELECT COUNT(*) as count FROM poll_options WHERE poll_id = ?", (poll_data['poll_id'],))
+            option_count = c.fetchone()['count']
+            
+            if option_count <= 2:
+                return jsonify({'success': False, 'error': 'Cannot remove option - minimum 2 options required'})
+            
+            # Remove the option and all its votes
+            c.execute("DELETE FROM poll_votes WHERE option_id = ?", (option_id,))
+            c.execute("DELETE FROM poll_options WHERE id = ?", (option_id,))
+            
+            conn.commit()
+            
+            return jsonify({'success': True, 'message': 'Option removed successfully'})
+            
+    except Exception as e:
+        logger.error(f"Error removing poll option: {str(e)}")
+        return jsonify({'success': False, 'error': 'Error removing option'})
 
 @app.route('/get_historical_polls')
 @login_required
