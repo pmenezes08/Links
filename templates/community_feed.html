@@ -600,6 +600,74 @@
         .remove-member-btn:hover {
             background: #c82333;
         }
+        
+        /* Announcement Styles */
+        .announcement-item {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+        }
+        
+        .announcement-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        
+        .announcement-date {
+            color: #9fb0b5;
+            font-size: 12px;
+        }
+        
+        .announcement-content {
+            color: #ffffff;
+            line-height: 1.5;
+            margin-bottom: 10px;
+        }
+        
+        .announcement-files {
+            margin-top: 10px;
+        }
+        
+        .announcement-file {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px;
+            background: #2a2a2a;
+            border-radius: 4px;
+            margin-bottom: 5px;
+        }
+        
+        .announcement-file i {
+            color: #4db6ac;
+        }
+        
+        .announcement-file a {
+            color: #4db6ac;
+            text-decoration: none;
+        }
+        
+        .announcement-file a:hover {
+            text-decoration: underline;
+        }
+        
+        .delete-announcement-btn {
+            background: #dc3545;
+            color: white;
+            border: none;
+            padding: 4px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        
+        .delete-announcement-btn:hover {
+            background: #c82333;
+        }
     </style>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
@@ -1052,16 +1120,24 @@
             const announcementsHTML = announcements.map(announcement => `
                 <div class="announcement-item">
                     <div class="announcement-header">
-                        <span class="announcement-date">${announcement.created_at}</span>
-                        <button onclick="deleteAnnouncement(${announcement.id})" class="delete-announcement-btn">Delete</button>
+                        <span class="announcement-date"><i class="fas fa-calendar-alt"></i> ${announcement.created_at}</span>
+                        <button onclick="deleteAnnouncement(${announcement.id})" class="delete-announcement-btn">
+                            <i class="fas fa-trash"></i> Delete
+                        </button>
                     </div>
-                    <div class="announcement-content">${announcement.content}</div>
+                    <div class="announcement-content">
+                        <i class="fas fa-bullhorn"></i> ${announcement.content}
+                    </div>
                     ${announcement.files && announcement.files.length > 0 ? `
                         <div class="announcement-files">
+                            <h4><i class="fas fa-paperclip"></i> Attached Files:</h4>
                             ${announcement.files.map(file => `
-                                <div class="file-item">
+                                <div class="announcement-file">
+                                    <i class="fas fa-file"></i>
                                     <a href="/download_community_file/${file.id}" target="_blank">${file.filename}</a>
-                                    <button onclick="deleteCommunityFile(${file.id})" class="delete-file-btn">Delete</button>
+                                    <button onclick="deleteCommunityFile(${file.id})" class="delete-file-btn">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
                                 </div>
                             `).join('')}
                         </div>
