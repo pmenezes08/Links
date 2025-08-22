@@ -2718,6 +2718,12 @@ def vote_poll():
         option_id = request.form.get('option_id', type=int)
         toggle_vote = request.form.get('toggle_vote', False)
     
+    # Convert toggle_vote to boolean if it's a string
+    if isinstance(toggle_vote, str):
+        toggle_vote = toggle_vote.lower() == 'true'
+    
+    logger.info(f"Vote request: poll_id={poll_id}, option_id={option_id}, toggle_vote={toggle_vote}")
+    
     if not poll_id or not option_id:
         return jsonify({'success': False, 'error': 'Invalid poll or option ID'})
     
@@ -2746,6 +2752,7 @@ def vote_poll():
             
             if toggle_vote and existing_vote_on_option:
                 # Remove vote from this option
+                logger.info(f"Removing vote: poll_id={poll_id}, username={username}, option_id={option_id}")
                 c.execute("DELETE FROM poll_votes WHERE poll_id = ? AND username = ? AND option_id = ?", (poll_id, username, option_id))
                 message = "Vote removed!"
             elif existing_vote and poll_data['single_vote']:
