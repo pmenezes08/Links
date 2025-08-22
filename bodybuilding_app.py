@@ -4693,6 +4693,11 @@ def debug_community(community_id):
             'traceback': traceback.format_exc()
         })
 
+@app.route('/simple_test')
+def simple_test():
+    """Simple test route without any decorators"""
+    return jsonify({'success': True, 'message': 'Simple test route works'})
+
 # Community Announcements Routes
 @app.route('/save_community_info', methods=['POST'])
 def save_community_info():
