@@ -414,6 +414,13 @@ def init_db():
                 logger.info("Adding info_updated_at column to communities table...")
                 c.execute("ALTER TABLE communities ADD COLUMN info_updated_at TEXT")
             
+            # Add description column to community_files table if it doesn't exist
+            try:
+                c.execute("SELECT description FROM community_files LIMIT 1")
+            except sqlite3.OperationalError:
+                logger.info("Adding description column to community_files table...")
+                c.execute("ALTER TABLE community_files ADD COLUMN description TEXT")
+            
             conn.commit()
             logger.info("Database initialization completed successfully")
             
@@ -462,10 +469,18 @@ except Exception as e:
 @app.template_filter('format_date')
 def format_date(date_str, format_str):
     try:
-        dt = datetime.strptime(date_str, '%m.%d.%y %H:%M')
-        return dt.strftime(format_str)
-    except ValueError:
+        # Try multiple date formats
+        for date_format in ['%m.%d.%y %H:%M', '%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M']:
+            try:
+                dt = datetime.strptime(date_str, date_format)
+                return dt.strftime(format_str)
+            except ValueError:
+                continue
+        # If none of the formats work, log error and return original
         logger.error(f"Invalid date format: {date_str}")
+        return date_str
+    except Exception as e:
+        logger.error(f"Error formatting date {date_str}: {str(e)}")
         return date_str
 
 # --- File upload helpers ---
