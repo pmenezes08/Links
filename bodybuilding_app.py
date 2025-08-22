@@ -5604,6 +5604,13 @@ def save_community_announcement():
             )
         ''')
         
+        # Add announcement_id column if it doesn't exist
+        try:
+            cursor.execute("SELECT announcement_id FROM community_files LIMIT 1")
+        except:
+            logger.info("Adding announcement_id column to community_files table...")
+            cursor.execute("ALTER TABLE community_files ADD COLUMN announcement_id INTEGER")
+        
         # Check if user is admin or community creator
         cursor.execute('''
             SELECT creator_username FROM communities 
