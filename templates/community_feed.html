@@ -1030,10 +1030,10 @@
         </div>
         
         <div class="community-actions">
+            {% if username == community.creator_username or username == 'admin' %}
             <button class="members-btn" onclick="showMembersModal()">
                 <i class="fas fa-users"></i> Members
             </button>
-            {% if username == community.creator_username or username == 'admin' %}
             <button class="admin-info-btn" onclick="showAdminInfoModal()">
                 <i class="fas fa-bullhorn"></i> Announcements
             </button>
