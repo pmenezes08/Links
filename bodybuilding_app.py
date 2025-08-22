@@ -2707,6 +2707,46 @@ def create_poll():
         logger.error(f"Error creating poll: {str(e)}")
         return jsonify({'success': False, 'error': 'Error creating poll'})
 
+@app.route('/close_poll', methods=['POST'])
+@login_required
+def close_poll():
+    """Close a poll and move it to historical"""
+    username = session['username']
+    
+    if request.is_json:
+        data = request.get_json()
+        poll_id = data.get('poll_id')
+    else:
+        poll_id = request.form.get('poll_id', type=int)
+    
+    if not poll_id:
+        return jsonify({'success': False, 'error': 'Invalid poll ID'})
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Check if poll exists and user has permission to close it
+            c.execute("SELECT created_by FROM polls WHERE id = ? AND is_active = 1", (poll_id,))
+            poll_data = c.fetchone()
+            
+            if not poll_data:
+                return jsonify({'success': False, 'error': 'Poll not found or already closed'})
+            
+            # Only poll creator or admin can close polls
+            if poll_data['created_by'] != username and username != 'admin':
+                return jsonify({'success': False, 'error': 'You can only close your own polls'})
+            
+            # Close the poll
+            c.execute("UPDATE polls SET is_active = 0 WHERE id = ?", (poll_id,))
+            conn.commit()
+            
+            return jsonify({'success': True, 'message': 'Poll closed successfully'})
+            
+    except Exception as e:
+        logger.error(f"Error closing poll: {str(e)}")
+        return jsonify({'success': False, 'error': 'Error closing poll'})
+
 @app.route('/vote_poll', methods=['POST'])
 @login_required
 def vote_poll():

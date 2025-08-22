@@ -342,6 +342,30 @@
             justify-content: space-between;
             align-items: center;
             margin-bottom: 10px;
+            position: relative;
+        }
+        
+        .close-poll-btn {
+            background: #dc3545;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            cursor: pointer;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+            position: absolute;
+            top: 0;
+            right: 0;
+        }
+        
+        .close-poll-btn:hover {
+            background: #c82333;
+            transform: scale(1.1);
         }
         
         .poll-item-question {
@@ -673,6 +697,11 @@
                     <div class="poll-item-header">
                         <div class="poll-item-question">${poll.question}</div>
                         <div class="poll-item-date">${poll.created_at}</div>
+                        ${(poll.created_by === '{{ username }}' || '{{ username }}' === 'admin') ? 
+                            `<button class="close-poll-btn" onclick="closePoll(${poll.id})" title="Close Poll">
+                                <i class="fas fa-times"></i>
+                            </button>` : ''
+                        }
                     </div>
                     <div class="poll-item-options">
                         ${poll.options.map(option => `
@@ -749,6 +778,34 @@
             document.querySelectorAll('#modalPollOptions input').forEach((input, index) => {
                 input.placeholder = `Option ${index + 1}`;
             });
+        }
+        
+        function closePoll(pollId) {
+            if (confirm('Are you sure you want to close this poll? It will be moved to historical polls.')) {
+                fetch('/close_poll', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        poll_id: pollId
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        alert('Poll closed successfully!');
+                        // Reload active polls
+                        loadActivePolls();
+                    } else {
+                        alert('Error closing poll: ' + data.error);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('Error closing poll');
+                });
+            }
         }
         
         function voteOnPoll(pollId, optionId, pollOptionElement) {
