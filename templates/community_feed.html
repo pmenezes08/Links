@@ -1085,7 +1085,7 @@
     <div class="container feed">
         {% if community.background_path %}
         <div class="community-header-image">
-            <img src="{% if community.background_path.startswith('http') %}{{ community.background_path }}{% else %}{{ url_for('static', filename=community.background_path) }}{% endif %}" 
+            <img src="{% if community.background_path.startswith('http') %}{{ community.background_path }}{% else %}{{ url_for('static', filename='community_backgrounds/' + community.background_path.split('/')[-1]) }}{% endif %}" 
                  alt="{{ community.name }} Header" 
                  class="header-image"
                  onerror="console.log('Header image failed to load:', this.src); this.style.display='none'; this.parentElement.style.display='none';"
@@ -1431,18 +1431,10 @@
                 
                 // Handle checkbox value properly
                 const singleVoteCheckbox = document.querySelector('#pollsModal input[name="single_vote"]');
-                console.log('Checkbox found:', singleVoteCheckbox);
                 if (singleVoteCheckbox) {
-                    console.log('Checkbox checked:', singleVoteCheckbox.checked);
                     formData.set('single_vote', singleVoteCheckbox.checked ? 'true' : 'false');
                 } else {
-                    console.log('Checkbox not found, using default true');
                     formData.set('single_vote', 'true');
-                }
-                
-                // Debug: log all form data
-                for (let [key, value] of formData.entries()) {
-                    console.log(`${key}: ${value}`);
                 }
                 
                 fetch('/create_poll', {

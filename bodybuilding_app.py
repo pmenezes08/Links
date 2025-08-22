@@ -2682,10 +2682,7 @@ def create_poll():
             post_id = c.lastrowid
             
             # Get single vote setting
-            single_vote_raw = request.form.get('single_vote', 'true')
-            logger.info(f"Single vote raw value: {single_vote_raw}")
-            single_vote = single_vote_raw.lower() == 'true'
-            logger.info(f"Single vote processed: {single_vote}")
+            single_vote = request.form.get('single_vote', 'true').lower() == 'true'
             
             # Create the poll
             c.execute("INSERT INTO polls (post_id, question, created_by, created_at, single_vote) VALUES (?, ?, ?, ?, ?)",
@@ -3733,10 +3730,8 @@ def community_background_file(filename):
         file_path = os.path.join('static', 'community_backgrounds', filename)
         if not os.path.exists(file_path):
             logger.warning(f"Community background file not found: {file_path}")
-            # Return a 1x1 transparent pixel instead of 404
-            from flask import Response
-            transparent_pixel = b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\tpHYs\x00\x00\x0b\x13\x00\x00\x0b\x13\x01\x00\x9a\x9c\x18\x00\x00\x00\x0cIDATx\x9cc```\x00\x00\x00\x04\x00\x01\xf5\xd7\xd4\xc7\x00\x00\x00\x00IEND\xaeB`\x82'
-            return Response(transparent_pixel, mimetype='image/png')
+            # Return 404 so the frontend can handle it properly
+            return "Image not found", 404
         return send_from_directory('static/community_backgrounds', filename)
     except Exception as e:
         logger.error(f"Error serving community background {filename}: {str(e)}")
