@@ -2914,7 +2914,6 @@ def update_community():
     name = request.form.get('name', '').strip()
     description = request.form.get('description', '').strip()
     location = request.form.get('location', '').strip()
-    background_path = request.form.get('background_path', '').strip()
     template = request.form.get('template', 'default')
     
     if not community_id or not name:
@@ -2934,11 +2933,37 @@ def update_community():
             if community['creator_username'] != username and username != 'admin':
                 return jsonify({'success': False, 'error': 'Only the community creator or admin can edit the community'}), 403
             
+            # Handle background file upload
+            background_path = None
+            if 'background_file' in request.files:
+                file = request.files['background_file']
+                if file and file.filename:
+                    # Save the uploaded file
+                    filename = secure_filename(file.filename)
+                    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                    name_part, ext = os.path.splitext(filename)
+                    unique_filename = f"{name_part}_{timestamp}{ext}"
+                    
+                    # Create community_backgrounds directory if it doesn't exist
+                    upload_path = os.path.join(app.config['UPLOAD_FOLDER'], 'community_backgrounds')
+                    os.makedirs(upload_path, exist_ok=True)
+                    
+                    filepath = os.path.join(upload_path, unique_filename)
+                    file.save(filepath)
+                    background_path = f"community_backgrounds/{unique_filename}"
+            
             # Update the community details
-            c.execute("""UPDATE communities 
-                        SET name = ?, description = ?, location = ?, background_path = ?, template = ? 
-                        WHERE id = ?""", 
-                     (name, description, location, background_path, template, community_id))
+            if background_path:
+                c.execute("""UPDATE communities 
+                            SET name = ?, description = ?, location = ?, background_path = ?, template = ? 
+                            WHERE id = ?""", 
+                         (name, description, location, background_path, template, community_id))
+            else:
+                c.execute("""UPDATE communities 
+                            SET name = ?, description = ?, location = ?, template = ? 
+                            WHERE id = ?""", 
+                         (name, description, location, template, community_id))
+            
             conn.commit()
             
             return jsonify({'success': True, 'message': 'Community updated successfully'})

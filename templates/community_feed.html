@@ -9,14 +9,14 @@
     <style>
         /* Custom color styles */
         .composer-card, .post {
-            background-color: {{ community.card_color or '#1a2526' }} !important;
+            background-color: {{ '#f5f5f5' if community.template == 'light' else (community.card_color or '#1a2526') }} !important;
             border-color: {{ community.accent_color or '#4db6ac' }} !important;
-            color: {{ community.text_color or '#ffffff' }} !important;
+            color: {{ '#000000' if community.template == 'light' else (community.text_color or '#ffffff') }} !important;
         }
         
         .composer-input {
-            background-color: {{ community.card_color or '#1a2526' }} !important;
-            color: {{ community.text_color or '#ffffff' }} !important;
+            background-color: {{ '#ffffff' if community.template == 'light' else (community.card_color or '#1a2526') }} !important;
+            color: {{ '#000000' if community.template == 'light' else (community.text_color or '#ffffff') }} !important;
             border-color: {{ community.accent_color or '#4db6ac' }} !important;
         }
         
@@ -46,11 +46,12 @@
         }
         
         body {
-            background-color: #000000 !important;
+            background-color: {{ '#ffffff' if community.template == 'light' else '#000000' }} !important;
+            color: {{ '#000000' if community.template == 'light' else '#ffffff' }} !important;
         }
         
         .container.feed {
-            background-color: #000000 !important;
+            background-color: {{ '#ffffff' if community.template == 'light' else '#000000' }} !important;
         }
         
         .community-header-image {
@@ -856,8 +857,25 @@
                         <input type="text" id="communityLocation" name="location" value="{{ community.location or '' }}">
                     </div>
                     <div class="form-group">
-                        <label for="communityBackground">Background Image URL</label>
-                        <input type="url" id="communityBackground" name="background_path" value="{{ community.background_path or '' }}" placeholder="https://example.com/image.jpg">
+                        <label for="communityBackground">Background Image</label>
+                        <div class="file-upload-section">
+                            <input type="file" id="communityBackgroundFile" name="background_file" accept="image/*" style="display: none;">
+                            <button type="button" class="btn btn-secondary" onclick="document.getElementById('communityBackgroundFile').click()">
+                                <i class="fas fa-upload"></i> Choose Image
+                            </button>
+                            <span id="selectedBackgroundFile" class="selected-file-name"></span>
+                        </div>
+                        <div class="current-background" style="margin-top: 10px;">
+                            <label>Current Background:</label>
+                            {% if community.background_path %}
+                                <div class="current-background-preview">
+                                    <img src="{% if community.background_path.startswith('http') %}{{ community.background_path }}{% else %}{{ url_for('static', filename=community.background_path) }}{% endif %}" 
+                                         alt="Current background" style="max-width: 200px; max-height: 100px; border-radius: 4px;">
+                                </div>
+                            {% else %}
+                                <span style="color: #666;">No background image set</span>
+                            {% endif %}
+                        </div>
                     </div>
                     <div class="form-group">
                         <label for="communityTemplate">Template</label>
@@ -886,6 +904,22 @@
             document.getElementById('editCommunityModal').style.display = 'none';
         }
 
+        // Handle background file selection
+        document.addEventListener('DOMContentLoaded', function() {
+            const backgroundFileInput = document.getElementById('communityBackgroundFile');
+            if (backgroundFileInput) {
+                backgroundFileInput.addEventListener('change', function() {
+                    const file = this.files[0];
+                    const selectedFileSpan = document.getElementById('selectedBackgroundFile');
+                    if (file) {
+                        selectedFileSpan.textContent = `Selected: ${file.name}`;
+                    } else {
+                        selectedFileSpan.textContent = '';
+                    }
+                });
+            }
+        });
+
         // Ensure members modal is hidden by default
         document.addEventListener('DOMContentLoaded', function() {
             const membersModal = document.getElementById('membersModal');
@@ -905,6 +939,12 @@
                     const formData = new FormData(this);
                     formData.append('community_id', {{ community.id }});
                     formData.append('csrf_token', '{{ csrf_token }}');
+                    
+                    // Add background file if selected
+                    const backgroundFile = document.getElementById('communityBackgroundFile').files[0];
+                    if (backgroundFile) {
+                        formData.append('background_file', backgroundFile);
+                    }
                     
                     $.ajax({
                         url: '/update_community',
