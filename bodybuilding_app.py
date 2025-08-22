@@ -3006,6 +3006,30 @@ def community_feed(community_id):
         logger.error(f"Traceback: {traceback.format_exc()}")
         return jsonify({'success': False, 'error': f'Failed to load community feed: {str(e)}'}), 500
 
+@app.route('/test_feed/<int:community_id>')
+def test_feed(community_id):
+    """Test route for community feed"""
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Get community info
+            c.execute("SELECT * FROM communities WHERE id = ?", (community_id,))
+            community_row = c.fetchone()
+            if not community_row:
+                return jsonify({'success': False, 'error': 'Community not found'})
+            
+            community = dict(community_row)
+            
+            return jsonify({
+                'success': True,
+                'community': community,
+                'message': 'Test feed route works'
+            })
+            
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
 @app.errorhandler(500)
 def internal_server_error(e):
     logger.error(f"Internal server error: {str(e)}")
