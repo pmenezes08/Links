@@ -139,16 +139,51 @@
 
 		.user-communities-section {
 			margin-top: 16px;
+			text-align: center;
 		}
 
-		.user-communities-section h3 {
+		.view-communities-btn {
+			background: rgba(255, 255, 255, 0.05);
+			color: #ffffff;
+			border: 1px solid rgba(255, 255, 255, 0.1);
+			padding: 10px 16px;
+			border-radius: 6px;
+			font-size: 13px;
+			font-weight: 500;
+			cursor: pointer;
+			transition: all 0.2s ease;
+			backdrop-filter: blur(20px);
+			display: inline-flex;
+			align-items: center;
+			gap: 4px;
+		}
+
+		.view-communities-btn:hover {
+			background: rgba(255, 255, 255, 0.08);
+			border-color: #4db6ac;
+			transform: translateY(-1px);
+		}
+
+		.communities-modal {
+			max-width: 600px;
+			max-height: 80vh;
+			overflow-y: auto;
+		}
+
+		.communities-modal .modal-header {
+			border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+			padding-bottom: 12px;
+			margin-bottom: 16px;
+		}
+
+		.communities-modal .modal-header h3 {
 			color: #4db6ac;
-			margin-bottom: 12px;
-			font-size: 16px;
+			font-size: 18px;
 			font-weight: 600;
 			display: flex;
 			align-items: center;
-			gap: 4px;
+			gap: 6px;
+			margin: 0;
 		}
 
 		.communities-list {
@@ -511,9 +546,21 @@
 
 		<!-- User's Communities Section -->
 		<div class="user-communities-section">
-			<h3><i class="fas fa-home"></i> Your Communities</h3>
-			<div id="communitiesList" class="communities-list">
-				<!-- Communities will be loaded here -->
+			<button id="viewCommunitiesBtn" class="view-communities-btn">
+				<i class="fas fa-home"></i> View Your Communities
+			</button>
+		</div>
+
+		<!-- Communities Modal -->
+		<div id="communitiesModal" class="modal-overlay" style="display: none;">
+			<div class="modal-content communities-modal">
+				<div class="modal-header">
+					<h3><i class="fas fa-home"></i> Your Communities</h3>
+					<button class="modal-close" id="closeCommunitiesModal">&times;</button>
+				</div>
+				<div id="communitiesList" class="communities-list">
+					<!-- Communities will be loaded here -->
+				</div>
 			</div>
 		</div>
 	</div>
@@ -522,8 +569,23 @@
 	<script src="{{ url_for('static', filename='script.js') }}"></script>
 	<script>
 		$(document).ready(function() {
-			// Load user's communities
-			loadUserCommunities();
+			// Load user's communities when modal opens
+			$('#viewCommunitiesBtn').on('click', function() {
+				loadUserCommunities();
+				$('#communitiesModal').show();
+			});
+
+			// Close communities modal
+			$('#closeCommunitiesModal').on('click', function() {
+				$('#communitiesModal').hide();
+			});
+
+			// Close modal when clicking outside
+			$('#communitiesModal').on('click', function(e) {
+				if (e.target === this) {
+					$(this).hide();
+				}
+			});
 
 			// Background image preview functionality
 			// Handle file upload preview
