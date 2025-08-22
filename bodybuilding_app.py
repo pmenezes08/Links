@@ -3003,6 +3003,51 @@ def community_feed(community_id):
             posts_raw = c.fetchall()
             posts = [dict(row) for row in posts_raw]
             
+            # Add reactions and replies to each post
+            for post in posts:
+                # Initialize reactions
+                post['reactions'] = {}
+                post['replies'] = []
+                post['user_reaction'] = None
+                
+                # Fetch reactions for each post
+                c.execute("""
+                    SELECT reaction_type, COUNT(*) as count
+                    FROM reactions
+                    WHERE post_id = ?
+                    GROUP BY reaction_type
+                """, (post['id'],))
+                reactions_raw = c.fetchall()
+                post['reactions'] = {r['reaction_type']: r['count'] for r in reactions_raw}
+
+                # Get the current logged-in user's reaction to this post
+                c.execute("SELECT reaction_type FROM reactions WHERE post_id = ? AND username = ?", (post['id'], username))
+                user_reaction_raw = c.fetchone()
+                post['user_reaction'] = user_reaction_raw['reaction_type'] if user_reaction_raw else None
+
+                # Fetch replies for each post
+                c.execute("SELECT * FROM replies WHERE post_id = ? ORDER BY timestamp ASC", (post['id'],))
+                replies_raw = c.fetchall()
+                post['replies'] = [dict(row) for row in replies_raw]
+                
+                # Add reaction counts for each reply
+                for reply in post['replies']:
+                    reply['reactions'] = {}
+                    reply['user_reaction'] = None
+                    
+                    c.execute("""
+                        SELECT reaction_type, COUNT(*) as count
+                        FROM reply_reactions
+                        WHERE reply_id = ?
+                        GROUP BY reaction_type
+                    """, (reply['id'],))
+                    rr = c.fetchall()
+                    reply['reactions'] = {r['reaction_type']: r['count'] for r in rr}
+                    
+                    c.execute("SELECT reaction_type FROM reply_reactions WHERE reply_id = ? AND username = ?", (reply['id'], username))
+                    ur = c.fetchone()
+                    reply['user_reaction'] = ur['reaction_type'] if ur else None
+            
             return render_template('community_feed.html', 
                                 posts=posts, 
                                 community=community,
