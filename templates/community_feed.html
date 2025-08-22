@@ -601,60 +601,64 @@
             background: #c82333;
         }
         
-        /* Announcement Styles - Matching Polls Layout */
+        /* Announcement Styles - Compact and Sleek */
         .announcement-item {
             background: rgba(45, 138, 126, 0.05);
             border: 1px solid rgba(45, 138, 126, 0.2);
-            border-radius: 8px;
-            padding: 15px;
-            margin-bottom: 15px;
+            border-radius: 6px;
+            padding: 12px;
+            margin-bottom: 10px;
+            max-width: 500px;
+            margin-left: auto;
+            margin-right: auto;
         }
         
         .announcement-header {
             display: flex;
             justify-content: space-between;
             align-items: flex-start;
-            margin-bottom: 10px;
+            margin-bottom: 8px;
         }
         
         .announcement-meta {
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 8px;
         }
         
         .announcement-date {
-            font-size: 12px;
+            font-size: 11px;
             color: {{ community.text_color or '#ffffff' }}aa;
         }
         
         .announcement-content {
             font-weight: 500;
             color: {{ community.text_color or '#ffffff' }};
-            line-height: 1.5;
-            margin-bottom: 10px;
+            line-height: 1.4;
+            margin-bottom: 8px;
+            font-size: 13px;
         }
         
         .announcement-files {
-            margin-top: 10px;
+            margin-top: 8px;
         }
         
         .announcement-files h4 {
-            font-size: 14px;
+            font-size: 12px;
             font-weight: 600;
             color: {{ community.text_color or '#ffffff' }};
-            margin-bottom: 8px;
+            margin-bottom: 6px;
         }
         
         .announcement-file {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 8px 12px;
+            padding: 6px 10px;
             background: rgba(77, 182, 172, 0.05);
             border: 1px solid rgba(77, 182, 172, 0.2);
-            border-radius: 6px;
-            margin-bottom: 5px;
+            border-radius: 4px;
+            margin-bottom: 4px;
             transition: all 0.2s ease;
         }
         
@@ -700,23 +704,26 @@
             color: #dc3545;
         }
         
-        /* Announcement tabs styling - matching polls */
+        /* Announcement tabs styling - compact and sleek */
         .announcements-tabs {
             display: flex;
+            justify-content: center;
             border-bottom: 1px solid rgba(45, 138, 126, 0.2);
-            margin-bottom: 20px;
+            margin-bottom: 15px;
+            gap: 0;
         }
         
         .announcement-tab {
             background: transparent;
             border: none;
-            padding: 10px 20px;
+            padding: 8px 16px;
             cursor: pointer;
             color: {{ community.text_color or '#ffffff' }}aa;
-            font-size: 14px;
+            font-size: 13px;
             font-weight: 500;
             transition: all 0.2s ease;
             border-bottom: 2px solid transparent;
+            border-radius: 4px 4px 0 0;
         }
         
         .announcement-tab:hover {
@@ -727,6 +734,7 @@
         .announcement-tab.active {
             color: {{ community.accent_color or '#2d8a7e' }};
             border-bottom-color: {{ community.accent_color or '#2d8a7e' }};
+            background: rgba(45, 138, 126, 0.05);
         }
         
         .announcement-tab-content {
@@ -737,41 +745,62 @@
             display: block;
         }
         
-        /* Announcement form styling */
+        /* Announcement form styling - compact and centered */
         .announcement-form {
-            margin-bottom: 20px;
+            margin-bottom: 15px;
+            max-width: 500px;
+            margin-left: auto;
+            margin-right: auto;
         }
         
         .announcement-form textarea {
-            width: calc(100% - 30px);
+            width: 100%;
             max-width: 100%;
-            background: #1a1a1a;
-            border: 1px solid #333;
-            border-radius: 8px;
-            padding: 15px;
-            color: #ffffff;
+            background: rgba(45, 138, 126, 0.05);
+            border: 1px solid rgba(45, 138, 126, 0.2);
+            border-radius: 6px;
+            padding: 12px;
+            color: {{ community.text_color or '#ffffff' }};
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            font-size: 14px;
-            line-height: 1.5;
+            font-size: 13px;
+            line-height: 1.4;
             resize: vertical;
-            min-height: 120px;
+            min-height: 80px;
             box-sizing: border-box;
-            margin: 0 auto;
-            display: block;
+            margin-bottom: 10px;
+            transition: all 0.2s ease;
         }
         
         .announcement-form textarea:focus {
             outline: none;
-            border-color: #4db6ac;
+            border-color: {{ community.accent_color or '#2d8a7e' }};
+            background: rgba(45, 138, 126, 0.1);
+        }
+        
+        .file-upload-section {
+            margin-top: 10px;
+            text-align: center;
+        }
+        
+        .file-upload-section h4 {
+            margin-bottom: 8px;
+            color: {{ community.text_color or '#ffffff' }};
+            font-size: 13px;
+            font-weight: 500;
+        }
+        
+        .file-upload-section input[type="file"] {
+            margin-bottom: 8px;
+            font-size: 12px;
         }
         
         .admin-info-modal {
             max-width: 90vw;
-            width: 600px;
+            width: 500px;
         }
         
         .admin-info-modal .modal-body {
-            padding: 20px;
+            padding: 15px;
         }
     </style>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
