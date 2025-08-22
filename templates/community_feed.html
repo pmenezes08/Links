@@ -1429,6 +1429,12 @@
                 
                 const formData = new FormData(this);
                 
+                // Handle checkbox value properly
+                const singleVoteCheckbox = document.querySelector('input[name="single_vote"]');
+                if (singleVoteCheckbox) {
+                    formData.set('single_vote', singleVoteCheckbox.checked ? 'true' : 'false');
+                }
+                
                 fetch('/create_poll', {
                     method: 'POST',
                     body: formData
@@ -1441,8 +1447,14 @@
                         // Reset to 2 options
                         const optionsContainer = document.getElementById('modalPollOptions');
                         optionsContainer.innerHTML = `
-                            <input type="text" name="options[]" placeholder="Option 1" required>
-                            <input type="text" name="options[]" placeholder="Option 2" required>
+                            <div class="poll-option-row">
+                                <input type="text" name="options[]" placeholder="Option 1" required>
+                                <button type="button" class="remove-option-btn" onclick="removeModalPollOption(this)" style="display: none;">×</button>
+                            </div>
+                            <div class="poll-option-row">
+                                <input type="text" name="options[]" placeholder="Option 2" required>
+                                <button type="button" class="remove-option-btn" onclick="removeModalPollOption(this)" style="display: none;">×</button>
+                            </div>
                         `;
                         // Switch to active polls tab and reload
                         switchPollTab('active');
