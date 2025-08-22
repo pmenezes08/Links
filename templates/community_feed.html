@@ -58,6 +58,56 @@
             border-color: {{ community.accent_color or '#4db6ac' }} !important;
         }
 
+        /* Light theme specific styles */
+        {% if community.template == 'light' %}
+        .community-header h1 {
+            color: #2d8a7e !important;
+        }
+        
+        .community-type {
+            color: #666666 !important;
+        }
+        
+        .post-header strong {
+            color: #2d8a7e !important;
+        }
+        
+        .post p {
+            color: #333333 !important;
+        }
+        
+        .timestamp {
+            color: #666666 !important;
+        }
+        
+        .reaction-btn {
+            color: #666666 !important;
+        }
+        
+        .reaction-btn.active {
+            color: #4db6ac !important;
+        }
+        
+        .reply-indicator {
+            color: #666666 !important;
+        }
+        
+        .composer-input::placeholder {
+            color: #999999 !important;
+        }
+        
+        .members-btn {
+            background: rgba(45, 138, 126, 0.1) !important;
+            color: #2d8a7e !important;
+            border: 1px solid rgba(45, 138, 126, 0.3) !important;
+        }
+        
+        .members-btn:hover {
+            background: rgba(45, 138, 126, 0.2) !important;
+            border-color: rgba(45, 138, 126, 0.5) !important;
+        }
+        {% endif %}
+
         /* Community Header Layout */
         .community-header {
             display: flex;
@@ -113,6 +163,71 @@
 
         .edit-community-btn:hover {
             opacity: 0.8;
+        }
+
+        /* Edit Community Modal Styles */
+        #editCommunityModal .modal-content {
+            max-width: 600px;
+            width: 90%;
+        }
+
+        #editCommunityModal .form-group {
+            margin-bottom: 20px;
+        }
+
+        #editCommunityModal label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: {{ '#333333' if community.template == 'light' else '#ffffff' }};
+        }
+
+        #editCommunityModal input,
+        #editCommunityModal textarea,
+        #editCommunityModal select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid {{ '#cccccc' if community.template == 'light' else '#4db6ac' }};
+            border-radius: 6px;
+            background-color: {{ '#ffffff' if community.template == 'light' else '#1a2526' }};
+            color: {{ '#333333' if community.template == 'light' else '#ffffff' }};
+            font-size: 14px;
+        }
+
+        #editCommunityModal input:focus,
+        #editCommunityModal textarea:focus,
+        #editCommunityModal select:focus {
+            outline: none;
+            border-color: #4db6ac;
+            box-shadow: 0 0 0 2px rgba(77, 182, 172, 0.2);
+        }
+
+        .file-upload-section {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        .selected-file-name {
+            color: #4db6ac;
+            font-size: 12px;
+        }
+
+        .current-background-preview img {
+            border: 1px solid #ddd;
+            object-fit: cover;
+        }
+
+        .form-actions {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+            margin-top: 20px;
+        }
+
+        .btn-secondary {
+            background-color: #666666;
         }
 
         /* Admin Announcements Styles */
