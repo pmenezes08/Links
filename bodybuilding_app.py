@@ -2134,8 +2134,8 @@ def add_community_member():
                 return jsonify({'success': False, 'error': 'User is already a member'})
             
             # Add member
-            c.execute("INSERT INTO user_communities (community_id, user_id) VALUES (?, ?)",
-                      (community_id, new_member['rowid']))
+            c.execute("INSERT INTO user_communities (community_id, user_id, joined_at) VALUES (?, ?, ?)",
+                      (community_id, new_member['rowid'], datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
             conn.commit()
         return jsonify({'success': True})
     except Exception as e:
