@@ -5757,8 +5757,8 @@ def delete_community_announcement():
         logger.error(f"Error deleting community announcement: {e}")
         return jsonify({'success': False, 'error': str(e)})
 
-@app.route('/download_community_file/<int:file_id>')
-def download_community_file(file_id):
+@app.route('/download_announcement_file/<int:file_id>')
+def download_announcement_file(file_id):
     """Download a community file"""
     try:
         conn = get_db_connection()
