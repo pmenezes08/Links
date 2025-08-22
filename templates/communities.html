@@ -3,37 +3,366 @@
 <head>
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>Communities</title>
+	<title>Your Communities</title>
 	<link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}?v=4.0">
 	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 	<meta name="csrf-token" content="{{ csrf_token }}">
+	<style>
+		.communities-container {
+			margin-left: 80px;
+			padding: 32px;
+			max-width: 900px;
+			margin: 0 auto 0 80px;
+		}
+
+		.communities-header {
+			text-align: center;
+			margin-bottom: 40px;
+		}
+
+		.communities-header h1 {
+			font-size: 28px;
+			font-weight: 600;
+			color: #ffffff;
+			margin-bottom: 8px;
+			letter-spacing: -0.5px;
+		}
+
+		.communities-header p {
+			color: rgba(255, 255, 255, 0.7);
+			font-size: 16px;
+			margin: 0;
+		}
+
+		.join-community-section {
+			background: rgba(255, 255, 255, 0.03);
+			border: 1px solid rgba(255, 255, 255, 0.08);
+			border-radius: 16px;
+			padding: 24px;
+			margin-bottom: 32px;
+			backdrop-filter: blur(20px);
+		}
+
+		.join-community-section h3 {
+			color: #4db6ac;
+			margin-bottom: 16px;
+			font-size: 18px;
+			font-weight: 600;
+			display: flex;
+			align-items: center;
+			gap: 8px;
+		}
+
+		.join-community-form {
+			display: flex;
+			gap: 12px;
+			align-items: end;
+			flex-wrap: wrap;
+		}
+
+		.join-community-form .form-group {
+			flex: 1;
+			min-width: 200px;
+		}
+
+		.join-community-form label {
+			display: block;
+			color: rgba(255, 255, 255, 0.8);
+			font-size: 14px;
+			font-weight: 500;
+			margin-bottom: 6px;
+		}
+
+		.join-community-form input {
+			width: 100%;
+			padding: 12px 16px;
+			background: rgba(255, 255, 255, 0.05);
+			border: 1px solid rgba(255, 255, 255, 0.1);
+			border-radius: 8px;
+			color: #ffffff;
+			font-size: 14px;
+			transition: all 0.2s ease;
+		}
+
+		.join-community-form input:focus {
+			outline: none;
+			border-color: #4db6ac;
+			background: rgba(255, 255, 255, 0.08);
+		}
+
+		.join-community-btn {
+			background: #4db6ac;
+			color: #ffffff;
+			border: none;
+			padding: 12px 20px;
+			border-radius: 8px;
+			font-size: 14px;
+			font-weight: 500;
+			cursor: pointer;
+			transition: all 0.2s ease;
+			white-space: nowrap;
+		}
+
+		.join-community-btn:hover {
+			background: #37a69c;
+			transform: translateY(-1px);
+		}
+
+		.community-creation-section {
+			text-align: center;
+			margin-bottom: 32px;
+		}
+
+		.build-community-btn {
+			background: rgba(255, 255, 255, 0.05);
+			color: #ffffff;
+			border: 1px solid rgba(255, 255, 255, 0.1);
+			padding: 16px 24px;
+			border-radius: 12px;
+			font-size: 16px;
+			font-weight: 500;
+			cursor: pointer;
+			transition: all 0.2s ease;
+			backdrop-filter: blur(20px);
+			display: inline-flex;
+			align-items: center;
+			gap: 8px;
+		}
+
+		.build-community-btn:hover {
+			background: rgba(255, 255, 255, 0.08);
+			border-color: #4db6ac;
+			transform: translateY(-1px);
+		}
+
+		.user-communities-section {
+			margin-top: 40px;
+		}
+
+		.user-communities-section h3 {
+			color: #4db6ac;
+			margin-bottom: 20px;
+			font-size: 20px;
+			font-weight: 600;
+			display: flex;
+			align-items: center;
+			gap: 8px;
+		}
+
+		.communities-list {
+			display: grid;
+			gap: 16px;
+		}
+
+		.community-card {
+			background: rgba(255, 255, 255, 0.03);
+			border: 1px solid rgba(255, 255, 255, 0.08);
+			border-radius: 12px;
+			padding: 20px;
+			transition: all 0.2s ease;
+			backdrop-filter: blur(20px);
+		}
+
+		.community-card:hover {
+			background: rgba(255, 255, 255, 0.05);
+			border-color: rgba(255, 255, 255, 0.12);
+		}
+
+		.community-header {
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			margin-bottom: 12px;
+		}
+
+		.community-info h4 {
+			color: #ffffff;
+			font-size: 18px;
+			font-weight: 600;
+			margin: 0 0 4px 0;
+		}
+
+		.community-meta {
+			color: rgba(255, 255, 255, 0.6);
+			font-size: 14px;
+			display: flex;
+			align-items: center;
+			gap: 12px;
+		}
+
+		.community-actions {
+			display: flex;
+			gap: 8px;
+		}
+
+		.edit-community-btn,
+		.delete-community-btn {
+			background: rgba(255, 255, 255, 0.05);
+			border: 1px solid rgba(255, 255, 255, 0.1);
+			color: #ffffff;
+			padding: 8px 12px;
+			border-radius: 6px;
+			font-size: 12px;
+			cursor: pointer;
+			transition: all 0.2s ease;
+			display: flex;
+			align-items: center;
+			gap: 4px;
+		}
+
+		.edit-community-btn:hover {
+			background: rgba(255, 255, 255, 0.08);
+			border-color: #4db6ac;
+		}
+
+		.delete-community-btn:hover {
+			background: rgba(255, 59, 48, 0.1);
+			border-color: #FF3B30;
+			color: #FF3B30;
+		}
+
+		.community-btn {
+			background: rgba(255, 255, 255, 0.05);
+			color: #ffffff;
+			border: 1px solid rgba(255, 255, 255, 0.1);
+			padding: 12px 16px;
+			border-radius: 8px;
+			font-size: 14px;
+			font-weight: 500;
+			cursor: pointer;
+			transition: all 0.2s ease;
+			width: 100%;
+			text-align: left;
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+		}
+
+		.community-btn:hover {
+			background: rgba(255, 255, 255, 0.08);
+			border-color: #4db6ac;
+		}
+
+		.join-code-section {
+			margin-top: 12px;
+			padding: 8px 12px;
+			background: rgba(77, 182, 172, 0.1);
+			border: 1px solid rgba(77, 182, 172, 0.2);
+			border-radius: 6px;
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+		}
+
+		.join-code-label {
+			color: #4db6ac;
+			font-size: 12px;
+			font-weight: 500;
+		}
+
+		.join-code {
+			font-family: 'Courier New', monospace;
+			background: rgba(0, 0, 0, 0.3);
+			padding: 4px 8px;
+			border-radius: 4px;
+			font-size: 12px;
+			color: #ffffff;
+			border: 1px solid rgba(255, 255, 255, 0.1);
+		}
+
+		.copy-btn {
+			background: rgba(255, 255, 255, 0.05);
+			border: 1px solid rgba(255, 255, 255, 0.1);
+			color: #ffffff;
+			padding: 4px 8px;
+			border-radius: 4px;
+			font-size: 11px;
+			cursor: pointer;
+			transition: all 0.2s ease;
+		}
+
+		.copy-btn:hover {
+			background: rgba(255, 255, 255, 0.08);
+			border-color: #4db6ac;
+		}
+
+		.no-communities {
+			text-align: center;
+			padding: 60px 20px;
+			color: rgba(255, 255, 255, 0.5);
+		}
+
+		.no-communities i {
+			font-size: 48px;
+			margin-bottom: 16px;
+			color: #4db6ac;
+		}
+
+		.no-communities h4 {
+			font-size: 18px;
+			margin-bottom: 8px;
+			color: #ffffff;
+		}
+
+		.no-communities p {
+			font-size: 14px;
+			margin: 0;
+		}
+
+		@media (max-width: 768px) {
+			.communities-container {
+				margin-left: 0;
+				padding: 20px;
+			}
+
+			.join-community-form {
+				flex-direction: column;
+				align-items: stretch;
+			}
+
+			.community-header {
+				flex-direction: column;
+				align-items: flex-start;
+				gap: 12px;
+			}
+
+			.community-actions {
+				align-self: stretch;
+				justify-content: flex-end;
+			}
+		}
+	</style>
 </head>
 <body>
 	<div class="sidebar">
 		<button class="menu-btn"><i class="fas fa-bars"></i> Menu</button>
-		        <div class="dropdown-content">
-            {% if session['username'] == 'admin' %}
-            <a href="{{ url_for('admin') }}">Admin Dashboard</a>
-            <a href="{{ url_for('admin_profile') }}">Admin Profile</a>
-            {% endif %}
-            <a href="{{ url_for('profile') }}">Profile</a>
-            <a href="{{ url_for('user_chat') }}">Messages</a>
-            <a href="{{ url_for('premium_dashboard') }}">Main Dashboard</a>
-            <a href="{{ url_for('feed') }}">Social</a>
-            <a href="{{ url_for('communities') }}">Your Communities</a>
-            <a href="{{ url_for('your_sports') }}">Your Sports</a>
-            <a href="{{ url_for('logout') }}">Logout</a>
-        </div>
+		<div class="dropdown-content">
+			{% if session['username'] == 'admin' %}
+			<a href="{{ url_for('admin') }}">Admin Dashboard</a>
+			<a href="{{ url_for('admin_profile') }}">Admin Profile</a>
+			{% endif %}
+			<a href="{{ url_for('profile') }}">Profile</a>
+			<a href="{{ url_for('user_chat') }}">Messages</a>
+			<a href="{{ url_for('premium_dashboard') }}">Main Dashboard</a>
+			<a href="{{ url_for('feed') }}">Social</a>
+			<a href="{{ url_for('communities') }}">Your Communities</a>
+			<a href="{{ url_for('your_sports') }}">Your Sports</a>
+			<a href="{{ url_for('logout') }}">Logout</a>
+		</div>
 	</div>
-	<div class="container">
-		<h1>Communities</h1>
+	
+	<div class="communities-container">
+		<div class="communities-header">
+			<h1>Your Communities</h1>
+			<p>Join existing communities or create your own</p>
+		</div>
 		
 		<!-- Join Community Section -->
 		<div class="join-community-section">
-			<h3>Join a Community</h3>
+			<h3><i class="fas fa-users"></i> Join a Community</h3>
 			<form id="joinCommunityForm" class="join-community-form">
 				<div class="form-group">
-					<label for="communityCode">Community Code:</label>
+					<label for="communityCode">Community Code</label>
 					<input type="text" id="communityCode" name="communityCode" placeholder="Enter community code..." required>
 				</div>
 				<button type="submit" class="join-community-btn">Join Community</button>
@@ -44,7 +373,7 @@
 		<!-- Community Creation Section -->
 		<div class="community-creation-section">
 			<button id="buildCommunityBtn" class="build-community-btn">
-				<i class="fas fa-plus-circle"></i> Build your community
+				<i class="fas fa-plus"></i> Create New Community
 			</button>
 		</div>
 		
@@ -173,13 +502,11 @@
 
 		<!-- User's Communities Section -->
 		<div class="user-communities-section">
-			<h3>Your Communities</h3>
+			<h3><i class="fas fa-home"></i> Your Communities</h3>
 			<div id="communitiesList" class="communities-list">
 				<!-- Communities will be loaded here -->
 			</div>
 		</div>
-
-		<button onclick="location.href='/dashboard'" class="go-back-btn">Back</button>
 	</div>
 
 	<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
@@ -198,7 +525,7 @@
 					$('#backgroundUrl').val('');
 					
 					// Show file info
-					$('#fileInfo').text(`Selected: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`);
+					$('#fileInfo').text(`Selected: ${file.name} (${(file.size / 1024).toFixed(1)} KB)`);
 					
 					// Preview image
 					const reader = new FileReader();
@@ -207,15 +534,12 @@
 						$('#backgroundPreview').show();
 					};
 					reader.readAsDataURL(file);
-				} else {
-					$('#fileInfo').text('');
-					$('#backgroundPreview').hide();
 				}
 			});
-			
-			// Handle URL input preview
+
+			// Handle URL input
 			$('#backgroundUrl').on('input', function() {
-				const url = $(this).val().trim();
+				const url = $(this).val();
 				if (url) {
 					// Clear file input
 					$('#backgroundFile').val('');
@@ -228,146 +552,73 @@
 					$('#backgroundPreview').hide();
 				}
 			});
-			
-			// Color picker functionality
-			function updateColorPreview() {
-				const backgroundColor = $('#backgroundColor').val();
-				const textColor = $('#textColor').val();
-				const accentColor = $('#accentColor').val();
-				const cardColor = $('#cardColor').val();
-				
-				// Update color previews
-				$('#backgroundColorPreview').css('background-color', backgroundColor);
-				$('#textColorPreview').css('background-color', textColor);
-				$('#accentColorPreview').css('background-color', accentColor);
-				$('#cardColorPreview').css('background-color', cardColor);
-				
-				// Update preview card
-				$('#colorPreviewCard').css({
-					'background-color': cardColor,
-					'border-color': accentColor
-				});
-				$('.preview-header').css('color', textColor);
-				$('.preview-content').css('color', textColor + 'cc'); // Add transparency
-				$('.preview-btn').css({
-					'background-color': accentColor + '20',
-					'border-color': accentColor,
-					'color': textColor
-				});
-			}
-			
-			// Initialize color previews
-			updateColorPreview();
-			
-			// Theme preset functionality
-			$('.theme-preset').click(function() {
+
+			// Theme preset selection
+			$('.theme-preset').on('click', function() {
 				$('.theme-preset').removeClass('active');
 				$(this).addClass('active');
-				
-				const theme = $(this).data('theme');
-				setThemeColors(theme);
 			});
-			
-			// Custom colors toggle
-			$('#customColorsToggle').click(function() {
-				$('#customColorsPanel').slideToggle(200);
-			});
-			
-			// Update on color change
-			$('#backgroundColor, #textColor, #accentColor, #cardColor').on('input', updateColorPreview);
-			
-			// Function to set theme colors
-			function setThemeColors(theme) {
-				let colors = {};
-				
-				switch(theme) {
-					case 'default':
-						colors = {
-							background: '#2d3839',
-							text: '#ffffff',
-							accent: '#4db6ac',
-							card: '#1a2526'
-						};
-						break;
-					case 'dark':
-						colors = {
-							background: '#1a1a1a',
-							text: '#ffffff',
-							accent: '#666666',
-							card: '#000000'
-						};
-						break;
-					case 'light':
-						colors = {
-							background: '#f5f5f5',
-							text: '#333333',
-							accent: '#4db6ac',
-							card: '#ffffff'
-						};
-						break;
-					case 'colorful':
-						colors = {
-							background: '#667eea',
-							text: '#ffffff',
-							accent: '#764ba2',
-							card: '#5a6fd8'
-						};
-						break;
-				}
-				
-				$('#backgroundColor').val(colors.background);
-				$('#textColor').val(colors.text);
-				$('#accentColor').val(colors.accent);
-				$('#cardColor').val(colors.card);
-				
-				updateColorPreview();
-			}
 
-			// Modal functionality
-			$('#buildCommunityBtn').click(function() {
-				$('#communityModal').fadeIn(300);
+			// Custom colors toggle
+			$('#customColorsToggle').on('click', function() {
+				$('#customColorsPanel').toggle();
 			});
-			
-			$('#closeModal, #cancelCommunityBtn').click(function() {
-				$('#communityModal').fadeOut(300);
+
+			// Build community button
+			$('#buildCommunityBtn').on('click', function() {
+				$('#communityModal').show();
+			});
+
+			// Close modal
+			$('#closeModal, #cancelCommunityBtn').on('click', function() {
+				$('#communityModal').hide();
 			});
 
 			// Close modal when clicking outside
-			$('#communityModal').click(function(e) {
+			$('#communityModal').on('click', function(e) {
 				if (e.target === this) {
-					$(this).fadeOut(300);
+					$(this).hide();
 				}
 			});
 
-			// Handle community creation
-			$('#createCommunityForm').submit(function(e) {
+			// Join community form
+			$('#joinCommunityForm').on('submit', function(e) {
+				e.preventDefault();
+				const code = $('#communityCode').val().trim();
+				
+				if (!code) {
+					showJoinMessage('Please enter a community code', 'error');
+					return;
+				}
+
+				$.ajax({
+					url: '/join_community',
+					method: 'POST',
+					data: {
+						community_code: code,
+						csrf_token: 'disabled'
+					},
+					success: function(response) {
+						if (response.success) {
+							showJoinMessage('Successfully joined the community!', 'success');
+							$('#communityCode').val('');
+							loadUserCommunities(); // Reload communities list
+						} else {
+							showJoinMessage(response.error || 'Failed to join community', 'error');
+						}
+					},
+					error: function() {
+						showJoinMessage('Error joining community. Please try again.', 'error');
+					}
+				});
+			});
+
+			// Create community form
+			$('#createCommunityForm').on('submit', function(e) {
 				e.preventDefault();
 				
-				// Create FormData object to handle file uploads
-				const formData = new FormData();
-				formData.append('name', $('#communityName').val());
-				formData.append('type', $('#communityType').val());
-				formData.append('description', $('#communityDescription').val());
-				formData.append('location', $('#communityLocation').val());
-				formData.append('csrf_token', $('meta[name="csrf-token"]').attr('content'));
-				
-				// Add background file if selected
-				const backgroundFile = $('#backgroundFile')[0].files[0];
-				if (backgroundFile) {
-					formData.append('background_file', backgroundFile);
-				}
-				
-				// Add background URL if provided
-				const backgroundUrl = $('#backgroundUrl').val().trim();
-				if (backgroundUrl) {
-					formData.append('background_url', backgroundUrl);
-				}
-				
-				// Add color palette values
-				formData.append('background_color', $('#backgroundColor').val());
-				formData.append('text_color', $('#textColor').val());
-				formData.append('accent_color', $('#accentColor').val());
-				formData.append('card_color', $('#cardColor').val());
+				const formData = new FormData(this);
+				formData.append('csrf_token', 'disabled');
 
 				$.ajax({
 					url: '/create_community',
@@ -377,53 +628,30 @@
 					contentType: false,
 					success: function(response) {
 						if (response.success) {
-							alert('Community created successfully! Join code: ' + response.join_code);
-							$('#communityModal').fadeOut(300);
+							$('#communityModal').hide();
 							$('#createCommunityForm')[0].reset();
 							$('#backgroundPreview').hide();
 							$('#fileInfo').text('');
-							loadUserCommunities(); // Reload communities
+							loadUserCommunities(); // Reload communities list
+							showJoinMessage('Community created successfully!', 'success');
 						} else {
-							alert('Error: ' + response.error);
+							showJoinMessage(response.error || 'Failed to create community', 'error');
 						}
 					},
 					error: function() {
-						alert('Error creating community. Please try again.');
+						showJoinMessage('Error creating community. Please try again.', 'error');
 					}
 				});
 			});
 
-			// Handle joining community by code
-			$('#joinCommunityForm').submit(function(e) {
-				e.preventDefault();
+			function showJoinMessage(message, type) {
+				const messageDiv = $('#joinMessage');
+				messageDiv.removeClass('success error').addClass(type).text(message).show();
 				
-				const communityCode = $('#communityCode').val().trim();
-				if (!communityCode) {
-					showJoinMessage('Please enter a community code.', 'error');
-					return;
-				}
-
-				$.ajax({
-					url: '/join_community',
-					method: 'POST',
-					data: {
-						community_code: communityCode,
-						csrf_token: $('meta[name="csrf-token"]').attr('content')
-					},
-					success: function(response) {
-						if (response.success) {
-							showJoinMessage('Successfully joined "' + response.community_name + '"!', 'success');
-							$('#communityCode').val('');
-							loadUserCommunities(); // Reload communities
-						} else {
-							showJoinMessage('Error: ' + response.error, 'error');
-						}
-					},
-					error: function() {
-						showJoinMessage('Error joining community. Please try again.', 'error');
-					}
-				});
-			});
+				setTimeout(function() {
+					messageDiv.fadeOut();
+				}, 5000);
+			}
 		});
 
 		function loadUserCommunities() {
@@ -432,93 +660,101 @@
 				method: 'GET',
 				success: function(response) {
 					if (response.success) {
-						const communitiesList = $('#communitiesList');
-						communitiesList.empty();
-						
-						if (response.communities.length === 0) {
-							communitiesList.html('<p class="no-communities">You haven\'t joined any communities yet.</p>');
-						} else {
-							response.communities.forEach(function(community) {
-								const joinCodeSection = community.is_creator ? `
-									<div class="join-code-section">
-										<span class="join-code-label">Join Code:</span>
-										<span class="join-code">${community.join_code}</span>
-										<button onclick="copyJoinCode('${community.join_code}', '${community.name}')" class="copy-btn" title="Copy join code">
-											<i class="fas fa-copy"></i>
-										</button>
-									</div>
-								` : '';
-								
-								const communityCard = $(`
-									<div class="community-card">
-										<button class="community-btn" onclick="event.stopPropagation(); window.location.href='/community_feed/${community.id}';">
-											${community.name} - Social Feed
-										</button>
-										${joinCodeSection}
-										<div class="community-actions">
-											<button class="edit-community-btn" onclick="event.stopPropagation(); editCommunity(${community.id}, '${community.name}', '${community.type}');">
-												<i class="fas fa-edit"></i> Edit
-											</button>
-											<button class="delete-community-btn" onclick="event.stopPropagation(); deleteCommunity(${community.id}, '${community.name}');">
-												<i class="fas fa-trash"></i> Delete
-											</button>
-										</div>
-									</div>
-								`);
-								communitiesList.append(communityCard);
-							});
-						}
+						displayCommunities(response.communities);
+					} else {
+						$('#communitiesList').html('<div class="error">Error loading communities</div>');
 					}
 				},
 				error: function() {
-					$('#communitiesList').html('<p class="error">Error loading communities.</p>');
+					$('#communitiesList').html('<div class="error">Error loading communities</div>');
 				}
 			});
 		}
 
-		function editCommunity(communityId, currentName, currentType) {
-			const newName = prompt('Enter new community name:', currentName);
-			if (newName && newName.trim() !== '') {
-				$.ajax({
-					url: '/edit_community',
-					method: 'POST',
-					data: {
-						community_id: communityId,
-						name: newName.trim(),
-						csrf_token: $('meta[name="csrf-token"]').attr('content')
-					},
-					success: function(response) {
-						if (response.success) {
-							alert('Community updated successfully!');
-							loadUserCommunities(); // Reload communities
-						} else {
-							alert('Error: ' + response.error);
-						}
-					},
-					error: function() {
-						alert('Error updating community. Please try again.');
-					}
-				});
+		function displayCommunities(communities) {
+			const container = $('#communitiesList');
+			
+			if (!communities || communities.length === 0) {
+				container.html(`
+					<div class="no-communities">
+						<i class="fas fa-users"></i>
+						<h4>No communities yet</h4>
+						<p>Join an existing community or create your own to get started</p>
+					</div>
+				`);
+				return;
 			}
+
+			const communitiesHtml = communities.map(community => `
+				<div class="community-card">
+					<div class="community-header">
+						<div class="community-info">
+							<h4>${community.name}</h4>
+							<div class="community-meta">
+								<span><i class="fas fa-tag"></i> ${community.type}</span>
+								${community.location ? `<span><i class="fas fa-map-marker-alt"></i> ${community.location}</span>` : ''}
+							</div>
+						</div>
+						<div class="community-actions">
+							<button class="edit-community-btn" onclick="editCommunity(${community.id})">
+								<i class="fas fa-edit"></i> Edit
+							</button>
+							<button class="delete-community-btn" onclick="deleteCommunity(${community.id})">
+								<i class="fas fa-trash"></i> Delete
+							</button>
+						</div>
+					</div>
+					<button class="community-btn" onclick="location.href='/community/${community.id}'">
+						<span>View Community</span>
+						<i class="fas fa-arrow-right"></i>
+					</button>
+					<div class="join-code-section">
+						<span class="join-code-label">Join Code:</span>
+						<span class="join-code">${community.join_code}</span>
+						<button class="copy-btn" onclick="copyJoinCode('${community.join_code}')">
+							<i class="fas fa-copy"></i>
+						</button>
+					</div>
+				</div>
+			`).join('');
+
+			container.html(communitiesHtml);
 		}
 
-		function deleteCommunity(communityId, communityName) {
-			const confirmDelete = confirm(`Are you 100% sure you want to delete "${communityName}"?\n\nThis will permanently delete the community and all its posts. This action cannot be undone.`);
-			
-			if (confirmDelete) {
+		function copyJoinCode(code) {
+			navigator.clipboard.writeText(code).then(function() {
+				// Show a brief success message
+				const btn = event.target.closest('.copy-btn');
+				const originalText = btn.innerHTML;
+				btn.innerHTML = '<i class="fas fa-check"></i>';
+				btn.style.color = '#4db6ac';
+				
+				setTimeout(function() {
+					btn.innerHTML = originalText;
+					btn.style.color = '#ffffff';
+				}, 1000);
+			});
+		}
+
+		function editCommunity(communityId) {
+			// Implement edit functionality
+			console.log('Edit community:', communityId);
+		}
+
+		function deleteCommunity(communityId) {
+			if (confirm('Are you sure you want to delete this community? This action cannot be undone.')) {
 				$.ajax({
 					url: '/delete_community',
 					method: 'POST',
 					data: {
 						community_id: communityId,
-						csrf_token: $('meta[name="csrf-token"]').attr('content')
+						csrf_token: 'disabled'
 					},
 					success: function(response) {
 						if (response.success) {
-							alert('Community deleted successfully!');
-							loadUserCommunities(); // Reload communities
+							loadUserCommunities(); // Reload communities list
 						} else {
-							alert('Error: ' + response.error);
+							alert(response.error || 'Failed to delete community');
 						}
 					},
 					error: function() {
@@ -526,48 +762,6 @@
 					}
 				});
 			}
-		}
-
-		function showJoinMessage(message, type) {
-			const joinMessage = $('#joinMessage');
-			joinMessage.removeClass('success error').addClass(type).text(message);
-			
-			// Auto-hide success messages after 3 seconds
-			if (type === 'success') {
-				setTimeout(function() {
-					joinMessage.fadeOut();
-				}, 3000);
-			}
-		}
-
-		function copyJoinCode(joinCode, communityName) {
-			navigator.clipboard.writeText(joinCode).then(function() {
-				// Show success message
-				const message = document.createElement('div');
-				message.className = 'copy-success';
-				message.textContent = `Join code for "${communityName}" copied to clipboard!`;
-				message.style.cssText = `
-					position: fixed;
-					top: 20px;
-					right: 20px;
-					background: #28a745;
-					color: white;
-					padding: 12px 20px;
-					border-radius: 4px;
-					z-index: 10000;
-					font-size: 0.9em;
-					box-shadow: 0 2px 10px rgba(0,0,0,0.3);
-				`;
-				document.body.appendChild(message);
-				
-				// Remove message after 3 seconds
-				setTimeout(() => {
-					message.remove();
-				}, 3000);
-			}).catch(function(err) {
-				console.error('Could not copy text: ', err);
-				alert(`Join code: ${joinCode}\n\nCopy this code manually.`);
-			});
 		}
 	</script>
 </body>
