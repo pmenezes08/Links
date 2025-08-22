@@ -1341,7 +1341,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h2><i class="fas fa-poll-h"></i> Polls</h2>
-                <span class="close" onclick="closePollsModal()">&times;</span>
+                <span class="close" onclick="closePollsModal()" style="font-size: 18px; font-weight: normal; color: #9fb0b5; cursor: pointer; padding: 5px; border-radius: 3px; transition: all 0.2s ease;">&times;</span>
             </div>
             <div class="modal-body">
                 <div class="polls-tabs">
@@ -1373,10 +1373,10 @@
                         <div class="form-group">
                             <label>Vote Settings:</label>
                             <div class="vote-settings">
-                                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                                    <input type="checkbox" name="single_vote" checked style="width: auto; margin: 0;">
-                                    <span>Single vote per user</span>
-                                </label>
+                                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 5px;">
+                                    <input type="checkbox" id="singleVoteCheckbox" name="single_vote" checked style="width: 16px; height: 16px; margin: 0; cursor: pointer;">
+                                    <label for="singleVoteCheckbox" style="cursor: pointer; margin: 0;">Single vote per user</label>
+                                </div>
                                 <small style="margin-left: 24px; color: #9fb0b5;">Uncheck to allow multiple votes per user</small>
                             </div>
                         </div>
@@ -1440,7 +1440,7 @@
                 const formData = new FormData(this);
                 
                 // Handle checkbox value properly
-                const singleVoteCheckbox = document.querySelector('#pollsModal input[name="single_vote"]');
+                const singleVoteCheckbox = document.getElementById('singleVoteCheckbox');
                 console.log('Checkbox found:', singleVoteCheckbox);
                 console.log('Checkbox checked:', singleVoteCheckbox ? singleVoteCheckbox.checked : 'not found');
                 
