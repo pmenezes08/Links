@@ -2977,17 +2977,6 @@ def community_feed(community_id):
         with get_db_connection() as conn:
             c = conn.cursor()
             
-            # Check if user is member of this community OR if user is admin
-            if username != 'admin':
-                c.execute("""
-                    SELECT 1 FROM user_communities uc
-                    JOIN users u ON uc.user_id = u.rowid
-                    WHERE u.username = ? AND uc.community_id = ?
-                """, (username, community_id))
-                
-                if not c.fetchone():
-                    return jsonify({'success': False, 'error': 'You are not a member of this community'}), 403
-            
             # Get community info
             c.execute("SELECT * FROM communities WHERE id = ?", (community_id,))
             community_row = c.fetchone()
@@ -3005,43 +2994,6 @@ def community_feed(community_id):
             """, (community_id,))
             posts_raw = c.fetchall()
             posts = [dict(row) for row in posts_raw]
-            
-
-
-            for post in posts:
-                # Fetch replies for each post
-                c.execute("SELECT * FROM replies WHERE post_id = ? ORDER BY timestamp ASC", (post['id'],))
-                replies_raw = c.fetchall()
-                post['replies'] = [dict(row) for row in replies_raw]
-
-                # Fetch reactions for each post
-                c.execute("""
-                    SELECT reaction_type, COUNT(*) as count
-                    FROM reactions
-                    WHERE post_id = ?
-                    GROUP BY reaction_type
-                """, (post['id'],))
-                reactions_raw = c.fetchall()
-                post['reactions'] = {r['reaction_type']: r['count'] for r in reactions_raw}
-
-                # Get the current logged-in user's reaction to this post
-                c.execute("SELECT reaction_type FROM reactions WHERE post_id = ? AND username = ?", (post['id'], username))
-                user_reaction_raw = c.fetchone()
-                post['user_reaction'] = user_reaction_raw['reaction_type'] if user_reaction_raw else None
-
-                # Add reaction counts for each reply and user reaction
-                for reply in post['replies']:
-                    c.execute("""
-                        SELECT reaction_type, COUNT(*) as count
-                        FROM reply_reactions
-                        WHERE reply_id = ?
-                        GROUP BY reaction_type
-                    """, (reply['id'],))
-                    rr = c.fetchall()
-                    reply['reactions'] = {r['reaction_type']: r['count'] for r in rr}
-                    c.execute("SELECT reaction_type FROM reply_reactions WHERE reply_id = ? AND username = ?", (reply['id'], username))
-                    ur = c.fetchone()
-                    reply['user_reaction'] = ur['reaction_type'] if ur else None
             
             return render_template('community_feed.html', 
                                 posts=posts, 
