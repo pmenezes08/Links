@@ -5581,6 +5581,29 @@ def save_community_announcement():
         conn = get_db_connection()
         cursor = conn.cursor()
         
+        # Create tables if they don't exist
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS community_announcements (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                community_id INTEGER NOT NULL,
+                content TEXT NOT NULL,
+                created_by TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )
+        ''')
+        
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS community_files (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                announcement_id INTEGER NOT NULL,
+                filename TEXT NOT NULL,
+                file_path TEXT NOT NULL,
+                uploaded_by TEXT NOT NULL,
+                uploaded_at TEXT NOT NULL,
+                FOREIGN KEY (announcement_id) REFERENCES community_announcements (id) ON DELETE CASCADE
+            )
+        ''')
+        
         # Check if user is admin or community creator
         cursor.execute('''
             SELECT creator_username FROM communities 
