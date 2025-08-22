@@ -852,9 +852,11 @@
         
         /* Polls modal header styling - matching announcements */
         #pollsModal .modal-header {
-            background: #000000;
-            color: #ffffff;
-            border-bottom: 1px solid rgba(45, 138, 126, 0.3);
+            background: #000000 !important;
+            color: #ffffff !important;
+            border-bottom: none !important;
+            padding: 20px 25px 15px 25px !important;
+            border-radius: 12px 12px 0 0 !important;
         }
         
         #pollsModal .modal-header h2 {
@@ -961,20 +963,21 @@
             display: block !important;
         }
         
-        /* Polls modal styling - matching announcements modal */
+        /* Polls modal styling - matching post modal */
         #pollsModal {
             max-width: 90vw;
-            width: 500px;
+            width: 520px;
         }
         
         #pollsModal .modal-content {
-            background: transparent;
-            border: none;
-            box-shadow: none;
+            background: #1a2526 !important;
+            border: 2px solid #2d8a7e !important;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3) !important;
+            border-radius: 12px !important;
         }
         
         #pollsModal .modal-body {
-            padding: 15px;
+            padding: 25px;
         }
         
         /* Polls tabs styling - compact and centered like announcements */
