@@ -323,8 +323,20 @@ def init_db():
                           filename TEXT NOT NULL,
                           uploaded_by TEXT NOT NULL,
                           upload_date TEXT NOT NULL,
+                          description TEXT,
                           FOREIGN KEY (community_id) REFERENCES communities(id) ON DELETE CASCADE,
                           FOREIGN KEY (uploaded_by) REFERENCES users(username))''')
+
+            # Create community_announcements table
+            logger.info("Creating community_announcements table...")
+            c.execute('''CREATE TABLE IF NOT EXISTS community_announcements
+                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                          community_id INTEGER NOT NULL,
+                          content TEXT NOT NULL,
+                          created_by TEXT NOT NULL,
+                          created_at TEXT NOT NULL,
+                          FOREIGN KEY (community_id) REFERENCES communities(id) ON DELETE CASCADE,
+                          FOREIGN KEY (created_by) REFERENCES users(username))''')
 
             # Create api_usage table
             logger.info("Creating api_usage table...")
@@ -4697,7 +4709,14 @@ def save_community_info():
         if session['username'] != community['creator_username'] and session['username'] != 'admin':
             return jsonify({'success': False, 'error': 'Unauthorized'})
         
-        # Update community info with timestamp
+        # Save announcement to announcements table
+        cursor.execute('''
+            INSERT INTO community_announcements 
+            (community_id, content, created_by, created_at)
+            VALUES (?, ?, ?, ?)
+        ''', (community_id, info, session['username'], datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+        
+        # Update community info to show latest announcement
         cursor.execute('''
             UPDATE communities 
             SET info = ?, info_updated_at = ? 
@@ -4750,11 +4769,14 @@ def upload_community_files():
                 file_path = os.path.join(community_files_dir, filename)
                 file.save(file_path)
                 
+                # Get file description
+                description = request.form.get('description', '')
+                
                 # Save file info to database
                 cursor.execute('''
-                    INSERT INTO community_files (community_id, filename, uploaded_by, upload_date)
-                    VALUES (?, ?, ?, ?)
-                ''', (community_id, filename, session['username'], datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+                    INSERT INTO community_files (community_id, filename, uploaded_by, upload_date, description)
+                    VALUES (?, ?, ?, ?, ?)
+                ''', (community_id, filename, session['username'], datetime.now().strftime('%Y-%m-%d %H:%M:%S'), description))
                 
                 uploaded_files.append(filename)
         
@@ -4776,7 +4798,7 @@ def get_community_files():
         cursor = conn.cursor()
         
         cursor.execute('''
-            SELECT filename, uploaded_by, upload_date 
+            SELECT filename, uploaded_by, upload_date, description 
             FROM community_files 
             WHERE community_id = ?
             ORDER BY upload_date DESC
@@ -4787,7 +4809,8 @@ def get_community_files():
             files.append({
                 'filename': row['filename'],
                 'uploaded_by': row['uploaded_by'],
-                'upload_date': row['upload_date']
+                'upload_date': row['upload_date'],
+                'description': row['description'] or ''
             })
         
         conn.close()
@@ -4860,6 +4883,100 @@ def delete_community_file():
         
     except Exception as e:
         logger.error(f"Error deleting community file: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/get_community_announcements', methods=['GET'])
+def get_community_announcements():
+    try:
+        community_id = request.args.get('community_id')
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT id, content, created_by, created_at 
+            FROM community_announcements 
+            WHERE community_id = ?
+            ORDER BY created_at DESC
+        ''', (community_id,))
+        
+        announcements = []
+        for row in cursor.fetchall():
+            announcements.append({
+                'id': row['id'],
+                'content': row['content'],
+                'created_by': row['created_by'],
+                'created_at': row['created_at']
+            })
+        
+        conn.close()
+        
+        return jsonify({'success': True, 'announcements': announcements})
+        
+    except Exception as e:
+        logger.error(f"Error getting community announcements: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/delete_community_announcement', methods=['POST'])
+def delete_community_announcement():
+    try:
+        if 'username' not in session:
+            return jsonify({'success': False, 'error': 'Not logged in'})
+        
+        announcement_id = request.form.get('announcement_id')
+        community_id = request.form.get('community_id')
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Check if user is admin or community creator
+        cursor.execute('''
+            SELECT creator_username FROM communities 
+            WHERE id = ?
+        ''', (community_id,))
+        
+        community = cursor.fetchone()
+        if not community:
+            return jsonify({'success': False, 'error': 'Community not found'})
+        
+        if session['username'] != community['creator_username'] and session['username'] != 'admin':
+            return jsonify({'success': False, 'error': 'Unauthorized'})
+        
+        # Delete announcement from database
+        cursor.execute('''
+            DELETE FROM community_announcements 
+            WHERE id = ? AND community_id = ?
+        ''', (announcement_id, community_id))
+        
+        # Update community info to show the next latest announcement
+        cursor.execute('''
+            SELECT content, created_at FROM community_announcements 
+            WHERE community_id = ? 
+            ORDER BY created_at DESC 
+            LIMIT 1
+        ''', (community_id,))
+        
+        latest = cursor.fetchone()
+        if latest:
+            cursor.execute('''
+                UPDATE communities 
+                SET info = ?, info_updated_at = ? 
+                WHERE id = ?
+            ''', (latest['content'], latest['created_at'], community_id))
+        else:
+            cursor.execute('''
+                UPDATE communities 
+                SET info = NULL, info_updated_at = NULL 
+                WHERE id = ?
+            ''', (community_id,))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({'success': True})
+        
+    except Exception as e:
+        logger.error(f"Error deleting community announcement: {e}")
         return jsonify({'success': False, 'error': str(e)})
 
 if __name__ == '__main__':

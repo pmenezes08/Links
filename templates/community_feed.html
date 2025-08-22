@@ -309,6 +309,27 @@
             margin-bottom: 8px;
         }
 
+        .announcement-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .delete-announcement-btn {
+            background: none;
+            border: none;
+            color: #ff6b6b !important;
+            cursor: pointer;
+            padding: 4px 6px;
+            border-radius: 3px;
+            font-size: 12px;
+            transition: all 0.2s ease;
+        }
+
+        .delete-announcement-btn:hover {
+            background: rgba(255, 107, 107, 0.1);
+        }
+
         .announcement-item-date {
             color: rgba(255, 255, 255, 0.6) !important;
             font-size: 12px;
@@ -474,10 +495,26 @@
 
         .file-info {
             display: flex;
-            align-items: center;
+            align-items: flex-start;
             gap: 8px;
             color: {{ community.text_color or '#ffffff' }} !important;
             font-size: 13px;
+        }
+
+        .file-details {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .file-name {
+            font-weight: 500;
+        }
+
+        .file-description {
+            font-size: 11px;
+            color: rgba(255, 255, 255, 0.6) !important;
+            font-style: italic;
         }
 
         .file-actions {
@@ -795,28 +832,86 @@
         }
 
         function loadAnnouncementsHistory() {
-            // For now, just show the current announcement
-            // In the future, this could load from a database table
+            // Load announcements from the database
+            $.ajax({
+                url: '/get_community_announcements',
+                method: 'GET',
+                data: {
+                    community_id: {{ community.id }}
+                },
+                success: function(response) {
+                    if (response.success) {
+                        displayAnnouncements(response.announcements);
+                    } else {
+                        console.log('Error loading announcements:', response.error);
+                    }
+                },
+                error: function() {
+                    console.log('Error loading announcements');
+                }
+            });
+        }
+
+        function displayAnnouncements(announcements) {
             const announcementsList = document.getElementById('announcementsList');
-            const currentAnnouncement = `{{ community.info or '' }}`;
-            const currentDate = `{{ community.info_updated_at or 'Recently' }}`;
             
-            if (currentAnnouncement && currentAnnouncement.trim()) {
-                const html = `
+            if (!announcements || announcements.length === 0) {
+                announcementsList.innerHTML = '<div class="no-announcements"><i class="fas fa-bullhorn"></i><span>No announcements yet</span></div>';
+                return;
+            }
+
+            let html = '';
+            announcements.forEach((announcement, index) => {
+                const isLatest = index === 0;
+                const badgeText = isLatest ? 'Latest' : 'Previous';
+                const deleteButton = isLatest ? `<button class="delete-announcement-btn" onclick="deleteAnnouncement(${announcement.id})" title="Delete announcement"><i class="fas fa-trash"></i></button>` : '';
+                
+                html += `
                     <div class="announcement-item">
                         <div class="announcement-item-header">
-                            <span class="announcement-item-date">${currentDate}</span>
-                            <span class="preview-badge">Latest</span>
+                            <span class="announcement-item-date">${announcement.created_at}</span>
+                            <div class="announcement-actions">
+                                <span class="preview-badge">${badgeText}</span>
+                                ${deleteButton}
+                            </div>
                         </div>
                         <div class="announcement-item-content">
-                            ${currentAnnouncement.replace(/\n/g, '<br>')}
+                            ${announcement.content.replace(/\n/g, '<br>')}
                         </div>
                     </div>
                 `;
-                announcementsList.innerHTML = html;
-            } else {
-                announcementsList.innerHTML = '<div class="no-announcements"><i class="fas fa-bullhorn"></i><span>No announcements yet</span></div>';
+            });
+            
+            announcementsList.innerHTML = html;
+        }
+
+        function deleteAnnouncement(announcementId) {
+            if (!confirm('Are you sure you want to delete this announcement?')) {
+                return;
             }
+
+            $.ajax({
+                url: '/delete_community_announcement',
+                method: 'POST',
+                data: {
+                    announcement_id: announcementId,
+                    community_id: {{ community.id }},
+                    csrf_token: '{{ csrf_token }}'
+                },
+                success: function(response) {
+                    if (response.success) {
+                        alert('Announcement deleted successfully!');
+                        loadAnnouncementsHistory();
+                        // Refresh the page to update the preview
+                        location.reload();
+                    } else {
+                        alert('Error deleting announcement: ' + response.error);
+                    }
+                },
+                error: function() {
+                    alert('Error deleting announcement');
+                }
+            });
         }
 
         // Check for unread announcements on page load
@@ -870,7 +965,10 @@
                 <div class="community-file">
                     <div class="file-info">
                         <i class="fas fa-file"></i>
-                        <span>${file.filename}</span>
+                        <div class="file-details">
+                            <span class="file-name">${file.filename}</span>
+                            ${file.description ? `<span class="file-description">${file.description}</span>` : ''}
+                        </div>
                     </div>
                     <div class="file-actions">
                         <button class="file-action-btn" onclick="downloadFile('${file.filename}')" title="Download">
