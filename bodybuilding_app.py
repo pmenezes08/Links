@@ -3364,13 +3364,16 @@ def edit_community():
 @app.route('/update_community', methods=['POST'])
 @login_required
 def update_community():
-    """Update community details (name, description, location, background, template)"""
+    """Update community details (name, description, type, background, template, colors)"""
     username = session.get('username')
     community_id = request.form.get('community_id', type=int)
     name = request.form.get('name', '').strip()
     description = request.form.get('description', '').strip()
-    location = request.form.get('location', '').strip()
-    template = request.form.get('template', 'default')
+    community_type = request.form.get('type', '').strip()
+    template = request.form.get('template', 'dark')
+    card_color = request.form.get('card_color', '#1a2526')
+    accent_color = request.form.get('accent_color', '#4db6ac')
+    text_color = request.form.get('text_color', '#ffffff')
     
     if not community_id or not name:
         return jsonify({'success': False, 'error': 'Community ID and name are required'}), 400
@@ -3411,14 +3414,18 @@ def update_community():
             # Update the community details
             if background_path:
                 c.execute("""UPDATE communities 
-                            SET name = ?, description = ?, location = ?, background_path = ?, template = ? 
+                            SET name = ?, description = ?, type = ?, background_path = ?, template = ?, 
+                                card_color = ?, accent_color = ?, text_color = ? 
                             WHERE id = ?""", 
-                         (name, description, location, background_path, template, community_id))
+                         (name, description, community_type, background_path, template, 
+                          card_color, accent_color, text_color, community_id))
             else:
                 c.execute("""UPDATE communities 
-                            SET name = ?, description = ?, location = ?, template = ? 
+                            SET name = ?, description = ?, type = ?, template = ?, 
+                                card_color = ?, accent_color = ?, text_color = ? 
                             WHERE id = ?""", 
-                         (name, description, location, template, community_id))
+                         (name, description, community_type, template, 
+                          card_color, accent_color, text_color, community_id))
             
             conn.commit()
             

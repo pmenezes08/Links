@@ -1198,6 +1198,46 @@
             document.getElementById('editCommunityModal').style.display = 'none';
         }
         
+        // Handle edit community form submission
+        document.addEventListener('DOMContentLoaded', function() {
+            const editCommunityForm = document.getElementById('editCommunityForm');
+            if (editCommunityForm) {
+                editCommunityForm.addEventListener('submit', function(e) {
+                    e.preventDefault();
+                    
+                    const formData = new FormData(this);
+                    formData.append('community_id', '{{ community.id }}');
+                    
+                    // Rename the background file field to match backend expectation
+                    const backgroundFile = formData.get('background');
+                    if (backgroundFile && backgroundFile.name) {
+                        formData.delete('background');
+                        formData.append('background_file', backgroundFile);
+                    }
+                    
+                    fetch('/update_community', {
+                        method: 'POST',
+                        body: formData
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            alert('Community updated successfully!');
+                            closeEditCommunityModal();
+                            // Reload the page to show changes
+                            window.location.reload();
+                        } else {
+                            alert('Error: ' + data.error);
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        alert('Error updating community');
+                    });
+                });
+            }
+        });
+        
         function loadMembers() {
             const formData = new FormData();
             formData.append('community_id', '{{ community.id }}');
