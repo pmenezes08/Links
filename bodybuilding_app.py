@@ -5528,7 +5528,7 @@ def delete_community_file():
             return jsonify({'success': False, 'error': 'Not logged in'})
         
         community_id = request.form.get('community_id')
-        filename = request.form.get('filename')
+        file_id = request.form.get('file_id')
         
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -5546,16 +5546,26 @@ def delete_community_file():
         if session['username'] != community['creator_username'] and session['username'] != 'admin':
             return jsonify({'success': False, 'error': 'Unauthorized'})
         
+        # Get file info first
+        cursor.execute('''
+            SELECT filename, file_path FROM community_files 
+            WHERE id = ? AND community_id = ?
+        ''', (file_id, community_id))
+        
+        file_data = cursor.fetchone()
+        if not file_data:
+            return jsonify({'success': False, 'error': 'File not found'})
+        
         # Delete file from filesystem
-        file_path = os.path.join('static', 'community_files', str(community_id), filename)
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], file_data['file_path'])
         if os.path.exists(file_path):
             os.remove(file_path)
         
         # Delete file record from database
         cursor.execute('''
             DELETE FROM community_files 
-            WHERE community_id = ? AND filename = ?
-        ''', (community_id, filename))
+            WHERE id = ? AND community_id = ?
+        ''', (file_id, community_id))
         
         conn.commit()
         conn.close()
@@ -5801,11 +5811,15 @@ def download_announcement_file(file_id):
         ''', (file_id,))
         
         file_data = cursor.fetchone()
+        logger.info(f"File data for ID {file_id}: {file_data}")
         conn.close()
         
         if not file_data:
             return "File not found", 404
         
+        if not file_data['file_path']:
+            return "File path not found", 404
+            
         file_path = os.path.join(app.config['UPLOAD_FOLDER'], file_data['file_path'])
         
         if not os.path.exists(file_path):
