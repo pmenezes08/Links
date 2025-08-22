@@ -917,6 +917,15 @@
             padding: 15px;
         }
         
+        /* Override image stretching for community feed */
+        .post-image img {
+            width: auto !important;
+            height: auto !important;
+            max-width: none !important;
+            max-height: none !important;
+            object-fit: none !important;
+        }
+        
         /* Polls modal styling - matching announcements modal */
         #pollsModal {
             max-width: 90vw;
@@ -1467,6 +1476,10 @@
             document.getElementById('editCommunityModal').style.display = 'none';
         }
         
+        function closePostModal() {
+            document.getElementById('postModal').style.display = 'none';
+        }
+        
         // Handle edit community form submission
         document.addEventListener('DOMContentLoaded', function() {
             const editCommunityForm = document.getElementById('editCommunityForm');
@@ -1893,8 +1906,8 @@
     <div id="postModal" class="modal">
         <div class="modal-content post-modal">
             <div class="modal-header">
-                <h2><i class="fas fa-comment"></i> Post Details</h2>
-                <span class="close">&times;</span>
+                <h2>Post Details</h2>
+                <span class="close" onclick="closePostModal()">&times;</span>
             </div>
             <div class="modal-body">
                 <div id="modalPostContent">
