@@ -421,18 +421,25 @@ def init_db():
                 logger.info("Adding description column to community_files table...")
                 c.execute("ALTER TABLE community_files ADD COLUMN description TEXT")
             
-            # Create polls table
+                        # Create polls table
             logger.info("Creating polls table...")
             c.execute('''        CREATE TABLE IF NOT EXISTS polls
-        (id INTEGER PRIMARY KEY AUTOINCREMENT,
-         post_id INTEGER NOT NULL,
-         question TEXT NOT NULL,
-         created_by TEXT NOT NULL,
-         created_at TEXT NOT NULL,
-         expires_at TEXT,
-         is_active BOOLEAN DEFAULT 1,
-         single_vote BOOLEAN DEFAULT 1,
-         FOREIGN KEY (post_id) REFERENCES posts (id) ON DELETE CASCADE)''')
+         (id INTEGER PRIMARY KEY AUTOINCREMENT,
+          post_id INTEGER NOT NULL,
+          question TEXT NOT NULL,
+          created_by TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          expires_at TEXT,
+          is_active BOOLEAN DEFAULT 1,
+          single_vote BOOLEAN DEFAULT 1,
+          FOREIGN KEY (post_id) REFERENCES posts (id) ON DELETE CASCADE)''')
+            
+            # Add single_vote column if it doesn't exist
+            try:
+                c.execute("SELECT single_vote FROM polls LIMIT 1")
+            except:
+                logger.info("Adding single_vote column to polls table...")
+                c.execute("ALTER TABLE polls ADD COLUMN single_vote BOOLEAN DEFAULT 1")
             
             # Create poll_options table
             logger.info("Creating poll_options table...")
@@ -2721,6 +2728,10 @@ def vote_poll():
             # Check if poll exists and is active
             c.execute("SELECT p.*, po.id as option_id FROM polls p JOIN poll_options po ON p.id = po.poll_id WHERE p.id = ? AND po.id = ? AND p.is_active = 1", (poll_id, option_id))
             poll_data = c.fetchone()
+            
+            # Handle case where single_vote column might not exist
+            if poll_data and 'single_vote' not in poll_data:
+                poll_data['single_vote'] = True  # Default to single vote
             
             if not poll_data:
                 return jsonify({'success': False, 'error': 'Poll not found or inactive'})
