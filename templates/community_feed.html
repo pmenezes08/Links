@@ -258,50 +258,7 @@
             font-size: 12px;
         }
 
-        /* Polls Modal Styles */
-        #pollsModal {
-            display: none;
-            position: fixed;
-            z-index: 1000;
-            left: 0;
-            top: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0, 0, 0, 0.5);
-        }
-        
-        #pollsModal .modal-content {
-            background-color: {{ community.card_color or '#1a2526' }};
-            margin: 5% auto;
-            padding: 20px;
-            border: 1px solid {{ community.accent_color or '#2d8a7e' }};
-            border-radius: 8px;
-            width: 80%;
-            max-width: 600px;
-            max-height: 80vh;
-            overflow-y: auto;
-            position: relative;
-        }
-        
-        #pollsModal .close {
-            position: absolute;
-            top: 10px;
-            right: 15px;
-            font-size: 18px;
-            font-weight: normal;
-            color: {{ community.text_color or '#ffffff' }}aa;
-            background: none;
-            border: none;
-            cursor: pointer;
-            padding: 5px;
-            border-radius: 4px;
-            transition: all 0.2s ease;
-        }
-        
-        #pollsModal .close:hover {
-            color: {{ community.text_color or '#ffffff' }};
-            background: rgba(255, 255, 255, 0.1);
-        }
+
         
         .polls-tabs {
             display: flex;
@@ -850,27 +807,7 @@
             background: rgba(255, 255, 255, 0.1);
         }
         
-        /* Polls modal header styling - matching announcements */
-        #pollsModal .modal-header {
-            background: #000000 !important;
-            color: #ffffff !important;
-            border-bottom: none !important;
-            padding: 20px 25px 15px 25px !important;
-            border-radius: 12px 12px 0 0 !important;
-        }
-        
-        #pollsModal .modal-header h2 {
-            color: #ffffff;
-        }
-        
-        #pollsModal .modal-header .close {
-            color: #9fb0b5;
-        }
-        
-        #pollsModal .modal-header .close:hover {
-            color: #ffffff;
-            background: rgba(255, 255, 255, 0.1);
-        }
+
         
         /* Post modal styling - compact and sleek */
         .post-modal {
