@@ -152,7 +152,7 @@
         }
         {% endif %}
 
-        /* Community Actions Button Styles */
+        /* Community Actions Button Styles - Updated */
         .community-actions {
             display: flex;
             gap: 10px;
@@ -161,6 +161,7 @@
             margin-bottom: 20px;
             padding: 15px 0;
             overflow-x: auto;
+            justify-content: flex-start;
         }
         
         .members-btn, .admin-info-btn, .edit-community-btn, .polls-btn {
@@ -177,6 +178,7 @@
             transition: all 0.2s ease;
             background-color: {{ community.accent_color or '#2d8a7e' }};
             color: {{ community.text_color or '#ffffff' }};
+            flex-shrink: 0;
         }
         
         .members-btn:hover, .admin-info-btn:hover, .edit-community-btn:hover, .polls-btn:hover {
