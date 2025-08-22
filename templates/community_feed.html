@@ -80,11 +80,11 @@
         }
 
         .admin-info-btn.has-notifications {
-            background-color: #2d8a7e !important; /* Dark turquoise for unread */
+            background-color: #4db6ac !important; /* Light turquoise for unread */
         }
 
         .admin-info-btn.read {
-            background-color: #4db6ac !important; /* Light turquoise for read */
+            background-color: #2d8a7e !important; /* Dark turquoise for read */
         }
 
         /* Announcement Display Styles */
@@ -191,6 +191,133 @@
             color: {{ community.text_color or '#ffffff' }} !important;
             font-size: 14px;
             line-height: 1.6;
+            white-space: pre-wrap;
+        }
+
+        /* Compact Announcement System */
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .view-all-btn {
+            background: none;
+            border: none;
+            color: {{ community.accent_color or '#4db6ac' }} !important;
+            cursor: pointer;
+            font-size: 12px;
+            padding: 4px 8px;
+            border-radius: 4px;
+            transition: all 0.2s ease;
+        }
+
+        .view-all-btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .latest-announcement-preview {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 6px;
+            padding: 12px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .latest-announcement-preview:hover {
+            background: rgba(255, 255, 255, 0.08);
+        }
+
+        .preview-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .preview-date {
+            color: rgba(255, 255, 255, 0.6) !important;
+            font-size: 11px;
+        }
+
+        .preview-badge {
+            background: {{ community.accent_color or '#4db6ac' }} !important;
+            color: white !important;
+            font-size: 10px;
+            padding: 2px 6px;
+            border-radius: 10px;
+        }
+
+        .preview-content {
+            color: {{ community.text_color or '#ffffff' }} !important;
+            font-size: 13px;
+            line-height: 1.4;
+        }
+
+        .no-announcements {
+            text-align: center;
+            padding: 20px;
+            color: rgba(255, 255, 255, 0.5) !important;
+            font-size: 14px;
+        }
+
+        .no-announcements i {
+            font-size: 24px;
+            margin-bottom: 8px;
+            display: block;
+        }
+
+        /* File Description Input */
+        .file-description-input {
+            margin-top: 8px;
+        }
+
+        .file-description-input input {
+            width: 100%;
+            background: rgba(255, 255, 255, 0.05) !important;
+            color: {{ community.text_color or '#ffffff' }} !important;
+            border: 1px solid {{ community.accent_color or '#4db6ac' }} !important;
+            border-radius: 4px;
+            padding: 8px 12px;
+            font-size: 13px;
+        }
+
+        .file-description-input input::placeholder {
+            color: rgba(255, 255, 255, 0.5) !important;
+        }
+
+        /* Announcements Modal */
+        .announcements-modal {
+            max-width: 600px;
+            max-height: 80vh;
+        }
+
+        .announcement-item {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 6px;
+            padding: 16px;
+            margin-bottom: 12px;
+        }
+
+        .announcement-item-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .announcement-item-date {
+            color: rgba(255, 255, 255, 0.6) !important;
+            font-size: 12px;
+        }
+
+        .announcement-item-content {
+            color: {{ community.text_color or '#ffffff' }} !important;
+            font-size: 14px;
+            line-height: 1.5;
             white-space: pre-wrap;
         }
 
@@ -528,27 +655,37 @@
                 </button>
             </div>
             <div class="lateral-modal-body">
-                <!-- Current Announcement Display -->
-                {% if community.info and community.info.strip() %}
-                <div class="current-announcement-section">
-                    <h4><i class="fas fa-bullhorn"></i> Current Announcement</h4>
-                    <div class="announcement-display">
-                        <div class="announcement-meta">
-                            <span class="announcement-date">{{ community.info_updated_at if community.info_updated_at else 'Recently' }}</span>
-                            <button class="mark-read-btn" onclick="markAnnouncementRead()" title="Mark as read">
-                                <i class="fas fa-check"></i>
-                            </button>
+                <!-- Announcements Section -->
+                <div class="admin-section">
+                    <div class="section-header">
+                        <h4><i class="fas fa-bullhorn"></i> Announcements</h4>
+                        <button class="view-all-btn" onclick="showAnnouncementsModal()">
+                            <i class="fas fa-history"></i> View All
+                        </button>
+                    </div>
+                    
+                    <!-- Latest Announcement Preview -->
+                    {% if community.info and community.info.strip() %}
+                    <div class="latest-announcement-preview" onclick="showAnnouncementsModal()">
+                        <div class="preview-header">
+                            <span class="preview-date">{{ community.info_updated_at if community.info_updated_at else 'Recently' }}</span>
+                            <span class="preview-badge">Latest</span>
                         </div>
-                        <div class="announcement-content">
-                            {{ community.info | nl2br | safe }}
+                        <div class="preview-content">
+                            {{ community.info[:100] }}{% if community.info|length > 100 %}...{% endif %}
                         </div>
                     </div>
+                    {% else %}
+                    <div class="no-announcements">
+                        <i class="fas fa-bullhorn"></i>
+                        <span>No announcements yet</span>
+                    </div>
+                    {% endif %}
                 </div>
-                {% endif %}
                 
                 <div class="admin-section">
-                    <h4><i class="fas fa-edit"></i> Update Announcement</h4>
-                    <textarea id="communityInfo" placeholder="Write an announcement for community members..." rows="6">{{ community.info or '' }}</textarea>
+                    <h4><i class="fas fa-edit"></i> New Announcement</h4>
+                    <textarea id="communityInfo" placeholder="Write an announcement for community members..." rows="4"></textarea>
                     <button onclick="saveCommunityInfo()" class="admin-btn">
                         <i class="fas fa-paper-plane"></i> Publish Announcement
                     </button>
@@ -563,6 +700,9 @@
                             <span>Drop files here or click to upload</span>
                         </label>
                     </div>
+                    <div class="file-description-input">
+                        <input type="text" id="fileDescription" placeholder="Describe what this file relates to..." maxlength="100">
+                    </div>
                     <div id="communityFiles" class="files-list">
                         <!-- Files will be loaded here -->
                     </div>
@@ -571,6 +711,21 @@
         </div>
     </div>
     {% endif %}
+
+    <!-- Announcements History Modal -->
+    <div id="announcementsModal" class="modal">
+        <div class="modal-content announcements-modal">
+            <div class="modal-header">
+                <h2><i class="fas fa-history"></i> Announcement History</h2>
+                <span class="close" onclick="closeAnnouncementsModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div id="announcementsList">
+                    <!-- Announcements will be loaded here -->
+                </div>
+            </div>
+        </div>
+    </div>
 
     <script>
         // Ensure members modal is hidden by default
@@ -627,6 +782,40 @@
             if (btn) {
                 btn.classList.remove('has-notifications');
                 btn.classList.add('read');
+            }
+        }
+
+        function showAnnouncementsModal() {
+            document.getElementById('announcementsModal').style.display = 'block';
+            loadAnnouncementsHistory();
+        }
+
+        function closeAnnouncementsModal() {
+            document.getElementById('announcementsModal').style.display = 'none';
+        }
+
+        function loadAnnouncementsHistory() {
+            // For now, just show the current announcement
+            // In the future, this could load from a database table
+            const announcementsList = document.getElementById('announcementsList');
+            const currentAnnouncement = `{{ community.info or '' }}`;
+            const currentDate = `{{ community.info_updated_at or 'Recently' }}`;
+            
+            if (currentAnnouncement && currentAnnouncement.trim()) {
+                const html = `
+                    <div class="announcement-item">
+                        <div class="announcement-item-header">
+                            <span class="announcement-item-date">${currentDate}</span>
+                            <span class="preview-badge">Latest</span>
+                        </div>
+                        <div class="announcement-item-content">
+                            ${currentAnnouncement.replace(/\n/g, '<br>')}
+                        </div>
+                    </div>
+                `;
+                announcementsList.innerHTML = html;
+            } else {
+                announcementsList.innerHTML = '<div class="no-announcements"><i class="fas fa-bullhorn"></i><span>No announcements yet</span></div>';
             }
         }
 
@@ -710,6 +899,11 @@
             formData.append('community_id', {{ community.id }});
             formData.append('csrf_token', '{{ csrf_token }}');
             
+            const description = document.getElementById('fileDescription').value.trim();
+            if (description) {
+                formData.append('description', description);
+            }
+            
             for (let i = 0; i < files.length; i++) {
                 formData.append('files', files[i]);
             }
@@ -725,6 +919,7 @@
                         alert('Files uploaded successfully!');
                         loadCommunityFiles();
                         document.getElementById('communityFile').value = '';
+                        document.getElementById('fileDescription').value = '';
                     } else {
                         alert('Error uploading files: ' + response.error);
                     }
