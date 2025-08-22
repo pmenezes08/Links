@@ -1100,7 +1100,7 @@
         }
         
         function loadAnnouncementsHistory() {
-            fetch('/get_community_announcements/{{ community.id }}')
+            fetch('/get_community_announcements?community_id={{ community.id }}')
                 .then(response => response.json())
                 .then(data => {
                     if (data.success) {

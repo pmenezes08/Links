@@ -5566,6 +5566,56 @@ def delete_community_file():
         logger.error(f"Error deleting community file: {e}")
         return jsonify({'success': False, 'error': str(e)})
 
+@app.route('/save_community_announcement', methods=['POST'])
+def save_community_announcement():
+    try:
+        if 'username' not in session:
+            return jsonify({'success': False, 'error': 'Not logged in'})
+        
+        content = request.form.get('content')
+        community_id = request.form.get('community_id')
+        
+        if not content or not community_id:
+            return jsonify({'success': False, 'error': 'Missing required fields'})
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Check if user is admin or community creator
+        cursor.execute('''
+            SELECT creator_username FROM communities 
+            WHERE id = ?
+        ''', (community_id,))
+        
+        community = cursor.fetchone()
+        if not community:
+            return jsonify({'success': False, 'error': 'Community not found'})
+        
+        if session['username'] != community['creator_username'] and session['username'] != 'admin':
+            return jsonify({'success': False, 'error': 'Unauthorized'})
+        
+        # Save announcement to database
+        cursor.execute('''
+            INSERT INTO community_announcements (community_id, content, created_by, created_at)
+            VALUES (?, ?, ?, ?)
+        ''', (community_id, content, session['username'], datetime.now().strftime('%m.%d.%y %H:%M')))
+        
+        # Update community info to show the latest announcement
+        cursor.execute('''
+            UPDATE communities 
+            SET info = ?, info_updated_at = ? 
+            WHERE id = ?
+        ''', (content, datetime.now().strftime('%m.%d.%y %H:%M'), community_id))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({'success': True})
+        
+    except Exception as e:
+        logger.error(f"Error saving community announcement: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
 @app.route('/get_community_announcements', methods=['GET'])
 def get_community_announcements():
     try:
