@@ -421,6 +421,39 @@ def init_db():
                 logger.info("Adding description column to community_files table...")
                 c.execute("ALTER TABLE community_files ADD COLUMN description TEXT")
             
+            # Create polls table
+            logger.info("Creating polls table...")
+            c.execute('''CREATE TABLE IF NOT EXISTS polls
+                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                          post_id INTEGER NOT NULL,
+                          question TEXT NOT NULL,
+                          created_by TEXT NOT NULL,
+                          created_at TEXT NOT NULL,
+                          expires_at TEXT,
+                          is_active BOOLEAN DEFAULT 1,
+                          FOREIGN KEY (post_id) REFERENCES posts (id) ON DELETE CASCADE)''')
+            
+            # Create poll_options table
+            logger.info("Creating poll_options table...")
+            c.execute('''CREATE TABLE IF NOT EXISTS poll_options
+                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                          poll_id INTEGER NOT NULL,
+                          option_text TEXT NOT NULL,
+                          votes INTEGER DEFAULT 0,
+                          FOREIGN KEY (poll_id) REFERENCES polls (id) ON DELETE CASCADE)''')
+            
+            # Create poll_votes table
+            logger.info("Creating poll_votes table...")
+            c.execute('''CREATE TABLE IF NOT EXISTS poll_votes
+                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                          poll_id INTEGER NOT NULL,
+                          option_id INTEGER NOT NULL,
+                          username TEXT NOT NULL,
+                          voted_at TEXT NOT NULL,
+                          FOREIGN KEY (poll_id) REFERENCES polls (id) ON DELETE CASCADE,
+                          FOREIGN KEY (option_id) REFERENCES poll_options (id) ON DELETE CASCADE,
+                          UNIQUE(poll_id, username))''')
+            
             conn.commit()
             logger.info("Database initialization completed successfully")
             
@@ -2282,6 +2315,29 @@ def feed():
                 user_reaction_raw = c.fetchone()
                 post['user_reaction'] = user_reaction_raw['reaction_type'] if user_reaction_raw else None
 
+                # Fetch poll data for this post
+                c.execute("SELECT * FROM polls WHERE post_id = ? AND is_active = 1", (post['id'],))
+                poll_raw = c.fetchone()
+                if poll_raw:
+                    poll = dict(poll_raw)
+                    # Fetch poll options
+                    c.execute("SELECT * FROM poll_options WHERE poll_id = ? ORDER BY id", (poll['id'],))
+                    options_raw = c.fetchall()
+                    poll['options'] = [dict(option) for option in options_raw]
+                    
+                    # Get user's vote
+                    c.execute("SELECT option_id FROM poll_votes WHERE poll_id = ? AND username = ?", (poll['id'], username))
+                    user_vote_raw = c.fetchone()
+                    poll['user_vote'] = user_vote_raw['option_id'] if user_vote_raw else None
+                    
+                    # Calculate total votes
+                    total_votes = sum(option['votes'] for option in poll['options'])
+                    poll['total_votes'] = total_votes
+                    
+                    post['poll'] = poll
+                else:
+                    post['poll'] = None
+
                 # Add reaction counts for each reply and user reaction
                 for reply in post['replies']:
                     c.execute("""
@@ -2570,6 +2626,167 @@ def post_reply():
     except Exception as e:
         logger.error(f"Error posting reply for {username}: {str(e)}", exc_info=True)
         return jsonify({'success': False, 'error': f'Unexpected error: {str(e)}'}), 500
+
+@app.route('/create_poll', methods=['POST'])
+@login_required
+def create_poll():
+    """Create a new poll"""
+    username = session['username']
+    content = request.form.get('content', '').strip()
+    question = request.form.get('question', '').strip()
+    options = request.form.getlist('options[]')
+    community_id_raw = request.form.get('community_id')
+    community_id = int(community_id_raw) if community_id_raw else None
+    
+    # Validate input
+    if not question or not options or len(options) < 2:
+        return jsonify({'success': False, 'error': 'Question and at least 2 options are required!'})
+    
+    # Remove empty options
+    options = [opt.strip() for opt in options if opt.strip()]
+    if len(options) < 2:
+        return jsonify({'success': False, 'error': 'At least 2 non-empty options are required!'})
+    
+    # Limit to 6 options
+    if len(options) > 6:
+        return jsonify({'success': False, 'error': 'Maximum 6 options allowed!'})
+    
+    timestamp = datetime.now().strftime('%m.%d.%y %H:%M')
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # If community_id is provided, verify user is member (admin bypass)
+            if community_id and username != 'admin':
+                c.execute("""
+                    SELECT 1 FROM user_communities uc
+                    JOIN users u ON uc.user_id = u.rowid
+                    WHERE u.username = ? AND uc.community_id = ?
+                """, (username, community_id))
+                
+                if not c.fetchone():
+                    return jsonify({'success': False, 'error': 'You are not a member of this community'}), 403
+            
+            # Create the post first
+            c.execute("INSERT INTO posts (username, content, image_path, timestamp, community_id) VALUES (?, ?, ?, ?, ?)",
+                      (username, content, None, timestamp, community_id))
+            post_id = c.lastrowid
+            
+            # Create the poll
+            c.execute("INSERT INTO polls (post_id, question, created_by, created_at) VALUES (?, ?, ?, ?)",
+                      (post_id, question, username, timestamp))
+            poll_id = c.lastrowid
+            
+            # Create poll options
+            for option_text in options:
+                c.execute("INSERT INTO poll_options (poll_id, option_text) VALUES (?, ?)",
+                          (poll_id, option_text))
+            
+            conn.commit()
+            return jsonify({'success': True, 'message': 'Poll created successfully!', 'post_id': post_id})
+            
+    except Exception as e:
+        logger.error(f"Error creating poll: {str(e)}")
+        return jsonify({'success': False, 'error': 'Error creating poll'})
+
+@app.route('/vote_poll', methods=['POST'])
+@login_required
+def vote_poll():
+    """Vote on a poll"""
+    username = session['username']
+    poll_id = request.form.get('poll_id', type=int)
+    option_id = request.form.get('option_id', type=int)
+    
+    if not poll_id or not option_id:
+        return jsonify({'success': False, 'error': 'Invalid poll or option ID'})
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Check if poll exists and is active
+            c.execute("SELECT p.*, po.id as option_id FROM polls p JOIN poll_options po ON p.id = po.poll_id WHERE p.id = ? AND po.id = ? AND p.is_active = 1", (poll_id, option_id))
+            poll_data = c.fetchone()
+            
+            if not poll_data:
+                return jsonify({'success': False, 'error': 'Poll not found or inactive'})
+            
+            # Check if user already voted
+            c.execute("SELECT id FROM poll_votes WHERE poll_id = ? AND username = ?", (poll_id, username))
+            existing_vote = c.fetchone()
+            
+            if existing_vote:
+                # Update existing vote
+                c.execute("UPDATE poll_votes SET option_id = ?, voted_at = ? WHERE poll_id = ? AND username = ?",
+                          (option_id, datetime.now().strftime('%m.%d.%y %H:%M'), poll_id, username))
+            else:
+                # Create new vote
+                c.execute("INSERT INTO poll_votes (poll_id, option_id, username, voted_at) VALUES (?, ?, ?, ?)",
+                          (poll_id, option_id, username, datetime.now().strftime('%m.%d.%y %H:%M')))
+            
+            # Update vote count for the selected option
+            c.execute("UPDATE poll_options SET votes = (SELECT COUNT(*) FROM poll_votes WHERE option_id = ?) WHERE id = ?", (option_id, option_id))
+            
+            # Update vote count for the previously selected option (if any)
+            if existing_vote:
+                c.execute("SELECT option_id FROM poll_votes WHERE poll_id = ? AND username = ?", (poll_id, username))
+                old_option = c.fetchone()
+                if old_option and old_option['option_id'] != option_id:
+                    c.execute("UPDATE poll_options SET votes = (SELECT COUNT(*) FROM poll_votes WHERE option_id = ?) WHERE id = ?", (old_option['option_id'], old_option['option_id']))
+            
+            conn.commit()
+            
+            # Get updated poll results
+            c.execute("""
+                SELECT po.id, po.option_text, po.votes, 
+                       (SELECT COUNT(*) FROM poll_votes WHERE poll_id = ?) as total_votes
+                FROM poll_options po 
+                WHERE po.poll_id = ?
+                ORDER BY po.id
+            """, (poll_id, poll_id))
+            poll_results = c.fetchall()
+            
+            return jsonify({
+                'success': True, 
+                'message': 'Vote recorded successfully!',
+                'poll_results': [dict(row) for row in poll_results]
+            })
+            
+    except Exception as e:
+        logger.error(f"Error voting on poll: {str(e)}")
+        return jsonify({'success': False, 'error': 'Error recording vote'})
+
+@app.route('/get_poll_results/<int:poll_id>')
+@login_required
+def get_poll_results(poll_id):
+    """Get poll results"""
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            c.execute("""
+                SELECT po.id, po.option_text, po.votes, 
+                       (SELECT COUNT(*) FROM poll_votes WHERE poll_id = ?) as total_votes,
+                       (SELECT option_id FROM poll_votes WHERE poll_id = ? AND username = ?) as user_vote
+                FROM poll_options po 
+                WHERE po.poll_id = ?
+                ORDER BY po.id
+            """, (poll_id, poll_id, session['username'], poll_id))
+            
+            poll_results = c.fetchall()
+            
+            if not poll_results:
+                return jsonify({'success': False, 'error': 'Poll not found'})
+            
+            return jsonify({
+                'success': True,
+                'poll_results': [dict(row) for row in poll_results]
+            })
+            
+    except Exception as e:
+        logger.error(f"Error getting poll results: {str(e)}")
+        return jsonify({'success': False, 'error': 'Error retrieving poll results'})
 
 @app.route('/delete_post', methods=['POST'])
 @login_required
@@ -3197,6 +3414,29 @@ def community_feed(community_id):
                 c.execute("SELECT reaction_type FROM reactions WHERE post_id = ? AND username = ?", (post['id'], username))
                 user_reaction_raw = c.fetchone()
                 post['user_reaction'] = user_reaction_raw['reaction_type'] if user_reaction_raw else None
+
+                # Fetch poll data for this post
+                c.execute("SELECT * FROM polls WHERE post_id = ? AND is_active = 1", (post['id'],))
+                poll_raw = c.fetchone()
+                if poll_raw:
+                    poll = dict(poll_raw)
+                    # Fetch poll options
+                    c.execute("SELECT * FROM poll_options WHERE poll_id = ? ORDER BY id", (poll['id'],))
+                    options_raw = c.fetchall()
+                    poll['options'] = [dict(option) for option in options_raw]
+                    
+                    # Get user's vote
+                    c.execute("SELECT option_id FROM poll_votes WHERE poll_id = ? AND username = ?", (poll['id'], username))
+                    user_vote_raw = c.fetchone()
+                    poll['user_vote'] = user_vote_raw['option_id'] if user_vote_raw else None
+                    
+                    # Calculate total votes
+                    total_votes = sum(option['votes'] for option in poll['options'])
+                    poll['total_votes'] = total_votes
+                    
+                    post['poll'] = poll
+                else:
+                    post['poll'] = None
 
                 # Fetch replies for each post
                 c.execute("SELECT * FROM replies WHERE post_id = ? ORDER BY timestamp ASC", (post['id'],))
