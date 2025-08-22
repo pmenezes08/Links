@@ -1430,9 +1430,19 @@
                 const formData = new FormData(this);
                 
                 // Handle checkbox value properly
-                const singleVoteCheckbox = document.querySelector('input[name="single_vote"]');
+                const singleVoteCheckbox = document.querySelector('#pollsModal input[name="single_vote"]');
+                console.log('Checkbox found:', singleVoteCheckbox);
                 if (singleVoteCheckbox) {
+                    console.log('Checkbox checked:', singleVoteCheckbox.checked);
                     formData.set('single_vote', singleVoteCheckbox.checked ? 'true' : 'false');
+                } else {
+                    console.log('Checkbox not found, using default true');
+                    formData.set('single_vote', 'true');
+                }
+                
+                // Debug: log all form data
+                for (let [key, value] of formData.entries()) {
+                    console.log(`${key}: ${value}`);
                 }
                 
                 fetch('/create_poll', {
