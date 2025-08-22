@@ -5635,6 +5635,12 @@ def save_community_announcement():
             logger.info("Adding community_id column to community_files table...")
             cursor.execute("ALTER TABLE community_files ADD COLUMN community_id INTEGER")
         
+        try:
+            cursor.execute("SELECT upload_date FROM community_files LIMIT 1")
+        except:
+            logger.info("Adding upload_date column to community_files table...")
+            cursor.execute("ALTER TABLE community_files ADD COLUMN upload_date TEXT")
+        
         # Check if user is admin or community creator
         cursor.execute('''
             SELECT creator_username FROM communities 
@@ -5673,9 +5679,9 @@ def save_community_announcement():
                 
                 # Save file info to database
                 cursor.execute('''
-                    INSERT INTO community_files (announcement_id, community_id, filename, file_path, uploaded_by, uploaded_at)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                ''', (announcement_id, community_id, filename, unique_filename, session['username'], datetime.now().strftime('%m.%d.%y %H:%M')))
+                    INSERT INTO community_files (announcement_id, community_id, filename, file_path, uploaded_by, uploaded_at, upload_date)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                ''', (announcement_id, community_id, filename, unique_filename, session['username'], datetime.now().strftime('%m.%d.%y %H:%M'), datetime.now().strftime('%m.%d.%y %H:%M')))
                 
                 uploaded_files.append({
                     'filename': filename,
@@ -5843,6 +5849,27 @@ def download_announcement_file(file_id):
     except Exception as e:
         logger.error(f"Error downloading community file: {e}")
         return "Error downloading file", 500
+
+@app.route('/debug_table_structure')
+def debug_table_structure():
+    """Debug route to check table structure"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Check community_files table structure
+        cursor.execute("PRAGMA table_info(community_files)")
+        columns = cursor.fetchall()
+        
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'community_files_columns': [{'name': col[1], 'type': col[2], 'notnull': col[3]} for col in columns]
+        })
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
 
 if __name__ == '__main__':
     app.run(debug=False, host='0.0.0.0', port=8080)
