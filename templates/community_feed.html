@@ -292,204 +292,190 @@
             background-color: #666666;
         }
         
-        /* Right Sidebar Layout */
-        .main-content {
-            display: flex;
-            gap: 20px;
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 20px;
-        }
+
         
-        .container.feed {
-            flex: 1;
-            max-width: 800px;
-        }
-        
-        .right-sidebar {
-            width: 300px;
-            flex-shrink: 0;
-        }
-        
-        .poll-sidebar-card {
-            background: #1a2526;
-            border: 1px solid #4db6ac;
-            border-radius: 8px;
-            padding: 20px;
-            position: sticky;
-            top: 20px;
-        }
-        
-        .poll-sidebar-card h3 {
-            color: #ffffff;
-            margin-bottom: 16px;
-            font-size: 16px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        
-        .poll-sidebar-card h3 i {
-            color: #4db6ac;
-        }
-        
-        .poll-sidebar-card .form-group {
-            margin-bottom: 16px;
-        }
-        
-        .poll-sidebar-card label {
-            display: block;
-            margin-bottom: 6px;
-            color: #ffffff;
-            font-weight: 500;
-            font-size: 14px;
-        }
-        
-        .poll-sidebar-card input,
-        .poll-sidebar-card textarea {
-            width: 100%;
-            padding: 8px 10px;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            border-radius: 6px;
-            background: rgba(255, 255, 255, 0.05);
-            color: #ffffff;
-            font-size: 13px;
-            box-sizing: border-box;
-        }
-        
-        .poll-sidebar-card input:focus,
-        .poll-sidebar-card textarea:focus {
-            outline: none;
-            border-color: #4db6ac;
-            box-shadow: 0 0 0 2px rgba(77, 182, 172, 0.2);
-        }
-        
-        .poll-sidebar-card textarea {
-            resize: vertical;
-            min-height: 60px;
-        }
-        
-        #sidebarPollOptions {
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-            margin-bottom: 8px;
-        }
-        
-        .btn-secondary.small {
-            padding: 6px 12px;
-            font-size: 12px;
-        }
-        
-        .poll-sidebar-card .form-actions {
-            margin-top: 16px;
-            justify-content: center;
-        }
-        
-        .poll-sidebar-card .btn {
-            width: 100%;
-            padding: 10px;
-            background: #4db6ac;
-            color: #ffffff;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 14px;
-            font-weight: 500;
-            transition: all 0.2s ease;
-        }
-        
-        .poll-sidebar-card .btn:hover {
-            background: #37a69c;
-        }
-        
-        /* Mobile responsive */
-        @media (max-width: 1200px) {
-            .main-content {
-                flex-direction: column;
-            }
-            
-            .right-sidebar {
-                width: 100%;
-                order: -1;
-            }
-            
-            .poll-sidebar-card {
-                position: static;
-            }
-        }
-        
-        /* Poll Display Styles */
-        .poll-container {
-            background: rgba(255, 255, 255, 0.05);
-            border-radius: 8px;
-            padding: 16px;
-            margin: 12px 0;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-        }
-        
-        .poll-question {
-            font-weight: 600;
-            margin-bottom: 12px;
-            color: #ffffff;
-        }
-        
-        .poll-question i {
-            color: #4db6ac;
-            margin-right: 8px;
-        }
-        
-        .poll-options {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-        }
-        
-        .poll-option {
+        /* Compact Poll Display Styles */
+        .poll-container-compact {
             background: rgba(255, 255, 255, 0.03);
             border: 1px solid rgba(255, 255, 255, 0.1);
             border-radius: 6px;
             padding: 12px;
-            cursor: pointer;
-            transition: all 0.2s ease;
+            margin: 8px 0;
+            width: 250px;
+            float: right;
+            margin-left: 16px;
         }
         
-        .poll-option:hover {
+        .poll-question-compact {
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #ffffff;
+            font-size: 14px;
+        }
+        
+        .poll-question-compact i {
+            color: #4db6ac;
+            margin-right: 6px;
+        }
+        
+        .poll-options-compact {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        
+        .poll-option-compact {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 4px;
+            padding: 6px 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .poll-option-compact:hover {
             background: rgba(255, 255, 255, 0.08);
             border-color: #4db6ac;
         }
         
-        .poll-option-bar {
+        .poll-option-text-compact {
+            color: #ffffff;
+            font-size: 12px;
+            flex: 1;
+        }
+        
+        .poll-option-votes-compact {
+            color: #4db6ac;
+            font-size: 11px;
+            font-weight: 600;
+            margin-left: 8px;
+        }
+        
+        .poll-footer-compact {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 8px;
+            margin-top: 8px;
+            padding-top: 8px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
         }
         
-        .poll-option-text {
-            color: #ffffff;
+        .poll-total-compact {
+            color: #9fb0b5;
+            font-size: 11px;
+        }
+        
+        .poll-voted-compact {
+            color: #4db6ac;
+            font-size: 11px;
+        }
+
+        /* Polls Modal Styles */
+        #pollsModal .modal-content {
+            max-width: 600px;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        
+        .polls-tabs {
+            display: flex;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            margin-bottom: 20px;
+        }
+        
+        .poll-tab {
+            background: none;
+            border: none;
+            color: #9fb0b5;
+            padding: 12px 20px;
+            cursor: pointer;
+            font-size: 14px;
             font-weight: 500;
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s ease;
         }
         
-        .poll-option-votes {
+        .poll-tab:hover {
+            color: #ffffff;
+        }
+        
+        .poll-tab.active {
+            color: #4db6ac;
+            border-bottom-color: #4db6ac;
+        }
+        
+        .poll-tab-content {
+            display: none;
+        }
+        
+        .poll-tab-content.active {
+            display: block;
+        }
+        
+        .poll-item {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 12px;
+        }
+        
+        .poll-item-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        
+        .poll-item-question {
+            font-weight: 600;
+            color: #ffffff;
+            font-size: 16px;
+        }
+        
+        .poll-item-date {
             color: #9fb0b5;
             font-size: 12px;
         }
         
-        .poll-progress-bar {
-            height: 4px;
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 2px;
-            overflow: hidden;
+        .poll-item-options {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
         }
         
-        .poll-progress-fill {
-            height: 100%;
-            background: #4db6ac;
-            transition: width 0.3s ease;
+        .poll-item-option {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 6px;
+            padding: 10px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
         
-        .poll-footer {
+        .poll-item-option:hover {
+            background: rgba(255, 255, 255, 0.08);
+            border-color: #4db6ac;
+        }
+        
+        .poll-item-option-text {
+            color: #ffffff;
+            font-size: 14px;
+        }
+        
+        .poll-item-option-votes {
+            color: #4db6ac;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        
+        .poll-item-footer {
             display: flex;
             justify-content: space-between;
             align-items: center;
@@ -498,18 +484,14 @@
             border-top: 1px solid rgba(255, 255, 255, 0.1);
         }
         
-        .poll-total {
+        .poll-item-total {
             color: #9fb0b5;
             font-size: 12px;
         }
         
-        .poll-voted {
+        .poll-item-voted {
             color: #4db6ac;
             font-size: 12px;
-        }
-        
-        .poll-voted i {
-            margin-right: 4px;
         }
 
         /* Admin Announcements Styles */
@@ -1019,8 +1001,7 @@
         </div>
     </div>
 
-    <!-- Main Content -->
-    <div class="main-content">
+            <!-- Main Content -->
         <div class="container feed">
         {% if community.background_path %}
         <div class="community-header-image">
@@ -1037,6 +1018,9 @@
                 <p class="community-type">{{ community.type }} Community</p>
             </div>
             <div class="community-actions">
+                <button class="sleek-btn" onclick="showPollsModal()">
+                    <i class="fas fa-poll-h"></i> Polls
+                </button>
                 <button class="members-btn" onclick="showMembersModal()">
                     <i class="fas fa-users"></i> Members
                 </button>
@@ -1086,27 +1070,22 @@
                         
                         <!-- Poll Display -->
                         {% if post.poll %}
-                        <div class="poll-container">
-                            <div class="poll-question">
+                        <div class="poll-container-compact">
+                            <div class="poll-question-compact">
                                 <i class="fas fa-poll-h"></i> {{ post.poll.question }}
                             </div>
-                            <div class="poll-options">
+                            <div class="poll-options-compact">
                                 {% for option in post.poll.options %}
-                                <div class="poll-option" data-poll-id="{{ post.poll.id }}" data-option-id="{{ option.id }}">
-                                    <div class="poll-option-bar">
-                                        <div class="poll-option-text">{{ option.option_text }}</div>
-                                        <div class="poll-option-votes">{{ option.votes }} votes</div>
-                                    </div>
-                                    <div class="poll-progress-bar">
-                                        <div class="poll-progress-fill" style="width: {{ (option.votes / post.poll.total_votes * 100) if post.poll.total_votes > 0 else 0 }}%"></div>
-                                    </div>
+                                <div class="poll-option-compact" data-poll-id="{{ post.poll.id }}" data-option-id="{{ option.id }}">
+                                    <div class="poll-option-text-compact">{{ option.option_text }}</div>
+                                    <div class="poll-option-votes-compact">{{ option.votes }}</div>
                                 </div>
                                 {% endfor %}
                             </div>
-                            <div class="poll-footer">
-                                <span class="poll-total">{{ post.poll.total_votes }} total votes</span>
+                            <div class="poll-footer-compact">
+                                <span class="poll-total-compact">{{ post.poll.total_votes }} votes</span>
                                 {% if post.poll.user_vote %}
-                                <span class="poll-voted"><i class="fas fa-check"></i> You voted</span>
+                                <span class="poll-voted-compact"><i class="fas fa-check"></i></span>
                                 {% endif %}
                             </div>
                         </div>
@@ -1143,33 +1122,6 @@
             {% endif %}
         </div>
         
-        <!-- Right Sidebar for Poll Creation -->
-        <div class="right-sidebar">
-            <div class="poll-sidebar-card">
-                <h3><i class="fas fa-poll-h"></i> Create Poll</h3>
-                <form id="pollSidebarForm">
-                    <input type="hidden" name="community_id" value="{{ community.id }}">
-                    <div class="form-group">
-                        <label for="sidebarPollContent">Post Content (Optional)</label>
-                        <textarea id="sidebarPollContent" name="content" placeholder="Add some context..." rows="2"></textarea>
-                    </div>
-                    <div class="form-group">
-                        <label for="sidebarPollQuestion">Poll Question *</label>
-                        <input type="text" id="sidebarPollQuestion" name="question" placeholder="What would you like to ask?" required>
-                    </div>
-                    <div class="form-group">
-                        <label>Poll Options *</label>
-                        <div id="sidebarPollOptions">
-                            <input type="text" name="options[]" placeholder="Option 1" required>
-                            <input type="text" name="options[]" placeholder="Option 2" required>
-                        </div>
-                        <button type="button" onclick="addSidebarPollOption()" class="btn-secondary small">+ Add Option</button>
-                    </div>
-                    <div class="form-actions">
-                        <button type="submit" class="btn">Create Poll</button>
-                    </div>
-                </form>
-            </div>
         </div>
     </div>
 
@@ -1354,6 +1306,60 @@
         </div>
     </div>
 
+    <!-- Polls Display Modal -->
+    <div id="pollsModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Polls</h2>
+                <span class="close" onclick="closePollsModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="polls-tabs">
+                    <button class="poll-tab active" onclick="switchPollTab('active')">Active Polls</button>
+                    <button class="poll-tab" onclick="switchPollTab('historical')">Historical Polls</button>
+                    <button class="poll-tab" onclick="switchPollTab('create')">Create New Poll</button>
+                </div>
+                
+                <div id="activePollsTab" class="poll-tab-content active">
+                    <div id="activePollsList">
+                        <!-- Active polls will be loaded here -->
+                    </div>
+                </div>
+                
+                <div id="historicalPollsTab" class="poll-tab-content">
+                    <div id="historicalPollsList">
+                        <!-- Historical polls will be loaded here -->
+                    </div>
+                </div>
+                
+                <div id="createPollTab" class="poll-tab-content">
+                    <form id="pollsModalForm">
+                        <input type="hidden" name="community_id" value="{{ community.id }}">
+                        <div class="form-group">
+                            <label for="modalPollContent">Post Content (Optional)</label>
+                            <textarea id="modalPollContent" name="content" placeholder="Add some context..." rows="2"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label for="modalPollQuestion">Poll Question *</label>
+                            <input type="text" id="modalPollQuestion" name="question" placeholder="What would you like to ask?" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Poll Options *</label>
+                            <div id="modalPollOptions">
+                                <input type="text" name="options[]" placeholder="Option 1" required>
+                                <input type="text" name="options[]" placeholder="Option 2" required>
+                            </div>
+                            <button type="button" onclick="addModalPollOption()" class="btn-secondary small">+ Add Option</button>
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit" class="btn">Create Poll</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
         // Edit Community Functions - Global Scope
         function showEditCommunityModal() {
@@ -1414,8 +1420,8 @@
         }
         
         function setupPollHandlers() {
-            // Sidebar poll form submission
-            document.getElementById('pollSidebarForm').addEventListener('submit', function(e) {
+            // Polls modal form submission
+            document.getElementById('pollsModalForm').addEventListener('submit', function(e) {
                 e.preventDefault();
                 
                 const formData = new FormData(this);
@@ -1430,12 +1436,13 @@
                         alert('Poll created successfully!');
                         this.reset();
                         // Reset to 2 options
-                        const optionsContainer = document.getElementById('sidebarPollOptions');
+                        const optionsContainer = document.getElementById('modalPollOptions');
                         optionsContainer.innerHTML = `
                             <input type="text" name="options[]" placeholder="Option 1" required>
                             <input type="text" name="options[]" placeholder="Option 2" required>
                         `;
-                        location.reload(); // Refresh to show new poll
+                        // Switch to active polls tab and reload
+                        switchPollTab('active');
                     } else {
                         alert('Error creating poll: ' + data.error);
                     }
@@ -1446,10 +1453,10 @@
                 });
             });
             
-            // Poll option voting
+            // Poll option voting (for compact polls)
             document.addEventListener('click', function(e) {
-                if (e.target.closest('.poll-option')) {
-                    const pollOption = e.target.closest('.poll-option');
+                if (e.target.closest('.poll-option-compact')) {
+                    const pollOption = e.target.closest('.poll-option-compact');
                     const pollId = pollOption.dataset.pollId;
                     const optionId = pollOption.dataset.optionId;
                     
@@ -2045,6 +2052,178 @@
             const membersModal = document.getElementById('membersModal');
             if (event.target === membersModal) {
                 closeMembersModal();
+            }
+        }
+
+        // Polls Modal Functions
+        function showPollsModal() {
+            document.getElementById('pollsModal').style.display = 'block';
+            loadActivePolls();
+        }
+        
+        function closePollsModal() {
+            document.getElementById('pollsModal').style.display = 'none';
+        }
+        
+        function switchPollTab(tabName) {
+            // Remove active class from all tabs and content
+            document.querySelectorAll('.poll-tab').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('.poll-tab-content').forEach(content => content.classList.remove('active'));
+            
+            // Add active class to selected tab and content
+            document.querySelector(`[onclick="switchPollTab('${tabName}')"]`).classList.add('active');
+            document.getElementById(`${tabName}PollsTab`).classList.add('active');
+            
+            // Load content based on tab
+            if (tabName === 'active') {
+                loadActivePolls();
+            } else if (tabName === 'historical') {
+                loadHistoricalPolls();
+            }
+        }
+        
+        function loadActivePolls() {
+            fetch('/get_active_polls')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        displayPolls(data.polls, 'activePollsList');
+                    } else {
+                        document.getElementById('activePollsList').innerHTML = '<p>No active polls found.</p>';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading active polls:', error);
+                    document.getElementById('activePollsList').innerHTML = '<p>Error loading polls.</p>';
+                });
+        }
+        
+        function loadHistoricalPolls() {
+            fetch('/get_historical_polls')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        displayPolls(data.polls, 'historicalPollsList');
+                    } else {
+                        document.getElementById('historicalPollsList').innerHTML = '<p>No historical polls found.</p>';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading historical polls:', error);
+                    document.getElementById('historicalPollsList').innerHTML = '<p>Error loading polls.</p>';
+                });
+        }
+        
+        function displayPolls(polls, containerId) {
+            const container = document.getElementById(containerId);
+            
+            if (!polls || polls.length === 0) {
+                container.innerHTML = '<p>No polls found.</p>';
+                return;
+            }
+            
+            const pollsHTML = polls.map(poll => `
+                <div class="poll-item">
+                    <div class="poll-item-header">
+                        <div class="poll-item-question">${poll.question}</div>
+                        <div class="poll-item-date">${poll.created_at}</div>
+                    </div>
+                    <div class="poll-item-options">
+                        ${poll.options.map(option => `
+                            <div class="poll-item-option" data-poll-id="${poll.id}" data-option-id="${option.id}">
+                                <div class="poll-item-option-text">${option.option_text}</div>
+                                <div class="poll-item-option-votes">${option.votes}</div>
+                            </div>
+                        `).join('')}
+                    </div>
+                    <div class="poll-item-footer">
+                        <div class="poll-item-total">${poll.total_votes} total votes</div>
+                        ${poll.user_vote ? '<div class="poll-item-voted"><i class="fas fa-check"></i> You voted</div>' : ''}
+                    </div>
+                </div>
+            `).join('');
+            
+            container.innerHTML = pollsHTML;
+            
+            // Add click handlers for voting
+            container.querySelectorAll('.poll-item-option').forEach(option => {
+                option.addEventListener('click', function() {
+                    const pollId = this.dataset.pollId;
+                    const optionId = this.dataset.optionId;
+                    voteOnPoll(pollId, optionId, this);
+                });
+            });
+        }
+        
+        function addModalPollOption() {
+            const optionsContainer = document.getElementById('modalPollOptions');
+            const optionCount = optionsContainer.children.length;
+            
+            if (optionCount >= 6) {
+                alert('Maximum 6 options allowed');
+                return;
+            }
+            
+            const newOption = document.createElement('input');
+            newOption.type = 'text';
+            newOption.name = 'options[]';
+            newOption.placeholder = `Option ${optionCount + 1}`;
+            newOption.required = true;
+            
+            optionsContainer.appendChild(newOption);
+        }
+        
+        function voteOnPoll(pollId, optionId, pollOptionElement) {
+            fetch('/vote_poll', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    poll_id: pollId,
+                    option_id: optionId
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    updatePollDisplay(pollOptionElement, data.poll_results);
+                } else {
+                    alert('Error voting: ' + data.error);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Error voting on poll');
+            });
+        }
+        
+        function updatePollDisplay(pollOptionElement, pollResults) {
+            const pollContainer = pollOptionElement.closest('.poll-container-compact');
+            const totalVotes = pollResults.reduce((sum, option) => sum + option.votes, 0);
+            
+            // Update each option
+            pollResults.forEach(option => {
+                const optionElement = pollContainer.querySelector(`[data-option-id="${option.id}"]`);
+                if (optionElement) {
+                    const votesElement = optionElement.querySelector('.poll-option-votes-compact');
+                    votesElement.textContent = option.votes;
+                }
+            });
+            
+            // Update total votes
+            const totalElement = pollContainer.querySelector('.poll-total-compact');
+            if (totalElement) {
+                totalElement.textContent = `${totalVotes} votes`;
+            }
+            
+            // Add voted indicator
+            const pollFooter = pollContainer.querySelector('.poll-footer-compact');
+            if (pollFooter && !pollFooter.querySelector('.poll-voted-compact')) {
+                const votedSpan = document.createElement('span');
+                votedSpan.className = 'poll-voted-compact';
+                votedSpan.innerHTML = '<i class="fas fa-check"></i>';
+                pollFooter.appendChild(votedSpan);
             }
         }
     </script>
