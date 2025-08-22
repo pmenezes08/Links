@@ -2695,8 +2695,15 @@ def create_poll():
 def vote_poll():
     """Vote on a poll"""
     username = session['username']
-    poll_id = request.form.get('poll_id', type=int)
-    option_id = request.form.get('option_id', type=int)
+    
+    # Handle both JSON and form data
+    if request.is_json:
+        data = request.get_json()
+        poll_id = data.get('poll_id')
+        option_id = data.get('option_id')
+    else:
+        poll_id = request.form.get('poll_id', type=int)
+        option_id = request.form.get('option_id', type=int)
     
     if not poll_id or not option_id:
         return jsonify({'success': False, 'error': 'Invalid poll or option ID'})
