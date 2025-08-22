@@ -700,6 +700,43 @@
             color: #dc3545;
         }
         
+        /* Announcement tabs styling - matching polls */
+        .announcements-tabs {
+            display: flex;
+            border-bottom: 1px solid rgba(45, 138, 126, 0.2);
+            margin-bottom: 20px;
+        }
+        
+        .announcement-tab {
+            background: transparent;
+            border: none;
+            padding: 10px 20px;
+            cursor: pointer;
+            color: {{ community.text_color or '#ffffff' }}aa;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            border-bottom: 2px solid transparent;
+        }
+        
+        .announcement-tab:hover {
+            color: {{ community.text_color or '#ffffff' }};
+            background: rgba(45, 138, 126, 0.1);
+        }
+        
+        .announcement-tab.active {
+            color: {{ community.accent_color or '#2d8a7e' }};
+            border-bottom-color: {{ community.accent_color or '#2d8a7e' }};
+        }
+        
+        .announcement-tab-content {
+            display: none;
+        }
+        
+        .announcement-tab-content.active {
+            display: block;
+        }
+        
         /* Announcement form styling */
         .announcement-form {
             margin-bottom: 20px;
@@ -786,6 +823,21 @@
                 loadActivePolls();
             } else if (tabName === 'historical') {
                 loadHistoricalPolls();
+            }
+        }
+        
+        function switchAnnouncementTab(tabName) {
+            // Remove active class from all tabs and content
+            document.querySelectorAll('.announcement-tab').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('.announcement-tab-content').forEach(content => content.classList.remove('active'));
+            
+            // Add active class to selected tab and content
+            document.querySelector(`[onclick="switchAnnouncementTab('${tabName}')"]`).classList.add('active');
+            document.getElementById(`announcements${tabName.charAt(0).toUpperCase() + tabName.slice(1)}Tab`).classList.add('active');
+            
+            // Load content based on tab
+            if (tabName === 'history') {
+                loadAnnouncementsHistory();
             }
         }
         
@@ -1505,20 +1557,26 @@
                 <span class="close" onclick="closeAdminInfoModal()">&times;</span>
             </div>
             <div class="modal-body">
-                <div class="announcement-form">
-                    <h3>Create New Announcement</h3>
-                    <textarea id="announcementText" placeholder="Enter announcement text..." rows="4"></textarea>
-                    <div class="file-upload-section">
-                        <h4>Upload Files</h4>
-                        <input type="file" id="announcementFiles" multiple>
-                        <div id="fileList"></div>
-                    </div>
-                    <button onclick="saveAnnouncement()" class="sleek-btn">Publish Announcement</button>
+                <div class="announcements-tabs">
+                    <button class="announcement-tab active" onclick="switchAnnouncementTab('history')">Recent Announcements</button>
+                    <button class="announcement-tab" onclick="switchAnnouncementTab('create')">Create New Announcement</button>
                 </div>
-                <div class="announcements-history">
-                    <h3>Recent Announcements</h3>
+                
+                <div id="announcementsHistoryTab" class="announcement-tab-content active">
                     <div id="announcementsList">
                         <!-- Announcements will be loaded here -->
+                    </div>
+                </div>
+                
+                <div id="announcementsCreateTab" class="announcement-tab-content">
+                    <div class="announcement-form">
+                        <textarea id="announcementText" placeholder="Enter announcement text..." rows="4"></textarea>
+                        <div class="file-upload-section">
+                            <h4>Upload Files</h4>
+                            <input type="file" id="announcementFiles" multiple>
+                            <div id="fileList"></div>
+                        </div>
+                        <button onclick="saveAnnouncement()" class="sleek-btn">Publish Announcement</button>
                     </div>
                 </div>
             </div>
