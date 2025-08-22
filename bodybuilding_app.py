@@ -3287,6 +3287,16 @@ def static_uploaded_file(filename):
         logger.error(f"Error serving static image {filename}: {str(e)}")
         return "Error serving image", 500
 
+@app.route('/static/community_backgrounds/<path:filename>')
+def community_background_file(filename):
+    """Serve community background images"""
+    try:
+        logger.info(f"Community background request: {filename}")
+        return send_from_directory('static/community_backgrounds', filename)
+    except Exception as e:
+        logger.error(f"Error serving community background {filename}: {str(e)}")
+        return "Error serving image", 500
+
 @app.route('/your_sports')
 @login_required
 def your_sports():

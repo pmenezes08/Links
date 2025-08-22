@@ -10,7 +10,7 @@
         /* Custom color styles */
         .composer-card, .post {
             background-color: {{ '#f5f5f5' if community.template == 'light' else (community.card_color or '#1a2526') }} !important;
-            border-color: {{ community.accent_color or '#4db6ac' }} !important;
+            border: 1px solid {{ '#e0e0e0' if community.template == 'light' else (community.accent_color or '#4db6ac') }} !important;
             color: {{ '#000000' if community.template == 'light' else (community.text_color or '#ffffff') }} !important;
         }
         
@@ -805,7 +805,11 @@
     <div class="container feed">
         {% if community.background_path %}
         <div class="community-header-image">
-            <img src="{% if community.background_path.startswith('http') %}{{ community.background_path }}{% else %}{{ url_for('static', filename=community.background_path) }}{% endif %}" alt="{{ community.name }} Header" class="header-image">
+            <img src="{% if community.background_path.startswith('http') %}{{ community.background_path }}{% else %}{{ url_for('static', filename=community.background_path) }}{% endif %}" 
+                 alt="{{ community.name }} Header" 
+                 class="header-image"
+                 onerror="console.log('Header image failed to load:', this.src); this.style.display='none';"
+                 onload="console.log('Header image loaded successfully:', this.src);">
         </div>
         {% endif %}
         <div class="community-header">
