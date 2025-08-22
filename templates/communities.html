@@ -10,77 +10,79 @@
 	<style>
 		.communities-container {
 			margin-left: 80px;
-			padding: 24px;
-			max-width: 800px;
-			margin: 0 auto 0 80px;
+			padding: 20px;
+			max-width: 700px;
+			margin: 0 auto;
+			position: relative;
+			left: 40px;
 		}
 
 		.communities-header {
 			text-align: center;
-			margin-bottom: 24px;
+			margin-bottom: 16px;
 		}
 
 		.communities-header h1 {
-			font-size: 24px;
+			font-size: 20px;
 			font-weight: 600;
 			color: #ffffff;
-			margin-bottom: 6px;
+			margin-bottom: 4px;
 			letter-spacing: -0.5px;
 		}
 
 		.communities-header p {
 			color: rgba(255, 255, 255, 0.7);
-			font-size: 14px;
+			font-size: 12px;
 			margin: 0;
 		}
 
 		.join-community-section {
 			background: rgba(255, 255, 255, 0.03);
 			border: 1px solid rgba(255, 255, 255, 0.08);
-			border-radius: 12px;
-			padding: 16px;
-			margin-bottom: 20px;
+			border-radius: 8px;
+			padding: 12px;
+			margin-bottom: 16px;
 			backdrop-filter: blur(20px);
 		}
 
 		.join-community-section h3 {
 			color: #4db6ac;
-			margin-bottom: 12px;
-			font-size: 16px;
+			margin-bottom: 8px;
+			font-size: 14px;
 			font-weight: 600;
 			display: flex;
 			align-items: center;
-			gap: 6px;
+			gap: 4px;
 		}
 
 		.join-community-form {
 			display: flex;
-			gap: 10px;
+			gap: 8px;
 			align-items: end;
 			flex-wrap: wrap;
 		}
 
 		.join-community-form .form-group {
 			flex: 1;
-			min-width: 180px;
+			min-width: 150px;
 		}
 
 		.join-community-form label {
 			display: block;
 			color: rgba(255, 255, 255, 0.8);
-			font-size: 12px;
+			font-size: 11px;
 			font-weight: 500;
-			margin-bottom: 4px;
+			margin-bottom: 3px;
 		}
 
 		.join-community-form input {
 			width: 100%;
-			padding: 8px 12px;
+			padding: 6px 10px;
 			background: rgba(255, 255, 255, 0.05);
 			border: 1px solid rgba(255, 255, 255, 0.1);
-			border-radius: 6px;
+			border-radius: 4px;
 			color: #ffffff;
-			font-size: 13px;
+			font-size: 12px;
 			transition: all 0.2s ease;
 		}
 
@@ -94,9 +96,9 @@
 			background: #4db6ac;
 			color: #ffffff;
 			border: none;
-			padding: 8px 16px;
-			border-radius: 6px;
-			font-size: 13px;
+			padding: 6px 12px;
+			border-radius: 4px;
+			font-size: 12px;
 			font-weight: 500;
 			cursor: pointer;
 			transition: all 0.2s ease;
@@ -110,23 +112,23 @@
 
 		.community-creation-section {
 			text-align: center;
-			margin-bottom: 20px;
+			margin-bottom: 16px;
 		}
 
 		.build-community-btn {
 			background: rgba(255, 255, 255, 0.05);
 			color: #ffffff;
 			border: 1px solid rgba(255, 255, 255, 0.1);
-			padding: 12px 20px;
-			border-radius: 8px;
-			font-size: 14px;
+			padding: 10px 16px;
+			border-radius: 6px;
+			font-size: 13px;
 			font-weight: 500;
 			cursor: pointer;
 			transition: all 0.2s ease;
 			backdrop-filter: blur(20px);
 			display: inline-flex;
 			align-items: center;
-			gap: 6px;
+			gap: 4px;
 		}
 
 		.build-community-btn:hover {
@@ -136,29 +138,29 @@
 		}
 
 		.user-communities-section {
-			margin-top: 24px;
+			margin-top: 16px;
 		}
 
 		.user-communities-section h3 {
 			color: #4db6ac;
-			margin-bottom: 16px;
-			font-size: 18px;
+			margin-bottom: 12px;
+			font-size: 16px;
 			font-weight: 600;
 			display: flex;
 			align-items: center;
-			gap: 6px;
+			gap: 4px;
 		}
 
 		.communities-list {
 			display: grid;
-			gap: 12px;
+			gap: 8px;
 		}
 
 		.community-card {
 			background: rgba(255, 255, 255, 0.03);
 			border: 1px solid rgba(255, 255, 255, 0.08);
-			border-radius: 10px;
-			padding: 16px;
+			border-radius: 8px;
+			padding: 12px;
 			transition: all 0.2s ease;
 			backdrop-filter: blur(20px);
 		}
@@ -172,27 +174,27 @@
 			display: flex;
 			align-items: center;
 			justify-content: space-between;
-			margin-bottom: 10px;
+			margin-bottom: 8px;
 		}
 
 		.community-info h4 {
 			color: #ffffff;
-			font-size: 16px;
+			font-size: 14px;
 			font-weight: 600;
-			margin: 0 0 3px 0;
+			margin: 0 0 2px 0;
 		}
 
 		.community-meta {
 			color: rgba(255, 255, 255, 0.6);
-			font-size: 12px;
+			font-size: 11px;
 			display: flex;
 			align-items: center;
-			gap: 10px;
+			gap: 8px;
 		}
 
 		.community-actions {
 			display: flex;
-			gap: 6px;
+			gap: 4px;
 		}
 
 		.edit-community-btn,
@@ -200,14 +202,14 @@
 			background: rgba(255, 255, 255, 0.05);
 			border: 1px solid rgba(255, 255, 255, 0.1);
 			color: #ffffff;
-			padding: 6px 10px;
-			border-radius: 5px;
-			font-size: 11px;
+			padding: 4px 8px;
+			border-radius: 4px;
+			font-size: 10px;
 			cursor: pointer;
 			transition: all 0.2s ease;
 			display: flex;
 			align-items: center;
-			gap: 3px;
+			gap: 2px;
 		}
 
 		.edit-community-btn:hover {
@@ -225,9 +227,9 @@
 			background: rgba(255, 255, 255, 0.05);
 			color: #ffffff;
 			border: 1px solid rgba(255, 255, 255, 0.1);
-			padding: 10px 14px;
-			border-radius: 6px;
-			font-size: 13px;
+			padding: 8px 12px;
+			border-radius: 4px;
+			font-size: 12px;
 			font-weight: 500;
 			cursor: pointer;
 			transition: all 0.2s ease;
@@ -244,19 +246,19 @@
 		}
 
 		.join-code-section {
-			margin-top: 10px;
-			padding: 6px 10px;
+			margin-top: 8px;
+			padding: 4px 8px;
 			background: rgba(77, 182, 172, 0.1);
 			border: 1px solid rgba(77, 182, 172, 0.2);
-			border-radius: 5px;
+			border-radius: 4px;
 			display: flex;
 			align-items: center;
-			gap: 8px;
+			gap: 6px;
 		}
 
 		.join-code-label {
 			color: #4db6ac;
-			font-size: 11px;
+			font-size: 10px;
 			font-weight: 500;
 			white-space: nowrap;
 		}
@@ -264,12 +266,12 @@
 		.join-code {
 			font-family: 'Courier New', monospace;
 			background: rgba(0, 0, 0, 0.3);
-			padding: 3px 6px;
-			border-radius: 3px;
-			font-size: 11px;
+			padding: 2px 4px;
+			border-radius: 2px;
+			font-size: 10px;
 			color: #ffffff;
 			border: 1px solid rgba(255, 255, 255, 0.1);
-			max-width: 120px;
+			max-width: 100px;
 			overflow: hidden;
 			text-overflow: ellipsis;
 			white-space: nowrap;
@@ -279,9 +281,9 @@
 			background: rgba(255, 255, 255, 0.05);
 			border: 1px solid rgba(255, 255, 255, 0.1);
 			color: #ffffff;
-			padding: 3px 6px;
-			border-radius: 3px;
-			font-size: 10px;
+			padding: 2px 4px;
+			border-radius: 2px;
+			font-size: 9px;
 			cursor: pointer;
 			transition: all 0.2s ease;
 			flex-shrink: 0;
@@ -294,31 +296,32 @@
 
 		.no-communities {
 			text-align: center;
-			padding: 40px 20px;
+			padding: 30px 20px;
 			color: rgba(255, 255, 255, 0.5);
 		}
 
 		.no-communities i {
-			font-size: 36px;
-			margin-bottom: 12px;
+			font-size: 28px;
+			margin-bottom: 8px;
 			color: #4db6ac;
 		}
 
 		.no-communities h4 {
-			font-size: 16px;
-			margin-bottom: 6px;
+			font-size: 14px;
+			margin-bottom: 4px;
 			color: #ffffff;
 		}
 
 		.no-communities p {
-			font-size: 13px;
+			font-size: 12px;
 			margin: 0;
 		}
 
 		@media (max-width: 768px) {
 			.communities-container {
 				margin-left: 0;
-				padding: 20px;
+				padding: 16px;
+				left: 0;
 			}
 
 			.join-community-form {
@@ -329,7 +332,7 @@
 			.community-header {
 				flex-direction: column;
 				align-items: flex-start;
-				gap: 12px;
+				gap: 8px;
 			}
 
 			.community-actions {
