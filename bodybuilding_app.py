@@ -2773,14 +2773,15 @@ def vote_poll():
             
             conn.commit()
             
-            # Get updated poll results
+            # Get updated poll results with user vote info
             c.execute("""
                 SELECT po.id, po.option_text, po.votes, 
-                       (SELECT COUNT(*) FROM poll_votes WHERE poll_id = ?) as total_votes
+                       (SELECT COUNT(*) FROM poll_votes WHERE poll_id = ?) as total_votes,
+                       (SELECT COUNT(*) FROM poll_votes WHERE poll_id = ? AND username = ? AND option_id = po.id) as user_voted
                 FROM poll_options po 
                 WHERE po.poll_id = ?
                 ORDER BY po.id
-            """, (poll_id, poll_id))
+            """, (poll_id, poll_id, username, poll_id))
             poll_results = c.fetchall()
             
             return jsonify({
