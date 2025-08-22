@@ -3739,20 +3739,34 @@ def uploaded_file(filename):
         # Log the request for debugging
         logger.info(f"Image request: {filename} from {request.headers.get('User-Agent', 'Unknown')}")
         
+        # Clean the filename (remove any 'uploads/' prefix if present)
+        clean_filename = filename.replace('uploads/', '') if filename.startswith('uploads/') else filename
+        
         # Construct the full path
-        file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], clean_filename)
         
         # Check if file exists
         if not os.path.exists(file_path):
             logger.error(f"Image file not found: {file_path}")
+            # Try alternative paths
+            alt_paths = [
+                os.path.join(app.config['UPLOAD_FOLDER'], filename),
+                os.path.join('static', 'uploads', clean_filename),
+                os.path.join('static', 'uploads', filename)
+            ]
+            for alt_path in alt_paths:
+                if os.path.exists(alt_path):
+                    logger.info(f"Found image at alternative path: {alt_path}")
+                    return send_from_directory(os.path.dirname(alt_path), os.path.basename(alt_path))
+            
             return "Image not found", 404
         
         # Get file info
         file_size = os.path.getsize(file_path)
-        logger.info(f"Serving image: {filename}, size: {file_size} bytes")
+        logger.info(f"Serving image: {clean_filename}, size: {file_size} bytes")
         
         # Set proper headers for mobile compatibility
-        response = send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+        response = send_from_directory(app.config['UPLOAD_FOLDER'], clean_filename)
         response.headers['Cache-Control'] = 'public, max-age=31536000'  # Cache for 1 year
         response.headers['Access-Control-Allow-Origin'] = '*'
         response.headers['Content-Type'] = 'image/jpeg'  # Will be overridden by Flask if needed
