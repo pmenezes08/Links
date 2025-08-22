@@ -2788,6 +2788,98 @@ def get_poll_results(poll_id):
         logger.error(f"Error getting poll results: {str(e)}")
         return jsonify({'success': False, 'error': 'Error retrieving poll results'})
 
+@app.route('/get_active_polls')
+@login_required
+def get_active_polls():
+    """Get all active polls"""
+    try:
+        username = session['username']
+        
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Get active polls (not expired)
+            c.execute("""
+                SELECT p.*, po.timestamp as created_at
+                FROM polls p 
+                JOIN posts po ON p.post_id = po.id 
+                WHERE p.is_active = 1 
+                ORDER BY po.timestamp DESC
+            """)
+            polls_raw = c.fetchall()
+            
+            polls = []
+            for poll_raw in polls_raw:
+                poll = dict(poll_raw)
+                
+                # Get poll options
+                c.execute("SELECT * FROM poll_options WHERE poll_id = ? ORDER BY id", (poll['id'],))
+                options_raw = c.fetchall()
+                poll['options'] = [dict(option) for option in options_raw]
+                
+                # Get user's vote
+                c.execute("SELECT option_id FROM poll_votes WHERE poll_id = ? AND username = ?", (poll['id'], username))
+                user_vote_raw = c.fetchone()
+                poll['user_vote'] = user_vote_raw['option_id'] if user_vote_raw else None
+                
+                # Calculate total votes
+                total_votes = sum(option['votes'] for option in poll['options'])
+                poll['total_votes'] = total_votes
+                
+                polls.append(poll)
+            
+            return jsonify({'success': True, 'polls': polls})
+            
+    except Exception as e:
+        logger.error(f"Error getting active polls: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/get_historical_polls')
+@login_required
+def get_historical_polls():
+    """Get historical (expired) polls"""
+    try:
+        username = session['username']
+        
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Get historical polls (expired or inactive)
+            c.execute("""
+                SELECT p.*, po.timestamp as created_at
+                FROM polls p 
+                JOIN posts po ON p.post_id = po.id 
+                WHERE p.is_active = 0 OR (p.expires_at IS NOT NULL AND p.expires_at < datetime('now'))
+                ORDER BY po.timestamp DESC
+            """)
+            polls_raw = c.fetchall()
+            
+            polls = []
+            for poll_raw in polls_raw:
+                poll = dict(poll_raw)
+                
+                # Get poll options
+                c.execute("SELECT * FROM poll_options WHERE poll_id = ? ORDER BY id", (poll['id'],))
+                options_raw = c.fetchall()
+                poll['options'] = [dict(option) for option in options_raw]
+                
+                # Get user's vote
+                c.execute("SELECT option_id FROM poll_votes WHERE poll_id = ? AND username = ?", (poll['id'], username))
+                user_vote_raw = c.fetchone()
+                poll['user_vote'] = user_vote_raw['option_id'] if user_vote_raw else None
+                
+                # Calculate total votes
+                total_votes = sum(option['votes'] for option in poll['options'])
+                poll['total_votes'] = total_votes
+                
+                polls.append(poll)
+            
+            return jsonify({'success': True, 'polls': polls})
+            
+    except Exception as e:
+        logger.error(f"Error getting historical polls: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
+
 @app.route('/delete_post', methods=['POST'])
 @login_required
 def delete_post():

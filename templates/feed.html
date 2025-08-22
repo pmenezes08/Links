@@ -113,29 +113,30 @@
         
         /* Poll Modal Styles */
         #pollModal .modal-content {
-            max-width: 500px;
+            max-width: 400px;
         }
         
         #pollModal .form-group {
-            margin-bottom: 16px;
+            margin-bottom: 12px;
         }
         
         #pollModal label {
             display: block;
-            margin-bottom: 6px;
+            margin-bottom: 4px;
             color: #ffffff;
             font-weight: 500;
+            font-size: 13px;
         }
         
         #pollModal input,
         #pollModal textarea {
             width: 100%;
-            padding: 10px;
+            padding: 8px;
             border: 1px solid rgba(255, 255, 255, 0.2);
-            border-radius: 6px;
+            border-radius: 4px;
             background: rgba(255, 255, 255, 0.05);
             color: #ffffff;
-            font-size: 14px;
+            font-size: 13px;
         }
         
         #pollModal input:focus,
@@ -148,8 +149,8 @@
         #pollOptions {
             display: flex;
             flex-direction: column;
-            gap: 8px;
-            margin-bottom: 12px;
+            gap: 6px;
+            margin-bottom: 10px;
         }
         
         .btn-secondary {
@@ -173,6 +174,169 @@
             gap: 12px;
             justify-content: flex-end;
             margin-top: 20px;
+        }
+        
+        /* Feed Header Styles */
+        .feed-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding: 16px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .feed-header h1 {
+            color: #ffffff;
+            margin: 0;
+            font-size: 24px;
+            font-weight: 600;
+        }
+        
+        .header-actions {
+            display: flex;
+            gap: 12px;
+        }
+        
+        .header-actions .sleek-btn {
+            background: #4db6ac;
+            color: #ffffff;
+            border: 1px solid #4db6ac;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .header-actions .sleek-btn:hover {
+            background: #37a69c;
+            border-color: #37a69c;
+        }
+        
+        /* Polls Modal Styles */
+        #pollsModal .modal-content {
+            max-width: 600px;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        
+        .polls-tabs {
+            display: flex;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            margin-bottom: 20px;
+        }
+        
+        .poll-tab {
+            background: none;
+            border: none;
+            color: #9fb0b5;
+            padding: 12px 20px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s ease;
+        }
+        
+        .poll-tab:hover {
+            color: #ffffff;
+        }
+        
+        .poll-tab.active {
+            color: #4db6ac;
+            border-bottom-color: #4db6ac;
+        }
+        
+        .poll-tab-content {
+            display: none;
+        }
+        
+        .poll-tab-content.active {
+            display: block;
+        }
+        
+        .poll-item {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 12px;
+        }
+        
+        .poll-item-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        
+        .poll-item-question {
+            font-weight: 600;
+            color: #ffffff;
+            font-size: 16px;
+        }
+        
+        .poll-item-date {
+            color: #9fb0b5;
+            font-size: 12px;
+        }
+        
+        .poll-item-options {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        
+        .poll-item-option {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 6px;
+            padding: 10px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .poll-item-option:hover {
+            background: rgba(255, 255, 255, 0.08);
+            border-color: #4db6ac;
+        }
+        
+        .poll-item-option-text {
+            color: #ffffff;
+            font-size: 14px;
+        }
+        
+        .poll-item-option-votes {
+            color: #4db6ac;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        
+        .poll-item-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .poll-item-total {
+            color: #9fb0b5;
+            font-size: 12px;
+        }
+        
+        .poll-item-voted {
+            color: #4db6ac;
+            font-size: 12px;
         }
         
 
@@ -202,6 +366,16 @@
 
     <!-- Main Content -->
     <div class="container feed">
+        
+        <!-- Header -->
+        <div class="feed-header">
+            <h1>C.Point</h1>
+            <div class="header-actions">
+                <button class="sleek-btn" onclick="showPollsModal()">
+                    <i class="fas fa-poll-h"></i> Polls
+                </button>
+            </div>
+        </div>
 
         <!-- Composer -->
         <div class="composer-card">
@@ -217,9 +391,6 @@
                                 <input type="file" id="image-upload" name="image" accept="image/*" style="display: none;">
                                 <span id="selected-file-name" class="selected-file-name"></span>
                             </div>
-                            <button type="button" class="sleek-btn small" onclick="showPollModal()">
-                                <i class="fas fa-poll-h"></i> Poll
-                            </button>
                             <button type="submit" class="sleek-btn small">Post</button>
                         </div>
                     </div>
@@ -344,6 +515,59 @@
         </div>
     </div>
 
+    <!-- Polls Display Modal -->
+    <div id="pollsModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Polls</h2>
+                <span class="close" onclick="closePollsModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="polls-tabs">
+                    <button class="poll-tab active" onclick="switchPollTab('active')">Active Polls</button>
+                    <button class="poll-tab" onclick="switchPollTab('historical')">Historical Polls</button>
+                    <button class="poll-tab" onclick="switchPollTab('create')">Create New Poll</button>
+                </div>
+                
+                <div id="activePollsTab" class="poll-tab-content active">
+                    <div id="activePollsList">
+                        <!-- Active polls will be loaded here -->
+                    </div>
+                </div>
+                
+                <div id="historicalPollsTab" class="poll-tab-content">
+                    <div id="historicalPollsList">
+                        <!-- Historical polls will be loaded here -->
+                    </div>
+                </div>
+                
+                <div id="createPollTab" class="poll-tab-content">
+                    <form id="pollsModalForm">
+                        <div class="form-group">
+                            <label for="modalPollContent">Post Content (Optional)</label>
+                            <textarea id="modalPollContent" name="content" placeholder="Add some context..." rows="2"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label for="modalPollQuestion">Poll Question *</label>
+                            <input type="text" id="modalPollQuestion" name="question" placeholder="What would you like to ask?" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Poll Options *</label>
+                            <div id="modalPollOptions">
+                                <input type="text" name="options[]" placeholder="Option 1" required>
+                                <input type="text" name="options[]" placeholder="Option 2" required>
+                            </div>
+                            <button type="button" onclick="addModalPollOption()" class="btn-secondary small">+ Add Option</button>
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit" class="btn">Create Poll</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
         $(document).ready(function() {
             console.log('Feed page script loaded');
@@ -413,6 +637,124 @@
             `;
         }
         
+        // Polls Display Modal Functions
+        function showPollsModal() {
+            document.getElementById('pollsModal').style.display = 'block';
+            loadActivePolls();
+        }
+        
+        function closePollsModal() {
+            document.getElementById('pollsModal').style.display = 'none';
+        }
+        
+        function switchPollTab(tabName) {
+            // Remove active class from all tabs and content
+            document.querySelectorAll('.poll-tab').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('.poll-tab-content').forEach(content => content.classList.remove('active'));
+            
+            // Add active class to selected tab and content
+            document.querySelector(`[onclick="switchPollTab('${tabName}')"]`).classList.add('active');
+            document.getElementById(`${tabName}PollsTab`).classList.add('active');
+            
+            // Load content based on tab
+            if (tabName === 'active') {
+                loadActivePolls();
+            } else if (tabName === 'historical') {
+                loadHistoricalPolls();
+            }
+        }
+        
+        function loadActivePolls() {
+            fetch('/get_active_polls')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        displayPolls(data.polls, 'activePollsList');
+                    } else {
+                        document.getElementById('activePollsList').innerHTML = '<p>No active polls found.</p>';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading active polls:', error);
+                    document.getElementById('activePollsList').innerHTML = '<p>Error loading polls.</p>';
+                });
+        }
+        
+        function loadHistoricalPolls() {
+            fetch('/get_historical_polls')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        displayPolls(data.polls, 'historicalPollsList');
+                    } else {
+                        document.getElementById('historicalPollsList').innerHTML = '<p>No historical polls found.</p>';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading historical polls:', error);
+                    document.getElementById('historicalPollsList').innerHTML = '<p>Error loading polls.</p>';
+                });
+        }
+        
+        function displayPolls(polls, containerId) {
+            const container = document.getElementById(containerId);
+            
+            if (!polls || polls.length === 0) {
+                container.innerHTML = '<p>No polls found.</p>';
+                return;
+            }
+            
+            const pollsHTML = polls.map(poll => `
+                <div class="poll-item">
+                    <div class="poll-item-header">
+                        <div class="poll-item-question">${poll.question}</div>
+                        <div class="poll-item-date">${poll.created_at}</div>
+                    </div>
+                    <div class="poll-item-options">
+                        ${poll.options.map(option => `
+                            <div class="poll-item-option" data-poll-id="${poll.id}" data-option-id="${option.id}">
+                                <div class="poll-item-option-text">${option.option_text}</div>
+                                <div class="poll-item-option-votes">${option.votes}</div>
+                            </div>
+                        `).join('')}
+                    </div>
+                    <div class="poll-item-footer">
+                        <div class="poll-item-total">${poll.total_votes} total votes</div>
+                        ${poll.user_vote ? '<div class="poll-item-voted"><i class="fas fa-check"></i> You voted</div>' : ''}
+                    </div>
+                </div>
+            `).join('');
+            
+            container.innerHTML = pollsHTML;
+            
+            // Add click handlers for voting
+            container.querySelectorAll('.poll-item-option').forEach(option => {
+                option.addEventListener('click', function() {
+                    const pollId = this.dataset.pollId;
+                    const optionId = this.dataset.optionId;
+                    voteOnPoll(pollId, optionId, this);
+                });
+            });
+        }
+        
+        function addModalPollOption() {
+            const optionsContainer = document.getElementById('modalPollOptions');
+            const optionCount = optionsContainer.children.length;
+            
+            if (optionCount >= 6) {
+                alert('Maximum 6 options allowed');
+                return;
+            }
+            
+            const newOption = document.createElement('input');
+            newOption.type = 'text';
+            newOption.name = 'options[]';
+            newOption.placeholder = `Option ${optionCount + 1}`;
+            newOption.required = true;
+            
+            optionsContainer.appendChild(newOption);
+        }
+        
         function addPollOption() {
             const optionsContainer = document.getElementById('pollOptions');
             const optionCount = optionsContainer.children.length;
@@ -448,6 +790,39 @@
                         alert('Poll created successfully!');
                         closePollModal();
                         location.reload(); // Refresh to show new poll
+                    } else {
+                        alert('Error creating poll: ' + data.error);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('Error creating poll');
+                });
+            });
+            
+            // Polls modal form submission
+            document.getElementById('pollsModalForm').addEventListener('submit', function(e) {
+                e.preventDefault();
+                
+                const formData = new FormData(this);
+                
+                fetch('/create_poll', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        alert('Poll created successfully!');
+                        this.reset();
+                        // Reset to 2 options
+                        const optionsContainer = document.getElementById('modalPollOptions');
+                        optionsContainer.innerHTML = `
+                            <input type="text" name="options[]" placeholder="Option 1" required>
+                            <input type="text" name="options[]" placeholder="Option 2" required>
+                        `;
+                        // Switch to active polls tab and reload
+                        switchPollTab('active');
                     } else {
                         alert('Error creating poll: ' + data.error);
                     }
