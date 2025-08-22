@@ -287,6 +287,7 @@ def init_db():
                           description TEXT,
                           location TEXT,
                           background_path TEXT,
+                          info TEXT,
                           template TEXT DEFAULT 'default',
                           background_color TEXT DEFAULT '#2d3839',
                           text_color TEXT DEFAULT '#ffffff',
@@ -304,6 +305,17 @@ def init_db():
                           FOREIGN KEY (user_id) REFERENCES users(id),
                           FOREIGN KEY (community_id) REFERENCES communities(id),
                           UNIQUE(user_id, community_id))''')
+
+            # Create community_files table
+            logger.info("Creating community_files table...")
+            c.execute('''CREATE TABLE IF NOT EXISTS community_files
+                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                          community_id INTEGER NOT NULL,
+                          filename TEXT NOT NULL,
+                          uploaded_by TEXT NOT NULL,
+                          upload_date TEXT NOT NULL,
+                          FOREIGN KEY (community_id) REFERENCES communities(id) ON DELETE CASCADE,
+                          FOREIGN KEY (uploaded_by) REFERENCES users(username))''')
 
             # Create api_usage table
             logger.info("Creating api_usage table...")
@@ -4544,6 +4556,197 @@ def test_format():
         'final_content': content,
         'content_lines': content.split('\n')
     })
+
+# Community Announcements Routes
+@app.route('/save_community_info', methods=['POST'])
+def save_community_info():
+    try:
+        if 'username' not in session:
+            return jsonify({'success': False, 'error': 'Not logged in'})
+        
+        community_id = request.form.get('community_id')
+        info = request.form.get('info', '')
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Check if user is admin or community creator
+        cursor.execute('''
+            SELECT creator_username FROM communities 
+            WHERE id = ?
+        ''', (community_id,))
+        
+        community = cursor.fetchone()
+        if not community:
+            return jsonify({'success': False, 'error': 'Community not found'})
+        
+        if session['username'] != community['creator_username'] and session['username'] != 'admin':
+            return jsonify({'success': False, 'error': 'Unauthorized'})
+        
+        # Update community info
+        cursor.execute('''
+            UPDATE communities 
+            SET info = ? 
+            WHERE id = ?
+        ''', (info, community_id))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({'success': True})
+        
+    except Exception as e:
+        logger.error(f"Error saving community info: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/upload_community_files', methods=['POST'])
+def upload_community_files():
+    try:
+        if 'username' not in session:
+            return jsonify({'success': False, 'error': 'Not logged in'})
+        
+        community_id = request.form.get('community_id')
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Check if user is admin or community creator
+        cursor.execute('''
+            SELECT creator_username FROM communities 
+            WHERE id = ?
+        ''', (community_id,))
+        
+        community = cursor.fetchone()
+        if not community:
+            return jsonify({'success': False, 'error': 'Community not found'})
+        
+        if session['username'] != community['creator_username'] and session['username'] != 'admin':
+            return jsonify({'success': False, 'error': 'Unauthorized'})
+        
+        # Create community files directory
+        community_files_dir = os.path.join('static', 'community_files', str(community_id))
+        os.makedirs(community_files_dir, exist_ok=True)
+        
+        uploaded_files = []
+        files = request.files.getlist('files')
+        
+        for file in files:
+            if file and file.filename:
+                filename = secure_filename(file.filename)
+                file_path = os.path.join(community_files_dir, filename)
+                file.save(file_path)
+                
+                # Save file info to database
+                cursor.execute('''
+                    INSERT INTO community_files (community_id, filename, uploaded_by, upload_date)
+                    VALUES (?, ?, ?, ?)
+                ''', (community_id, filename, session['username'], datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+                
+                uploaded_files.append(filename)
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({'success': True, 'files': uploaded_files})
+        
+    except Exception as e:
+        logger.error(f"Error uploading community files: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/get_community_files', methods=['GET'])
+def get_community_files():
+    try:
+        community_id = request.args.get('community_id')
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT filename, uploaded_by, upload_date 
+            FROM community_files 
+            WHERE community_id = ?
+            ORDER BY upload_date DESC
+        ''', (community_id,))
+        
+        files = []
+        for row in cursor.fetchall():
+            files.append({
+                'filename': row['filename'],
+                'uploaded_by': row['uploaded_by'],
+                'upload_date': row['upload_date']
+            })
+        
+        conn.close()
+        
+        return jsonify({'success': True, 'files': files})
+        
+    except Exception as e:
+        logger.error(f"Error getting community files: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/download_community_file/<filename>')
+def download_community_file(filename):
+    try:
+        community_id = request.args.get('community_id')
+        
+        if not community_id:
+            return jsonify({'success': False, 'error': 'Community ID required'})
+        
+        file_path = os.path.join('static', 'community_files', str(community_id), filename)
+        
+        if not os.path.exists(file_path):
+            return jsonify({'success': False, 'error': 'File not found'})
+        
+        return send_from_directory(os.path.dirname(file_path), filename)
+        
+    except Exception as e:
+        logger.error(f"Error downloading community file: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/delete_community_file', methods=['POST'])
+def delete_community_file():
+    try:
+        if 'username' not in session:
+            return jsonify({'success': False, 'error': 'Not logged in'})
+        
+        community_id = request.form.get('community_id')
+        filename = request.form.get('filename')
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Check if user is admin or community creator
+        cursor.execute('''
+            SELECT creator_username FROM communities 
+            WHERE id = ?
+        ''', (community_id,))
+        
+        community = cursor.fetchone()
+        if not community:
+            return jsonify({'success': False, 'error': 'Community not found'})
+        
+        if session['username'] != community['creator_username'] and session['username'] != 'admin':
+            return jsonify({'success': False, 'error': 'Unauthorized'})
+        
+        # Delete file from filesystem
+        file_path = os.path.join('static', 'community_files', str(community_id), filename)
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        
+        # Delete file record from database
+        cursor.execute('''
+            DELETE FROM community_files 
+            WHERE community_id = ? AND filename = ?
+        ''', (community_id, filename))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({'success': True})
+        
+    except Exception as e:
+        logger.error(f"Error deleting community file: {e}")
+        return jsonify({'success': False, 'error': str(e)})
 
 if __name__ == '__main__':
     app.run(debug=False, host='0.0.0.0', port=8080)
