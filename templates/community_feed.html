@@ -957,21 +957,33 @@
             display: block !important;
         }
         
-        /* Polls modal styling - matching post modal */
-        #pollsModal {
+        /* Polls modal styling - matching announcements modal */
+        .polls-modal {
             max-width: 90vw;
-            width: 520px;
+            width: 500px;
         }
         
-        #pollsModal .modal-content {
-            background: #1a2526 !important;
-            border: 2px solid #2d8a7e !important;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3) !important;
-            border-radius: 12px !important;
+        .polls-modal .modal-header {
+            background: #000000 !important;
+            color: #ffffff !important;
+            border-bottom: 1px solid rgba(45, 138, 126, 0.3) !important;
         }
         
-        #pollsModal .modal-body {
-            padding: 25px;
+        .polls-modal .modal-header h2 {
+            color: #ffffff;
+        }
+        
+        .polls-modal .modal-header .close {
+            color: #9fb0b5;
+        }
+        
+        .polls-modal .modal-header .close:hover {
+            color: #ffffff;
+            background: rgba(255, 255, 255, 0.1);
+        }
+        
+        .polls-modal .modal-body {
+            padding: 15px;
         }
         
         /* Polls tabs styling - compact and centered like announcements */
@@ -2066,9 +2078,9 @@
 
     <!-- Polls Modal -->
     <div id="pollsModal" class="modal" style="display: none;">
-        <div class="modal-content">
+        <div class="modal-content polls-modal">
             <div class="modal-header">
-                <h2><i class="fas fa-poll-h"></i> Polls</h2>
+                <h2>Polls</h2>
                 <span class="close" onclick="closePollsModal()">&times;</span>
             </div>
             <div class="modal-body">
