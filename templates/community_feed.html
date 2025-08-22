@@ -879,7 +879,7 @@
         /* Post modal styling - compact and sleek */
         .post-modal {
             max-width: 90vw;
-            width: 450px;
+            width: 520px;
         }
         
         #postModal .modal-content .modal-header {
@@ -896,17 +896,21 @@
             margin: 0;
         }
         
-        .post-modal .modal-header .close {
+        #postModal .modal-content .modal-header .close {
             color: #9fb0b5;
-            font-size: 16px;
+            font-size: 18px;
             font-weight: normal;
             cursor: pointer;
-            padding: 4px;
+            padding: 6px;
             border-radius: 3px;
             transition: all 0.2s ease;
+            position: relative;
+            top: 0;
+            right: 0;
+            float: none;
         }
         
-        .post-modal .modal-header .close:hover {
+        #postModal .modal-content .modal-header .close:hover {
             color: #ffffff;
             background: rgba(255, 255, 255, 0.1);
         }
