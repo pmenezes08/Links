@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ community.name }} - C.Point</title>
-    <link rel="icon" type="image/x-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏋️</text></svg>">
+    <link rel="icon" type="image/x-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%232d8a7e'/><text y='.9em' font-size='60' fill='white' text-anchor='middle' x='50'>C</text></svg>">
     <meta name="csrf-token" content="{{ csrf_token }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v='2.0') }}">
     <style>
@@ -1809,7 +1809,7 @@
                         {% if post.image_path and post.image_path != 'None' and post.image_path != '' %}
                             <div class="post-image">
                                 <!-- Debug: {{ post.image_path }} -->
-                                <img src="{{ url_for('uploaded_file', filename=post.image_path.replace('uploads/', '')) }}" 
+                                <img src="{{ url_for('uploaded_file', filename=post.image_path.replace('uploads/uploads/', '').replace('uploads/', '')) }}" 
                                      alt="Post image" 
                                      loading="lazy" 
                                      onerror="console.log('Image failed to load:', this.src); this.style.display='none'; this.parentElement.innerHTML='<div style=\"padding: 20px; text-align: center; color: #9fb0b5;\">Image could not be loaded</div>';" 
