@@ -2735,9 +2735,12 @@ def vote_poll():
             c.execute("SELECT p.*, po.id as option_id FROM polls p JOIN poll_options po ON p.id = po.poll_id WHERE p.id = ? AND po.id = ? AND p.is_active = 1", (poll_id, option_id))
             poll_data = c.fetchone()
             
-            # Handle case where single_vote column might not exist
-            if poll_data and 'single_vote' not in poll_data:
-                poll_data['single_vote'] = True  # Default to single vote
+            # Convert to dict to make it mutable
+            if poll_data:
+                poll_data = dict(poll_data)
+                # Handle case where single_vote column might not exist
+                if 'single_vote' not in poll_data:
+                    poll_data['single_vote'] = True  # Default to single vote
             
             if not poll_data:
                 return jsonify({'success': False, 'error': 'Poll not found or inactive'})
@@ -3727,7 +3730,10 @@ def community_background_file(filename):
         file_path = os.path.join('static', 'community_backgrounds', filename)
         if not os.path.exists(file_path):
             logger.warning(f"Community background file not found: {file_path}")
-            return "Image not found", 404
+            # Return a 1x1 transparent pixel instead of 404
+            from flask import Response
+            transparent_pixel = b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\tpHYs\x00\x00\x0b\x13\x00\x00\x0b\x13\x01\x00\x9a\x9c\x18\x00\x00\x00\x0cIDATx\x9cc```\x00\x00\x00\x04\x00\x01\xf5\xd7\xd4\xc7\x00\x00\x00\x00IEND\xaeB`\x82'
+            return Response(transparent_pixel, mimetype='image/png')
         return send_from_directory('static/community_backgrounds', filename)
     except Exception as e:
         logger.error(f"Error serving community background {filename}: {str(e)}")
