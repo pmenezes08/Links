@@ -1483,9 +1483,18 @@
                 console.log('Checkbox checked:', singleVoteCheckbox ? singleVoteCheckbox.checked : 'not found');
                 
                 if (singleVoteCheckbox) {
-                    formData.set('single_vote', singleVoteCheckbox.checked ? 'true' : 'false');
+                    const voteSetting = singleVoteCheckbox.checked ? 'true' : 'false';
+                    formData.set('single_vote', voteSetting);
+                    console.log('Setting single_vote to:', voteSetting);
                 } else {
                     formData.set('single_vote', 'true');
+                    console.log('Checkbox not found, setting single_vote to: true');
+                }
+                
+                // Debug: log all form data being sent
+                console.log('Form data being sent:');
+                for (let [key, value] of formData.entries()) {
+                    console.log(`${key}: ${value}`);
                 }
                 
                 fetch('/create_poll', {
@@ -1497,6 +1506,13 @@
                     if (data.success) {
                         alert('Poll created successfully!');
                         this.reset();
+                        
+                        // Reset checkbox to checked state
+                        const singleVoteCheckbox = document.getElementById('singleVoteCheckbox');
+                        if (singleVoteCheckbox) {
+                            singleVoteCheckbox.checked = true;
+                        }
+                        
                         // Reset to 2 options
                         const optionsContainer = document.getElementById('modalPollOptions');
                         optionsContainer.innerHTML = `
