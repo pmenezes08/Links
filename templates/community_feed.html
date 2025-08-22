@@ -799,8 +799,12 @@
                 success: function(response) {
                     if (response.success) {
                         alert('Announcement published successfully!');
-                        // Refresh the page to show the new announcement
-                        location.reload();
+                        // Clear the textarea
+                        document.getElementById('communityInfo').value = '';
+                        // Update the preview without refreshing
+                        updateAnnouncementPreview(info);
+                        // Update notifications
+                        checkForNotifications();
                     } else {
                         alert('Error saving information: ' + response.error);
                     }
@@ -809,6 +813,49 @@
                     alert('Error saving community information');
                 }
             });
+        }
+
+        function updateAnnouncementPreview(content) {
+            const previewContainer = document.querySelector('.latest-announcement-preview');
+            if (previewContainer) {
+                const previewContent = previewContainer.querySelector('.preview-content');
+                const previewDate = previewContainer.querySelector('.preview-date');
+                
+                if (previewContent) {
+                    previewContent.textContent = content.length > 100 ? content.substring(0, 100) + '...' : content;
+                }
+                if (previewDate) {
+                    previewDate.textContent = 'Just now';
+                }
+            } else {
+                // If no preview exists, create one
+                const announcementsSection = document.querySelector('.admin-section');
+                if (announcementsSection) {
+                    const newPreview = document.createElement('div');
+                    newPreview.className = 'latest-announcement-preview';
+                    newPreview.onclick = function() { showAnnouncementsModal(); };
+                    newPreview.innerHTML = `
+                        <div class="preview-header">
+                            <span class="preview-date">Just now</span>
+                            <span class="preview-badge">Latest</span>
+                        </div>
+                        <div class="preview-content">
+                            ${content.length > 100 ? content.substring(0, 100) + '...' : content}
+                        </div>
+                    `;
+                    
+                    // Replace the "no announcements" message or add after the section header
+                    const noAnnouncements = announcementsSection.querySelector('.no-announcements');
+                    if (noAnnouncements) {
+                        noAnnouncements.replaceWith(newPreview);
+                    } else {
+                        const sectionHeader = announcementsSection.querySelector('.section-header');
+                        if (sectionHeader) {
+                            sectionHeader.after(newPreview);
+                        }
+                    }
+                }
+            }
         }
 
         function markAnnouncementRead() {
@@ -902,14 +949,43 @@
                     if (response.success) {
                         alert('Announcement deleted successfully!');
                         loadAnnouncementsHistory();
-                        // Refresh the page to update the preview
-                        location.reload();
+                        // Update the preview without refreshing
+                        updatePreviewAfterDelete();
                     } else {
                         alert('Error deleting announcement: ' + response.error);
                     }
                 },
                 error: function() {
                     alert('Error deleting announcement');
+                }
+            });
+        }
+
+        function updatePreviewAfterDelete() {
+            // Get the latest announcement to update the preview
+            $.ajax({
+                url: '/get_community_announcements',
+                method: 'GET',
+                data: {
+                    community_id: {{ community.id }}
+                },
+                success: function(response) {
+                    if (response.success && response.announcements.length > 0) {
+                        const latest = response.announcements[0];
+                        updateAnnouncementPreview(latest.content);
+                    } else {
+                        // No announcements left, show "no announcements" message
+                        const previewContainer = document.querySelector('.latest-announcement-preview');
+                        if (previewContainer) {
+                            const noAnnouncements = document.createElement('div');
+                            noAnnouncements.className = 'no-announcements';
+                            noAnnouncements.innerHTML = '<i class="fas fa-bullhorn"></i><span>No announcements yet</span>';
+                            previewContainer.replaceWith(noAnnouncements);
+                        }
+                    }
+                },
+                error: function() {
+                    console.log('Error updating preview after delete');
                 }
             });
         }

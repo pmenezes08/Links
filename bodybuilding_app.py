@@ -4567,6 +4567,22 @@ def test_database():
         if 'info_updated_at' not in column_names:
             missing_columns.append('info_updated_at')
         
+        # Check community_announcements table
+        announcements_count = 0
+        try:
+            cursor.execute("SELECT COUNT(*) FROM community_announcements")
+            announcements_count = cursor.fetchone()[0]
+        except:
+            pass
+        
+        # Check community_files table
+        files_count = 0
+        try:
+            cursor.execute("SELECT COUNT(*) FROM community_files")
+            files_count = cursor.fetchone()[0]
+        except:
+            pass
+        
         conn.close()
         
         return jsonify({
@@ -4576,7 +4592,9 @@ def test_database():
             'sets_count': sets_count,
             'community_columns': column_names,
             'missing_columns': missing_columns,
-            'needs_fix': len(missing_columns) > 0
+            'needs_fix': len(missing_columns) > 0,
+            'announcements_count': announcements_count,
+            'files_count': files_count
         })
         
     except Exception as e:
