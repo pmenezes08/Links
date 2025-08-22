@@ -877,6 +877,15 @@
     </div>
 
     <script>
+        // Edit Community Functions - Global Scope
+        function showEditCommunityModal() {
+            document.getElementById('editCommunityModal').style.display = 'block';
+        }
+
+        function closeEditCommunityModal() {
+            document.getElementById('editCommunityModal').style.display = 'none';
+        }
+
         // Ensure members modal is hidden by default
         document.addEventListener('DOMContentLoaded', function() {
             const membersModal = document.getElementById('membersModal');
@@ -1082,14 +1091,7 @@
                 return;
             }
 
-        // Edit Community Functions
-        function showEditCommunityModal() {
-            document.getElementById('editCommunityModal').style.display = 'block';
-        }
 
-        function closeEditCommunityModal() {
-            document.getElementById('editCommunityModal').style.display = 'none';
-        }
 
 
 
