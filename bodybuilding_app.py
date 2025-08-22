@@ -4659,6 +4659,40 @@ def test_community_template():
             'traceback': traceback.format_exc()
         })
 
+@app.route('/debug_community/<int:community_id>')
+def debug_community(community_id):
+    """Debug route to check community data without login requirement"""
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Get community info
+            c.execute("SELECT * FROM communities WHERE id = ?", (community_id,))
+            community_row = c.fetchone()
+            if not community_row:
+                return jsonify({'success': False, 'error': 'Community not found'})
+            
+            community = dict(community_row)
+            
+            # Get posts count
+            c.execute("SELECT COUNT(*) as count FROM posts WHERE community_id = ?", (community_id,))
+            posts_count = c.fetchone()['count']
+            
+            return jsonify({
+                'success': True,
+                'community': community,
+                'posts_count': posts_count,
+                'community_keys': list(community.keys())
+            })
+            
+    except Exception as e:
+        import traceback
+        return jsonify({
+            'success': False, 
+            'error': str(e), 
+            'traceback': traceback.format_exc()
+        })
+
 # Community Announcements Routes
 @app.route('/save_community_info', methods=['POST'])
 def save_community_info():
