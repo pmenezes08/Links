@@ -445,19 +445,21 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            width: 40px;
-            height: 40px;
-            background-color: {{ community.accent_color or '#2d8a7e' }};
-            color: {{ community.text_color or '#ffffff' }};
+            width: auto;
+            height: auto;
+            background-color: transparent;
+            color: {{ community.accent_color or '#2d8a7e' }};
             border: none;
-            border-radius: 50%;
+            border-radius: 0;
             cursor: pointer;
             transition: all 0.2s ease;
+            padding: 8px;
+            font-size: 18px;
         }
         
         .file-upload-btn:hover {
-            background-color: {{ community.accent_color or '#2d8a7e' }}dd;
-            transform: scale(1.05);
+            background-color: rgba(45, 138, 126, 0.1);
+            transform: none;
         }
         
         .selected-file-name {
@@ -872,6 +874,47 @@
         #pollsModal .modal-header .close:hover {
             color: #ffffff;
             background: rgba(255, 255, 255, 0.1);
+        }
+        
+        /* Post modal styling - matching announcements modal */
+        .post-modal {
+            max-width: 90vw;
+            width: 500px;
+        }
+        
+        .post-modal .modal-header {
+            background: #000000;
+            color: #ffffff;
+            border-bottom: 1px solid rgba(45, 138, 126, 0.3);
+        }
+        
+        .post-modal .modal-header h2 {
+            color: #ffffff;
+        }
+        
+        .post-modal .modal-header .close {
+            color: #9fb0b5;
+            font-size: 18px;
+            font-weight: normal;
+            cursor: pointer;
+            padding: 5px;
+            border-radius: 3px;
+            transition: all 0.2s ease;
+        }
+        
+        .post-modal .modal-header .close:hover {
+            color: #ffffff;
+            background: rgba(255, 255, 255, 0.1);
+        }
+        
+        .post-modal .modal-content {
+            background: transparent;
+            border: none;
+            box-shadow: none;
+        }
+        
+        .post-modal .modal-body {
+            padding: 15px;
         }
         
         /* Polls modal styling - matching announcements modal */
@@ -1848,9 +1891,9 @@
 
     <!-- Post Modal -->
     <div id="postModal" class="modal">
-        <div class="modal-content">
+        <div class="modal-content post-modal">
             <div class="modal-header">
-                <h2>Post Details</h2>
+                <h2><i class="fas fa-comment"></i> Post Details</h2>
                 <span class="close">&times;</span>
             </div>
             <div class="modal-body">
