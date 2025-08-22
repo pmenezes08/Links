@@ -291,6 +291,133 @@
         .btn-secondary {
             background-color: #666666;
         }
+        
+        /* Right Sidebar Layout */
+        .main-content {
+            display: flex;
+            gap: 20px;
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .container.feed {
+            flex: 1;
+            max-width: 800px;
+        }
+        
+        .right-sidebar {
+            width: 300px;
+            flex-shrink: 0;
+        }
+        
+        .poll-sidebar-card {
+            background: #1a2526;
+            border: 1px solid #4db6ac;
+            border-radius: 8px;
+            padding: 20px;
+            position: sticky;
+            top: 20px;
+        }
+        
+        .poll-sidebar-card h3 {
+            color: #ffffff;
+            margin-bottom: 16px;
+            font-size: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .poll-sidebar-card h3 i {
+            color: #4db6ac;
+        }
+        
+        .poll-sidebar-card .form-group {
+            margin-bottom: 16px;
+        }
+        
+        .poll-sidebar-card label {
+            display: block;
+            margin-bottom: 6px;
+            color: #ffffff;
+            font-weight: 500;
+            font-size: 14px;
+        }
+        
+        .poll-sidebar-card input,
+        .poll-sidebar-card textarea {
+            width: 100%;
+            padding: 8px 10px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 6px;
+            background: rgba(255, 255, 255, 0.05);
+            color: #ffffff;
+            font-size: 13px;
+            box-sizing: border-box;
+        }
+        
+        .poll-sidebar-card input:focus,
+        .poll-sidebar-card textarea:focus {
+            outline: none;
+            border-color: #4db6ac;
+            box-shadow: 0 0 0 2px rgba(77, 182, 172, 0.2);
+        }
+        
+        .poll-sidebar-card textarea {
+            resize: vertical;
+            min-height: 60px;
+        }
+        
+        #sidebarPollOptions {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            margin-bottom: 8px;
+        }
+        
+        .btn-secondary.small {
+            padding: 6px 12px;
+            font-size: 12px;
+        }
+        
+        .poll-sidebar-card .form-actions {
+            margin-top: 16px;
+            justify-content: center;
+        }
+        
+        .poll-sidebar-card .btn {
+            width: 100%;
+            padding: 10px;
+            background: #4db6ac;
+            color: #ffffff;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+        }
+        
+        .poll-sidebar-card .btn:hover {
+            background: #37a69c;
+        }
+        
+        /* Mobile responsive */
+        @media (max-width: 1200px) {
+            .main-content {
+                flex-direction: column;
+            }
+            
+            .right-sidebar {
+                width: 100%;
+                order: -1;
+            }
+            
+            .poll-sidebar-card {
+                position: static;
+            }
+        }
 
         /* Admin Announcements Styles */
         .community-actions {
@@ -800,7 +927,8 @@
     </div>
 
     <!-- Main Content -->
-    <div class="container feed">
+    <div class="main-content">
+        <div class="container feed">
         {% if community.background_path %}
         <div class="community-header-image">
             <img src="{% if community.background_path.startswith('http') %}{{ community.background_path }}{% else %}{{ url_for('static', filename=community.background_path) }}{% endif %}" 
@@ -891,6 +1019,35 @@
             {% else %}
                 <p>No posts yet in {{ community.name }}. Be the first!</p>
             {% endif %}
+        </div>
+        
+        <!-- Right Sidebar for Poll Creation -->
+        <div class="right-sidebar">
+            <div class="poll-sidebar-card">
+                <h3><i class="fas fa-poll-h"></i> Create Poll</h3>
+                <form id="pollSidebarForm">
+                    <input type="hidden" name="community_id" value="{{ community.id }}">
+                    <div class="form-group">
+                        <label for="sidebarPollContent">Post Content (Optional)</label>
+                        <textarea id="sidebarPollContent" name="content" placeholder="Add some context..." rows="2"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label for="sidebarPollQuestion">Poll Question *</label>
+                        <input type="text" id="sidebarPollQuestion" name="question" placeholder="What would you like to ask?" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Poll Options *</label>
+                        <div id="sidebarPollOptions">
+                            <input type="text" name="options[]" placeholder="Option 1" required>
+                            <input type="text" name="options[]" placeholder="Option 2" required>
+                        </div>
+                        <button type="button" onclick="addSidebarPollOption()" class="btn-secondary small">+ Add Option</button>
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" class="btn">Create Poll</button>
+                    </div>
+                </form>
+            </div>
         </div>
     </div>
 
@@ -1110,6 +1267,129 @@
             
             // Load community files on page load
             loadCommunityFiles();
+            
+            // Setup poll handlers
+            setupPollHandlers();
+        });
+        
+        // Poll functionality
+        function addSidebarPollOption() {
+            const optionsContainer = document.getElementById('sidebarPollOptions');
+            const optionCount = optionsContainer.children.length;
+            
+            if (optionCount >= 6) {
+                alert('Maximum 6 options allowed');
+                return;
+            }
+            
+            const newOption = document.createElement('input');
+            newOption.type = 'text';
+            newOption.name = 'options[]';
+            newOption.placeholder = `Option ${optionCount + 1}`;
+            newOption.required = true;
+            
+            optionsContainer.appendChild(newOption);
+        }
+        
+        function setupPollHandlers() {
+            // Sidebar poll form submission
+            document.getElementById('pollSidebarForm').addEventListener('submit', function(e) {
+                e.preventDefault();
+                
+                const formData = new FormData(this);
+                
+                fetch('/create_poll', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        alert('Poll created successfully!');
+                        this.reset();
+                        // Reset to 2 options
+                        const optionsContainer = document.getElementById('sidebarPollOptions');
+                        optionsContainer.innerHTML = `
+                            <input type="text" name="options[]" placeholder="Option 1" required>
+                            <input type="text" name="options[]" placeholder="Option 2" required>
+                        `;
+                        location.reload(); // Refresh to show new poll
+                    } else {
+                        alert('Error creating poll: ' + data.error);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('Error creating poll');
+                });
+            });
+            
+            // Poll option voting
+            document.addEventListener('click', function(e) {
+                if (e.target.closest('.poll-option')) {
+                    const pollOption = e.target.closest('.poll-option');
+                    const pollId = pollOption.dataset.pollId;
+                    const optionId = pollOption.dataset.optionId;
+                    
+                    voteOnPoll(pollId, optionId, pollOption);
+                }
+            });
+        }
+        
+        function voteOnPoll(pollId, optionId, pollOptionElement) {
+            const formData = new FormData();
+            formData.append('poll_id', pollId);
+            formData.append('option_id', optionId);
+            
+            fetch('/vote_poll', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    updatePollDisplay(pollOptionElement, data.poll_results);
+                } else {
+                    alert('Error voting: ' + data.error);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Error voting on poll');
+            });
+        }
+        
+        function updatePollDisplay(pollOptionElement, pollResults) {
+            const pollContainer = pollOptionElement.closest('.poll-container');
+            const totalVotes = pollResults.reduce((sum, option) => sum + option.votes, 0);
+            
+            // Update each option
+            pollResults.forEach(option => {
+                const optionElement = pollContainer.querySelector(`[data-option-id="${option.id}"]`);
+                if (optionElement) {
+                    const votesElement = optionElement.querySelector('.poll-option-votes');
+                    const progressFill = optionElement.querySelector('.poll-progress-fill');
+                    
+                    votesElement.textContent = `${option.votes} votes`;
+                    progressFill.style.width = `${(option.votes / totalVotes * 100) || 0}%`;
+                }
+            });
+            
+            // Update total votes
+            const totalElement = pollContainer.querySelector('.poll-total');
+            if (totalElement) {
+                totalElement.textContent = `${totalVotes} total votes`;
+            }
+            
+            // Add voted indicator
+            const pollFooter = pollContainer.querySelector('.poll-footer');
+            if (pollFooter && !pollFooter.querySelector('.poll-voted')) {
+                const votedSpan = document.createElement('span');
+                votedSpan.className = 'poll-voted';
+                votedSpan.innerHTML = '<i class="fas fa-check"></i> You voted';
+                pollFooter.appendChild(votedSpan);
+            }
+        }
             
             // Handle edit community form submission
             const editCommunityForm = document.getElementById('editCommunityForm');
