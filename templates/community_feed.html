@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ community.name }} - Social</title>
+    <title>{{ community.name }} - C.Point</title>
+    <link rel="icon" type="image/x-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏋️</text></svg>">
     <meta name="csrf-token" content="{{ csrf_token }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v='2.0') }}">
     <style>
@@ -1810,7 +1811,7 @@
                                 <img src="{{ url_for('uploaded_file', filename=post.image_path) }}" 
                                      alt="Post image" 
                                      loading="lazy" 
-                                     onerror="console.log('Image failed to load:', this.src); this.style.display='none'; this.parentElement.innerHTML='<div style=\'padding: 20px; text-align: center; color: #9fb0b5;\'>Image could not be loaded</div>';" 
+                                     onerror="console.log('Image failed to load:', this.src); this.style.display='none'; this.parentElement.innerHTML='<div style=\"padding: 20px; text-align: center; color: #9fb0b5;\">Image could not be loaded</div>';" 
                                      onload="console.log('Image loaded successfully:', this.src);"
                                      style="max-width: 100%; height: auto; display: block;">
                             </div>

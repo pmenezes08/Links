@@ -3804,8 +3804,10 @@ def community_background_file(filename):
             return send_from_directory('static/community_backgrounds', filename)
         else:
             logger.warning(f"Community background file not found in uploads or static: {filename}")
-            # Return 404 so the frontend can handle it properly
-            return "Image not found", 404
+            # Return a transparent 1x1 pixel instead of 404
+            from flask import Response
+            transparent_pixel = b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\x00\x00\x00\x02\x00\x01\xe5\x27\xde\xfc\x00\x00\x00\x00IEND\xaeB`\x82'
+            return Response(transparent_pixel, mimetype='image/png')
     except Exception as e:
         logger.error(f"Error serving community background {filename}: {str(e)}")
         return "Error serving image", 500
