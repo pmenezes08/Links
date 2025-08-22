@@ -5629,6 +5629,12 @@ def save_community_announcement():
             logger.info("Adding uploaded_at column to community_files table...")
             cursor.execute("ALTER TABLE community_files ADD COLUMN uploaded_at TEXT")
         
+        try:
+            cursor.execute("SELECT community_id FROM community_files LIMIT 1")
+        except:
+            logger.info("Adding community_id column to community_files table...")
+            cursor.execute("ALTER TABLE community_files ADD COLUMN community_id INTEGER")
+        
         # Check if user is admin or community creator
         cursor.execute('''
             SELECT creator_username FROM communities 
@@ -5667,9 +5673,9 @@ def save_community_announcement():
                 
                 # Save file info to database
                 cursor.execute('''
-                    INSERT INTO community_files (announcement_id, filename, file_path, uploaded_by, uploaded_at)
-                    VALUES (?, ?, ?, ?, ?)
-                ''', (announcement_id, filename, unique_filename, session['username'], datetime.now().strftime('%m.%d.%y %H:%M')))
+                    INSERT INTO community_files (announcement_id, community_id, filename, file_path, uploaded_by, uploaded_at)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                ''', (announcement_id, community_id, filename, unique_filename, session['username'], datetime.now().strftime('%m.%d.%y %H:%M')))
                 
                 uploaded_files.append({
                     'filename': filename,
