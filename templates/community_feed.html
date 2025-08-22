@@ -157,9 +157,10 @@
             display: flex;
             gap: 10px;
             align-items: center;
-            flex-wrap: wrap;
+            flex-wrap: nowrap;
             margin-bottom: 20px;
             padding: 15px 0;
+            overflow-x: auto;
         }
         
         .members-btn, .admin-info-btn, .edit-community-btn, .polls-btn {
@@ -1030,7 +1031,6 @@
         </div>
         
         <div class="community-actions">
-            {% if username == community.creator_username or username == 'admin' %}
             <button class="members-btn" onclick="showMembersModal()">
                 <i class="fas fa-users"></i> Members
             </button>
@@ -1040,6 +1040,7 @@
             <button class="polls-btn" onclick="showPollsModal()">
                 <i class="fas fa-poll-h"></i> Polls
             </button>
+            {% if username == community.creator_username or username == 'admin' %}
             <button class="edit-community-btn" onclick="showEditCommunityModal()">
                 <i class="fas fa-edit"></i> Edit Community
             </button>
