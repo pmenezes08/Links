@@ -2890,6 +2890,48 @@ def edit_community():
         logger.error(f"Error editing community: {str(e)}")
         return jsonify({'success': False, 'error': 'Failed to edit community'}), 500
 
+@app.route('/update_community', methods=['POST'])
+@login_required
+def update_community():
+    """Update community details (name, description, location, background, template)"""
+    username = session.get('username')
+    community_id = request.form.get('community_id', type=int)
+    name = request.form.get('name', '').strip()
+    description = request.form.get('description', '').strip()
+    location = request.form.get('location', '').strip()
+    background_path = request.form.get('background_path', '').strip()
+    template = request.form.get('template', 'default')
+    
+    if not community_id or not name:
+        return jsonify({'success': False, 'error': 'Community ID and name are required'}), 400
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Check if user is the creator of this community or admin
+            c.execute("SELECT creator_username FROM communities WHERE id = ?", (community_id,))
+            community = c.fetchone()
+            
+            if not community:
+                return jsonify({'success': False, 'error': 'Community not found'}), 404
+            
+            if community['creator_username'] != username and username != 'admin':
+                return jsonify({'success': False, 'error': 'Only the community creator or admin can edit the community'}), 403
+            
+            # Update the community details
+            c.execute("""UPDATE communities 
+                        SET name = ?, description = ?, location = ?, background_path = ?, template = ? 
+                        WHERE id = ?""", 
+                     (name, description, location, background_path, template, community_id))
+            conn.commit()
+            
+            return jsonify({'success': True, 'message': 'Community updated successfully'})
+            
+    except Exception as e:
+        logger.error(f"Error updating community: {str(e)}")
+        return jsonify({'success': False, 'error': 'Failed to update community'}), 500
+
 @app.route('/delete_community', methods=['POST'])
 @login_required
 def delete_community():
