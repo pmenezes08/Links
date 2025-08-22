@@ -4,9 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Profile - Workout X</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v='2.0') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}?v=2.0">
     <style>
-        /* Profile Page Styles - Apple Design Principles */
+        /* Profile Page Styles - Compact & Minimalist */
         body {
             background-color: #000000 !important;
             color: #ffffff !important;
@@ -18,8 +19,8 @@
 
         .profile-container {
             margin-left: 80px;
-            padding: 24px;
-            max-width: 800px;
+            padding: 16px;
+            max-width: 600px;
             margin: 0 auto;
             position: relative;
             left: 40px;
@@ -30,149 +31,81 @@
         @media (max-width: 768px) {
             .profile-container {
                 margin-left: 0;
-                padding: 16px;
+                padding: 12px;
                 left: 0;
             }
         }
 
         .profile-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 32px;
-            padding-bottom: 16px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-        }
-
-        .profile-title {
-            font-size: 28px;
-            font-weight: 600;
-            color: #ffffff;
-            margin: 0;
-        }
-
-        .profile-subtitle {
-            color: rgba(255, 255, 255, 0.6);
-            font-size: 16px;
-            margin: 4px 0 0 0;
-        }
-
-        /* Menu Dropdown */
-        .menu-dropdown {
-            position: relative;
-            display: inline-block;
-        }
-
-        .menu-btn {
-            background: #4db6ac;
-            color: #ffffff;
-            border: none;
-            padding: 12px 16px;
-            border-radius: 8px;
-            font-size: 14px;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .menu-btn:hover {
-            background: #37a69c;
-        }
-
-        .menu-content {
-            display: none;
-            position: absolute;
-            right: 0;
-            background: #1a2526;
-            border: 1px solid #4db6ac;
-            border-radius: 8px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-            backdrop-filter: blur(20px);
-            z-index: 1000;
-            min-width: 200px;
-            margin-top: 8px;
-        }
-
-        .menu-content.show {
-            display: block;
-        }
-
-        .menu-item {
-            color: #ffffff;
-            padding: 12px 16px;
-            text-decoration: none;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            transition: background 0.2s ease;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-        }
-
-        .menu-item:last-child {
-            border-bottom: none;
-        }
-
-        .menu-item:hover {
-            background: rgba(255, 255, 255, 0.1);
-        }
-
-        .menu-item.logout {
-            color: #ff6b6b;
-        }
-
-        /* Profile Sections */
-        .profile-section {
-            background: #1a2526;
-            border: 1px solid #4db6ac;
-            border-radius: 12px;
-            padding: 24px;
-            margin-bottom: 24px;
-        }
-
-        .section-header {
-            display: flex;
-            align-items: center;
-            gap: 12px;
             margin-bottom: 20px;
             padding-bottom: 12px;
             border-bottom: 1px solid rgba(255, 255, 255, 0.1);
         }
 
+        .profile-title {
+            font-size: 24px;
+            font-weight: 600;
+            color: #ffffff;
+            margin: 0 0 4px 0;
+        }
+
+        .profile-subtitle {
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 14px;
+            margin: 0;
+        }
+
+        /* Profile Sections - More Compact */
+        .profile-section {
+            background: #1a2526;
+            border: 1px solid #4db6ac;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+
+        .section-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
         .section-icon {
             color: #4db6ac;
-            font-size: 20px;
+            font-size: 16px;
         }
 
         .section-title {
-            font-size: 20px;
+            font-size: 16px;
             font-weight: 600;
             color: #ffffff;
             margin: 0;
         }
 
-        /* Form Styles */
+        /* Form Styles - More Compact */
         .form-group {
-            margin-bottom: 20px;
+            margin-bottom: 12px;
         }
 
         .form-label {
             display: block;
             color: #ffffff;
-            font-size: 14px;
+            font-size: 12px;
             font-weight: 500;
-            margin-bottom: 8px;
+            margin-bottom: 4px;
         }
 
         .form-input {
             width: 100%;
             background: rgba(255, 255, 255, 0.05);
             border: 1px solid rgba(255, 255, 255, 0.2);
-            border-radius: 8px;
-            padding: 12px 16px;
+            border-radius: 6px;
+            padding: 8px 12px;
             color: #ffffff;
-            font-size: 14px;
+            font-size: 13px;
             transition: all 0.2s ease;
             box-sizing: border-box;
         }
@@ -191,10 +124,10 @@
             width: 100%;
             background: rgba(255, 255, 255, 0.05);
             border: 1px solid rgba(255, 255, 255, 0.2);
-            border-radius: 8px;
-            padding: 12px 16px;
+            border-radius: 6px;
+            padding: 8px 12px;
             color: #ffffff;
-            font-size: 14px;
+            font-size: 13px;
             transition: all 0.2s ease;
             cursor: pointer;
         }
@@ -213,7 +146,7 @@
         .form-row {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 16px;
+            gap: 12px;
         }
 
         @media (max-width: 768px) {
@@ -222,20 +155,20 @@
             }
         }
 
-        /* Button Styles */
+        /* Button Styles - More Compact */
         .btn {
             background: #4db6ac;
             color: #ffffff;
             border: none;
-            padding: 12px 24px;
-            border-radius: 8px;
-            font-size: 14px;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 13px;
             font-weight: 500;
             cursor: pointer;
             transition: all 0.2s ease;
             display: inline-flex;
             align-items: center;
-            gap: 8px;
+            gap: 6px;
         }
 
         .btn:hover {
@@ -247,30 +180,12 @@
             transform: translateY(0);
         }
 
-        .btn-secondary {
-            background: rgba(255, 255, 255, 0.1);
-            color: #ffffff;
-        }
-
-        .btn-secondary:hover {
-            background: rgba(255, 255, 255, 0.2);
-        }
-
-        .btn-danger {
-            background: #ff6b6b;
-            color: #ffffff;
-        }
-
-        .btn-danger:hover {
-            background: #ff5252;
-        }
-
-        /* Status Messages */
+        /* Status Messages - More Compact */
         .status-message {
-            padding: 12px 16px;
-            border-radius: 8px;
-            margin-bottom: 16px;
-            font-size: 14px;
+            padding: 8px 12px;
+            border-radius: 6px;
+            margin-bottom: 12px;
+            font-size: 12px;
             display: none;
         }
 
@@ -286,20 +201,20 @@
             color: #ff6b6b;
         }
 
-        /* Current Info Display */
+        /* Current Info Display - More Compact */
         .current-info {
             background: rgba(255, 255, 255, 0.03);
             border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 8px;
-            padding: 16px;
-            margin-bottom: 16px;
+            border-radius: 6px;
+            padding: 12px;
+            margin-bottom: 12px;
         }
 
         .info-item {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 8px 0;
+            padding: 6px 0;
             border-bottom: 1px solid rgba(255, 255, 255, 0.05);
         }
 
@@ -309,21 +224,21 @@
 
         .info-label {
             color: rgba(255, 255, 255, 0.7);
-            font-size: 14px;
+            font-size: 12px;
         }
 
         .info-value {
             color: #ffffff;
-            font-size: 14px;
+            font-size: 12px;
             font-weight: 500;
         }
 
         .subscription-badge {
             background: #4db6ac;
             color: #ffffff;
-            padding: 4px 12px;
-            border-radius: 12px;
-            font-size: 12px;
+            padding: 3px 8px;
+            border-radius: 10px;
+            font-size: 10px;
             font-weight: 500;
             text-transform: uppercase;
         }
@@ -332,64 +247,29 @@
             background: rgba(255, 255, 255, 0.2);
         }
     </style>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 </head>
-<body>
+<body class="profile-page">
+    <div class="sidebar">
+        <button class="menu-btn"><i class="fas fa-bars"></i> Menu</button>
+        <div class="dropdown-content">
+            {% if session['username'] == 'admin' %}
+            <a href="{{ url_for('admin') }}">Admin Dashboard</a>
+            <a href="{{ url_for('admin_profile') }}">Admin Profile</a>
+            {% endif %}
+            <a href="{{ url_for('profile') }}">Profile</a>
+            <a href="{{ url_for('user_chat') }}">Messages</a>
+            <a href="{{ url_for('premium_dashboard') }}">Main Dashboard</a>
+            <a href="{{ url_for('feed') }}">Social</a>
+            <a href="{{ url_for('communities') }}">Your Communities</a>
+            <a href="{{ url_for('your_sports') }}">Your Sports</a>
+            <a href="{{ url_for('logout') }}">Logout</a>
+        </div>
+    </div>
     <div class="profile-container">
-        <!-- Header with Menu -->
+        <!-- Header -->
         <div class="profile-header">
-            <div>
-                <h1 class="profile-title">Profile</h1>
-                <p class="profile-subtitle">Manage your account settings</p>
-            </div>
-            
-            <!-- Menu Dropdown -->
-            <div class="menu-dropdown">
-                <button class="menu-btn" onclick="toggleMenu()">
-                    <i class="fas fa-bars"></i>
-                    Menu
-                </button>
-                <div class="menu-content" id="menuContent">
-                    {% if username == 'admin' %}
-                    <a href="/admin" class="menu-item">
-                        <i class="fas fa-cog"></i>
-                        Admin Dashboard
-                    </a>
-                    <a href="/admin_profile" class="menu-item">
-                        <i class="fas fa-user-shield"></i>
-                        Admin Profile
-                    </a>
-                    {% endif %}
-                    <a href="/profile" class="menu-item">
-                        <i class="fas fa-user"></i>
-                        Profile
-                    </a>
-                    <a href="/messages" class="menu-item">
-                        <i class="fas fa-envelope"></i>
-                        Messages
-                    </a>
-                    <a href="/premium_dashboard" class="menu-item">
-                        <i class="fas fa-tachometer-alt"></i>
-                        Main Dashboard
-                    </a>
-                    <a href="/feed" class="menu-item">
-                        <i class="fas fa-users"></i>
-                        Social
-                    </a>
-                    <a href="/communities" class="menu-item">
-                        <i class="fas fa-layer-group"></i>
-                        Your Communities
-                    </a>
-                    <a href="/your_sports" class="menu-item">
-                        <i class="fas fa-dumbbell"></i>
-                        Your Sports
-                    </a>
-                    <a href="/logout" class="menu-item logout">
-                        <i class="fas fa-sign-out-alt"></i>
-                        Logout
-                    </a>
-                </div>
-            </div>
+            <h1 class="profile-title">Profile</h1>
+            <p class="profile-subtitle">Manage your account settings</p>
         </div>
 
         <!-- Current Account Info -->
@@ -544,20 +424,57 @@
         </div>
     </div>
 
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
     <script>
-        // Menu Dropdown
-        function toggleMenu() {
-            const menuContent = document.getElementById('menuContent');
-            menuContent.classList.toggle('show');
-        }
-
-        // Close menu when clicking outside
-        window.onclick = function(event) {
-            const menuDropdown = document.querySelector('.menu-dropdown');
-            if (!menuDropdown.contains(event.target)) {
-                document.getElementById('menuContent').classList.remove('show');
-            }
-        }
+        $(document).ready(function() {
+            console.log('Profile page script loaded');
+            
+            let menuTimeout;
+            
+            // Show menu on button click
+            $('.menu-btn').on('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                console.log('Menu clicked');
+                $('.dropdown-content').slideDown(200);
+            });
+            
+            // Keep menu open when hovering over sidebar
+            $('.sidebar').on('mouseenter', function() {
+                clearTimeout(menuTimeout);
+            });
+            
+            // Keep menu open when hovering over dropdown
+            $('.dropdown-content').on('mouseenter', function() {
+                clearTimeout(menuTimeout);
+            });
+            
+            // Close menu when leaving sidebar area
+            $('.sidebar').on('mouseleave', function() {
+                menuTimeout = setTimeout(function() {
+                    $('.dropdown-content').slideUp(200);
+                }, 300); // 300ms delay before closing
+            });
+            
+            // Close menu when leaving dropdown
+            $('.dropdown-content').on('mouseleave', function() {
+                menuTimeout = setTimeout(function() {
+                    $('.dropdown-content').slideUp(200);
+                }, 300); // 300ms delay before closing
+            });
+            
+            // Close menu on escape key
+            $(document).on('keydown', function(e) {
+                if (e.key === 'Escape') {
+                    $('.dropdown-content').slideUp(200);
+                }
+            });
+            
+            // Debug info
+            console.log('Menu button found:', $('.menu-btn').length);
+            console.log('Dropdown found:', $('.dropdown-content').length);
+        });
 
         // Password Update
         document.getElementById('passwordForm').addEventListener('submit', function(e) {
