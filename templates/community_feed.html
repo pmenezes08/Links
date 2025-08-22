@@ -670,8 +670,13 @@
         }
         
         /* Announcement form styling */
+        .announcement-form {
+            margin-bottom: 20px;
+        }
+        
         .announcement-form textarea {
-            width: 100%;
+            width: calc(100% - 30px);
+            max-width: 100%;
             background: #1a1a1a;
             border: 1px solid #333;
             border-radius: 8px;
@@ -682,11 +687,23 @@
             line-height: 1.5;
             resize: vertical;
             min-height: 120px;
+            box-sizing: border-box;
+            margin: 0 auto;
+            display: block;
         }
         
         .announcement-form textarea:focus {
             outline: none;
             border-color: #4db6ac;
+        }
+        
+        .admin-info-modal {
+            max-width: 90vw;
+            width: 600px;
+        }
+        
+        .admin-info-modal .modal-body {
+            padding: 20px;
         }
     </style>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
