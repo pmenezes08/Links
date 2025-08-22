@@ -1299,6 +1299,15 @@ def admin():
                     c.execute("SELECT username, subscription FROM users")
                     users = c.fetchall()
                     
+                elif 'update_subscription' in request.form:
+                    user_to_update = request.form.get('username')
+                    new_subscription = request.form.get('new_subscription')
+                    c.execute("UPDATE users SET subscription=? WHERE username=?", (new_subscription, user_to_update))
+                    conn.commit()
+                    # Refresh users list
+                    c.execute("SELECT username, subscription FROM users")
+                    users = c.fetchall()
+                    
                 elif 'delete_user' in request.form:
                     user_to_delete = request.form.get('username')
                     
