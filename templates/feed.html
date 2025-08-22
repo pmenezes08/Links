@@ -188,6 +188,133 @@
             justify-content: flex-end;
             margin-top: 20px;
         }
+        
+        /* Right Sidebar Layout */
+        .main-content {
+            display: flex;
+            gap: 20px;
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .container.feed {
+            flex: 1;
+            max-width: 800px;
+        }
+        
+        .right-sidebar {
+            width: 300px;
+            flex-shrink: 0;
+        }
+        
+        .poll-sidebar-card {
+            background: #1a2526;
+            border: 1px solid #4db6ac;
+            border-radius: 8px;
+            padding: 20px;
+            position: sticky;
+            top: 20px;
+        }
+        
+        .poll-sidebar-card h3 {
+            color: #ffffff;
+            margin-bottom: 16px;
+            font-size: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .poll-sidebar-card h3 i {
+            color: #4db6ac;
+        }
+        
+        .poll-sidebar-card .form-group {
+            margin-bottom: 16px;
+        }
+        
+        .poll-sidebar-card label {
+            display: block;
+            margin-bottom: 6px;
+            color: #ffffff;
+            font-weight: 500;
+            font-size: 14px;
+        }
+        
+        .poll-sidebar-card input,
+        .poll-sidebar-card textarea {
+            width: 100%;
+            padding: 8px 10px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 6px;
+            background: rgba(255, 255, 255, 0.05);
+            color: #ffffff;
+            font-size: 13px;
+            box-sizing: border-box;
+        }
+        
+        .poll-sidebar-card input:focus,
+        .poll-sidebar-card textarea:focus {
+            outline: none;
+            border-color: #4db6ac;
+            box-shadow: 0 0 0 2px rgba(77, 182, 172, 0.2);
+        }
+        
+        .poll-sidebar-card textarea {
+            resize: vertical;
+            min-height: 60px;
+        }
+        
+        #sidebarPollOptions {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            margin-bottom: 8px;
+        }
+        
+        .btn-secondary.small {
+            padding: 6px 12px;
+            font-size: 12px;
+        }
+        
+        .poll-sidebar-card .form-actions {
+            margin-top: 16px;
+            justify-content: center;
+        }
+        
+        .poll-sidebar-card .btn {
+            width: 100%;
+            padding: 10px;
+            background: #4db6ac;
+            color: #ffffff;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+        }
+        
+        .poll-sidebar-card .btn:hover {
+            background: #37a69c;
+        }
+        
+        /* Mobile responsive */
+        @media (max-width: 1200px) {
+            .main-content {
+                flex-direction: column;
+            }
+            
+            .right-sidebar {
+                width: 100%;
+                order: -1;
+            }
+            
+            .poll-sidebar-card {
+                position: static;
+            }
+        }
     </style>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <meta name="current-username" content="{{ username }}">
@@ -213,7 +340,8 @@
     </div>
 
     <!-- Main Content -->
-    <div class="container feed">
+    <div class="main-content">
+        <div class="container feed">
 
         <!-- Composer -->
         <div class="composer-card">
@@ -229,9 +357,6 @@
                                 <input type="file" id="image-upload" name="image" accept="image/*" style="display: none;">
                                 <span id="selected-file-name" class="selected-file-name"></span>
                             </div>
-                            <button type="button" class="sleek-btn small" onclick="showPollModal()">
-                                <i class="fas fa-poll-h"></i> Poll
-                            </button>
                             <button type="submit" class="sleek-btn small">Post</button>
                         </div>
                     </div>
@@ -309,6 +434,34 @@
             {% else %}
                 <p>No posts yet. Be the first!</p>
             {% endif %}
+        </div>
+        
+        <!-- Right Sidebar for Poll Creation -->
+        <div class="right-sidebar">
+            <div class="poll-sidebar-card">
+                <h3><i class="fas fa-poll-h"></i> Create Poll</h3>
+                <form id="pollSidebarForm">
+                    <div class="form-group">
+                        <label for="sidebarPollContent">Post Content (Optional)</label>
+                        <textarea id="sidebarPollContent" name="content" placeholder="Add some context..." rows="2"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label for="sidebarPollQuestion">Poll Question *</label>
+                        <input type="text" id="sidebarPollQuestion" name="question" placeholder="What would you like to ask?" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Poll Options *</label>
+                        <div id="sidebarPollOptions">
+                            <input type="text" name="options[]" placeholder="Option 1" required>
+                            <input type="text" name="options[]" placeholder="Option 2" required>
+                        </div>
+                        <button type="button" onclick="addSidebarPollOption()" class="btn-secondary small">+ Add Option</button>
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" class="btn">Create Poll</button>
+                    </div>
+                </form>
+            </div>
         </div>
     </div>
 
@@ -448,8 +601,26 @@
             optionsContainer.appendChild(newOption);
         }
         
+        function addSidebarPollOption() {
+            const optionsContainer = document.getElementById('sidebarPollOptions');
+            const optionCount = optionsContainer.children.length;
+            
+            if (optionCount >= 6) {
+                alert('Maximum 6 options allowed');
+                return;
+            }
+            
+            const newOption = document.createElement('input');
+            newOption.type = 'text';
+            newOption.name = 'options[]';
+            newOption.placeholder = `Option ${optionCount + 1}`;
+            newOption.required = true;
+            
+            optionsContainer.appendChild(newOption);
+        }
+        
         function setupPollHandlers() {
-            // Poll form submission
+            // Poll form submission (modal)
             document.getElementById('pollForm').addEventListener('submit', function(e) {
                 e.preventDefault();
                 
@@ -464,6 +635,38 @@
                     if (data.success) {
                         alert('Poll created successfully!');
                         closePollModal();
+                        location.reload(); // Refresh to show new poll
+                    } else {
+                        alert('Error creating poll: ' + data.error);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('Error creating poll');
+                });
+            });
+            
+            // Sidebar poll form submission
+            document.getElementById('pollSidebarForm').addEventListener('submit', function(e) {
+                e.preventDefault();
+                
+                const formData = new FormData(this);
+                
+                fetch('/create_poll', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        alert('Poll created successfully!');
+                        this.reset();
+                        // Reset to 2 options
+                        const optionsContainer = document.getElementById('sidebarPollOptions');
+                        optionsContainer.innerHTML = `
+                            <input type="text" name="options[]" placeholder="Option 1" required>
+                            <input type="text" name="options[]" placeholder="Option 2" required>
+                        `;
                         location.reload(); // Refresh to show new poll
                     } else {
                         alert('Error creating poll: ' + data.error);
