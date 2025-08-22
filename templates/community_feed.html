@@ -53,7 +53,7 @@
             border-color: {{ community.accent_color or '#4db6ac' }} !important;
         }
 
-        /* Admin Info Styles */
+        /* Admin Announcements Styles */
         .community-actions {
             display: flex;
             gap: 10px;
@@ -78,93 +78,141 @@
             opacity: 0.8;
         }
 
-        .admin-info-section {
+        /* Lateral Modal Styles */
+        .lateral-modal {
+            position: fixed;
+            top: 0;
+            right: -400px;
+            width: 400px;
+            height: 100vh;
             background-color: {{ community.card_color or '#1a2526' }} !important;
-            border: 1px solid {{ community.accent_color or '#4db6ac' }} !important;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            padding: 16px;
+            border-left: 1px solid {{ community.accent_color or '#4db6ac' }} !important;
+            z-index: 1000;
+            transition: right 0.3s ease;
+            overflow-y: auto;
         }
 
-        .admin-info-header {
+        .lateral-modal.open {
+            right: 0;
+        }
+
+        .lateral-modal-content {
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .lateral-modal-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 16px;
-            padding-bottom: 8px;
+            padding: 20px;
             border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            background: rgba(255, 255, 255, 0.03);
         }
 
-        .admin-info-header h3 {
+        .lateral-modal-header h3 {
             color: {{ community.text_color or '#ffffff' }} !important;
-            font-size: 16px;
+            font-size: 18px;
             margin: 0;
             display: flex;
             align-items: center;
-            gap: 6px;
+            gap: 8px;
         }
 
-        .close-admin-info {
+        .close-lateral-modal {
             background: none;
             border: none;
             color: {{ community.text_color or '#ffffff' }} !important;
             cursor: pointer;
-            font-size: 16px;
+            font-size: 18px;
             padding: 4px;
         }
 
-        .admin-info-content {
-            display: grid;
-            gap: 20px;
+        .lateral-modal-body {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
         }
 
-        .info-section, .files-section {
-            background: rgba(255, 255, 255, 0.03);
-            border-radius: 6px;
-            padding: 12px;
+        .admin-section {
+            margin-bottom: 30px;
         }
 
-        .info-section h4, .files-section h4 {
+        .admin-section h4 {
             color: {{ community.text_color or '#ffffff' }} !important;
-            font-size: 14px;
-            margin: 0 0 8px 0;
+            font-size: 16px;
+            margin: 0 0 12px 0;
+            display: flex;
+            align-items: center;
+            gap: 6px;
         }
 
         #communityInfo {
             width: 100%;
-            background-color: {{ community.card_color or '#1a2526' }} !important;
+            background-color: rgba(255, 255, 255, 0.05) !important;
             color: {{ community.text_color or '#ffffff' }} !important;
             border: 1px solid {{ community.accent_color or '#4db6ac' }} !important;
-            border-radius: 4px;
-            padding: 8px;
-            font-size: 13px;
-            resize: vertical;
-            margin-bottom: 8px;
-        }
-
-        .file-upload-area {
-            border: 2px dashed {{ community.accent_color or '#4db6ac' }} !important;
             border-radius: 6px;
-            padding: 16px;
-            text-align: center;
+            padding: 12px;
+            font-size: 14px;
+            resize: vertical;
             margin-bottom: 12px;
+            min-height: 120px;
         }
 
-        .file-upload-area input[type="file"] {
+        .admin-btn {
+            background-color: {{ community.accent_color or '#4db6ac' }} !important;
+            color: {{ community.text_color or '#ffffff' }} !important;
+            border: none;
+            padding: 10px 16px;
+            border-radius: 6px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            width: 100%;
+            justify-content: center;
+        }
+
+        .admin-btn:hover {
+            opacity: 0.8;
+        }
+
+        .file-upload-zone {
+            border: 2px dashed {{ community.accent_color or '#4db6ac' }} !important;
+            border-radius: 8px;
+            padding: 20px;
+            text-align: center;
+            margin-bottom: 16px;
+            transition: all 0.2s ease;
+        }
+
+        .file-upload-zone:hover {
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        .file-upload-zone input[type="file"] {
             display: none;
         }
 
-        .file-upload-label {
+        .file-drop-zone {
             color: {{ community.accent_color or '#4db6ac' }} !important;
             cursor: pointer;
             display: flex;
+            flex-direction: column;
             align-items: center;
-            justify-content: center;
-            gap: 6px;
-            font-size: 13px;
+            gap: 8px;
+            font-size: 14px;
         }
 
-        .community-files {
+        .file-drop-zone i {
+            font-size: 24px;
+        }
+
+        .files-list {
             display: grid;
             gap: 8px;
         }
@@ -174,8 +222,8 @@
             align-items: center;
             justify-content: space-between;
             background: rgba(255, 255, 255, 0.05);
-            border-radius: 4px;
-            padding: 8px 12px;
+            border-radius: 6px;
+            padding: 10px 12px;
         }
 
         .file-info {
@@ -183,12 +231,12 @@
             align-items: center;
             gap: 8px;
             color: {{ community.text_color or '#ffffff' }} !important;
-            font-size: 12px;
+            font-size: 13px;
         }
 
         .file-actions {
             display: flex;
-            gap: 4px;
+            gap: 6px;
         }
 
         .file-action-btn {
@@ -196,12 +244,13 @@
             border: none;
             color: {{ community.accent_color or '#4db6ac' }} !important;
             cursor: pointer;
-            padding: 2px 4px;
-            font-size: 11px;
+            padding: 4px 6px;
+            font-size: 12px;
+            border-radius: 3px;
         }
 
         .file-action-btn:hover {
-            opacity: 0.7;
+            background: rgba(255, 255, 255, 0.1);
         }
     </style>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
@@ -240,7 +289,7 @@
                 </button>
                 {% if username == community.creator_username or username == 'admin' %}
                 <button class="admin-info-btn" onclick="showAdminInfoModal()">
-                    <i class="fas fa-info-circle"></i> Community Info
+                    <i class="fas fa-bullhorn"></i> Announcements
                 </button>
                 {% endif %}
             </div>
@@ -349,27 +398,27 @@
         </div>
     </div>
 
-    <!-- Admin Info Lateral Modal -->
+    <!-- Admin Announcements Lateral Modal -->
     {% if username == community.creator_username or username == 'admin' %}
     <div id="adminInfoModal" class="lateral-modal">
         <div class="lateral-modal-content">
             <div class="lateral-modal-header">
-                <h3><i class="fas fa-cog"></i> Community Management</h3>
+                <h3><i class="fas fa-bullhorn"></i> Community Announcements</h3>
                 <button class="close-lateral-modal" onclick="closeAdminInfoModal()">
                     <i class="fas fa-times"></i>
                 </button>
             </div>
             <div class="lateral-modal-body">
                 <div class="admin-section">
-                    <h4><i class="fas fa-info-circle"></i> Important Information</h4>
-                    <textarea id="communityInfo" placeholder="Add important information for community members..." rows="6">{{ community.info or '' }}</textarea>
+                    <h4><i class="fas fa-edit"></i> Announcement</h4>
+                    <textarea id="communityInfo" placeholder="Write an announcement for community members..." rows="6">{{ community.info or '' }}</textarea>
                     <button onclick="saveCommunityInfo()" class="admin-btn">
-                        <i class="fas fa-save"></i> Save Information
+                        <i class="fas fa-paper-plane"></i> Publish Announcement
                     </button>
                 </div>
                 
                 <div class="admin-section">
-                    <h4><i class="fas fa-file-upload"></i> Important Files</h4>
+                    <h4><i class="fas fa-paperclip"></i> Attached Files</h4>
                     <div class="file-upload-zone">
                         <input type="file" id="communityFile" multiple accept=".pdf,.doc,.docx,.txt,.jpg,.jpeg,.png,.gif">
                         <label for="communityFile" class="file-drop-zone">
@@ -398,13 +447,13 @@
             loadCommunityFiles();
         });
 
-        // Admin Info Functions
+        // Admin Announcements Functions
         function showAdminInfoModal() {
-            document.getElementById('adminInfoSection').style.display = 'block';
+            document.getElementById('adminInfoModal').classList.add('open');
         }
 
-        function hideAdminInfo() {
-            document.getElementById('adminInfoSection').style.display = 'none';
+        function closeAdminInfoModal() {
+            document.getElementById('adminInfoModal').classList.remove('open');
         }
 
         function saveCommunityInfo() {
