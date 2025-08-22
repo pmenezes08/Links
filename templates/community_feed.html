@@ -854,6 +854,12 @@
         
         #pollsModal .modal-header .close {
             color: #9fb0b5;
+            font-size: 18px;
+            font-weight: normal;
+            cursor: pointer;
+            padding: 5px;
+            border-radius: 3px;
+            transition: all 0.2s ease;
         }
         
         #pollsModal .modal-header .close:hover {
@@ -865,6 +871,12 @@
         #pollsModal {
             max-width: 90vw;
             width: 500px;
+        }
+        
+        #pollsModal .modal-content {
+            background: transparent;
+            border: none;
+            box-shadow: none;
         }
         
         #pollsModal .modal-body {
@@ -1953,7 +1965,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h2><i class="fas fa-poll-h"></i> Polls</h2>
-                <span class="close" onclick="closePollsModal()" style="font-size: 18px; font-weight: normal; color: #9fb0b5; cursor: pointer; padding: 5px; border-radius: 3px; transition: all 0.2s ease;">&times;</span>
+                <span class="close" onclick="closePollsModal()">&times;</span>
             </div>
             <div class="modal-body">
                 <div class="polls-tabs">
