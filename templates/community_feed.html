@@ -582,38 +582,70 @@
         }
         
         function updatePollDisplay(pollOptionElement, pollResults) {
+            // Check if we're in the main feed or in the modal
             const pollContainer = pollOptionElement.closest('.poll-container-compact');
-            if (!pollContainer) {
-                console.error('Poll container not found');
-                return;
-            }
+            const pollItem = pollOptionElement.closest('.poll-item');
             
-            const totalVotes = pollResults.reduce((sum, option) => sum + option.votes, 0);
-            
-            // Update each option
-            pollResults.forEach(option => {
-                const optionElement = pollContainer.querySelector(`[data-option-id="${option.id}"]`);
-                if (optionElement) {
-                    const votesElement = optionElement.querySelector('.poll-option-votes-compact');
-                    if (votesElement) {
-                        votesElement.textContent = option.votes;
+            if (pollContainer) {
+                // Update main feed poll
+                const totalVotes = pollResults.reduce((sum, option) => sum + option.votes, 0);
+                
+                // Update each option
+                pollResults.forEach(option => {
+                    const optionElement = pollContainer.querySelector(`[data-option-id="${option.id}"]`);
+                    if (optionElement) {
+                        const votesElement = optionElement.querySelector('.poll-option-votes-compact');
+                        if (votesElement) {
+                            votesElement.textContent = option.votes;
+                        }
                     }
+                });
+                
+                // Update total votes
+                const totalElement = pollContainer.querySelector('.poll-total-compact');
+                if (totalElement) {
+                    totalElement.textContent = `${totalVotes} votes`;
                 }
-            });
-            
-            // Update total votes
-            const totalElement = pollContainer.querySelector('.poll-total-compact');
-            if (totalElement) {
-                totalElement.textContent = `${totalVotes} votes`;
-            }
-            
-            // Add voted indicator
-            const pollFooter = pollContainer.querySelector('.poll-footer-compact');
-            if (pollFooter && !pollFooter.querySelector('.poll-voted-compact')) {
-                const votedSpan = document.createElement('span');
-                votedSpan.className = 'poll-voted-compact';
-                votedSpan.innerHTML = '<i class="fas fa-check"></i>';
-                pollFooter.appendChild(votedSpan);
+                
+                // Add voted indicator
+                const pollFooter = pollContainer.querySelector('.poll-footer-compact');
+                if (pollFooter && !pollFooter.querySelector('.poll-voted-compact')) {
+                    const votedSpan = document.createElement('span');
+                    votedSpan.className = 'poll-voted-compact';
+                    votedSpan.innerHTML = '<i class="fas fa-check"></i>';
+                    pollFooter.appendChild(votedSpan);
+                }
+            } else if (pollItem) {
+                // Update modal poll
+                const totalVotes = pollResults.reduce((sum, option) => sum + option.votes, 0);
+                
+                // Update each option
+                pollResults.forEach(option => {
+                    const optionElement = pollItem.querySelector(`[data-option-id="${option.id}"]`);
+                    if (optionElement) {
+                        const votesElement = optionElement.querySelector('.poll-item-option-votes');
+                        if (votesElement) {
+                            votesElement.textContent = option.votes;
+                        }
+                    }
+                });
+                
+                // Update total votes
+                const totalElement = pollItem.querySelector('.poll-item-total');
+                if (totalElement) {
+                    totalElement.textContent = `${totalVotes} total votes`;
+                }
+                
+                // Add voted indicator
+                const pollFooter = pollItem.querySelector('.poll-item-footer');
+                if (pollFooter && !pollFooter.querySelector('.poll-item-voted')) {
+                    const votedDiv = document.createElement('div');
+                    votedDiv.className = 'poll-item-voted';
+                    votedDiv.innerHTML = '<i class="fas fa-check"></i> You voted';
+                    pollFooter.appendChild(votedDiv);
+                }
+            } else {
+                console.error('Poll container not found - neither .poll-container-compact nor .poll-item');
             }
         }
         
