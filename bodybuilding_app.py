@@ -3727,12 +3727,18 @@ def community_background_file(filename):
         logger.info(f"Community background request: {filename}")
         # Check if file exists
         import os
-        file_path = os.path.join('static', 'community_backgrounds', filename)
-        if not os.path.exists(file_path):
-            logger.warning(f"Community background file not found: {file_path}")
+        # Check in uploads folder first (where files are actually saved)
+        upload_path = os.path.join(app.config['UPLOAD_FOLDER'], 'community_backgrounds', filename)
+        static_path = os.path.join('static', 'community_backgrounds', filename)
+        
+        if os.path.exists(upload_path):
+            return send_from_directory(os.path.join(app.config['UPLOAD_FOLDER'], 'community_backgrounds'), filename)
+        elif os.path.exists(static_path):
+            return send_from_directory('static/community_backgrounds', filename)
+        else:
+            logger.warning(f"Community background file not found in uploads or static: {filename}")
             # Return 404 so the frontend can handle it properly
             return "Image not found", 404
-        return send_from_directory('static/community_backgrounds', filename)
     except Exception as e:
         logger.error(f"Error serving community background {filename}: {str(e)}")
         return "Error serving image", 500
