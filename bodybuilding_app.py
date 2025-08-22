@@ -4538,6 +4538,14 @@ def test_database():
         cursor.execute("PRAGMA table_info(communities)")
         community_columns = cursor.fetchall()
         
+        # Check if required columns exist
+        column_names = [col[1] for col in community_columns]
+        missing_columns = []
+        if 'info' not in column_names:
+            missing_columns.append('info')
+        if 'info_updated_at' not in column_names:
+            missing_columns.append('info_updated_at')
+        
         conn.close()
         
         return jsonify({
@@ -4545,7 +4553,9 @@ def test_database():
             'exercise_count': exercise_count,
             'workout_count': workout_count,
             'sets_count': sets_count,
-            'community_columns': [col[1] for col in community_columns]
+            'community_columns': column_names,
+            'missing_columns': missing_columns,
+            'needs_fix': len(missing_columns) > 0
         })
         
     except Exception as e:
@@ -4561,15 +4571,25 @@ def fix_communities_table():
         cursor.execute("PRAGMA table_info(communities)")
         columns = [col[1] for col in cursor.fetchall()]
         
+        changes_made = []
+        
         if 'info' not in columns:
             logger.info("Adding info column to communities table...")
             cursor.execute("ALTER TABLE communities ADD COLUMN info TEXT")
-            conn.commit()
-            return jsonify({'success': True, 'message': 'Info column added successfully'})
-        else:
-            return jsonify({'success': True, 'message': 'Info column already exists'})
+            changes_made.append('info column added')
         
+        if 'info_updated_at' not in columns:
+            logger.info("Adding info_updated_at column to communities table...")
+            cursor.execute("ALTER TABLE communities ADD COLUMN info_updated_at TEXT")
+            changes_made.append('info_updated_at column added')
+        
+        conn.commit()
         conn.close()
+        
+        if changes_made:
+            return jsonify({'success': True, 'message': f'Database updated: {", ".join(changes_made)}'})
+        else:
+            return jsonify({'success': True, 'message': 'All columns already exist'})
         
     except Exception as e:
         logger.error(f"Error fixing communities table: {e}")
