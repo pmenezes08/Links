@@ -80,14 +80,11 @@
         }
 
         .admin-info-btn.has-notifications {
-            background-color: #ff6b6b !important;
-            animation: pulse 2s infinite;
+            background-color: #2d8a7e !important; /* Dark turquoise for unread */
         }
 
-        @keyframes pulse {
-            0% { transform: scale(1); }
-            50% { transform: scale(1.05); }
-            100% { transform: scale(1); }
+        .admin-info-btn.read {
+            background-color: #4db6ac !important; /* Light turquoise for read */
         }
 
         /* Announcement Display Styles */
@@ -152,6 +149,44 @@
         }
 
         .announcement-content {
+            padding: 16px;
+            color: {{ community.text_color or '#ffffff' }} !important;
+            font-size: 14px;
+            line-height: 1.6;
+            white-space: pre-wrap;
+        }
+
+        /* Current Announcement in Modal */
+        .current-announcement-section {
+            margin-bottom: 30px;
+            padding: 16px;
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .announcement-display {
+            background: rgba(255, 255, 255, 0.02);
+            border-radius: 6px;
+            overflow: hidden;
+        }
+
+        .announcement-display .announcement-meta {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 16px;
+            background: rgba(255, 255, 255, 0.05);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .announcement-display .announcement-date {
+            color: rgba(255, 255, 255, 0.6) !important;
+            font-size: 12px;
+            font-weight: 400;
+        }
+
+        .announcement-display .announcement-content {
             padding: 16px;
             color: {{ community.text_color or '#ffffff' }} !important;
             font-size: 14px;
@@ -379,26 +414,7 @@
             </div>
         </div>
 
-        <!-- Announcement Display -->
-        {% if community.info and community.info.strip() %}
-        <div class="announcement-card">
-            <div class="announcement-header">
-                <div class="announcement-title">
-                    <i class="fas fa-bullhorn"></i>
-                    <span>Announcement</span>
-                </div>
-                <div class="announcement-meta">
-                    <span class="announcement-date">Recently</span>
-                    <button class="mark-read-btn" onclick="markAnnouncementRead()" title="Mark as read">
-                        <i class="fas fa-check"></i>
-                    </button>
-                </div>
-            </div>
-            <div class="announcement-content">
-                {{ community.info | nl2br | safe }}
-            </div>
-        </div>
-        {% endif %}
+
 
         <!-- Composer -->
         <div class="composer-card">
@@ -512,8 +528,26 @@
                 </button>
             </div>
             <div class="lateral-modal-body">
+                <!-- Current Announcement Display -->
+                {% if community.info and community.info.strip() %}
+                <div class="current-announcement-section">
+                    <h4><i class="fas fa-bullhorn"></i> Current Announcement</h4>
+                    <div class="announcement-display">
+                        <div class="announcement-meta">
+                            <span class="announcement-date">{{ community.info_updated_at if community.info_updated_at else 'Recently' }}</span>
+                            <button class="mark-read-btn" onclick="markAnnouncementRead()" title="Mark as read">
+                                <i class="fas fa-check"></i>
+                            </button>
+                        </div>
+                        <div class="announcement-content">
+                            {{ community.info | nl2br | safe }}
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+                
                 <div class="admin-section">
-                    <h4><i class="fas fa-edit"></i> Announcement</h4>
+                    <h4><i class="fas fa-edit"></i> Update Announcement</h4>
                     <textarea id="communityInfo" placeholder="Write an announcement for community members..." rows="6">{{ community.info or '' }}</textarea>
                     <button onclick="saveCommunityInfo()" class="admin-btn">
                         <i class="fas fa-paper-plane"></i> Publish Announcement
@@ -588,10 +622,11 @@
         function markAnnouncementRead() {
             // Store in localStorage that user has read this announcement
             localStorage.setItem('announcement_read_{{ community.id }}', 'true');
-            // Remove notification styling from button
+            // Update button styling to show as read
             const btn = document.querySelector('.admin-info-btn');
             if (btn) {
                 btn.classList.remove('has-notifications');
+                btn.classList.add('read');
             }
         }
 
@@ -604,10 +639,14 @@
             const hasAnnouncement = {{ 'true' if community.info and community.info.strip() else 'false' }};
             const hasBeenRead = localStorage.getItem('announcement_read_{{ community.id }}') === 'true';
             
-            if (hasAnnouncement && !hasBeenRead) {
-                const btn = document.querySelector('.admin-info-btn');
-                if (btn) {
-                    btn.classList.add('has-notifications');
+            const btn = document.querySelector('.admin-info-btn');
+            if (btn) {
+                if (hasAnnouncement) {
+                    if (hasBeenRead) {
+                        btn.classList.add('read');
+                    } else {
+                        btn.classList.add('has-notifications');
+                    }
                 }
             }
         }
