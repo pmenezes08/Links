@@ -3050,7 +3050,9 @@ def community_feed(community_id):
             
     except Exception as e:
         logger.error(f"Error loading community feed: {str(e)}")
-        return jsonify({'success': False, 'error': 'Failed to load community feed'}), 500
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        return jsonify({'success': False, 'error': f'Failed to load community feed: {str(e)}'}), 500
 
 @app.errorhandler(500)
 def internal_server_error(e):
@@ -4620,6 +4622,42 @@ def test_format():
         'final_content': content,
         'content_lines': content.split('\n')
     })
+
+@app.route('/test_community_template')
+def test_community_template():
+    """Test route to check if community template renders correctly"""
+    try:
+        # Create a mock community object
+        mock_community = {
+            'id': 1,
+            'name': 'Test Community',
+            'type': 'Test',
+            'creator_username': 'admin',
+            'join_code': 'TEST123',
+            'created_at': '2025-01-01',
+            'description': 'Test description',
+            'location': 'Test location',
+            'background_path': '',
+            'info': 'Test announcement\nWith multiple lines',
+            'info_updated_at': '2025-01-01 12:00:00',
+            'template': 'default',
+            'background_color': '#2d3839',
+            'text_color': '#ffffff',
+            'accent_color': '#4db6ac',
+            'card_color': '#1a2526'
+        }
+        
+        return render_template('community_feed.html', 
+                            posts=[], 
+                            community=mock_community,
+                            username='admin')
+    except Exception as e:
+        import traceback
+        return jsonify({
+            'success': False, 
+            'error': str(e), 
+            'traceback': traceback.format_exc()
+        })
 
 # Community Announcements Routes
 @app.route('/save_community_info', methods=['POST'])
