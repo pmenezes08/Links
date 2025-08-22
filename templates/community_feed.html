@@ -1808,7 +1808,8 @@
                         
                         {% if post.image_path and post.image_path != 'None' and post.image_path != '' %}
                             <div class="post-image">
-                                <img src="{{ url_for('uploaded_file', filename=post.image_path) }}" 
+                                <!-- Debug: {{ post.image_path }} -->
+                                <img src="{{ url_for('uploaded_file', filename=post.image_path.replace('uploads/', '')) }}" 
                                      alt="Post image" 
                                      loading="lazy" 
                                      onerror="console.log('Image failed to load:', this.src); this.style.display='none'; this.parentElement.innerHTML='<div style=\"padding: 20px; text-align: center; color: #9fb0b5;\">Image could not be loaded</div>';" 
