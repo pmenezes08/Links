@@ -58,7 +58,7 @@
 		.join-community-form {
 			display: flex;
 			gap: 8px;
-			align-items: center;
+			align-items: flex-end;
 			flex-wrap: wrap;
 		}
 
@@ -173,6 +173,7 @@
 			max-width: 800px;
 			max-height: 85vh;
 			overflow-y: auto;
+			min-height: 400px;
 		}
 
 		.communities-modal .modal-header {
@@ -193,7 +194,8 @@
 
 		.communities-list {
 			display: grid;
-			gap: 8px;
+			gap: 12px;
+			min-height: 300px;
 		}
 
 		.community-card {
@@ -336,24 +338,29 @@
 
 		.no-communities {
 			text-align: center;
-			padding: 30px 20px;
+			padding: 60px 20px;
 			color: rgba(255, 255, 255, 0.5);
+			min-height: 300px;
+			display: flex;
+			flex-direction: column;
+			align-items: center;
+			justify-content: center;
 		}
 
 		.no-communities i {
-			font-size: 28px;
-			margin-bottom: 8px;
+			font-size: 32px;
+			margin-bottom: 12px;
 			color: #4db6ac;
 		}
 
 		.no-communities h4 {
-			font-size: 14px;
-			margin-bottom: 4px;
+			font-size: 16px;
+			margin-bottom: 6px;
 			color: #ffffff;
 		}
 
 		.no-communities p {
-			font-size: 12px;
+			font-size: 13px;
 			margin: 0;
 		}
 
