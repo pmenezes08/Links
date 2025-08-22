@@ -2682,7 +2682,13 @@ def create_poll():
             post_id = c.lastrowid
             
             # Get single vote setting
-            single_vote = request.form.get('single_vote', 'true').lower() == 'true'
+            single_vote_raw = request.form.get('single_vote', 'true')
+            logger.info(f"Creating poll - single_vote raw value: {single_vote_raw}")
+            single_vote = single_vote_raw.lower() == 'true'
+            logger.info(f"Creating poll - single_vote processed: {single_vote}")
+            
+            # Log all form data for debugging
+            logger.info(f"Creating poll - all form data: {dict(request.form)}")
             
             # Create the poll
             c.execute("INSERT INTO polls (post_id, question, created_by, created_at, single_vote) VALUES (?, ?, ?, ?, ?)",
