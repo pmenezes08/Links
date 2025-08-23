@@ -15,10 +15,13 @@
             padding: 20px;
         }
         
-        /* Polls Toggle Button */
+        /* Polls Toggle and Edit Community Button Container */
         .polls-toggle-container {
             margin: 5px 0 15px 0;
             text-align: left;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
         }
         
         .polls-toggle-btn {
@@ -304,14 +307,16 @@
         .community-header-image {
             width: 100%;
             max-width: 800px;
+            height: 200px;
             margin: 0 auto 20px auto;
             border-radius: 12px;
             overflow: hidden;
+            position: relative;
         }
         
         .community-header-image img {
             width: 100%;
-            height: 200px;
+            height: 100%;
             object-fit: cover;
             display: block;
         }
@@ -2527,18 +2532,18 @@
             <button class="links-btn" onclick="showLinksModal()">
                 <i class="fas fa-link"></i> Useful Links
             </button>
+        </div>
+
+        <!-- Toggle Button for Active Polls and Edit Community -->
+        <div class="polls-toggle-container" id="pollsToggleContainer">
+            <button class="polls-toggle-btn" onclick="togglePollsSidebar()" style="display: none;">
+                <i class="fas fa-poll-h"></i> See active polls
+            </button>
             {% if username == community.creator_username or username == 'admin' %}
             <button class="edit-community-btn" onclick="showEditCommunityModal()">
                 <i class="fas fa-edit"></i> Edit Community
             </button>
             {% endif %}
-        </div>
-
-        <!-- Toggle Button for Active Polls -->
-        <div class="polls-toggle-container" id="pollsToggleContainer" style="display: none;">
-            <button class="polls-toggle-btn" onclick="togglePollsSidebar()">
-                <i class="fas fa-poll-h"></i> See active polls
-            </button>
         </div>
 
         <!-- Composer -->
@@ -2859,14 +2864,14 @@
         // Toggle polls sidebar
         function togglePollsSidebar() {
             const sidebar = document.getElementById('pollsSidebar');
-            const toggleBtn = document.getElementById('pollsToggleContainer');
+            const toggleBtn = document.querySelector('.polls-toggle-btn');
             
             if (sidebar.classList.contains('collapsed')) {
                 sidebar.classList.remove('collapsed');
-                toggleBtn.style.display = 'none';
+                if (toggleBtn) toggleBtn.style.display = 'none';
             } else {
                 sidebar.classList.add('collapsed');
-                toggleBtn.style.display = 'block';
+                if (toggleBtn) toggleBtn.style.display = 'inline-flex';
             }
         }
         
@@ -2877,12 +2882,12 @@
                 .then(data => {
                     if (data.success) {
                         const pollsList = document.getElementById('sidebarPollsList');
-                        const toggleContainer = document.getElementById('pollsToggleContainer');
+                        const toggleBtn = document.querySelector('.polls-toggle-btn');
                         
                         if (data.polls.length === 0) {
-                            // No polls - hide everything
+                            // No polls - hide polls button only
                             pollsList.innerHTML = '';
-                            toggleContainer.style.display = 'none';
+                            if (toggleBtn) toggleBtn.style.display = 'none';
                             document.getElementById('pollsSidebar').classList.add('collapsed');
                             return;
                         }
@@ -2890,7 +2895,7 @@
                         // Show toggle button if sidebar is collapsed
                         const sidebar = document.getElementById('pollsSidebar');
                         if (sidebar.classList.contains('collapsed')) {
-                            toggleContainer.style.display = 'block';
+                            if (toggleBtn) toggleBtn.style.display = 'inline-flex';
                         }
                         
                         let pollsHTML = '';
