@@ -6,7 +6,7 @@
     <title>Social</title>
     <!-- <meta name="csrf-token" content="{{ csrf_token }}"> -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}?v=2.0">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}?v=3.0">
     <style>
         body {
             background-color: #000000 !important;
@@ -278,10 +278,11 @@
             width: 90%;
         }
         
+        #calendarModal .modal-body,
         .calendar-modal-content .modal-body {
-            padding: 10px;
-            max-height: 90vh;
-            overflow-y: auto;
+            padding: 10px !important;
+            max-height: 90vh !important;
+            overflow-y: auto !important;
         }
         
         /* Fix close button for calendar modal */
@@ -315,18 +316,18 @@
         }
         
         /* Calendar Styles */
-        .calendar-container {
-            display: flex;
-            flex-direction: column;
-            gap: 5px;
-            max-width: 100%;
+        #calendarModal .calendar-container {
+            display: flex !important;
+            flex-direction: column !important;
+            gap: 5px !important;
+            max-width: 100% !important;
         }
         
-        .calendar-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 5px;
+        #calendarModal .calendar-header {
+            display: flex !important;
+            justify-content: space-between !important;
+            align-items: center !important;
+            margin-bottom: 5px !important;
         }
         
         .calendar-nav-btn {
@@ -350,44 +351,44 @@
             margin: 0;
         }
         
-        .calendar-grid {
-            background: rgba(255, 255, 255, 0.05);
-            border-radius: 6px;
-            padding: 5px;
+        #calendarModal .calendar-grid {
+            background: rgba(255, 255, 255, 0.05) !important;
+            border-radius: 6px !important;
+            padding: 5px !important;
         }
         
-        .calendar-weekdays {
-            display: grid;
-            grid-template-columns: repeat(7, 1fr);
-            gap: 1px;
-            margin-bottom: 2px;
+        #calendarModal .calendar-weekdays {
+            display: grid !important;
+            grid-template-columns: repeat(7, 1fr) !important;
+            gap: 1px !important;
+            margin-bottom: 2px !important;
         }
         
-        .weekday {
-            text-align: center;
-            padding: 3px;
-            color: #4db6ac;
-            font-weight: 600;
-            font-size: 10px;
+        #calendarModal .weekday {
+            text-align: center !important;
+            padding: 3px !important;
+            color: #4db6ac !important;
+            font-weight: 600 !important;
+            font-size: 10px !important;
         }
         
-        .calendar-days {
-            display: grid;
-            grid-template-columns: repeat(7, 1fr);
-            gap: 1px;
-            background: rgba(255, 255, 255, 0.05);
+        #calendarModal .calendar-days {
+            display: grid !important;
+            grid-template-columns: repeat(7, 1fr) !important;
+            gap: 1px !important;
+            background: rgba(255, 255, 255, 0.05) !important;
         }
         
-        .calendar-day {
-            aspect-ratio: 1;
-            background: rgba(255, 255, 255, 0.02);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            padding: 2px;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            position: relative;
-            min-height: 25px;
-            font-size: 10px;
+        #calendarModal .calendar-day {
+            aspect-ratio: 1 !important;
+            background: rgba(255, 255, 255, 0.02) !important;
+            border: 1px solid rgba(255, 255, 255, 0.1) !important;
+            padding: 2px !important;
+            cursor: pointer !important;
+            transition: all 0.2s ease !important;
+            position: relative !important;
+            min-height: 25px !important;
+            font-size: 10px !important;
         }
         
         .calendar-day:hover {
@@ -452,33 +453,33 @@
         .event-dot-8 { background-color: #fd79a8; }
         .event-dot-9 { background-color: #fdcb6e; }
         
-        .event-item {
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 3px;
-            padding: 4px;
-            padding-left: 8px;
-            margin-bottom: 4px;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            position: relative;
-            border-left: 3px solid;
+        #calendarModal .event-item {
+            background: rgba(255, 255, 255, 0.05) !important;
+            border: 1px solid rgba(255, 255, 255, 0.1) !important;
+            border-radius: 3px !important;
+            padding: 4px !important;
+            padding-left: 8px !important;
+            margin-bottom: 4px !important;
+            cursor: pointer !important;
+            transition: all 0.2s ease !important;
+            position: relative !important;
+            border-left: 3px solid !important;
         }
         
-        .calendar-events {
-            background: rgba(255, 255, 255, 0.02);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 6px;
-            padding: 8px;
-            max-height: 150px;
-            overflow-y: auto;
-            overflow-x: hidden;
+        #calendarModal .calendar-events {
+            background: rgba(255, 255, 255, 0.02) !important;
+            border: 1px solid rgba(255, 255, 255, 0.1) !important;
+            border-radius: 6px !important;
+            padding: 8px !important;
+            max-height: 150px !important;
+            overflow-y: auto !important;
+            overflow-x: hidden !important;
         }
         
-        .calendar-events h4 {
-            color: #ffffff;
-            margin: 0 0 5px 0;
-            font-size: 12px;
+        #calendarModal .calendar-events h4 {
+            color: #ffffff !important;
+            margin: 0 0 5px 0 !important;
+            font-size: 12px !important;
         }
         
         .events-list {
@@ -494,30 +495,30 @@
             transform: translateX(2px);
         }
         
-        .event-title {
-            color: #ffffff;
-            font-weight: 500;
-            margin-bottom: 1px;
-            word-wrap: break-word;
-            overflow-wrap: break-word;
-            font-size: 11px;
-            line-height: 1.2;
+        #calendarModal .event-title {
+            color: #ffffff !important;
+            font-weight: 500 !important;
+            margin-bottom: 1px !important;
+            word-wrap: break-word !important;
+            overflow-wrap: break-word !important;
+            font-size: 11px !important;
+            line-height: 1.2 !important;
         }
         
-        .event-time {
-            color: #4db6ac;
-            font-size: 9px;
-            margin-bottom: 1px;
-            line-height: 1.2;
+        #calendarModal .event-time {
+            color: #4db6ac !important;
+            font-size: 9px !important;
+            margin-bottom: 1px !important;
+            line-height: 1.2 !important;
         }
         
-        .event-description {
-            color: #9fb0b5;
-            font-size: 9px;
-            word-wrap: break-word;
-            overflow-wrap: break-word;
-            white-space: pre-wrap;
-            line-height: 1.2;
+        #calendarModal .event-description {
+            color: #9fb0b5 !important;
+            font-size: 9px !important;
+            word-wrap: break-word !important;
+            overflow-wrap: break-word !important;
+            white-space: pre-wrap !important;
+            line-height: 1.2 !important;
         }
         
         .event-creator {
