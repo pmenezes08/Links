@@ -3036,6 +3036,120 @@ def get_historical_polls():
         logger.error(f"Error getting historical polls: {str(e)}")
         return jsonify({'success': False, 'error': str(e)})
 
+@app.route('/get_calendar_events')
+@login_required
+def get_calendar_events():
+    """Get all calendar events"""
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Get all calendar events
+            c.execute("""
+                SELECT id, username, title, date, time, description, created_at
+                FROM calendar_events
+                ORDER BY date ASC, time ASC
+            """)
+            events_raw = c.fetchall()
+            
+            events = []
+            for event in events_raw:
+                events.append({
+                    'id': event['id'],
+                    'username': event['username'],
+                    'title': event['title'],
+                    'date': event['date'],
+                    'time': event['time'],
+                    'description': event['description'],
+                    'created_at': event['created_at']
+                })
+            
+            return jsonify({'success': True, 'events': events})
+            
+    except Exception as e:
+        logger.error(f"Error getting calendar events: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/add_calendar_event', methods=['POST'])
+@login_required
+def add_calendar_event():
+    """Add a new calendar event"""
+    try:
+        username = session['username']
+        title = request.form.get('title', '').strip()
+        date = request.form.get('date', '').strip()
+        time = request.form.get('time', '').strip()
+        description = request.form.get('description', '').strip()
+        
+        # Validate required fields
+        if not title or not date:
+            return jsonify({'success': False, 'message': 'Title and date are required'})
+        
+        # Validate date format
+        try:
+            from datetime import datetime
+            datetime.strptime(date, '%Y-%m-%d')
+        except ValueError:
+            return jsonify({'success': False, 'message': 'Invalid date format'})
+        
+        # Validate time format if provided
+        if time:
+            try:
+                datetime.strptime(time, '%H:%M')
+            except ValueError:
+                return jsonify({'success': False, 'message': 'Invalid time format'})
+        
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Insert the event
+            c.execute("""
+                INSERT INTO calendar_events (username, title, date, time, description, created_at)
+                VALUES (?, ?, ?, ?, ?, datetime('now'))
+            """, (username, title, date, time if time else None, description if description else None))
+            
+            conn.commit()
+            
+            return jsonify({'success': True, 'message': 'Event added successfully'})
+            
+    except Exception as e:
+        logger.error(f"Error adding calendar event: {str(e)}")
+        return jsonify({'success': False, 'message': str(e)})
+
+@app.route('/delete_calendar_event', methods=['POST'])
+@login_required
+def delete_calendar_event():
+    """Delete a calendar event"""
+    try:
+        username = session['username']
+        event_id = request.form.get('event_id', type=int)
+        
+        if not event_id:
+            return jsonify({'success': False, 'message': 'Event ID is required'})
+        
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Check if user owns the event or is admin
+            c.execute("SELECT username FROM calendar_events WHERE id = ?", (event_id,))
+            event = c.fetchone()
+            
+            if not event:
+                return jsonify({'success': False, 'message': 'Event not found'})
+            
+            if event['username'] != username and username != 'admin':
+                return jsonify({'success': False, 'message': 'Unauthorized to delete this event'})
+            
+            # Delete the event
+            c.execute("DELETE FROM calendar_events WHERE id = ?", (event_id,))
+            conn.commit()
+            
+            return jsonify({'success': True, 'message': 'Event deleted successfully'})
+            
+    except Exception as e:
+        logger.error(f"Error deleting calendar event: {str(e)}")
+        return jsonify({'success': False, 'message': str(e)})
+
 @app.route('/delete_post', methods=['POST'])
 @login_required
 def delete_post():
