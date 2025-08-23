@@ -2027,6 +2027,7 @@ select:focus, input:focus {
     font-weight: 500;
 }
 
+/* Removed absolute positioning for members-btn - now handled in community_feed.html
 .members-btn {
     position: absolute;
     top: 20px;
@@ -2050,6 +2051,7 @@ select:focus, input:focus {
     border-color: rgba(255, 255, 255, 0.3);
     transform: translateY(-1px);
 }
+*/
 
 .community-header h1 {
     color: #ffffff;
@@ -4000,6 +4002,7 @@ select:focus, input:focus {
         font-size: 1.5em;
     }
     
+    /* Removed absolute positioning - now in community actions bar
     .members-btn {
         position: absolute;
         top: 10px;
@@ -4007,6 +4010,7 @@ select:focus, input:focus {
         padding: 6px 10px;
         font-size: 12px;
     }
+    */
     
     /* Profile */
     .profile-section {
