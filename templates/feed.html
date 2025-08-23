@@ -1301,10 +1301,22 @@
         
         function refreshCalendar() {
             console.log('Refreshing calendar...');
+            // Clear all local data first
+            calendarEvents = {};
+            eventColorMap = {};
+            // Force reload from server
             loadCalendarEvents(true);
             if (selectedDate) {
-                setTimeout(() => displayEventsForDate(selectedDate), 100);
+                setTimeout(() => displayEventsForDate(selectedDate), 200);
             }
+        }
+        
+        function clearAndReloadCalendar() {
+            // Complete reset of calendar data
+            calendarEvents = {};
+            eventColorMap = {};
+            renderCalendar();
+            loadCalendarEvents(true);
         }
         
         function showAddEventForm() {
@@ -1621,12 +1633,27 @@
             .then(data => {
                 console.log('Delete response data:', data);
                 if (data.success) {
-                    // Force refresh to get fresh data from server
-                    loadCalendarEvents(true);
-                    if (selectedDate) {
-                        // Delay to ensure calendar is reloaded
-                        setTimeout(() => displayEventsForDate(selectedDate), 100);
+                    // Immediately remove the event from local data
+                    for (let date in calendarEvents) {
+                        calendarEvents[date] = calendarEvents[date].filter(e => e.id !== numericEventId);
+                        if (calendarEvents[date].length === 0) {
+                            delete calendarEvents[date];
+                        }
                     }
+                    
+                    // Re-render calendar immediately
+                    renderCalendar();
+                    
+                    // Update the events display if a date is selected
+                    if (selectedDate) {
+                        displayEventsForDate(selectedDate);
+                    }
+                    
+                    // Then reload from server to ensure sync
+                    setTimeout(() => {
+                        loadCalendarEvents(true);
+                    }, 500);
+                    
                     alert('Event deleted successfully!');
                 } else {
                     console.error('Delete failed. Full response:', data);
@@ -1665,10 +1692,14 @@
                     .then(data => {
                         if (data.success) {
                             closeAddEventModal();
-                            loadCalendarEvents();
-                            if (selectedDate) {
-                                displayEventsForDate(selectedDate);
-                            }
+                            // Force refresh with fresh data
+                            loadCalendarEvents(true);
+                            // Update display after a short delay
+                            setTimeout(() => {
+                                if (selectedDate) {
+                                    displayEventsForDate(selectedDate);
+                                }
+                            }, 200);
                             alert('Event added successfully!');
                         } else {
                             alert('Error adding event: ' + (data.message || 'Unknown error'));
