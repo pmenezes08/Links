@@ -131,6 +131,7 @@ def init_database():
                       username TEXT NOT NULL,
                       title TEXT NOT NULL,
                       date TEXT NOT NULL,
+                      end_date TEXT,
                       time TEXT,
                       description TEXT,
                       created_at TEXT NOT NULL,

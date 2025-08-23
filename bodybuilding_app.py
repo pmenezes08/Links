@@ -3046,7 +3046,9 @@ def get_calendar_events():
             
             # Get all calendar events
             c.execute("""
-                SELECT id, username, title, date, time, description, created_at
+                SELECT id, username, title, date, 
+                       COALESCE(end_date, date) as end_date,
+                       time, description, created_at
                 FROM calendar_events
                 ORDER BY date ASC, time ASC
             """)
@@ -3059,6 +3061,7 @@ def get_calendar_events():
                     'username': event['username'],
                     'title': event['title'],
                     'date': event['date'],
+                    'end_date': event['end_date'],
                     'time': event['time'],
                     'description': event['description'],
                     'created_at': event['created_at']
@@ -3078,19 +3081,29 @@ def add_calendar_event():
         username = session['username']
         title = request.form.get('title', '').strip()
         date = request.form.get('date', '').strip()
+        end_date = request.form.get('end_date', '').strip()
         time = request.form.get('time', '').strip()
         description = request.form.get('description', '').strip()
         
         # Validate required fields
         if not title or not date:
-            return jsonify({'success': False, 'message': 'Title and date are required'})
+            return jsonify({'success': False, 'message': 'Title and start date are required'})
         
         # Validate date format
         try:
             from datetime import datetime
-            datetime.strptime(date, '%Y-%m-%d')
+            start_dt = datetime.strptime(date, '%Y-%m-%d')
         except ValueError:
-            return jsonify({'success': False, 'message': 'Invalid date format'})
+            return jsonify({'success': False, 'message': 'Invalid start date format'})
+        
+        # Validate end date if provided
+        if end_date:
+            try:
+                end_dt = datetime.strptime(end_date, '%Y-%m-%d')
+                if end_dt < start_dt:
+                    return jsonify({'success': False, 'message': 'End date cannot be before start date'})
+            except ValueError:
+                return jsonify({'success': False, 'message': 'Invalid end date format'})
         
         # Validate time format if provided
         if time:
@@ -3104,9 +3117,9 @@ def add_calendar_event():
             
             # Insert the event
             c.execute("""
-                INSERT INTO calendar_events (username, title, date, time, description, created_at)
-                VALUES (?, ?, ?, ?, ?, datetime('now'))
-            """, (username, title, date, time if time else None, description if description else None))
+                INSERT INTO calendar_events (username, title, date, end_date, time, description, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+            """, (username, title, date, end_date if end_date else None, time if time else None, description if description else None))
             
             conn.commit()
             
