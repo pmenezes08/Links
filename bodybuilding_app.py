@@ -1393,6 +1393,70 @@ def admin_test():
     return "Admin test route is working!"
                     
 
+@app.route('/profile/<username>')
+def public_profile(username):
+    """Public profile page for any user"""
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Check if user exists
+            c.execute("SELECT username FROM users WHERE username=?", (username,))
+            user = c.fetchone()
+            if not user:
+                flash('User not found', 'error')
+                return redirect(url_for('feed'))
+            
+            # Get profile data
+            c.execute("""
+                SELECT u.username, u.email, u.subscription, u.age, u.gender, 
+                       u.weight, u.height, u.blood_type, u.muscle_mass, u.bmi,
+                       u.country, u.city, u.industry,
+                       p.display_name, p.bio, p.location, p.website, 
+                       p.instagram, p.twitter, p.profile_picture, p.cover_photo,
+                       p.is_public
+                FROM users u
+                LEFT JOIN user_profiles p ON u.username = p.username
+                WHERE u.username = ?
+            """, (username,))
+            
+            profile_data = c.fetchone()
+            
+            # Get user's posts
+            c.execute("""
+                SELECT id, content, image_path, created_at 
+                FROM posts 
+                WHERE username = ? 
+                ORDER BY created_at DESC 
+                LIMIT 20
+            """, (username,))
+            posts = c.fetchall()
+            
+            # Get user's communities
+            c.execute("""
+                SELECT c.id, c.name, c.description, c.accent_color
+                FROM communities c
+                JOIN community_members cm ON c.id = cm.community_id
+                WHERE cm.username = ?
+                ORDER BY c.name
+            """, (username,))
+            communities = c.fetchall()
+            
+            # Check if viewing own profile
+            is_own_profile = 'username' in session and session['username'] == username
+            
+            return render_template('public_profile.html',
+                                 profile=profile_data,
+                                 posts=posts,
+                                 communities=communities,
+                                 is_own_profile=is_own_profile,
+                                 username=session.get('username'))
+                                 
+    except Exception as e:
+        print(f"Error loading profile: {e}")
+        flash('Error loading profile', 'error')
+        return redirect(url_for('feed'))
+
 @app.route('/profile')
 @login_required
 def profile():
@@ -1400,14 +1464,79 @@ def profile():
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
-            c.execute("SELECT username, email, subscription, age, gender, weight, height, blood_type, muscle_mass, bmi, country, city, industry FROM users WHERE username=?", (username,))
+            
+            # Get user data and profile data
+            c.execute("""
+                SELECT u.username, u.email, u.subscription, u.age, u.gender, 
+                       u.weight, u.height, u.blood_type, u.muscle_mass, u.bmi,
+                       u.country, u.city, u.industry,
+                       p.display_name, p.bio, p.location, p.website, 
+                       p.instagram, p.twitter, p.profile_picture, p.cover_photo,
+                       p.is_public
+                FROM users u
+                LEFT JOIN user_profiles p ON u.username = p.username
+                WHERE u.username = ?
+            """, (username,))
             user = c.fetchone()
+            
         if user:
             return render_template('profile.html', username=username, user=user)
         return render_template('index.html', error="User profile not found!")
     except Exception as e:
         logger.error(f"Error in profile for {username}: {str(e)}")
         abort(500)
+
+@app.route('/update_public_profile', methods=['POST'])
+@login_required
+def update_public_profile():
+    """Update public profile information"""
+    username = session['username']
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Get form data
+            display_name = request.form.get('display_name', '').strip()
+            bio = request.form.get('bio', '').strip()
+            location = request.form.get('location', '').strip()
+            website = request.form.get('website', '').strip()
+            instagram = request.form.get('instagram', '').strip()
+            twitter = request.form.get('twitter', '').strip()
+            is_public = 1 if request.form.get('is_public') == 'on' else 0
+            
+            # Check if profile exists
+            c.execute("SELECT username FROM user_profiles WHERE username=?", (username,))
+            exists = c.fetchone()
+            
+            if exists:
+                # Update existing profile
+                c.execute("""
+                    UPDATE user_profiles 
+                    SET display_name=?, bio=?, location=?, website=?, 
+                        instagram=?, twitter=?, is_public=?, 
+                        updated_at=CURRENT_TIMESTAMP
+                    WHERE username=?
+                """, (display_name, bio, location, website, instagram, 
+                     twitter, is_public, username))
+            else:
+                # Create new profile
+                c.execute("""
+                    INSERT INTO user_profiles 
+                    (username, display_name, bio, location, website, 
+                     instagram, twitter, is_public)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, (username, display_name, bio, location, website, 
+                     instagram, twitter, is_public))
+            
+            conn.commit()
+            flash('Public profile updated successfully!', 'success')
+            
+    except Exception as e:
+        logger.error(f"Error updating public profile: {str(e)}")
+        flash('Error updating profile', 'error')
+    
+    return redirect(url_for('profile'))
 
 @app.route('/update_password', methods=['POST'])
 @login_required

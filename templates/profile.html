@@ -187,6 +187,45 @@
         .btn:active {
             transform: translateY(0);
         }
+        
+        .view-profile-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 16px;
+            background: transparent;
+            color: #4db6ac;
+            border: 1px solid #4db6ac;
+            border-radius: 6px;
+            text-decoration: none;
+            font-size: 14px;
+            margin-bottom: 16px;
+            transition: all 0.2s ease;
+        }
+        
+        .view-profile-btn:hover {
+            background: rgba(77, 182, 172, 0.1);
+            transform: translateY(-1px);
+        }
+        
+        .checkbox-label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            color: #e0e0e0;
+        }
+        
+        .checkbox-label input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+        
+        textarea.form-input {
+            resize: vertical;
+            min-height: 80px;
+        }
 
         /* Status Messages - More Compact */
         .status-message {
@@ -348,6 +387,75 @@
         </div>
 
 
+
+        <!-- Public Profile -->
+        <div class="profile-section">
+            <div class="section-header">
+                <i class="fas fa-globe section-icon"></i>
+                <h2 class="section-title">Public Profile</h2>
+            </div>
+            
+            <div class="profile-link">
+                <a href="/profile/{{ username }}" target="_blank" class="view-profile-btn">
+                    <i class="fas fa-external-link-alt"></i> View Public Profile
+                </a>
+            </div>
+            
+            <div id="publicProfileStatus" class="status-message"></div>
+            
+            <form id="publicProfileForm" action="/update_public_profile" method="POST">
+                <div class="form-group">
+                    <label class="form-label">Display Name</label>
+                    <input type="text" name="display_name" class="form-input" 
+                           value="{{ user[13] or '' }}" placeholder="Your display name">
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Bio</label>
+                    <textarea name="bio" class="form-input" rows="4" 
+                              placeholder="Tell people about yourself">{{ user[14] or '' }}</textarea>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Location</label>
+                    <input type="text" name="location" class="form-input" 
+                           value="{{ user[15] or '' }}" placeholder="City, Country">
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Website</label>
+                    <input type="url" name="website" class="form-input" 
+                           value="{{ user[16] or '' }}" placeholder="https://yourwebsite.com">
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Instagram</label>
+                        <input type="text" name="instagram" class="form-input" 
+                               value="{{ user[17] or '' }}" placeholder="username">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label">Twitter</label>
+                        <input type="text" name="twitter" class="form-input" 
+                               value="{{ user[18] or '' }}" placeholder="username">
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" name="is_public" 
+                               {% if user[21] == 1 or user[21] is none %}checked{% endif %}>
+                        <span>Make profile public</span>
+                    </label>
+                </div>
+                
+                <button type="submit" class="btn">
+                    <i class="fas fa-save"></i>
+                    Update Public Profile
+                </button>
+            </form>
+        </div>
 
         <!-- Personal Information -->
         <div class="profile-section">

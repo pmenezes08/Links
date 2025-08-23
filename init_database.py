@@ -155,6 +155,23 @@ def init_database():
                       FOREIGN KEY (username) REFERENCES users(username),
                       FOREIGN KEY (community_id) REFERENCES communities(id))''')
         
+        # Create user_profiles table
+        print("Creating user_profiles table...")
+        c.execute('''CREATE TABLE IF NOT EXISTS user_profiles
+                     (username TEXT PRIMARY KEY,
+                      display_name TEXT,
+                      bio TEXT,
+                      location TEXT,
+                      website TEXT,
+                      instagram TEXT,
+                      twitter TEXT,
+                      profile_picture TEXT,
+                      cover_photo TEXT,
+                      is_public INTEGER DEFAULT 1,
+                      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                      updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                      FOREIGN KEY (username) REFERENCES users(username))''')
+        
         # Commit all changes
         conn.commit()
         
