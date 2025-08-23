@@ -773,18 +773,33 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 10px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-            margin-bottom: 5px;
+            padding: 12px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            margin-bottom: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .member-item:hover {
+            background: rgba(255, 255, 255, 0.08);
+            transform: translateY(-1px);
         }
         
         .member-item:last-child {
-            border-bottom: none;
+            margin-bottom: 0;
         }
         
-        .member-item span {
+        .member-username {
             font-weight: 500;
             color: {{ community.text_color or '#ffffff' }};
+            text-decoration: none;
+            flex: 1;
+        }
+        
+        .member-username:hover {
+            color: {{ community.accent_color or '#2d8a7e' }};
         }
         
         .remove-member-btn {
@@ -804,6 +819,44 @@
         .remove-member-btn:hover {
             background: #9fb0b5;
             color: #1a1a1a;
+        }
+        
+        .add-member-section {
+            padding: 20px;
+        }
+        
+        .add-member-section h3 {
+            color: {{ community.text_color or '#ffffff' }};
+            margin-bottom: 15px;
+            font-size: 16px;
+        }
+        
+        .add-member-form {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        
+        .member-input {
+            padding: 12px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            color: {{ community.text_color or '#ffffff' }};
+            font-size: 14px;
+        }
+        
+        .member-input:focus {
+            outline: none;
+            border-color: {{ community.accent_color or '#2d8a7e' }};
+            background: rgba(255, 255, 255, 0.08);
+        }
+        
+        .no-members {
+            text-align: center;
+            color: #9fb0b5;
+            padding: 20px;
+            font-style: italic;
         }
         
         /* Announcement Styles - Compact and Sleek */
@@ -2055,7 +2108,7 @@
         // Global functions for community management
         function showMembersModal() {
             document.getElementById('membersModal').style.display = 'block';
-            loadMembers();
+            switchMembersTab('view');
         }
         
         function closeMembersModal() {
@@ -2136,22 +2189,47 @@
                 if (data.success) {
                     const membersList = document.getElementById('membersList');
                     const membersHTML = data.members.map(member => `
-                        <div class="member-item">
-                            <span>@${member.username}</span>
+                        <div class="member-item" onclick="goToProfile('${member.username}', event)">
+                            <a href="/profile/${member.username}" class="member-username">@${member.username}</a>
                             ${member.username !== '{{ username }}' && ('{{ username }}' === '{{ community.creator_username }}' || '{{ username }}' === 'admin') ? 
-                                `<button onclick="removeMember('${member.username}')" class="remove-member-btn">Remove</button>` : ''}
+                                `<button onclick="removeMember('${member.username}', event)" class="remove-member-btn">Remove</button>` : ''}
                         </div>
                     `).join('');
-                    membersList.innerHTML = membersHTML;
+                    membersList.innerHTML = membersHTML || '<p class="no-members">No members yet</p>';
                 } else {
                     console.error('Error loading members:', data.error);
-                    document.getElementById('membersList').innerHTML = '<p>Error loading members: ' + data.error + '</p>';
+                    document.getElementById('membersList').innerHTML = '<p class="error-message">Error loading members: ' + data.error + '</p>';
                 }
             })
             .catch(error => {
                 console.error('Error loading members:', error);
-                document.getElementById('membersList').innerHTML = '<p>Error loading members</p>';
+                document.getElementById('membersList').innerHTML = '<p class="error-message">Error loading members</p>';
             });
+        }
+        
+        function goToProfile(username, event) {
+            // If clicking on the remove button, don't navigate
+            if (event.target.classList.contains('remove-member-btn')) {
+                return;
+            }
+            // Navigate to profile page
+            window.location.href = `/profile/${username}`;
+        }
+        
+        function switchMembersTab(tabName) {
+            // Remove active class from all tabs and content
+            document.querySelectorAll('#membersModal .poll-tab').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('#membersModal .poll-tab-content').forEach(content => content.classList.remove('active'));
+            
+            // Add active class to selected tab and content
+            if (tabName === 'view') {
+                document.querySelector('#membersModal .poll-tab:nth-child(1)').classList.add('active');
+                document.getElementById('viewMembersTab').classList.add('active');
+                loadMembers(); // Reload members when viewing
+            } else if (tabName === 'add') {
+                document.querySelector('#membersModal .poll-tab:nth-child(2)').classList.add('active');
+                document.getElementById('addMemberTab').classList.add('active');
+            }
         }
         
         function addMember() {
@@ -2185,7 +2263,12 @@
             });
         }
         
-        function removeMember(username) {
+        function removeMember(username, event) {
+            // Stop event propagation to prevent navigation
+            if (event) {
+                event.stopPropagation();
+            }
+            
             if (confirm(`Are you sure you want to remove @${username} from this community?`)) {
                 const formData = new FormData();
                 formData.append('community_id', '{{ community.id }}');
@@ -2537,21 +2620,33 @@
 
     <!-- Members Modal -->
     <div id="membersModal" class="modal" style="display: none;">
-        <div class="modal-content members-modal">
+        <div class="modal-content polls-modal">
             <div class="modal-header">
-                <h2><i class="fas fa-users"></i> {{ community.name }} Members</h2>
+                <h2>Members</h2>
                 <span class="close" onclick="closeMembersModal()">&times;</span>
             </div>
             <div class="modal-body">
-                <div id="membersList">
-                    <!-- Members will be loaded here -->
+                <div class="polls-tabs">
+                    <button class="poll-tab active" onclick="switchMembersTab('view')">View Members</button>
+                    {% if username == community.creator_username or username == 'admin' %}
+                    <button class="poll-tab" onclick="switchMembersTab('add')">Add Member</button>
+                    {% endif %}
                 </div>
+                
+                <div id="viewMembersTab" class="poll-tab-content active">
+                    <div id="membersList">
+                        <!-- Members will be loaded here -->
+                    </div>
+                </div>
+                
                 {% if username == community.creator_username or username == 'admin' %}
-                <div class="add-member-section">
-                    <h3>Add Member</h3>
-                    <div class="add-member-form">
-                        <input type="text" id="newMemberUsername" placeholder="Enter username to add" class="member-input">
-                        <button onclick="addMember()" class="sleek-btn small">Add</button>
+                <div id="addMemberTab" class="poll-tab-content">
+                    <div class="add-member-section">
+                        <h3>Add New Member</h3>
+                        <div class="add-member-form">
+                            <input type="text" id="newMemberUsername" placeholder="Enter username to add" class="member-input">
+                            <button onclick="addMember()" class="sleek-btn">Add Member</button>
+                        </div>
                     </div>
                 </div>
                 {% endif %}
