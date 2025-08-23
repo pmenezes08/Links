@@ -135,6 +135,36 @@
             transform: rotate(180deg);
         }
         
+        /* Fix close button for calendar modal */
+        .calendar-modal-content .modal-header {
+            position: relative;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .calendar-modal-content .modal-header h2 {
+            margin: 0;
+            flex-grow: 1;
+        }
+        
+        .calendar-modal-content .close {
+            position: relative;
+            top: auto;
+            right: auto;
+            font-size: 20px;
+            line-height: 20px;
+            padding: 5px;
+            color: #9fb0b5;
+            cursor: pointer;
+            transition: color 0.2s ease;
+            float: none;
+        }
+        
+        .calendar-modal-content .close:hover {
+            color: #ffffff;
+        }
+        
         .calendar-container {
             display: grid;
             grid-template-columns: 2fr 1fr;
@@ -380,6 +410,23 @@
         
         .add-event-modal {
             max-width: 500px;
+        }
+        
+        .add-event-modal .modal-header {
+            position: relative;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .add-event-modal .close {
+            position: relative;
+            top: auto;
+            right: auto;
+            font-size: 20px;
+            line-height: 20px;
+            padding: 5px;
+            float: none;
         }
         
         .add-event-modal textarea {
