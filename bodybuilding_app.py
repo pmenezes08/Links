@@ -3150,6 +3150,121 @@ def add_calendar_event():
         logger.error(f"Error adding calendar event: {str(e)}")
         return jsonify({'success': False, 'message': str(e)})
 
+@app.route('/get_links')
+@login_required
+def get_links():
+    """Get all links for a community or main feed"""
+    try:
+        username = session['username']
+        community_id = request.args.get('community_id')
+        
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            if community_id:
+                # Get links for specific community
+                c.execute("""
+                    SELECT id, username, url, description, created_at
+                    FROM useful_links
+                    WHERE community_id = ?
+                    ORDER BY created_at DESC
+                """, (community_id,))
+            else:
+                # Get links for main feed (community_id is NULL)
+                c.execute("""
+                    SELECT id, username, url, description, created_at
+                    FROM useful_links
+                    WHERE community_id IS NULL
+                    ORDER BY created_at DESC
+                """)
+            
+            links_raw = c.fetchall()
+            links = []
+            
+            for link in links_raw:
+                links.append({
+                    'id': link['id'],
+                    'username': link['username'],
+                    'url': link['url'],
+                    'description': link['description'],
+                    'created_at': link['created_at'],
+                    'can_delete': link['username'] == username or username == 'admin'
+                })
+            
+            return jsonify({'success': True, 'links': links})
+            
+    except Exception as e:
+        logger.error(f"Error getting links: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/add_link', methods=['POST'])
+@login_required
+def add_link():
+    """Add a new useful link"""
+    try:
+        username = session['username']
+        url = request.form.get('url', '').strip()
+        description = request.form.get('description', '').strip()
+        community_id = request.form.get('community_id')
+        
+        if not url or not description:
+            return jsonify({'success': False, 'message': 'URL and description are required'})
+        
+        # Basic URL validation
+        if not url.startswith(('http://', 'https://')):
+            url = 'https://' + url
+        
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            c.execute("""
+                INSERT INTO useful_links (community_id, username, url, description, created_at)
+                VALUES (?, ?, ?, ?, ?)
+            """, (community_id if community_id else None, username, url, description, 
+                  datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+            
+            conn.commit()
+            
+            return jsonify({'success': True, 'message': 'Link added successfully'})
+            
+    except Exception as e:
+        logger.error(f"Error adding link: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/delete_link', methods=['POST'])
+@login_required
+def delete_link():
+    """Delete a useful link"""
+    try:
+        username = session['username']
+        link_id = request.form.get('link_id')
+        
+        if not link_id:
+            return jsonify({'success': False, 'message': 'Link ID is required'})
+        
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Check if user can delete (owner or admin)
+            c.execute("SELECT username FROM useful_links WHERE id = ?", (link_id,))
+            link = c.fetchone()
+            
+            if not link:
+                return jsonify({'success': False, 'message': 'Link not found'})
+            
+            if link['username'] != username and username != 'admin':
+                return jsonify({'success': False, 'message': 'You can only delete your own links'})
+            
+            # Delete the link
+            c.execute("DELETE FROM useful_links WHERE id = ?", (link_id,))
+            conn.commit()
+            
+            return jsonify({'success': True, 'message': 'Link deleted successfully'})
+            
+    except Exception as e:
+        logger.error(f"Error deleting link: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
+
 @app.route('/delete_calendar_event', methods=['POST'])
 @login_required
 def delete_calendar_event():

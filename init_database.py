@@ -133,6 +133,8 @@ def init_database():
                       date TEXT NOT NULL,
                       end_date TEXT,
                       time TEXT,
+                      start_time TEXT,
+                      end_time TEXT,
                       description TEXT,
                       created_at TEXT NOT NULL,
                       FOREIGN KEY (username) REFERENCES users(username))''')
@@ -140,6 +142,18 @@ def init_database():
         # Create index on date for faster queries
         c.execute('''CREATE INDEX IF NOT EXISTS idx_calendar_events_date 
                      ON calendar_events(date)''')
+        
+        # Create useful_links table
+        print("Creating useful_links table...")
+        c.execute('''CREATE TABLE IF NOT EXISTS useful_links
+                     (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                      community_id INTEGER,
+                      username TEXT NOT NULL,
+                      url TEXT NOT NULL,
+                      description TEXT NOT NULL,
+                      created_at TEXT NOT NULL,
+                      FOREIGN KEY (username) REFERENCES users(username),
+                      FOREIGN KEY (community_id) REFERENCES communities(id))''')
         
         # Commit all changes
         conn.commit()
