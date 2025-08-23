@@ -8,12 +8,21 @@
     <meta name="csrf-token" content="{{ csrf_token }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v='3.0') }}">
     <style>
+        /* Prevent page scroll */
+        html, body {
+            height: 100%;
+            overflow: hidden;
+        }
+        
         /* Main layout - centered */
         .main-layout-container {
             position: relative;
             max-width: 800px;
             margin: 0 auto;
             padding: 20px;
+            height: calc(100vh - 60px); /* Account for nav bar */
+            overflow-y: auto;
+            overflow-x: hidden;
         }
         
         /* Polls Toggle Button */
@@ -143,7 +152,10 @@
         
         /* Main feed container stays centered */
         .container.feed {
-            /* No flex adjustments needed */
+            min-height: auto !important;
+            height: auto !important;
+            display: block !important;
+            justify-content: unset !important;
         }
         
         /* Compact Poll Styles for Sidebar */
@@ -1219,14 +1231,14 @@
         
         .polls-modal .modal-body {
             padding: 10px !important;
-            max-height: 90vh !important;
+            max-height: 80vh !important;
             overflow-y: auto !important;
         }
         
         #calendarModal .modal-body {
             padding: 8px !important;
-            max-height: 85vh !important;
-            overflow-y: hidden !important;
+            max-height: 75vh !important;
+            overflow-y: auto !important;
         }
         
         /* Polls tabs styling - compact and centered like announcements */
@@ -1767,6 +1779,20 @@
             background: rgba(255, 255, 255, 0.08);
             color: #ffffff;
             border-color: rgba(255, 255, 255, 0.2);
+        }
+        
+        /* Mobile adjustments to prevent scroll */
+        @media (max-width: 768px) {
+            .main-layout-container {
+                padding: 10px;
+                height: calc(100vh - 50px);
+            }
+            
+            .polls-sidebar {
+                left: 10px !important;
+                width: 90% !important;
+                max-width: 320px !important;
+            }
         }
     </style>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
