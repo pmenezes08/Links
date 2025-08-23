@@ -117,6 +117,24 @@
             width: 90%;
         }
         
+        .calendar-refresh-btn {
+            background: #4db6ac;
+            color: #ffffff;
+            border: none;
+            padding: 8px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-left: auto;
+            margin-right: 10px;
+            transition: all 0.2s ease;
+        }
+        
+        .calendar-refresh-btn:hover {
+            background: #37a69c;
+            transform: rotate(180deg);
+        }
+        
         .calendar-container {
             display: grid;
             grid-template-columns: 2fr 1fr;
@@ -848,6 +866,9 @@
         <div class="modal-content calendar-modal-content">
             <div class="modal-header">
                 <h2>Community Calendar</h2>
+                <button class="calendar-refresh-btn" onclick="refreshCalendar()" title="Refresh Calendar">
+                    <i class="fas fa-sync-alt"></i>
+                </button>
                 <span class="close" onclick="closeCalendarModal()">&times;</span>
             </div>
             <div class="modal-body">
@@ -1271,11 +1292,19 @@
         function showCalendarModal() {
             document.getElementById('calendarModal').style.display = 'block';
             renderCalendar();
-            loadCalendarEvents();
+            loadCalendarEvents(true);  // Force refresh when opening
         }
         
         function closeCalendarModal() {
             document.getElementById('calendarModal').style.display = 'none';
+        }
+        
+        function refreshCalendar() {
+            console.log('Refreshing calendar...');
+            loadCalendarEvents(true);
+            if (selectedDate) {
+                setTimeout(() => displayEventsForDate(selectedDate), 100);
+            }
         }
         
         function showAddEventForm() {
@@ -1492,13 +1521,35 @@
             return formatDateKey(date);
         }
         
-        function loadCalendarEvents() {
-            fetch('/get_calendar_events')
-                .then(response => response.json())
+        function loadCalendarEvents(forceRefresh = false) {
+            // Add cache-busting parameter to force fresh data
+            const url = forceRefresh 
+                ? `/get_calendar_events?t=${Date.now()}` 
+                : '/get_calendar_events';
+                
+            fetch(url, {
+                cache: 'no-cache',  // Prevent caching
+                headers: {
+                    'Cache-Control': 'no-cache',
+                    'Pragma': 'no-cache'
+                }
+            })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response.json();
+                })
                 .then(data => {
                     if (data.success) {
                         calendarEvents = {};
                         eventColorMap = {};  // Reset color assignments
+                        
+                        console.log(`Loaded ${data.events.length} events from server`);
+                        if (data.events.length > 0) {
+                            console.log('Event IDs:', data.events.map(e => e.id));
+                        }
+                        
                         data.events.forEach(event => {
                             // Add event to start date
                             if (!calendarEvents[event.date]) {
@@ -1524,9 +1575,14 @@
                             }
                         });
                         renderCalendar();
+                    } else {
+                        console.error('Failed to load events:', data.error || 'Unknown error');
                     }
                 })
-                .catch(error => console.error('Error loading events:', error));
+                .catch(error => {
+                    console.error('Error loading events:', error);
+                    alert('Failed to load calendar events. Please refresh the page.');
+                });
         }
         
         function deleteCalendarEvent(eventId) {
@@ -1553,9 +1609,11 @@
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    loadCalendarEvents();
+                    // Force refresh to get fresh data from server
+                    loadCalendarEvents(true);
                     if (selectedDate) {
-                        displayEventsForDate(selectedDate);
+                        // Delay to ensure calendar is reloaded
+                        setTimeout(() => displayEventsForDate(selectedDate), 100);
                     }
                     alert('Event deleted successfully!');
                 } else {
