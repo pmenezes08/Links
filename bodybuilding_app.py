@@ -3134,7 +3134,10 @@ def add_calendar_event():
 def delete_calendar_event():
     """Delete a calendar event"""
     try:
-        username = session['username']
+        username = session.get('username')
+        if not username:
+            return jsonify({'success': False, 'message': 'User not logged in'})
+            
         event_id = request.form.get('event_id', type=int)
         
         logger.info(f"Delete request from {username} for event ID: {event_id}")
@@ -3145,34 +3148,36 @@ def delete_calendar_event():
         with get_db_connection() as conn:
             c = conn.cursor()
             
-            # First, let's see all events to debug
-            c.execute("SELECT id, username, title FROM calendar_events")
-            all_events = c.fetchall()
-            logger.info(f"All events in database: {[(e['id'], e['username'], e['title']) for e in all_events]}")
-            
-            # Check if user owns the event or is admin
-            c.execute("SELECT id, username, title FROM calendar_events WHERE id = ?", (event_id,))
+            # Check if event exists and get owner
+            c.execute("SELECT username FROM calendar_events WHERE id = ?", (event_id,))
             event = c.fetchone()
             
             if not event:
-                logger.warning(f"Event {event_id} not found in database")
-                return jsonify({'success': False, 'message': f'Event not found (ID: {event_id})'})
+                # List all event IDs for debugging
+                c.execute("SELECT id FROM calendar_events")
+                existing_ids = [row['id'] for row in c.fetchall()]
+                logger.warning(f"Event {event_id} not found. Existing IDs: {existing_ids}")
+                return jsonify({'success': False, 'message': f'Event not found (ID: {event_id}). Existing events: {existing_ids}'})
             
-            logger.info(f"Found event: ID={event['id']}, owner={event['username']}, title={event['title']}")
-            
+            # Check permission
             if event['username'] != username and username != 'admin':
-                return jsonify({'success': False, 'message': 'Unauthorized to delete this event'})
+                logger.warning(f"User {username} tried to delete event owned by {event['username']}")
+                return jsonify({'success': False, 'message': f'Unauthorized: you can only delete your own events'})
             
             # Delete the event
             c.execute("DELETE FROM calendar_events WHERE id = ?", (event_id,))
+            deleted_count = c.rowcount
             conn.commit()
             
-            logger.info(f"Successfully deleted event {event_id}")
-            return jsonify({'success': True, 'message': 'Event deleted successfully'})
+            if deleted_count > 0:
+                logger.info(f"Successfully deleted event {event_id}")
+                return jsonify({'success': True, 'message': 'Event deleted successfully'})
+            else:
+                return jsonify({'success': False, 'message': 'Event could not be deleted'})
             
     except Exception as e:
-        logger.error(f"Error deleting calendar event {event_id}: {str(e)}", exc_info=True)
-        return jsonify({'success': False, 'message': str(e)})
+        logger.error(f"Error deleting calendar event: {str(e)}", exc_info=True)
+        return jsonify({'success': False, 'message': f'Server error: {str(e)}'})
 
 @app.route('/delete_post', methods=['POST'])
 @login_required

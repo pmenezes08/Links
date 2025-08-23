@@ -1458,8 +1458,10 @@
             }
             
             // Get current username from session
-            const currentUser = '{{ session.username }}';
+            const currentUser = {{ session.username|tojson|safe if session.username else 'null' }};
             const isAdmin = currentUser === 'admin';
+            
+            console.log('Current user:', currentUser, 'Is admin:', isAdmin);
             
             // Remove duplicates for multi-day events
             const uniqueEvents = [];
@@ -1548,6 +1550,12 @@
                         console.log(`Loaded ${data.events.length} events from server`);
                         if (data.events.length > 0) {
                             console.log('Event IDs:', data.events.map(e => e.id));
+                            console.log('Event details:', data.events.map(e => ({
+                                id: e.id,
+                                title: e.title,
+                                username: e.username,
+                                date: e.date
+                            })));
                         }
                         
                         data.events.forEach(event => {
@@ -1606,8 +1614,12 @@
                 method: 'POST',
                 body: formData
             })
-            .then(response => response.json())
+            .then(response => {
+                console.log('Delete response status:', response.status);
+                return response.json();
+            })
             .then(data => {
+                console.log('Delete response data:', data);
                 if (data.success) {
                     // Force refresh to get fresh data from server
                     loadCalendarEvents(true);
@@ -1617,7 +1629,7 @@
                     }
                     alert('Event deleted successfully!');
                 } else {
-                    console.error('Delete failed:', data);
+                    console.error('Delete failed. Full response:', data);
                     alert('Error deleting event: ' + (data.message || 'Unknown error'));
                 }
             })
