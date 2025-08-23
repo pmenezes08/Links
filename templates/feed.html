@@ -12,68 +12,108 @@
             background-color: #000000 !important;
         }
         
-        /* Main layout with sidebar */
+        /* Main layout - centered */
         .main-layout-container {
-            display: flex;
-            gap: 20px;
-            max-width: 1400px;
+            position: relative;
+            max-width: 800px;
             margin: 0 auto;
             padding: 20px;
         }
         
-        /* Polls Sidebar */
+        /* Polls Toggle Button */
+        .polls-toggle-container {
+            position: fixed;
+            left: 20px;
+            top: 100px;
+            z-index: 100;
+        }
+        
+        .polls-toggle-btn {
+            background: linear-gradient(135deg, #4db6ac 0%, #2d8a7e 100%);
+            color: white;
+            border: none;
+            padding: 10px 16px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+            transition: all 0.3s ease;
+        }
+        
+        .polls-toggle-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+        
+        .polls-toggle-btn i {
+            font-size: 14px;
+        }
+        
+        /* Compact Polls Sidebar */
         .polls-sidebar {
-            width: 320px;
+            position: fixed;
+            left: 20px;
+            top: 150px;
+            width: 240px;
+            max-height: 500px;
             background: linear-gradient(135deg, #1a3d3a 0%, #0f2725 100%);
             border-radius: 12px;
             border: 1px solid rgba(255, 255, 255, 0.1);
-            height: fit-content;
-            position: sticky;
-            top: 80px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+            z-index: 99;
+            transition: all 0.3s ease;
+            overflow: hidden;
+        }
+        
+        .polls-sidebar.collapsed {
+            opacity: 0;
+            transform: translateX(-260px);
+            pointer-events: none;
         }
         
         .sidebar-header {
-            padding: 16px 20px;
+            padding: 10px 12px;
             border-bottom: 1px solid rgba(255, 255, 255, 0.1);
             display: flex;
             justify-content: space-between;
             align-items: center;
         }
         
-        .sidebar-header h3 {
-            color: #ffffff;
+        .sidebar-close-btn {
+            background: transparent;
+            border: none;
+            color: rgba(255, 255, 255, 0.7);
             font-size: 16px;
-            font-weight: 600;
-            margin: 0;
-            display: flex;
-            align-items: center;
-            gap: 8px;
+            cursor: pointer;
+            padding: 4px 8px;
+            transition: color 0.2s ease;
         }
         
-        .sidebar-header h3 i {
-            color: #4db6ac;
+        .sidebar-close-btn:hover {
+            color: #ffffff;
         }
         
         .sidebar-action-btn {
-            background: rgba(255, 255, 255, 0.1);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            color: #ffffff;
-            padding: 6px 8px;
-            border-radius: 6px;
+            background: transparent;
+            border: none;
+            color: rgba(255, 255, 255, 0.7);
+            padding: 4px 8px;
             cursor: pointer;
             transition: all 0.2s ease;
-            font-size: 12px;
+            font-size: 14px;
         }
         
         .sidebar-action-btn:hover {
-            background: rgba(77, 182, 172, 0.2);
-            border-color: #4db6ac;
+            color: #4db6ac;
         }
         
         .sidebar-polls-list {
-            padding: 12px;
-            max-height: 600px;
+            padding: 10px;
+            max-height: 430px;
             overflow-y: auto;
         }
         
@@ -102,28 +142,13 @@
             font-size: 14px;
         }
         
-        /* Poll indicator in timeline */
+        /* Poll indicator in timeline - hidden since polls are in sidebar */
         .poll-indicator {
-            background: linear-gradient(135deg, rgba(77, 182, 172, 0.1) 0%, rgba(45, 138, 126, 0.1) 100%);
-            border: 1px solid rgba(77, 182, 172, 0.3);
-            border-radius: 8px;
-            padding: 8px 12px;
-            margin-top: 12px;
-            color: #4db6ac;
-            font-size: 13px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        
-        .poll-indicator i {
-            font-size: 14px;
+            display: none;
         }
         
         .container.feed {
             background-color: #000000 !important;
-            flex: 1;
-            max-width: 800px;
         }
         
         .composer-card, .post {
@@ -146,9 +171,9 @@
         .sidebar-poll-item {
             background: rgba(255, 255, 255, 0.03);
             border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 8px;
-            padding: 12px;
-            margin-bottom: 12px;
+            border-radius: 6px;
+            padding: 8px;
+            margin-bottom: 8px;
             transition: all 0.2s ease;
         }
         
@@ -159,32 +184,36 @@
         
         .poll-question-compact {
             font-weight: 600;
-            margin-bottom: 8px;
+            margin-bottom: 6px;
             color: #ffffff;
-            font-size: 14px;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
         }
         
         .poll-question-compact i {
             color: #4db6ac;
-            margin-right: 6px;
+            font-size: 10px;
         }
         
         .poll-options-compact {
             display: flex;
             flex-direction: column;
-            gap: 4px;
+            gap: 3px;
         }
         
         .poll-option-compact {
             background: rgba(255, 255, 255, 0.02);
             border: 1px solid rgba(255, 255, 255, 0.05);
             border-radius: 4px;
-            padding: 6px 8px;
+            padding: 5px 6px;
             cursor: pointer;
             transition: all 0.2s ease;
             display: flex;
             justify-content: space-between;
             align-items: center;
+            font-size: 11px;
         }
         
         .poll-option-compact:hover {
@@ -194,30 +223,30 @@
         
         .poll-option-text-compact {
             color: #ffffff;
-            font-size: 12px;
+            font-size: 11px;
             flex: 1;
         }
         
         .poll-option-votes-compact {
             color: #4db6ac;
-            font-size: 11px;
+            font-size: 10px;
             font-weight: 600;
-            margin-left: 8px;
+            margin-left: 6px;
         }
         
         .poll-footer-compact {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-top: 8px;
-            padding-top: 8px;
+            margin-top: 6px;
+            padding-top: 6px;
             border-top: 1px solid rgba(255, 255, 255, 0.1);
         }
         
         .poll-creator-compact {
             color: rgba(255, 255, 255, 0.6);
-            font-size: 11px;
-            margin-top: 8px;
+            font-size: 10px;
+            margin-top: 4px;
             font-style: italic;
         }
         
@@ -237,12 +266,12 @@
         
         .poll-total-compact {
             color: #9fb0b5;
-            font-size: 11px;
+            font-size: 10px;
         }
         
         .poll-voted-compact {
             color: #4db6ac;
-            font-size: 11px;
+            font-size: 10px;
         }
         
         /* Calendar Modal Styles */
@@ -867,17 +896,25 @@
 
     <!-- Main Content -->
     <div class="main-layout-container">
-        <!-- Left Sidebar - Active Polls -->
-        <div class="polls-sidebar">
+        <!-- Toggle Button for Polls -->
+        <div class="polls-toggle-container" id="pollsToggleContainer" style="display: none;">
+            <button class="polls-toggle-btn" onclick="togglePollsSidebar()">
+                <i class="fas fa-poll-h"></i> See active polls
+            </button>
+        </div>
+        
+        <!-- Compact Polls Sidebar (Hidden by default) -->
+        <div class="polls-sidebar collapsed" id="pollsSidebar">
             <div class="sidebar-header">
-                <h3><i class="fas fa-poll-h"></i> Active Polls</h3>
+                <button class="sidebar-close-btn" onclick="togglePollsSidebar()" title="Close">
+                    <i class="fas fa-times"></i>
+                </button>
                 <button class="sidebar-action-btn" onclick="showPollsModal()" title="View All Polls">
                     <i class="fas fa-expand"></i>
                 </button>
             </div>
             <div class="sidebar-polls-list" id="sidebarPollsList">
                 <!-- Active polls will be loaded here -->
-                <div class="loading-polls">Loading polls...</div>
             </div>
         </div>
         
@@ -1437,6 +1474,20 @@
             });
         });
         
+        // Toggle polls sidebar
+        function togglePollsSidebar() {
+            const sidebar = document.getElementById('pollsSidebar');
+            const toggleBtn = document.getElementById('pollsToggleContainer');
+            
+            if (sidebar.classList.contains('collapsed')) {
+                sidebar.classList.remove('collapsed');
+                toggleBtn.style.display = 'none';
+            } else {
+                sidebar.classList.add('collapsed');
+                toggleBtn.style.display = 'block';
+            }
+        }
+        
         // Load active polls in sidebar
         function loadSidebarPolls() {
             fetch('/get_active_polls')
@@ -1444,9 +1495,20 @@
                 .then(data => {
                     if (data.success) {
                         const pollsList = document.getElementById('sidebarPollsList');
+                        const toggleContainer = document.getElementById('pollsToggleContainer');
+                        
                         if (data.polls.length === 0) {
-                            pollsList.innerHTML = '<div class="no-polls">No active polls</div>';
+                            // No polls - hide everything
+                            pollsList.innerHTML = '';
+                            toggleContainer.style.display = 'none';
+                            document.getElementById('pollsSidebar').classList.add('collapsed');
                             return;
+                        }
+                        
+                        // Show toggle button if sidebar is collapsed
+                        const sidebar = document.getElementById('pollsSidebar');
+                        if (sidebar.classList.contains('collapsed')) {
+                            toggleContainer.style.display = 'block';
                         }
                         
                         let pollsHTML = '';
