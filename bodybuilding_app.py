@@ -222,7 +222,14 @@ def init_db():
                 ('created_at', 'TEXT'),
                 ('country', 'TEXT'),
                 ('city', 'TEXT'),
-                ('industry', 'TEXT')
+                ('industry', 'TEXT'),
+                ('role', 'TEXT'),
+                ('company', 'TEXT'),
+                ('degree', 'TEXT'),
+                ('school', 'TEXT'),
+                ('skills', 'TEXT'),
+                ('linkedin', 'TEXT'),
+                ('experience', 'INTEGER')
             ]
             
             for column_name, column_type in columns_to_add:
@@ -1490,7 +1497,9 @@ def profile():
                        u.country, u.city, u.industry,
                        p.display_name, p.bio, p.location, p.website, 
                        p.instagram, p.twitter, p.profile_picture, p.cover_photo,
-                       p.is_public
+                       p.is_public,
+                       u.role, u.company, u.degree, u.school, u.skills, 
+                       u.linkedin, u.experience
                 FROM users u
                 LEFT JOIN user_profiles p ON u.username = p.username
                 WHERE u.username = ?
@@ -1607,13 +1616,38 @@ def update_email():
         logger.error(f"Error updating email for {username}: {str(e)}")
         return jsonify({'success': False, 'error': 'Server error'})
 
+@app.route('/update_professional', methods=['POST'])
+@login_required
+def update_professional():
+    """Update professional information"""
+    username = session['username']
+    try:
+        role = request.form.get('role', '')
+        company = request.form.get('company', '')
+        degree = request.form.get('degree', '')
+        school = request.form.get('school', '')
+        skills = request.form.get('skills', '')
+        linkedin = request.form.get('linkedin', '')
+        experience = request.form.get('experience', type=int)
+        
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("""UPDATE users SET role=?, company=?, degree=?, school=?, 
+                        skills=?, linkedin=?, experience=? WHERE username=?""",
+                     (role, company, degree, school, skills, linkedin, experience, username))
+            conn.commit()
+        
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"Error updating professional info for {username}: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
+
 @app.route('/update_personal_info', methods=['POST'])
 @login_required
 def update_personal_info():
     username = session['username']
     age = request.form.get('age')
     gender = request.form.get('gender')
-    weight = request.form.get('weight')
     country = request.form.get('country')
     city = request.form.get('city')
     industry = request.form.get('industry')
@@ -1622,12 +1656,11 @@ def update_personal_info():
         with get_db_connection() as conn:
             c = conn.cursor()
             
-            # Convert age and weight to appropriate types
+            # Convert age to appropriate type
             age = int(age) if age else None
-            weight = float(weight) if weight else None
             
-            c.execute("""UPDATE users SET age=?, gender=?, weight=?, country=?, city=?, industry=? 
-                        WHERE username=?""", (age, gender, weight, country, city, industry, username))
+            c.execute("""UPDATE users SET age=?, gender=?, country=?, city=?, industry=? 
+                        WHERE username=?""", (age, gender, country, city, industry, username))
             conn.commit()
             
             return jsonify({'success': True})

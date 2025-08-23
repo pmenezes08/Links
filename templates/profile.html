@@ -408,6 +408,61 @@
             </form>
         </div>
 
+        <!-- Professional Information -->
+        <div class="profile-section">
+            <div class="section-header">
+                <i class="fas fa-briefcase section-icon"></i>
+                <h2 class="section-title">Professional Information</h2>
+            </div>
+            
+            <div id="professionalStatus" class="status-message"></div>
+            
+            <form id="professionalForm">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Current Role</label>
+                        <input type="text" id="role" class="form-input" placeholder="e.g. Software Engineer" value="{{ user.role or '' }}">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Company</label>
+                        <input type="text" id="company" class="form-input" placeholder="e.g. Tech Corp" value="{{ user.company or '' }}">
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Degree</label>
+                        <input type="text" id="degree" class="form-input" placeholder="e.g. Bachelor's in Computer Science" value="{{ user.degree or '' }}">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">School/University</label>
+                        <input type="text" id="school" class="form-input" placeholder="e.g. MIT" value="{{ user.school or '' }}">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Skills (comma-separated)</label>
+                    <input type="text" id="skills" class="form-input" placeholder="e.g. Python, Data Analysis, Project Management" value="{{ user.skills or '' }}">
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">LinkedIn Profile</label>
+                        <input type="text" id="linkedin" class="form-input" placeholder="linkedin.com/in/username" value="{{ user.linkedin or '' }}">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Years of Experience</label>
+                        <input type="number" id="experience" class="form-input" min="0" max="50" placeholder="0" value="{{ user.experience or '' }}">
+                    </div>
+                </div>
+                
+                <button type="submit" class="btn">
+                    <i class="fas fa-save"></i>
+                    Save Professional Info
+                </button>
+            </form>
+        </div>
+
         <!-- Personal Information -->
         <div class="profile-section">
             <div class="section-header">
@@ -433,11 +488,6 @@
                             <option value="prefer_not_to_say" {{ 'selected' if user.gender == 'prefer_not_to_say' else '' }}>Prefer not to say</option>
                         </select>
                     </div>
-                </div>
-                
-                <div class="form-group">
-                    <label class="form-label">Weight (kg)</label>
-                    <input type="number" id="weight" class="form-input" min="30" max="300" step="0.1" value="{{ user.weight or '' }}">
                 </div>
                 
                 <div class="form-row">
@@ -599,6 +649,36 @@
             }
         } */
 
+        // Professional Information Update
+        document.getElementById('professionalForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData();
+            formData.append('role', document.getElementById('role').value);
+            formData.append('company', document.getElementById('company').value);
+            formData.append('degree', document.getElementById('degree').value);
+            formData.append('school', document.getElementById('school').value);
+            formData.append('skills', document.getElementById('skills').value);
+            formData.append('linkedin', document.getElementById('linkedin').value);
+            formData.append('experience', document.getElementById('experience').value);
+            
+            fetch('/update_professional', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showStatus('professionalStatus', 'Professional information updated successfully!', 'success');
+                } else {
+                    showStatus('professionalStatus', data.error || 'Error updating information', 'error');
+                }
+            })
+            .catch(error => {
+                showStatus('professionalStatus', 'Error updating information', 'error');
+            });
+        });
+
         // Personal Information Update
         document.getElementById('personalForm').addEventListener('submit', function(e) {
             e.preventDefault();
@@ -606,7 +686,6 @@
             const formData = new FormData();
             formData.append('age', document.getElementById('age').value);
             formData.append('gender', document.getElementById('gender').value);
-            formData.append('weight', document.getElementById('weight').value);
             formData.append('country', document.getElementById('country').value);
             formData.append('city', document.getElementById('city').value);
             formData.append('industry', document.getElementById('industry').value);
