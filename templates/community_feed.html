@@ -278,7 +278,18 @@
         }
         
         .reaction-btn.active {
-            color: {{ community.accent_color or '#4db6ac' }} !important;
+            background-color: {{ community.accent_color or '#4db6ac' }} !important;
+            color: #ffffff !important;
+            border-color: {{ community.accent_color or '#4db6ac' }} !important;
+        }
+        
+        .reaction-btn.active i {
+            color: #ffffff !important;
+        }
+        
+        .reaction-btn.active:hover {
+            background-color: {{ community.hover_color or '#37a69c' }} !important;
+            color: #ffffff !important;
         }
         
         .sleek-btn {
@@ -363,8 +374,13 @@
         }
         
         .reaction-btn.active {
-            color: #ffffff !important;
             background-color: #4db6ac !important;
+            color: #ffffff !important;
+            border-color: #4db6ac !important;
+        }
+        
+        .reaction-btn.active i {
+            color: #ffffff !important;
         }
         
         .sleek-btn {
