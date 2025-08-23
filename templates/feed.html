@@ -278,6 +278,12 @@
             width: 90%;
         }
         
+        .calendar-modal-content .modal-body {
+            padding: 10px;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+        
         /* Fix close button for calendar modal */
         .calendar-modal-content .modal-header {
             position: relative;
@@ -308,18 +314,19 @@
             color: #ffffff;
         }
         
+        /* Calendar Styles */
         .calendar-container {
-            display: grid;
-            grid-template-columns: 2fr 1fr;
-            gap: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            max-width: 100%;
         }
         
         .calendar-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 20px;
-            grid-column: 1;
+            margin-bottom: 5px;
         }
         
         .calendar-nav-btn {
@@ -344,22 +351,24 @@
         }
         
         .calendar-grid {
-            grid-column: 1;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 6px;
+            padding: 5px;
         }
         
         .calendar-weekdays {
             display: grid;
             grid-template-columns: repeat(7, 1fr);
             gap: 1px;
-            margin-bottom: 5px;
+            margin-bottom: 2px;
         }
         
         .weekday {
             text-align: center;
-            padding: 10px;
+            padding: 3px;
             color: #4db6ac;
             font-weight: 600;
-            font-size: 12px;
+            font-size: 10px;
         }
         
         .calendar-days {
@@ -373,11 +382,12 @@
             aspect-ratio: 1;
             background: rgba(255, 255, 255, 0.02);
             border: 1px solid rgba(255, 255, 255, 0.1);
-            padding: 8px;
+            padding: 2px;
             cursor: pointer;
             transition: all 0.2s ease;
             position: relative;
-            min-height: 60px;
+            min-height: 25px;
+            font-size: 10px;
         }
         
         .calendar-day:hover {
@@ -406,16 +416,16 @@
         
         .day-events-indicator {
             position: absolute;
-            bottom: 4px;
+            bottom: 2px;
             left: 50%;
             transform: translateX(-50%);
             display: flex;
-            gap: 2px;
+            gap: 1px;
         }
         
         .event-dot {
-            width: 4px;
-            height: 4px;
+            width: 3px;
+            height: 3px;
             border-radius: 50%;
         }
         
@@ -445,30 +455,30 @@
         .event-item {
             background: rgba(255, 255, 255, 0.05);
             border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 6px;
-            padding: 10px;
-            padding-left: 14px;
-            margin-bottom: 10px;
+            border-radius: 3px;
+            padding: 4px;
+            padding-left: 8px;
+            margin-bottom: 4px;
             cursor: pointer;
             transition: all 0.2s ease;
             position: relative;
+            border-left: 3px solid;
         }
         
         .calendar-events {
-            grid-column: 2;
-            grid-row: 1 / 3;
             background: rgba(255, 255, 255, 0.02);
             border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 8px;
-            padding: 20px;
+            border-radius: 6px;
+            padding: 8px;
+            max-height: 150px;
+            overflow-y: auto;
             overflow-x: hidden;
-            min-width: 0;
         }
         
         .calendar-events h4 {
             color: #ffffff;
-            margin: 0 0 15px 0;
-            font-size: 16px;
+            margin: 0 0 5px 0;
+            font-size: 12px;
         }
         
         .events-list {
@@ -487,29 +497,32 @@
         .event-title {
             color: #ffffff;
             font-weight: 500;
-            margin-bottom: 4px;
+            margin-bottom: 1px;
             word-wrap: break-word;
             overflow-wrap: break-word;
+            font-size: 11px;
+            line-height: 1.2;
         }
         
         .event-time {
             color: #4db6ac;
-            font-size: 12px;
-            margin-bottom: 4px;
+            font-size: 9px;
+            margin-bottom: 1px;
+            line-height: 1.2;
         }
         
         .event-description {
             color: #9fb0b5;
-            font-size: 12px;
+            font-size: 9px;
             word-wrap: break-word;
             overflow-wrap: break-word;
             white-space: pre-wrap;
+            line-height: 1.2;
         }
         
         .event-creator {
-            color: #9fb0b5;
-            font-size: 11px;
-            margin-top: 4px;
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 9px;
             font-style: italic;
         }
         
