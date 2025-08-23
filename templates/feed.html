@@ -429,6 +429,54 @@
             box-sizing: border-box;
         }
         
+        /* Modern button styles for event modal */
+        .form-actions {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+            margin-top: 20px;
+        }
+        
+        .btn-save {
+            background: linear-gradient(135deg, #4db6ac 0%, #37a69c 100%);
+            color: #ffffff;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            box-shadow: 0 2px 4px rgba(77, 182, 172, 0.2);
+        }
+        
+        .btn-save:hover {
+            background: linear-gradient(135deg, #37a69c 0%, #2d8a82 100%);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(77, 182, 172, 0.3);
+        }
+        
+        .btn-cancel {
+            background: rgba(255, 255, 255, 0.05);
+            color: #9fb0b5;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+        
+        .btn-cancel:hover {
+            background: rgba(255, 255, 255, 0.08);
+            color: #ffffff;
+            border-color: rgba(255, 255, 255, 0.2);
+        }
+        
         /* Poll Modal Styles */
         #pollModal .modal-content {
             max-width: 400px;
@@ -957,17 +1005,25 @@
                         <label for="eventEndDate">End Date (Optional)</label>
                         <input type="date" id="eventEndDate" name="end_date">
                     </div>
-                    <div class="form-group">
-                        <label for="eventTime">Time</label>
-                        <input type="time" id="eventTime" name="time">
+                    <div class="form-group" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                        <div>
+                            <label for="eventStartTime">Start Time (Optional)</label>
+                            <input type="time" id="eventStartTime" name="start_time">
+                        </div>
+                        <div>
+                            <label for="eventEndTime">End Time (Optional)</label>
+                            <input type="time" id="eventEndTime" name="end_time">
+                        </div>
                     </div>
                     <div class="form-group">
                         <label for="eventDescription">Description</label>
                         <textarea id="eventDescription" name="description" placeholder="Event details..." rows="3"></textarea>
                     </div>
                     <div class="form-actions">
-                        <button type="button" class="btn-secondary" onclick="closeAddEventModal()">Cancel</button>
-                        <button type="submit" class="btn">Save Event</button>
+                        <button type="button" class="btn-cancel" onclick="closeAddEventModal()">Cancel</button>
+                        <button type="submit" class="btn-save">
+                            <i class="fas fa-save"></i> Save Event
+                        </button>
                     </div>
                 </form>
             </div>
@@ -1505,6 +1561,15 @@
                     dateDisplay = `<div class="event-date-range">${startDate.toLocaleDateString('en-US', options)} - ${endDate.toLocaleDateString('en-US', options)}</div>`;
                 }
                 
+                // Format time display
+                let timeDisplay = '';
+                const startTime = event.start_time || event.time;  // Fallback to time for compatibility
+                if (startTime && event.end_time) {
+                    timeDisplay = `<div class="event-time"><i class="far fa-clock"></i> ${escapeHtml(startTime)} - ${escapeHtml(event.end_time)}</div>`;
+                } else if (startTime) {
+                    timeDisplay = `<div class="event-time"><i class="far fa-clock"></i> ${escapeHtml(startTime)}</div>`;
+                }
+                
                 // Check if user can delete this event
                 const canDelete = (event.username === currentUser || isAdmin);
                 
@@ -1519,7 +1584,7 @@
                     <div class="event-item event-color-${colorIndex}" data-event-id="${event.id}">
                         <div class="event-title">${escapeHtml(event.title)}</div>
                         ${dateDisplay}
-                        ${event.time ? `<div class="event-time">${escapeHtml(event.time)}</div>` : ''}
+                        ${timeDisplay}
                         ${event.description ? `<div class="event-description">${escapeHtml(event.description)}</div>` : ''}
                         <div class="event-creator">Created by ${escapeHtml(event.username)}</div>
                         ${canDelete ? `<button class="event-delete-btn" onclick="deleteCalendarEvent(${event.id})">Delete</button>` : ''}

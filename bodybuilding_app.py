@@ -3044,13 +3044,15 @@ def get_calendar_events():
         with get_db_connection() as conn:
             c = conn.cursor()
             
-            # Get all calendar events
+            # Get all calendar events (with backward compatibility for time field)
             c.execute("""
                 SELECT id, username, title, date, 
                        COALESCE(end_date, date) as end_date,
+                       COALESCE(start_time, time) as start_time,
+                       end_time,
                        time, description, created_at
                 FROM calendar_events
-                ORDER BY date ASC, time ASC
+                ORDER BY date ASC, COALESCE(start_time, time) ASC
             """)
             events_raw = c.fetchall()
             
@@ -3062,7 +3064,9 @@ def get_calendar_events():
                     'title': event['title'],
                     'date': event['date'],
                     'end_date': event['end_date'],
-                    'time': event['time'],
+                    'time': event['time'],  # Keep for backward compatibility
+                    'start_time': event['start_time'],
+                    'end_time': event['end_time'],
                     'description': event['description'],
                     'created_at': event['created_at']
                 })
@@ -3082,7 +3086,11 @@ def add_calendar_event():
         title = request.form.get('title', '').strip()
         date = request.form.get('date', '').strip()
         end_date = request.form.get('end_date', '').strip()
-        time = request.form.get('time', '').strip()
+        start_time = request.form.get('start_time', '').strip()
+        end_time = request.form.get('end_time', '').strip()
+        # Fall back to 'time' field for backward compatibility
+        if not start_time:
+            start_time = request.form.get('time', '').strip()
         description = request.form.get('description', '').strip()
         
         # Validate required fields
@@ -3105,21 +3113,34 @@ def add_calendar_event():
             except ValueError:
                 return jsonify({'success': False, 'message': 'Invalid end date format'})
         
-        # Validate time format if provided
-        if time:
+        # Validate time formats if provided
+        if start_time:
             try:
-                datetime.strptime(time, '%H:%M')
+                datetime.strptime(start_time, '%H:%M')
             except ValueError:
-                return jsonify({'success': False, 'message': 'Invalid time format'})
+                return jsonify({'success': False, 'message': 'Invalid start time format'})
+        
+        if end_time:
+            try:
+                datetime.strptime(end_time, '%H:%M')
+                # Validate end_time is after start_time if both provided
+                if start_time and end_time < start_time and date == end_date:
+                    return jsonify({'success': False, 'message': 'End time cannot be before start time on the same day'})
+            except ValueError:
+                return jsonify({'success': False, 'message': 'Invalid end time format'})
         
         with get_db_connection() as conn:
             c = conn.cursor()
             
-            # Insert the event
+            # Insert the event (keeping 'time' field for backward compatibility)
             c.execute("""
-                INSERT INTO calendar_events (username, title, date, end_date, time, description, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
-            """, (username, title, date, end_date if end_date else None, time if time else None, description if description else None))
+                INSERT INTO calendar_events (username, title, date, end_date, time, start_time, end_time, description, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+            """, (username, title, date, end_date if end_date else None, 
+                  start_time if start_time else None,  # Keep time field for compatibility
+                  start_time if start_time else None,  # start_time
+                  end_time if end_time else None,      # end_time
+                  description if description else None))
             
             conn.commit()
             
