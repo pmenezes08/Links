@@ -3137,18 +3137,28 @@ def delete_calendar_event():
         username = session['username']
         event_id = request.form.get('event_id', type=int)
         
+        logger.info(f"Delete request from {username} for event ID: {event_id}")
+        
         if not event_id:
             return jsonify({'success': False, 'message': 'Event ID is required'})
         
         with get_db_connection() as conn:
             c = conn.cursor()
             
+            # First, let's see all events to debug
+            c.execute("SELECT id, username, title FROM calendar_events")
+            all_events = c.fetchall()
+            logger.info(f"All events in database: {[(e['id'], e['username'], e['title']) for e in all_events]}")
+            
             # Check if user owns the event or is admin
-            c.execute("SELECT username FROM calendar_events WHERE id = ?", (event_id,))
+            c.execute("SELECT id, username, title FROM calendar_events WHERE id = ?", (event_id,))
             event = c.fetchone()
             
             if not event:
-                return jsonify({'success': False, 'message': 'Event not found'})
+                logger.warning(f"Event {event_id} not found in database")
+                return jsonify({'success': False, 'message': f'Event not found (ID: {event_id})'})
+            
+            logger.info(f"Found event: ID={event['id']}, owner={event['username']}, title={event['title']}")
             
             if event['username'] != username and username != 'admin':
                 return jsonify({'success': False, 'message': 'Unauthorized to delete this event'})
@@ -3157,10 +3167,11 @@ def delete_calendar_event():
             c.execute("DELETE FROM calendar_events WHERE id = ?", (event_id,))
             conn.commit()
             
+            logger.info(f"Successfully deleted event {event_id}")
             return jsonify({'success': True, 'message': 'Event deleted successfully'})
             
     except Exception as e:
-        logger.error(f"Error deleting calendar event: {str(e)}")
+        logger.error(f"Error deleting calendar event {event_id}: {str(e)}", exc_info=True)
         return jsonify({'success': False, 'message': str(e)})
 
 @app.route('/delete_post', methods=['POST'])
