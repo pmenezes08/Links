@@ -1139,6 +1139,12 @@
             width: 800px;
         }
         
+        /* Make calendar modal more compact */
+        #calendarModal .polls-modal {
+            width: 600px !important;
+            max-width: 90vw !important;
+        }
+        
         .polls-modal .modal-header {
             background: #000000 !important;
             color: #ffffff !important;
@@ -1158,11 +1164,16 @@
             background: rgba(255, 255, 255, 0.1);
         }
         
-        #calendarModal .modal-body,
         .polls-modal .modal-body {
             padding: 10px !important;
             max-height: 90vh !important;
             overflow-y: auto !important;
+        }
+        
+        #calendarModal .modal-body {
+            padding: 8px !important;
+            max-height: 85vh !important;
+            overflow-y: hidden !important;
         }
         
         /* Polls tabs styling - compact and centered like announcements */
@@ -1364,39 +1375,7 @@
             transform: translateY(-2px);
         }
         
-        .calendar-modal-content {
-            max-width: 900px;
-            width: 90%;
-        }
-        
-        .calendar-modal-content .modal-header {
-            position: relative;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        
-        .calendar-modal-content .modal-header h2 {
-            margin: 0;
-            flex-grow: 1;
-        }
-        
-        .calendar-modal-content .close {
-            position: relative;
-            top: auto;
-            right: auto;
-            font-size: 20px;
-            line-height: 20px;
-            padding: 5px;
-            color: #9fb0b5;
-            cursor: pointer;
-            transition: color 0.2s ease;
-            float: none;
-        }
-        
-        .calendar-modal-content .close:hover {
-            color: #ffffff;
-        }
+        /* Removed conflicting calendar-modal-content styles */
         
         #calendarModal .calendar-container {
             display: flex !important;
@@ -1462,15 +1441,19 @@
         }
         
         #calendarModal .calendar-day {
-            aspect-ratio: 1 !important;
+            /* Removed aspect-ratio to allow smaller height */
             background: rgba(255, 255, 255, 0.02) !important;
             border: 1px solid rgba(255, 255, 255, 0.1) !important;
-            padding: 2px !important;
+            padding: 1px !important;
             cursor: pointer !important;
             transition: all 0.2s ease !important;
             position: relative !important;
-            min-height: 25px !important;
-            font-size: 10px !important;
+            height: 22px !important;
+            min-height: 22px !important;
+            font-size: 9px !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
         }
         
         .calendar-day:hover {
@@ -1497,19 +1480,18 @@
             font-size: 14px;
         }
         
-        .day-events-indicator {
-            position: absolute;
-            bottom: 2px;
-            left: 50%;
-            transform: translateX(-50%);
-            display: flex;
-            gap: 1px;
+        #calendarModal .day-events-indicator {
+            position: absolute !important;
+            bottom: 1px !important;
+            right: 1px !important;
+            display: flex !important;
+            gap: 1px !important;
         }
         
-        .event-dot {
-            width: 3px;
-            height: 3px;
-            border-radius: 50%;
+        #calendarModal .event-dot {
+            width: 2px !important;
+            height: 2px !important;
+            border-radius: 50% !important;
         }
         
         /* Event color classes */
@@ -1550,9 +1532,9 @@
         #calendarModal .calendar-events {
             background: rgba(255, 255, 255, 0.02) !important;
             border: 1px solid rgba(255, 255, 255, 0.1) !important;
-            border-radius: 6px !important;
-            padding: 8px !important;
-            max-height: 150px !important;
+            border-radius: 4px !important;
+            padding: 5px !important;
+            max-height: 100px !important;
             overflow-y: auto !important;
             overflow-x: hidden !important;
         }
