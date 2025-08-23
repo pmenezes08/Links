@@ -22,10 +22,8 @@
         
         /* Polls Toggle Button */
         .polls-toggle-container {
-            position: fixed;
-            left: 100px;
-            top: 150px;
-            z-index: 100;
+            margin: 15px 0;
+            text-align: left;
         }
         
         .polls-toggle-btn {
@@ -37,7 +35,7 @@
             cursor: pointer;
             font-size: 13px;
             font-weight: 500;
-            display: flex;
+            display: inline-flex;
             align-items: center;
             gap: 8px;
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
@@ -56,10 +54,11 @@
         /* Compact Polls Sidebar */
         .polls-sidebar {
             position: fixed;
-            left: 100px;
-            top: 200px;
-            width: 240px;
-            max-height: 450px;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            width: 280px;
+            max-height: 500px;
             background: linear-gradient(135deg, #1a3d3a 0%, #0f2725 100%);
             border-radius: 12px;
             border: 1px solid rgba(255, 255, 255, 0.1);
@@ -71,7 +70,7 @@
         
         .polls-sidebar.collapsed {
             opacity: 0;
-            transform: translateX(-260px);
+            transform: translate(-50%, -50%) scale(0.9);
             pointer-events: none;
         }
         
@@ -113,7 +112,7 @@
         
         .sidebar-polls-list {
             padding: 10px;
-            max-height: 380px;
+            max-height: 430px;
             overflow-y: auto;
         }
         
@@ -896,13 +895,6 @@
 
     <!-- Main Content -->
     <div class="main-layout-container">
-        <!-- Toggle Button for Polls -->
-        <div class="polls-toggle-container" id="pollsToggleContainer" style="display: none;">
-            <button class="polls-toggle-btn" onclick="togglePollsSidebar()">
-                <i class="fas fa-poll-h"></i> See active polls
-            </button>
-        </div>
-        
         <!-- Compact Polls Sidebar (Hidden by default) -->
         <div class="polls-sidebar collapsed" id="pollsSidebar">
             <div class="sidebar-header">
@@ -932,6 +924,13 @@
                         <i class="fas fa-calendar-alt"></i> Calendar
                     </button>
                 </div>
+            </div>
+
+            <!-- Toggle Button for Active Polls -->
+            <div class="polls-toggle-container" id="pollsToggleContainer" style="display: none;">
+                <button class="polls-toggle-btn" onclick="togglePollsSidebar()">
+                    <i class="fas fa-poll-h"></i> See active polls
+                </button>
             </div>
 
             <!-- Composer -->
