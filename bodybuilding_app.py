@@ -1457,6 +1457,24 @@ def public_profile(username):
         flash('Error loading profile', 'error')
         return redirect(url_for('feed'))
 
+@app.route('/account_settings')
+@login_required
+def account_settings():
+    """Account settings page for managing account info and password"""
+    username = session['username']
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT username, email, subscription FROM users WHERE username=?", (username,))
+            user = c.fetchone()
+            
+        if user:
+            return render_template('account_settings.html', username=username, user=user)
+        return render_template('index.html', error="User not found!")
+    except Exception as e:
+        logger.error(f"Error in account settings for {username}: {str(e)}")
+        abort(500)
+
 @app.route('/profile')
 @login_required
 def profile():
