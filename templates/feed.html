@@ -117,24 +117,6 @@
             width: 90%;
         }
         
-        .calendar-refresh-btn {
-            background: #4db6ac;
-            color: #ffffff;
-            border: none;
-            padding: 8px 10px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 14px;
-            margin-left: auto;
-            margin-right: 10px;
-            transition: all 0.2s ease;
-        }
-        
-        .calendar-refresh-btn:hover {
-            background: #37a69c;
-            transform: rotate(180deg);
-        }
-        
         /* Fix close button for calendar modal */
         .calendar-modal-content .modal-header {
             position: relative;
@@ -913,9 +895,6 @@
         <div class="modal-content calendar-modal-content">
             <div class="modal-header">
                 <h2>Community Calendar</h2>
-                <button class="calendar-refresh-btn" onclick="refreshCalendar()" title="Refresh Calendar">
-                    <i class="fas fa-sync-alt"></i>
-                </button>
                 <span class="close" onclick="closeCalendarModal()">&times;</span>
             </div>
             <div class="modal-body">
@@ -1344,26 +1323,6 @@
         
         function closeCalendarModal() {
             document.getElementById('calendarModal').style.display = 'none';
-        }
-        
-        function refreshCalendar() {
-            console.log('Refreshing calendar...');
-            // Clear all local data first
-            calendarEvents = {};
-            eventColorMap = {};
-            // Force reload from server
-            loadCalendarEvents(true);
-            if (selectedDate) {
-                setTimeout(() => displayEventsForDate(selectedDate), 200);
-            }
-        }
-        
-        function clearAndReloadCalendar() {
-            // Complete reset of calendar data
-            calendarEvents = {};
-            eventColorMap = {};
-            renderCalendar();
-            loadCalendarEvents(true);
         }
         
         function showAddEventForm() {
