@@ -8,21 +8,11 @@
     <meta name="csrf-token" content="{{ csrf_token }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v='3.0') }}">
     <style>
-        /* Prevent page scroll */
-        html, body {
-            height: 100%;
-            overflow: hidden;
-        }
-        
         /* Main layout - centered */
         .main-layout-container {
-            position: relative;
             max-width: 800px;
             margin: 0 auto;
             padding: 20px;
-            height: calc(100vh - 60px); /* Account for nav bar */
-            overflow-y: auto;
-            overflow-x: hidden;
         }
         
         /* Polls Toggle Button */
@@ -150,13 +140,7 @@
             display: none;
         }
         
-        /* Main feed container stays centered */
-        .container.feed {
-            min-height: auto !important;
-            height: auto !important;
-            display: block !important;
-            justify-content: unset !important;
-        }
+
         
         /* Compact Poll Styles for Sidebar */
         .sidebar-poll-item {
@@ -304,16 +288,32 @@
         }
         
         body {
-            background-color: {{ '#ffffff' if community.template == 'light' else '#000000' }} !important;
-            color: {{ '#000000' if community.template == 'light' else '#ffffff' }} !important;
+            background-color: {{ '#ffffff' if community.template == 'light' else '#000000' }};
+            color: {{ '#000000' if community.template == 'light' else '#ffffff' }};
+            margin: 0;
+            padding: 0;
         }
         
         .container.feed {
-            background-color: {{ '#ffffff' if community.template == 'light' else '#000000' }} !important;
+            background-color: {{ '#ffffff' if community.template == 'light' else '#000000' }};
+            padding: 20px;
+            max-width: 800px;
+            margin: 0 auto;
         }
         
         .community-header-image {
-            border-color: {{ community.accent_color or '#4db6ac' }} !important;
+            width: 100%;
+            max-width: 800px;
+            margin: 0 auto 20px auto;
+            border-radius: 12px;
+            overflow: hidden;
+        }
+        
+        .community-header-image img {
+            width: 100%;
+            height: 200px;
+            object-fit: cover;
+            display: block;
         }
 
         /* Light theme specific styles */
@@ -1189,13 +1189,11 @@
         }
         
         .post-image img {
-            width: auto !important;
-            height: auto !important;
-            max-width: none !important;
-            max-height: none !important;
-            object-fit: none !important;
-            margin: 0 auto !important;
-            display: block !important;
+            width: 100%;
+            height: auto;
+            max-width: 100%;
+            object-fit: contain;
+            display: block;
         }
         
         /* Polls modal styling - matching announcements modal */
@@ -1230,15 +1228,15 @@
         }
         
         .polls-modal .modal-body {
-            padding: 10px !important;
-            max-height: 80vh !important;
-            overflow-y: auto !important;
+            padding: 15px;
+            max-height: 70vh;
+            overflow-y: auto;
         }
         
         #calendarModal .modal-body {
-            padding: 8px !important;
-            max-height: 75vh !important;
-            overflow-y: auto !important;
+            padding: 10px;
+            max-height: 70vh;
+            overflow-y: auto;
         }
         
         /* Polls tabs styling - compact and centered like announcements */
@@ -1780,20 +1778,7 @@
             color: #ffffff;
             border-color: rgba(255, 255, 255, 0.2);
         }
-        
-        /* Mobile adjustments to prevent scroll */
-        @media (max-width: 768px) {
-            .main-layout-container {
-                padding: 10px;
-                height: calc(100vh - 50px);
-            }
-            
-            .polls-sidebar {
-                left: 10px !important;
-                width: 90% !important;
-                max-width: 320px !important;
-            }
-        }
+
     </style>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
@@ -2601,9 +2586,8 @@
                                 <img src="{{ url_for('uploaded_file', filename=clean_path) }}" 
                                      alt="Post image" 
                                      loading="lazy" 
-                                     onerror="handleImageError(this, '{{ post.image_path }}', '{{ clean_path }}')" 
-                                     onload="console.log('Image loaded successfully:', this.src);"
-                                     style="display: block;">
+                                     onerror="handleImageError(this, '{{ post.image_path }}', '{{ clean_path }}')"
+                                     onload="console.log('Image loaded successfully:', this.src);">
                             </div>
                         {% endif %}
                         <div class="post-actions">
