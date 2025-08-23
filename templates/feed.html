@@ -225,8 +225,42 @@
         .event-dot {
             width: 4px;
             height: 4px;
-            background: #4db6ac;
             border-radius: 50%;
+        }
+        
+        /* Event color classes - subtle backgrounds with colored left borders */
+        .event-color-0 { background: rgba(77, 182, 172, 0.1); border-left: 4px solid #4db6ac; }
+        .event-color-1 { background: rgba(255, 107, 107, 0.1); border-left: 4px solid #ff6b6b; }
+        .event-color-2 { background: rgba(78, 205, 196, 0.1); border-left: 4px solid #4ecdc4; }
+        .event-color-3 { background: rgba(69, 183, 209, 0.1); border-left: 4px solid #45b7d1; }
+        .event-color-4 { background: rgba(150, 206, 180, 0.1); border-left: 4px solid #96ceb4; }
+        .event-color-5 { background: rgba(254, 202, 87, 0.1); border-left: 4px solid #feca57; }
+        .event-color-6 { background: rgba(255, 159, 243, 0.1); border-left: 4px solid #ff9ff3; }
+        .event-color-7 { background: rgba(162, 155, 254, 0.1); border-left: 4px solid #a29bfe; }
+        .event-color-8 { background: rgba(253, 121, 168, 0.1); border-left: 4px solid #fd79a8; }
+        .event-color-9 { background: rgba(253, 203, 110, 0.1); border-left: 4px solid #fdcb6e; }
+        
+        .event-dot-0 { background-color: #4db6ac; }
+        .event-dot-1 { background-color: #ff6b6b; }
+        .event-dot-2 { background-color: #4ecdc4; }
+        .event-dot-3 { background-color: #45b7d1; }
+        .event-dot-4 { background-color: #96ceb4; }
+        .event-dot-5 { background-color: #feca57; }
+        .event-dot-6 { background-color: #ff9ff3; }
+        .event-dot-7 { background-color: #a29bfe; }
+        .event-dot-8 { background-color: #fd79a8; }
+        .event-dot-9 { background-color: #fdcb6e; }
+        
+        .event-item {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 6px;
+            padding: 10px;
+            padding-left: 14px;
+            margin-bottom: 10px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            position: relative;
         }
         
         .calendar-events {
@@ -250,19 +284,9 @@
             margin-bottom: 15px;
         }
         
-        .event-item {
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 6px;
-            padding: 10px;
-            margin-bottom: 10px;
-            cursor: pointer;
-            transition: all 0.2s ease;
-        }
-        
         .event-item:hover {
-            background: rgba(255, 255, 255, 0.08);
-            border-color: #4db6ac;
+            background: rgba(255, 255, 255, 0.08) !important;
+            transform: translateX(2px);
         }
         
         .event-title {
@@ -1233,6 +1257,7 @@
         let currentDate = new Date();
         let selectedDate = null;
         let calendarEvents = {};
+        let eventColorMap = {};  // Store color assignments for events
         
         function showCalendarModal() {
             document.getElementById('calendarModal').style.display = 'block';
@@ -1309,7 +1334,8 @@
         
         function createDayElement(date, isOtherMonth) {
             const dateStr = formatDateKey(date);
-            const hasEvents = calendarEvents[dateStr] && calendarEvents[dateStr].length > 0;
+            const dayEvents = calendarEvents[dateStr] || [];
+            const hasEvents = dayEvents.length > 0;
             const isSelected = selectedDate && formatDateKey(selectedDate) === dateStr;
             
             let className = 'calendar-day';
@@ -1319,10 +1345,21 @@
             
             let eventsIndicator = '';
             if (hasEvents && !isOtherMonth) {
-                const numEvents = Math.min(calendarEvents[dateStr].length, 3);
+                // Get unique events for this day (avoid duplicates from multi-day events)
+                const uniqueEvents = [];
+                const seenIds = new Set();
+                dayEvents.forEach(event => {
+                    if (!seenIds.has(event.id)) {
+                        uniqueEvents.push(event);
+                        seenIds.add(event.id);
+                    }
+                });
+                
+                const numEvents = Math.min(uniqueEvents.length, 3);
                 eventsIndicator = '<div class="day-events-indicator">';
                 for (let i = 0; i < numEvents; i++) {
-                    eventsIndicator += '<div class="event-dot"></div>';
+                    const colorIndex = getEventColorIndex(uniqueEvents[i].id, dateStr);
+                    eventsIndicator += `<div class="event-dot event-dot-${colorIndex}"></div>`;
                 }
                 eventsIndicator += '</div>';
             }
@@ -1345,6 +1382,33 @@
             document.getElementById('selectedDate').textContent = date.toLocaleDateString('en-US', options);
         }
         
+        function getEventColorIndex(eventId, dateStr) {
+            // Create a unique key for this date
+            const dateKey = `date_${dateStr}`;
+            
+            if (!eventColorMap[dateKey]) {
+                eventColorMap[dateKey] = {};
+            }
+            
+            // If this event doesn't have a color for this date, assign one
+            if (eventColorMap[dateKey][eventId] === undefined) {
+                const usedColors = Object.values(eventColorMap[dateKey]);
+                let colorIndex = 0;
+                
+                // Find the first unused color (up to 10 colors)
+                for (let i = 0; i < 10; i++) {
+                    if (!usedColors.includes(i)) {
+                        colorIndex = i;
+                        break;
+                    }
+                }
+                
+                eventColorMap[dateKey][eventId] = colorIndex;
+            }
+            
+            return eventColorMap[dateKey][eventId];
+        }
+        
         function displayEventsForDate(date) {
             const dateStr = formatDateKey(date);
             const events = calendarEvents[dateStr] || [];
@@ -1355,12 +1419,25 @@
                 return;
             }
             
-            // Get current username from session (we'll need to pass this from backend)
+            // Get current username from session
             const currentUser = '{{ session.username }}';
             const isAdmin = currentUser === 'admin';
             
-            let eventsHTML = '';
+            // Remove duplicates for multi-day events
+            const uniqueEvents = [];
+            const seenIds = new Set();
             events.forEach(event => {
+                if (!seenIds.has(event.id)) {
+                    uniqueEvents.push(event);
+                    seenIds.add(event.id);
+                }
+            });
+            
+            let eventsHTML = '';
+            uniqueEvents.forEach((event, index) => {
+                // Get color for this event on this date
+                const colorIndex = getEventColorIndex(event.id, dateStr);
+                
                 // Format date range
                 let dateDisplay = '';
                 if (event.end_date && event.end_date !== event.date) {
@@ -1374,7 +1451,7 @@
                 const canDelete = (event.username === currentUser || isAdmin);
                 
                 eventsHTML += `
-                    <div class="event-item" data-event-id="${event.id}">
+                    <div class="event-item event-color-${colorIndex}" data-event-id="${event.id}">
                         <div class="event-title">${event.title}</div>
                         ${dateDisplay}
                         ${event.time ? `<div class="event-time">${event.time}</div>` : ''}
@@ -1405,6 +1482,7 @@
                 .then(data => {
                     if (data.success) {
                         calendarEvents = {};
+                        eventColorMap = {};  // Reset color assignments
                         data.events.forEach(event => {
                             // Add event to start date
                             if (!calendarEvents[event.date]) {
