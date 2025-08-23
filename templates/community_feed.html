@@ -1095,6 +1095,390 @@
             color: {{ community.accent_color or '#2d8a7e' }};
             font-size: 11px;
         }
+        
+        /* Calendar Styles */
+        .calendar-btn {
+            background: {{ community.accent_color or '#2d8a7e' }};
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .calendar-btn:hover {
+            background: {{ community.hover_color or '#1f6b61' }};
+            transform: translateY(-2px);
+        }
+        
+        .calendar-modal-content {
+            max-width: 900px;
+            width: 90%;
+        }
+        
+        .calendar-modal-content .modal-header {
+            position: relative;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .calendar-modal-content .modal-header h2 {
+            margin: 0;
+            flex-grow: 1;
+        }
+        
+        .calendar-modal-content .close {
+            position: relative;
+            top: auto;
+            right: auto;
+            font-size: 20px;
+            line-height: 20px;
+            padding: 5px;
+            color: #9fb0b5;
+            cursor: pointer;
+            transition: color 0.2s ease;
+            float: none;
+        }
+        
+        .calendar-modal-content .close:hover {
+            color: #ffffff;
+        }
+        
+        .calendar-container {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 20px;
+        }
+        
+        .calendar-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            grid-column: 1;
+        }
+        
+        .calendar-nav-btn {
+            background: {{ community.accent_color or '#2d8a7e' }};
+            color: #ffffff;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .calendar-nav-btn:hover {
+            background: {{ community.hover_color or '#1f6b61' }};
+        }
+        
+        #currentMonth {
+            color: #ffffff;
+            font-size: 18px;
+            font-weight: 600;
+            margin: 0;
+        }
+        
+        .calendar-grid {
+            grid-column: 1;
+        }
+        
+        .calendar-weekdays {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 1px;
+            margin-bottom: 5px;
+        }
+        
+        .weekday {
+            text-align: center;
+            padding: 10px;
+            color: {{ community.accent_color or '#2d8a7e' }};
+            font-weight: 600;
+            font-size: 12px;
+        }
+        
+        .calendar-days {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 1px;
+            background: rgba(255, 255, 255, 0.05);
+        }
+        
+        .calendar-day {
+            aspect-ratio: 1;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            position: relative;
+            min-height: 60px;
+        }
+        
+        .calendar-day:hover {
+            background: rgba(45, 138, 126, 0.2);
+            border-color: {{ community.accent_color or '#2d8a7e' }};
+        }
+        
+        .calendar-day.selected {
+            background: rgba(45, 138, 126, 0.3);
+            border-color: {{ community.accent_color or '#2d8a7e' }};
+        }
+        
+        .calendar-day.other-month {
+            opacity: 0.3;
+        }
+        
+        .calendar-day.has-events {
+            border-color: {{ community.accent_color or '#2d8a7e' }};
+        }
+        
+        .day-number {
+            color: #ffffff;
+            font-weight: 500;
+            font-size: 14px;
+        }
+        
+        .day-events-indicator {
+            position: absolute;
+            bottom: 4px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 2px;
+        }
+        
+        .event-dot {
+            width: 4px;
+            height: 4px;
+            border-radius: 50%;
+        }
+        
+        /* Event color classes */
+        .event-color-0 { background: rgba(77, 182, 172, 0.1); border-left: 4px solid #4db6ac; }
+        .event-color-1 { background: rgba(255, 107, 107, 0.1); border-left: 4px solid #ff6b6b; }
+        .event-color-2 { background: rgba(78, 205, 196, 0.1); border-left: 4px solid #4ecdc4; }
+        .event-color-3 { background: rgba(69, 183, 209, 0.1); border-left: 4px solid #45b7d1; }
+        .event-color-4 { background: rgba(150, 206, 180, 0.1); border-left: 4px solid #96ceb4; }
+        .event-color-5 { background: rgba(254, 202, 87, 0.1); border-left: 4px solid #feca57; }
+        .event-color-6 { background: rgba(255, 159, 243, 0.1); border-left: 4px solid #ff9ff3; }
+        .event-color-7 { background: rgba(162, 155, 254, 0.1); border-left: 4px solid #a29bfe; }
+        .event-color-8 { background: rgba(253, 121, 168, 0.1); border-left: 4px solid #fd79a8; }
+        .event-color-9 { background: rgba(253, 203, 110, 0.1); border-left: 4px solid #fdcb6e; }
+        
+        .event-dot-0 { background-color: #4db6ac; }
+        .event-dot-1 { background-color: #ff6b6b; }
+        .event-dot-2 { background-color: #4ecdc4; }
+        .event-dot-3 { background-color: #45b7d1; }
+        .event-dot-4 { background-color: #96ceb4; }
+        .event-dot-5 { background-color: #feca57; }
+        .event-dot-6 { background-color: #ff9ff3; }
+        .event-dot-7 { background-color: #a29bfe; }
+        .event-dot-8 { background-color: #fd79a8; }
+        .event-dot-9 { background-color: #fdcb6e; }
+        
+        .event-item {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 6px;
+            padding: 10px;
+            padding-left: 14px;
+            margin-bottom: 10px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            position: relative;
+        }
+        
+        .calendar-events {
+            grid-column: 2;
+            grid-row: 1 / 3;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            padding: 20px;
+            overflow-x: hidden;
+            min-width: 0;
+        }
+        
+        .calendar-events h4 {
+            color: #ffffff;
+            margin: 0 0 15px 0;
+            font-size: 16px;
+        }
+        
+        .events-list {
+            max-height: 400px;
+            overflow-y: auto;
+            overflow-x: hidden;
+            margin-bottom: 15px;
+            word-wrap: break-word;
+        }
+        
+        .event-item:hover {
+            background: rgba(255, 255, 255, 0.08) !important;
+            transform: translateX(2px);
+        }
+        
+        .event-title {
+            color: #ffffff;
+            font-weight: 500;
+            margin-bottom: 4px;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+        }
+        
+        .event-time {
+            color: {{ community.accent_color or '#2d8a7e' }};
+            font-size: 12px;
+            margin-bottom: 4px;
+        }
+        
+        .event-description {
+            color: #9fb0b5;
+            font-size: 12px;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+            white-space: pre-wrap;
+        }
+        
+        .event-creator {
+            color: #9fb0b5;
+            font-size: 11px;
+            margin-top: 4px;
+            font-style: italic;
+        }
+        
+        .event-date-range {
+            color: {{ community.accent_color or '#2d8a7e' }};
+            font-size: 12px;
+            margin-bottom: 4px;
+        }
+        
+        .event-delete-btn {
+            background: #ff4444;
+            color: #ffffff;
+            border: none;
+            padding: 4px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 11px;
+            margin-top: 8px;
+            transition: all 0.2s ease;
+        }
+        
+        .event-delete-btn:hover {
+            background: #cc0000;
+        }
+        
+        .add-event-btn {
+            width: 100%;
+            background: {{ community.accent_color or '#2d8a7e' }};
+            color: #ffffff;
+            border: none;
+            padding: 10px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.2s ease;
+        }
+        
+        .add-event-btn:hover {
+            background: {{ community.hover_color or '#1f6b61' }};
+        }
+        
+        .add-event-modal {
+            max-width: 500px;
+        }
+        
+        .add-event-modal .modal-header {
+            position: relative;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .add-event-modal .close {
+            position: relative;
+            top: auto;
+            right: auto;
+            font-size: 20px;
+            line-height: 20px;
+            padding: 5px;
+            float: none;
+        }
+        
+        .add-event-modal textarea {
+            width: 100%;
+            max-width: 100%;
+            box-sizing: border-box;
+            resize: vertical;
+        }
+        
+        .add-event-modal .form-group {
+            margin-bottom: 15px;
+        }
+        
+        .add-event-modal input[type="text"],
+        .add-event-modal input[type="date"],
+        .add-event-modal input[type="time"] {
+            width: 100%;
+            box-sizing: border-box;
+        }
+        
+        /* Modern button styles for event modal */
+        .form-actions {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+            margin-top: 20px;
+        }
+        
+        .btn-save {
+            background: linear-gradient(135deg, {{ community.accent_color or '#2d8a7e' }} 0%, {{ community.hover_color or '#1f6b61' }} 100%);
+            color: #ffffff;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            box-shadow: 0 2px 4px rgba(45, 138, 126, 0.2);
+        }
+        
+        .btn-save:hover {
+            background: linear-gradient(135deg, {{ community.hover_color or '#1f6b61' }} 0%, #174f47 100%);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(45, 138, 126, 0.3);
+        }
+        
+        .btn-cancel {
+            background: rgba(255, 255, 255, 0.05);
+            color: #9fb0b5;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+        
+        .btn-cancel:hover {
+            background: rgba(255, 255, 255, 0.08);
+            color: #ffffff;
+            border-color: rgba(255, 255, 255, 0.2);
+        }
     </style>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
@@ -1790,6 +2174,9 @@
             <button class="polls-btn" onclick="showPollsModal()">
                 <i class="fas fa-poll-h"></i> Polls
             </button>
+            <button class="calendar-btn" onclick="showCalendarModal()">
+                <i class="fas fa-calendar-alt"></i> Calendar
+            </button>
             {% if username == community.creator_username or username == 'admin' %}
             <button class="edit-community-btn" onclick="showEditCommunityModal()">
                 <i class="fas fa-edit"></i> Edit Community
@@ -2179,5 +2566,97 @@
             });
         }
     </script>
+    <!-- Calendar Modal -->
+    <div id="calendarModal" class="modal">
+        <div class="modal-content calendar-modal-content">
+            <div class="modal-header">
+                <h2>Community Calendar</h2>
+                <span class="close" onclick="closeCalendarModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="calendar-container">
+                    <div class="calendar-header">
+                        <button class="calendar-nav-btn" onclick="previousMonth()">
+                            <i class="fas fa-chevron-left"></i>
+                        </button>
+                        <h3 id="currentMonth">December 2024</h3>
+                        <button class="calendar-nav-btn" onclick="nextMonth()">
+                            <i class="fas fa-chevron-right"></i>
+                        </button>
+                    </div>
+                    <div class="calendar-grid">
+                        <div class="calendar-weekdays">
+                            <div class="weekday">Sun</div>
+                            <div class="weekday">Mon</div>
+                            <div class="weekday">Tue</div>
+                            <div class="weekday">Wed</div>
+                            <div class="weekday">Thu</div>
+                            <div class="weekday">Fri</div>
+                            <div class="weekday">Sat</div>
+                        </div>
+                        <div id="calendarDays" class="calendar-days">
+                            <!-- Calendar days will be generated here -->
+                        </div>
+                    </div>
+                    <div class="calendar-events">
+                        <h4>Events for <span id="selectedDate">Select a date</span></h4>
+                        <div id="eventsList" class="events-list">
+                            <!-- Events will be displayed here -->
+                        </div>
+                        <button class="btn add-event-btn" onclick="showAddEventForm()">
+                            <i class="fas fa-plus"></i> Add Event
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Event Modal -->
+    <div id="addEventModal" class="modal">
+        <div class="modal-content add-event-modal">
+            <div class="modal-header">
+                <h3>Add Event</h3>
+                <span class="close" onclick="closeAddEventModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <form id="addEventForm">
+                    <div class="form-group">
+                        <label for="eventTitle">Event Title *</label>
+                        <input type="text" id="eventTitle" name="title" placeholder="Enter event title" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="eventDate">Start Date *</label>
+                        <input type="date" id="eventDate" name="date" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="eventEndDate">End Date</label>
+                        <input type="date" id="eventEndDate" name="end_date">
+                    </div>
+                    <div class="form-group" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                        <div>
+                            <label for="eventStartTime">Start Time</label>
+                            <input type="time" id="eventStartTime" name="start_time">
+                        </div>
+                        <div>
+                            <label for="eventEndTime">End Time</label>
+                            <input type="time" id="eventEndTime" name="end_time">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="eventDescription">Description</label>
+                        <textarea id="eventDescription" name="description" placeholder="Event details..." rows="3"></textarea>
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn-cancel" onclick="closeAddEventModal()">Cancel</button>
+                        <button type="submit" class="btn-save">
+                            <i class="fas fa-save"></i> Save Event
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
 </body>
 </html>
