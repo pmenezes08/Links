@@ -1624,6 +1624,7 @@ def update_professional():
     try:
         role = request.form.get('role', '')
         company = request.form.get('company', '')
+        industry = request.form.get('industry', '')
         degree = request.form.get('degree', '')
         school = request.form.get('school', '')
         skills = request.form.get('skills', '')
@@ -1632,9 +1633,9 @@ def update_professional():
         
         with get_db_connection() as conn:
             c = conn.cursor()
-            c.execute("""UPDATE users SET role=?, company=?, degree=?, school=?, 
+            c.execute("""UPDATE users SET role=?, company=?, industry=?, degree=?, school=?, 
                         skills=?, linkedin=?, experience=? WHERE username=?""",
-                     (role, company, degree, school, skills, linkedin, experience, username))
+                     (role, company, industry, degree, school, skills, linkedin, experience, username))
             conn.commit()
         
         return jsonify({'success': True})
@@ -1650,7 +1651,6 @@ def update_personal_info():
     gender = request.form.get('gender')
     country = request.form.get('country')
     city = request.form.get('city')
-    industry = request.form.get('industry')
     
     try:
         with get_db_connection() as conn:
@@ -1659,8 +1659,8 @@ def update_personal_info():
             # Convert age to appropriate type
             age = int(age) if age else None
             
-            c.execute("""UPDATE users SET age=?, gender=?, country=?, city=?, industry=? 
-                        WHERE username=?""", (age, gender, country, city, industry, username))
+            c.execute("""UPDATE users SET age=?, gender=?, country=?, city=? 
+                        WHERE username=?""", (age, gender, country, city, username))
             conn.commit()
             
             return jsonify({'success': True})
