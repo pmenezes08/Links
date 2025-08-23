@@ -1159,8 +1159,8 @@
         }
         
         .polls-modal .modal-body {
-            padding: 20px;
-            max-height: 80vh;
+            padding: 15px;
+            max-height: 85vh;
             overflow-y: auto;
         }
         
@@ -1400,7 +1400,7 @@
         .calendar-container {
             display: flex;
             flex-direction: column;
-            gap: 20px;
+            gap: 10px;
             max-width: 100%;
         }
         
@@ -1408,7 +1408,7 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 20px;
+            margin-bottom: 10px;
         }
         
         .calendar-nav-btn {
@@ -1435,7 +1435,7 @@
         .calendar-grid {
             background: rgba(255, 255, 255, 0.05);
             border-radius: 8px;
-            padding: 15px;
+            padding: 10px;
         }
         
         .calendar-weekdays {
@@ -1464,12 +1464,12 @@
             aspect-ratio: 1;
             background: rgba(255, 255, 255, 0.02);
             border: 1px solid rgba(255, 255, 255, 0.1);
-            padding: 5px;
+            padding: 3px;
             cursor: pointer;
             transition: all 0.2s ease;
             position: relative;
-            min-height: 50px;
-            font-size: 13px;
+            min-height: 35px;
+            font-size: 11px;
         }
         
         .calendar-day:hover {
@@ -1498,16 +1498,16 @@
         
         .day-events-indicator {
             position: absolute;
-            bottom: 4px;
+            bottom: 2px;
             left: 50%;
             transform: translateX(-50%);
             display: flex;
-            gap: 2px;
+            gap: 1px;
         }
         
         .event-dot {
-            width: 4px;
-            height: 4px;
+            width: 3px;
+            height: 3px;
             border-radius: 50%;
         }
         
@@ -1537,10 +1537,10 @@
         .event-item {
             background: rgba(255, 255, 255, 0.05);
             border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 6px;
-            padding: 10px;
-            padding-left: 14px;
-            margin-bottom: 10px;
+            border-radius: 4px;
+            padding: 6px;
+            padding-left: 10px;
+            margin-bottom: 6px;
             cursor: pointer;
             transition: all 0.2s ease;
             position: relative;
@@ -1550,16 +1550,16 @@
             background: rgba(255, 255, 255, 0.02);
             border: 1px solid rgba(255, 255, 255, 0.1);
             border-radius: 8px;
-            padding: 15px;
-            max-height: 300px;
+            padding: 10px;
+            max-height: 200px;
             overflow-y: auto;
             overflow-x: hidden;
         }
         
         .calendar-events h4 {
             color: #ffffff;
-            margin: 0 0 15px 0;
-            font-size: 16px;
+            margin: 0 0 10px 0;
+            font-size: 14px;
         }
         
         .events-list {
@@ -1578,20 +1578,21 @@
         .event-title {
             color: #ffffff;
             font-weight: 500;
-            margin-bottom: 4px;
+            margin-bottom: 2px;
             word-wrap: break-word;
             overflow-wrap: break-word;
+            font-size: 12px;
         }
         
         .event-time {
             color: {{ community.accent_color or '#2d8a7e' }};
-            font-size: 12px;
-            margin-bottom: 4px;
+            font-size: 10px;
+            margin-bottom: 2px;
         }
         
         .event-description {
             color: #9fb0b5;
-            font-size: 12px;
+            font-size: 10px;
             word-wrap: break-word;
             overflow-wrap: break-word;
             white-space: pre-wrap;
