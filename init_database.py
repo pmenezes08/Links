@@ -124,6 +124,22 @@ def init_database():
                       FOREIGN KEY (sender) REFERENCES users(username),
                       FOREIGN KEY (receiver) REFERENCES users(username))''')
         
+        # Create calendar_events table
+        print("Creating calendar_events table...")
+        c.execute('''CREATE TABLE IF NOT EXISTS calendar_events
+                     (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                      username TEXT NOT NULL,
+                      title TEXT NOT NULL,
+                      date TEXT NOT NULL,
+                      time TEXT,
+                      description TEXT,
+                      created_at TEXT NOT NULL,
+                      FOREIGN KEY (username) REFERENCES users(username))''')
+        
+        # Create index on date for faster queries
+        c.execute('''CREATE INDEX IF NOT EXISTS idx_calendar_events_date 
+                     ON calendar_events(date)''')
+        
         # Commit all changes
         conn.commit()
         
