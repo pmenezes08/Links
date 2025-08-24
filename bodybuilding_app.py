@@ -2730,6 +2730,38 @@ def get_logo():
         return jsonify({'success': True, 'logo_path': None})
 
 
+@app.route('/remove_logo', methods=['POST'])
+@login_required
+def remove_logo():
+    """Remove the logo - admin only"""
+    if session['username'] != 'admin':
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Get current logo path to delete file
+            c.execute("SELECT value FROM site_settings WHERE key = 'logo_path'")
+            result = c.fetchone()
+            
+            if result and result['value']:
+                # Delete the file
+                logo_path = os.path.join('static', result['value'])
+                if os.path.exists(logo_path):
+                    os.remove(logo_path)
+            
+            # Remove from database
+            c.execute("DELETE FROM site_settings WHERE key = 'logo_path'")
+            conn.commit()
+        
+        return jsonify({'success': True, 'message': 'Logo removed successfully'})
+        
+    except Exception as e:
+        logger.error(f"Error removing logo: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @app.route('/api/notifications')
 @login_required
 def get_notifications():

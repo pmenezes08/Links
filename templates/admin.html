@@ -662,6 +662,7 @@
                         </div>
                         <div class="form-actions">
                             <button type="submit" class="submit-btn">Upload Logo</button>
+                            <button type="button" class="remove-btn" onclick="removeLogo()" style="background: #ff4444; border-color: #ff4444;">Remove Logo</button>
                             <button type="button" class="cancel-btn" onclick="closeLogoModal()">Cancel</button>
                         </div>
                     </form>
@@ -975,9 +976,33 @@
                     if (data.success && data.logo_path) {
                         currentLogoDisplay.innerHTML = `<img src="/static/${data.logo_path}" style="max-width: 200px; max-height: 100px; width: auto; height: auto;" alt="Current Logo">`;
                     } else {
-                        currentLogoDisplay.innerHTML = '<span style="color: #4db6ac; font-size: 24px; font-weight: bold;">C.Point</span>';
+                        currentLogoDisplay.innerHTML = '<span style="color: #999; font-style: italic;">No logo uploaded</span>';
                     }
                 });
+        }
+        
+        function removeLogo() {
+            if (confirm('Are you sure you want to remove the logo?')) {
+                fetch('/remove_logo', {
+                    method: 'POST'
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        alert('Logo removed successfully!');
+                        closeLogoModal();
+                        setTimeout(() => {
+                            window.location.reload();
+                        }, 1000);
+                    } else {
+                        alert('Error removing logo: ' + data.error);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('Error removing logo');
+                });
+            }
         }
         
         // Preview image before upload

@@ -165,13 +165,32 @@
             background: #1a1a1a !important;
             border-right: 1px solid #333333 !important;
             z-index: 1000 !important;
-            overflow-y: auto !important;
+            display: flex !important;
+            flex-direction: column !important;
         }
         
-        .sidebar-brand {
+        .sidebar-logo {
             padding: 20px;
             border-bottom: 1px solid #333333;
             text-align: center;
+            min-height: 80px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .sidebar-menu {
+            flex: 1;
+            padding: 10px 0;
+            display: block !important;
+            overflow-y: auto !important;
+        }
+        
+        .sidebar-footer {
+            padding: 20px;
+            border-top: 1px solid #333333;
+            text-align: center;
+            margin-top: auto;
         }
         
         .brand-text {
@@ -179,16 +198,6 @@
             font-weight: bold;
             color: #ffffff;
             letter-spacing: 1px;
-            margin-bottom: 10px;
-        }
-        
-        .brand-logo {
-            margin-top: 10px;
-        }
-        
-        .sidebar-menu {
-            padding: 10px 0;
-            display: block !important;
         }
         
         .sidebar-menu a {
@@ -1246,10 +1255,7 @@
     
     <!-- Sidebar Menu -->
     <div class="sidebar">
-        <div class="sidebar-brand">
-            <div class="brand-text">C.Point</div>
-            <div class="brand-logo" id="sidebarLogo"></div>
-        </div>
+        <div class="sidebar-logo" id="sidebarLogo"></div>
         <div class="sidebar-menu">
             {% if session['username'] == 'admin' %}
             <a href="{{ url_for('admin') }}">Admin Dashboard</a>
@@ -1267,6 +1273,9 @@
             <a href="{{ url_for('communities') }}">Your Communities</a>
             <a href="{{ url_for('your_sports') }}">Your Sports</a>
             <a href="{{ url_for('logout') }}">Logout</a>
+        </div>
+        <div class="sidebar-footer">
+            <div class="brand-text">C.Point</div>
         </div>
     </div>
 
