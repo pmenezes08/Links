@@ -213,6 +213,48 @@
             margin-left: 8px;
         }
         
+        /* Compact Add Event Modal */
+        #addEventModal .form-group {
+            margin-bottom: 10px !important;
+        }
+        
+        #addEventModal label {
+            font-size: 12px !important;
+            margin-bottom: 4px !important;
+            display: block;
+            color: #9fb0b5 !important;
+            font-weight: 600;
+        }
+        
+        #addEventModal input[type="text"],
+        #addEventModal input[type="date"],
+        #addEventModal input[type="time"],
+        #addEventModal textarea {
+            padding: 6px 10px !important;
+            font-size: 13px !important;
+            border: 1px solid rgba(255, 255, 255, 0.2) !important;
+            background: rgba(0, 0, 0, 0.5) !important;
+            color: #ffffff !important;
+            width: 100% !important;
+            box-sizing: border-box !important;
+        }
+        
+        #addEventModal textarea {
+            resize: vertical;
+            min-height: 50px !important;
+            max-height: 80px !important;
+        }
+        
+        #addEventModal .form-actions {
+            margin-top: 12px !important;
+        }
+        
+        #addEventModal .btn-save,
+        #addEventModal .btn-cancel {
+            padding: 8px 16px !important;
+            font-size: 13px !important;
+        }
+        
         /* Compact Poll Styles for Sidebar */
         .sidebar-poll-item {
             background: rgba(255, 255, 255, 0.03);
@@ -1233,15 +1275,17 @@
                         <label for="eventTitle">Event Title *</label>
                         <input type="text" id="eventTitle" name="title" placeholder="Enter event title" required>
                     </div>
-                    <div class="form-group">
-                        <label for="eventDate">Start Date *</label>
-                        <input type="date" id="eventDate" name="date" required>
+                    <div class="form-group" style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                        <div>
+                            <label for="eventDate">Start Date *</label>
+                            <input type="date" id="eventDate" name="date" required>
+                        </div>
+                        <div>
+                            <label for="eventEndDate">End Date</label>
+                            <input type="date" id="eventEndDate" name="end_date">
+                        </div>
                     </div>
-                    <div class="form-group">
-                        <label for="eventEndDate">End Date</label>
-                        <input type="date" id="eventEndDate" name="end_date">
-                    </div>
-                    <div class="form-group" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <div class="form-group" style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
                         <div>
                             <label for="eventStartTime">Start Time</label>
                             <input type="time" id="eventStartTime" name="start_time">
@@ -1253,7 +1297,7 @@
                     </div>
                     <div class="form-group">
                         <label for="eventDescription">Description</label>
-                        <textarea id="eventDescription" name="description" placeholder="Event details..." rows="3"></textarea>
+                        <textarea id="eventDescription" name="description" placeholder="Event details..." rows="2"></textarea>
                     </div>
                     <div class="form-actions">
                         <button type="button" class="btn-cancel" onclick="closeAddEventModal()">Cancel</button>

@@ -1715,6 +1715,47 @@
             line-height: 1.2 !important;
         }
         
+        /* Compact Add Event Form */
+        #addCalendarTab .form-group {
+            margin-bottom: 8px !important;
+        }
+        
+        #addCalendarTab label {
+            font-size: 11px !important;
+            margin-bottom: 3px !important;
+            display: block;
+            color: #9fb0b5 !important;
+            font-weight: 600;
+        }
+        
+        #addCalendarTab input[type="text"],
+        #addCalendarTab input[type="date"],
+        #addCalendarTab input[type="time"],
+        #addCalendarTab textarea {
+            padding: 5px 8px !important;
+            font-size: 12px !important;
+            border: 1px solid rgba(255, 255, 255, 0.1) !important;
+            background: rgba(0, 0, 0, 0.3) !important;
+            color: #ffffff !important;
+            width: 100% !important;
+            box-sizing: border-box !important;
+        }
+        
+        #addCalendarTab textarea {
+            resize: vertical;
+            min-height: 40px !important;
+            max-height: 60px !important;
+        }
+        
+        #addCalendarTab .form-actions {
+            margin-top: 10px !important;
+        }
+        
+        #addCalendarTab .sleek-btn {
+            padding: 6px 12px !important;
+            font-size: 12px !important;
+        }
+        
         .event-creator {
             color: #9fb0b5;
             font-size: 11px;
@@ -3578,15 +3619,17 @@
                         <label for="eventTitle">Event Title *</label>
                         <input type="text" id="eventTitle" name="title" placeholder="Enter event title" required>
                     </div>
-                    <div class="form-group">
-                        <label for="eventDate">Start Date *</label>
-                        <input type="date" id="eventDate" name="date" required>
+                    <div class="form-group" style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                        <div>
+                            <label for="eventDate">Start Date *</label>
+                            <input type="date" id="eventDate" name="date" required>
+                        </div>
+                        <div>
+                            <label for="eventEndDate">End Date</label>
+                            <input type="date" id="eventEndDate" name="end_date">
+                        </div>
                     </div>
-                    <div class="form-group">
-                        <label for="eventEndDate">End Date</label>
-                        <input type="date" id="eventEndDate" name="end_date">
-                    </div>
-                    <div class="form-group" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <div class="form-group" style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
                         <div>
                             <label for="eventStartTime">Start Time</label>
                             <input type="time" id="eventStartTime" name="start_time">
@@ -3598,7 +3641,7 @@
                     </div>
                     <div class="form-group">
                         <label for="eventDescription">Description</label>
-                        <textarea id="eventDescription" name="description" placeholder="Event details..." rows="3"></textarea>
+                        <textarea id="eventDescription" name="description" placeholder="Event details..." rows="2"></textarea>
                     </div>
                     <div class="form-actions">
                         <button type="submit" class="sleek-btn">
