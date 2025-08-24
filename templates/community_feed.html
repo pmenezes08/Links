@@ -1156,23 +1156,100 @@
             padding: 15px;
         }
         
+        .edit-community-modal {
+            max-width: 600px !important;
+            width: 90vw !important;
+            max-height: 85vh !important;
+        }
+        
         .edit-community-modal .modal-header {
             background: #000000;
             color: #ffffff;
             border-bottom: 1px solid rgba(45, 138, 126, 0.3);
+            padding: 15px 20px !important;
         }
         
         .edit-community-modal .modal-header h2 {
             color: #ffffff;
+            font-size: 18px !important;
+            margin: 0 !important;
         }
         
         .edit-community-modal .modal-header .close {
             color: #9fb0b5;
+            font-size: 20px !important;
+            line-height: 20px !important;
+            padding: 0 !important;
         }
         
         .edit-community-modal .modal-header .close:hover {
             color: #ffffff;
             background: rgba(255, 255, 255, 0.1);
+        }
+        
+        .edit-community-modal .modal-body {
+            padding: 15px 20px !important;
+            max-height: calc(85vh - 120px) !important;
+            overflow-y: auto !important;
+        }
+        
+        /* Compact form styling for Edit Community */
+        #editCommunityForm {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+        
+        #editCommunityForm .form-group {
+            margin-bottom: 0 !important;
+        }
+        
+        #editCommunityForm .form-group:nth-child(1),
+        #editCommunityForm .form-group:nth-child(2),
+        #editCommunityForm .form-group:nth-child(4) {
+            grid-column: span 2;
+        }
+        
+        #editCommunityForm label {
+            display: block;
+            font-size: 11px !important;
+            color: #9fb0b5;
+            margin-bottom: 3px !important;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        #editCommunityForm input[type="text"],
+        #editCommunityForm input[type="file"],
+        #editCommunityForm input[type="color"],
+        #editCommunityForm textarea,
+        #editCommunityForm select {
+            width: 100%;
+            padding: 6px 8px !important;
+            font-size: 13px !important;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+            color: #ffffff;
+        }
+        
+        #editCommunityForm textarea {
+            resize: vertical;
+            min-height: 50px !important;
+            max-height: 80px !important;
+        }
+        
+        #editCommunityForm input[type="color"] {
+            height: 32px !important;
+            cursor: pointer;
+        }
+        
+        #editCommunityForm button[type="submit"] {
+            grid-column: span 2;
+            margin-top: 10px;
+            padding: 8px 16px !important;
+            font-size: 13px !important;
         }
         
 
@@ -2823,7 +2900,7 @@
                     </div>
                     <div class="form-group">
                         <label for="communityDescription">Description:</label>
-                        <textarea id="communityDescription" name="description" rows="3">{{ community.description or '' }}</textarea>
+                        <textarea id="communityDescription" name="description" rows="2">{{ community.description or '' }}</textarea>
                     </div>
                     <div class="form-group">
                         <label for="communityType">Type:</label>
