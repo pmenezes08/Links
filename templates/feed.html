@@ -189,6 +189,30 @@
             box-shadow: 0 0 0 2px rgba(77, 182, 172, 0.2) !important;
         }
         
+        /* Fix attachment button styling */
+        .file-upload-btn {
+            background: transparent !important;
+            border: none !important;
+            color: #9fb0b5 !important;
+            padding: 4px 8px !important;
+            cursor: pointer;
+        }
+        
+        .file-upload-btn:hover {
+            color: #4db6ac !important;
+        }
+        
+        .selected-file-name {
+            display: none !important;  /* Hide by default */
+        }
+        
+        .selected-file-name:not(:empty) {
+            display: inline-block !important;  /* Show only when has content */
+            color: #9fb0b5 !important;
+            font-size: 12px !important;
+            margin-left: 8px;
+        }
+        
         /* Compact Poll Styles for Sidebar */
         .sidebar-poll-item {
             background: rgba(255, 255, 255, 0.03);
