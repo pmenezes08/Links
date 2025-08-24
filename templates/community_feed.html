@@ -2732,10 +2732,12 @@
             fetch('/api/notifications')
                 .then(response => response.json())
                 .then(data => {
+                    console.log('Notifications check:', data);
                     const menuBadge = document.getElementById('menuNotificationBadge');
                     
                     if (data.notifications && data.notifications.length > 0) {
                         const unreadCount = data.notifications.filter(n => !n.is_read).length;
+                        console.log(`Found ${data.notifications.length} notifications, ${unreadCount} unread`);
                         
                         // Update menu badge
                         if (unreadCount > 0 && menuBadge) {
@@ -2749,6 +2751,7 @@
                         if (showToasts) {
                             data.notifications.forEach(notification => {
                                 if (!notification.is_read && !shownNotificationIds.has(notification.id)) {
+                                    console.log('Showing toast for notification:', notification);
                                     shownNotificationIds.add(notification.id);
                                     showNotificationToast(notification);
                                 }

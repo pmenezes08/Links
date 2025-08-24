@@ -2593,6 +2593,7 @@ def add_reaction():
                 # Get post owner and community_id
                 c.execute("SELECT username, community_id FROM posts WHERE id = ?", (post_id,))
                 post_data = c.fetchone()
+                logger.info(f"Reaction notification check - Post owner: {post_data['username'] if post_data else 'None'}, Reactor: {username}")
                 if post_data and post_data['username'] != username:
                     # Insert notification directly in this transaction
                     c.execute("""
@@ -2600,6 +2601,7 @@ def add_reaction():
                         VALUES (?, ?, ?, ?, ?, ?)
                     """, (post_data['username'], username, 'reaction', post_id, post_data['community_id'], 
                           f"{username} reacted to your post"))
+                    logger.info(f"Created notification for {post_data['username']} from {username}")
             
             conn.commit()
 
@@ -2680,6 +2682,7 @@ def get_notifications():
                     'created_at': row['created_at']
                 })
             
+            logger.info(f"User {username} has {len(notifications)} notifications, {sum(1 for n in notifications if not n['is_read'])} unread")
             return jsonify({'success': True, 'notifications': notifications})
             
     except Exception as e:
