@@ -266,7 +266,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                         <button class="reaction-btn thumbs-up" data-reaction="thumbs-up" aria-label="Thumbs up"><i class="far fa-thumbs-up"></i> <span>0</span></button>
                                         <button class="reaction-btn thumbs-down" data-reaction="thumbs-down" aria-label="Thumbs down"><i class="far fa-thumbs-down"></i> <span>0</span></button>
                                     </div>
-                                    ${data.post.username === sessionStorage.getItem('username') ? '<button class="delete-post inline-action" data-post-id="' + data.post.id + '"><i class="far fa-trash-alt"></i> Delete</button>' : ''}
+                                    ${data.post.username === sessionStorage.getItem('username') ? '<button class="delete-post inline-action" data-post-id="' + data.post.id + '" title="Delete"><i class="far fa-trash-alt"></i></button>' : ''}
                                 </div>
                                 <div class="reply-indicator">
                                     <i class="far fa-comment"></i> 0 replies
@@ -323,7 +323,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                         <button class="reaction-btn thumbs-up" data-reaction="thumbs-up" aria-label="Thumbs up reply"><i class="far fa-thumbs-up"></i> <span>0</span></button>
                                         <button class="reaction-btn thumbs-down" data-reaction="thumbs-down" aria-label="Thumbs down reply"><i class="far fa-thumbs-down"></i> <span>0</span></button>
                                     </div>
-                                    ${data.reply.username === sessionStorage.getItem('username') ? '<button class="delete-reply inline-action" data-reply-id="' + data.reply.id + '"><i class="far fa-trash-alt"></i> Delete</button>' : ''}
+                                    ${data.reply.username === sessionStorage.getItem('username') ? '<button class="delete-reply inline-action" data-reply-id="' + data.reply.id + '" title="Delete"><i class="far fa-trash-alt"></i></button>' : ''}
                                 </div>
                             </div>`;
                         $replies.append(replyHtml);
@@ -630,7 +630,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                 </button>
                             </div>
                             ${reply.username === sessionStorage.getItem('username') ? 
-                                `<button class="delete-reply inline-action modal-delete-btn" data-reply-id="${reply.id}" data-action="delete"><i class="far fa-trash-alt"></i> Delete</button>` : ''}
+                                `<button class="delete-reply inline-action modal-delete-btn" data-reply-id="${reply.id}" data-action="delete" title="Delete"><i class="far fa-trash-alt"></i></button>` : ''}
                         </div>
                     </div>
                 `;
@@ -941,7 +941,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                             </button>
                                         </div>
                                         ${data.reply.username === sessionStorage.getItem('username') ? 
-                                            `<button class="delete-reply inline-action" data-reply-id="${data.reply.id}"><i class="far fa-trash-alt"></i> Delete</button>` : ''}
+                                            `<button class="delete-reply inline-action" data-reply-id="${data.reply.id}" title="Delete"><i class="far fa-trash-alt"></i></button>` : ''}
                                     </div>
                                 </div>`;
                             $('#modalPostContent .replies').append(replyHtml);
