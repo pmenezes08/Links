@@ -1814,8 +1814,11 @@
             }, 300);
         }
         
+        // Track shown notifications to avoid duplicates
+        let shownNotificationIds = new Set();
+        
         // Check for notifications and update menu badge
-        function checkNotifications() {
+        function checkNotifications(showToasts = false) {
             fetch('/api/notifications')
                 .then(response => response.json())
                 .then(data => {
@@ -1831,6 +1834,16 @@
                         } else if (menuBadge) {
                             menuBadge.style.display = 'none';
                         }
+                        
+                        // Show toast for new unread notifications
+                        if (showToasts) {
+                            data.notifications.forEach(notification => {
+                                if (!notification.is_read && !shownNotificationIds.has(notification.id)) {
+                                    shownNotificationIds.add(notification.id);
+                                    showNotificationToast(notification);
+                                }
+                            });
+                        }
                     } else if (menuBadge) {
                         menuBadge.style.display = 'none';
                     }
@@ -1840,14 +1853,34 @@
                 });
         }
         
+        // Show notification toast for post owner
+        function showNotificationToast(notification) {
+            const icons = {
+                'reaction': 'fas fa-heart',
+                'reply': 'fas fa-comment',
+                'mention': 'fas fa-at'
+            };
+            
+            const icon = icons[notification.type] || 'fas fa-bell';
+            
+            showToast(
+                'New Notification',
+                notification.message,
+                icon,
+                7000  // Show for 7 seconds
+            );
+        }
+        
         document.addEventListener('DOMContentLoaded', function() {
             loadSidebarPolls();
             
-            // Check for notifications on page load
-            checkNotifications();
+            // Check for notifications on page load (don't show toasts on initial load)
+            checkNotifications(false);
             
-            // Poll for new notifications every 30 seconds
-            setInterval(checkNotifications, 30000);
+            // Poll for new notifications every 10 seconds and show toasts
+            setInterval(() => {
+                checkNotifications(true);  // Show toasts for new notifications
+            }, 10000);  // Check every 10 seconds for more real-time feel
             // Refresh sidebar polls every 30 seconds
             setInterval(loadSidebarPolls, 30000);
         });
