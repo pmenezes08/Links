@@ -2588,21 +2588,20 @@ def add_reaction():
                 c.execute("INSERT INTO reactions (post_id, username, reaction_type) VALUES (?, ?, ?)",
                           (post_id, username, reaction_type))
 
-            conn.commit()
-
             # Create notification for post owner (only if adding/changing reaction, not removing)
             if existing is None or (existing and existing['reaction_type'] != reaction_type):
-                # Get post owner
-                c.execute("SELECT username FROM posts WHERE id = ?", (post_id,))
-                post_owner = c.fetchone()
-                if post_owner and post_owner['username'] != username:
-                    create_notification(
-                        user_id=post_owner['username'],
-                        from_user=username,
-                        notification_type='reaction',
-                        post_id=post_id,
-                        message=f"{username} reacted to your post"
-                    )
+                # Get post owner and community_id
+                c.execute("SELECT username, community_id FROM posts WHERE id = ?", (post_id,))
+                post_data = c.fetchone()
+                if post_data and post_data['username'] != username:
+                    # Insert notification directly in this transaction
+                    c.execute("""
+                        INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                    """, (post_data['username'], username, 'reaction', post_id, post_data['community_id'], 
+                          f"{username} reacted to your post"))
+            
+            conn.commit()
 
             # After changes, fetch the new reaction counts for the post
             c.execute("""
@@ -2642,6 +2641,13 @@ def create_notification(user_id, from_user, notification_type, post_id=None, com
             conn.commit()
     except Exception as e:
         logger.error(f"Error creating notification: {str(e)}")
+
+
+@app.route('/notifications')
+@login_required
+def notifications_page():
+    """Display notifications page"""
+    return render_template('notifications.html', username=session['username'])
 
 
 @app.route('/api/notifications')
@@ -2920,14 +2926,12 @@ def post_reply():
             c.execute("SELECT username FROM posts WHERE id = ?", (post_id,))
             post_owner = c.fetchone()
             if post_owner and post_owner['username'] != username:
-                create_notification(
-                    user_id=post_owner['username'],
-                    from_user=username,
-                    notification_type='reply',
-                    post_id=post_id,
-                    community_id=community_id,
-                    message=f"{username} replied to your post"
-                )
+                # Insert notification directly in this transaction
+                c.execute("""
+                    INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """, (post_owner['username'], username, 'reply', post_id, community_id,
+                      f"{username} replied to your post"))
             
             conn.commit()
 
