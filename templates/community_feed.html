@@ -255,13 +255,13 @@
         /* Custom color styles */
         .composer-card {
             background-color: {{ '#f8f9fa' if community.template == 'light' else '#000000' }} !important;
-            border: 1px solid {{ '#e9ecef' if community.template == 'light' else (community.accent_color or '#4db6ac') }} !important;
+            border: 1px solid {{ '#e9ecef' if community.template == 'light' else '#2d6b64' }} !important;  /* Darker turquoise */
             color: {{ '#495057' if community.template == 'light' else '#ffffff' }} !important;
         }
         
         .post {
             background-color: {{ '#f8f9fa' if community.template == 'light' else '#000000' }} !important;
-            border: {{ '1px solid #e9ecef' if community.template == 'light' else 'none' }} !important;
+            border: 1px solid {{ '#e9ecef' if community.template == 'light' else '#1f4a45' }} !important;  /* Even darker turquoise */
             color: {{ '#495057' if community.template == 'light' else '#ffffff' }} !important;
         }
         
@@ -280,7 +280,7 @@
         }
         
         .composer-input:focus {
-            border-color: {{ community.accent_color or '#4db6ac' }} !important;
+            border-color: {{ community.accent_color or '#2d6b64' }} !important;  /* Darker turquoise on focus */
             background-color: {{ '#ffffff' if community.template == 'light' else '#000000' }} !important;
             outline: none !important;
         }
@@ -1218,8 +1218,8 @@
         #postModal .modal-content .post {
             padding: 20px !important;
             margin: 0 0 20px 0 !important;
-            border: none !important;
-            box-shadow: none !important;
+            border: 1px solid #1f4a45 !important;  /* Darker turquoise */
+            box-shadow: 0 2px 8px rgba(31, 74, 69, 0.2) !important;
             border-radius: 8px !important;
             background: #000000 !important;
         }
