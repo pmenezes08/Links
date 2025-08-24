@@ -169,14 +169,44 @@
             flex-direction: column !important;
         }
         
+        .sidebar-header {
+            display: flex;
+            align-items: center;
+            padding: 10px;
+            border-bottom: 1px solid #333333;
+            min-height: 60px;
+        }
+        
         .sidebar-logo {
             padding: 5px;
-            border-bottom: 1px solid #333333;
-            text-align: center;
-            min-height: 60px;
             display: flex;
             align-items: center;
             justify-content: center;
+            flex-shrink: 0;
+        }
+        
+        .community-name {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #ffffff;
+            font-size: 16px;
+            font-weight: 600;
+            padding-left: 10px;
+            overflow: hidden;
+        }
+        
+        .community-name i {
+            color: #4db6ac;
+            font-size: 18px;
+            flex-shrink: 0;
+        }
+        
+        .community-name span {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
         
         .sidebar-menu {
@@ -220,11 +250,13 @@
                 overflow: visible !important;
             }
             
-            .sidebar-brand {
-                padding: 15px !important;
-                font-size: 20px !important;
-                border-bottom: none !important;
-                float: left !important;
+            .sidebar-header {
+                padding: 8px !important;
+                min-height: 60px !important;
+            }
+            
+            .community-name {
+                font-size: 14px !important;
             }
             
             .sidebar-menu {
@@ -1241,7 +1273,13 @@
     
     <!-- Sidebar Menu -->
     <div class="sidebar">
-        <div class="sidebar-logo" id="sidebarLogo"></div>
+        <div class="sidebar-header">
+            <div class="sidebar-logo" id="sidebarLogo"></div>
+            <div class="community-name">
+                <i class="fas fa-home"></i>
+                <span>Social Feed</span>
+            </div>
+        </div>
         <div class="sidebar-menu">
             {% if session['username'] == 'admin' %}
             <a href="{{ url_for('admin') }}">Admin Dashboard</a>
