@@ -253,9 +253,15 @@
         }
         
         /* Custom color styles */
-        .composer-card, .post {
+        .composer-card {
             background-color: {{ '#f8f9fa' if community.template == 'light' else '#000000' }} !important;
             border: 1px solid {{ '#e9ecef' if community.template == 'light' else (community.accent_color or '#4db6ac') }} !important;
+            color: {{ '#495057' if community.template == 'light' else '#ffffff' }} !important;
+        }
+        
+        .post {
+            background-color: {{ '#f8f9fa' if community.template == 'light' else '#000000' }} !important;
+            border: {{ '1px solid #e9ecef' if community.template == 'light' else 'none' }} !important;
             color: {{ '#495057' if community.template == 'light' else '#ffffff' }} !important;
         }
         
@@ -406,7 +412,13 @@
             background-color: #37a69c !important;
         }
         
-        .composer-card, .post {
+        .composer-card {
+            background-color: #ffffff !important;
+            border: 1px solid #dee2e6 !important;
+            color: #495057 !important;
+        }
+        
+        .post {
             background-color: #ffffff !important;
             border: 1px solid #dee2e6 !important;
             color: #495057 !important;
@@ -1206,10 +1218,10 @@
         #postModal .modal-content .post {
             padding: 20px !important;
             margin: 0 0 20px 0 !important;
-            border: 1px solid #2d8a7e !important;
-            box-shadow: 0 2px 8px rgba(45, 138, 126, 0.2) !important;
+            border: none !important;
+            box-shadow: none !important;
             border-radius: 8px !important;
-            background: rgba(45, 138, 126, 0.05) !important;
+            background: #000000 !important;
         }
         
         #postModal .modal-content .post-header {
