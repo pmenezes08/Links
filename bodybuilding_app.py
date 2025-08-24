@@ -2652,6 +2652,84 @@ def notifications_page():
     return render_template('notifications.html', username=session['username'])
 
 
+@app.route('/upload_logo', methods=['POST'])
+@login_required
+def upload_logo():
+    """Upload logo for sidebar menu - admin only"""
+    if session['username'] != 'admin':
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    
+    try:
+        if 'logo' not in request.files:
+            return jsonify({'success': False, 'error': 'No file provided'}), 400
+        
+        file = request.files['logo']
+        if file.filename == '':
+            return jsonify({'success': False, 'error': 'No file selected'}), 400
+        
+        # Check file extension
+        allowed_extensions = {'png', 'jpg', 'jpeg', 'gif', 'svg', 'webp'}
+        file_ext = file.filename.rsplit('.', 1)[1].lower() if '.' in file.filename else ''
+        
+        if file_ext not in allowed_extensions:
+            return jsonify({'success': False, 'error': 'Invalid file type. Please use PNG, JPG, GIF, SVG, or WEBP'}), 400
+        
+        # Create logo directory if it doesn't exist
+        logo_dir = os.path.join('static', 'logo')
+        if not os.path.exists(logo_dir):
+            os.makedirs(logo_dir)
+        
+        # Save the file with a fixed name
+        filename = f'site_logo.{file_ext}'
+        filepath = os.path.join(logo_dir, filename)
+        
+        # Delete old logo if exists
+        for ext in allowed_extensions:
+            old_file = os.path.join(logo_dir, f'site_logo.{ext}')
+            if os.path.exists(old_file):
+                os.remove(old_file)
+        
+        # Save new logo
+        file.save(filepath)
+        
+        # Store logo path in database or config
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            # Check if site_settings table exists, if not create it
+            c.execute("""CREATE TABLE IF NOT EXISTS site_settings (
+                key TEXT PRIMARY KEY,
+                value TEXT
+            )""")
+            
+            # Update or insert logo path
+            c.execute("INSERT OR REPLACE INTO site_settings (key, value) VALUES (?, ?)",
+                     ('logo_path', f'logo/{filename}'))
+            conn.commit()
+        
+        return jsonify({'success': True, 'message': 'Logo uploaded successfully', 'path': f'logo/{filename}'})
+        
+    except Exception as e:
+        logger.error(f"Error uploading logo: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/get_logo')
+def get_logo():
+    """Get the current logo path"""
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT value FROM site_settings WHERE key = 'logo_path'")
+            result = c.fetchone()
+            
+            if result:
+                return jsonify({'success': True, 'logo_path': result['value']})
+            else:
+                return jsonify({'success': True, 'logo_path': None})
+    except:
+        return jsonify({'success': True, 'logo_path': None})
+
+
 @app.route('/api/notifications')
 @login_required
 def get_notifications():
