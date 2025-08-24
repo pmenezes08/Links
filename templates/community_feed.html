@@ -637,6 +637,104 @@
             position: relative;
         }
         
+        /* Toast Notification Styles */
+        .toast-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 10000;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            pointer-events: none;
+        }
+        
+        .toast {
+            background: linear-gradient(135deg, #1a2526 0%, #2d3e3f 100%);
+            border: 1px solid #4db6ac;
+            border-left: 4px solid #4db6ac;
+            color: #ffffff;
+            padding: 15px 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            min-width: 300px;
+            max-width: 400px;
+            animation: slideIn 0.3s ease-out;
+            pointer-events: auto;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .toast:hover {
+            transform: translateX(-5px);
+            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.6);
+        }
+        
+        .toast.fade-out {
+            animation: slideOut 0.3s ease-in;
+            opacity: 0;
+        }
+        
+        .toast-icon {
+            font-size: 20px;
+            color: #4db6ac;
+        }
+        
+        .toast-content {
+            flex: 1;
+        }
+        
+        .toast-title {
+            font-weight: 600;
+            font-size: 14px;
+            margin-bottom: 2px;
+        }
+        
+        .toast-message {
+            font-size: 13px;
+            color: #b0c4c8;
+        }
+        
+        .toast-close {
+            color: #9fb0b5;
+            cursor: pointer;
+            font-size: 18px;
+            line-height: 1;
+            padding: 0;
+            background: none;
+            border: none;
+            transition: color 0.2s ease;
+        }
+        
+        .toast-close:hover {
+            color: #ffffff;
+        }
+        
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+        
+        @keyframes slideOut {
+            from {
+                transform: translateX(0);
+                opacity: 1;
+            }
+            to {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+        }
+        
         /* Poll Styles */
         .poll-container-compact {
             background: rgba(45, 138, 126, 0.1);
@@ -2586,6 +2684,46 @@
             });
         }
         
+        // Toast notification system
+        function showToast(title, message, icon = 'fas fa-check-circle', duration = 5000) {
+            const toastContainer = document.getElementById('toastContainer');
+            
+            // Create toast element
+            const toast = document.createElement('div');
+            toast.className = 'toast';
+            toast.innerHTML = `
+                <i class="${icon} toast-icon"></i>
+                <div class="toast-content">
+                    <div class="toast-title">${title}</div>
+                    <div class="toast-message">${message}</div>
+                </div>
+                <button class="toast-close" onclick="closeToast(this)">&times;</button>
+            `;
+            
+            // Add to container
+            toastContainer.appendChild(toast);
+            
+            // Auto remove after duration
+            setTimeout(() => {
+                toast.classList.add('fade-out');
+                setTimeout(() => {
+                    if (toast.parentNode) {
+                        toast.parentNode.removeChild(toast);
+                    }
+                }, 300);
+            }, duration);
+        }
+        
+        function closeToast(button) {
+            const toast = button.parentElement;
+            toast.classList.add('fade-out');
+            setTimeout(() => {
+                if (toast.parentNode) {
+                    toast.parentNode.removeChild(toast);
+                }
+            }, 300);
+        }
+        
         // Check for notifications and update menu badge
         function checkNotifications() {
             fetch('/api/notifications')
@@ -2931,6 +3069,9 @@
     </script>
 </head>
 <body>
+    <!-- Toast Container -->
+    <div id="toastContainer" class="toast-container"></div>
+    
     <!-- Sidebar Menu -->
     <div class="sidebar">
         <button class="menu-btn"><i class="fas fa-bars"></i> Menu</button>

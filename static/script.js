@@ -370,6 +370,36 @@ document.addEventListener('DOMContentLoaded', function() {
                             $reactions.find(`[data-reaction="${type}"] span`).text(data.counts[type] || 0);
                         });
                         updateReactionIconStates($reactions, data.user_reaction);
+                        
+                        // Show toast notification
+                        if (typeof showToast === 'function') {
+                            const reactionIcons = {
+                                'heart': 'fas fa-heart',
+                                'thumbs-up': 'fas fa-thumbs-up', 
+                                'thumbs-down': 'fas fa-thumbs-down'
+                            };
+                            const reactionNames = {
+                                'heart': 'liked',
+                                'thumbs-up': 'gave thumbs up to',
+                                'thumbs-down': 'gave thumbs down to'
+                            };
+                            
+                            if (data.user_reaction) {
+                                showToast(
+                                    'Reaction Added',
+                                    `You ${reactionNames[data.user_reaction]} this post`,
+                                    reactionIcons[data.user_reaction],
+                                    5000
+                                );
+                            } else {
+                                showToast(
+                                    'Reaction Removed',
+                                    'Your reaction has been removed',
+                                    'fas fa-undo',
+                                    3000
+                                );
+                            }
+                        }
                     } else {
                         $button.after(`<div class="error-message">Error: ${data.error}</div>`);
                         setTimeout(() => $('.error-message').remove(), 3000);
