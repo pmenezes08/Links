@@ -279,6 +279,15 @@
             background-color: {{ '#ffffff' if community.template == 'light' else '#000000' }} !important;  /* Black input field */
             color: {{ '#000000' if community.template == 'light' else '#ffffff' }} !important;  /* White font */
             border: 1px solid {{ '#dee2e6' if community.template == 'light' else '#333333' }} !important;  /* Dark grey border */
+            width: 100% !important;
+            resize: none !important;  /* Disable manual resize */
+            overflow: hidden !important;  /* Hide scrollbar */
+            min-height: 40px !important;
+            max-height: 200px !important;  /* Maximum height before scrolling */
+            padding: 10px !important;
+            font-family: inherit !important;
+            font-size: 14px !important;
+            line-height: 1.5 !important;
         }
         
         .composer-input::placeholder {
@@ -3052,9 +3061,51 @@
             );
         }
         
+        // Auto-expand textarea function
+        function autoExpandTextarea(textarea) {
+            textarea.style.height = 'auto';
+            textarea.style.overflow = 'hidden';
+            const newHeight = Math.min(textarea.scrollHeight, 200); // Max height of 200px
+            textarea.style.height = newHeight + 'px';
+            if (textarea.scrollHeight > 200) {
+                textarea.style.overflow = 'auto';
+            }
+        }
+        
         // Load notifications on page load
         document.addEventListener('DOMContentLoaded', function() {
             loadSiteLogo();
+            
+            // Setup composer textarea
+            const composerTextarea = document.querySelector('.composer-input');
+            if (composerTextarea) {
+                // Auto-expand on input
+                composerTextarea.addEventListener('input', function() {
+                    autoExpandTextarea(this);
+                });
+                
+                // Prevent form submission on Enter key in textarea
+                const composerForm = document.querySelector('.composer-form');
+                if (composerForm) {
+                    composerForm.addEventListener('keydown', function(e) {
+                        if (e.key === 'Enter' && e.target.classList.contains('composer-input')) {
+                            e.preventDefault();
+                            // Insert a newline at cursor position
+                            const textarea = e.target;
+                            const start = textarea.selectionStart;
+                            const end = textarea.selectionEnd;
+                            const value = textarea.value;
+                            textarea.value = value.substring(0, start) + '\n' + value.substring(end);
+                            textarea.selectionStart = textarea.selectionEnd = start + 1;
+                            autoExpandTextarea(textarea);
+                        }
+                    });
+                }
+                
+                // Initial auto-expand in case there's existing content
+                autoExpandTextarea(composerTextarea);
+            }
+            
             // Check for notifications on page load (don't show toasts on initial load)
             checkNotifications(false);
             
@@ -3491,7 +3542,7 @@
                 <input type="hidden" name="community_id" value="{{ community.id }}">
                 <div class="composer-inner">
                     <div class="composer-body">
-                        <input type="text" name="content" class="composer-input" placeholder="What is happening in {{ community.name }}?!">
+                        <textarea name="content" class="composer-input" placeholder="What is happening in {{ community.name }}?!" rows="1"></textarea>
                         <div class="composer-actions">
                             <div class="file-upload-container">
                                 <label for="image-upload" class="file-upload-btn">
