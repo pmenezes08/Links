@@ -150,19 +150,29 @@
         }
         
         .composer-card, .post {
-            background-color: #1a2526 !important;
+            background-color: #000000 !important;
             border-color: #4db6ac !important;
+            color: #ffffff !important;
+        }
+        
+        .post p, .post-header, .post-header strong, .timestamp {
+            color: #ffffff !important;
         }
         
         .composer-input {
-            background-color: rgba(255, 255, 255, 0.05) !important;
+            background-color: #000000 !important;
             color: #ffffff !important;
-            border-color: rgba(255, 255, 255, 0.2) !important;
+            border: 1px solid rgba(255, 255, 255, 0.3) !important;
+        }
+        
+        .composer-input::placeholder {
+            color: rgba(255, 255, 255, 0.6) !important;
         }
         
         .composer-input:focus {
             border-color: #4db6ac !important;
-            background-color: rgba(255, 255, 255, 0.08) !important;
+            background-color: #000000 !important;
+            outline: none !important;
         }
         
         /* Compact Poll Styles for Sidebar */
