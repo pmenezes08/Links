@@ -188,9 +188,10 @@
     <div class="notifications-container">
         <div class="notifications-header">
             <h1 class="notifications-title">Notifications</h1>
-            <button class="mark-all-read-btn" onclick="markAllAsRead()" style="display: none;">
-                Mark all as read
-            </button>
+            <div style="display: flex; gap: 10px;">
+                <button class="mark-all-read-btn" onclick="markAllAsRead()">Mark all as read</button>
+                <button class="mark-all-read-btn" onclick="cleanupReadNotifications()" style="background: #ff4444; border-color: #ff4444;">Clean up read</button>
+            </div>
         </div>
         
         <div id="notificationsList" class="notifications-list">
@@ -235,7 +236,7 @@
         
         // Load notifications
         function loadNotifications() {
-            fetch('/api/notifications')
+            fetch('/api/notifications?all=true')  // Show all notifications including read ones
                 .then(response => response.json())
                 .then(data => {
                     const notificationsList = document.getElementById('notificationsList');
@@ -356,6 +357,23 @@
             .catch(error => {
                 console.error('Error marking notifications as read:', error);
             });
+        }
+        
+        function cleanupReadNotifications() {
+            if (confirm('Delete all read notifications? This cannot be undone.')) {
+                fetch('/api/notifications/delete-read', { method: 'POST' })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            alert(`Deleted ${data.deleted} read notifications`);
+                            loadNotifications();
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error deleting read notifications:', error);
+                        alert('Error deleting notifications');
+                    });
+            }
         }
         
         // Load notifications on page load

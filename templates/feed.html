@@ -2001,10 +2001,10 @@
             // Check for notifications on page load (don't show toasts on initial load)
             checkNotifications(false);
             
-            // Poll for new notifications every 10 seconds and show toasts
+            // Poll for new notifications every 1 second and show toasts
             setInterval(() => {
                 checkNotifications(true);  // Show toasts for new notifications
-            }, 10000);  // Check every 10 seconds for more real-time feel
+            }, 1000);  // Check every 1 second for real-time notifications
             // Refresh sidebar polls every 30 seconds
             setInterval(loadSidebarPolls, 30000);
             

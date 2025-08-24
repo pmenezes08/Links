@@ -2658,16 +2658,41 @@ def get_notifications():
     """Get notifications for the current user"""
     username = session['username']
     
+    # Get 'all' parameter to determine if we should show all or just unread
+    show_all = request.args.get('all', 'false').lower() == 'true'
+    
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
+            
+            # Auto-cleanup: Delete read notifications older than 7 days
             c.execute("""
-                SELECT id, from_user, type, post_id, community_id, message, is_read, created_at
-                FROM notifications
-                WHERE user_id = ?
-                ORDER BY created_at DESC
-                LIMIT 50
+                DELETE FROM notifications
+                WHERE user_id = ? 
+                AND is_read = 1 
+                AND datetime(created_at) < datetime('now', '-7 days')
             """, (username,))
+            conn.commit()
+            
+            # Build query based on whether to show all or just unread
+            if show_all:
+                # For notifications page, show all notifications
+                c.execute("""
+                    SELECT id, from_user, type, post_id, community_id, message, is_read, created_at
+                    FROM notifications
+                    WHERE user_id = ?
+                    ORDER BY created_at DESC
+                    LIMIT 50
+                """, (username,))
+            else:
+                # For real-time checking, only show unread
+                c.execute("""
+                    SELECT id, from_user, type, post_id, community_id, message, is_read, created_at
+                    FROM notifications
+                    WHERE user_id = ? AND is_read = 0
+                    ORDER BY created_at DESC
+                    LIMIT 50
+                """, (username,))
             
             notifications = []
             for row in c.fetchall():
@@ -2734,6 +2759,28 @@ def mark_all_notifications_read():
     except Exception as e:
         logger.error(f"Error marking all notifications as read: {str(e)}")
         return jsonify({'success': False, 'error': 'Server error'}), 500
+
+
+@app.route('/api/notifications/delete-read', methods=['POST'])
+@login_required
+def delete_read_notifications():
+    """Delete all read notifications for the current user"""
+    username = session['username']
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("""
+                DELETE FROM notifications
+                WHERE user_id = ? AND is_read = 1
+            """, (username,))
+            conn.commit()
+            
+            deleted_count = c.rowcount
+            return jsonify({'success': True, 'deleted': deleted_count})
+    except Exception as e:
+        logger.error(f"Error deleting read notifications: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @app.route('/post_status', methods=['POST'])
