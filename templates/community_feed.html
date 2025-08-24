@@ -254,14 +254,14 @@
         
         /* Custom color styles */
         .composer-card {
-            background-color: {{ '#f8f9fa' if community.template == 'light' else '#1f4a45' }} !important;  /* Dark turquoise background */
-            border: 1px solid {{ '#e9ecef' if community.template == 'light' else '#2d6b64' }} !important;  /* Slightly lighter border */
+            background-color: {{ '#f8f9fa' if community.template == 'light' else '#000000' }} !important;  /* Black background */
+            border: 1px solid {{ '#e9ecef' if community.template == 'light' else '#1f4a45' }} !important;  /* Dark turquoise border */
             color: {{ '#495057' if community.template == 'light' else '#ffffff' }} !important;
         }
         
         .post {
             background-color: {{ '#f8f9fa' if community.template == 'light' else '#000000' }} !important;
-            border: 1px solid {{ '#e9ecef' if community.template == 'light' else '#1f4a45' }} !important;  /* Even darker turquoise */
+            border: 1px solid {{ '#e9ecef' if community.template == 'light' else '#1f4a45' }} !important;  /* Dark turquoise border */
             color: {{ '#495057' if community.template == 'light' else '#ffffff' }} !important;
         }
         
@@ -270,18 +270,18 @@
         }
         
         .composer-input {
-            background-color: {{ '#ffffff' if community.template == 'light' else 'rgba(0, 0, 0, 0.3)' }} !important;  /* Semi-transparent black over turquoise */
+            background-color: {{ '#ffffff' if community.template == 'light' else '#1f4a45' }} !important;  /* Dark turquoise input field */
             color: {{ '#000000' if community.template == 'light' else '#ffffff' }} !important;
-            border: 1px solid {{ '#dee2e6' if community.template == 'light' else 'rgba(255, 255, 255, 0.2)' }} !important;
+            border: 1px solid {{ '#dee2e6' if community.template == 'light' else '#2d6b64' }} !important;
         }
         
         .composer-input::placeholder {
-            color: {{ 'rgba(0, 0, 0, 0.5)' if community.template == 'light' else 'rgba(255, 255, 255, 0.7)' }} !important;
+            color: {{ 'rgba(0, 0, 0, 0.5)' if community.template == 'light' else 'rgba(255, 255, 255, 0.8)' }} !important;
         }
         
         .composer-input:focus {
             border-color: {{ community.accent_color or '#4db6ac' }} !important;  /* Brighter turquoise on focus */
-            background-color: {{ '#ffffff' if community.template == 'light' else 'rgba(0, 0, 0, 0.4)' }} !important;
+            background-color: {{ '#ffffff' if community.template == 'light' else '#2d6b64' }} !important;  /* Slightly lighter turquoise on focus */
             outline: none !important;
         }
         
