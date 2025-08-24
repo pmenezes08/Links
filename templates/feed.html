@@ -152,6 +152,98 @@
         
         body {
             background-color: #000000 !important;
+            margin-left: 200px; /* Space for sidebar */
+        }
+        
+        /* Always visible sidebar */
+        .sidebar {
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 200px !important;
+            height: 100vh !important;
+            background: #1a1a1a !important;
+            border-right: 1px solid #333333 !important;
+            z-index: 1000 !important;
+            overflow-y: auto !important;
+        }
+        
+        .sidebar-brand {
+            padding: 20px;
+            font-size: 24px;
+            font-weight: bold;
+            color: #4db6ac;
+            border-bottom: 1px solid #333333;
+            text-align: center;
+            letter-spacing: 1px;
+        }
+        
+        .sidebar-menu {
+            padding: 10px 0;
+            display: block !important;
+        }
+        
+        .sidebar-menu a {
+            display: block !important;
+            padding: 12px 20px !important;
+            color: #ffffff !important;
+            text-decoration: none !important;
+            transition: all 0.3s ease !important;
+            border: none !important;
+            font-size: 14px !important;
+        }
+        
+        .sidebar-menu a:hover {
+            background: rgba(77, 182, 172, 0.2) !important;
+            color: #4db6ac !important;
+            padding-left: 25px !important;
+        }
+        
+        /* Hide old menu button and dropdown */
+        .menu-btn, .dropdown-content {
+            display: none !important;
+        }
+        
+        /* Mobile responsive */
+        @media (max-width: 768px) {
+            body {
+                margin-left: 0 !important;
+                padding-top: 60px !important;
+            }
+            
+            .sidebar {
+                width: 100% !important;
+                height: 60px !important;
+                overflow: visible !important;
+            }
+            
+            .sidebar-brand {
+                padding: 15px !important;
+                font-size: 20px !important;
+                border-bottom: none !important;
+                float: left !important;
+            }
+            
+            .sidebar-menu {
+                display: none !important;
+                position: absolute !important;
+                top: 60px !important;
+                left: 0 !important;
+                right: 0 !important;
+                background: #1a1a1a !important;
+                border-top: 1px solid #333333 !important;
+                max-height: calc(100vh - 60px) !important;
+                overflow-y: auto !important;
+            }
+            
+            .sidebar:hover .sidebar-menu,
+            .sidebar:focus-within .sidebar-menu {
+                display: block !important;
+            }
+            
+            .main-layout-container {
+                padding-top: 0 !important;
+            }
         }
         
         /* Main layout - centered */
@@ -289,7 +381,7 @@
         
         .container.feed {
             background-color: #000000 !important;
-            border: 2px solid #ffffff !important;
+            border: 2px solid #666666 !important;
             border-radius: 12px !important;
             padding: 20px !important;
             margin: 20px auto !important;
@@ -1133,8 +1225,8 @@
     
     <!-- Sidebar Menu -->
     <div class="sidebar">
-        <button class="menu-btn"><i class="fas fa-bars"></i> Menu</button>
-        <div class="dropdown-content">
+        <div class="sidebar-brand">C.Point</div>
+        <div class="sidebar-menu">
             {% if session['username'] == 'admin' %}
             <a href="{{ url_for('admin') }}">Admin Dashboard</a>
             <a href="{{ url_for('admin_profile') }}">Admin Profile</a>
