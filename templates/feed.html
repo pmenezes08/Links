@@ -69,6 +69,13 @@
             color: #b0c4c8;
         }
         
+        .toast-action-hint {
+            font-size: 11px;
+            color: #4db6ac;
+            margin-top: 4px;
+            font-style: italic;
+        }
+        
         .toast-close {
             color: #9fb0b5;
             cursor: pointer;
@@ -103,6 +110,26 @@
             to {
                 transform: translateX(100%);
                 opacity: 0;
+            }
+        }
+        
+        /* Post highlight when navigated to */
+        .post:target {
+            animation: highlightPost 2s ease-in-out;
+        }
+        
+        @keyframes highlightPost {
+            0% {
+                background-color: rgba(77, 182, 172, 0.2);
+                border-color: #4db6ac;
+            }
+            50% {
+                background-color: rgba(77, 182, 172, 0.3);
+                border-color: #6dd8ce;
+            }
+            100% {
+                background-color: transparent;
+                border-color: #333333;
             }
         }
         
@@ -1187,7 +1214,7 @@
         <div class="posts timeline">
             {% if posts %}
                 {% for post in posts %}
-                    <div class="post clickable-post" data-post-id="{{ post.id }}">
+                    <div class="post clickable-post" data-post-id="{{ post.id }}" id="post-{{ post.id }}">
                         <div class="post-header"><strong>@{{ post.username }}</strong><span class="timestamp">{{ post.timestamp | format_date('%m/%d/%y %I:%M %p') }}</span></div>
                         <p>{{ post.content }}</p>
                         
@@ -1804,6 +1831,51 @@
             }, duration);
         }
         
+        // Toast notification with click action
+        function showToastWithAction(title, message, icon = 'fas fa-check-circle', duration = 5000, onClick = null) {
+            const toastContainer = document.getElementById('toastContainer');
+            
+            // Create toast element
+            const toast = document.createElement('div');
+            toast.className = 'toast';
+            if (onClick) {
+                toast.style.cursor = 'pointer';
+                toast.onclick = function(e) {
+                    // Don't trigger if clicking the close button
+                    if (!e.target.classList.contains('toast-close')) {
+                        onClick();
+                        closeToast(toast.querySelector('.toast-close'));
+                    }
+                };
+            }
+            
+            toast.innerHTML = `
+                <i class="${icon} toast-icon"></i>
+                <div class="toast-content">
+                    <div class="toast-title">${title}</div>
+                    <div class="toast-message">${message}</div>
+                    ${onClick ? '<div class="toast-action-hint">Click to view</div>' : ''}
+                </div>
+                <button class="toast-close" onclick="closeToast(this)">&times;</button>
+            `;
+            
+            // Add to container
+            toastContainer.appendChild(toast);
+            
+            // Auto remove after duration
+            const timeoutId = setTimeout(() => {
+                toast.classList.add('fade-out');
+                setTimeout(() => {
+                    if (toast.parentNode) {
+                        toast.parentNode.removeChild(toast);
+                    }
+                }, 300);
+            }, duration);
+            
+            // Store timeout ID for potential early removal
+            toast.dataset.timeoutId = timeoutId;
+        }
+        
         function closeToast(button) {
             const toast = button.parentElement;
             toast.classList.add('fade-out');
@@ -1866,11 +1938,34 @@
             
             const icon = icons[notification.type] || 'fas fa-bell';
             
-            showToast(
+            // Create clickable toast that redirects to the post
+            showToastWithAction(
                 'New Notification',
                 notification.message,
                 icon,
-                7000  // Show for 7 seconds
+                7000,  // Show for 7 seconds
+                () => {
+                    // Mark as read and redirect to post
+                    if (notification.post_id) {
+                        fetch(`/api/notifications/${notification.id}/read`, {
+                            method: 'POST'
+                        });
+                        
+                        // Check if we're already on the right page
+                        if (notification.community_id) {
+                            // Redirect to community post
+                            window.location.href = `/community_feed/${notification.community_id}#post-${notification.post_id}`;
+                        } else {
+                            // Redirect to main feed post or scroll if already here
+                            const postElement = document.getElementById(`post-${notification.post_id}`);
+                            if (postElement) {
+                                postElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            } else {
+                                window.location.href = `/feed#post-${notification.post_id}`;
+                            }
+                        }
+                    }
+                }
             );
         }
         
