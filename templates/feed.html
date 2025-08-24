@@ -451,11 +451,19 @@
             color: #ffffff !important;
         }
         
+        .composer-body {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            width: 100%;
+        }
+        
         .composer-input {
             background-color: #000000 !important;  /* Black input field */
             color: #ffffff !important;  /* White font */
             border: 1px solid #333333 !important;  /* Dark grey border */
             width: 100% !important;
+            box-sizing: border-box !important;  /* Include padding in width */
             resize: none !important;  /* Disable manual resize */
             overflow: hidden !important;  /* Hide scrollbar */
             min-height: 40px !important;
@@ -464,6 +472,7 @@
             font-family: inherit !important;
             font-size: 14px !important;
             line-height: 1.5 !important;
+            margin: 0 !important;  /* Remove any default margins */
         }
         
         .composer-input::placeholder {
@@ -2186,28 +2195,27 @@
                     autoExpandTextarea(this);
                 });
                 
-                // Prevent Enter from submitting, allow Shift+Enter for new line
-                composerTextarea.addEventListener('keydown', function(e) {
-                    if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
-                        // Just allow the default behavior - create a new line
-                        // Don't prevent default, don't submit
-                    }
-                });
-                
-                // Prevent form submission on Enter key in textarea
+                // Prevent form submission on Enter key in textarea (but not button clicks)
                 const composerForm = document.querySelector('.composer-form');
                 if (composerForm) {
-                    composerForm.addEventListener('keydown', function(e) {
-                        if (e.key === 'Enter' && e.target.classList.contains('composer-input')) {
+                    composerForm.addEventListener('submit', function(e) {
+                        // Allow normal form submission when submit button is clicked
+                        // This will be triggered by the Post button
+                        return true;
+                    });
+                    
+                    // Only prevent Enter key in the textarea from submitting
+                    composerTextarea.addEventListener('keypress', function(e) {
+                        if (e.key === 'Enter' && !e.shiftKey) {
                             e.preventDefault();
                             // Insert a newline at cursor position
-                            const textarea = e.target;
-                            const start = textarea.selectionStart;
-                            const end = textarea.selectionEnd;
-                            const value = textarea.value;
-                            textarea.value = value.substring(0, start) + '\n' + value.substring(end);
-                            textarea.selectionStart = textarea.selectionEnd = start + 1;
-                            autoExpandTextarea(textarea);
+                            const start = this.selectionStart;
+                            const end = this.selectionEnd;
+                            const value = this.value;
+                            this.value = value.substring(0, start) + '\n' + value.substring(end);
+                            this.selectionStart = this.selectionEnd = start + 1;
+                            autoExpandTextarea(this);
+                            return false;
                         }
                     });
                 }
