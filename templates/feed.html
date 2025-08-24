@@ -244,6 +244,19 @@
             .main-layout-container {
                 padding-top: 0 !important;
             }
+            
+            /* Polls sidebar mobile adjustments */
+            .polls-sidebar {
+                right: 10px !important;
+                width: calc(100% - 20px) !important;
+                max-width: 300px !important;
+                top: 70px !important;
+            }
+            
+            .polls-toggle-container {
+                right: 10px !important;
+                top: 70px !important;
+            }
         }
         
         /* Main layout - centered */
@@ -254,10 +267,12 @@
             padding: 20px;
         }
         
-        /* Polls Toggle Button */
+        /* Polls Toggle Button - Now positioned on the right */
         .polls-toggle-container {
-            margin: 5px 0 15px 0;
-            text-align: left;
+            position: fixed;
+            right: 20px;
+            top: 100px;
+            z-index: 98;
         }
         
         .polls-toggle-btn {
@@ -285,11 +300,11 @@
             font-size: 14px;
         }
         
-        /* Compact Polls Sidebar */
+        /* Compact Polls Sidebar - Now on the right */
         .polls-sidebar {
             position: fixed;
-            left: 80px;
-            top: 200px;
+            right: 20px;
+            top: 100px;
             width: 260px;
             max-height: 500px;
             background: linear-gradient(135deg, #1a3d3a 0%, #0f2725 100%);
@@ -303,7 +318,7 @@
         
         .polls-sidebar.collapsed {
             opacity: 0;
-            transform: translateX(-280px);
+            transform: translateX(280px);
             pointer-events: none;
         }
         
@@ -1244,22 +1259,30 @@
         </div>
     </div>
 
+    <!-- Compact Polls Sidebar (Hidden by default) - Now outside main container -->
+    <div class="polls-sidebar collapsed" id="pollsSidebar">
+        <div class="sidebar-header">
+            <button class="sidebar-close-btn" onclick="togglePollsSidebar()" title="Close">
+                <i class="fas fa-times"></i>
+            </button>
+            <button class="sidebar-action-btn" onclick="showPollsModal()" title="View All Polls">
+                <i class="fas fa-expand"></i>
+            </button>
+        </div>
+        <div class="sidebar-polls-list" id="sidebarPollsList">
+            <!-- Active polls will be loaded here -->
+        </div>
+    </div>
+    
+    <!-- Toggle Button for Active Polls - Now outside main container -->
+    <div class="polls-toggle-container" id="pollsToggleContainer" style="display: none;">
+        <button class="polls-toggle-btn" onclick="togglePollsSidebar()">
+            <i class="fas fa-poll-h"></i> See active polls
+        </button>
+    </div>
+
     <!-- Main Content -->
     <div class="main-layout-container">
-        <!-- Compact Polls Sidebar (Hidden by default) -->
-        <div class="polls-sidebar collapsed" id="pollsSidebar">
-            <div class="sidebar-header">
-                <button class="sidebar-close-btn" onclick="togglePollsSidebar()" title="Close">
-                    <i class="fas fa-times"></i>
-                </button>
-                <button class="sidebar-action-btn" onclick="showPollsModal()" title="View All Polls">
-                    <i class="fas fa-expand"></i>
-                </button>
-            </div>
-            <div class="sidebar-polls-list" id="sidebarPollsList">
-                <!-- Active polls will be loaded here -->
-            </div>
-        </div>
         
         <!-- Main Feed Container -->
         <div class="container feed">
@@ -1275,13 +1298,6 @@
                         <i class="fas fa-calendar-alt"></i> Calendar
                     </button>
                 </div>
-            </div>
-
-            <!-- Toggle Button for Active Polls -->
-            <div class="polls-toggle-container" id="pollsToggleContainer" style="display: none;">
-                <button class="polls-toggle-btn" onclick="togglePollsSidebar()">
-                    <i class="fas fa-poll-h"></i> See active polls
-                </button>
             </div>
 
             <!-- Composer -->
