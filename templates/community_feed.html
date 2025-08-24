@@ -2588,6 +2588,35 @@
             document.getElementById('postModal').style.display = 'none';
         }
         
+        // Function to open post modal programmatically
+        function openPostModal(postId) {
+            // Find the post element
+            const postElement = document.querySelector(`[data-post-id="${postId}"]`);
+            if (postElement) {
+                // Trigger click event on the post to open modal
+                postElement.click();
+            } else {
+                // If post not found, try to fetch it
+                $.ajax({
+                    url: '/get_post',
+                    method: 'GET',
+                    data: { post_id: postId },
+                    success: function(data) {
+                        if (data.success) {
+                            // Open modal with fetched post data
+                            const modal = document.getElementById('postModal');
+                            const modalContent = document.getElementById('modalPostContent');
+                            if (modal && modalContent) {
+                                modalContent.innerHTML = buildModalContent(data.post);
+                                modal.style.display = 'block';
+                                attachModalEventHandlers();
+                            }
+                        }
+                    }
+                });
+            }
+        }
+        
         // Notification Functions
         let notificationsOpen = false;
         
@@ -2855,19 +2884,37 @@
                 icon,
                 7000,  // Show for 7 seconds
                 () => {
-                    // Mark as read and redirect to post
+                    // Mark as read
                     if (notification.post_id) {
                         fetch(`/api/notifications/${notification.id}/read`, {
                             method: 'POST'
                         });
                         
-                        // Check if we're already on the right page
-                        if (notification.community_id) {
-                            // Redirect to community post
-                            window.location.href = `/community_feed/${notification.community_id}#post-${notification.post_id}`;
+                        // For reply notifications, open the post modal
+                        if (notification.type === 'reply') {
+                            // Check if we're on the right page
+                            const currentPath = window.location.pathname;
+                            const isOnCommunityPage = currentPath.includes(`/community_feed/${notification.community_id}`);
+                            const isOnMainFeed = currentPath === '/feed' && !notification.community_id;
+                            
+                            if (isOnCommunityPage || isOnMainFeed) {
+                                // We're on the right page, open the modal
+                                openPostModal(notification.post_id);
+                            } else {
+                                // Navigate to the right page first
+                                if (notification.community_id) {
+                                    window.location.href = `/community_feed/${notification.community_id}?openPost=${notification.post_id}`;
+                                } else {
+                                    window.location.href = `/feed?openPost=${notification.post_id}`;
+                                }
+                            }
                         } else {
-                            // Redirect to main feed post
-                            window.location.href = `/feed#post-${notification.post_id}`;
+                            // For other notifications (reactions), scroll to post
+                            if (notification.community_id) {
+                                window.location.href = `/community_feed/${notification.community_id}#post-${notification.post_id}`;
+                            } else {
+                                window.location.href = `/feed#post-${notification.post_id}`;
+                            }
                         }
                     }
                 }
@@ -2883,6 +2930,19 @@
             setInterval(() => {
                 checkNotifications(true);  // Show toasts for new notifications
             }, 10000);  // Check every 10 seconds for more real-time feel
+            
+            // Check if we should open a specific post modal
+            const urlParams = new URLSearchParams(window.location.search);
+            const openPostId = urlParams.get('openPost');
+            if (openPostId) {
+                // Wait a bit for the page to load
+                setTimeout(() => {
+                    openPostModal(openPostId);
+                    // Remove the parameter from URL
+                    const newUrl = window.location.pathname;
+                    window.history.replaceState({}, document.title, newUrl);
+                }, 500);
+            }
         });
         
         // Handle edit community form submission

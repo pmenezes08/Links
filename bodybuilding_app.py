@@ -2492,7 +2492,7 @@ def feed():
 
             for post in posts:
                 # Fetch replies for each post
-                c.execute("SELECT * FROM replies WHERE post_id = ? ORDER BY timestamp ASC", (post['id'],))
+                c.execute("SELECT * FROM replies WHERE post_id = ? ORDER BY timestamp DESC", (post['id'],))
                 replies_raw = c.fetchall()
                 post['replies'] = [dict(row) for row in replies_raw]
 
@@ -3765,7 +3765,7 @@ def get_post():
             post = dict(post_raw)
             
             # Fetch replies for the post
-            c.execute("SELECT * FROM replies WHERE post_id = ? ORDER BY timestamp ASC", (post_id,))
+            c.execute("SELECT * FROM replies WHERE post_id = ? ORDER BY timestamp DESC", (post_id,))
             replies_raw = c.fetchall()
             post['replies'] = [dict(row) for row in replies_raw]
             
@@ -4285,7 +4285,7 @@ def community_feed(community_id):
                     post['poll'] = None
 
                 # Fetch replies for each post
-                c.execute("SELECT * FROM replies WHERE post_id = ? ORDER BY timestamp ASC", (post['id'],))
+                c.execute("SELECT * FROM replies WHERE post_id = ? ORDER BY timestamp DESC", (post['id'],))
                 replies_raw = c.fetchall()
                 post['replies'] = [dict(row) for row in replies_raw]
                 

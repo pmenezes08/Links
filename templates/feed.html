@@ -1945,28 +1945,54 @@
                 icon,
                 7000,  // Show for 7 seconds
                 () => {
-                    // Mark as read and redirect to post
+                    // Mark as read
                     if (notification.post_id) {
                         fetch(`/api/notifications/${notification.id}/read`, {
                             method: 'POST'
                         });
                         
-                        // Check if we're already on the right page
-                        if (notification.community_id) {
-                            // Redirect to community post
-                            window.location.href = `/community_feed/${notification.community_id}#post-${notification.post_id}`;
-                        } else {
-                            // Redirect to main feed post or scroll if already here
-                            const postElement = document.getElementById(`post-${notification.post_id}`);
-                            if (postElement) {
-                                postElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        // For reply notifications, open the post modal
+                        if (notification.type === 'reply') {
+                            // Check if we're on the right page
+                            const currentPath = window.location.pathname;
+                            const isOnMainFeed = currentPath === '/feed' && !notification.community_id;
+                            
+                            if (isOnMainFeed) {
+                                // We're on the right page, open the modal
+                                openPostModal(notification.post_id);
+                            } else if (notification.community_id) {
+                                // Navigate to community page
+                                window.location.href = `/community_feed/${notification.community_id}?openPost=${notification.post_id}`;
                             } else {
-                                window.location.href = `/feed#post-${notification.post_id}`;
+                                // Navigate to main feed
+                                window.location.href = `/feed?openPost=${notification.post_id}`;
+                            }
+                        } else {
+                            // For other notifications (reactions), scroll to post
+                            if (notification.community_id) {
+                                window.location.href = `/community_feed/${notification.community_id}#post-${notification.post_id}`;
+                            } else {
+                                const postElement = document.getElementById(`post-${notification.post_id}`);
+                                if (postElement) {
+                                    postElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                } else {
+                                    window.location.href = `/feed#post-${notification.post_id}`;
+                                }
                             }
                         }
                     }
                 }
             );
+        }
+        
+        // Function to open post modal programmatically
+        function openPostModal(postId) {
+            // Find the post element
+            const postElement = document.querySelector(`[data-post-id="${postId}"]`);
+            if (postElement) {
+                // Trigger click event on the post to open modal
+                postElement.click();
+            }
         }
         
         document.addEventListener('DOMContentLoaded', function() {
@@ -1981,6 +2007,19 @@
             }, 10000);  // Check every 10 seconds for more real-time feel
             // Refresh sidebar polls every 30 seconds
             setInterval(loadSidebarPolls, 30000);
+            
+            // Check if we should open a specific post modal
+            const urlParams = new URLSearchParams(window.location.search);
+            const openPostId = urlParams.get('openPost');
+            if (openPostId) {
+                // Wait a bit for the page to load
+                setTimeout(() => {
+                    openPostModal(openPostId);
+                    // Remove the parameter from URL
+                    const newUrl = window.location.pathname;
+                    window.history.replaceState({}, document.title, newUrl);
+                }, 500);
+            }
         });
         
         // Poll option voting (for compact polls in sidebar)
