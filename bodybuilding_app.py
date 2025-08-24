@@ -2590,6 +2590,20 @@ def add_reaction():
 
             conn.commit()
 
+            # Create notification for post owner (only if adding/changing reaction, not removing)
+            if existing is None or (existing and existing['reaction_type'] != reaction_type):
+                # Get post owner
+                c.execute("SELECT username FROM posts WHERE id = ?", (post_id,))
+                post_owner = c.fetchone()
+                if post_owner and post_owner['username'] != username:
+                    create_notification(
+                        user_id=post_owner['username'],
+                        from_user=username,
+                        notification_type='reaction',
+                        post_id=post_id,
+                        message=f"{username} reacted to your post"
+                    )
+
             # After changes, fetch the new reaction counts for the post
             c.execute("""
                 SELECT reaction_type, COUNT(*) as count
@@ -2613,6 +2627,103 @@ def add_reaction():
 
     except Exception as e:
         logger.error(f"Error adding reaction: {str(e)}")
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
+
+def create_notification(user_id, from_user, notification_type, post_id=None, community_id=None, message=None):
+    """Helper function to create a notification"""
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("""
+                INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (user_id, from_user, notification_type, post_id, community_id, message))
+            conn.commit()
+    except Exception as e:
+        logger.error(f"Error creating notification: {str(e)}")
+
+
+@app.route('/api/notifications')
+@login_required
+def get_notifications():
+    """Get notifications for the current user"""
+    username = session['username']
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("""
+                SELECT id, from_user, type, post_id, community_id, message, is_read, created_at
+                FROM notifications
+                WHERE user_id = ?
+                ORDER BY created_at DESC
+                LIMIT 50
+            """, (username,))
+            
+            notifications = []
+            for row in c.fetchall():
+                notifications.append({
+                    'id': row['id'],
+                    'from_user': row['from_user'],
+                    'type': row['type'],
+                    'post_id': row['post_id'],
+                    'community_id': row['community_id'],
+                    'message': row['message'],
+                    'is_read': bool(row['is_read']),
+                    'created_at': row['created_at']
+                })
+            
+            return jsonify({'success': True, 'notifications': notifications})
+            
+    except Exception as e:
+        logger.error(f"Error getting notifications: {str(e)}")
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
+
+@app.route('/api/notifications/<int:notification_id>/read', methods=['POST'])
+@login_required
+def mark_notification_read(notification_id):
+    """Mark a notification as read"""
+    username = session['username']
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("""
+                UPDATE notifications 
+                SET is_read = 1 
+                WHERE id = ? AND user_id = ?
+            """, (notification_id, username))
+            conn.commit()
+            
+            return jsonify({'success': True})
+            
+    except Exception as e:
+        logger.error(f"Error marking notification as read: {str(e)}")
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
+
+@app.route('/api/notifications/mark-all-read', methods=['POST'])
+@login_required
+def mark_all_notifications_read():
+    """Mark all notifications as read for the current user"""
+    username = session['username']
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("""
+                UPDATE notifications 
+                SET is_read = 1 
+                WHERE user_id = ? AND is_read = 0
+            """, (username,))
+            conn.commit()
+            
+            return jsonify({'success': True})
+            
+    except Exception as e:
+        logger.error(f"Error marking all notifications as read: {str(e)}")
         return jsonify({'success': False, 'error': 'Server error'}), 500
 
 
@@ -2804,6 +2915,20 @@ def post_reply():
             c.execute("INSERT INTO replies (post_id, username, content, image_path, timestamp, community_id) VALUES (?, ?, ?, ?, ?, ?)",
                       (post_id, username, content, image_path, timestamp_db, community_id))
             reply_id = c.lastrowid
+            
+            # Get post owner to send notification
+            c.execute("SELECT username FROM posts WHERE id = ?", (post_id,))
+            post_owner = c.fetchone()
+            if post_owner and post_owner['username'] != username:
+                create_notification(
+                    user_id=post_owner['username'],
+                    from_user=username,
+                    notification_type='reply',
+                    post_id=post_id,
+                    community_id=community_id,
+                    message=f"{username} replied to your post"
+                )
+            
             conn.commit()
 
         logger.info(f"Reply added successfully for {username} to post {post_id} with ID: {reply_id}")
