@@ -157,8 +157,14 @@
         
         .post {
             background-color: #000000 !important;
-            border: 1px solid #4db6ac !important;  /* Turquoise border */
+            border: 1px solid #333333 !important;  /* Dark grey border */
             color: #ffffff !important;
+            transition: border-color 0.3s ease !important;
+        }
+        
+        .post:hover {
+            border-color: #4db6ac !important;  /* Turquoise on hover */
+            cursor: pointer;
         }
         
         .post p, .post-header, .post-header strong, .timestamp {
