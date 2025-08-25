@@ -301,10 +301,6 @@
             <button class="edit-btn" onclick="location.href='{{ url_for('profile') }}'">Edit profile</button>
         </div>
         <div class="dashboard-content" style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center;">
-            <div class="dashboard-actions" style="margin-bottom: 20px;">
-                <button onclick="location.href='{{ url_for('feed') }}'" class="sleek-btn compact pill">Social</button>
-            </div>
-            
             <!-- Create/Join Community Button -->
             <div class="create-community-section" style="margin-bottom: 15px;">
                 <button onclick="location.href='{{ url_for('communities') }}'" class="view-communities-btn">
@@ -319,10 +315,10 @@
                 </button>
             </div>
             
-            <!-- Your Sports Button -->
+            <!-- View Your Sports Button -->
             <div class="user-sports-section">
                 <button onclick="location.href='{{ url_for('your_sports') }}'" class="view-communities-btn">
-                    <i class="fas fa-water"></i> Your Sports
+                    <i class="fas fa-water"></i> View Your Sports
                 </button>
             </div>
         </div>
