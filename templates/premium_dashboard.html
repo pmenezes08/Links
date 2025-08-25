@@ -135,32 +135,32 @@
             .modal-content {
                 background: #1a1a1a;
                 border-radius: 12px;
-                padding: 24px;
+                padding: 16px;
                 width: 90%;
-                max-width: 600px;
+                max-width: 500px;
                 position: relative;
                 border: 1px solid rgba(255, 255, 255, 0.1);
             }
             
             .communities-modal {
-                max-width: 800px;
-                max-height: 85vh;
-                overflow-y: auto;
-                min-height: 400px;
+                max-width: 500px;
+                max-height: auto;
+                overflow: visible;
+                min-height: auto;
             }
             
             .modal-header {
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
-                margin-bottom: 20px;
+                margin-bottom: 12px;
                 border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-                padding-bottom: 12px;
+                padding-bottom: 8px;
             }
             
             .modal-header h3 {
                 color: #4db6ac;
-                font-size: 18px;
+                font-size: 16px;
                 font-weight: 600;
                 margin: 0;
             }
@@ -188,15 +188,38 @@
             .communities-list {
                 display: flex;
                 flex-direction: column;
-                gap: 12px;
+                gap: 8px;
+                max-height: 320px; /* Approximately 5 communities */
+                overflow-y: auto;
+                padding-right: 4px;
+            }
+            
+            /* Custom scrollbar for communities list */
+            .communities-list::-webkit-scrollbar {
+                width: 6px;
+            }
+            
+            .communities-list::-webkit-scrollbar-track {
+                background: rgba(255, 255, 255, 0.05);
+                border-radius: 3px;
+            }
+            
+            .communities-list::-webkit-scrollbar-thumb {
+                background: rgba(255, 255, 255, 0.2);
+                border-radius: 3px;
+            }
+            
+            .communities-list::-webkit-scrollbar-thumb:hover {
+                background: rgba(255, 255, 255, 0.3);
             }
             
             .community-card {
                 background: rgba(255, 255, 255, 0.03);
                 border: 1px solid rgba(255, 255, 255, 0.1);
-                border-radius: 8px;
-                padding: 16px;
+                border-radius: 6px;
+                padding: 10px;
                 transition: all 0.3s ease;
+                min-height: 50px;
             }
             
             .community-card:hover {
@@ -207,19 +230,25 @@
             
             .no-communities {
                 text-align: center;
-                padding: 40px;
+                padding: 20px;
                 color: #9fb0b5;
             }
             
             .no-communities i {
-                font-size: 48px;
-                margin-bottom: 16px;
+                font-size: 36px;
+                margin-bottom: 12px;
                 display: block;
             }
             
             .no-communities h4 {
                 color: #ffffff;
-                margin-bottom: 8px;
+                margin-bottom: 6px;
+                font-size: 14px;
+            }
+            
+            .no-communities p {
+                font-size: 12px;
+                margin: 0;
             }
             
             /* Mobile responsive for profile summary */
@@ -340,18 +369,17 @@
 
             const communitiesHtml = communities.map(community => `
                 <div class="community-card">
-                    <div class="community-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                        <div class="community-info">
-                            <h4 style="color: #ffffff; margin: 0 0 4px 0; font-size: 16px;">${community.name}</h4>
-                            <div class="community-meta" style="color: #9fb0b5; font-size: 13px;">
-                                <span><i class="fas fa-tag"></i> ${community.type}</span>
-                                ${community.location ? `<span style="margin-left: 12px;"><i class="fas fa-map-marker-alt"></i> ${community.location}</span>` : ''}
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div class="community-info" style="flex: 1;">
+                            <h4 style="color: #ffffff; margin: 0; font-size: 14px; font-weight: 500;">${community.name}</h4>
+                            <div class="community-meta" style="color: #9fb0b5; font-size: 11px; margin-top: 2px;">
+                                <span><i class="fas fa-tag" style="font-size: 10px;"></i> ${community.type}</span>
                             </div>
                         </div>
+                        <button class="sleek-btn compact" style="padding: 4px 12px; font-size: 12px;" onclick="location.href='/community_feed/${community.id}'">
+                            <i class="fas fa-door-open" style="font-size: 11px;"></i> Enter
+                        </button>
                     </div>
-                    <button class="sleek-btn compact" style="width: 100%;" onclick="location.href='/community_feed/${community.id}'">
-                        <i class="fas fa-door-open"></i> Enter Community
-                    </button>
                 </div>
             `).join('');
 
