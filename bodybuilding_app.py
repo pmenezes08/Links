@@ -1531,6 +1531,41 @@ def profile():
         logger.error(f"Error in profile for {username}: {str(e)}")
         abort(500)
 
+@app.route('/upload_logo', methods=['POST'])
+@login_required
+def upload_logo():
+    """Upload a new logo (admin only)"""
+    username = session.get('username')
+    
+    # Check if user is admin
+    if username != 'admin':
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    
+    try:
+        if 'logo' not in request.files:
+            return jsonify({'success': False, 'error': 'No file provided'})
+        
+        file = request.files['logo']
+        if file.filename == '':
+            return jsonify({'success': False, 'error': 'No file selected'})
+        
+        if file and allowed_file(file.filename):
+            # Save the logo file
+            filename = 'logo.png'  # Always save as logo.png
+            filepath = os.path.join('static', filename)
+            file.save(filepath)
+            
+            return jsonify({
+                'success': True,
+                'logo_url': url_for('static', filename=filename)
+            })
+        else:
+            return jsonify({'success': False, 'error': 'Invalid file type'})
+            
+    except Exception as e:
+        logger.error(f"Error uploading logo: {str(e)}")
+        return jsonify({'success': False, 'error': 'Server error'})
+
 @app.route('/check_profile_picture')
 @login_required
 def check_profile_picture():

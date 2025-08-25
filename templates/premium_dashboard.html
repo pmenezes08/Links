@@ -296,22 +296,56 @@
                 {% endif %}
             </div>
             <div class="name">{{ name }}</div>
-            <button class="edit-btn" onclick="location.href='{{ url_for('edit_profile') }}'">Edit profile</button>
+            <button class="edit-btn" onclick="location.href='{{ url_for('profile') }}'">Edit profile</button>
         </div>
-        <div class="dashboard-actions" style="margin-top: 24px; padding: 20px;">
-            <button onclick="location.href='{{ url_for('feed') }}'" class="sleek-btn compact pill">Social</button>
-            <button onclick="location.href='{{ url_for('communities') }}'" class="sleek-btn compact pill">
-                <i class="fas fa-plus-circle"></i> Create/Join a Community
-            </button>
-            <button onclick="location.href='{{ url_for('your_sports') }}'" class="sleek-btn compact pill">Your Sports</button>
+        <div class="dashboard-content" style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center;">
+            <div class="dashboard-actions" style="margin-bottom: 20px;">
+                <button onclick="location.href='{{ url_for('feed') }}'" class="sleek-btn compact pill">Social</button>
+                <button onclick="location.href='{{ url_for('communities') }}'" class="sleek-btn compact pill">
+                    <i class="fas fa-plus-circle"></i> Create/Join a Community
+                </button>
+                <button onclick="location.href='{{ url_for('your_sports') }}'" class="sleek-btn compact pill">Your Sports</button>
+            </div>
+            
+            <!-- View Communities Button -->
+            <div class="user-communities-section">
+                <button id="viewCommunitiesBtn" class="view-communities-btn">
+                    <i class="fas fa-home"></i> View Your Communities
+                </button>
+            </div>
         </div>
-        
-        <!-- View Communities Button -->
-        <div class="user-communities-section" style="padding: 20px; margin-top: 20px;">
-            <button id="viewCommunitiesBtn" class="view-communities-btn">
-                <i class="fas fa-home"></i> View Your Communities
-            </button>
+
+        <!-- Logo Section at Bottom -->
+        <div class="logo-section" style="position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); text-align: center; z-index: 100;">
+            <div class="logo-container" style="position: relative; display: inline-block;">
+                <img id="dashboardLogo" src="{{ url_for('static', filename='logo.png') }}" alt="Logo" 
+                     style="max-height: 60px; max-width: 200px; opacity: 0.8; transition: opacity 0.3s;"
+                     onerror="this.style.display='none'; document.getElementById('logoPlaceholder').style.display='block';">
+                <div id="logoPlaceholder" style="display: none; color: #9fb0b5; font-size: 14px;">
+                    <i class="fas fa-image" style="font-size: 30px; margin-bottom: 5px; display: block;"></i>
+                    Logo
+                </div>
+                {% if session['username'] == 'admin' %}
+                <button class="logo-update-btn" onclick="document.getElementById('logoUpload').click()"
+                        style="position: absolute; top: -10px; right: -10px; background: rgba(77, 182, 172, 0.2); 
+                               border: 1px solid rgba(77, 182, 172, 0.4); border-radius: 50%; width: 30px; height: 30px;
+                               display: flex; align-items: center; justify-content: center; cursor: pointer;
+                               opacity: 0; transition: opacity 0.3s;">
+                    <i class="fas fa-edit" style="color: #4db6ac; font-size: 12px;"></i>
+                </button>
+                <input type="file" id="logoUpload" accept="image/*" style="display: none;" onchange="uploadLogo(this)">
+                {% endif %}
+            </div>
         </div>
+
+        <style>
+            .logo-container:hover .logo-update-btn {
+                opacity: 1 !important;
+            }
+            .logo-container:hover #dashboardLogo {
+                opacity: 1 !important;
+            }
+        </style>
 
         <!-- Communities Modal -->
         <div id="communitiesModal" class="modal-overlay" style="display: none;">
@@ -400,6 +434,35 @@
             `).join('');
 
             container.html(communitiesHtml);
+        }
+
+        // Logo upload function for admin
+        function uploadLogo(input) {
+            if (input.files && input.files[0]) {
+                const formData = new FormData();
+                formData.append('logo', input.files[0]);
+                
+                $.ajax({
+                    url: '/upload_logo',
+                    type: 'POST',
+                    data: formData,
+                    processData: false,
+                    contentType: false,
+                    success: function(response) {
+                        if (response.success) {
+                            // Update logo display
+                            $('#dashboardLogo').attr('src', response.logo_url + '?t=' + new Date().getTime());
+                            $('#dashboardLogo').show();
+                            $('#logoPlaceholder').hide();
+                        } else {
+                            alert('Error uploading logo: ' + (response.error || 'Unknown error'));
+                        }
+                    },
+                    error: function() {
+                        alert('Error uploading logo');
+                    }
+                });
+            }
         }
     </script>
 </body>
