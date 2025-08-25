@@ -27,6 +27,31 @@
             .profile-page .sidebar:hover .sidebar-menu, .profile-page .sidebar:focus-within .sidebar-menu { display: block !important; }
         }
         
+        /* Profile Header Bar - matching admin profile */
+        .profile-header-bar { 
+            position: fixed; 
+            top: 0; 
+            left: 200px; 
+            right: 0; 
+            height: 60px; 
+            background: transparent; 
+            z-index: 900;
+            box-sizing: border-box;
+        }
+        
+        .profile-header-bar::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: #333333;
+        }
+        @media (max-width: 768px) {
+            .profile-header-bar { left: 0 !important; }
+        }
+        
         /* Profile Page Styles - Compact & Minimalist */
         body {
             background-color: #000000 !important;
@@ -39,7 +64,7 @@
 
         .profile-container {
             margin-left: 0;
-            padding: 16px;
+            padding: 80px 16px 16px 16px;
             max-width: 600px;
             margin: 0 auto;
             position: relative;
@@ -50,7 +75,7 @@
         @media (max-width: 768px) {
             .profile-container {
                 margin-left: 0;
-                padding: 12px;
+                padding: 80px 12px 12px 12px;
                 left: 0;
             }
         }
@@ -386,6 +411,8 @@
             <a href="{{ url_for('logout') }}">Logout</a>
         </div>
     </div>
+    
+    <div class="profile-header-bar"></div>
     <div class="profile-container">
         <!-- Header -->
         <div class="profile-header">
