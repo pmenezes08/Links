@@ -96,11 +96,130 @@
             .profile-summary .edit-btn { background: rgba(77, 182, 172, 0.2); color: #4db6ac; border: 1px solid rgba(77, 182, 172, 0.4); border-radius: 6px; padding: 6px 10px; font-size: 12px; cursor: pointer; transition: all 0.2s ease; }
             .profile-summary .edit-btn:hover { background: rgba(77, 182, 172, 0.3); }
             
-            /* Community card hover effect */
+            /* View Communities Button */
+            .view-communities-btn {
+                background: rgba(255, 255, 255, 0.05);
+                color: #ffffff;
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                padding: 12px 24px;
+                border-radius: 8px;
+                font-size: 15px;
+                font-weight: 500;
+                cursor: pointer;
+                transition: all 0.3s ease;
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
+            }
+            
+            .view-communities-btn:hover {
+                background: rgba(255, 255, 255, 0.08);
+                border-color: #4db6ac;
+                transform: translateY(-1px);
+            }
+            
+            /* Modal Styles */
+            .modal-overlay {
+                position: fixed;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                background: rgba(0, 0, 0, 0.8);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                z-index: 9999;
+            }
+            
+            .modal-content {
+                background: #1a1a1a;
+                border-radius: 12px;
+                padding: 24px;
+                width: 90%;
+                max-width: 600px;
+                position: relative;
+                border: 1px solid rgba(255, 255, 255, 0.1);
+            }
+            
+            .communities-modal {
+                max-width: 800px;
+                max-height: 85vh;
+                overflow-y: auto;
+                min-height: 400px;
+            }
+            
+            .modal-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 20px;
+                border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+                padding-bottom: 12px;
+            }
+            
+            .modal-header h3 {
+                color: #4db6ac;
+                font-size: 18px;
+                font-weight: 600;
+                margin: 0;
+            }
+            
+            .modal-close {
+                background: none;
+                border: none;
+                color: #ffffff;
+                font-size: 24px;
+                cursor: pointer;
+                padding: 0;
+                width: 30px;
+                height: 30px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                border-radius: 4px;
+                transition: background 0.2s;
+            }
+            
+            .modal-close:hover {
+                background: rgba(255, 255, 255, 0.1);
+            }
+            
+            .communities-list {
+                display: flex;
+                flex-direction: column;
+                gap: 12px;
+            }
+            
+            .community-card {
+                background: rgba(255, 255, 255, 0.03);
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                border-radius: 8px;
+                padding: 16px;
+                transition: all 0.3s ease;
+            }
+            
             .community-card:hover {
-                background: rgba(255,255,255,0.06) !important;
-                border-color: rgba(77, 182, 172, 0.4) !important;
+                background: rgba(255,255,255,0.06);
+                border-color: rgba(77, 182, 172, 0.4);
                 transform: translateY(-2px);
+            }
+            
+            .no-communities {
+                text-align: center;
+                padding: 40px;
+                color: #9fb0b5;
+            }
+            
+            .no-communities i {
+                font-size: 48px;
+                margin-bottom: 16px;
+                display: block;
+            }
+            
+            .no-communities h4 {
+                color: #ffffff;
+                margin-bottom: 8px;
             }
             
             /* Mobile responsive for profile summary */
@@ -144,41 +263,100 @@
             <button onclick="location.href='{{ url_for('your_sports') }}'" class="sleek-btn compact pill">Your Sports</button>
         </div>
         
-        <!-- Your Communities Section -->
-        <div class="communities-section" style="padding: 20px; margin-top: 20px;">
-            <h2 style="color: #ffffff; font-size: 20px; margin-bottom: 20px;">
-                <i class="fas fa-users"></i> Your Communities
-            </h2>
-            {% if communities %}
-                <div class="communities-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 16px;">
-                    {% for community in communities %}
-                        <div class="community-card" style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 16px; transition: all 0.3s ease; cursor: pointer;"
-                             onclick="location.href='/community_feed/{{ community.id }}'">
-                            <h3 style="color: #ffffff; font-size: 16px; margin: 0 0 8px 0;">{{ community.name }}</h3>
-                            <p style="color: #9fb0b5; font-size: 13px; margin: 0;">
-                                <i class="fas fa-tag"></i> {{ community.type }}
-                            </p>
-                            <button class="sleek-btn compact" style="margin-top: 12px; width: 100%;"
-                                    onclick="event.stopPropagation(); location.href='/community_feed/{{ community.id }}'">
-                                Enter Community
-                            </button>
-                        </div>
-                    {% endfor %}
+        <!-- View Communities Button -->
+        <div class="user-communities-section" style="padding: 20px; margin-top: 20px;">
+            <button id="viewCommunitiesBtn" class="view-communities-btn">
+                <i class="fas fa-home"></i> View Your Communities
+            </button>
+        </div>
+
+        <!-- Communities Modal -->
+        <div id="communitiesModal" class="modal-overlay" style="display: none;">
+            <div class="modal-content communities-modal">
+                <div class="modal-header">
+                    <h3><i class="fas fa-home"></i> Your Communities</h3>
+                    <button class="modal-close" id="closeCommunitiesModal">&times;</button>
                 </div>
-            {% else %}
-                <div style="text-align: center; padding: 40px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px;">
-                    <i class="fas fa-users" style="font-size: 48px; color: #9fb0b5; margin-bottom: 16px;"></i>
-                    <h3 style="color: #ffffff; margin-bottom: 8px;">No communities yet</h3>
-                    <p style="color: #9fb0b5; margin-bottom: 20px;">Join an existing community or create your own to get started</p>
-                    <button onclick="location.href='{{ url_for('communities') }}'" class="sleek-btn">
-                        <i class="fas fa-plus"></i> Create/Join Community
-                    </button>
+                <div id="communitiesList" class="communities-list">
+                    <!-- Communities will be loaded here -->
                 </div>
-            {% endif %}
+            </div>
         </div>
     </div>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="{{ url_for('static', filename='script.js') }}"></script>
     <!-- Using shared menu behavior from static/script.js -->
+    <script>
+        $(document).ready(function() {
+            // Load user's communities when modal opens
+            $('#viewCommunitiesBtn').on('click', function() {
+                loadUserCommunities();
+                $('#communitiesModal').show();
+            });
+
+            // Close communities modal
+            $('#closeCommunitiesModal').on('click', function() {
+                $('#communitiesModal').hide();
+            });
+
+            // Close modal when clicking outside
+            $('#communitiesModal').on('click', function(e) {
+                if (e.target === this) {
+                    $(this).hide();
+                }
+            });
+        });
+
+        function loadUserCommunities() {
+            $.ajax({
+                url: '/get_user_communities',
+                method: 'GET',
+                success: function(response) {
+                    if (response.success) {
+                        displayCommunities(response.communities);
+                    } else {
+                        $('#communitiesList').html('<div class="no-communities"><i class="fas fa-exclamation-circle"></i><h4>Error loading communities</h4></div>');
+                    }
+                },
+                error: function() {
+                    $('#communitiesList').html('<div class="no-communities"><i class="fas fa-exclamation-circle"></i><h4>Error loading communities</h4></div>');
+                }
+            });
+        }
+
+        function displayCommunities(communities) {
+            const container = $('#communitiesList');
+            
+            if (!communities || communities.length === 0) {
+                container.html(`
+                    <div class="no-communities">
+                        <i class="fas fa-users"></i>
+                        <h4>No communities yet</h4>
+                        <p>Join an existing community or create your own to get started</p>
+                    </div>
+                `);
+                return;
+            }
+
+            const communitiesHtml = communities.map(community => `
+                <div class="community-card">
+                    <div class="community-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                        <div class="community-info">
+                            <h4 style="color: #ffffff; margin: 0 0 4px 0; font-size: 16px;">${community.name}</h4>
+                            <div class="community-meta" style="color: #9fb0b5; font-size: 13px;">
+                                <span><i class="fas fa-tag"></i> ${community.type}</span>
+                                ${community.location ? `<span style="margin-left: 12px;"><i class="fas fa-map-marker-alt"></i> ${community.location}</span>` : ''}
+                            </div>
+                        </div>
+                    </div>
+                    <button class="sleek-btn compact" style="width: 100%;" onclick="location.href='/community_feed/${community.id}'">
+                        <i class="fas fa-door-open"></i> Enter Community
+                    </button>
+                </div>
+            `).join('');
+
+            container.html(communitiesHtml);
+        }
+    </script>
 </body>
 </html>
