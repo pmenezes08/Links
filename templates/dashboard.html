@@ -33,6 +33,65 @@
 			box-sizing: border-box;
 		}
 		
+		/* Profile Summary Box - Matching Premium Dashboard */
+		.profile-summary { 
+			position: fixed; 
+			top: 80px; 
+			right: 20px; 
+			width: 180px; 
+			height: 180px; 
+			border: 1px solid rgba(255,255,255,0.2); 
+			border-radius: 8px; 
+			background: rgba(255,255,255,0.03); 
+			display: flex; 
+			flex-direction: column; 
+			align-items: center; 
+			justify-content: flex-start; 
+			gap: 8px; 
+			padding: 12px; 
+			box-sizing: border-box;
+			z-index: 800;
+		}
+		.profile-summary .avatar { 
+			width: 80px; 
+			height: 80px; 
+			border-radius: 50%; 
+			background: rgba(255,255,255,0.05); 
+			border: 1px solid rgba(255,255,255,0.2); 
+			display: flex; 
+			align-items: center; 
+			justify-content: center; 
+			overflow: hidden; 
+		}
+		.profile-summary .avatar img { 
+			width: 100%; 
+			height: 100%; 
+			object-fit: cover; 
+		}
+		.profile-summary .name { 
+			color: #ffffff; 
+			font-size: 14px; 
+			font-weight: 600; 
+			text-align: center; 
+			max-width: 160px; 
+			overflow: hidden; 
+			text-overflow: ellipsis; 
+			white-space: nowrap; 
+		}
+		.profile-summary .edit-btn { 
+			background: rgba(77, 182, 172, 0.2); 
+			color: #4db6ac; 
+			border: 1px solid rgba(77, 182, 172, 0.4); 
+			border-radius: 6px; 
+			padding: 6px 10px; 
+			font-size: 12px; 
+			cursor: pointer; 
+			transition: all 0.2s ease; 
+		}
+		.profile-summary .edit-btn:hover { 
+			background: rgba(77, 182, 172, 0.3); 
+		}
+		
 		/* View Communities Button - Matching Premium Dashboard */
 		.view-communities-btn {
 			background: rgba(255, 255, 255, 0.05);
@@ -141,6 +200,24 @@
 			.dashboard-page .sidebar-menu { display: none !important; position: absolute !important; top: 60px !important; left: 0 !important; right: 0 !important; background: #1a1a1a !important; border-top: 1px solid #333333 !important; max-height: calc(100vh - 60px) !important; overflow-y: auto !important; }
 			.dashboard-page .sidebar:hover .sidebar-menu, .dashboard-page .sidebar:focus-within .sidebar-menu { display: block !important; }
 			.dashboard-header { left: 0 !important; }
+			/* Mobile responsive for profile summary */
+			.profile-summary {
+				top: 70px;
+				right: 10px;
+				width: 150px;
+				height: 150px;
+			}
+			.profile-summary .avatar {
+				width: 60px;
+				height: 60px;
+			}
+			.profile-summary .name {
+				font-size: 13px;
+			}
+			.profile-summary .edit-btn {
+				font-size: 11px;
+				padding: 5px 8px;
+			}
 		}
 	</style>
 </head>
@@ -170,6 +247,19 @@
 	</div>
 	
 	<div class="dashboard-header"></div>
+	
+	<!-- Profile Summary Box -->
+	<div class="profile-summary">
+		<div class="avatar">
+			{% if profile and profile[19] %}
+				<img src="{{ url_for('static', filename=profile[19]) }}" alt="{{ name }}">
+			{% else %}
+				<i class="fas fa-user" style="color: #9fb0b5; font-size: 32px;"></i>
+			{% endif %}
+		</div>
+		<div class="name">{{ name }}</div>
+		<button class="edit-btn" onclick="location.href='{{ url_for('profile') }}'">Edit profile</button>
+	</div>
 	
 	<div class="container">
 		<div class="dashboard-content" style="text-align: center;">
