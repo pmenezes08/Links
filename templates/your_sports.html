@@ -60,7 +60,7 @@
     <div class="container">
         <style>
             /* Align content and header with sidebar */
-            .sports-page .container { padding-top: 80px; margin-top: 0; height: 100vh; overflow: hidden; position: relative; display: flex; align-items: center; justify-content: center; }
+            .sports-page .container { padding: 0; margin-top: 0; height: 100vh; overflow: hidden; position: relative; display: flex; align-items: center; justify-content: center; }
             /* Header aligned exactly with sidebar header */
             .sports-header { 
                 position: fixed; 
@@ -82,7 +82,7 @@
         </style>
         <div class="sports-header"></div>
         
-        <div class="sports-grid" style="text-align: center;">
+        <div class="sports-grid" style="text-align: center; margin: 0; padding: 20px;">
             <!-- Gym Card -->
             <div class="sport-card" onclick="window.location.href='{{ url_for('gym') }}'">
                 <div class="sport-icon">
