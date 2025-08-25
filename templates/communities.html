@@ -66,13 +66,15 @@
 		.join-community-form {
 			display: flex;
 			gap: 8px;
-			align-items: flex-end;
-			flex-wrap: wrap;
+			align-items: stretch;
+			flex-wrap: nowrap;
 		}
 
 		.join-community-form .form-group {
 			flex: 1;
 			min-width: 150px;
+			display: flex;
+			flex-direction: column;
 		}
 
 		.join-community-form label {
@@ -116,6 +118,8 @@
 			height: 32px;
 			display: flex;
 			align-items: center;
+			align-self: flex-end;
+			margin-bottom: 0;
 		}
 
 		.join-community-btn:hover {
@@ -383,6 +387,17 @@
 			.join-community-form {
 				flex-direction: column;
 				align-items: stretch;
+				gap: 12px;
+			}
+			
+			.join-community-form .form-group {
+				width: 100%;
+			}
+			
+			.join-community-btn {
+				width: 100%;
+				justify-content: center;
+				align-self: stretch;
 			}
 
 			.community-header {
