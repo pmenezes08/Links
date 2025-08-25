@@ -304,13 +304,19 @@
                 <button onclick="location.href='{{ url_for('communities') }}'" class="sleek-btn compact pill">
                     <i class="fas fa-plus-circle"></i> Create/Join a Community
                 </button>
-                <button onclick="location.href='{{ url_for('your_sports') }}'" class="sleek-btn compact pill">Your Sports</button>
             </div>
             
             <!-- View Communities Button -->
-            <div class="user-communities-section">
+            <div class="user-communities-section" style="margin-bottom: 15px;">
                 <button id="viewCommunitiesBtn" class="view-communities-btn">
                     <i class="fas fa-home"></i> View Your Communities
+                </button>
+            </div>
+            
+            <!-- Your Sports Button -->
+            <div class="user-sports-section">
+                <button onclick="location.href='{{ url_for('your_sports') }}'" class="view-communities-btn">
+                    <i class="fas fa-water"></i> Your Sports
                 </button>
             </div>
         </div>
