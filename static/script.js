@@ -371,7 +371,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         });
                         updateReactionIconStates($reactions, data.user_reaction);
                         
-                        // Trigger notification check for the post owner
+                        // Trigger immediate notification check for the post owner
                         if (window.triggerNotificationCheck) {
                             window.triggerNotificationCheck();
                         }

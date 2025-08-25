@@ -2771,9 +2771,9 @@ def check_new_notifications():
     last_check = request.args.get('since', '')
     
     try:
-        # If no timestamp provided, get all unread
+        # If no timestamp provided, get notifications from last 5 seconds
         if not last_check:
-            last_check = (datetime.now() - timedelta(minutes=1)).strftime('%Y-%m-%d %H:%M:%S')
+            last_check = (datetime.now() - timedelta(seconds=5)).strftime('%Y-%m-%d %H:%M:%S')
         
         with get_db_connection() as conn:
             c = conn.cursor()

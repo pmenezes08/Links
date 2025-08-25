@@ -2082,8 +2082,12 @@
         
         // Trigger notification check after a reaction is made
         window.triggerNotificationCheck = function() {
-            // Wait 1 second for the notification to be created in the database
-            setTimeout(checkForNewNotifications, 1000);
+            // Multiple rapid checks to catch the notification as soon as it's created
+            checkForNewNotifications();  // Immediate check
+            setTimeout(checkForNewNotifications, 50);   // 50ms
+            setTimeout(checkForNewNotifications, 100);  // 100ms
+            setTimeout(checkForNewNotifications, 200);  // 200ms
+            setTimeout(checkForNewNotifications, 500);  // 500ms as final backup
         };
         
         // Initialize real-time notification checking
