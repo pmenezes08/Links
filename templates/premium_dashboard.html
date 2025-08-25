@@ -118,7 +118,7 @@
                 transform: translateY(-1px);
             }
             
-            /* Modal Styles */
+            /* Modal Styles - Matching polls modal from community_feed */
             .modal-overlay {
                 position: fixed;
                 top: 0;
@@ -126,6 +126,8 @@
                 right: 0;
                 bottom: 0;
                 background: rgba(0, 0, 0, 0.8);
+                backdrop-filter: blur(8px);
+                -webkit-backdrop-filter: blur(8px);
                 display: flex;
                 align-items: center;
                 justify-content: center;
@@ -133,42 +135,56 @@
             }
             
             .modal-content {
-                background: #1a1a1a;
+                background: #2d3839;
                 border-radius: 12px;
-                padding: 16px;
+                padding: 0;
                 width: 90%;
-                max-width: 500px;
+                max-width: 600px;
                 position: relative;
-                border: 1px solid rgba(255, 255, 255, 0.1);
+                box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
             }
             
             .communities-modal {
-                max-width: 500px;
-                max-height: auto;
-                overflow: visible;
-                min-height: auto;
+                max-width: 600px;
+                width: 600px;
             }
             
             .modal-header {
+                background: #000000;
+                color: #ffffff;
+                padding: 15px 20px;
+                border-bottom: 1px solid rgba(45, 138, 126, 0.3);
+                border-radius: 12px 12px 0 0;
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
-                margin-bottom: 12px;
-                border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-                padding-bottom: 8px;
             }
             
             .modal-header h3 {
-                color: #4db6ac;
+                color: #ffffff;
                 font-size: 16px;
                 font-weight: 600;
                 margin: 0;
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            }
+            
+            .modal-header h3 i {
+                color: #4db6ac;
+            }
+            
+            .modal-body {
+                padding: 15px;
+                max-height: 70vh;
+                overflow-y: auto;
+                background: #2d3839;
             }
             
             .modal-close {
                 background: none;
                 border: none;
-                color: #ffffff;
+                color: #9fb0b5;
                 font-size: 24px;
                 cursor: pointer;
                 padding: 0;
@@ -178,10 +194,11 @@
                 align-items: center;
                 justify-content: center;
                 border-radius: 4px;
-                transition: background 0.2s;
+                transition: all 0.2s;
             }
             
             .modal-close:hover {
+                color: #ffffff;
                 background: rgba(255, 255, 255, 0.1);
             }
             
@@ -189,9 +206,6 @@
                 display: flex;
                 flex-direction: column;
                 gap: 8px;
-                max-height: 320px; /* Approximately 5 communities */
-                overflow-y: auto;
-                padding-right: 4px;
             }
             
             /* Custom scrollbar for communities list */
@@ -304,10 +318,12 @@
             <div class="modal-content communities-modal">
                 <div class="modal-header">
                     <h3><i class="fas fa-home"></i> Your Communities</h3>
-                    <button class="modal-close" id="closeCommunitiesModal">&times;</button>
+                    <span class="modal-close" id="closeCommunitiesModal">&times;</span>
                 </div>
-                <div id="communitiesList" class="communities-list">
-                    <!-- Communities will be loaded here -->
+                <div class="modal-body">
+                    <div id="communitiesList" class="communities-list">
+                        <!-- Communities will be loaded here -->
+                    </div>
                 </div>
             </div>
         </div>
@@ -369,14 +385,14 @@
 
             const communitiesHtml = communities.map(community => `
                 <div class="community-card">
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <div class="community-info" style="flex: 1;">
-                            <h4 style="color: #ffffff; margin: 0; font-size: 14px; font-weight: 500;">${community.name}</h4>
+                    <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px;">
+                        <div class="community-info" style="flex: 1; min-width: 0;">
+                            <h4 style="color: #ffffff; margin: 0; font-size: 14px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${community.name}</h4>
                             <div class="community-meta" style="color: #9fb0b5; font-size: 11px; margin-top: 2px;">
                                 <span><i class="fas fa-tag" style="font-size: 10px;"></i> ${community.type}</span>
                             </div>
                         </div>
-                        <button class="sleek-btn compact" style="padding: 4px 12px; font-size: 12px;" onclick="location.href='/community_feed/${community.id}'">
+                        <button class="sleek-btn compact" style="padding: 4px 12px; font-size: 12px; flex-shrink: 0;" onclick="location.href='/community_feed/${community.id}'">
                             <i class="fas fa-door-open" style="font-size: 11px;"></i> Enter
                         </button>
                     </div>
