@@ -18,8 +18,21 @@
         .gym-page .sidebar-menu a { display: block !important; padding: 12px 20px !important; color: #ffffff !important; text-decoration: none !important; transition: all 0.3s ease !important; border: none !important; font-size: 14px !important; }
         .gym-page .sidebar-menu a:hover { background: rgba(77, 182, 172, 0.2) !important; color: #4db6ac !important; padding-left: 25px !important; }
         .gym-page .menu-btn, .gym-page .dropdown-content { display: none !important; }
-        .gym-page .container { margin-left: 0; padding: 20px; }
+        .gym-page .container { margin-left: 0; padding: 0; height: 100vh; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+        /* Header bar matching other pages */
+        .gym-header { 
+            position: fixed; 
+            top: 0; 
+            left: 200px; 
+            right: 0; 
+            height: 60px; 
+            background: transparent; 
+            border-bottom: 1px solid #333333; 
+            z-index: 900;
+            box-sizing: border-box;
+        }
         @media (max-width: 768px) {
+            .gym-header { left: 0 !important; }
             .gym-page { margin-left: 0 !important; padding-top: 60px !important; }
             .gym-page .sidebar { width: 100% !important; height: 60px !important; overflow: visible !important; }
             .gym-page .sidebar-header { padding: 8px !important; height: 60px !important; }
@@ -56,17 +69,12 @@
             <a href="{{ url_for('logout') }}">Logout</a>
         </div>
     </div>
+    
+    <div class="gym-header"></div>
 
     <!-- Main Content -->
     <div class="container">
-        <div class="page-header">
-            <button onclick="window.location.href='{{ url_for('your_sports') }}'" class="back-btn">
-                <i class="fas fa-arrow-left"></i> Back to Sports
-            </button>
-            <h1>Gym</h1>
-        </div>
-        
-        <div class="gym-sections">
+        <div class="gym-sections" style="padding: 20px;">
             <!-- Workout Generator Section -->
             <div class="gym-section-card" onclick="window.location.href='{{ url_for('workout_generator') }}'">
                 <div class="section-icon">
