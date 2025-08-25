@@ -891,7 +891,7 @@
 							// Create success message with link to the community
 							let successMessage = 'Successfully joined the community! ';
 							if (response.community_id) {
-								successMessage += `<a href="/community/${response.community_id}" style="color: #4db6ac; text-decoration: underline; font-weight: 600;">Enter Community →</a>`;
+								successMessage += `<a href="/community_feed/${response.community_id}" style="color: #4db6ac; text-decoration: underline; font-weight: 600;">Enter Community →</a>`;
 							}
 							showJoinMessage(successMessage, 'success');
 							$('#communityCode').val('');
@@ -931,7 +931,7 @@
 							// Create success message with link to the new community
 							let successMessage = 'Community created successfully! ';
 							if (response.community_id) {
-								successMessage += `<a href="/community/${response.community_id}" style="color: #4db6ac; text-decoration: underline; font-weight: 600;">Enter Community →</a>`;
+								successMessage += `<a href="/community_feed/${response.community_id}" style="color: #4db6ac; text-decoration: underline; font-weight: 600;">Enter Community →</a>`;
 							}
 							showJoinMessage(successMessage, 'success');
 						} else {
@@ -999,24 +999,28 @@
 			});
 			
 			// Add click handlers for enter buttons
-			$('.enter-community-btn').off('click').on('click', function() {
+			$('.enter-community-btn').off('click').on('click', function(e) {
+				e.preventDefault();
+				e.stopPropagation();
 				const communityId = $(this).data('id');
-				window.location.href = `/community/${communityId}`;
+				window.location.href = `/community_feed/${communityId}`;
 			});
 			
 			// Add click handlers for exit buttons
-			$('.exit-community-btn').off('click').on('click', function() {
+			$('.exit-community-btn').off('click').on('click', function(e) {
+				e.preventDefault();
+				e.stopPropagation();
 				const communityId = $(this).data('id');
 				const communityName = $(this).closest('.joined-community-item').find('.joined-community-name').text();
 				
 				if (confirm(`Are you sure you want to leave "${communityName}"?`)) {
-					exitCommunity(communityId);
+					leaveCommunity(communityId);
 				}
 			});
 		}
 
 		// Function to exit/leave a community
-		function exitCommunity(communityId) {
+		function leaveCommunity(communityId) {
 			$.ajax({
 				url: '/leave_community',
 				method: 'POST',

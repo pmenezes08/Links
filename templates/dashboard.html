@@ -271,10 +271,10 @@
 	
 	<div class="container">
 		<div class="dashboard-content" style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center;">
-			<!-- Create/Join/Manage Community Button -->
+			<!-- Create/Join Community Button -->
 			<div class="create-community-section" style="margin-bottom: 15px;">
 				<button onclick="location.href='{{ url_for('communities') }}'" class="view-communities-btn">
-					<i class="fas fa-plus-circle"></i> Create/Join/Manage a Community
+					<i class="fas fa-plus-circle"></i> Create/Join a Community
 				</button>
 			</div>
 			
@@ -401,9 +401,11 @@
 				});
 				
 				// Add click handlers for enter buttons
-				$('.enter-community-btn').off('click').on('click', function() {
+				$('.enter-community-btn').off('click').on('click', function(e) {
+					e.preventDefault();
+					e.stopPropagation();
 					const communityId = $(this).data('community-id');
-					window.location.href = `/community/${communityId}`;
+					window.location.href = `/community_feed/${communityId}`;
 				});
 				
 				// Add or remove scroll class based on community count

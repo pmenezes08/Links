@@ -4456,6 +4456,7 @@ def join_community():
             
         return jsonify({
             'success': True, 
+            'community_id': community_id,
             'community_name': community_name,
             'message': f'Successfully joined "{community_name}"!'
         })
@@ -4463,6 +4464,58 @@ def join_community():
     except Exception as e:
         logger.error(f"Error joining community: {str(e)}")
         return jsonify({'success': False, 'error': 'An error occurred while joining the community'})
+
+@app.route('/leave_community', methods=['POST'])
+@login_required
+def leave_community():
+    """Leave a community"""
+    username = session.get('username')
+    community_id = request.form.get('community_id')
+    
+    if not community_id:
+        return jsonify({'success': False, 'error': 'Community ID is required'})
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Get user ID
+            c.execute("SELECT rowid FROM users WHERE username = ?", (username,))
+            user = c.fetchone()
+            if not user:
+                return jsonify({'success': False, 'error': 'User not found'})
+            
+            user_id = user['rowid']
+            
+            # Check if user is a member
+            c.execute("""
+                SELECT id FROM user_communities 
+                WHERE user_id = ? AND community_id = ?
+            """, (user_id, community_id))
+            
+            membership = c.fetchone()
+            if not membership:
+                return jsonify({'success': False, 'error': 'You are not a member of this community'})
+            
+            # Check if user is the creator (creators cannot leave their own community)
+            c.execute("SELECT creator_username FROM communities WHERE id = ?", (community_id,))
+            community = c.fetchone()
+            if community and community['creator_username'] == username:
+                return jsonify({'success': False, 'error': 'Community creators cannot leave their own community. Delete the community instead.'})
+            
+            # Remove user from community
+            c.execute("""
+                DELETE FROM user_communities 
+                WHERE user_id = ? AND community_id = ?
+            """, (user_id, community_id))
+            
+            conn.commit()
+            
+        return jsonify({'success': True, 'message': 'Successfully left the community'})
+        
+    except Exception as e:
+        logger.error(f"Error leaving community: {str(e)}")
+        return jsonify({'success': False, 'error': 'An error occurred while leaving the community'})
 
 @app.route('/community_feed/<int:community_id>')
 @login_required
