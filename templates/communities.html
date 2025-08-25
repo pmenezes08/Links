@@ -135,6 +135,75 @@
 			text-align: center;
 			margin-bottom: 16px;
 		}
+		
+		/* Joined Communities Section */
+		.joined-communities-section {
+			background: rgba(255, 255, 255, 0.03);
+			border: 1px solid rgba(255, 255, 255, 0.08);
+			border-radius: 8px;
+			padding: 12px;
+			margin-bottom: 16px;
+			backdrop-filter: blur(20px);
+		}
+		
+		.joined-communities-list {
+			display: flex;
+			flex-direction: column;
+			gap: 8px;
+		}
+		
+		.joined-community-item {
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			background: rgba(255, 255, 255, 0.05);
+			border: 1px solid rgba(255, 255, 255, 0.1);
+			border-radius: 6px;
+			padding: 10px;
+			transition: all 0.2s ease;
+		}
+		
+		.joined-community-item:hover {
+			background: rgba(255, 255, 255, 0.08);
+			border-color: rgba(77, 182, 172, 0.4);
+			transform: translateX(2px);
+		}
+		
+		.joined-community-info {
+			flex: 1;
+			display: flex;
+			flex-direction: column;
+			gap: 2px;
+		}
+		
+		.joined-community-name {
+			color: #ffffff;
+			font-size: 13px;
+			font-weight: 500;
+		}
+		
+		.joined-community-type {
+			color: rgba(255, 255, 255, 0.6);
+			font-size: 11px;
+		}
+		
+		.enter-community-btn {
+			background: #4db6ac;
+			color: #ffffff;
+			border: none;
+			padding: 6px 12px;
+			border-radius: 4px;
+			font-size: 11px;
+			font-weight: 500;
+			cursor: pointer;
+			transition: all 0.2s ease;
+			white-space: nowrap;
+		}
+		
+		.enter-community-btn:hover {
+			background: #37a69c;
+			transform: translateY(-1px);
+		}
 
 		.build-community-btn {
 			background: rgba(255, 255, 255, 0.05);
@@ -665,7 +734,8 @@
 	<script src="{{ url_for('static', filename='script.js') }}"></script>
 	<script>
 		$(document).ready(function() {
-
+			// Load joined communities on page load
+			loadJoinedCommunities();
 
 			// Close communities modal
 			$('#closeCommunitiesModal').on('click', function() {
@@ -766,6 +836,7 @@
 							showJoinMessage('Successfully joined the community!', 'success');
 							$('#communityCode').val('');
 							loadUserCommunities(); // Reload communities list
+							loadJoinedCommunities(); // Reload joined communities display
 						} else {
 							showJoinMessage(response.error || 'Failed to join community', 'error');
 						}
@@ -796,6 +867,7 @@
 							$('#backgroundPreview').hide();
 							$('#fileInfo').text('');
 							loadUserCommunities(); // Reload communities list
+							loadJoinedCommunities(); // Reload joined communities display
 							showJoinMessage('Community created successfully!', 'success');
 						} else {
 							showJoinMessage(response.error || 'Failed to create community', 'error');
@@ -816,6 +888,46 @@
 				}, 5000);
 			}
 		});
+		
+		// Function to load joined communities
+		function loadJoinedCommunities() {
+			$.ajax({
+				url: '/get_user_communities',
+				method: 'GET',
+				success: function(response) {
+					if (response.success && response.communities && response.communities.length > 0) {
+						displayJoinedCommunities(response.communities);
+						$('#joinedCommunitiesSection').show();
+					} else {
+						$('#joinedCommunitiesSection').hide();
+					}
+				},
+				error: function() {
+					$('#joinedCommunitiesSection').hide();
+				}
+			});
+		}
+		
+		// Function to display joined communities
+		function displayJoinedCommunities(communities) {
+			const container = $('#joinedCommunitiesList');
+			container.empty();
+			
+			communities.forEach(community => {
+				const communityHtml = `
+					<div class="joined-community-item">
+						<div class="joined-community-info">
+							<div class="joined-community-name">${community.name}</div>
+							<div class="joined-community-type">${community.type === 'public' ? 'Public' : 'Private'} Community</div>
+						</div>
+						<button class="enter-community-btn" onclick="window.location.href='/community/${community.id}'">
+							Enter
+						</button>
+					</div>
+				`;
+				container.append(communityHtml);
+			});
+		}
 
 		function loadUserCommunities() {
 			$.ajax({
