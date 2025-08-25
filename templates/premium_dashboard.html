@@ -109,7 +109,9 @@
                 transition: all 0.3s ease;
                 display: inline-flex;
                 align-items: center;
+                justify-content: center;
                 gap: 8px;
+                width: 250px;
             }
             
             .view-communities-btn:hover {
@@ -301,7 +303,11 @@
         <div class="dashboard-content" style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center;">
             <div class="dashboard-actions" style="margin-bottom: 20px;">
                 <button onclick="location.href='{{ url_for('feed') }}'" class="sleek-btn compact pill">Social</button>
-                <button onclick="location.href='{{ url_for('communities') }}'" class="sleek-btn compact pill">
+            </div>
+            
+            <!-- Create/Join Community Button -->
+            <div class="create-community-section" style="margin-bottom: 15px;">
+                <button onclick="location.href='{{ url_for('communities') }}'" class="view-communities-btn">
                     <i class="fas fa-plus-circle"></i> Create/Join a Community
                 </button>
             </div>
