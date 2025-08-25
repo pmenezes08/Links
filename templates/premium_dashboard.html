@@ -8,6 +8,12 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}?v=4.0">
 </head>
 <body class="premium-dashboard-page">
+    <style>
+        /* Make menu fixed and always visible on premium dashboard */
+        .premium-dashboard-page .menu-btn { display: none !important; }
+        .premium-dashboard-page .dropdown-content { display: block !important; position: fixed; top: 0; left: 60px; width: 220px; height: 100vh; overflow-y: auto; border-radius: 0; border-left: 1px solid rgba(255,255,255,0.1); border-right: 1px solid rgba(255,255,255,0.1); }
+        .premium-dashboard-page .container { margin-left: 300px; max-width: calc(100% - 320px); }
+    </style>
     <div class="sidebar">
         <button class="menu-btn"><i class="fas fa-bars"></i> Menu</button>
         <div class="dropdown-content">
