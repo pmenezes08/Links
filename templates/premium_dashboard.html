@@ -54,7 +54,10 @@
     </div>
     <div class="container">
         <style>
-            .premium-header { width: 100%; border-bottom: 1px solid rgba(255,255,255,0.15); padding: 16px 0; margin-bottom: 16px; }
+            /* Align container to top so header divider lines up with sidebar header */
+            .premium-dashboard-page .container { padding-top: 0; }
+            /* Header divider aligned with sidebar header (60px height, same border color) */
+            .premium-header { width: 100%; height: 60px; border-bottom: 1px solid #333333; margin: 0 0 16px 0; }
             .profile-summary { position: relative; margin-left: auto; margin-right: 0; display: flex; flex-direction: column; align-items: center; gap: 8px; }
             .profile-summary .avatar { width: 80px; height: 80px; border-radius: 8px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.2); display: flex; align-items: center; justify-content: center; overflow: hidden; }
             .profile-summary .avatar img { width: 100%; height: 100%; object-fit: cover; }
