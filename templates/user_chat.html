@@ -3,156 +3,352 @@
 <head>
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>Messages</title>
-	<link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}?v=5.0">
+	<title>C.Point - Messages</title>
 	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+	<link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}?v=2.0">
+	<style>
+		/* Messages Page with Dashboard Layout */
+		.messages-page { margin-left: 200px; }
+		.messages-page .sidebar { position: fixed !important; top: 0 !important; left: 0 !important; width: 200px !important; height: 100vh !important; background: #1a1a1a !important; border-right: 1px solid #333333 !important; z-index: 1000 !important; display: flex !important; flex-direction: column !important; }
+		.messages-page .sidebar-header { display: flex; align-items: center; padding: 10px; border-bottom: 1px solid #333333; height: 60px; box-sizing: border-box; }
+		.messages-page .sidebar-logo { padding: 5px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+		.messages-page .community-name { flex: 1; display: flex; align-items: center; color: #ffffff; font-size: 16px; font-weight: 600; padding-left: 10px; overflow: hidden; }
+		.messages-page .community-name span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+		.messages-page .sidebar-menu { flex: 1; padding: 10px 0; display: block !important; overflow-y: auto !important; }
+		.messages-page .sidebar-menu a { display: block !important; padding: 12px 20px !important; color: #ffffff !important; text-decoration: none !important; transition: all 0.3s ease !important; border: none !important; font-size: 14px !important; }
+		.messages-page .sidebar-menu a:hover { background: rgba(77, 182, 172, 0.2) !important; color: #4db6ac !important; padding-left: 25px !important; }
+		.messages-page .menu-btn, .messages-page .dropdown-content { display: none !important; }
+		.messages-page .container { padding: 80px 20px 20px 20px; min-height: 100vh; }
+		
+		/* Messages Header Bar */
+		.messages-header-bar { 
+			position: fixed; 
+			top: 0; 
+			left: 200px; 
+			right: 0; 
+			height: 60px; 
+			background: transparent; 
+			border-bottom: 1px solid #333333; 
+			z-index: 900;
+			box-sizing: border-box;
+		}
+		
+		/* Messages Content Area */
+		.messages-main-content {
+			max-width: 1200px;
+			margin: 0 auto;
+			display: flex;
+			gap: 20px;
+			height: calc(100vh - 100px);
+		}
+		
+		/* User List Panel */
+		.user-list-panel {
+			width: 300px;
+			background: rgba(255, 255, 255, 0.03);
+			border: 1px solid rgba(255, 255, 255, 0.1);
+			border-radius: 8px;
+			overflow: hidden;
+			display: flex;
+			flex-direction: column;
+		}
+		
+		.user-list-header {
+			padding: 15px;
+			background: rgba(0, 0, 0, 0.3);
+			border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+		}
+		
+		.user-search {
+			width: 100%;
+			padding: 8px 12px;
+			background: rgba(255, 255, 255, 0.05);
+			border: 1px solid rgba(255, 255, 255, 0.1);
+			border-radius: 6px;
+			color: #ffffff;
+			font-size: 14px;
+		}
+		
+		.user-list {
+			flex: 1;
+			overflow-y: auto;
+			padding: 10px;
+		}
+		
+		.user-item {
+			display: flex;
+			align-items: center;
+			padding: 10px;
+			margin-bottom: 5px;
+			background: rgba(255, 255, 255, 0.05);
+			border-radius: 6px;
+			cursor: pointer;
+			transition: all 0.2s ease;
+			position: relative;
+		}
+		
+		.user-item:hover {
+			background: rgba(77, 182, 172, 0.2);
+		}
+		
+		.user-item.active {
+			background: rgba(77, 182, 172, 0.3);
+			border: 1px solid rgba(77, 182, 172, 0.5);
+		}
+		
+		.user-avatar {
+			width: 40px;
+			height: 40px;
+			border-radius: 50%;
+			background: rgba(255, 255, 255, 0.1);
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			margin-right: 12px;
+			font-size: 18px;
+			color: #4db6ac;
+		}
+		
+		.user-info {
+			flex: 1;
+		}
+		
+		.user-name {
+			color: #ffffff;
+			font-size: 14px;
+			font-weight: 500;
+		}
+		
+		.user-status {
+			color: rgba(255, 255, 255, 0.6);
+			font-size: 12px;
+		}
+		
+		.unread-indicator {
+			position: absolute;
+			right: 10px;
+			top: 50%;
+			transform: translateY(-50%);
+			background: #4db6ac;
+			color: #ffffff;
+			padding: 2px 6px;
+			border-radius: 10px;
+			font-size: 11px;
+			font-weight: 600;
+		}
+		
+		/* Chat Panel */
+		.chat-panel {
+			flex: 1;
+			background: rgba(255, 255, 255, 0.03);
+			border: 1px solid rgba(255, 255, 255, 0.1);
+			border-radius: 8px;
+			overflow: hidden;
+			display: flex;
+			flex-direction: column;
+		}
+		
+		.chat-header {
+			padding: 15px;
+			background: rgba(0, 0, 0, 0.3);
+			border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+		}
+		
+		.chat-user-info {
+			display: flex;
+			align-items: center;
+		}
+		
+		.chat-user-name {
+			color: #ffffff;
+			font-size: 16px;
+			font-weight: 600;
+		}
+		
+		.messages-area {
+			flex: 1;
+			overflow-y: auto;
+			padding: 20px;
+			display: flex;
+			flex-direction: column;
+		}
+		
+		.message {
+			margin-bottom: 15px;
+			display: flex;
+			align-items: flex-start;
+		}
+		
+		.message.sent {
+			justify-content: flex-end;
+		}
+		
+		.message-content {
+			max-width: 70%;
+			padding: 10px 14px;
+			border-radius: 8px;
+			background: rgba(255, 255, 255, 0.05);
+			border: 1px solid rgba(255, 255, 255, 0.1);
+		}
+		
+		.message.sent .message-content {
+			background: rgba(77, 182, 172, 0.2);
+			border-color: rgba(77, 182, 172, 0.3);
+		}
+		
+		.message-text {
+			color: #ffffff;
+			font-size: 14px;
+			line-height: 1.4;
+		}
+		
+		.message-time {
+			color: rgba(255, 255, 255, 0.5);
+			font-size: 11px;
+			margin-top: 4px;
+		}
+		
+		.message-input-area {
+			padding: 15px;
+			background: rgba(0, 0, 0, 0.3);
+			border-top: 1px solid rgba(255, 255, 255, 0.1);
+		}
+		
+		.message-input-form {
+			display: flex;
+			gap: 10px;
+		}
+		
+		.message-input {
+			flex: 1;
+			padding: 10px 14px;
+			background: rgba(255, 255, 255, 0.05);
+			border: 1px solid rgba(255, 255, 255, 0.1);
+			border-radius: 6px;
+			color: #ffffff;
+			font-size: 14px;
+		}
+		
+		.message-input:focus {
+			outline: none;
+			border-color: #4db6ac;
+			background: rgba(255, 255, 255, 0.08);
+		}
+		
+		.send-btn {
+			padding: 10px 20px;
+			background: #4db6ac;
+			color: #ffffff;
+			border: none;
+			border-radius: 6px;
+			font-size: 14px;
+			font-weight: 500;
+			cursor: pointer;
+			transition: all 0.2s ease;
+			display: flex;
+			align-items: center;
+			gap: 6px;
+		}
+		
+		.send-btn:hover {
+			background: #37a69c;
+			transform: translateY(-1px);
+		}
+		
+		/* Empty State */
+		.empty-state {
+			display: flex;
+			flex-direction: column;
+			align-items: center;
+			justify-content: center;
+			height: 100%;
+			color: rgba(255, 255, 255, 0.5);
+		}
+		
+		.empty-state i {
+			font-size: 48px;
+			margin-bottom: 15px;
+			color: rgba(77, 182, 172, 0.5);
+		}
+		
+		.empty-state p {
+			font-size: 16px;
+		}
+		
+		@media (max-width: 768px) {
+			.messages-page { margin-left: 0 !important; padding-top: 60px !important; }
+			.messages-page .sidebar { width: 100% !important; height: 60px !important; overflow: visible !important; }
+			.messages-page .sidebar-header { padding: 8px !important; height: 60px !important; }
+			.messages-page .community-name { font-size: 14px !important; }
+			.messages-page .sidebar-menu { display: none !important; position: absolute !important; top: 60px !important; left: 0 !important; right: 0 !important; background: #1a1a1a !important; border-top: 1px solid #333333 !important; max-height: calc(100vh - 60px) !important; overflow-y: auto !important; }
+			.messages-page .sidebar:hover .sidebar-menu, .messages-page .sidebar:focus-within .sidebar-menu { display: block !important; }
+			.messages-header-bar { left: 0 !important; }
+			
+			.messages-main-content {
+				flex-direction: column;
+				height: auto;
+			}
+			
+			.user-list-panel {
+				width: 100%;
+				max-height: 200px;
+			}
+			
+			.chat-panel {
+				min-height: 500px;
+			}
+		}
+	</style>
 </head>
-<body>
+<body class="messages-page">
 	<div class="sidebar">
-		<button class="menu-btn">☰ Menu<span id="unread-badge" class="unread-badge">0</span></button>
-		<div class="dropdown-content">
-			<a href="/profile">Profile</a>
+		<div class="sidebar-header">
+			<div class="sidebar-logo" id="sidebarLogo"></div>
+			<div class="community-name">
+				<span>Messages</span>
+			</div>
+		</div>
+		<div class="sidebar-menu">
 			{% if session['username'] == 'admin' %}
-			<a href="/admin">Admin Dashboard</a>
+			<a href="{{ url_for('admin_profile') }}">Admin Profile</a>
+			<a href="{{ url_for('admin') }}">Admin Dashboard</a>
 			{% endif %}
-			<a href="/user_chat">Messages</a>
-			<a href="/premium_dashboard">Premium Dashboard</a>
-			<a href="/feed">Social</a>
-			<a href="/communities">Your Communities</a>
-			<a href="/subscribe">Subscribe</a>
-			<a href="/logout">Logout</a>
+			<a href="{{ url_for('dashboard') }}">Dashboard</a>
+			<a href="{{ url_for('profile') }}">Profile</a>
+			<a href="{{ url_for('user_chat') }}">Messages</a>
+			<a href="{{ url_for('communities') }}">Your Communities</a>
+			<a href="{{ url_for('your_sports') }}">Your Sports</a>
+			<a href="{{ url_for('logout') }}">Logout</a>
 		</div>
 	</div>
 	
+	<div class="messages-header-bar"></div>
+	
 	<div class="container">
-		<div class="messages-container">
-			<div class="messages-header">
-				<div class="header-left">
-					<button class="mobile-menu-btn" id="mobileMenuBtn" style="display: none;">
-						<i class="fas fa-bars"></i>
-					</button>
-					<h2><i class="fas fa-comments"></i> Messages</h2>
+		<div class="messages-main-content">
+			<!-- User List Panel -->
+			<div class="user-list-panel">
+				<div class="user-list-header">
+					<input type="text" class="user-search" placeholder="Search users..." id="userSearch">
 				</div>
-				<button onclick="location.href='/dashboard'" class="go-back-btn">
-					<i class="fas fa-arrow-left"></i> Back
-				</button>
+				<div class="user-list" id="userList">
+					<!-- Users will be loaded here -->
+					<div class="empty-state">
+						<i class="fas fa-users"></i>
+						<p>Loading users...</p>
+					</div>
+				</div>
 			</div>
 			
-			<div class="messages-content">
-				<!-- User Selection Panel -->
-				<div class="user-selection-panel">
-					<div class="selection-tabs">
-						<button class="tab-btn active" data-tab="general">
-							<i class="fas fa-users"></i> Community Members
-						</button>
-						<button class="tab-btn" data-tab="communities">
-							<i class="fas fa-layer-group"></i> By Community
-						</button>
-					</div>
-					
-					<!-- Community Members Tab -->
-					<div class="tab-content active" id="general-tab">
-						<div class="user-list">
-							<h3>Select a community member to message:</h3>
-							{% if users %}
-							<div class="user-grid">
-								{% for user in users %}
-								<div class="user-item" data-username="{{ user }}">
-									<div class="user-avatar">
-										<i class="fas fa-user"></i>
-									</div>
-									<div class="user-name">{{ user }}</div>
-								</div>
-								{% endfor %}
-							</div>
-							{% else %}
-							<div class="no-members">
-								<p>You need to join communities to message other members.</p>
-								<a href="/communities" class="join-community-btn">Join Communities</a>
-							</div>
-							{% endif %}
-						</div>
-					</div>
-					
-					<!-- By Community Tab -->
-					<div class="tab-content" id="communities-tab">
-						<div class="communities-list">
-							<h3>Browse by Community:</h3>
-							{% if communities %}
-								{% for community in communities %}
-								<div class="community-section">
-									<div class="community-header">
-										<h4><i class="fas fa-users"></i> {{ community[1] }}</h4>
-										<span class="community-type">{{ community[2] }}</span>
-									</div>
-									{% if community_members[community[0]] %}
-									<div class="community-members">
-										{% for member in community_members[community[0]] %}
-										<div class="member-item" data-username="{{ member }}" data-community="{{ community[1] }}">
-											<div class="member-avatar">
-												<i class="fas fa-user"></i>
-											</div>
-											<div class="member-info">
-												<div class="member-name">{{ member }}</div>
-												<div class="member-community">{{ community[1] }}</div>
-											</div>
-										</div>
-										{% endfor %}
-									</div>
-									{% else %}
-									<div class="no-members">
-										<p>No other members in this community yet.</p>
-									</div>
-									{% endif %}
-								</div>
-								{% endfor %}
-							{% else %}
-							<div class="no-communities">
-								<p>You haven't joined any communities yet.</p>
-								<a href="/communities" class="join-community-link">Join Communities</a>
-							</div>
-							{% endif %}
-						</div>
-					</div>
-				</div>
-				
-				<!-- Chat Panel -->
-				<div class="chat-panel" id="chatPanel" style="display: none;">
-					<div class="chat-header">
-						<button class="back-to-users" id="backToUsers">
-							<i class="fas fa-arrow-left"></i>
-						</button>
-						<div class="chat-user-info">
-							<div class="chat-user-avatar">
-								<i class="fas fa-user"></i>
-							</div>
-							<div class="chat-user-details">
-								<div class="chat-user-name" id="chatUserName"></div>
-								<div class="chat-user-community" id="chatUserCommunity"></div>
-							</div>
-						</div>
-					</div>
-					
-					<div class="chat-messages" id="chatMessages">
-						<!-- Messages will be loaded here -->
-					</div>
-					
-					<div class="chat-input-area">
-						<form id="messageForm" class="message-form">
-							<input type="text" id="messageInput" placeholder="Type your message..." maxlength="500">
-							<button type="submit" class="send-btn">
-								<i class="fas fa-paper-plane"></i>
-							</button>
-						</form>
-					</div>
-				</div>
-				
-				<!-- Welcome Message -->
-				<div class="welcome-message" id="welcomeMessage">
-					<div class="welcome-content">
-						<i class="fas fa-comments welcome-icon"></i>
-						<h3>Welcome to Messages</h3>
-						<p>Select a user from the left panel to start chatting, or choose someone from your communities.</p>
+			<!-- Chat Panel -->
+			<div class="chat-panel">
+				<div id="chatContent">
+					<div class="empty-state">
+						<i class="fas fa-comments"></i>
+						<p>Select a user to start messaging</p>
 					</div>
 				</div>
 			</div>
@@ -162,163 +358,137 @@
 	<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 	<script src="{{ url_for('static', filename='script.js') }}"></script>
 	<script>
+		let currentChatUser = null;
+		let messages = {};
+		
 		$(document).ready(function() {
-			let currentReceiver = null;
-			let messageInterval = null;
+			loadUsers();
 			
-			// Tab switching
-			$('.tab-btn').click(function() {
-				$('.tab-btn').removeClass('active');
-				$(this).addClass('active');
-				
-				const tab = $(this).data('tab');
-				$('.tab-content').removeClass('active');
-				$('#' + tab + '-tab').addClass('active');
-			});
-			
-			// User selection (general)
-			$('.user-item').click(function() {
-				const username = $(this).data('username');
-				startChat(username);
-			});
-			
-			// Member selection (communities)
-			$('.member-item').click(function() {
-				const username = $(this).data('username');
-				const community = $(this).data('community');
-				startChat(username, community);
-			});
-			
-			// Mobile menu button
-			$('#mobileMenuBtn').click(function() {
-				$('.user-selection-panel').addClass('show');
-			});
-			
-			// Back to users
-			$('#backToUsers').click(function() {
-				$('#chatPanel').hide();
-				$('#welcomeMessage').show();
-				$('.user-selection-panel').show();
-				// Add mobile class for slide animation
-				if (window.innerWidth <= 768) {
-					$('.user-selection-panel').addClass('show');
-				}
-				stopMessagePolling();
-			});
-			
-			// Message form submission
-			$('#messageForm').submit(function(e) {
-				e.preventDefault();
-				sendMessage();
-			});
-			
-			function startChat(username, community = null) {
-				currentReceiver = username;
-				
-				// Update chat header
-				$('#chatUserName').text(username);
-				if (community) {
-					$('#chatUserCommunity').text('from ' + community);
-				} else {
-					$('#chatUserCommunity').text('');
-				}
-				
-				// Show chat panel
-				$('#welcomeMessage').hide();
-				$('.user-selection-panel').hide();
-				// Remove mobile class for slide animation
-				if (window.innerWidth <= 768) {
-					$('.user-selection-panel').removeClass('show');
-				}
-				$('#chatPanel').show();
-				
-				// Load messages
-				loadMessages();
-				
-				// Start polling for new messages
-				startMessagePolling();
-			}
-			
-			function loadMessages() {
-				$.ajax({
-					url: '/get_messages',
-					method: 'POST',
-					data: {
-						receiver: currentReceiver,
-						csrf_token: $('meta[name="csrf-token"]').attr('content')
-					},
-					success: function(response) {
-						if (response.success) {
-							displayMessages(response.messages);
-						} else {
-							console.error('Error loading messages:', response.error);
-						}
-					},
-					error: function() {
-						console.error('Failed to load messages');
-					}
+			// Search functionality
+			$('#userSearch').on('input', function() {
+				const searchTerm = $(this).val().toLowerCase();
+				$('.user-item').each(function() {
+					const userName = $(this).find('.user-name').text().toLowerCase();
+					$(this).toggle(userName.includes(searchTerm));
 				});
-			}
-			
-			function displayMessages(messages) {
-				const chatMessages = $('#chatMessages');
-				chatMessages.empty();
-				
-				messages.forEach(function(message) {
-					const isOwn = message.sender === '{{ name }}';
-					const messageHtml = `
-						<div class="message ${isOwn ? 'own-message' : 'other-message'}">
-							<div class="message-content">
-								<div class="message-text">${message.message}</div>
-								<div class="message-time">${message.timestamp}</div>
-							</div>
-						</div>
-					`;
-					chatMessages.append(messageHtml);
-				});
-				
-				// Scroll to bottom
-				chatMessages.scrollTop(chatMessages[0].scrollHeight);
-			}
-			
-			function sendMessage() {
-				const messageText = $('#messageInput').val().trim();
-				if (!messageText || !currentReceiver) return;
-				
-				$.ajax({
-					url: '/send_message',
-					method: 'POST',
-					data: {
-						receiver: currentReceiver,
-						message: messageText,
-						csrf_token: $('meta[name="csrf-token"]').attr('content')
-					},
-					success: function(response) {
-						if (response.success) {
-							$('#messageInput').val('');
-							loadMessages(); // Reload to show new message
-						} else {
-							console.error('Error sending message:', response.error);
-						}
-					},
-					error: function() {
-						console.error('Failed to send message');
-					}
-				});
-			}
-			
-			function startMessagePolling() {
-				stopMessagePolling();
-				messageInterval = setInterval(loadMessages, 3000); // Poll every 3 seconds
-			}
-			
-			function stopMessagePolling() {
-				if (messageInterval) {
-					clearInterval(messageInterval);
-					messageInterval = null;
-				}
-			}
+			});
 		});
+		
+		function loadUsers() {
+			// This should be replaced with an actual API call
+			const users = [
+				{id: 1, name: 'John Doe', status: 'Online', unread: 2},
+				{id: 2, name: 'Jane Smith', status: 'Offline', unread: 0},
+				{id: 3, name: 'Mike Johnson', status: 'Online', unread: 1},
+			];
+			
+			const userList = $('#userList');
+			userList.empty();
+			
+			users.forEach(user => {
+				const userHtml = `
+					<div class="user-item" data-user-id="${user.id}" onclick="selectUser(${user.id}, '${user.name}')">
+						<div class="user-avatar">
+							<i class="fas fa-user"></i>
+						</div>
+						<div class="user-info">
+							<div class="user-name">${user.name}</div>
+							<div class="user-status">${user.status}</div>
+						</div>
+						${user.unread > 0 ? `<span class="unread-indicator">${user.unread}</span>` : ''}
+					</div>
+				`;
+				userList.append(userHtml);
+			});
+		}
+		
+		function selectUser(userId, userName) {
+			currentChatUser = userId;
+			
+			// Update active state
+			$('.user-item').removeClass('active');
+			$(`.user-item[data-user-id="${userId}"]`).addClass('active');
+			
+			// Load chat interface
+			const chatHtml = `
+				<div class="chat-header">
+					<div class="chat-user-info">
+						<div class="user-avatar" style="margin-right: 12px;">
+							<i class="fas fa-user"></i>
+						</div>
+						<div class="chat-user-name">${userName}</div>
+					</div>
+				</div>
+				<div class="messages-area" id="messagesArea">
+					<!-- Messages will be loaded here -->
+				</div>
+				<div class="message-input-area">
+					<form class="message-input-form" onsubmit="sendMessage(event)">
+						<input type="text" class="message-input" id="messageInput" placeholder="Type a message..." required>
+						<button type="submit" class="send-btn">
+							<i class="fas fa-paper-plane"></i> Send
+						</button>
+					</form>
+				</div>
+			`;
+			
+			$('#chatContent').html(chatHtml);
+			loadMessages(userId);
+		}
+		
+		function loadMessages(userId) {
+			// This should be replaced with an actual API call
+			const sampleMessages = [
+				{id: 1, text: 'Hey, how are you?', sent: false, time: '10:30 AM'},
+				{id: 2, text: "I'm good, thanks! How about you?", sent: true, time: '10:32 AM'},
+				{id: 3, text: 'Doing great! Want to workout together?', sent: false, time: '10:35 AM'},
+			];
+			
+			const messagesArea = $('#messagesArea');
+			messagesArea.empty();
+			
+			sampleMessages.forEach(msg => {
+				const messageHtml = `
+					<div class="message ${msg.sent ? 'sent' : 'received'}">
+						<div class="message-content">
+							<div class="message-text">${msg.text}</div>
+							<div class="message-time">${msg.time}</div>
+						</div>
+					</div>
+				`;
+				messagesArea.append(messageHtml);
+			});
+			
+			// Scroll to bottom
+			messagesArea.scrollTop(messagesArea[0].scrollHeight);
+		}
+		
+		function sendMessage(event) {
+			event.preventDefault();
+			const input = $('#messageInput');
+			const message = input.val().trim();
+			
+			if (message && currentChatUser) {
+				// Add message to UI
+				const messageHtml = `
+					<div class="message sent">
+						<div class="message-content">
+							<div class="message-text">${message}</div>
+							<div class="message-time">Now</div>
+						</div>
+					</div>
+				`;
+				
+				$('#messagesArea').append(messageHtml);
+				$('#messagesArea').scrollTop($('#messagesArea')[0].scrollHeight);
+				
+				// Clear input
+				input.val('');
+				
+				// Here you would send the message to the server
+				// $.ajax({...});
+			}
+		}
 	</script>
 </body>
 </html>
