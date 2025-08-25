@@ -66,13 +66,15 @@
 		.join-community-form {
 			display: flex;
 			gap: 8px;
-			align-items: flex-end;
+			align-items: flex-start;
 			flex-wrap: nowrap;
 		}
 
 		.join-community-form .form-group {
 			flex: 1;
 			min-width: 150px;
+			display: flex;
+			flex-direction: column;
 		}
 
 		.join-community-form label {
@@ -81,6 +83,7 @@
 			font-size: 11px;
 			font-weight: 500;
 			margin-bottom: 3px;
+			line-height: 1.2;
 		}
 
 		.join-community-form input {
@@ -119,6 +122,8 @@
 			align-items: center;
 			justify-content: center;
 			flex-shrink: 0;
+			/* Align with input by accounting for label height (11px * 1.2 line-height + 3px margin) */
+			margin-top: calc(11px * 1.2 + 3px);
 		}
 
 		.join-community-btn:hover {
@@ -396,6 +401,7 @@
 			.join-community-btn {
 				width: 100%;
 				justify-content: center;
+				margin-top: 0;
 			}
 
 			.community-header {
