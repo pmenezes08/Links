@@ -219,7 +219,7 @@ document.addEventListener('DOMContentLoaded', function() {
         // Handle post submission
         $postForm.on('submit', function(e) {
             e.preventDefault();
-            const content = $(this).find('input[name="content"]').val().trim();
+            const content = $(this).find('textarea[name="content"], input[name="content"]').val().trim();
             const imageFile = $('#image-upload')[0].files[0];
             
             if (!content && !imageFile) {
@@ -273,7 +273,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                 </div>
                             </div>`;
                         $postContainer.prepend(postHtml);
-                        $postForm.find('input[name="content"]').val('');
+                        $postForm.find('textarea[name="content"], input[name="content"]').val('');
                         $('#image-upload').val('');
                         $('#selected-file-name').text('');
                         $('#image-preview').remove();
@@ -296,7 +296,7 @@ document.addEventListener('DOMContentLoaded', function() {
             e.preventDefault();
             const $form = $(this);
             const postId = $form.find('input[name="post_id"]').val();
-            const content = $form.find('input[name="content"]').val().trim();
+            const content = $form.find('textarea[name="content"], input[name="content"]').val().trim();
             const imageFile = $form.find('input[type="file"]')[0]?.files[0];
             
             if (!content && !imageFile) {
@@ -327,7 +327,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                 </div>
                             </div>`;
                         $replies.append(replyHtml);
-                        $form.find('input[name="content"]').val('');
+                        $form.find('textarea[name="content"], input[name="content"]').val('');
                     } else {
                         $form.after(`<div class="error-message">Error: ${data.error}</div>`);
                         setTimeout(() => $('.error-message').remove(), 3000);
@@ -871,7 +871,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 e.preventDefault();
                 const $form = $(this);
                 const postId = $form.find('input[name="post_id"]').val();
-                const content = $form.find('input[name="content"]').val().trim();
+                const content = $form.find('textarea[name="content"], input[name="content"]').val().trim();
                 const imageFile = $('#modal-reply-image-upload')[0].files[0];
                 
                 if (!content && !imageFile) {
@@ -945,7 +945,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                     </div>
                                 </div>`;
                             $('#modalPostContent .replies').append(replyHtml);
-                            $form.find('input[name="content"]').val('');
+                            $form.find('textarea[name="content"], input[name="content"]').val('');
                             $('#modal-reply-image-upload').val('');
                             $('#modal-reply-selected-file-name').text('');
                             $('#modal-reply-image-preview').remove();

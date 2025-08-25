@@ -2982,12 +2982,12 @@
             fetch('/api/notifications')
                 .then(response => response.json())
                 .then(data => {
-                    console.log('Notifications check:', data);
+
                     const menuBadge = document.getElementById('menuNotificationBadge');
                     
                     if (data.notifications && data.notifications.length > 0) {
                         const unreadCount = data.notifications.filter(n => !n.is_read).length;
-                        console.log(`Found ${data.notifications.length} notifications, ${unreadCount} unread`);
+
                         
                         // Update menu badge
                         if (unreadCount > 0 && menuBadge) {
@@ -3001,7 +3001,7 @@
                         if (showToasts) {
                             data.notifications.forEach(notification => {
                                 if (!notification.is_read && !shownNotificationIds.has(notification.id)) {
-                                    console.log('Showing toast for notification:', notification);
+
                                     shownNotificationIds.add(notification.id);
                                     showNotificationToast(notification);
                                 }
@@ -3125,10 +3125,10 @@
             // Check for notifications on page load (don't show toasts on initial load)
             checkNotifications(false);
             
-            // Poll for new notifications every 1 second and show toasts
+            // Poll for new notifications every 10 seconds and show toasts
             setInterval(() => {
                 checkNotifications(true);  // Show toasts for new notifications
-            }, 1000);  // Check every 1 second for real-time notifications
+            }, 10000);  // Check every 10 seconds for notifications
             
             // Check if we should open a specific post modal
             const urlParams = new URLSearchParams(window.location.search);
