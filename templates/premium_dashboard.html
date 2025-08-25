@@ -21,14 +21,13 @@
         .premium-dashboard-page .sidebar-menu a:hover { background: rgba(77, 182, 172, 0.2) !important; color: #4db6ac !important; padding-left: 25px !important; }
         .premium-dashboard-page .menu-btn, .premium-dashboard-page .dropdown-content { display: none !important; }
         @media (max-width: 768px) {
-            .premium-dashboard-page { margin-left: 0 !important; padding-top: 0 !important; }
+            .premium-dashboard-page { margin-left: 0 !important; padding-top: 60px !important; }
             .premium-dashboard-page .sidebar { width: 100% !important; height: 60px !important; overflow: visible !important; }
             .premium-dashboard-page .sidebar-header { padding: 8px !important; min-height: 60px !important; }
             .premium-dashboard-page .community-name { font-size: 14px !important; }
             .premium-dashboard-page .sidebar-menu { display: none !important; position: absolute !important; top: 60px !important; left: 0 !important; right: 0 !important; background: #1a1a1a !important; border-top: 1px solid #333333 !important; max-height: calc(100vh - 60px) !important; overflow-y: auto !important; }
             .premium-dashboard-page .sidebar:hover .sidebar-menu, .premium-dashboard-page .sidebar:focus-within .sidebar-menu { display: block !important; }
-            .premium-header { left: 0 !important; top: 60px !important; }
-            .dashboard-content { margin-top: 120px !important; }
+            .premium-header { left: 0 !important; }
         }
     </style>
     <div class="sidebar">
@@ -56,30 +55,17 @@
     </div>
     <div class="container">
         <style>
-            /* Page header aligned with sidebar header */
-            .premium-dashboard-page .container { padding-top: 0; margin-top: 0; }
+            /* Align content and header divider with sidebar */
+            .premium-dashboard-page .container { padding-top: 0; margin-top: 60px; }
+            /* Divider line aligned exactly with sidebar header bottom border */
             .premium-header { 
                 position: fixed; 
-                top: 0; 
+                top: 60px; 
                 left: 200px; 
                 right: 0; 
-                height: 60px; 
-                background: #1a1a1a; 
-                border-bottom: 1px solid #333333; 
-                z-index: 900; 
-                display: flex;
-                align-items: center;
-                padding: 0 20px;
-            }
-            .premium-header h1 {
-                color: #ffffff;
-                font-size: 20px;
-                font-weight: 600;
-                margin: 0;
-            }
-            .dashboard-content {
-                margin-top: 60px;
-                padding: 20px;
+                height: 1px; 
+                background: #333333; 
+                z-index: 900;
             }
             .profile-summary { position: relative; margin-left: auto; margin-right: 0; width: 180px; height: 180px; border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; background: rgba(255,255,255,0.03); display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 8px; padding: 12px; box-sizing: border-box; }
             .profile-summary .avatar { width: 80px; height: 80px; border-radius: 50%; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.2); display: flex; align-items: center; justify-content: center; overflow: hidden; }
@@ -88,11 +74,8 @@
             .profile-summary .edit-btn { background: rgba(77, 182, 172, 0.2); color: #4db6ac; border: 1px solid rgba(77, 182, 172, 0.4); border-radius: 6px; padding: 6px 10px; font-size: 12px; cursor: pointer; transition: all 0.2s ease; }
             .profile-summary .edit-btn:hover { background: rgba(77, 182, 172, 0.3); }
         </style>
-        <div class="premium-header">
-            <h1>Premium Dashboard</h1>
-        </div>
-        <div class="dashboard-content">
-            <div class="profile-summary">
+        <div class="premium-header"></div>
+        <div class="profile-summary">
             <div class="avatar">
                 {% if profile and profile[19] %}
                     <img src="{{ profile[19] }}" alt="{{ name }}">
@@ -102,12 +85,11 @@
             </div>
             <div class="name">{{ name }}</div>
             <button class="edit-btn" onclick="location.href='{{ url_for('edit_profile') }}'">Edit profile</button>
-            </div>
-            <div class="dashboard-actions" style="margin-top: 24px;">
-                <button onclick="location.href='{{ url_for('feed') }}'" class="sleek-btn compact pill">Social</button>
-                <button onclick="location.href='{{ url_for('communities') }}'" class="sleek-btn compact pill">Your Communities</button>
-                <button onclick="location.href='{{ url_for('your_sports') }}'" class="sleek-btn compact pill">Your Sports</button>
-            </div>
+        </div>
+        <div class="dashboard-actions" style="margin-top: 24px;">
+            <button onclick="location.href='{{ url_for('feed') }}'" class="sleek-btn compact pill">Social</button>
+            <button onclick="location.href='{{ url_for('communities') }}'" class="sleek-btn compact pill">Your Communities</button>
+            <button onclick="location.href='{{ url_for('your_sports') }}'" class="sleek-btn compact pill">Your Sports</button>
         </div>
     </div>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
