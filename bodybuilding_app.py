@@ -895,6 +895,20 @@ def premium_dashboard():
             c.execute("SELECT subscription FROM users WHERE username=?", (username,))
             user = c.fetchone()
             
+            # Get user profile data including profile picture
+            c.execute("""
+                SELECT u.username, u.email, u.subscription, u.age, u.gender, 
+                       u.weight, u.height, u.blood_type, u.muscle_mass, u.bmi,
+                       u.country, u.city, u.industry,
+                       p.display_name, p.bio, p.location, p.website, 
+                       p.instagram, p.twitter, p.profile_picture, p.cover_photo,
+                       p.is_public
+                FROM users u
+                LEFT JOIN user_profiles p ON u.username = p.username
+                WHERE u.username = ?
+            """, (username,))
+            profile = c.fetchone()
+            
             # Get user's communities
             c.execute("""
                 SELECT c.id, c.name, c.type
@@ -910,7 +924,7 @@ def premium_dashboard():
             logger.warning(f"User {username} attempted to access premium_dashboard without premium subscription")
             return redirect(url_for('dashboard'))
         logger.info(f"Rendering premium_dashboard for {username}")
-        return render_template('premium_dashboard.html', name=username, communities=communities)
+        return render_template('premium_dashboard.html', name=username, profile=profile, communities=communities)
     except Exception as e:
         logger.error(f"Error in premium_dashboard for {username}: {str(e)}")
         abort(500)
