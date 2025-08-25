@@ -398,16 +398,44 @@
 		}
 	</style>
 </head>
-<body>
+<body class="communities-page">
+	<style>
+		/* Match community_feed sidebar/menu */
+		.communities-page { margin-left: 200px; }
+		.communities-page .sidebar { position: fixed !important; top: 0 !important; left: 0 !important; width: 200px !important; height: 100vh !important; background: #1a1a1a !important; border-right: 1px solid #333333 !important; z-index: 1000 !important; display: flex !important; flex-direction: column !important; }
+		.communities-page .sidebar-header { display: flex; align-items: center; padding: 10px; border-bottom: 1px solid #333333; min-height: 60px; }
+		.communities-page .sidebar-logo { padding: 5px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+		.communities-page .community-name { flex: 1; display: flex; align-items: center; color: #ffffff; font-size: 16px; font-weight: 600; padding-left: 10px; overflow: hidden; }
+		.communities-page .community-name span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+		.communities-page .sidebar-menu { flex: 1; padding: 10px 0; display: block !important; overflow-y: auto !important; }
+		.communities-page .sidebar-menu a { display: block !important; padding: 12px 20px !important; color: #ffffff !important; text-decoration: none !important; transition: all 0.3s ease !important; border: none !important; font-size: 14px !important; }
+		.communities-page .sidebar-menu a:hover { background: rgba(77, 182, 172, 0.2) !important; color: #4db6ac !important; padding-left: 25px !important; }
+		.communities-page .menu-btn, .communities-page .dropdown-content { display: none !important; }
+		@media (max-width: 768px) {
+			.communities-page { margin-left: 0 !important; padding-top: 60px !important; }
+			.communities-page .sidebar { width: 100% !important; height: 60px !important; overflow: visible !important; }
+			.communities-page .sidebar-header { padding: 8px !important; min-height: 60px !important; }
+			.communities-page .community-name { font-size: 14px !important; }
+			.communities-page .sidebar-menu { display: none !important; position: absolute !important; top: 60px !important; left: 0 !important; right: 0 !important; background: #1a1a1a !important; border-top: 1px solid #333333 !important; max-height: calc(100vh - 60px) !important; overflow-y: auto !important; }
+			.communities-page .sidebar:hover .sidebar-menu, .communities-page .sidebar:focus-within .sidebar-menu { display: block !important; }
+		}
+	</style>
 	<div class="sidebar">
-		<button class="menu-btn"><i class="fas fa-bars"></i> Menu</button>
-		<div class="dropdown-content">
+		<div class="sidebar-header">
+			<div class="sidebar-logo" id="sidebarLogo"></div>
+			<div class="community-name">
+				<span>Your Communities</span>
+			</div>
+		</div>
+		<div class="sidebar-menu">
 			{% if session['username'] == 'admin' %}
 			<a href="{{ url_for('admin') }}">Admin Dashboard</a>
 			<a href="{{ url_for('admin_profile') }}">Admin Profile</a>
 			{% endif %}
 			<a href="{{ url_for('profile') }}">Profile</a>
+			<a href="{{ url_for('account_settings') }}">Account Settings</a>
 			<a href="{{ url_for('user_chat') }}">Messages</a>
+			<a href="/notifications" style="position: relative;">Notifications <span id="menuNotificationBadge" class="menu-notification-badge" style="display: none;">0</span></a>
 			<a href="{{ url_for('premium_dashboard') }}">Main Dashboard</a>
 			<a href="{{ url_for('feed') }}">Social</a>
 			<a href="{{ url_for('communities') }}">Your Communities</a>
