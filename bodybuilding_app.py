@@ -4436,6 +4436,11 @@ def join_community():
             community_id = community['id']
             community_name = community['name']
             
+            # Get community type
+            c.execute("SELECT type FROM communities WHERE id = ?", (community_id,))
+            community_type_result = c.fetchone()
+            community_type = community_type_result['type'] if community_type_result else 'public'
+            
             # Check if user is already a member
             c.execute("""
                 SELECT id FROM user_communities 
@@ -4458,6 +4463,7 @@ def join_community():
             'success': True, 
             'community_id': community_id,
             'community_name': community_name,
+            'community_type': community_type,
             'message': f'Successfully joined "{community_name}"!'
         })
         

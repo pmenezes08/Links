@@ -895,8 +895,18 @@
 							}
 							showJoinMessage(successMessage, 'success');
 							$('#communityCode').val('');
-							loadUserCommunities(); // Reload communities list
-							loadJoinedCommunities(); // Reload joined communities display
+							
+							// Immediately add the community to the joined list
+							if (response.community_id && response.community_name) {
+								addCommunityToJoinedList({
+									id: response.community_id,
+									name: response.community_name,
+									type: response.community_type || 'public'
+								});
+							} else {
+								// Fallback to reloading if we don't have the info
+								loadJoinedCommunities();
+							}
 						} else {
 							showJoinMessage(response.error || 'Failed to join community', 'error');
 						}
@@ -922,12 +932,25 @@
 					contentType: false,
 					success: function(response) {
 						if (response.success) {
+							// Get values before resetting form
+							const communityName = $('#communityName').val();
+							const communityType = $('#communityType').val();
+							
 							$('#communityModal').hide();
 							$('#createCommunityForm')[0].reset();
 							$('#backgroundPreview').hide();
 							$('#fileInfo').text('');
-							loadUserCommunities(); // Reload communities list
-							loadJoinedCommunities(); // Reload joined communities display
+							
+							// Immediately add the new community to the joined list
+							
+							if (response.community_id) {
+								addCommunityToJoinedList({
+									id: response.community_id,
+									name: communityName || 'New Community',
+									type: communityType || 'public'
+								});
+							}
+							
 							// Create success message with link to the new community
 							let successMessage = 'Community created successfully! ';
 							if (response.community_id) {
@@ -969,6 +992,59 @@
 				},
 				error: function() {
 					$('#joinedCommunitiesSection').hide();
+				}
+			});
+		}
+		
+		// Function to add a single community to the joined list
+		function addCommunityToJoinedList(community) {
+			// First, check if the section is hidden and show it
+			if ($('#joinedCommunitiesSection').is(':hidden')) {
+				$('#joinedCommunitiesSection').fadeIn(300);
+			}
+			
+			// Check if community already exists in the list
+			if ($(`.joined-community-item[data-community-id="${community.id}"]`).length > 0) {
+				return; // Community already in list
+			}
+			
+			const communityHtml = `
+				<div class="joined-community-item" data-community-id="${community.id}" style="display: none;">
+					<div class="joined-community-info">
+						<div class="joined-community-name">${community.name}</div>
+						<div class="joined-community-type">${community.type === 'public' ? 'Public' : 'Private'} Community</div>
+					</div>
+					<div style="display: flex; gap: 6px;">
+						<button class="enter-community-btn" data-id="${community.id}">
+							Enter
+						</button>
+						<button class="exit-community-btn" data-id="${community.id}" style="background: rgba(255, 87, 87, 0.2); color: #ff5757; border: 1px solid rgba(255, 87, 87, 0.3);">
+							Exit
+						</button>
+					</div>
+				</div>
+			`;
+			
+			const newElement = $(communityHtml);
+			$('#joinedCommunitiesList').prepend(newElement);
+			newElement.fadeIn(300);
+			
+			// Add click handlers for the new buttons
+			newElement.find('.enter-community-btn').on('click', function(e) {
+				e.preventDefault();
+				e.stopPropagation();
+				const communityId = $(this).data('id');
+				window.location.href = `/community_feed/${communityId}`;
+			});
+			
+			newElement.find('.exit-community-btn').on('click', function(e) {
+				e.preventDefault();
+				e.stopPropagation();
+				const communityId = $(this).data('id');
+				const communityName = $(this).closest('.joined-community-item').find('.joined-community-name').text();
+				
+				if (confirm(`Are you sure you want to leave "${communityName}"?`)) {
+					leaveCommunity(communityId);
 				}
 			});
 		}
@@ -1021,6 +1097,10 @@
 
 		// Function to exit/leave a community
 		function leaveCommunity(communityId) {
+			// Immediately remove the community from the UI (optimistic update)
+			const communityElement = $(`.joined-community-item[data-community-id="${communityId}"]`);
+			communityElement.fadeOut(300);
+			
 			$.ajax({
 				url: '/leave_community',
 				method: 'POST',
@@ -1030,14 +1110,25 @@
 				},
 				success: function(response) {
 					if (response.success) {
+						// Remove the element completely after fade
+						communityElement.remove();
+						
+						// Check if there are any communities left
+						if ($('.joined-community-item').length === 0) {
+							$('#joinedCommunitiesSection').fadeOut(300);
+						}
+						
 						showJoinMessage('Successfully left the community', 'success');
-						loadJoinedCommunities(); // Reload joined communities
-						loadUserCommunities(); // Reload all communities
+						// Note: We don't reload the lists since we already updated the UI
 					} else {
+						// If failed, show the element again
+						communityElement.fadeIn(300);
 						showJoinMessage(response.error || 'Failed to leave community', 'error');
 					}
 				},
 				error: function() {
+					// If error, show the element again
+					communityElement.fadeIn(300);
 					showJoinMessage('Error leaving community. Please try again.', 'error');
 				}
 			});
