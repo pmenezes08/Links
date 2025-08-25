@@ -178,8 +178,6 @@
             
             .modal-body {
                 padding: 15px;
-                max-height: 70vh;
-                overflow-y: auto;
                 background: #2d3839;
             }
             
@@ -208,6 +206,13 @@
                 display: flex;
                 flex-direction: column;
                 gap: 8px;
+                max-height: 380px; /* Approximately 5 cards: 5 * (50px height + 20px padding + 8px gap) */
+                overflow-y: auto;
+            }
+            
+            /* Only show scrollbar when needed (more than 5 communities) */
+            .communities-list.has-scroll {
+                overflow-y: scroll;
             }
             
             /* Custom scrollbar for communities list */
@@ -422,6 +427,7 @@
                         <p>Join an existing community or create your own to get started</p>
                     </div>
                 `);
+                container.removeClass('has-scroll');
                 return;
             }
 
@@ -442,6 +448,13 @@
             `).join('');
 
             container.html(communitiesHtml);
+            
+            // Add scroll class only if more than 5 communities
+            if (communities.length > 5) {
+                container.addClass('has-scroll');
+            } else {
+                container.removeClass('has-scroll');
+            }
         }
 
         // Logo upload function for admin
