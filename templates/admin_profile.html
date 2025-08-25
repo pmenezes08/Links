@@ -36,7 +36,7 @@
             height: 60px; 
             padding: 10px;
             background: transparent; 
-            border-bottom: 1px solid #333333; 
+            border-bottom: none; 
             z-index: 900;
             box-sizing: border-box;
             display: flex;
@@ -62,16 +62,15 @@
         /* Old sidebar styles removed - using premium dashboard menu */
 
         .container {
-            padding: 40px;
-            padding-top: 100px;
-            max-width: 1200px;
-            margin: 0 auto;
+            padding: 80px 60px 40px 60px;
+            max-width: 100%;
+            margin: 0;
             position: relative;
             min-height: 100vh;
         }
 
         .header {
-            margin-bottom: 40px;
+            margin-bottom: 30px;
             text-align: center;
         }
 
@@ -91,16 +90,16 @@
 
         .content-grid {
             display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 20px;
-            margin-bottom: 24px;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 30px;
+            margin-bottom: 30px;
         }
 
         .card {
             background: #000000;
             border: 1px solid #4db6ac;
             border-radius: 10px;
-            padding: 20px;
+            padding: 25px;
         }
 
         .card h2 {
@@ -190,8 +189,8 @@
 
         .actions-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 16px;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 20px;
         }
 
         .action-btn {
