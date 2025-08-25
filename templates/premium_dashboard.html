@@ -96,6 +96,13 @@
             .profile-summary .edit-btn { background: rgba(77, 182, 172, 0.2); color: #4db6ac; border: 1px solid rgba(77, 182, 172, 0.4); border-radius: 6px; padding: 6px 10px; font-size: 12px; cursor: pointer; transition: all 0.2s ease; }
             .profile-summary .edit-btn:hover { background: rgba(77, 182, 172, 0.3); }
             
+            /* Community card hover effect */
+            .community-card:hover {
+                background: rgba(255,255,255,0.06) !important;
+                border-color: rgba(77, 182, 172, 0.4) !important;
+                transform: translateY(-2px);
+            }
+            
             /* Mobile responsive for profile summary */
             @media (max-width: 768px) {
                 .profile-summary {
@@ -131,8 +138,43 @@
         </div>
         <div class="dashboard-actions" style="margin-top: 24px; padding: 20px;">
             <button onclick="location.href='{{ url_for('feed') }}'" class="sleek-btn compact pill">Social</button>
-            <button onclick="location.href='{{ url_for('communities') }}'" class="sleek-btn compact pill">Your Communities</button>
+            <button onclick="location.href='{{ url_for('communities') }}'" class="sleek-btn compact pill">
+                <i class="fas fa-plus-circle"></i> Create/Join a Community
+            </button>
             <button onclick="location.href='{{ url_for('your_sports') }}'" class="sleek-btn compact pill">Your Sports</button>
+        </div>
+        
+        <!-- Your Communities Section -->
+        <div class="communities-section" style="padding: 20px; margin-top: 20px;">
+            <h2 style="color: #ffffff; font-size: 20px; margin-bottom: 20px;">
+                <i class="fas fa-users"></i> Your Communities
+            </h2>
+            {% if communities %}
+                <div class="communities-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 16px;">
+                    {% for community in communities %}
+                        <div class="community-card" style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 16px; transition: all 0.3s ease; cursor: pointer;"
+                             onclick="location.href='/community_feed/{{ community.id }}'">
+                            <h3 style="color: #ffffff; font-size: 16px; margin: 0 0 8px 0;">{{ community.name }}</h3>
+                            <p style="color: #9fb0b5; font-size: 13px; margin: 0;">
+                                <i class="fas fa-tag"></i> {{ community.type }}
+                            </p>
+                            <button class="sleek-btn compact" style="margin-top: 12px; width: 100%;"
+                                    onclick="event.stopPropagation(); location.href='/community_feed/{{ community.id }}'">
+                                Enter Community
+                            </button>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <div style="text-align: center; padding: 40px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px;">
+                    <i class="fas fa-users" style="font-size: 48px; color: #9fb0b5; margin-bottom: 16px;"></i>
+                    <h3 style="color: #ffffff; margin-bottom: 8px;">No communities yet</h3>
+                    <p style="color: #9fb0b5; margin-bottom: 20px;">Join an existing community or create your own to get started</p>
+                    <button onclick="location.href='{{ url_for('communities') }}'" class="sleek-btn">
+                        <i class="fas fa-plus"></i> Create/Join Community
+                    </button>
+                </div>
+            {% endif %}
         </div>
     </div>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
