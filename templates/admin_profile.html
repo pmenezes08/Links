@@ -5,7 +5,47 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin Profile - C.Point</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
     <style>
+        /* Premium Dashboard Menu Styles */
+        .admin-profile-page { margin-left: 200px; overflow: hidden; height: 100vh; }
+        .admin-profile-page .sidebar { position: fixed !important; top: 0 !important; left: 0 !important; width: 200px !important; height: 100vh !important; background: #1a1a1a !important; border-right: 1px solid #333333 !important; z-index: 1000 !important; display: flex !important; flex-direction: column !important; }
+        .admin-profile-page .sidebar-header { display: flex; align-items: center; padding: 10px; border-bottom: 1px solid #333333; height: 60px; box-sizing: border-box; }
+        .admin-profile-page .sidebar-logo { padding: 5px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+        .admin-profile-page .community-name { flex: 1; display: flex; align-items: center; color: #ffffff; font-size: 16px; font-weight: 600; padding-left: 10px; overflow: hidden; }
+        .admin-profile-page .community-name span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .admin-profile-page .sidebar-menu { flex: 1; padding: 10px 0; display: block !important; overflow-y: auto !important; }
+        .admin-profile-page .sidebar-menu a { display: block !important; padding: 12px 20px !important; color: #ffffff !important; text-decoration: none !important; transition: all 0.3s ease !important; border: none !important; font-size: 14px !important; }
+        .admin-profile-page .sidebar-menu a:hover { background: rgba(77, 182, 172, 0.2) !important; color: #4db6ac !important; padding-left: 25px !important; }
+        .admin-profile-page .menu-btn, .admin-profile-page .dropdown-content { display: none !important; }
+        @media (max-width: 768px) {
+            .admin-profile-page { margin-left: 0 !important; padding-top: 60px !important; }
+            .admin-profile-page .sidebar { width: 100% !important; height: 60px !important; overflow: visible !important; }
+            .admin-profile-page .sidebar-header { padding: 8px !important; height: 60px !important; }
+            .admin-profile-page .community-name { font-size: 14px !important; }
+            .admin-profile-page .sidebar-menu { display: none !important; position: absolute !important; top: 60px !important; left: 0 !important; right: 0 !important; background: #1a1a1a !important; border-top: 1px solid #333333 !important; max-height: calc(100vh - 60px) !important; overflow-y: auto !important; }
+            .admin-profile-page .sidebar:hover .sidebar-menu, .admin-profile-page .sidebar:focus-within .sidebar-menu { display: block !important; }
+        }
+        
+        /* Admin Profile Header */
+        .admin-profile-header { 
+            position: fixed; 
+            top: 0; 
+            left: 200px; 
+            right: 0; 
+            height: 60px; 
+            padding: 10px;
+            background: transparent; 
+            border-bottom: 1px solid #333333; 
+            z-index: 900;
+            box-sizing: border-box;
+            display: flex;
+            align-items: center;
+        }
+        @media (max-width: 768px) {
+            .admin-profile-header { left: 0 !important; }
+        }
+        
         * {
             margin: 0;
             padding: 0;
@@ -19,71 +59,18 @@
             min-height: 100vh;
         }
 
-        .sidebar {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 60px;
-            height: 100vh;
-            background: rgba(255, 255, 255, 0.03);
-            border-right: 1px solid rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(20px);
-            z-index: 1000;
-        }
-
-        .menu-btn {
-            width: 40px;
-            height: 40px;
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 10px;
-            color: #ffffff;
-            font-size: 14px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            margin: 10px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .menu-btn:hover {
-            background: rgba(255, 255, 255, 0.1);
-            transform: translateY(-1px);
-        }
-
-        .dropdown-content {
-            display: none;
-            position: absolute;
-            left: 70px;
-            top: 0;
-            background: rgba(0, 0, 0, 0.95);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 12px;
-            backdrop-filter: blur(20px);
-            min-width: 200px;
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
-            padding: 8px 0;
-        }
-
-        .dropdown-content a {
-            color: #ffffff;
-            padding: 12px 20px;
-            text-decoration: none;
-            display: block;
-            font-size: 14px;
-            font-weight: 400;
-            transition: all 0.3s ease;
-        }
-
-        .dropdown-content a:hover {
-            background: rgba(255, 255, 255, 0.05);
-        }
+        /* Old sidebar styles removed - using premium dashboard menu */
 
         .container {
-            margin-left: 80px;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
             padding: 24px;
             max-width: 1000px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
         }
 
         .header {
@@ -273,18 +260,23 @@
         }
     </style>
 </head>
-<body>
+<body class="admin-profile-page">
     <div class="sidebar">
-        <button class="menu-btn">
-            <i class="fas fa-bars"></i>
-        </button>
-        <div class="dropdown-content">
+        <div class="sidebar-header">
+            <div class="sidebar-logo" id="sidebarLogo"></div>
+            <div class="community-name">
+                <span>Admin Profile</span>
+            </div>
+        </div>
+        <div class="sidebar-menu">
             {% if session['username'] == 'admin' %}
             <a href="{{ url_for('admin') }}">Admin Dashboard</a>
             <a href="{{ url_for('admin_profile') }}">Admin Profile</a>
             {% endif %}
             <a href="{{ url_for('profile') }}">Profile</a>
+            <a href="{{ url_for('account_settings') }}">Account Settings</a>
             <a href="{{ url_for('user_chat') }}">Messages</a>
+            <a href="/notifications" style="position: relative;">Notifications <span id="menuNotificationBadge" class="menu-notification-badge" style="display: none;">0</span></a>
             <a href="{{ url_for('premium_dashboard') }}">Main Dashboard</a>
             <a href="{{ url_for('feed') }}">Social</a>
             <a href="{{ url_for('communities') }}">Your Communities</a>
@@ -292,6 +284,8 @@
             <a href="{{ url_for('logout') }}">Logout</a>
         </div>
     </div>
+    
+    <div class="admin-profile-header"></div>
 
     <div class="container">
         <div class="header">
@@ -379,15 +373,7 @@
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script>
         $(document).ready(function() {
-            $('.menu-btn').click(function() {
-                $('.dropdown-content').toggle();
-            });
-
-            $(document).click(function(event) {
-                if (!$(event.target).closest('.sidebar').length) {
-                    $('.dropdown-content').hide();
-                }
-            });
+            // Premium dashboard menu doesn't need dropdown logic
         });
     </script>
 </body>
