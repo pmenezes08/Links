@@ -2050,40 +2050,55 @@
         
         // Track shown notifications to avoid duplicates
         let shownNotificationIds = new Set();
+        let eventSource = null;
         
-        // Check for notifications and update menu badge
-        function checkNotifications(showToasts = false) {
+        // Initialize real-time notifications using Server-Sent Events
+        function initializeRealtimeNotifications() {
+            if (eventSource) {
+                eventSource.close();
+            }
+            
+            eventSource = new EventSource('/api/notifications/stream');
+            
+            eventSource.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+                if (data.notifications && data.notifications.length > 0) {
+                    data.notifications.forEach(notification => {
+                        if (!shownNotificationIds.has(notification.id)) {
+                            shownNotificationIds.add(notification.id);
+                            showNotificationToast(notification);
+                            updateNotificationBadge();
+                        }
+                    });
+                }
+            };
+            
+            eventSource.onerror = function(error) {
+                console.error('EventSource error:', error);
+                // Reconnect after 5 seconds on error
+                setTimeout(() => {
+                    initializeRealtimeNotifications();
+                }, 5000);
+            };
+        }
+        
+        // Update notification badge count
+        function updateNotificationBadge() {
             fetch('/api/notifications')
                 .then(response => response.json())
                 .then(data => {
                     const menuBadge = document.getElementById('menuNotificationBadge');
-                    
                     if (data.notifications && data.notifications.length > 0) {
                         const unreadCount = data.notifications.filter(n => !n.is_read).length;
-                        
-                        // Update menu badge
                         if (unreadCount > 0 && menuBadge) {
                             menuBadge.textContent = unreadCount;
                             menuBadge.style.display = 'inline-block';
                         } else if (menuBadge) {
                             menuBadge.style.display = 'none';
                         }
-                        
-                        // Show toast for new unread notifications
-                        if (showToasts) {
-                            data.notifications.forEach(notification => {
-                                if (!notification.is_read && !shownNotificationIds.has(notification.id)) {
-                                    shownNotificationIds.add(notification.id);
-                                    showNotificationToast(notification);
-                                }
-                            });
-                        }
                     } else if (menuBadge) {
                         menuBadge.style.display = 'none';
                     }
-                })
-                .catch(error => {
-                    console.error('Error checking notifications:', error);
                 });
         }
         
@@ -2180,6 +2195,13 @@
             }
         }
         
+        // Clean up on page unload
+        window.addEventListener('beforeunload', function() {
+            if (eventSource) {
+                eventSource.close();
+            }
+        });
+        
         document.addEventListener('DOMContentLoaded', function() {
             loadSidebarPolls();
             loadSiteLogo();
@@ -2221,13 +2243,11 @@
                 autoExpandTextarea(composerTextarea);
             }
             
-            // Check for notifications on page load (don't show toasts on initial load)
-            checkNotifications(false);
+            // Initialize real-time notifications
+            initializeRealtimeNotifications();
             
-            // Poll for new notifications every 10 seconds and show toasts
-            setInterval(() => {
-                checkNotifications(true);  // Show toasts for new notifications
-            }, 10000);  // Check every 10 seconds for notifications
+            // Update badge on page load
+            updateNotificationBadge();
             // Refresh sidebar polls every 30 seconds
             setInterval(loadSidebarPolls, 30000);
             

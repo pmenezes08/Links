@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, redirect, url_for, session, flash, abort, send_from_directory
+from flask import Flask, render_template, request, jsonify, redirect, url_for, session, flash, abort, send_from_directory, Response
 # from flask_wtf.csrf import CSRFProtect, generate_csrf, validate_csrf as wtf_validate_csrf
 import os
 import sys
@@ -8,6 +8,7 @@ import random
 import re
 import logging
 import requests
+import time
 from datetime import datetime, timedelta
 from functools import wraps
 from markupsafe import escape
@@ -2760,6 +2761,54 @@ def remove_logo():
     except Exception as e:
         logger.error(f"Error removing logo: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/notifications/stream')
+@login_required
+def notification_stream():
+    """Server-sent events endpoint for real-time notifications"""
+    def generate():
+        username = session.get('username')
+        last_check = datetime.now()
+        
+        while True:
+            try:
+                with get_db_connection() as conn:
+                    c = conn.cursor()
+                    # Get new unread notifications created after last check
+                    c.execute("""
+                        SELECT id, from_user, type, post_id, community_id, message, is_read, created_at
+                        FROM notifications
+                        WHERE user_id = ? AND is_read = 0 AND datetime(created_at) > ?
+                        ORDER BY created_at DESC
+                    """, (username, last_check.strftime('%Y-%m-%d %H:%M:%S')))
+                    
+                    new_notifications = []
+                    for row in c.fetchall():
+                        new_notifications.append({
+                            'id': row['id'],
+                            'from_user': row['from_user'],
+                            'type': row['type'],
+                            'post_id': row['post_id'],
+                            'community_id': row['community_id'],
+                            'message': row['message'],
+                            'is_read': row['is_read'],
+                            'created_at': row['created_at']
+                        })
+                    
+                    if new_notifications:
+                        data = json.dumps({'notifications': new_notifications})
+                        yield f"data: {data}\n\n"
+                        last_check = datetime.now()
+                
+                # Check every second for new notifications
+                time.sleep(1)
+                
+            except Exception as e:
+                logger.error(f"Error in notification stream: {e}")
+                break
+    
+    return Response(generate(), mimetype='text/event-stream')
 
 
 @app.route('/api/notifications')
