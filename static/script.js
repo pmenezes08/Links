@@ -370,6 +370,11 @@ document.addEventListener('DOMContentLoaded', function() {
                             $reactions.find(`[data-reaction="${type}"] span`).text(data.counts[type] || 0);
                         });
                         updateReactionIconStates($reactions, data.user_reaction);
+                        
+                        // Trigger notification check for the post owner
+                        if (window.triggerNotificationCheck) {
+                            window.triggerNotificationCheck();
+                        }
                     } else {
                         $button.after(`<div class="error-message">Error: ${data.error}</div>`);
                         setTimeout(() => $('.error-message').remove(), 3000);
@@ -411,6 +416,11 @@ document.addEventListener('DOMContentLoaded', function() {
                             $reactions.find(`[data-reaction="${type}"] span`).text(data.counts[type] || 0);
                         });
                         updateReactionIconStates($reactions, data.user_reaction);
+                        
+                        // Trigger notification check for the reply owner
+                        if (window.triggerNotificationCheck) {
+                            window.triggerNotificationCheck();
+                        }
                     } else {
                         $button.after(`<div class="error-message">Error: ${data.error}</div>`);
                         setTimeout(() => $('.error-message').remove(), 3000);
@@ -955,6 +965,11 @@ document.addEventListener('DOMContentLoaded', function() {
                             if ($mainPost.length) {
                                 const currentCount = parseInt($mainPost.find('.reply-indicator').text().match(/\d+/)[0]) || 0;
                                 $mainPost.find('.reply-indicator').html(`<i class="far fa-comment"></i> ${currentCount + 1} replies`);
+                            }
+                            
+                            // Trigger notification check for the post owner
+                            if (window.triggerNotificationCheck) {
+                                window.triggerNotificationCheck();
                             }
                         } else {
                             $form.after(`<div class="error-message">Error: ${data.error}</div>`);

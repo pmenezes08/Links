@@ -2763,52 +2763,50 @@ def remove_logo():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-@app.route('/api/notifications/stream')
+@app.route('/api/notifications/check')
 @login_required
-def notification_stream():
-    """Server-sent events endpoint for real-time notifications"""
-    def generate():
-        username = session.get('username')
-        last_check = datetime.now()
-        
-        while True:
-            try:
-                with get_db_connection() as conn:
-                    c = conn.cursor()
-                    # Get new unread notifications created after last check
-                    c.execute("""
-                        SELECT id, from_user, type, post_id, community_id, message, is_read, created_at
-                        FROM notifications
-                        WHERE user_id = ? AND is_read = 0 AND datetime(created_at) > ?
-                        ORDER BY created_at DESC
-                    """, (username, last_check.strftime('%Y-%m-%d %H:%M:%S')))
-                    
-                    new_notifications = []
-                    for row in c.fetchall():
-                        new_notifications.append({
-                            'id': row['id'],
-                            'from_user': row['from_user'],
-                            'type': row['type'],
-                            'post_id': row['post_id'],
-                            'community_id': row['community_id'],
-                            'message': row['message'],
-                            'is_read': row['is_read'],
-                            'created_at': row['created_at']
-                        })
-                    
-                    if new_notifications:
-                        data = json.dumps({'notifications': new_notifications})
-                        yield f"data: {data}\n\n"
-                        last_check = datetime.now()
-                
-                # Check every second for new notifications
-                time.sleep(1)
-                
-            except Exception as e:
-                logger.error(f"Error in notification stream: {e}")
-                break
+def check_new_notifications():
+    """Check for new notifications since last check timestamp"""
+    username = session['username']
+    last_check = request.args.get('since', '')
     
-    return Response(generate(), mimetype='text/event-stream')
+    try:
+        # If no timestamp provided, get all unread
+        if not last_check:
+            last_check = (datetime.now() - timedelta(minutes=1)).strftime('%Y-%m-%d %H:%M:%S')
+        
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            # Get new unread notifications created after last check
+            c.execute("""
+                SELECT id, from_user, type, post_id, community_id, message, is_read, created_at
+                FROM notifications
+                WHERE user_id = ? AND is_read = 0 AND datetime(created_at) > ?
+                ORDER BY created_at DESC
+                LIMIT 10
+            """, (username, last_check))
+            
+            notifications = []
+            for row in c.fetchall():
+                notifications.append({
+                    'id': row['id'],
+                    'from_user': row['from_user'],
+                    'type': row['type'],
+                    'post_id': row['post_id'],
+                    'community_id': row['community_id'],
+                    'message': row['message'],
+                    'is_read': row['is_read'],
+                    'created_at': row['created_at']
+                })
+            
+            return jsonify({
+                'success': True,
+                'notifications': notifications,
+                'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            })
+    except Exception as e:
+        logger.error(f"Error checking notifications: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @app.route('/api/notifications')

@@ -2050,36 +2050,54 @@
         
         // Track shown notifications to avoid duplicates
         let shownNotificationIds = new Set();
-        let eventSource = null;
+        let lastCheckTimestamp = null;
+        let notificationCheckInterval = null;
         
-        // Initialize real-time notifications using Server-Sent Events
+        // Check for new notifications since last check
+        function checkForNewNotifications() {
+            const url = lastCheckTimestamp 
+                ? `/api/notifications/check?since=${encodeURIComponent(lastCheckTimestamp)}`
+                : '/api/notifications/check';
+                
+            fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success && data.notifications && data.notifications.length > 0) {
+                        data.notifications.forEach(notification => {
+                            if (!shownNotificationIds.has(notification.id)) {
+                                shownNotificationIds.add(notification.id);
+                                showNotificationToast(notification);
+                            }
+                        });
+                        updateNotificationBadge();
+                    }
+                    if (data.timestamp) {
+                        lastCheckTimestamp = data.timestamp;
+                    }
+                })
+                .catch(error => {
+                    console.error('Error checking notifications:', error);
+                });
+        }
+        
+        // Trigger notification check after a reaction is made
+        window.triggerNotificationCheck = function() {
+            // Wait 1 second for the notification to be created in the database
+            setTimeout(checkForNewNotifications, 1000);
+        };
+        
+        // Initialize real-time notification checking
         function initializeRealtimeNotifications() {
-            if (eventSource) {
-                eventSource.close();
+            // Clear any existing interval
+            if (notificationCheckInterval) {
+                clearInterval(notificationCheckInterval);
             }
             
-            eventSource = new EventSource('/api/notifications/stream');
+            // Check immediately for any existing notifications
+            checkForNewNotifications();
             
-            eventSource.onmessage = function(event) {
-                const data = JSON.parse(event.data);
-                if (data.notifications && data.notifications.length > 0) {
-                    data.notifications.forEach(notification => {
-                        if (!shownNotificationIds.has(notification.id)) {
-                            shownNotificationIds.add(notification.id);
-                            showNotificationToast(notification);
-                            updateNotificationBadge();
-                        }
-                    });
-                }
-            };
-            
-            eventSource.onerror = function(error) {
-                console.error('EventSource error:', error);
-                // Reconnect after 5 seconds on error
-                setTimeout(() => {
-                    initializeRealtimeNotifications();
-                }, 5000);
-            };
+            // No polling - notifications are now event-driven only
+            // They will be triggered by reactions and replies
         }
         
         // Update notification badge count
@@ -2197,8 +2215,8 @@
         
         // Clean up on page unload
         window.addEventListener('beforeunload', function() {
-            if (eventSource) {
-                eventSource.close();
+            if (notificationCheckInterval) {
+                clearInterval(notificationCheckInterval);
             }
         });
         
