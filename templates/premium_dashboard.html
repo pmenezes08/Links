@@ -319,10 +319,10 @@
         <div class="logo-section" style="position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); text-align: center; z-index: 100;">
             <div class="logo-container" style="position: relative; display: inline-block;">
                 <img id="dashboardLogo" src="{{ url_for('static', filename='logo.png') }}" alt="Logo" 
-                     style="max-height: 60px; max-width: 200px; opacity: 0.8; transition: opacity 0.3s;"
+                     style="max-height: 100px; max-width: 333px; opacity: 0.8; transition: opacity 0.3s;"
                      onerror="this.style.display='none'; document.getElementById('logoPlaceholder').style.display='block';">
-                <div id="logoPlaceholder" style="display: none; color: #9fb0b5; font-size: 14px;">
-                    <i class="fas fa-image" style="font-size: 30px; margin-bottom: 5px; display: block;"></i>
+                <div id="logoPlaceholder" style="display: none; color: #9fb0b5; font-size: 16px;">
+                    <i class="fas fa-image" style="font-size: 50px; margin-bottom: 8px; display: block;"></i>
                     Logo
                 </div>
                 {% if session['username'] == 'admin' %}
