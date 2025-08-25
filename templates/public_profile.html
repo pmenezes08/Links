@@ -305,13 +305,13 @@
             
             <div class="profile-info">
                 <div class="profile-top">
-                    <div class="profile-picture">
-                        {% if profile[19] %}
-                            <img src="{{ profile[19] }}" alt="{{ profile[0] }}">
-                        {% else %}
-                            <i class="fas fa-user"></i>
-                        {% endif %}
-                    </div>
+                                    <div class="profile-picture">
+                    {% if profile[19] %}
+                        <img src="{{ url_for('static', filename=profile[19]) }}" alt="{{ profile[0] }}">
+                    {% else %}
+                        <i class="fas fa-user"></i>
+                    {% endif %}
+                </div>
                     
                     <div class="profile-name-section">
                         <div class="display-name">

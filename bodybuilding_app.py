@@ -1533,29 +1533,59 @@ def update_public_profile():
             twitter = request.form.get('twitter', '').strip()
             is_public = 1 if request.form.get('is_public') == 'on' else 0
             
+            # Handle profile picture upload
+            profile_picture_path = None
+            if 'profile_picture' in request.files:
+                file = request.files['profile_picture']
+                if file and file.filename != '' and allowed_file(file.filename):
+                    # Save the uploaded file
+                    profile_picture_path = save_uploaded_file(file, subfolder='profile_pictures')
+                    
+                    # Get current profile picture to delete old one if exists
+                    c.execute("SELECT profile_picture FROM user_profiles WHERE username=?", (username,))
+                    old_profile = c.fetchone()
+                    if old_profile and old_profile['profile_picture']:
+                        # Delete old profile picture file
+                        old_path = os.path.join('static', old_profile['profile_picture'])
+                        if os.path.exists(old_path):
+                            try:
+                                os.remove(old_path)
+                            except Exception as e:
+                                logger.warning(f"Could not delete old profile picture: {e}")
+            
             # Check if profile exists
             c.execute("SELECT username FROM user_profiles WHERE username=?", (username,))
             exists = c.fetchone()
             
             if exists:
                 # Update existing profile
-                c.execute("""
-                    UPDATE user_profiles 
-                    SET display_name=?, bio=?, location=?, website=?, 
-                        instagram=?, twitter=?, is_public=?, 
-                        updated_at=CURRENT_TIMESTAMP
-                    WHERE username=?
-                """, (display_name, bio, location, website, instagram, 
-                     twitter, is_public, username))
+                if profile_picture_path:
+                    c.execute("""
+                        UPDATE user_profiles 
+                        SET display_name=?, bio=?, location=?, website=?, 
+                            instagram=?, twitter=?, is_public=?, 
+                            profile_picture=?, updated_at=CURRENT_TIMESTAMP
+                        WHERE username=?
+                    """, (display_name, bio, location, website, instagram, 
+                         twitter, is_public, profile_picture_path, username))
+                else:
+                    c.execute("""
+                        UPDATE user_profiles 
+                        SET display_name=?, bio=?, location=?, website=?, 
+                            instagram=?, twitter=?, is_public=?, 
+                            updated_at=CURRENT_TIMESTAMP
+                        WHERE username=?
+                    """, (display_name, bio, location, website, instagram, 
+                         twitter, is_public, username))
             else:
                 # Create new profile
                 c.execute("""
                     INSERT INTO user_profiles 
                     (username, display_name, bio, location, website, 
-                     instagram, twitter, is_public)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                     instagram, twitter, is_public, profile_picture)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (username, display_name, bio, location, website, 
-                     instagram, twitter, is_public))
+                     instagram, twitter, is_public, profile_picture_path))
             
             conn.commit()
             flash('Public profile updated successfully!', 'success')

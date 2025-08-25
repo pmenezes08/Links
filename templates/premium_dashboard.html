@@ -79,7 +79,7 @@
         <div class="profile-summary">
             <div class="avatar">
                 {% if profile and profile[19] %}
-                    <img src="{{ profile[19] }}" alt="{{ name }}">
+                    <img src="{{ url_for('static', filename=profile[19]) }}" alt="{{ name }}">
                 {% else %}
                     <i class="fas fa-user" style="color: #9fb0b5; font-size: 32px;"></i>
                 {% endif %}
