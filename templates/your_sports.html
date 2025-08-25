@@ -14,7 +14,7 @@
         /* Match community_feed sidebar/menu */
         .sports-page { margin-left: 200px; }
         .sports-page .sidebar { position: fixed !important; top: 0 !important; left: 0 !important; width: 200px !important; height: 100vh !important; background: #1a1a1a !important; border-right: 1px solid #333333 !important; z-index: 1000 !important; display: flex !important; flex-direction: column !important; }
-        .sports-page .sidebar-header { display: flex; align-items: center; padding: 10px; border-bottom: 1px solid #333333; min-height: 60px; }
+        .sports-page .sidebar-header { display: flex; align-items: center; padding: 10px; border-bottom: 1px solid #333333; height: 60px; box-sizing: border-box; }
         .sports-page .sidebar-logo { padding: 5px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
         .sports-page .community-name { flex: 1; display: flex; align-items: center; color: #ffffff; font-size: 16px; font-weight: 600; padding-left: 10px; overflow: hidden; }
         .sports-page .community-name span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -25,7 +25,7 @@
         @media (max-width: 768px) {
             .sports-page { margin-left: 0 !important; padding-top: 60px !important; }
             .sports-page .sidebar { width: 100% !important; height: 60px !important; overflow: visible !important; }
-            .sports-page .sidebar-header { padding: 8px !important; min-height: 60px !important; }
+            .sports-page .sidebar-header { padding: 8px !important; height: 60px !important; }
             .sports-page .community-name { font-size: 14px !important; }
             .sports-page .sidebar-menu { display: none !important; position: absolute !important; top: 60px !important; left: 0 !important; right: 0 !important; background: #1a1a1a !important; border-top: 1px solid #333333 !important; max-height: calc(100vh - 60px) !important; overflow-y: auto !important; }
             .sports-page .sidebar:hover .sidebar-menu, .sports-page .sidebar:focus-within .sidebar-menu { display: block !important; }
@@ -58,6 +58,29 @@
 
     <!-- Main Content -->
     <div class="container">
+        <style>
+            /* Align content and header with sidebar */
+            .sports-page .container { padding-top: 80px; margin-top: 0; }
+            /* Header aligned exactly with sidebar header */
+            .sports-header { 
+                position: fixed; 
+                top: 0; 
+                left: 200px; 
+                right: 0; 
+                height: 60px; 
+                padding: 10px;
+                background: transparent; 
+                border-bottom: 1px solid #333333; 
+                z-index: 900;
+                box-sizing: border-box;
+                display: flex;
+                align-items: center;
+            }
+            @media (max-width: 768px) {
+                .sports-header { left: 0 !important; }
+            }
+        </style>
+        <div class="sports-header"></div>
         <h1>Your Sports</h1>
         
         <div class="sports-grid">
