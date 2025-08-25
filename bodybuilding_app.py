@@ -771,10 +771,13 @@ def admin_profile():
         with get_db_connection() as conn:
             c = conn.cursor()
             
-            # Get admin information
+            # Get admin information including profile picture
             c.execute("""
-                SELECT username, email, first_name, last_name, subscription, created_at
-                FROM users WHERE username = ?
+                SELECT u.username, u.email, u.first_name, u.last_name, u.subscription, u.created_at,
+                       p.profile_picture
+                FROM users u
+                LEFT JOIN user_profiles p ON u.username = p.username
+                WHERE u.username = ?
             """, (username,))
             admin_info = dict(c.fetchone())
             
@@ -1528,6 +1531,23 @@ def profile():
         logger.error(f"Error in profile for {username}: {str(e)}")
         abort(500)
 
+@app.route('/check_profile_picture')
+@login_required
+def check_profile_picture():
+    """Debug route to check profile picture status"""
+    username = session['username']
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT profile_picture FROM user_profiles WHERE username=?", (username,))
+            result = c.fetchone()
+            if result:
+                return f"Profile picture for {username}: {result['profile_picture']}"
+            else:
+                return f"No profile found for {username}"
+    except Exception as e:
+        return f"Error: {str(e)}"
+
 @app.route('/update_public_profile', methods=['POST'])
 @login_required
 def update_public_profile():
@@ -1551,9 +1571,12 @@ def update_public_profile():
             profile_picture_path = None
             if 'profile_picture' in request.files:
                 file = request.files['profile_picture']
+                logger.info(f"Profile picture upload attempt for {username}: {file.filename if file else 'No file'}")
+                
                 if file and file.filename != '' and allowed_file(file.filename):
                     # Save the uploaded file
                     profile_picture_path = save_uploaded_file(file, subfolder='profile_pictures')
+                    logger.info(f"Profile picture saved for {username}: {profile_picture_path}")
                     
                     # Get current profile picture to delete old one if exists
                     c.execute("SELECT profile_picture FROM user_profiles WHERE username=?", (username,))
@@ -1564,6 +1587,7 @@ def update_public_profile():
                         if os.path.exists(old_path):
                             try:
                                 os.remove(old_path)
+                                logger.info(f"Deleted old profile picture: {old_path}")
                             except Exception as e:
                                 logger.warning(f"Could not delete old profile picture: {e}")
             
@@ -1582,6 +1606,7 @@ def update_public_profile():
                         WHERE username=?
                     """, (display_name, bio, location, website, instagram, 
                          twitter, is_public, profile_picture_path, username))
+                    logger.info(f"Updated profile with picture for {username}: {profile_picture_path}")
                 else:
                     c.execute("""
                         UPDATE user_profiles 
@@ -1591,6 +1616,7 @@ def update_public_profile():
                         WHERE username=?
                     """, (display_name, bio, location, website, instagram, 
                          twitter, is_public, username))
+                    logger.info(f"Updated profile without picture for {username}")
             else:
                 # Create new profile
                 c.execute("""
@@ -1600,8 +1626,10 @@ def update_public_profile():
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (username, display_name, bio, location, website, 
                      instagram, twitter, is_public, profile_picture_path))
+                logger.info(f"Created new profile with picture for {username}: {profile_picture_path}")
             
             conn.commit()
+            logger.info(f"Profile committed to database for {username}")
             flash('Public profile updated successfully!', 'success')
             
     except Exception as e:
