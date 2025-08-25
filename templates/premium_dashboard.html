@@ -57,14 +57,15 @@
         <style>
             /* Align content and header divider with sidebar */
             .premium-dashboard-page .container { padding-top: 0; margin-top: 60px; }
-            /* Divider line aligned exactly with sidebar header bottom border */
+            /* Divider line aligned with top of sidebar header */
             .premium-header { 
                 position: fixed; 
-                top: 60px; 
+                top: 0; 
                 left: 200px; 
                 right: 0; 
-                height: 1px; 
-                background: #333333; 
+                height: 60px; 
+                background: transparent; 
+                border-bottom: 1px solid #333333; 
                 z-index: 900;
             }
             .profile-summary { position: relative; margin-left: auto; margin-right: 0; width: 180px; height: 180px; border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; background: rgba(255,255,255,0.03); display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 8px; padding: 12px; box-sizing: border-box; }
