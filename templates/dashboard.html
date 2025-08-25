@@ -271,10 +271,10 @@
 	
 	<div class="container">
 		<div class="dashboard-content" style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center;">
-			<!-- Create/Join Community Button -->
+			<!-- Create/Join/Manage Community Button -->
 			<div class="create-community-section" style="margin-bottom: 15px;">
 				<button onclick="location.href='{{ url_for('communities') }}'" class="view-communities-btn">
-					<i class="fas fa-plus-circle"></i> Create/Join a Community
+					<i class="fas fa-plus-circle"></i> Create/Join/Manage a Community
 				</button>
 			</div>
 			
@@ -390,15 +390,20 @@
 										${community.type === 'public' ? 'Public' : 'Private'} Community
 									</div>
 								</div>
-								<button onclick="window.location.href='/community/${community.id}'" 
-									style="padding: 4px 12px !important; font-size: 12px !important; flex-shrink: 0; width: auto !important; max-width: none !important;"
-									class="sleek-btn compact">
+								<button class="sleek-btn compact enter-community-btn" data-community-id="${community.id}"
+									style="padding: 4px 12px !important; font-size: 12px !important; flex-shrink: 0; width: auto !important; max-width: none !important;">
 									Enter
 								</button>
 							</div>
 						</div>
 					`);
 					list.append(card);
+				});
+				
+				// Add click handlers for enter buttons
+				$('.enter-community-btn').off('click').on('click', function() {
+					const communityId = $(this).data('community-id');
+					window.location.href = `/community/${communityId}`;
 				});
 				
 				// Add or remove scroll class based on community count

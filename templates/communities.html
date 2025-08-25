@@ -205,6 +205,25 @@
 			transform: translateY(-1px);
 		}
 		
+		.exit-community-btn {
+			background: rgba(255, 87, 87, 0.2);
+			color: #ff5757;
+			border: 1px solid rgba(255, 87, 87, 0.3);
+			padding: 6px 12px;
+			border-radius: 4px;
+			font-size: 11px;
+			font-weight: 500;
+			cursor: pointer;
+			transition: all 0.2s ease;
+			white-space: nowrap;
+		}
+		
+		.exit-community-btn:hover {
+			background: rgba(255, 87, 87, 0.3);
+			border-color: rgba(255, 87, 87, 0.4);
+			transform: translateY(-1px);
+		}
+		
 		/* Join message with link styling */
 		#joinMessage {
 			margin-top: 8px;
@@ -961,17 +980,62 @@
 			
 			communities.forEach(community => {
 				const communityHtml = `
-					<div class="joined-community-item">
+					<div class="joined-community-item" data-community-id="${community.id}">
 						<div class="joined-community-info">
 							<div class="joined-community-name">${community.name}</div>
 							<div class="joined-community-type">${community.type === 'public' ? 'Public' : 'Private'} Community</div>
 						</div>
-						<button class="enter-community-btn" onclick="window.location.href='/community/${community.id}'">
-							Enter
-						</button>
+						<div style="display: flex; gap: 6px;">
+							<button class="enter-community-btn" data-id="${community.id}">
+								Enter
+							</button>
+							<button class="exit-community-btn" data-id="${community.id}" style="background: rgba(255, 87, 87, 0.2); color: #ff5757; border: 1px solid rgba(255, 87, 87, 0.3);">
+								Exit
+							</button>
+						</div>
 					</div>
 				`;
 				container.append(communityHtml);
+			});
+			
+			// Add click handlers for enter buttons
+			$('.enter-community-btn').off('click').on('click', function() {
+				const communityId = $(this).data('id');
+				window.location.href = `/community/${communityId}`;
+			});
+			
+			// Add click handlers for exit buttons
+			$('.exit-community-btn').off('click').on('click', function() {
+				const communityId = $(this).data('id');
+				const communityName = $(this).closest('.joined-community-item').find('.joined-community-name').text();
+				
+				if (confirm(`Are you sure you want to leave "${communityName}"?`)) {
+					exitCommunity(communityId);
+				}
+			});
+		}
+
+		// Function to exit/leave a community
+		function exitCommunity(communityId) {
+			$.ajax({
+				url: '/leave_community',
+				method: 'POST',
+				data: {
+					community_id: communityId,
+					csrf_token: 'disabled'
+				},
+				success: function(response) {
+					if (response.success) {
+						showJoinMessage('Successfully left the community', 'success');
+						loadJoinedCommunities(); // Reload joined communities
+						loadUserCommunities(); // Reload all communities
+					} else {
+						showJoinMessage(response.error || 'Failed to leave community', 'error');
+					}
+				},
+				error: function() {
+					showJoinMessage('Error leaving community. Please try again.', 'error');
+				}
 			});
 		}
 
