@@ -40,20 +40,17 @@
             </div>
         </div>
         <div class="sidebar-menu">
-            {% if session['username'] == 'admin' %}
-            <a href="{{ url_for('admin') }}">Admin Dashboard</a>
-            <a href="{{ url_for('admin_profile') }}">Admin Profile</a>
-            {% endif %}
-            <a href="{{ url_for('profile') }}">Profile</a>
-            <a href="{{ url_for('account_settings') }}">Account Settings</a>
-            <a href="{{ url_for('user_chat') }}">Messages</a>
-            <a href="/notifications" style="position: relative;">Notifications <span id="menuNotificationBadge" class="menu-notification-badge" style="display: none;">0</span></a>
-            <a href="{{ url_for('premium_dashboard') }}">Main Dashboard</a>
-            <a href="{{ url_for('feed') }}">Social</a>
-            <a href="{{ url_for('communities') }}">Your Communities</a>
-            <a href="{{ url_for('your_sports') }}">Your Sports</a>
-            <a href="{{ url_for('logout') }}">Logout</a>
-        </div>
+			{% if session['username'] == 'admin' %}
+			<a href="{{ url_for('admin_profile') }}">Admin Profile</a>
+			<a href="{{ url_for('admin') }}">Admin Dashboard</a>
+			{% endif %}
+			<a href="{{ url_for('dashboard') }}">Dashboard</a>
+			<a href="{{ url_for('profile') }}">Profile</a>
+			<a href="{{ url_for('user_chat') }}">Messages</a>
+			<a href="{{ url_for('communities') }}">Your Communities</a>
+			<a href="{{ url_for('your_sports') }}">Your Sports</a>
+			<a href="{{ url_for('logout') }}">Logout</a>
+		</div>
     </div>
 
     <!-- Main Content -->
