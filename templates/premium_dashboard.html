@@ -419,14 +419,14 @@
 
             const communitiesHtml = communities.map(community => `
                 <div class="community-card">
-                    <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px;">
-                        <div class="community-info" style="flex: 1; min-width: 0;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                        <div class="community-info" style="flex-grow: 1; min-width: 0; margin-right: 12px;">
                             <h4 style="color: #ffffff; margin: 0; font-size: 14px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${community.name}</h4>
                             <div class="community-meta" style="color: #9fb0b5; font-size: 11px; margin-top: 2px;">
                                 <span><i class="fas fa-tag" style="font-size: 10px;"></i> ${community.type}</span>
                             </div>
                         </div>
-                        <button class="sleek-btn compact" style="padding: 4px 12px; font-size: 12px; flex-shrink: 0; margin-left: auto;" onclick="location.href='/community_feed/${community.id}'">
+                        <button class="sleek-btn compact" style="padding: 4px 12px !important; font-size: 12px !important; flex-shrink: 0; width: auto !important; max-width: none !important;" onclick="location.href='/community_feed/${community.id}'">
                             <i class="fas fa-door-open" style="font-size: 11px;"></i> Enter
                         </button>
                     </div>
