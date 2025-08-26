@@ -159,10 +159,10 @@
             top: 80px;
             width: 320px;
             max-height: 600px;
-            background: linear-gradient(135deg, {{ community.card_color or '#1a3d3a' }} 0%, {{ community.background_color or '#0f2725' }} 100%);
+            background: {{ 'linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%)' if community.template == 'light' else ('linear-gradient(135deg, ' + (community.card_color or '#1a3d3a') + ' 0%, ' + (community.background_color or '#0f2725') + ' 100%)') }};
             border-radius: 12px;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+            border: 1px solid {{ 'rgba(45, 138, 126, 0.2)' if community.template == 'light' else 'rgba(255, 255, 255, 0.1)' }};
+            box-shadow: 0 8px 24px {{ 'rgba(0, 0, 0, 0.1)' if community.template == 'light' else 'rgba(0, 0, 0, 0.4)' }};
             z-index: 99;
             transition: all 0.3s ease;
             overflow: hidden;
@@ -176,16 +176,20 @@
         
         .sidebar-header {
             padding: 10px 12px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            border-bottom: 1px solid {{ 'rgba(45, 138, 126, 0.2)' if community.template == 'light' else 'rgba(255, 255, 255, 0.1)' }};
             display: flex;
             justify-content: space-between;
             align-items: center;
         }
         
+        .sidebar-header h3 {
+            color: {{ '#2d8a7e' if community.template == 'light' else '#ffffff' }} !important;
+        }
+        
         .sidebar-close-btn {
             background: transparent;
             border: none;
-            color: rgba(255, 255, 255, 0.7);
+            color: {{ 'rgba(45, 138, 126, 0.7)' if community.template == 'light' else 'rgba(255, 255, 255, 0.7)' }};
             font-size: 16px;
             cursor: pointer;
             padding: 4px 8px;
@@ -193,13 +197,13 @@
         }
         
         .sidebar-close-btn:hover {
-            color: #ffffff;
+            color: {{ '#2d8a7e' if community.template == 'light' else '#ffffff' }};
         }
         
         .sidebar-action-btn {
             background: transparent;
             border: none;
-            color: rgba(255, 255, 255, 0.7);
+            color: {{ 'rgba(45, 138, 126, 0.7)' if community.template == 'light' else 'rgba(255, 255, 255, 0.7)' }};
             padding: 4px 8px;
             cursor: pointer;
             transition: all 0.2s ease;
@@ -411,8 +415,8 @@
         
         /* Compact Poll Styles for Sidebar */
         .sidebar-poll-item {
-            background: rgba(255, 255, 255, 0.03);
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: {{ 'rgba(45, 138, 126, 0.05)' if community.template == 'light' else 'rgba(255, 255, 255, 0.03)' }};
+            border: 1px solid {{ 'rgba(45, 138, 126, 0.2)' if community.template == 'light' else 'rgba(255, 255, 255, 0.1)' }};
             border-radius: 6px;
             padding: 8px;
             margin-bottom: 8px;
@@ -420,14 +424,14 @@
         }
         
         .sidebar-poll-item:hover {
-            background: rgba(255, 255, 255, 0.05);
+            background: {{ 'rgba(45, 138, 126, 0.1)' if community.template == 'light' else 'rgba(255, 255, 255, 0.05)' }};
             border-color: {{ community.accent_color or '#4db6ac' }}80;
         }
         
         .poll-question-compact {
             font-weight: 600;
             margin-bottom: 6px;
-            color: {{ community.text_color or '#ffffff' }};
+            color: {{ '#2d8a7e' if community.template == 'light' else (community.text_color or '#ffffff') }};
             font-size: 12px;
             display: flex;
             align-items: center;
@@ -463,8 +467,8 @@
         }
         
         .poll-option-compact {
-            background: rgba(255, 255, 255, 0.02);
-            border: 1px solid rgba(255, 255, 255, 0.05);
+            background: {{ 'rgba(45, 138, 126, 0.03)' if community.template == 'light' else 'rgba(255, 255, 255, 0.02)' }};
+            border: 1px solid {{ 'rgba(45, 138, 126, 0.1)' if community.template == 'light' else 'rgba(255, 255, 255, 0.05)' }};
             border-radius: 4px;
             padding: 5px 6px;
             cursor: pointer;
@@ -473,15 +477,16 @@
             justify-content: space-between;
             align-items: center;
             font-size: 11px;
+            color: {{ '#2d8a7e' if community.template == 'light' else '#ffffff' }};
         }
         
         .poll-option-compact:hover {
-            background: rgba(255, 255, 255, 0.08);
+            background: {{ 'rgba(45, 138, 126, 0.08)' if community.template == 'light' else 'rgba(255, 255, 255, 0.08)' }};
             border-color: {{ community.accent_color or '#4db6ac' }};
         }
         
         .poll-option-text-compact {
-            color: {{ community.text_color or '#ffffff' }};
+            color: {{ '#2d8a7e' if community.template == 'light' else (community.text_color or '#ffffff') }};
             font-size: 12px;
             flex: 1;
         }
@@ -491,6 +496,14 @@
             font-size: 11px;
             font-weight: 600;
             margin-left: 8px;
+        }
+        
+        /* Empty state and general text in polls sidebar */
+        .sidebar-polls-list p {
+            color: {{ '#2d8a7e' if community.template == 'light' else '#ffffff' }};
+            opacity: 0.7;
+            text-align: center;
+            margin: 20px 0;
         }
         
         .poll-footer-compact {
@@ -1527,7 +1540,7 @@
         
         /* Vote toggle styles */
         .poll-option-compact.voted {
-            background: rgba(45, 138, 126, 0.2) !important;
+            background: {{ 'rgba(45, 138, 126, 0.15)' if community.template == 'light' else 'rgba(45, 138, 126, 0.2)' }} !important;
             border-color: {{ community.accent_color or '#2d8a7e' }} !important;
         }
         
