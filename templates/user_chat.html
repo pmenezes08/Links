@@ -312,6 +312,35 @@
 			margin-top: 4px;
 		}
 		
+		/* Date Separator */
+		.date-separator {
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			margin: 20px 0;
+			position: relative;
+		}
+		
+		.date-separator-line {
+			position: absolute;
+			left: 0;
+			right: 0;
+			height: 1px;
+			background: rgba(255, 255, 255, 0.1);
+		}
+		
+		.date-separator-text {
+			background: rgba(77, 182, 172, 0.2);
+			color: rgba(255, 255, 255, 0.8);
+			padding: 4px 12px;
+			border-radius: 12px;
+			font-size: 12px;
+			font-weight: 500;
+			position: relative;
+			z-index: 1;
+			backdrop-filter: blur(10px);
+		}
+		
 		.message-input-area {
 			padding: 8px 10px;
 			background: rgba(0, 0, 0, 0.3);
@@ -608,6 +637,44 @@
 			loadMessages(userId, userName);
 		}
 		
+		function formatDateLabel(dateStr) {
+			const messageDate = new Date(dateStr);
+			const today = new Date();
+			const yesterday = new Date(today);
+			yesterday.setDate(yesterday.getDate() - 1);
+			
+			// Reset time for date comparison
+			const msgDateOnly = new Date(messageDate.getFullYear(), messageDate.getMonth(), messageDate.getDate());
+			const todayOnly = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+			const yesterdayOnly = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate());
+			
+			if (msgDateOnly.getTime() === todayOnly.getTime()) {
+				return 'Today';
+			} else if (msgDateOnly.getTime() === yesterdayOnly.getTime()) {
+				return 'Yesterday';
+			} else {
+				const daysDiff = Math.floor((todayOnly - msgDateOnly) / (1000 * 60 * 60 * 24));
+				if (daysDiff <= 6) {
+					// Show day of week for past week
+					const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+					return days[messageDate.getDay()];
+				} else {
+					// Show date for older messages
+					const options = { month: 'short', day: 'numeric', year: 'numeric' };
+					return messageDate.toLocaleDateString('en-US', options);
+				}
+			}
+		}
+		
+		function formatTime(dateStr) {
+			const date = new Date(dateStr);
+			return date.toLocaleTimeString('en-US', { 
+				hour: 'numeric', 
+				minute: '2-digit',
+				hour12: true 
+			});
+		}
+		
 		function loadMessages(userId, userName) {
 			$.ajax({
 				url: '/get_messages',
@@ -621,12 +688,28 @@
 					messagesArea.empty();
 					
 					if (response.success && response.messages && response.messages.length > 0) {
+						let lastDate = null;
+						
 						response.messages.forEach(msg => {
+							// Check if we need a date separator
+							const msgDate = msg.time ? new Date(msg.time).toDateString() : new Date().toDateString();
+							if (lastDate !== msgDate) {
+								const dateSeparatorHtml = `
+									<div class="date-separator">
+										<div class="date-separator-line"></div>
+										<div class="date-separator-text">${formatDateLabel(msg.time || new Date())}</div>
+									</div>
+								`;
+								messagesArea.append(dateSeparatorHtml);
+								lastDate = msgDate;
+							}
+							
+							// Add the message with only time
 							const messageHtml = `
 								<div class="message ${msg.sent ? 'sent' : 'received'}">
 									<div class="message-content">
 										<div class="message-text">${msg.text}</div>
-										<div class="message-time">${msg.time || 'Just now'}</div>
+										<div class="message-time">${formatTime(msg.time || new Date())}</div>
 									</div>
 								</div>
 							`;
@@ -662,6 +745,21 @@
 			const message = input.val().trim();
 			
 			if (message && currentChatUser) {
+				// Check if we need a date separator for today
+				const messagesArea = $('#messagesArea');
+				const lastMessage = messagesArea.find('.date-separator').last();
+				const todayLabel = formatDateLabel(new Date());
+				
+				if (lastMessage.length === 0 || lastMessage.find('.date-separator-text').text() !== todayLabel) {
+					const dateSeparatorHtml = `
+						<div class="date-separator">
+							<div class="date-separator-line"></div>
+							<div class="date-separator-text">${todayLabel}</div>
+						</div>
+					`;
+					messagesArea.append(dateSeparatorHtml);
+				}
+				
 				// Add message to UI immediately (optimistic update)
 				const tempMessageHtml = `
 					<div class="message sent temp-message">
@@ -692,8 +790,9 @@
 					},
 					success: function(response) {
 						if (response.success) {
-							// Update the temporary message
-							$('.temp-message').removeClass('temp-message').find('.message-time').text('Just now');
+							// Update the temporary message with current time
+							const currentTime = formatTime(new Date());
+							$('.temp-message').removeClass('temp-message').find('.message-time').text(currentTime);
 						} else {
 							// Remove failed message
 							$('.temp-message').remove();
