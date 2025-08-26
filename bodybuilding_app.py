@@ -3268,7 +3268,7 @@ def check_duplicate_users():
                             <td>{dup[0]}</td>
                             <td>{dup[1]}</td>
                             <td>{dup[2]}</td>
-                            <td class="password-cell">{dup[3][:50]}...</td>
+                            <td class="password-cell">{str(dup[3])[:50]}...</td>
                             <td>{dup[4]}</td>
                             <td>{dup[5]}</td>
                             <td>
@@ -3308,7 +3308,7 @@ def check_duplicate_users():
                             <td>{record[0]}</td>
                             <td>{record[1]}</td>
                             <td>{record[2] or 'N/A'}</td>
-                            <td class="password-cell">{record[3][:30] if record[3] else 'N/A'}...</td>
+                            <td class="password-cell">{str(record[3])[:30] if record[3] else 'N/A'}...</td>
                             <td>{record[4] or 'N/A'}</td>
                             <td>{record[5] or 'N/A'}</td>
                         </tr>
