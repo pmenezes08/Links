@@ -2656,6 +2656,100 @@ def update_user_password():
         logger.error(f"Error updating password for {target_username}: {str(e)}")
         return jsonify({'success': False, 'error': str(e)})
 
+@app.route('/debug_password/<username>')
+def debug_password(username):
+    """Temporary debug route to check password status - REMOVE IN PRODUCTION"""
+    # Only allow admin to access this
+    if session.get('username') != 'admin':
+        return "Unauthorized", 403
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT password FROM users WHERE username=?", (username,))
+            user = c.fetchone()
+            
+            if not user:
+                return f"User '{username}' not found"
+            
+            password = user[0] if user else None
+            
+            info = {
+                'username': username,
+                'password_exists': password is not None,
+                'password_length': len(password) if password else 0,
+                'is_hashed': False,
+                'hash_type': 'plain text'
+            }
+            
+            if password:
+                if password.startswith('$2b$') or password.startswith('$2a$') or password.startswith('$2y$'):
+                    info['is_hashed'] = True
+                    info['hash_type'] = 'bcrypt'
+                elif password.startswith('scrypt:'):
+                    info['is_hashed'] = True
+                    info['hash_type'] = 'scrypt'
+                elif password.startswith('pbkdf2:'):
+                    info['is_hashed'] = True
+                    info['hash_type'] = 'pbkdf2'
+                    
+                # Show first 20 chars for debugging (safe for hashed passwords)
+                info['password_preview'] = password[:20] + '...' if len(password) > 20 else password
+            
+            return f"""
+            <h2>Password Debug Info for {username}</h2>
+            <pre>{json.dumps(info, indent=2)}</pre>
+            <br>
+            <h3>Reset Password for {username}:</h3>
+            <form action="/reset_password_debug/{username}" method="POST">
+                <input type="password" name="new_password" placeholder="New password" required>
+                <button type="submit">Reset Password (Plain Text)</button>
+            </form>
+            <form action="/reset_password_debug_hashed/{username}" method="POST">
+                <input type="password" name="new_password" placeholder="New password" required>
+                <button type="submit">Reset Password (Hashed)</button>
+            </form>
+            """
+    except Exception as e:
+        return f"Error: {str(e)}"
+
+@app.route('/reset_password_debug/<username>', methods=['POST'])
+def reset_password_debug(username):
+    """Reset password as plain text - TEMPORARY DEBUG"""
+    if session.get('username') != 'admin':
+        return "Unauthorized", 403
+    
+    new_password = request.form.get('new_password')
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            # Set as plain text
+            c.execute("UPDATE users SET password=? WHERE username=?", (new_password, username))
+            conn.commit()
+        return f"Password for {username} reset to plain text: '{new_password}'. <a href='/'>Go to login</a>"
+    except Exception as e:
+        return f"Error: {str(e)}"
+
+@app.route('/reset_password_debug_hashed/<username>', methods=['POST'])
+def reset_password_debug_hashed(username):
+    """Reset password as hashed - TEMPORARY DEBUG"""
+    if session.get('username') != 'admin':
+        return "Unauthorized", 403
+    
+    new_password = request.form.get('new_password')
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            # Hash the password
+            hashed = generate_password_hash(new_password)
+            c.execute("UPDATE users SET password=? WHERE username=?", (hashed, username))
+            conn.commit()
+        return f"Password for {username} reset to hashed version of: '{new_password}'. <a href='/'>Go to login</a>"
+    except Exception as e:
+        return f"Error: {str(e)}"
+
 @app.route('/check_unread_messages')
 @login_required
 def check_unread_messages():
