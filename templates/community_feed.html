@@ -526,7 +526,7 @@
         }
         
         .poll-creator-compact {
-            color: rgba(255, 255, 255, 0.6);
+            color: {{ 'rgba(45, 138, 126, 0.8)' if community.template == 'light' else 'rgba(255, 255, 255, 0.6)' }};
             font-size: 11px;
             margin-top: 8px;
             font-style: italic;
@@ -1346,8 +1346,62 @@
         
         .poll-item-question {
             font-weight: 600;
-            color: {{ '#000000' if community.template == 'light' else (community.text_color or '#ffffff') }};
+            color: {{ '#000000' if community.template == 'light' else (community.text_color or '#ffffff') }} !important;
         }
+        
+        /* More specific selectors for polls modal in light theme */
+        {% if community.template == 'light' %}
+        #pollsModal,
+        #pollsModal * {
+            color: #000000 !important;
+        }
+        
+        #pollsModal .poll-item-question,
+        #pollsModal .poll-item-option-text,
+        #pollsModal .poll-item-date,
+        #pollsModal .poll-item-total,
+        #pollsModal .poll-item,
+        #pollsModal p,
+        #activePollsList,
+        #activePollsList *,
+        #historicalPollsList,
+        #historicalPollsList * {
+            color: #000000 !important;
+        }
+        
+        #pollsModal .poll-item-date,
+        #pollsModal .poll-item-total {
+            opacity: 0.7;
+        }
+        
+        #pollsModal .poll-item-option-votes {
+            color: #2d8a7e !important;
+            font-weight: 600;
+        }
+        
+        #pollsModal .poll-item {
+            background: rgba(45, 138, 126, 0.05) !important;
+            border: 1px solid rgba(45, 138, 126, 0.2) !important;
+        }
+        
+        #pollsModal .poll-item-option {
+            background: rgba(45, 138, 126, 0.02) !important;
+            border: 1px solid rgba(45, 138, 126, 0.1) !important;
+        }
+        
+        #pollsModal .poll-item-option:hover {
+            background: rgba(45, 138, 126, 0.1) !important;
+        }
+        
+        #pollsModal .poll-item-voted {
+            color: #2d8a7e !important;
+        }
+        
+        #pollsModal .close-poll-btn {
+            background: #2d8a7e !important;
+            color: white !important;
+        }
+        {% endif %}
         
         .poll-item-date {
             font-size: 12px;
@@ -2053,6 +2107,7 @@
         .polls-modal {
             max-width: 90vw;
             width: 800px;
+            background: {{ '#ffffff' if community.template == 'light' else '#1a2526' }} !important;
         }
         
         /* Make calendar modal more compact */
