@@ -4186,6 +4186,7 @@ def create_community():
 def get_user_communities_with_members():
     """Get user's communities with member lists"""
     username = session.get('username')
+    logger.info(f"Getting communities for user: {username}")
     
     try:
         with get_db_connection() as conn:
@@ -4195,9 +4196,11 @@ def get_user_communities_with_members():
             c.execute("SELECT rowid FROM users WHERE username = ?", (username,))
             user = c.fetchone()
             if not user:
+                logger.error(f"User not found: {username}")
                 return jsonify({'success': False, 'error': 'User not found'})
             
             user_id = user['rowid']
+            logger.info(f"User ID: {user_id}")
             
             # Get communities the user belongs to
             c.execute("""
@@ -4209,41 +4212,52 @@ def get_user_communities_with_members():
             """, (user_id,))
             
             communities = c.fetchall()
+            logger.info(f"Found {len(communities)} communities for user {username}")
             
             result = []
             for community in communities:
-                # Get members of each community with profile pictures
-                c.execute("""
-                    SELECT u.rowid as id, u.username, p.profile_picture
-                    FROM users u
-                    JOIN user_communities uc ON u.rowid = uc.user_id
-                    LEFT JOIN user_profiles p ON u.username = p.username
-                    WHERE uc.community_id = ? AND u.username != ?
-                    ORDER BY u.username
-                """, (community['id'], username))
-                
-                members = []
-                for member in c.fetchall():
-                    members.append({
-                        'id': member['id'],
-                        'username': member['username'],
-                        'profile_pic': member['profile_picture'] if member.get('profile_picture') else None,
-                        'online': False  # You can implement online status tracking later
+                try:
+                    # Get members of each community with profile pictures
+                    c.execute("""
+                        SELECT u.rowid as id, u.username, p.profile_picture
+                        FROM users u
+                        JOIN user_communities uc ON u.rowid = uc.user_id
+                        LEFT JOIN user_profiles p ON u.username = p.username
+                        WHERE uc.community_id = ? AND u.username != ?
+                        ORDER BY u.username
+                    """, (community['id'], username))
+                    
+                    members = []
+                    for member in c.fetchall():
+                        members.append({
+                            'id': member['id'],
+                            'username': member['username'],
+                            'profile_pic': member['profile_picture'] if member.get('profile_picture') else None,
+                            'online': False  # You can implement online status tracking later
+                        })
+                    
+                    logger.info(f"Community {community['name']} has {len(members)} members")
+                    
+                    result.append({
+                        'id': community['id'],
+                        'name': community['name'],
+                        'type': community['type'],
+                        'is_creator': community['creator_username'] == username,
+                        'members': members
                     })
-                
-                result.append({
-                    'id': community['id'],
-                    'name': community['name'],
-                    'type': community['type'],
-                    'is_creator': community['creator_username'] == username,
-                    'members': members
-                })
+                except Exception as ce:
+                    logger.error(f"Error processing community {community.get('name', 'unknown')}: {str(ce)}")
+                    continue
             
+            logger.info(f"Returning {len(result)} communities with members")
             return jsonify({'success': True, 'communities': result})
             
     except Exception as e:
         logger.error(f"Error fetching communities with members: {str(e)}")
-        return jsonify({'success': False, 'error': 'Failed to fetch communities'})
+        logger.error(f"Exception type: {type(e).__name__}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        return jsonify({'success': False, 'error': f'Failed to fetch communities: {str(e)}'})
 
 @app.route('/get_user_communities')
 @login_required

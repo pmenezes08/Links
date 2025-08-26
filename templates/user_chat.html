@@ -525,11 +525,24 @@
 				method: 'GET',
 				success: function(response) {
 					console.log('Response received:', response);
+					console.log('Response details:', {
+						success: response.success,
+						communities: response.communities,
+						error: response.error,
+						fullResponse: JSON.stringify(response)
+					});
+					
 					if (response.success && response.communities) {
 						console.log('Communities found:', response.communities.length);
 						displayCommunities(response.communities);
+					} else if (response.success === false && response.error) {
+						console.error('Backend error:', response.error);
+						$('#loadingState').html(`
+							<i class="fas fa-exclamation-triangle"></i>
+							<p>Error: ${response.error}</p>
+						`);
 					} else {
-						console.log('No communities in response');
+						console.log('No communities in response or empty list');
 						$('#loadingState').html(`
 							<i class="fas fa-exclamation-circle"></i>
 							<p>No communities found</p>
