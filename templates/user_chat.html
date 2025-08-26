@@ -514,17 +514,22 @@
 		let communitiesData = {};
 		
 		$(document).ready(function() {
+			console.log('Document ready, loading communities...');
 			loadUserCommunities();
 		});
 		
 		function loadUserCommunities() {
+			console.log('Making AJAX request to /get_user_communities_with_members');
 			$.ajax({
 				url: '/get_user_communities_with_members',
 				method: 'GET',
 				success: function(response) {
+					console.log('Response received:', response);
 					if (response.success && response.communities) {
+						console.log('Communities found:', response.communities.length);
 						displayCommunities(response.communities);
 					} else {
+						console.log('No communities in response');
 						$('#loadingState').html(`
 							<i class="fas fa-exclamation-circle"></i>
 							<p>No communities found</p>
@@ -533,19 +538,24 @@
 					}
 				},
 				error: function(xhr, status, error) {
+					console.error('AJAX Error:', status, error);
+					console.error('Response:', xhr.responseText);
 					$('#loadingState').html(`
 						<i class="fas fa-exclamation-triangle"></i>
 						<p>Error loading communities</p>
+						<p style="font-size: 11px; color: red; margin-top: 10px;">${error || status}</p>
 					`);
 				}
 			});
 		}
 		
 		function displayCommunities(communities) {
+			console.log('displayCommunities called with:', communities);
 			const container = $('#communitiesList');
 			container.empty();
 			
 			if (!communities || communities.length === 0) {
+				console.log('No communities to display');
 				container.html(`
 					<div class="empty-state">
 						<i class="fas fa-users-slash"></i>
@@ -556,44 +566,61 @@
 				return;
 			}
 			
+			console.log('Building HTML for', communities.length, 'communities');
+			
 			communities.forEach(community => {
-				const communityHtml = `
-					<div class="community-section" data-community-id="${community.id}">
-						<button class="community-header-btn" onclick="toggleCommunity(${community.id})">
-							<div class="community-name">
-								<i class="fas fa-users"></i>
-								<span>${community.name}</span>
-								<span style="color: rgba(255,255,255,0.5); font-size: 12px;">(${community.members ? community.members.length : 0})</span>
-							</div>
-							<i class="fas fa-chevron-right community-arrow"></i>
-						</button>
-						<div class="community-users" id="community-users-${community.id}">
-							${community.members && community.members.length > 0 ? 
-								community.members.map(member => {
-									const profilePicParam = member.profile_pic ? `'${member.profile_pic}'` : "''";
-									const avatarHtml = member.profile_pic ? 
-										`<img src="/static/${member.profile_pic}" alt="${member.username}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">` :
-										`<i class="fas fa-user"></i>`;
-									
-									return `
-										<div class="user-item" data-user-id="${member.id}" data-username="${member.username}" data-profile-pic="${member.profile_pic || ''}" onclick="selectUser(${member.id}, '${member.username}', ${profilePicParam})">
-											<div class="user-avatar">
-												${avatarHtml}
-											</div>
-											<div class="user-info">
-												<div class="user-name">${member.username}</div>
-												<div class="user-status">${member.online ? 'Online' : 'Offline'}</div>
-											</div>
+				try {
+					console.log('Processing community:', community.name, 'with', community.members?.length || 0, 'members');
+					
+					let membersHtml = '';
+					if (community.members && community.members.length > 0) {
+						membersHtml = community.members.map(member => {
+							try {
+								const profilePicParam = member.profile_pic ? `'${member.profile_pic.replace(/'/g, "\\'")}'` : "''";
+								const avatarHtml = member.profile_pic ? 
+									`<img src="/static/${member.profile_pic}" alt="${member.username}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;" onerror="this.onerror=null; this.innerHTML='<i class=\\'fas fa-user\\'></i>'">` :
+									`<i class="fas fa-user"></i>`;
+								
+								return `
+									<div class="user-item" data-user-id="${member.id}" data-username="${member.username}" data-profile-pic="${member.profile_pic || ''}" onclick="selectUser(${member.id}, '${member.username.replace(/'/g, "\\'")}', ${profilePicParam})">
+										<div class="user-avatar">
+											${avatarHtml}
 										</div>
-									`;
-								}).join('') : 
-								'<div style="padding: 10px; color: rgba(255,255,255,0.5); text-align: center; font-size: 12px;">No members yet</div>'
+										<div class="user-info">
+											<div class="user-name">${member.username}</div>
+											<div class="user-status">${member.online ? 'Online' : 'Offline'}</div>
+										</div>
+									</div>
+								`;
+							} catch (memberError) {
+								console.error('Error processing member:', member, memberError);
+								return '';
 							}
+						}).join('');
+					} else {
+						membersHtml = '<div style="padding: 10px; color: rgba(255,255,255,0.5); text-align: center; font-size: 12px;">No members yet</div>';
+					}
+					
+					const communityHtml = `
+						<div class="community-section" data-community-id="${community.id}">
+							<button class="community-header-btn" onclick="toggleCommunity(${community.id})">
+								<div class="community-name">
+									<i class="fas fa-users"></i>
+									<span>${community.name}</span>
+									<span style="color: rgba(255,255,255,0.5); font-size: 12px;">(${community.members ? community.members.length : 0})</span>
+								</div>
+								<i class="fas fa-chevron-right community-arrow"></i>
+							</button>
+							<div class="community-users" id="community-users-${community.id}">
+								${membersHtml}
+							</div>
 						</div>
-					</div>
-				`;
-				container.append(communityHtml);
-				communitiesData[community.id] = community;
+					`;
+					container.append(communityHtml);
+					communitiesData[community.id] = community;
+				} catch (error) {
+					console.error('Error processing community:', community, error);
+				}
 			});
 		}
 		
