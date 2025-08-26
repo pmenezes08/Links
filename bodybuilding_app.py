@@ -2880,6 +2880,264 @@ def test_specific_password():
     except Exception as e:
         return f"Error: {str(e)}"
 
+@app.route('/migrate_passwords')
+def migrate_passwords():
+    """Migrate all plain text passwords to hashed passwords - ADMIN ONLY"""
+    if session.get('username') != 'admin':
+        return "Unauthorized", 403
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Get all users
+            c.execute("SELECT username, password FROM users")
+            users = c.fetchall()
+            
+            results = {
+                'total_users': len(users),
+                'already_hashed': 0,
+                'migrated': 0,
+                'failed': 0,
+                'details': []
+            }
+            
+            for user in users:
+                username = user[0]
+                password = user[1]
+                
+                if not password:
+                    results['failed'] += 1
+                    results['details'].append(f"{username}: No password set")
+                    continue
+                
+                # Check if already hashed
+                if password.startswith('$') or password.startswith('scrypt:') or password.startswith('pbkdf2:'):
+                    results['already_hashed'] += 1
+                    results['details'].append(f"{username}: Already hashed")
+                else:
+                    # It's plain text, hash it
+                    try:
+                        hashed_password = generate_password_hash(password)
+                        c.execute("UPDATE users SET password = ? WHERE username = ?", 
+                                (hashed_password, username))
+                        results['migrated'] += 1
+                        results['details'].append(f"{username}: Migrated successfully")
+                    except Exception as e:
+                        results['failed'] += 1
+                        results['details'].append(f"{username}: Failed - {str(e)}")
+            
+            # Commit all changes
+            conn.commit()
+            
+            # Format results for display
+            return f"""
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Password Migration Results</title>
+                <style>
+                    body {{
+                        background: #000;
+                        color: #fff;
+                        font-family: Arial, sans-serif;
+                        padding: 20px;
+                        max-width: 800px;
+                        margin: 0 auto;
+                    }}
+                    .success {{ color: #4db6ac; }}
+                    .warning {{ color: #ffa726; }}
+                    .error {{ color: #ef5350; }}
+                    .stats {{
+                        background: #1a1a1a;
+                        padding: 20px;
+                        border-radius: 8px;
+                        margin: 20px 0;
+                    }}
+                    .details {{
+                        background: #0a0a0a;
+                        padding: 15px;
+                        border-radius: 8px;
+                        margin: 20px 0;
+                        max-height: 400px;
+                        overflow-y: auto;
+                    }}
+                    .detail-item {{
+                        padding: 5px 0;
+                        border-bottom: 1px solid #333;
+                    }}
+                    button {{
+                        background: #4db6ac;
+                        color: white;
+                        border: none;
+                        padding: 10px 20px;
+                        border-radius: 4px;
+                        cursor: pointer;
+                        margin-top: 20px;
+                    }}
+                    button:hover {{
+                        background: #5bc7bd;
+                    }}
+                </style>
+            </head>
+            <body>
+                <h1>Password Migration Results</h1>
+                <div class="stats">
+                    <h2>Summary</h2>
+                    <p>Total Users: <strong>{results['total_users']}</strong></p>
+                    <p class="success">✓ Successfully Migrated: <strong>{results['migrated']}</strong></p>
+                    <p class="warning">⚠ Already Hashed: <strong>{results['already_hashed']}</strong></p>
+                    <p class="error">✗ Failed: <strong>{results['failed']}</strong></p>
+                </div>
+                <div class="details">
+                    <h3>Details</h3>
+                    {''.join([f'<div class="detail-item">{detail}</div>' for detail in results['details']])}
+                </div>
+                <button onclick="window.location.href='/admin'">Back to Admin Dashboard</button>
+                <button onclick="window.location.href='/test_password_hash'">Test Password Hashing</button>
+            </body>
+            </html>
+            """
+            
+    except Exception as e:
+        logger.error(f"Error during password migration: {str(e)}")
+        return f"Migration failed: {str(e)}", 500
+
+@app.route('/check_password_status')
+def check_password_status():
+    """Check the status of passwords in the database - ADMIN ONLY"""
+    if session.get('username') != 'admin':
+        return "Unauthorized", 403
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Get all users and their password status
+            c.execute("SELECT username, password FROM users")
+            users = c.fetchall()
+            
+            plain_text = []
+            hashed = []
+            no_password = []
+            
+            for user in users:
+                username = user[0]
+                password = user[1]
+                
+                if not password:
+                    no_password.append(username)
+                elif password.startswith('$') or password.startswith('scrypt:') or password.startswith('pbkdf2:'):
+                    hashed.append(username)
+                else:
+                    plain_text.append(username)
+            
+            return f"""
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Password Status Check</title>
+                <style>
+                    body {{
+                        background: #000;
+                        color: #fff;
+                        font-family: Arial, sans-serif;
+                        padding: 20px;
+                        max-width: 800px;
+                        margin: 0 auto;
+                    }}
+                    .section {{
+                        background: #1a1a1a;
+                        padding: 20px;
+                        border-radius: 8px;
+                        margin: 20px 0;
+                    }}
+                    .plain-text {{ border-left: 4px solid #ef5350; }}
+                    .hashed {{ border-left: 4px solid #4db6ac; }}
+                    .no-password {{ border-left: 4px solid #ffa726; }}
+                    .user-list {{
+                        display: flex;
+                        flex-wrap: wrap;
+                        gap: 10px;
+                        margin-top: 10px;
+                    }}
+                    .user-item {{
+                        background: #0a0a0a;
+                        padding: 5px 10px;
+                        border-radius: 4px;
+                    }}
+                    .migrate-btn {{
+                        background: #ef5350;
+                        color: white;
+                        border: none;
+                        padding: 15px 30px;
+                        border-radius: 4px;
+                        cursor: pointer;
+                        font-size: 16px;
+                        margin: 20px 0;
+                    }}
+                    .migrate-btn:hover {{
+                        background: #f44336;
+                    }}
+                    button {{
+                        background: #4db6ac;
+                        color: white;
+                        border: none;
+                        padding: 10px 20px;
+                        border-radius: 4px;
+                        cursor: pointer;
+                        margin-right: 10px;
+                    }}
+                    button:hover {{
+                        background: #5bc7bd;
+                    }}
+                </style>
+            </head>
+            <body>
+                <h1>Password Security Status</h1>
+                
+                <div class="section plain-text">
+                    <h2>⚠️ Plain Text Passwords ({len(plain_text)} users)</h2>
+                    <p>These passwords are stored in plain text and need to be migrated:</p>
+                    <div class="user-list">
+                        {''.join([f'<span class="user-item">{u}</span>' for u in plain_text]) if plain_text else '<em>None</em>'}
+                    </div>
+                </div>
+                
+                <div class="section hashed">
+                    <h2>✅ Hashed Passwords ({len(hashed)} users)</h2>
+                    <p>These passwords are properly hashed and secure:</p>
+                    <div class="user-list">
+                        {''.join([f'<span class="user-item">{u}</span>' for u in hashed]) if hashed else '<em>None</em>'}
+                    </div>
+                </div>
+                
+                <div class="section no-password">
+                    <h2>❓ No Password Set ({len(no_password)} users)</h2>
+                    <p>These users have no password set:</p>
+                    <div class="user-list">
+                        {''.join([f'<span class="user-item">{u}</span>' for u in no_password]) if no_password else '<em>None</em>'}
+                    </div>
+                </div>
+                
+                {f'''
+                <button class="migrate-btn" onclick="if(confirm('This will hash all {len(plain_text)} plain text passwords. Continue?')) window.location.href='/migrate_passwords'">
+                    🔒 Migrate {len(plain_text)} Plain Text Passwords to Hashed
+                </button>
+                ''' if plain_text else '<p style="color: #4db6ac; font-size: 18px;">✅ All passwords are already hashed!</p>'}
+                
+                <div style="margin-top: 30px;">
+                    <button onclick="window.location.href='/admin'">Back to Admin Dashboard</button>
+                    <button onclick="window.location.reload()">Refresh Status</button>
+                </div>
+            </body>
+            </html>
+            """
+            
+    except Exception as e:
+        logger.error(f"Error checking password status: {str(e)}")
+        return f"Error: {str(e)}", 500
+
 @app.route('/check_unread_messages')
 @login_required
 def check_unread_messages():
