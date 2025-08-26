@@ -841,11 +841,12 @@ def login_password():
                 subscription = user[1]
                 
                 # Check if password is hashed (bcrypt hashes start with $2b$, $2a$, or $2y$)
-                # or scrypt hashes from werkzeug start with 'scrypt:'
-                if stored_password and (stored_password.startswith('$') or stored_password.startswith('scrypt:')):
+                # or scrypt/pbkdf2 hashes from werkzeug start with 'scrypt:' or 'pbkdf2:'
+                if stored_password and (stored_password.startswith('$') or stored_password.startswith('scrypt:') or stored_password.startswith('pbkdf2:')):
                     # Password is hashed, use check_password_hash
                     password_correct = check_password_hash(stored_password, password)
                     print(f"Using hashed password check, result: {password_correct}")
+                    print(f"Hash type detected: {stored_password[:10]}...")
                 else:
                     # Password is plain text (legacy), direct comparison
                     password_correct = (stored_password == password)
@@ -1730,7 +1731,7 @@ def update_password():
             stored_password = user['password']
             
             # Check current password - handle both hashed and plain text
-            if stored_password and (stored_password.startswith('$') or stored_password.startswith('scrypt:')):
+            if stored_password and (stored_password.startswith('$') or stored_password.startswith('scrypt:') or stored_password.startswith('pbkdf2:')):
                 # Password is hashed
                 if not check_password_hash(stored_password, current_password):
                     return jsonify({'success': False, 'error': 'Current password is incorrect'})
@@ -2747,6 +2748,135 @@ def reset_password_debug_hashed(username):
             c.execute("UPDATE users SET password=? WHERE username=?", (hashed, username))
             conn.commit()
         return f"Password for {username} reset to hashed version of: '{new_password}'. <a href='/'>Go to login</a>"
+    except Exception as e:
+        return f"Error: {str(e)}"
+
+@app.route('/test_password_hash')
+def test_password_hash():
+    """Test password hashing and verification"""
+    if session.get('username') != 'admin':
+        return "Unauthorized", 403
+    
+    test_password = "test123"
+    
+    # Test different hash methods
+    from werkzeug.security import generate_password_hash, check_password_hash
+    
+    results = []
+    
+    # Test default hash
+    try:
+        hash1 = generate_password_hash(test_password)
+        verify1 = check_password_hash(hash1, test_password)
+        results.append({
+            'method': 'default',
+            'hash': hash1[:50] + '...',
+            'verify_same': verify1,
+            'verify_wrong': check_password_hash(hash1, "wrong")
+        })
+    except Exception as e:
+        results.append({'method': 'default', 'error': str(e)})
+    
+    # Test with specific method
+    try:
+        hash2 = generate_password_hash(test_password, method='pbkdf2:sha256')
+        verify2 = check_password_hash(hash2, test_password)
+        results.append({
+            'method': 'pbkdf2:sha256',
+            'hash': hash2[:50] + '...',
+            'verify_same': verify2,
+            'verify_wrong': check_password_hash(hash2, "wrong")
+        })
+    except Exception as e:
+        results.append({'method': 'pbkdf2:sha256', 'error': str(e)})
+    
+    # Test with scrypt
+    try:
+        hash3 = generate_password_hash(test_password, method='scrypt')
+        verify3 = check_password_hash(hash3, test_password)
+        results.append({
+            'method': 'scrypt',
+            'hash': hash3[:50] + '...',
+            'verify_same': verify3,
+            'verify_wrong': check_password_hash(hash3, "wrong")
+        })
+    except Exception as e:
+        results.append({'method': 'scrypt', 'error': str(e)})
+    
+    return f"""
+    <h2>Password Hash Testing</h2>
+    <p>Test password: "{test_password}"</p>
+    <pre>{json.dumps(results, indent=2)}</pre>
+    <br>
+    <h3>Test Specific Password:</h3>
+    <form method="POST" action="/test_specific_password">
+        <input type="text" name="username" placeholder="Username" required><br>
+        <input type="password" name="password" placeholder="Password to test" required><br>
+        <button type="submit">Test Login</button>
+    </form>
+    """
+
+@app.route('/test_specific_password', methods=['POST'])
+def test_specific_password():
+    """Test a specific username/password combination"""
+    if session.get('username') != 'admin':
+        return "Unauthorized", 403
+    
+    test_username = request.form.get('username')
+    test_password = request.form.get('password')
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT password FROM users WHERE username=?", (test_username,))
+            user = c.fetchone()
+            
+            if not user:
+                return f"User '{test_username}' not found"
+            
+            stored_password = user[0]
+            
+            result = {
+                'username': test_username,
+                'input_password': test_password,
+                'stored_password_preview': stored_password[:30] + '...' if len(stored_password) > 30 else stored_password,
+                'stored_password_length': len(stored_password),
+                'starts_with_dollar': stored_password.startswith('$'),
+                'starts_with_scrypt': stored_password.startswith('scrypt:'),
+                'starts_with_pbkdf2': stored_password.startswith('pbkdf2:'),
+            }
+            
+            # Test our login logic
+            if stored_password and (stored_password.startswith('$') or stored_password.startswith('scrypt:') or stored_password.startswith('pbkdf2:')):
+                result['detected_as'] = 'hashed'
+                try:
+                    from werkzeug.security import check_password_hash
+                    password_correct = check_password_hash(stored_password, test_password)
+                    result['check_password_hash_result'] = password_correct
+                    
+                    # Try to manually verify for debugging
+                    import hashlib
+                    result['debug_info'] = {
+                        'werkzeug_version': 'checking...',
+                        'hash_method_detected': stored_password.split(':')[0] if ':' in stored_password else 'unknown'
+                    }
+                except Exception as e:
+                    result['check_password_hash_error'] = str(e)
+                    password_correct = False
+            else:
+                result['detected_as'] = 'plain text'
+                password_correct = (stored_password == test_password)
+                result['plain_text_match'] = password_correct
+            
+            result['would_login_work'] = password_correct
+            
+            return f"""
+            <h2>Password Test Results for {test_username}</h2>
+            <pre>{json.dumps(result, indent=2)}</pre>
+            <br>
+            <a href="/debug_password/{test_username}">Go to password debug/reset page</a>
+            """
+            
     except Exception as e:
         return f"Error: {str(e)}"
 
