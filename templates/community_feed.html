@@ -8,11 +8,28 @@
     <meta name="csrf-token" content="{{ csrf_token }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v='3.1') }}">
     <style>
-        /* Main layout - centered */
+        /* Premium Header (matching dashboard) */
+        .premium-header { 
+            position: fixed; 
+            top: 0; 
+            left: 200px; 
+            right: 0; 
+            height: 60px; 
+            padding: 10px 20px;
+            background: #000000; 
+            border-bottom: 1px solid #333333; 
+            z-index: 900;
+            box-sizing: border-box;
+            display: flex;
+            align-items: center;
+        }
+        
+        /* Main layout - centered with header offset */
         .main-layout-container {
             max-width: 800px;
             margin: 0 auto;
-            padding: 20px;
+            padding: 80px 20px 20px 20px;
+            margin-left: 200px;
         }
         
         /* Polls Toggle and Edit Community Button Container */
@@ -49,11 +66,82 @@
             font-size: 14px;
         }
         
+        /* Update sidebar styles to match dashboard */
+        .sidebar { 
+            position: fixed !important; 
+            top: 0 !important; 
+            left: 0 !important; 
+            width: 200px !important; 
+            height: 100vh !important; 
+            background: #1a1a1a !important; 
+            border-right: 1px solid #333333 !important; 
+            z-index: 1000 !important; 
+            display: flex !important; 
+            flex-direction: column !important; 
+        }
+        
+        .sidebar-header { 
+            display: flex; 
+            align-items: center; 
+            padding: 10px; 
+            border-bottom: 1px solid #333333; 
+            height: 60px; 
+            box-sizing: border-box; 
+        }
+        
+        .sidebar-logo { 
+            padding: 5px; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            flex-shrink: 0; 
+        }
+        
+        .community-name { 
+            flex: 1; 
+            display: flex; 
+            align-items: center; 
+            color: #ffffff; 
+            font-size: 16px; 
+            font-weight: 600; 
+            padding-left: 10px; 
+            overflow: hidden; 
+        }
+        
+        .community-name span { 
+            overflow: hidden; 
+            text-overflow: ellipsis; 
+            white-space: nowrap; 
+        }
+        
+        .sidebar-menu { 
+            flex: 1; 
+            padding: 10px 0; 
+            display: block !important; 
+            overflow-y: auto !important; 
+        }
+        
+        .sidebar-menu a { 
+            display: block !important; 
+            padding: 12px 20px !important; 
+            color: #ffffff !important; 
+            text-decoration: none !important; 
+            transition: all 0.3s ease !important; 
+            border: none !important; 
+            font-size: 14px !important; 
+        }
+        
+        .sidebar-menu a:hover { 
+            background: rgba(77, 182, 172, 0.2) !important; 
+            color: #4db6ac !important; 
+            padding-left: 25px !important; 
+        }
+        
         /* Compact Polls Sidebar */
         .polls-sidebar {
             position: fixed;
-            left: 80px;
-            top: 200px;
+            left: 220px;
+            top: 80px;
             width: 260px;
             max-height: 500px;
             background: linear-gradient(135deg, {{ community.card_color or '#1a3d3a' }} 0%, {{ community.background_color or '#0f2725' }} 100%);
@@ -143,7 +231,59 @@
             display: none;
         }
         
-
+        /* Responsive styles for mobile */
+        @media (max-width: 768px) {
+            .premium-header {
+                left: 0 !important;
+                padding: 10px 15px;
+            }
+            
+            .main-layout-container {
+                margin-left: 0;
+                padding-top: 120px;
+                max-width: 100%;
+            }
+            
+            .sidebar {
+                width: 100% !important;
+                height: 60px !important;
+                overflow: visible !important;
+            }
+            
+            .sidebar-header {
+                padding: 8px !important;
+                height: 60px !important;
+            }
+            
+            .community-name {
+                font-size: 14px !important;
+            }
+            
+            .sidebar-menu {
+                display: none !important;
+                position: absolute !important;
+                top: 60px !important;
+                left: 0 !important;
+                right: 0 !important;
+                background: #1a1a1a !important;
+                border-top: 1px solid #333333 !important;
+                max-height: calc(100vh - 60px) !important;
+                overflow-y: auto !important;
+                z-index: 999 !important;
+            }
+            
+            .sidebar:hover .sidebar-menu,
+            .sidebar:focus-within .sidebar-menu {
+                display: block !important;
+            }
+            
+            .polls-sidebar {
+                left: 10px;
+                top: 130px;
+                width: calc(100% - 20px);
+                max-width: 300px;
+            }
+        }
         
         /* Compact Poll Styles for Sidebar */
         .sidebar-poll-item {
@@ -3519,7 +3659,16 @@
 			<a href="{{ url_for('communities') }}">Your Communities</a>
 			<a href="{{ url_for('your_sports') }}">Your Sports</a>
 			<a href="{{ url_for('logout') }}">Logout</a>
+			<a href="{{ url_for('account_settings') }}"><i class="fas fa-cog" style="margin-right: 8px;"></i>Settings</a>
 		</div>
+    </div>
+
+    <!-- Premium Header (matching dashboard) -->
+    <div class="premium-header">
+        <div style="display: flex; align-items: center; gap: 20px; width: 100%;">
+            <h1 style="color: #ffffff; font-size: 24px; font-weight: 600; margin: 0;">{{ community.name }}</h1>
+            <span style="color: rgba(255,255,255,0.6); font-size: 14px;">{{ community.type }} Community</span>
+        </div>
     </div>
 
     <!-- Main Content -->
@@ -3550,12 +3699,6 @@
                  onload="console.log('Header image loaded successfully:', this.src);">
         </div>
         {% endif %}
-        <div class="community-header">
-            <div class="community-title-section">
-                <h1>{{ community.name }}</h1>
-                <p class="community-type">{{ community.type }} Community</p>
-            </div>
-        </div>
         
         <!-- Community Actions Buttons -->
         <div class="community-actions">
