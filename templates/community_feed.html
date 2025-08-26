@@ -3252,10 +3252,14 @@
                     document.querySelectorAll('.member-username').forEach(link => {
                         link.addEventListener('click', function(e) {
                             e.preventDefault();
+                            e.stopPropagation();
                             const username = this.dataset.username;
                             console.log('Member clicked:', username);
-                            console.log('Navigating to:', `/profile/${username}`);
-                            window.location.href = `/profile/${username}`;
+                            const profileUrl = `/profile/${encodeURIComponent(username)}`;
+                            console.log('Navigating to:', profileUrl);
+                            console.log('Current location:', window.location.href);
+                            // Use absolute navigation to ensure proper routing
+                            window.location.href = profileUrl;
                         });
                     });
                 } else {

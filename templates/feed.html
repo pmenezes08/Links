@@ -2000,7 +2000,10 @@
                     // Don't trigger if clicking the close button
                     if (!e.target.classList.contains('toast-close')) {
                         onClick();
-                        closeToast(toast.querySelector('.toast-close'));
+                        const closeBtn = toast.querySelector('.toast-close');
+                        if (closeBtn) {
+                            closeToast(closeBtn);
+                        }
                     }
                 };
             }
