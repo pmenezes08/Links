@@ -1459,10 +1459,10 @@ def public_profile(username):
             
             # Get user's posts
             c.execute("""
-                SELECT id, content, image_path, created_at 
+                SELECT id, content, image_path, timestamp 
                 FROM posts 
                 WHERE username = ? 
-                ORDER BY created_at DESC 
+                ORDER BY timestamp DESC 
                 LIMIT 20
             """, (username,))
             posts = c.fetchall()
