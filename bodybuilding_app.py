@@ -1461,8 +1461,9 @@ def public_profile(username):
             c.execute("""
                 SELECT c.id, c.name, c.description, c.accent_color
                 FROM communities c
-                JOIN community_members cm ON c.id = cm.community_id
-                WHERE cm.username = ?
+                JOIN user_communities uc ON c.id = uc.community_id
+                JOIN users u ON uc.user_id = u.rowid
+                WHERE u.username = ?
                 ORDER BY c.name
             """, (username,))
             communities = c.fetchall()
@@ -1478,7 +1479,9 @@ def public_profile(username):
                                  username=session.get('username'))
                                  
     except Exception as e:
-        print(f"Error loading profile: {e}")
+        logger.error(f"Error loading profile for {username}: {str(e)}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
         flash('Error loading profile', 'error')
         return redirect(url_for('feed'))
 
