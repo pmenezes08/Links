@@ -3932,6 +3932,7 @@
                     <div class="form-group">
                         <label for="communityType">Type:</label>
                         <select id="communityType" name="type">
+                            <option value="University" {{ 'selected' if community.type == 'University' else '' }}>University</option>
                             <option value="Fitness" {{ 'selected' if community.type == 'Fitness' else '' }}>Fitness</option>
                             <option value="Nutrition" {{ 'selected' if community.type == 'Nutrition' else '' }}>Nutrition</option>
                             <option value="Wellness" {{ 'selected' if community.type == 'Wellness' else '' }}>Wellness</option>
