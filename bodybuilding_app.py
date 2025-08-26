@@ -5653,11 +5653,29 @@ def community_feed(community_id):
                     ur = c.fetchone()
                     reply['user_reaction'] = ur['reaction_type'] if ur else None
             
+            # Get unread notification count
+            c.execute("""
+                SELECT COUNT(*) as count 
+                FROM notifications 
+                WHERE username = ? AND is_read = 0
+            """, (username,))
+            unread_notifications = c.fetchone()['count']
+            
+            # Get unread message count
+            c.execute("""
+                SELECT COUNT(DISTINCT sender) as count 
+                FROM messages 
+                WHERE receiver = ? AND is_read = 0
+            """, (username,))
+            unread_messages = c.fetchone()['count']
+            
             return render_template('community_feed.html', 
                                 posts=posts, 
                                 community=community,
                                 parent_community=parent_community,
-                                username=username)
+                                username=username,
+                                unread_notifications=unread_notifications,
+                                unread_messages=unread_messages)
             
     except Exception as e:
         logger.error(f"Error loading community feed: {str(e)}")

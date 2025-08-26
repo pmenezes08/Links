@@ -231,6 +231,23 @@
             display: none;
         }
         
+        /* Notification badge pulse animation */
+        @keyframes pulse {
+            0% {
+                transform: scale(1);
+            }
+            50% {
+                transform: scale(1.1);
+            }
+            100% {
+                transform: scale(1);
+            }
+        }
+        
+        .notification-badge {
+            animation: pulse 2s infinite;
+        }
+        
         /* Responsive styles for mobile */
         @media (max-width: 768px) {
             .premium-header {
@@ -246,6 +263,16 @@
             
             .premium-header h1 {
                 font-size: 16px !important;
+            }
+            
+            .header-icons {
+                flex-direction: row !important;
+                gap: 6px !important;
+            }
+            
+            .header-icon-btn {
+                width: 28px !important;
+                height: 28px !important;
             }
             
             .main-layout-container {
@@ -3704,23 +3731,54 @@
                 <h1 style="color: #ffffff; font-size: 18px; font-weight: 600; margin: 0;">{{ community.name }}</h1>
                 <span style="color: rgba(255,255,255,0.6); font-size: 12px;">{{ community.type }} Community</span>
             </div>
-            {% if parent_community %}
-            <div class="parent-community-link" style="display: flex; align-items: center; gap: 6px;">
-                <a href="/community_feed/{{ parent_community.id }}" 
-                   class="parent-link"
-                   style="color: #4db6ac; text-decoration: none; font-size: 12px; font-weight: 500; padding: 4px 10px; background: rgba(77, 182, 172, 0.1); border-radius: 16px; transition: all 0.2s ease; display: flex; align-items: center; gap: 5px;"
-                   onmouseover="this.style.background='rgba(77, 182, 172, 0.2)'; this.style.transform='translateY(-1px)'"
-                   onmouseout="this.style.background='rgba(77, 182, 172, 0.1)'; this.style.transform='translateY(0)'">
-                    <i class="fas fa-arrow-left" style="font-size: 10px;"></i>
-                    {% if parent_community.type == 'University' %}
-                    <i class="fas fa-university" style="font-size: 11px;"></i>
-                    {% else %}
-                    <i class="fas fa-layer-group" style="font-size: 11px;"></i>
-                    {% endif %}
-                    <span>{{ parent_community.name }}</span>
-                </a>
+            <div style="display: flex; align-items: center; gap: 12px;">
+                {% if parent_community %}
+                <div class="parent-community-link" style="display: flex; align-items: center; gap: 6px;">
+                    <a href="/community_feed/{{ parent_community.id }}" 
+                       class="parent-link"
+                       style="color: #4db6ac; text-decoration: none; font-size: 12px; font-weight: 500; padding: 4px 10px; background: rgba(77, 182, 172, 0.1); border-radius: 16px; transition: all 0.2s ease; display: flex; align-items: center; gap: 5px;"
+                       onmouseover="this.style.background='rgba(77, 182, 172, 0.2)'; this.style.transform='translateY(-1px)'"
+                       onmouseout="this.style.background='rgba(77, 182, 172, 0.1)'; this.style.transform='translateY(0)'">
+                        <i class="fas fa-arrow-left" style="font-size: 10px;"></i>
+                        {% if parent_community.type == 'University' %}
+                        <i class="fas fa-university" style="font-size: 11px;"></i>
+                        {% else %}
+                        <i class="fas fa-layer-group" style="font-size: 11px;"></i>
+                        {% endif %}
+                        <span>{{ parent_community.name }}</span>
+                    </a>
+                </div>
+                {% endif %}
+                
+                <!-- Notification and Chat Icons -->
+                <div class="header-icons" style="display: flex; align-items: center; gap: 8px;">
+                    <!-- Chat Icon -->
+                    <a href="{{ url_for('user_chat') }}" 
+                       class="header-icon-btn"
+                       style="position: relative; display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; background: rgba(255,255,255,0.05); border-radius: 50%; color: rgba(255,255,255,0.7); text-decoration: none; transition: all 0.2s ease;"
+                       onmouseover="this.style.background='rgba(255,255,255,0.1)'; this.style.color='#ffffff'"
+                       onmouseout="this.style.background='rgba(255,255,255,0.05)'; this.style.color='rgba(255,255,255,0.7)'"
+                       title="Messages">
+                        <i class="fas fa-comment" style="font-size: 14px;"></i>
+                        {% if unread_messages > 0 %}
+                        <span class="notification-badge" style="position: absolute; top: -2px; right: -2px; background: #ef5350; color: white; font-size: 10px; min-width: 16px; height: 16px; border-radius: 8px; display: flex; align-items: center; justify-content: center; padding: 0 4px; font-weight: 600;">{{ unread_messages if unread_messages < 10 else '9+' }}</span>
+                        {% endif %}
+                    </a>
+                    
+                    <!-- Notification Bell -->
+                    <a href="{{ url_for('notifications') }}" 
+                       class="header-icon-btn"
+                       style="position: relative; display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; background: rgba(255,255,255,0.05); border-radius: 50%; color: rgba(255,255,255,0.7); text-decoration: none; transition: all 0.2s ease;"
+                       onmouseover="this.style.background='rgba(255,255,255,0.1)'; this.style.color='#ffffff'"
+                       onmouseout="this.style.background='rgba(255,255,255,0.05)'; this.style.color='rgba(255,255,255,0.7)'"
+                       title="Notifications">
+                        <i class="fas fa-bell" style="font-size: 14px;"></i>
+                        {% if unread_notifications > 0 %}
+                        <span class="notification-badge" style="position: absolute; top: -2px; right: -2px; background: #ef5350; color: white; font-size: 10px; min-width: 16px; height: 16px; border-radius: 8px; display: flex; align-items: center; justify-content: center; padding: 0 4px; font-weight: 600;">{{ unread_notifications if unread_notifications < 10 else '9+' }}</span>
+                        {% endif %}
+                    </a>
+                </div>
             </div>
-            {% endif %}
         </div>
     </div>
 
