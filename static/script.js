@@ -55,9 +55,8 @@ document.addEventListener('DOMContentLoaded', function() {
         });
 
         $dropdown.on('click', 'a', function() { if ($(window).width() <= 600) { $dropdown.hide(); } });
-    } else {
-        console.error("Menu elements not found:", { $menuBtn, $dropdown });
     }
+    // No error logging needed - menu elements are optional on some pages
 
     // Global go-back button: route to dashboard
     $(document).on('click', '.go-back-btn', function(e) {
