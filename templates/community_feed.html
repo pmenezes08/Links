@@ -5300,6 +5300,12 @@
             border-color: #4db6ac;
         }
         
+        .issue-action-btn.upvoted {
+            background: rgba(77, 182, 172, 0.2);
+            border-color: #4db6ac;
+            color: #4db6ac;
+        }
+        
         .issue-action-btn.resolve {
             border-color: rgba(76, 175, 80, 0.3);
             color: #4caf50;
@@ -5464,87 +5470,158 @@
         }
         
         function loadActiveIssues() {
-            // For now, show mock data - will connect to backend later
-            const issuesList = document.getElementById('activeIssuesList');
-            const mockIssues = [
-                {
-                    id: 1,
-                    title: "Water fountain not working",
-                    location: "{% if community.type == 'University' %}Building A, 2nd floor{% else %}Main workout area{% endif %}",
-                    priority: "medium",
-                    description: "The water fountain has been out of service for 2 days.",
-                    reported_by: "user123",
-                    reported_at: "2 hours ago",
-                    upvotes: 5
-                },
-                {
-                    id: 2,
-                    title: "{% if community.type == 'University' %}Broken chair in lecture hall{% else %}Treadmill belt slipping{% endif %}",
-                    location: "{% if community.type == 'University' %}Room 203{% else %}Cardio section, machine #5{% endif %}",
-                    priority: "high",
-                    description: "{% if community.type == 'University' %}Chair is broken and could cause injury{% else %}Safety concern - belt slips during use{% endif %}",
-                    reported_by: "user456",
-                    reported_at: "1 day ago",
-                    upvotes: 12
-                }
-            ];
-            
-            if (mockIssues.length === 0) {
-                issuesList.innerHTML = '<div class="no-issues">No active issues reported</div>';
-            } else {
-                let issuesHTML = '';
-                mockIssues.forEach(issue => {
-                    issuesHTML += `
-                        <div class="issue-item">
-                            <div class="issue-header">
-                                <div class="issue-title">${issue.title}</div>
-                                <span class="issue-priority ${issue.priority}">${issue.priority}</span>
-                            </div>
-                            <div class="issue-location">
-                                <i class="fas fa-map-marker-alt"></i> ${issue.location}
-                            </div>
-                            <div class="issue-description">${issue.description}</div>
-                            <div class="issue-footer">
-                                <div class="issue-meta">
-                                    <span><i class="fas fa-user"></i> ${issue.reported_by}</span>
-                                    <span><i class="fas fa-clock"></i> ${issue.reported_at}</span>
-                                    <span><i class="fas fa-thumbs-up"></i> ${issue.upvotes}</span>
-                                </div>
-                                <div class="issue-actions">
-                                    <button class="issue-action-btn" onclick="upvoteIssue(${issue.id})">
-                                        <i class="fas fa-thumbs-up"></i> Upvote
-                                    </button>
-                                    {% if username == community.creator_username or username == 'admin' %}
-                                    <button class="issue-action-btn resolve" onclick="resolveIssue(${issue.id})">
-                                        <i class="fas fa-check"></i> Resolve
-                                    </button>
-                                    {% endif %}
-                                </div>
-                            </div>
-                        </div>
-                    `;
+            fetch('/get_community_issues?community_id={{ community.id }}&status=active')
+                .then(response => response.json())
+                .then(data => {
+                    const issuesList = document.getElementById('activeIssuesList');
+                    if (data.success) {
+                        if (data.issues.length === 0) {
+                            issuesList.innerHTML = '<div class="no-issues">No active issues reported</div>';
+                        } else {
+                            let issuesHTML = '';
+                            data.issues.forEach(issue => {
+                                issuesHTML += `
+                                    <div class="issue-item" data-issue-id="${issue.id}">
+                                        <div class="issue-header">
+                                            <div class="issue-title">${issue.title}</div>
+                                            <span class="issue-priority ${issue.priority}">${issue.priority}</span>
+                                        </div>
+                                        <div class="issue-location">
+                                            <i class="fas fa-map-marker-alt"></i> ${issue.location}
+                                        </div>
+                                        <div class="issue-description">${issue.description}</div>
+                                        <div class="issue-footer">
+                                            <div class="issue-meta">
+                                                <span><i class="fas fa-user"></i> ${issue.reported_by}</span>
+                                                <span><i class="fas fa-clock"></i> ${issue.reported_at_display}</span>
+                                                <span class="issue-upvote-count"><i class="fas fa-thumbs-up"></i> ${issue.upvote_count}</span>
+                                            </div>
+                                            <div class="issue-actions">
+                                                <button class="issue-action-btn ${issue.user_upvoted ? 'upvoted' : ''}" onclick="upvoteIssue(${issue.id}, this)" title="Upvote">
+                                                    <i class="fas fa-thumbs-up"></i>
+                                                </button>
+                                                {% if username == community.creator_username or username == 'admin' %}
+                                                <button class="issue-action-btn resolve" onclick="resolveIssue(${issue.id})" title="Resolve">
+                                                    <i class="fas fa-check"></i>
+                                                </button>
+                                                {% endif %}
+                                            </div>
+                                        </div>
+                                    </div>
+                                `;
+                            });
+                            issuesList.innerHTML = issuesHTML;
+                        }
+                    } else {
+                        issuesList.innerHTML = '<div class="error-message">Error loading issues</div>';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading issues:', error);
+                    document.getElementById('activeIssuesList').innerHTML = '<div class="error-message">Failed to load issues</div>';
                 });
-                issuesList.innerHTML = issuesHTML;
-            }
         }
         
         function loadResolvedIssues() {
-            const issuesList = document.getElementById('resolvedIssuesList');
-            issuesList.innerHTML = '<div class="no-issues">No resolved issues to show</div>';
+            fetch('/get_community_issues?community_id={{ community.id }}&status=resolved')
+                .then(response => response.json())
+                .then(data => {
+                    const issuesList = document.getElementById('resolvedIssuesList');
+                    if (data.success) {
+                        if (data.issues.length === 0) {
+                            issuesList.innerHTML = '<div class="no-issues">No resolved issues</div>';
+                        } else {
+                            let issuesHTML = '';
+                            data.issues.forEach(issue => {
+                                issuesHTML += `
+                                    <div class="issue-item" data-issue-id="${issue.id}">
+                                        <div class="issue-header">
+                                            <div class="issue-title">${issue.title}</div>
+                                            <span class="issue-priority ${issue.priority}">${issue.priority}</span>
+                                        </div>
+                                        <div class="issue-location">
+                                            <i class="fas fa-map-marker-alt"></i> ${issue.location}
+                                        </div>
+                                        <div class="issue-description">${issue.description}</div>
+                                        <div class="issue-footer">
+                                            <div class="issue-meta">
+                                                <span><i class="fas fa-user"></i> ${issue.reported_by}</span>
+                                                <span><i class="fas fa-clock"></i> Resolved ${issue.resolved_at ? new Date(issue.resolved_at).toLocaleDateString() : ''}</span>
+                                                <span><i class="fas fa-user-check"></i> by ${issue.resolved_by || 'admin'}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                `;
+                            });
+                            issuesList.innerHTML = issuesHTML;
+                        }
+                    } else {
+                        issuesList.innerHTML = '<div class="error-message">Error loading resolved issues</div>';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading resolved issues:', error);
+                    document.getElementById('resolvedIssuesList').innerHTML = '<div class="error-message">Failed to load resolved issues</div>';
+                });
         }
         
-        function upvoteIssue(issueId) {
-            console.log('Upvoting issue:', issueId);
-            // Will implement backend integration
-            alert('Issue upvoted! (Feature coming soon)');
+        function upvoteIssue(issueId, button) {
+            fetch('/upvote_issue', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    issue_id: issueId
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Toggle upvoted class
+                    button.classList.toggle('upvoted');
+                    
+                    // Update count in the UI
+                    const issueItem = button.closest('.issue-item');
+                    const countElement = issueItem.querySelector('.issue-upvote-count');
+                    if (countElement) {
+                        countElement.innerHTML = `<i class="fas fa-thumbs-up"></i> ${data.new_count}`;
+                    }
+                } else {
+                    alert('Error upvoting issue: ' + data.error);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Error upvoting issue');
+            });
         }
         
         function resolveIssue(issueId) {
             if (confirm('Mark this issue as resolved?')) {
-                console.log('Resolving issue:', issueId);
-                // Will implement backend integration
-                alert('Issue marked as resolved! (Feature coming soon)');
-                loadActiveIssues();
+                fetch('/resolve_issue', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        issue_id: issueId
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        // Reload both tabs to update the lists
+                        loadActiveIssues();
+                        loadResolvedIssues();
+                    } else {
+                        alert('Error resolving issue: ' + data.error);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('Error resolving issue');
+                });
             }
         }
         
@@ -5561,14 +5638,31 @@
                         location: formData.get('location'),
                         priority: formData.get('priority'),
                         description: formData.get('description'),
-                        community_id: '{{ community.id }}'
+                        community_id: {{ community.id }}
                     };
                     
-                    console.log('Reporting issue:', issueData);
-                    // Will implement backend integration
-                    alert('Issue reported successfully! (Feature coming soon)');
-                    this.reset();
-                    switchIssuesTab('active');
+                    fetch('/report_issue', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify(issueData)
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            alert('Issue reported successfully!');
+                            this.reset();
+                            switchIssuesTab('active');
+                            loadActiveIssues();
+                        } else {
+                            alert('Error reporting issue: ' + (data.error || 'Unknown error'));
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        alert('Error reporting issue');
+                    });
                 });
             }
         });

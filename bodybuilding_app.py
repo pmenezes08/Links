@@ -488,6 +488,35 @@ def init_db():
                           FOREIGN KEY (option_id) REFERENCES poll_options (id) ON DELETE CASCADE,
                           UNIQUE(poll_id, username))''')
             
+            # Create community_issues table
+            logger.info("Creating community_issues table...")
+            c.execute('''CREATE TABLE IF NOT EXISTS community_issues
+                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                          community_id INTEGER NOT NULL,
+                          title TEXT NOT NULL,
+                          location TEXT NOT NULL,
+                          priority TEXT NOT NULL,
+                          description TEXT NOT NULL,
+                          reported_by TEXT NOT NULL,
+                          reported_at TEXT NOT NULL,
+                          resolved BOOLEAN DEFAULT 0,
+                          resolved_by TEXT,
+                          resolved_at TEXT,
+                          upvotes INTEGER DEFAULT 0,
+                          FOREIGN KEY (community_id) REFERENCES communities (id) ON DELETE CASCADE,
+                          FOREIGN KEY (reported_by) REFERENCES users (username))''')
+            
+            # Create issue_upvotes table
+            logger.info("Creating issue_upvotes table...")
+            c.execute('''CREATE TABLE IF NOT EXISTS issue_upvotes
+                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                          issue_id INTEGER NOT NULL,
+                          username TEXT NOT NULL,
+                          upvoted_at TEXT NOT NULL,
+                          FOREIGN KEY (issue_id) REFERENCES community_issues (id) ON DELETE CASCADE,
+                          FOREIGN KEY (username) REFERENCES users (username),
+                          UNIQUE(issue_id, username))''')
+            
             conn.commit()
             logger.info("Database initialization completed successfully")
             
@@ -4531,6 +4560,197 @@ def get_historical_polls():
             
     except Exception as e:
         logger.error(f"Error getting historical polls: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/report_issue', methods=['POST'])
+@login_required
+def report_issue():
+    """Report a new issue for a community"""
+    try:
+        username = session['username']
+        data = request.get_json()
+        
+        community_id = data.get('community_id')
+        title = data.get('title')
+        location = data.get('location')
+        priority = data.get('priority', 'medium')
+        description = data.get('description')
+        
+        if not all([community_id, title, location, description]):
+            return jsonify({'success': False, 'error': 'Missing required fields'})
+        
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Insert the new issue
+            c.execute("""
+                INSERT INTO community_issues 
+                (community_id, title, location, priority, description, reported_by, reported_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (community_id, title, location, priority, description, username, 
+                  datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+            
+            conn.commit()
+            
+            return jsonify({'success': True, 'message': 'Issue reported successfully'})
+            
+    except Exception as e:
+        logger.error(f"Error reporting issue: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/get_community_issues')
+@login_required
+def get_community_issues():
+    """Get issues for a specific community"""
+    try:
+        username = session['username']
+        community_id = request.args.get('community_id', type=int)
+        status = request.args.get('status', 'active')  # 'active' or 'resolved'
+        
+        if not community_id:
+            return jsonify({'success': False, 'error': 'Community ID required'})
+        
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Get issues based on status
+            if status == 'active':
+                c.execute("""
+                    SELECT ci.*, 
+                           (SELECT COUNT(*) FROM issue_upvotes WHERE issue_id = ci.id) as upvote_count,
+                           EXISTS(SELECT 1 FROM issue_upvotes WHERE issue_id = ci.id AND username = ?) as user_upvoted
+                    FROM community_issues ci
+                    WHERE ci.community_id = ? AND ci.resolved = 0
+                    ORDER BY ci.reported_at DESC
+                """, (username, community_id))
+            else:  # resolved
+                c.execute("""
+                    SELECT ci.*, 
+                           (SELECT COUNT(*) FROM issue_upvotes WHERE issue_id = ci.id) as upvote_count,
+                           EXISTS(SELECT 1 FROM issue_upvotes WHERE issue_id = ci.id AND username = ?) as user_upvoted
+                    FROM community_issues ci
+                    WHERE ci.community_id = ? AND ci.resolved = 1
+                    ORDER BY ci.resolved_at DESC
+                """, (username, community_id))
+            
+            issues_raw = c.fetchall()
+            issues = [dict(issue) for issue in issues_raw]
+            
+            # Format dates for display
+            for issue in issues:
+                # Convert reported_at to relative time
+                reported_at = datetime.strptime(issue['reported_at'], '%Y-%m-%d %H:%M:%S')
+                now = datetime.now()
+                diff = now - reported_at
+                
+                if diff.days > 0:
+                    issue['reported_at_display'] = f"{diff.days} day{'s' if diff.days > 1 else ''} ago"
+                elif diff.seconds > 3600:
+                    hours = diff.seconds // 3600
+                    issue['reported_at_display'] = f"{hours} hour{'s' if hours > 1 else ''} ago"
+                else:
+                    minutes = diff.seconds // 60
+                    issue['reported_at_display'] = f"{minutes} minute{'s' if minutes > 1 else ''} ago"
+            
+            return jsonify({'success': True, 'issues': issues})
+            
+    except Exception as e:
+        logger.error(f"Error getting community issues: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/upvote_issue', methods=['POST'])
+@login_required
+def upvote_issue():
+    """Upvote or remove upvote from an issue"""
+    try:
+        username = session['username']
+        data = request.get_json()
+        issue_id = data.get('issue_id')
+        
+        if not issue_id:
+            return jsonify({'success': False, 'error': 'Issue ID required'})
+        
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Check if user already upvoted
+            c.execute("SELECT id FROM issue_upvotes WHERE issue_id = ? AND username = ?", 
+                     (issue_id, username))
+            existing_vote = c.fetchone()
+            
+            if existing_vote:
+                # Remove upvote
+                c.execute("DELETE FROM issue_upvotes WHERE issue_id = ? AND username = ?",
+                         (issue_id, username))
+                action = 'removed'
+            else:
+                # Add upvote
+                c.execute("INSERT INTO issue_upvotes (issue_id, username, upvoted_at) VALUES (?, ?, ?)",
+                         (issue_id, username, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+                action = 'added'
+            
+            # Update upvote count in issues table
+            c.execute("""
+                UPDATE community_issues 
+                SET upvotes = (SELECT COUNT(*) FROM issue_upvotes WHERE issue_id = ?)
+                WHERE id = ?
+            """, (issue_id, issue_id))
+            
+            conn.commit()
+            
+            # Get updated count
+            c.execute("SELECT upvotes FROM community_issues WHERE id = ?", (issue_id,))
+            new_count = c.fetchone()['upvotes']
+            
+            return jsonify({'success': True, 'action': action, 'new_count': new_count})
+            
+    except Exception as e:
+        logger.error(f"Error upvoting issue: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/resolve_issue', methods=['POST'])
+@login_required
+def resolve_issue():
+    """Mark an issue as resolved"""
+    try:
+        username = session['username']
+        data = request.get_json()
+        issue_id = data.get('issue_id')
+        
+        if not issue_id:
+            return jsonify({'success': False, 'error': 'Issue ID required'})
+        
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Check if user is admin or community creator
+            c.execute("""
+                SELECT c.creator_username 
+                FROM community_issues ci
+                JOIN communities c ON ci.community_id = c.id
+                WHERE ci.id = ?
+            """, (issue_id,))
+            
+            community = c.fetchone()
+            if not community:
+                return jsonify({'success': False, 'error': 'Issue not found'})
+            
+            if username != 'admin' and username != community['creator_username']:
+                return jsonify({'success': False, 'error': 'Unauthorized'})
+            
+            # Mark issue as resolved
+            c.execute("""
+                UPDATE community_issues 
+                SET resolved = 1, resolved_by = ?, resolved_at = ?
+                WHERE id = ?
+            """, (username, datetime.now().strftime('%Y-%m-%d %H:%M:%S'), issue_id))
+            
+            conn.commit()
+            
+            return jsonify({'success': True, 'message': 'Issue marked as resolved'})
+            
+    except Exception as e:
+        logger.error(f"Error resolving issue: {str(e)}")
         return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/get_calendar_events')
