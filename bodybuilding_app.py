@@ -835,18 +835,35 @@ def login_password():
             c.execute("SELECT password, subscription FROM users WHERE username=?", (username,))
             user = c.fetchone()
             conn.close()
-            print(f"DB query result: {user}")
-            if user and user[0] == password:
+            print(f"DB query result: user found = {user is not None}")
+            if user:
+                stored_password = user[0]
                 subscription = user[1]
-                print(f"Password matches, subscription: {subscription}")
-                if subscription == 'premium':
-                    print("Redirecting to premium_dashboard")
-                    return redirect(url_for('premium_dashboard'))
+                
+                # Check if password is hashed (bcrypt hashes start with $2b$, $2a$, or $2y$)
+                # or scrypt hashes from werkzeug start with 'scrypt:'
+                if stored_password and (stored_password.startswith('$') or stored_password.startswith('scrypt:')):
+                    # Password is hashed, use check_password_hash
+                    password_correct = check_password_hash(stored_password, password)
+                    print(f"Using hashed password check, result: {password_correct}")
                 else:
-                    print("Redirecting to dashboard")
-                    return redirect(url_for('dashboard'))
+                    # Password is plain text (legacy), direct comparison
+                    password_correct = (stored_password == password)
+                    print(f"Using plain text password check, result: {password_correct}")
+                
+                if password_correct:
+                    print(f"Password matches, subscription: {subscription}")
+                    if subscription == 'premium':
+                        print("Redirecting to premium_dashboard")
+                        return redirect(url_for('premium_dashboard'))
+                    else:
+                        print("Redirecting to dashboard")
+                        return redirect(url_for('dashboard'))
+                else:
+                    print("Password mismatch")
+                    return render_template('index.html', error="Incorrect password!")
             else:
-                print("Password mismatch or user not found")
+                print("User not found")
                 return render_template('index.html', error="Incorrect password!")
         except Exception as e:
             print(f"Database error: {str(e)}")
@@ -1710,10 +1727,21 @@ def update_password():
             if not user:
                 return jsonify({'success': False, 'error': 'User not found'})
             
-            if user['password'] != current_password:
-                return jsonify({'success': False, 'error': 'Current password is incorrect'})
+            stored_password = user['password']
             
-            c.execute("UPDATE users SET password=? WHERE username=?", (new_password, username))
+            # Check current password - handle both hashed and plain text
+            if stored_password and (stored_password.startswith('$') or stored_password.startswith('scrypt:')):
+                # Password is hashed
+                if not check_password_hash(stored_password, current_password):
+                    return jsonify({'success': False, 'error': 'Current password is incorrect'})
+            else:
+                # Password is plain text (legacy)
+                if stored_password != current_password:
+                    return jsonify({'success': False, 'error': 'Current password is incorrect'})
+            
+            # Hash the new password before storing
+            hashed_password = generate_password_hash(new_password)
+            c.execute("UPDATE users SET password=? WHERE username=?", (hashed_password, username))
             conn.commit()
             
             return jsonify({'success': True})
