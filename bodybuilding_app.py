@@ -3121,7 +3121,7 @@ def check_password_status():
                 </div>
                 
                 {f'''
-                <button class="migrate-btn" onclick="if(confirm('This will hash all {len(plain_text)} plain text passwords. Continue?')) window.location.href='/migrate_passwords'">
+                <button class="migrate-btn" onclick="if(confirm(&quot;This will hash all {len(plain_text)} plain text passwords. Continue?&quot;)) window.location.href=&quot;/migrate_passwords&quot;">
                     🔒 Migrate {len(plain_text)} Plain Text Passwords to Hashed
                 </button>
                 ''' if plain_text else '<p style="color: #4db6ac; font-size: 18px;">✅ All passwords are already hashed!</p>'}
@@ -3272,7 +3272,7 @@ def check_duplicate_users():
                             <td>{dup[4]}</td>
                             <td>{dup[5]}</td>
                             <td>
-                                <button class="fix-btn" onclick="if(confirm('Keep only the first record and delete duplicates for {dup[0]}?')) window.location.href='/fix_duplicate_user/{dup[0]}'">
+                                <button class="fix-btn" onclick="if(confirm(&quot;Keep only the first record and delete duplicates for {dup[0]}?&quot;)) window.location.href=&quot;/fix_duplicate_user/{dup[0]}&quot;">
                                     Fix Duplicates
                                 </button>
                             </td>
@@ -3315,7 +3315,7 @@ def check_duplicate_users():
                         ''' for record in admin_records])}
                     </table>
                     {f'''
-                    <button class="fix-btn" onclick="if(confirm('This will keep the first admin record and delete the rest. Continue?')) window.location.href='/fix_duplicate_user/admin'">
+                    <button class="fix-btn" onclick="if(confirm(&quot;This will keep the first admin record and delete the rest. Continue?&quot;)) window.location.href=&quot;/fix_duplicate_user/admin&quot;">
                         Fix Admin Duplicates
                     </button>
                     ''' if len(admin_records) > 1 else ''}
