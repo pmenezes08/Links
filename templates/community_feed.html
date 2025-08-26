@@ -3960,6 +3960,11 @@
                         </select>
                     </div>
                     <div class="form-group">
+                        <label for="communityBackgroundColor">Background Color:</label>
+                        <input type="color" id="communityBackgroundColor" name="background_color" value="{{ community.background_color or '#2d3839' }}">
+                        <small style="color: rgba(255,255,255,0.5); font-size: 11px;">Choose the background color for your community page</small>
+                    </div>
+                    <div class="form-group">
                         <label for="communityCardColor">Card Color:</label>
                         <input type="color" id="communityCardColor" name="card_color" value="{{ community.card_color or '#1a2526' }}">
                     </div>

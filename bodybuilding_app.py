@@ -5244,6 +5244,7 @@ def update_community():
     description = request.form.get('description', '').strip()
     community_type = request.form.get('type', '').strip()
     template = request.form.get('template', 'dark')
+    background_color = request.form.get('background_color', '#2d3839')
     card_color = request.form.get('card_color', '#1a2526')
     accent_color = request.form.get('accent_color', '#4db6ac')
     text_color = request.form.get('text_color', '#ffffff')
@@ -5289,19 +5290,19 @@ def update_community():
             if background_path:
                 c.execute("""UPDATE communities 
                             SET name = ?, description = ?, type = ?, background_path = ?, template = ?, 
-                                card_color = ?, accent_color = ?, text_color = ?, parent_community_id = ? 
+                                background_color = ?, card_color = ?, accent_color = ?, text_color = ?, parent_community_id = ? 
                             WHERE id = ?""", 
                          (name, description, community_type, background_path, template, 
-                          card_color, accent_color, text_color, 
+                          background_color, card_color, accent_color, text_color, 
                           parent_community_id if parent_community_id and parent_community_id != 'none' else None, 
                           community_id))
             else:
                 c.execute("""UPDATE communities 
                             SET name = ?, description = ?, type = ?, template = ?, 
-                                card_color = ?, accent_color = ?, text_color = ?, parent_community_id = ? 
+                                background_color = ?, card_color = ?, accent_color = ?, text_color = ?, parent_community_id = ? 
                             WHERE id = ?""", 
                          (name, description, community_type, template, 
-                          card_color, accent_color, text_color, 
+                          background_color, card_color, accent_color, text_color, 
                           parent_community_id if parent_community_id and parent_community_id != 'none' else None, 
                           community_id))
             
