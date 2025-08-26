@@ -7,6 +7,51 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v='3.1') }}">
     <style>
+        /* Standard Page Layout Styles */
+        .notifications-page { margin-left: 200px; }
+        .notifications-page .sidebar { position: fixed !important; top: 0 !important; left: 0 !important; width: 200px !important; height: 100vh !important; background: #1a1a1a !important; border-right: 1px solid #333333 !important; z-index: 1000 !important; display: flex !important; flex-direction: column !important; }
+        .notifications-page .sidebar-header { display: flex; align-items: center; padding: 10px; border-bottom: 1px solid #333333; height: 60px; box-sizing: border-box; }
+        .notifications-page .sidebar-logo { padding: 5px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+        .notifications-page .community-name { flex: 1; display: flex; align-items: center; color: #ffffff; font-size: 14px; font-weight: 600; padding-left: 10px; overflow: hidden; }
+        .notifications-page .community-name span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .notifications-page .sidebar-menu { flex: 1; padding: 10px 0; display: block !important; overflow-y: auto !important; }
+        .notifications-page .sidebar-menu a { display: block !important; padding: 10px 18px !important; color: #ffffff !important; text-decoration: none !important; transition: all 0.3s ease !important; border: none !important; font-size: 13px !important; }
+        .notifications-page .sidebar-menu a:hover { background: rgba(77, 182, 172, 0.15) !important; color: #4db6ac !important; padding-left: 22px !important; }
+        .notifications-page .sidebar-menu a.active { background: rgba(77, 182, 172, 0.1) !important; color: #4db6ac !important; border-left: 3px solid #4db6ac !important; }
+        
+        /* Header Bar */
+        .notifications-header-bar { 
+            position: fixed; 
+            top: 0; 
+            left: 200px; 
+            right: 0; 
+            height: 60px; 
+            background: #000000; 
+            border-bottom: 1px solid #333333;
+            z-index: 900;
+            box-sizing: border-box;
+            display: flex;
+            align-items: center;
+            padding: 0 20px;
+        }
+        
+        .notifications-header-bar h1 {
+            color: #ffffff;
+            font-size: 18px;
+            font-weight: 600;
+            margin: 0;
+        }
+        
+        @media (max-width: 768px) {
+            .notifications-page { margin-left: 0 !important; padding-top: 60px !important; }
+            .notifications-page .sidebar { width: 100% !important; height: 60px !important; overflow: visible !important; }
+            .notifications-page .sidebar-header { padding: 8px !important; height: 60px !important; }
+            .notifications-page .community-name { font-size: 12px !important; }
+            .notifications-page .sidebar-menu { display: none !important; position: absolute !important; top: 60px !important; left: 0 !important; right: 0 !important; background: #1a1a1a !important; border-top: 1px solid #333333 !important; max-height: calc(100vh - 60px) !important; overflow-y: auto !important; }
+            .notifications-page .sidebar:hover .sidebar-menu, .notifications-page .sidebar:focus-within .sidebar-menu { display: block !important; }
+            .notifications-header-bar { left: 0 !important; }
+        }
+        
         body {
             background-color: #000000;
             color: #ffffff;
@@ -16,75 +61,75 @@
         }
         
         .notifications-container {
-            max-width: 800px;
+            max-width: 600px;
             margin: 0 auto;
-            padding: 20px;
-            margin-left: 80px;
+            padding: 80px 20px 20px 20px;
         }
         
         .notifications-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 30px;
-            padding-bottom: 20px;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
             border-bottom: 1px solid rgba(255, 255, 255, 0.1);
         }
         
         .notifications-title {
-            font-size: 28px;
+            font-size: 20px;
             font-weight: 600;
             color: #ffffff;
         }
         
         .mark-all-read-btn {
-            background: #4db6ac;
-            color: #ffffff;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 6px;
-            font-size: 14px;
+            background: rgba(77, 182, 172, 0.1);
+            color: #4db6ac;
+            border: 1px solid rgba(77, 182, 172, 0.3);
+            padding: 6px 14px;
+            border-radius: 16px;
+            font-size: 12px;
             cursor: pointer;
             transition: all 0.2s ease;
+            font-weight: 500;
         }
         
         .mark-all-read-btn:hover {
-            background: #37a69c;
-            transform: translateY(-1px);
+            background: rgba(77, 182, 172, 0.2);
+            border-color: #4db6ac;
         }
         
         .notifications-list {
             display: flex;
             flex-direction: column;
-            gap: 10px;
+            gap: 6px;
         }
         
         .notification-item {
-            background: #1a2526;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 8px;
-            padding: 15px;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            border-radius: 6px;
+            padding: 10px 12px;
             cursor: pointer;
             transition: all 0.2s ease;
             display: flex;
             align-items: start;
-            gap: 15px;
+            gap: 10px;
         }
         
         .notification-item:hover {
-            background: rgba(255, 255, 255, 0.05);
-            border-color: #4db6ac;
+            background: rgba(255, 255, 255, 0.04);
+            border-color: rgba(77, 182, 172, 0.4);
         }
         
         .notification-item.unread {
-            background: rgba(77, 182, 172, 0.1);
-            border-left: 3px solid #4db6ac;
+            background: rgba(77, 182, 172, 0.08);
+            border-left: 2px solid #4db6ac;
         }
         
         .notification-icon {
             color: #4db6ac;
-            font-size: 20px;
-            margin-top: 3px;
+            font-size: 16px;
+            margin-top: 2px;
         }
         
         .notification-content {
@@ -93,8 +138,9 @@
         
         .notification-message {
             color: #ffffff;
-            font-size: 14px;
-            margin-bottom: 5px;
+            font-size: 13px;
+            margin-bottom: 3px;
+            line-height: 1.4;
         }
         
         .notification-message strong {
@@ -102,25 +148,26 @@
         }
         
         .notification-time {
-            color: #9fb0b5;
-            font-size: 12px;
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 11px;
         }
         
         .notification-actions {
             display: flex;
-            gap: 10px;
-            margin-top: 10px;
+            gap: 6px;
+            margin-top: 6px;
         }
         
         .notification-action-btn {
             background: transparent;
-            border: 1px solid #4db6ac;
+            border: 1px solid rgba(77, 182, 172, 0.3);
             color: #4db6ac;
-            padding: 5px 10px;
-            border-radius: 4px;
-            font-size: 12px;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 11px;
             cursor: pointer;
             transition: all 0.2s ease;
+            font-weight: 500;
         }
         
         .notification-action-btn:hover {
@@ -163,34 +210,45 @@
         }
     </style>
 </head>
-<body>
+<body class="notifications-page">
     <!-- Sidebar Menu -->
     <div class="sidebar">
-        <button class="menu-btn"><i class="fas fa-bars"></i> Menu</button>
-        <div class="dropdown-content">
+        <div class="sidebar-header">
+            <div class="sidebar-logo" id="sidebarLogo"></div>
+            <div class="community-name">
+                <span>Notifications</span>
+            </div>
+        </div>
+        <div class="sidebar-menu">
             {% if session['username'] == 'admin' %}
-            <a href="{{ url_for('admin') }}">Admin Dashboard</a>
             <a href="{{ url_for('admin_profile') }}">Admin Profile</a>
+            <a href="{{ url_for('admin') }}">Admin Dashboard</a>
             {% endif %}
+            <a href="{{ url_for('dashboard') }}">Dashboard</a>
             <a href="{{ url_for('profile') }}">Profile</a>
-            <a href="{{ url_for('account_settings') }}">Account Settings</a>
             <a href="{{ url_for('user_chat') }}">Messages</a>
             <a href="/notifications" class="active">Notifications</a>
-            <a href="{{ url_for('premium_dashboard') }}">Main Dashboard</a>
-            <a href="{{ url_for('feed') }}">Social</a>
             <a href="{{ url_for('communities') }}">Communities</a>
             <a href="{{ url_for('your_sports') }}">Your Sports</a>
-            <a href="{{ url_for('saved_workouts') }}">Workouts</a>
             <a href="{{ url_for('logout') }}">Logout</a>
+            <a href="{{ url_for('account_settings') }}"><i class="fas fa-cog" style="margin-right: 8px;"></i>Settings</a>
         </div>
     </div>
     
+    <!-- Header Bar -->
+    <div class="notifications-header-bar">
+        <h1>Notifications</h1>
+    </div>
+    
     <div class="notifications-container">
-        <div class="notifications-header">
-            <h1 class="notifications-title">Notifications</h1>
-            <div style="display: flex; gap: 10px;">
-                <button class="mark-all-read-btn" onclick="markAllAsRead()">Mark all as read</button>
-                <button class="mark-all-read-btn" onclick="cleanupReadNotifications()" style="background: #ff4444; border-color: #ff4444;">Clean up read</button>
+        <div class="notifications-header" style="justify-content: flex-end;">
+            <div style="display: flex; gap: 8px;">
+                <button class="mark-all-read-btn" onclick="markAllAsRead()">
+                    <i class="fas fa-check" style="font-size: 10px; margin-right: 4px;"></i>Mark all read
+                </button>
+                <button class="mark-all-read-btn" onclick="cleanupReadNotifications()">
+                    <i class="fas fa-trash" style="font-size: 10px; margin-right: 4px;"></i>Clear read
+                </button>
             </div>
         </div>
         
