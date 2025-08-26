@@ -4368,21 +4368,32 @@ def get_poll_results(poll_id):
 @app.route('/get_active_polls')
 @login_required
 def get_active_polls():
-    """Get all active polls"""
+    """Get all active polls for a specific community"""
     try:
         username = session['username']
+        community_id = request.args.get('community_id', type=int)
         
         with get_db_connection() as conn:
             c = conn.cursor()
             
-            # Get active polls (not expired)
-            c.execute("""
-                SELECT p.*, po.timestamp as created_at
-                FROM polls p 
-                JOIN posts po ON p.post_id = po.id 
-                WHERE p.is_active = 1 
-                ORDER BY po.timestamp DESC
-            """)
+            # Get active polls (not expired) for the specific community
+            if community_id:
+                c.execute("""
+                    SELECT p.*, po.timestamp as created_at, po.username
+                    FROM polls p 
+                    JOIN posts po ON p.post_id = po.id 
+                    WHERE p.is_active = 1 AND po.community_id = ?
+                    ORDER BY po.timestamp DESC
+                """, (community_id,))
+            else:
+                # Fallback to all polls if no community_id provided
+                c.execute("""
+                    SELECT p.*, po.timestamp as created_at, po.username
+                    FROM polls p 
+                    JOIN posts po ON p.post_id = po.id 
+                    WHERE p.is_active = 1 
+                    ORDER BY po.timestamp DESC
+                """)
             polls_raw = c.fetchall()
             
             polls = []
@@ -4467,21 +4478,33 @@ def remove_poll_option():
 @app.route('/get_historical_polls')
 @login_required
 def get_historical_polls():
-    """Get historical (expired) polls"""
+    """Get historical (expired) polls for a specific community"""
     try:
         username = session['username']
+        community_id = request.args.get('community_id', type=int)
         
         with get_db_connection() as conn:
             c = conn.cursor()
             
-            # Get historical polls (expired or inactive)
-            c.execute("""
-                SELECT p.*, po.timestamp as created_at
-                FROM polls p 
-                JOIN posts po ON p.post_id = po.id 
-                WHERE p.is_active = 0 OR (p.expires_at IS NOT NULL AND p.expires_at < datetime('now'))
-                ORDER BY po.timestamp DESC
-            """)
+            # Get historical polls (expired or inactive) for the specific community
+            if community_id:
+                c.execute("""
+                    SELECT p.*, po.timestamp as created_at, po.username
+                    FROM polls p 
+                    JOIN posts po ON p.post_id = po.id 
+                    WHERE (p.is_active = 0 OR (p.expires_at IS NOT NULL AND p.expires_at < datetime('now')))
+                    AND po.community_id = ?
+                    ORDER BY po.timestamp DESC
+                """, (community_id,))
+            else:
+                # Fallback to all polls if no community_id provided
+                c.execute("""
+                    SELECT p.*, po.timestamp as created_at, po.username
+                    FROM polls p 
+                    JOIN posts po ON p.post_id = po.id 
+                    WHERE p.is_active = 0 OR (p.expires_at IS NOT NULL AND p.expires_at < datetime('now'))
+                    ORDER BY po.timestamp DESC
+                """)
             polls_raw = c.fetchall()
             
             polls = []
