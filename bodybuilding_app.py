@@ -2279,6 +2279,97 @@ def delete_chat():
         logger.error(f"Error deleting chat for {username}: {str(e)}")
         abort(500)
 
+@app.route('/get_messages', methods=['POST'])
+@login_required
+def get_messages():
+    """Get messages between current user and another user"""
+    username = session.get('username')
+    other_user_id = request.form.get('other_user_id')
+    
+    if not other_user_id:
+        return jsonify({'success': False, 'error': 'Other user ID required'})
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Get current user ID
+            c.execute("SELECT rowid FROM users WHERE username = ?", (username,))
+            user = c.fetchone()
+            if not user:
+                return jsonify({'success': False, 'error': 'User not found'})
+            
+            user_id = user['rowid']
+            
+            # Get other user's username
+            c.execute("SELECT username FROM users WHERE rowid = ?", (other_user_id,))
+            other_user = c.fetchone()
+            if not other_user:
+                return jsonify({'success': False, 'error': 'Other user not found'})
+            
+            other_username = other_user['username']
+            
+            # Get messages between users
+            c.execute("""
+                SELECT id, sender, receiver, message, timestamp
+                FROM messages
+                WHERE (sender = ? AND receiver = ?) 
+                   OR (sender = ? AND receiver = ?)
+                ORDER BY timestamp ASC
+            """, (username, other_username, other_username, username))
+            
+            messages = []
+            for msg in c.fetchall():
+                messages.append({
+                    'id': msg['id'],
+                    'text': msg['message'],
+                    'sent': msg['sender'] == username,
+                    'time': msg['timestamp']
+                })
+            
+            return jsonify({'success': True, 'messages': messages})
+            
+    except Exception as e:
+        logger.error(f"Error fetching messages: {str(e)}")
+        return jsonify({'success': False, 'error': 'Failed to fetch messages'})
+
+@app.route('/send_message', methods=['POST'])
+@login_required
+def send_message():
+    """Send a message to another user"""
+    username = session.get('username')
+    recipient_id = request.form.get('recipient_id')
+    message = request.form.get('message')
+    
+    if not recipient_id or not message:
+        return jsonify({'success': False, 'error': 'Recipient and message required'})
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Get recipient username
+            c.execute("SELECT username FROM users WHERE rowid = ?", (recipient_id,))
+            recipient = c.fetchone()
+            if not recipient:
+                return jsonify({'success': False, 'error': 'Recipient not found'})
+            
+            recipient_username = recipient['username']
+            
+            # Insert message
+            c.execute("""
+                INSERT INTO messages (sender, receiver, message, timestamp)
+                VALUES (?, ?, ?, datetime('now'))
+            """, (username, recipient_username, message))
+            
+            conn.commit()
+            
+            return jsonify({'success': True, 'message': 'Message sent successfully'})
+            
+    except Exception as e:
+        logger.error(f"Error sending message: {str(e)}")
+        return jsonify({'success': False, 'error': 'Failed to send message'})
+
 @app.route('/user_chat')
 @login_required
 def user_chat():
@@ -4141,6 +4232,68 @@ def create_community():
     except Exception as e:
         logger.error(f"Error creating community: {str(e)}")
         return jsonify({'success': False, 'error': 'Failed to create community'}), 500
+
+@app.route('/get_user_communities_with_members', methods=['GET'])
+@login_required
+def get_user_communities_with_members():
+    """Get user's communities with member lists"""
+    username = session.get('username')
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Get user ID
+            c.execute("SELECT rowid FROM users WHERE username = ?", (username,))
+            user = c.fetchone()
+            if not user:
+                return jsonify({'success': False, 'error': 'User not found'})
+            
+            user_id = user['rowid']
+            
+            # Get communities the user belongs to
+            c.execute("""
+                SELECT c.id, c.name, c.type, c.creator_username
+                FROM communities c
+                JOIN user_communities uc ON c.id = uc.community_id
+                WHERE uc.user_id = ?
+                ORDER BY c.name
+            """, (user_id,))
+            
+            communities = c.fetchall()
+            
+            result = []
+            for community in communities:
+                # Get members of each community
+                c.execute("""
+                    SELECT u.rowid as id, u.username
+                    FROM users u
+                    JOIN user_communities uc ON u.rowid = uc.user_id
+                    WHERE uc.community_id = ? AND u.username != ?
+                    ORDER BY u.username
+                """, (community['id'], username))
+                
+                members = []
+                for member in c.fetchall():
+                    members.append({
+                        'id': member['id'],
+                        'username': member['username'],
+                        'online': False  # You can implement online status tracking later
+                    })
+                
+                result.append({
+                    'id': community['id'],
+                    'name': community['name'],
+                    'type': community['type'],
+                    'is_creator': community['creator_username'] == username,
+                    'members': members
+                })
+            
+            return jsonify({'success': True, 'communities': result})
+            
+    except Exception as e:
+        logger.error(f"Error fetching communities with members: {str(e)}")
+        return jsonify({'success': False, 'error': 'Failed to fetch communities'})
 
 @app.route('/get_user_communities')
 @login_required
