@@ -3247,97 +3247,87 @@ def check_duplicate_users():
                     }}
                 </style>
             </head>
-<body>
-    <h1>Duplicate Users Check</h1>
+            <body>
+                <h1>Duplicate Users Check</h1>
+                
+                {f'''
+                <div class="section duplicate">
+                    <h2>⚠️ Duplicate Usernames Found ({len(duplicates)} usernames)</h2>
+                    <table>
+                        <tr>
+                            <th>Username</th>
+                            <th>Count</th>
+                            <th>Row IDs</th>
+                            <th>Passwords</th>
+                            <th>Emails</th>
+                            <th>Subscriptions</th>
+                            <th>Action</th>
+                        </tr>
+                        {"".join([f'''
+                        <tr>
+                            <td>{dup[0]}</td>
+                            <td>{dup[1]}</td>
+                            <td>{dup[2]}</td>
+                            <td class="password-cell">{dup[3][:50]}...</td>
+                            <td>{dup[4]}</td>
+                            <td>{dup[5]}</td>
+                            <td>
+                                <button class="fix-btn" onclick="if(confirm(&quot;Keep only the first record and delete duplicates for {dup[0]}?&quot;)) window.location.href=&quot;/fix_duplicate_user/{dup[0]}&quot;">
+                                    Fix Duplicates
+                                </button>
+                            </td>
+                        </tr>
+                        ''' for dup in duplicates])}
+                    </table>
+                </div>
+                ''' if duplicates else '''
+                <div class="section" style="border-left: 4px solid #4db6ac;">
+                    <h2>✅ No Duplicate Usernames Found</h2>
+                    <p>All usernames in the database are unique.</p>
+                </div>
+                '''}
     
-    {
-        '''
-        <div class="section duplicate">
-            <h2>⚠️ Duplicate Usernames Found ({len(duplicates)} usernames)</h2>
-            <table>
-                <tr>
-                    <th>Username</th>
-                    <th>Count</th>
-                    <th>Row IDs</th>
-                    <th>Passwords</th>
-                    <th>Emails</th>
-                    <th>Subscriptions</th>
-                    <th>Action</th>
-                </tr>
-                {''.join(
-                    f'''
-                    <tr>
-                        <td>{dup[0]}</td>
-                        <td>{dup[1]}</td>
-                        <td>{dup[2]}</td>
-                        <td class="password-cell">{dup[3][:50]}...</td>
-                        <td>{dup[4]}</td>
-                        <td>{dup[5]}</td>
-                        <td>
-                            <button class="fix-btn" onclick="if(confirm(&quot;Keep only the first record and delete duplicates for {dup[0]}?&quot;)) window.location.href=&quot;/fix_duplicate_user/{dup[0]}&quot;">
-                                Fix Duplicates
-                            </button>
-                        </td>
-                    </tr>
-                    '''
-                    for dup in duplicates
-                )}
-            </table>
-        </div>
-        ''' if duplicates else 
-        '''
-        <div class="section" style="border-left: 4px solid #4db6ac;">
-            <h2>✅ No Duplicate Usernames Found</h2>
-            <p>All usernames in the database are unique.</p>
-        </div>
-        '''
-    }
-    
-    <div class="section admin-records">
-        <h2>Admin Account Records ({len(admin_records)} records)</h2>
-        {
-            '<div class="warning">⚠️ Found {} records for admin account. There should only be 1.</div>'.format(len(admin_records))
-            if len(admin_records) > 1 else ''
-        }
-        <table>
-            <tr>
-                <th>Row ID</th>
-                <th>Username</th>
-                <th>Email</th>
-                <th>Password (first 30 chars)</th>
-                <th>Subscription</th>
-                <th>Created At</th>
-            </tr>
-            {''.join(
-                f'''
-                <tr>
-                    <td>{record[0]}</td>
-                    <td>{record[1]}</td>
-                    <td>{record[2] or 'N/A'}</td>
-                    <td class="password-cell">{record[3][:30] if record[3] else 'N/A'}...</td>
-                    <td>{record[4] or 'N/A'}</td>
-                    <td>{record[5] or 'N/A'}</td>
-                </tr>
-                '''
-                for record in admin_records
-            )}
-        </table>
-        {
-            f'''
-            <button class="fix-btn" onclick="if(confirm(&quot;This will keep the first admin record and delete the rest. Continue?&quot;)) window.location.href=&quot;/fix_duplicate_user/admin&quot;">
-                Fix Admin Duplicates
-            </button>
-            ''' if len(admin_records) > 1 else ''
-        }
-    </div>
-    
-    <div style="margin-top: 30px;">
-        <button onclick="window.location.href='/admin'">Back to Admin Dashboard</button>
-        <button onclick="window.location.reload()">Refresh</button>
-        <button onclick="window.location.href='/check_password_status'">Check Password Status</button>
-    </div>
-</body>
-</html>
+                <div class="section admin-records">
+                    <h2>Admin Account Records ({len(admin_records)} records)</h2>
+                    {f'''
+                    <div class="warning">
+                        ⚠️ Found {len(admin_records)} records for admin account. There should only be 1.
+                    </div>
+                    ''' if len(admin_records) > 1 else ''}
+                    <table>
+                        <tr>
+                            <th>Row ID</th>
+                            <th>Username</th>
+                            <th>Email</th>
+                            <th>Password (first 30 chars)</th>
+                            <th>Subscription</th>
+                            <th>Created At</th>
+                        </tr>
+                        {"".join([f'''
+                        <tr>
+                            <td>{record[0]}</td>
+                            <td>{record[1]}</td>
+                            <td>{record[2] or 'N/A'}</td>
+                            <td class="password-cell">{record[3][:30] if record[3] else 'N/A'}...</td>
+                            <td>{record[4] or 'N/A'}</td>
+                            <td>{record[5] or 'N/A'}</td>
+                        </tr>
+                        ''' for record in admin_records])}
+                    </table>
+                    {f'''
+                    <button class="fix-btn" onclick="if(confirm(&quot;This will keep the first admin record and delete the rest. Continue?&quot;)) window.location.href=&quot;/fix_duplicate_user/admin&quot;">
+                        Fix Admin Duplicates
+                    </button>
+                    ''' if len(admin_records) > 1 else ''}
+                </div>
+                
+                <div style="margin-top: 30px;">
+                    <button onclick="window.location.href='/admin'">Back to Admin Dashboard</button>
+                    <button onclick="window.location.reload()">Refresh</button>
+                    <button onclick="window.location.href='/check_password_status'">Check Password Status</button>
+                </div>
+            </body>
+            </html>
             """
             
     except Exception as e:
