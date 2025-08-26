@@ -333,9 +333,11 @@
 			color: #ffffff;
 			font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 			font-size: 14px;
+			line-height: 1.5;
 			min-height: 38px;
 			max-height: 120px;
-			resize: vertical;
+			resize: none;
+			overflow-y: auto;
 		}
 		
 		.message-input:focus {
@@ -359,8 +361,9 @@
 			justify-content: center;
 			gap: 6px;
 			white-space: nowrap;
-			height: 38px;
+			min-height: 38px;
 			min-width: 80px;
+			align-self: flex-end;
 		}
 		
 		.send-btn:hover {
@@ -713,18 +716,39 @@
 			}
 		}, 10000); // Refresh every 10 seconds
 		
-		// Auto-resize textarea
-		$('#messageInput').on('input', function() {
-			this.style.height = 'auto';
-			this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+		// Auto-resize textarea function
+		function autoResizeTextarea(textarea) {
+			textarea.style.height = 'auto';
+			const newHeight = Math.min(textarea.scrollHeight, 120);
+			textarea.style.height = newHeight + 'px';
+		}
+		
+		// Auto-resize on input
+		$(document).on('input', '#messageInput', function() {
+			autoResizeTextarea(this);
+		});
+		
+		// Initialize textarea height when chat opens
+		$(document).on('focus', '#messageInput', function() {
+			autoResizeTextarea(this);
 		});
 		
 		// Handle Enter key for sending (Shift+Enter for new line)
-		$('#messageInput').on('keydown', function(e) {
+		$(document).on('keydown', '#messageInput', function(e) {
 			if (e.key === 'Enter' && !e.shiftKey) {
 				e.preventDefault();
 				$(this).closest('form').submit();
 			}
+		});
+		
+		// Reset textarea height after sending
+		$(document).on('submit', '.message-input-form', function() {
+			setTimeout(() => {
+				const textarea = document.getElementById('messageInput');
+				if (textarea) {
+					textarea.style.height = '38px';
+				}
+			}, 100);
 		});
 	</script>
 </body>
