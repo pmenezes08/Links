@@ -4212,9 +4212,9 @@ def get_user_communities_with_members():
             
             result = []
             for community in communities:
-                # Get members of each community
+                # Get members of each community with profile pictures
                 c.execute("""
-                    SELECT u.rowid as id, u.username
+                    SELECT u.rowid as id, u.username, u.profile_pic
                     FROM users u
                     JOIN user_communities uc ON u.rowid = uc.user_id
                     WHERE uc.community_id = ? AND u.username != ?
@@ -4226,6 +4226,7 @@ def get_user_communities_with_members():
                     members.append({
                         'id': member['id'],
                         'username': member['username'],
+                        'profile_pic': member['profile_pic'] if member['profile_pic'] else None,
                         'online': False  # You can implement online status tracking later
                     })
                 

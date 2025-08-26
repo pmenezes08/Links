@@ -570,9 +570,12 @@
 						<div class="community-users" id="community-users-${community.id}">
 							${community.members && community.members.length > 0 ? 
 								community.members.map(member => `
-									<div class="user-item" data-user-id="${member.id}" data-username="${member.username}" onclick="selectUser(${member.id}, '${member.username}')">
+									<div class="user-item" data-user-id="${member.id}" data-username="${member.username}" data-profile-pic="${member.profile_pic || ''}" onclick="selectUser(${member.id}, '${member.username}', '${member.profile_pic || ''}')">
 										<div class="user-avatar">
-											<i class="fas fa-user"></i>
+											${member.profile_pic ? 
+												`<img src="/static/uploads/${member.profile_pic}" alt="${member.username}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">` :
+												`<i class="fas fa-user"></i>`
+											}
 										</div>
 										<div class="user-info">
 											<div class="user-name">${member.username}</div>
@@ -598,7 +601,7 @@
 			users.toggleClass('show');
 		}
 		
-		function selectUser(userId, userName) {
+		function selectUser(userId, userName, profilePic) {
 			currentChatUser = userId;
 			currentChatUsername = userName;
 			
@@ -611,7 +614,10 @@
 				<div class="chat-header">
 					<div class="chat-user-info">
 						<div class="user-avatar" style="margin-right: 12px;">
-							<i class="fas fa-user"></i>
+							${profilePic ? 
+								`<img src="/static/uploads/${profilePic}" alt="${userName}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">` :
+								`<i class="fas fa-user"></i>`
+							}
 						</div>
 						<div class="chat-user-name">${userName}</div>
 					</div>
