@@ -1434,7 +1434,7 @@ def public_profile(username):
                 flash('User not found', 'error')
                 return redirect(url_for('feed'))
             
-            # Get profile data
+            # Get profile data - LEFT JOIN ensures we get user data even if no profile exists
             c.execute("""
                 SELECT u.username, u.email, u.subscription, u.age, u.gender, 
                        u.weight, u.height, u.blood_type, u.muscle_mass, u.bmi,
@@ -1449,9 +1449,10 @@ def public_profile(username):
             
             profile_data = c.fetchone()
             
+            # This should never happen if user exists (checked above)
             if not profile_data:
-                logger.error(f"No profile data found for user: {username}")
-                flash('Profile not found', 'error')
+                logger.error(f"Critical: User exists but no data returned for: {username}")
+                flash('Profile data error', 'error')
                 return redirect(url_for('feed'))
                 
             logger.info(f"Profile data found for {username}")
@@ -1467,15 +1468,20 @@ def public_profile(username):
             posts = c.fetchall()
             
             # Get user's communities
-            c.execute("""
-                SELECT c.id, c.name, c.description, c.accent_color
-                FROM communities c
-                JOIN user_communities uc ON c.id = uc.community_id
-                JOIN users u ON uc.user_id = u.rowid
-                WHERE u.username = ?
-                ORDER BY c.name
-            """, (username,))
-            communities = c.fetchall()
+            try:
+                c.execute("""
+                    SELECT c.id, c.name, c.description, c.accent_color
+                    FROM communities c
+                    JOIN user_communities uc ON c.id = uc.community_id
+                    JOIN users u ON uc.user_id = u.rowid
+                    WHERE u.username = ?
+                    ORDER BY c.name
+                """, (username,))
+                communities = c.fetchall()
+                logger.info(f"Found {len(communities)} communities for {username}")
+            except Exception as e:
+                logger.error(f"Error fetching communities for {username}: {str(e)}")
+                communities = []  # Continue with empty communities list instead of failing
             
             # Check if viewing own profile
             is_own_profile = 'username' in session and session['username'] == username

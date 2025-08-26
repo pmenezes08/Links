@@ -3238,6 +3238,7 @@
             .then(data => {
                 if (data.success) {
                     const membersList = document.getElementById('membersList');
+                    console.log('Members data received:', data.members);
                     const membersHTML = data.members.map(member => `
                         <div class="member-item">
                             <a href="/profile/${member.username}" class="member-username" data-username="${member.username}">@${member.username}</a>
@@ -3252,6 +3253,8 @@
                         link.addEventListener('click', function(e) {
                             e.preventDefault();
                             const username = this.dataset.username;
+                            console.log('Member clicked:', username);
+                            console.log('Navigating to:', `/profile/${username}`);
                             window.location.href = `/profile/${username}`;
                         });
                     });
