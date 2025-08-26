@@ -3263,7 +3263,7 @@ def check_duplicate_users():
                             <th>Subscriptions</th>
                             <th>Action</th>
                         </tr>
-                        {''.join([f"""
+                        {"".join([f'''
                         <tr>
                             <td>{dup[0]}</td>
                             <td>{dup[1]}</td>
@@ -3277,7 +3277,7 @@ def check_duplicate_users():
                                 </button>
                             </td>
                         </tr>
-                        """ for dup in duplicates])}
+                        ''' for dup in duplicates])}
                     </table>
                 </div>
                 ''' if duplicates else '''
@@ -3303,7 +3303,7 @@ def check_duplicate_users():
                             <th>Subscription</th>
                             <th>Created At</th>
                         </tr>
-                        {''.join([f"""
+                        {"".join([f'''
                         <tr>
                             <td>{record[0]}</td>
                             <td>{record[1]}</td>
@@ -3312,7 +3312,7 @@ def check_duplicate_users():
                             <td>{record[4] or 'N/A'}</td>
                             <td>{record[5] or 'N/A'}</td>
                         </tr>
-                        """ for record in admin_records])}
+                        ''' for record in admin_records])}
                     </table>
                     {f'''
                     <button class="fix-btn" onclick="if(confirm('This will keep the first admin record and delete the rest. Continue?')) window.location.href='/fix_duplicate_user/admin'">
