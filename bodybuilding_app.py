@@ -3169,6 +3169,90 @@ def check_duplicate_users():
             """)
             admin_records = c.fetchall()
             
+            # Build the duplicates table HTML
+            duplicates_html = ""
+            if duplicates:
+                duplicates_rows = []
+                for dup in duplicates:
+                    username = str(dup[0])
+                    count = str(dup[1])
+                    row_ids = str(dup[2])
+                    password_preview = str(dup[3])[:50] if dup[3] else ""
+                    emails = str(dup[4])
+                    subscriptions = str(dup[5])
+                    
+                    row_html = f'''
+                        <tr>
+                            <td>{username}</td>
+                            <td>{count}</td>
+                            <td>{row_ids}</td>
+                            <td class="password-cell">{password_preview}...</td>
+                            <td>{emails}</td>
+                            <td>{subscriptions}</td>
+                            <td>
+                                <button class="fix-btn" onclick="if(confirm('Keep only the first record and delete duplicates for {username}?')) window.location.href='/fix_duplicate_user/{username}'">
+                                    Fix Duplicates
+                                </button>
+                            </td>
+                        </tr>'''
+                    duplicates_rows.append(row_html)
+                
+                duplicates_html = f'''
+                <div class="section duplicate">
+                    <h2>⚠️ Duplicate Usernames Found ({len(duplicates)} usernames)</h2>
+                    <table>
+                        <tr>
+                            <th>Username</th>
+                            <th>Count</th>
+                            <th>Row IDs</th>
+                            <th>Passwords</th>
+                            <th>Emails</th>
+                            <th>Subscriptions</th>
+                            <th>Action</th>
+                        </tr>
+                        {"".join(duplicates_rows)}
+                    </table>
+                </div>'''
+            else:
+                duplicates_html = '''
+                <div class="section" style="border-left: 4px solid #4db6ac;">
+                    <h2>✅ No Duplicate Usernames Found</h2>
+                    <p>All usernames in the database are unique.</p>
+                </div>'''
+            
+            # Build admin records HTML
+            admin_rows = []
+            for record in admin_records:
+                row_id = str(record[0])
+                username = str(record[1])
+                email = str(record[2]) if record[2] else 'N/A'
+                password_preview = str(record[3])[:30] if record[3] else 'N/A'
+                subscription = str(record[4]) if record[4] else 'N/A'
+                created_at = str(record[5]) if record[5] else 'N/A'
+                
+                admin_row = f'''
+                        <tr>
+                            <td>{row_id}</td>
+                            <td>{username}</td>
+                            <td>{email}</td>
+                            <td class="password-cell">{password_preview}...</td>
+                            <td>{subscription}</td>
+                            <td>{created_at}</td>
+                        </tr>'''
+                admin_rows.append(admin_row)
+            
+            admin_warning = ''
+            admin_fix_button = ''
+            if len(admin_records) > 1:
+                admin_warning = '''
+                    <div class="warning">
+                        ⚠️ Found multiple records for admin account. There should only be 1.
+                    </div>'''
+                admin_fix_button = '''
+                    <button class="fix-btn" onclick="if(confirm('This will keep the first admin record and delete the rest. Continue?')) window.location.href='/fix_duplicate_user/admin'">
+                        Fix Admin Duplicates
+                    </button>'''
+            
             return f"""
             <!DOCTYPE html>
             <html>
@@ -3250,50 +3334,11 @@ def check_duplicate_users():
             <body>
                 <h1>Duplicate Users Check</h1>
                 
-                {f'''
-                <div class="section duplicate">
-                    <h2>⚠️ Duplicate Usernames Found ({len(duplicates)} usernames)</h2>
-                    <table>
-                        <tr>
-                            <th>Username</th>
-                            <th>Count</th>
-                            <th>Row IDs</th>
-                            <th>Passwords</th>
-                            <th>Emails</th>
-                            <th>Subscriptions</th>
-                            <th>Action</th>
-                        </tr>
-                        {"".join([f'''
-                        <tr>
-                            <td>{dup[0]}</td>
-                            <td>{dup[1]}</td>
-                            <td>{dup[2]}</td>
-                            <td class="password-cell">{str(dup[3])[:50]}...</td>
-                            <td>{dup[4]}</td>
-                            <td>{dup[5]}</td>
-                            <td>
-                                <button class="fix-btn" onclick="if(confirm(&quot;Keep only the first record and delete duplicates for {str(dup[0])}?&quot;)) window.location.href=&quot;/fix_duplicate_user/{str(dup[0])}&quot;">
-                                    Fix Duplicates
-                                </button>
-                            </td>
-                        </tr>
-                        ''' for dup in duplicates])}
-                    </table>
-                </div>
-                ''' if duplicates else '''
-                <div class="section" style="border-left: 4px solid #4db6ac;">
-                    <h2>✅ No Duplicate Usernames Found</h2>
-                    <p>All usernames in the database are unique.</p>
-                </div>
-                '''}
+                {duplicates_html}
     
                 <div class="section admin-records">
                     <h2>Admin Account Records ({len(admin_records)} records)</h2>
-                    {f'''
-                    <div class="warning">
-                        ⚠️ Found {len(admin_records)} records for admin account. There should only be 1.
-                    </div>
-                    ''' if len(admin_records) > 1 else ''}
+                    {admin_warning}
                     <table>
                         <tr>
                             <th>Row ID</th>
@@ -3303,22 +3348,9 @@ def check_duplicate_users():
                             <th>Subscription</th>
                             <th>Created At</th>
                         </tr>
-                        {"".join([f'''
-                        <tr>
-                            <td>{record[0]}</td>
-                            <td>{record[1]}</td>
-                            <td>{record[2] or 'N/A'}</td>
-                            <td class="password-cell">{str(record[3])[:30] if record[3] else 'N/A'}...</td>
-                            <td>{record[4] or 'N/A'}</td>
-                            <td>{record[5] or 'N/A'}</td>
-                        </tr>
-                        ''' for record in admin_records])}
+                        {"".join(admin_rows)}
                     </table>
-                    {f'''
-                    <button class="fix-btn" onclick="if(confirm(&quot;This will keep the first admin record and delete the rest. Continue?&quot;)) window.location.href=&quot;/fix_duplicate_user/admin&quot;">
-                        Fix Admin Duplicates
-                    </button>
-                    ''' if len(admin_records) > 1 else ''}
+                    {admin_fix_button}
                 </div>
                 
                 <div style="margin-top: 30px;">
