@@ -5568,6 +5568,14 @@ def community_feed(community_id):
             
             community = dict(community_row)
             
+            # Get parent community info if it exists
+            parent_community = None
+            if community.get('parent_community_id'):
+                c.execute("SELECT id, name, type FROM communities WHERE id = ?", (community['parent_community_id'],))
+                parent_row = c.fetchone()
+                if parent_row:
+                    parent_community = dict(parent_row)
+            
             # Get posts for this community
             c.execute("""
                 SELECT * FROM posts 
@@ -5648,6 +5656,7 @@ def community_feed(community_id):
             return render_template('community_feed.html', 
                                 posts=posts, 
                                 community=community,
+                                parent_community=parent_community,
                                 username=username)
             
     except Exception as e:
