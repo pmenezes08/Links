@@ -878,12 +878,12 @@
     <div id="passwordModal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
-                <h3>Update Password</h3>
+                <h3>Update Password for <span id="passwordModalUsername"></span></h3>
                 <span class="close" onclick="closePasswordModal()">&times;</span>
             </div>
             <form id="passwordForm" method="POST">
                 <input type="hidden" name="csrf_token" value="disabled">
-                <input type="hidden" name="username" id="passwordUsername">
+                <input type="hidden" name="username" id="passwordUsername" value="">
                 <div class="form-group">
                     <label for="newPassword">New Password:</label>
                     <input type="password" name="new_password" id="newPassword" required>
@@ -973,13 +973,19 @@
         
         // Modal functions
         function showPasswordModal(username) {
+            console.log('Opening password modal for:', username);
             $('#passwordUsername').val(username);
+            $('#passwordModalUsername').text(username);
             $('#passwordModal').show();
+            // Focus on password field
+            setTimeout(() => $('#newPassword').focus(), 100);
         }
         
         function closePasswordModal() {
             $('#passwordModal').hide();
             $('#passwordForm')[0].reset();
+            $('#passwordUsername').val('');
+            $('#passwordModalUsername').text('');
         }
         
         function showSubscriptionModal(username, currentSubscription) {
@@ -1136,6 +1142,19 @@
             
             const username = $('#passwordUsername').val();
             const newPassword = $('#newPassword').val();
+            
+            console.log('Form submission - Username:', username);
+            console.log('Form submission - Password length:', newPassword ? newPassword.length : 0);
+            
+            if (!username) {
+                showNotification('error', 'Username is missing. Please close and reopen the modal.');
+                return;
+            }
+            
+            if (!newPassword) {
+                showNotification('error', 'Please enter a new password.');
+                return;
+            }
             
             // Show loading state
             const submitBtn = $(this).find('button[type="submit"]');
