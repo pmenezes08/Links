@@ -862,16 +862,16 @@ def login_password():
                         return redirect(url_for('dashboard'))
                 else:
                     print("Password mismatch")
-                    return render_template('index.html', error="Incorrect password!")
+                    return render_template('login.html', username=username, error="Incorrect password. Please try again.")
             else:
                 print("User not found")
-                return render_template('index.html', error="Incorrect password!")
+                return render_template('login.html', username=username, error="Incorrect password. Please try again.")
         except Exception as e:
             print(f"Database error: {str(e)}")
             logger.error(f"Database error in login_password for {username}: {str(e)}")
             abort(500)
     print("Rendering login.html for GET request")
-    return render_template('login.html')
+    return render_template('login.html', username=username)
 
 @app.route('/dashboard')
 @login_required
