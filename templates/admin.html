@@ -560,6 +560,69 @@
                 max-height: 90vh;
             }
         }
+        
+        /* Notification Styles */
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 15px 20px;
+            border-radius: 8px;
+            background: #1a2526;
+            border: 1px solid #333;
+            color: #ffffff;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            z-index: 10000;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            animation: slideIn 0.3s ease;
+            max-width: 400px;
+        }
+        
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+        
+        .notification.success {
+            border-color: #4db6ac;
+            background: linear-gradient(135deg, rgba(77, 182, 172, 0.1), rgba(45, 138, 126, 0.1));
+        }
+        
+        .notification.success i {
+            color: #4db6ac;
+        }
+        
+        .notification.error {
+            border-color: #e74c3c;
+            background: linear-gradient(135deg, rgba(231, 76, 60, 0.1), rgba(192, 57, 43, 0.1));
+        }
+        
+        .notification.error i {
+            color: #e74c3c;
+        }
+        
+        .notification-close {
+            background: none;
+            border: none;
+            color: #999;
+            font-size: 20px;
+            cursor: pointer;
+            padding: 0;
+            margin-left: auto;
+            line-height: 1;
+        }
+        
+        .notification-close:hover {
+            color: #fff;
+        }
     </style>
 </head>
 <body class="admin-page">
@@ -916,6 +979,7 @@
         
         function closePasswordModal() {
             $('#passwordModal').hide();
+            $('#passwordForm')[0].reset();
         }
         
         function showSubscriptionModal(username, currentSubscription) {
@@ -1065,6 +1129,67 @@
                 $('.modal').hide();
             }
         });
+        
+        // Handle password form submission
+        $('#passwordForm').on('submit', function(e) {
+            e.preventDefault();
+            
+            const username = $('#passwordUsername').val();
+            const newPassword = $('#newPassword').val();
+            
+            // Show loading state
+            const submitBtn = $(this).find('button[type="submit"]');
+            const originalText = submitBtn.html();
+            submitBtn.html('<i class="fas fa-spinner fa-spin"></i> Updating...').prop('disabled', true);
+            
+            $.ajax({
+                url: '/update_user_password',
+                method: 'POST',
+                data: {
+                    username: username,
+                    new_password: newPassword
+                },
+                success: function(response) {
+                    if (response.success) {
+                        // Show success notification
+                        showNotification('success', `Password updated successfully for ${username}!`);
+                        closePasswordModal();
+                    } else {
+                        showNotification('error', response.error || 'Failed to update password');
+                    }
+                },
+                error: function(xhr) {
+                    showNotification('error', 'Server error. Please try again.');
+                },
+                complete: function() {
+                    // Restore button state
+                    submitBtn.html(originalText).prop('disabled', false);
+                }
+            });
+        });
+        
+        // Notification function
+        function showNotification(type, message) {
+            // Remove any existing notifications
+            $('.notification').remove();
+            
+            const notificationHtml = `
+                <div class="notification ${type}">
+                    <i class="fas fa-${type === 'success' ? 'check-circle' : 'exclamation-circle'}"></i>
+                    <span>${message}</span>
+                    <button class="notification-close" onclick="$(this).parent().fadeOut()">&times;</button>
+                </div>
+            `;
+            
+            $('body').append(notificationHtml);
+            
+            // Auto-hide after 5 seconds
+            setTimeout(function() {
+                $('.notification').fadeOut(function() {
+                    $(this).remove();
+                });
+            }, 5000);
+        }
     </script>
 </body>
 </html>
