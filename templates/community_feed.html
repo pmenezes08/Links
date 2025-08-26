@@ -140,14 +140,14 @@
         /* Compact Polls Sidebar */
         .polls-sidebar {
             position: fixed;
-            left: 220px;
+            right: 20px;
             top: 80px;
-            width: 260px;
-            max-height: 500px;
+            width: 320px;
+            max-height: 600px;
             background: linear-gradient(135deg, {{ community.card_color or '#1a3d3a' }} 0%, {{ community.background_color or '#0f2725' }} 100%);
             border-radius: 12px;
             border: 1px solid rgba(255, 255, 255, 0.1);
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
             z-index: 99;
             transition: all 0.3s ease;
             overflow: hidden;
@@ -155,7 +155,7 @@
         
         .polls-sidebar.collapsed {
             opacity: 0;
-            transform: translateX(-280px);
+            transform: translateX(340px);
             pointer-events: none;
         }
         
@@ -197,7 +197,7 @@
         
         .sidebar-polls-list {
             padding: 10px;
-            max-height: 430px;
+            max-height: 530px;
             overflow-y: auto;
         }
         
@@ -295,6 +295,12 @@
                 padding: 10px 15px;
             }
             
+            .polls-sidebar {
+                right: 10px;
+                width: calc(100% - 20px);
+                max-width: 320px;
+            }
+            
             .premium-header > div {
                 flex-direction: column !important;
                 align-items: flex-start !important;
@@ -384,12 +390,29 @@
             font-size: 12px;
             display: flex;
             align-items: center;
+            justify-content: space-between;
             gap: 4px;
         }
         
         .poll-question-compact i {
             color: {{ community.accent_color or '#4db6ac' }};
             font-size: 10px;
+        }
+        
+        .close-poll-btn-compact {
+            background: transparent;
+            border: none;
+            color: rgba(255, 255, 255, 0.5);
+            cursor: pointer;
+            padding: 2px 4px;
+            font-size: 12px;
+            transition: all 0.2s ease;
+            margin-left: auto;
+        }
+        
+        .close-poll-btn-compact:hover {
+            color: #ef5350;
+            transform: scale(1.1);
         }
         
         .poll-options-compact {
@@ -2793,8 +2816,9 @@
                 .then(data => {
                     if (data.success) {
                         alert('Poll closed successfully!');
-                        // Reload active polls
+                        // Reload active polls in both modal and sidebar
                         loadActivePolls();
+                        loadSidebarPolls();
                     } else {
                         alert('Error closing poll: ' + data.error);
                     }
@@ -4253,6 +4277,11 @@
                                 <div class="sidebar-poll-item">
                                     <div class="poll-question-compact">
                                         <i class="fas fa-poll-h"></i> ${poll.question}
+                                        ${(poll.created_by === '{{ username }}' || '{{ username }}' === 'admin') ? 
+                                            `<button class="close-poll-btn-compact" onclick="closePoll(${poll.id})" title="Close Poll">
+                                                <i class="fas fa-times-circle"></i>
+                                            </button>` : ''
+                                        }
                                     </div>
                                     <div class="poll-options-compact">
                                         ${poll.options.map(option => `
