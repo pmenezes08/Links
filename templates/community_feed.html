@@ -1261,10 +1261,13 @@
             color: {{ community.text_color or '#ffffff' }};
             text-decoration: none;
             flex: 1;
+            cursor: pointer;
+            transition: all 0.2s ease;
         }
         
         .member-username:hover {
             color: {{ community.accent_color or '#2d8a7e' }};
+            text-decoration: underline;
         }
         
         .remove-member-btn {
@@ -3236,8 +3239,8 @@
                 if (data.success) {
                     const membersList = document.getElementById('membersList');
                     const membersHTML = data.members.map(member => `
-                        <div class="member-item" onclick="goToProfile('${member.username}', event)">
-                            <a href="/profile/${member.username}" class="member-username">@${member.username}</a>
+                        <div class="member-item">
+                            <a href="/profile/${member.username}" class="member-username" onclick="event.stopPropagation()">@${member.username}</a>
                             ${member.username !== '{{ username }}' && ('{{ username }}' === '{{ community.creator_username }}' || '{{ username }}' === 'admin') ? 
                                 `<button onclick="removeMember('${member.username}', event)" class="remove-member-btn">Remove</button>` : ''}
                         </div>
@@ -3254,14 +3257,7 @@
             });
         }
         
-        function goToProfile(username, event) {
-            // If clicking on the remove button, don't navigate
-            if (event.target.classList.contains('remove-member-btn')) {
-                return;
-            }
-            // Navigate to profile page
-            window.location.href = `/profile/${username}`;
-        }
+
         
         function switchMembersTab(tabName) {
             // Remove active class from all tabs and content
