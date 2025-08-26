@@ -39,12 +39,12 @@
 			margin: 0 auto;
 			display: flex;
 			gap: 20px;
-			height: calc(100vh - 100px);
+			min-height: calc(100vh - 100px);
 		}
 		
-		/* User List Panel */
-		.user-list-panel {
-			width: 300px;
+		/* Communities List Panel */
+		.communities-list-panel {
+			width: 350px;
 			background: rgba(255, 255, 255, 0.03);
 			border: 1px solid rgba(255, 255, 255, 0.1);
 			border-radius: 8px;
@@ -53,34 +53,91 @@
 			flex-direction: column;
 		}
 		
-		.user-list-header {
+		.communities-header {
 			padding: 15px;
 			background: rgba(0, 0, 0, 0.3);
 			border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 		}
 		
-		.user-search {
-			width: 100%;
-			padding: 8px 12px;
-			background: rgba(255, 255, 255, 0.05);
-			border: 1px solid rgba(255, 255, 255, 0.1);
-			border-radius: 6px;
-			color: #ffffff;
-			font-size: 14px;
+		.communities-header h3 {
+			color: #4db6ac;
+			font-size: 16px;
+			font-weight: 600;
+			margin: 0;
+			display: flex;
+			align-items: center;
+			gap: 8px;
 		}
 		
-		.user-list {
+		.communities-list {
 			flex: 1;
 			overflow-y: auto;
 			padding: 10px;
 		}
 		
+		.community-section {
+			margin-bottom: 10px;
+			background: rgba(255, 255, 255, 0.02);
+			border: 1px solid rgba(255, 255, 255, 0.08);
+			border-radius: 6px;
+			overflow: hidden;
+		}
+		
+		.community-header-btn {
+			width: 100%;
+			padding: 12px;
+			background: rgba(77, 182, 172, 0.1);
+			border: none;
+			color: #ffffff;
+			font-size: 14px;
+			font-weight: 500;
+			text-align: left;
+			cursor: pointer;
+			transition: all 0.2s ease;
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+		}
+		
+		.community-header-btn:hover {
+			background: rgba(77, 182, 172, 0.2);
+		}
+		
+		.community-header-btn.active {
+			background: rgba(77, 182, 172, 0.25);
+		}
+		
+		.community-name {
+			display: flex;
+			align-items: center;
+			gap: 8px;
+		}
+		
+		.community-arrow {
+			transition: transform 0.2s ease;
+			color: rgba(255, 255, 255, 0.6);
+		}
+		
+		.community-header-btn.active .community-arrow {
+			transform: rotate(90deg);
+		}
+		
+		.community-users {
+			display: none;
+			padding: 5px;
+			background: rgba(0, 0, 0, 0.2);
+		}
+		
+		.community-users.show {
+			display: block;
+		}
+		
 		.user-item {
 			display: flex;
 			align-items: center;
-			padding: 10px;
-			margin-bottom: 5px;
-			background: rgba(255, 255, 255, 0.05);
+			padding: 8px 10px;
+			margin: 3px 5px;
+			background: rgba(255, 255, 255, 0.03);
 			border-radius: 6px;
 			cursor: pointer;
 			transition: all 0.2s ease;
@@ -88,24 +145,25 @@
 		}
 		
 		.user-item:hover {
-			background: rgba(77, 182, 172, 0.2);
+			background: rgba(77, 182, 172, 0.15);
+			transform: translateX(3px);
 		}
 		
 		.user-item.active {
-			background: rgba(77, 182, 172, 0.3);
-			border: 1px solid rgba(77, 182, 172, 0.5);
+			background: rgba(77, 182, 172, 0.25);
+			border-left: 3px solid #4db6ac;
 		}
 		
 		.user-avatar {
-			width: 40px;
-			height: 40px;
+			width: 35px;
+			height: 35px;
 			border-radius: 50%;
 			background: rgba(255, 255, 255, 0.1);
 			display: flex;
 			align-items: center;
 			justify-content: center;
-			margin-right: 12px;
-			font-size: 18px;
+			margin-right: 10px;
+			font-size: 16px;
 			color: #4db6ac;
 		}
 		
@@ -174,6 +232,7 @@
 			padding: 20px;
 			display: flex;
 			flex-direction: column;
+			max-height: calc(100vh - 280px);
 		}
 		
 		.message {
@@ -239,18 +298,19 @@
 		}
 		
 		.send-btn {
-			padding: 10px 20px;
+			padding: 12px 24px;
 			background: #4db6ac;
 			color: #ffffff;
 			border: none;
 			border-radius: 6px;
-			font-size: 14px;
+			font-size: 15px;
 			font-weight: 500;
 			cursor: pointer;
 			transition: all 0.2s ease;
 			display: flex;
 			align-items: center;
-			gap: 6px;
+			gap: 8px;
+			white-space: nowrap;
 		}
 		
 		.send-btn:hover {
@@ -292,9 +352,9 @@
 				height: auto;
 			}
 			
-			.user-list-panel {
+			.communities-list-panel {
 				width: 100%;
-				max-height: 200px;
+				max-height: 300px;
 			}
 			
 			.chat-panel {
@@ -329,16 +389,16 @@
 	
 	<div class="container">
 		<div class="messages-main-content">
-			<!-- User List Panel -->
-			<div class="user-list-panel">
-				<div class="user-list-header">
-					<input type="text" class="user-search" placeholder="Search users..." id="userSearch">
+			<!-- Communities List Panel -->
+			<div class="communities-list-panel">
+				<div class="communities-header">
+					<h3><i class="fas fa-layer-group"></i> Your Communities</h3>
 				</div>
-				<div class="user-list" id="userList">
-					<!-- Users will be loaded here -->
-					<div class="empty-state">
-						<i class="fas fa-users"></i>
-						<p>Loading users...</p>
+				<div class="communities-list" id="communitiesList">
+					<!-- Communities and users will be loaded here -->
+					<div class="empty-state" id="loadingState">
+						<i class="fas fa-spinner fa-spin"></i>
+						<p>Loading communities...</p>
 					</div>
 				</div>
 			</div>
@@ -359,51 +419,97 @@
 	<script src="{{ url_for('static', filename='script.js') }}"></script>
 	<script>
 		let currentChatUser = null;
-		let messages = {};
+		let currentChatUsername = null;
+		let communitiesData = {};
 		
 		$(document).ready(function() {
-			loadUsers();
-			
-			// Search functionality
-			$('#userSearch').on('input', function() {
-				const searchTerm = $(this).val().toLowerCase();
-				$('.user-item').each(function() {
-					const userName = $(this).find('.user-name').text().toLowerCase();
-					$(this).toggle(userName.includes(searchTerm));
-				});
-			});
+			loadUserCommunities();
 		});
 		
-		function loadUsers() {
-			// This should be replaced with an actual API call
-			const users = [
-				{id: 1, name: 'John Doe', status: 'Online', unread: 2},
-				{id: 2, name: 'Jane Smith', status: 'Offline', unread: 0},
-				{id: 3, name: 'Mike Johnson', status: 'Online', unread: 1},
-			];
+		function loadUserCommunities() {
+			$.ajax({
+				url: '/get_user_communities_with_members',
+				method: 'GET',
+				success: function(response) {
+					if (response.success && response.communities) {
+						displayCommunities(response.communities);
+					} else {
+						$('#loadingState').html(`
+							<i class="fas fa-exclamation-circle"></i>
+							<p>No communities found</p>
+							<p style="font-size: 12px; margin-top: 10px;">Join a community to start messaging</p>
+						`);
+					}
+				},
+				error: function() {
+					$('#loadingState').html(`
+						<i class="fas fa-exclamation-triangle"></i>
+						<p>Error loading communities</p>
+					`);
+				}
+			});
+		}
+		
+		function displayCommunities(communities) {
+			const container = $('#communitiesList');
+			container.empty();
 			
-			const userList = $('#userList');
-			userList.empty();
+			if (!communities || communities.length === 0) {
+				container.html(`
+					<div class="empty-state">
+						<i class="fas fa-users-slash"></i>
+						<p>No communities joined</p>
+						<p style="font-size: 12px; margin-top: 10px;">Join a community to connect with members</p>
+					</div>
+				`);
+				return;
+			}
 			
-			users.forEach(user => {
-				const userHtml = `
-					<div class="user-item" data-user-id="${user.id}" onclick="selectUser(${user.id}, '${user.name}')">
-						<div class="user-avatar">
-							<i class="fas fa-user"></i>
+			communities.forEach(community => {
+				const communityHtml = `
+					<div class="community-section" data-community-id="${community.id}">
+						<button class="community-header-btn" onclick="toggleCommunity(${community.id})">
+							<div class="community-name">
+								<i class="fas fa-users"></i>
+								<span>${community.name}</span>
+								<span style="color: rgba(255,255,255,0.5); font-size: 12px;">(${community.members ? community.members.length : 0})</span>
+							</div>
+							<i class="fas fa-chevron-right community-arrow"></i>
+						</button>
+						<div class="community-users" id="community-users-${community.id}">
+							${community.members && community.members.length > 0 ? 
+								community.members.map(member => `
+									<div class="user-item" data-user-id="${member.id}" data-username="${member.username}" onclick="selectUser(${member.id}, '${member.username}')">
+										<div class="user-avatar">
+											<i class="fas fa-user"></i>
+										</div>
+										<div class="user-info">
+											<div class="user-name">${member.username}</div>
+											<div class="user-status">${member.online ? 'Online' : 'Offline'}</div>
+										</div>
+									</div>
+								`).join('') : 
+								'<div style="padding: 10px; color: rgba(255,255,255,0.5); text-align: center; font-size: 12px;">No members yet</div>'
+							}
 						</div>
-						<div class="user-info">
-							<div class="user-name">${user.name}</div>
-							<div class="user-status">${user.status}</div>
-						</div>
-						${user.unread > 0 ? `<span class="unread-indicator">${user.unread}</span>` : ''}
 					</div>
 				`;
-				userList.append(userHtml);
+				container.append(communityHtml);
+				communitiesData[community.id] = community;
 			});
+		}
+		
+		function toggleCommunity(communityId) {
+			const btn = $(`.community-section[data-community-id="${communityId}"] .community-header-btn`);
+			const users = $(`#community-users-${communityId}`);
+			
+			btn.toggleClass('active');
+			users.toggleClass('show');
 		}
 		
 		function selectUser(userId, userName) {
 			currentChatUser = userId;
+			currentChatUsername = userName;
 			
 			// Update active state
 			$('.user-item').removeClass('active');
@@ -420,7 +526,10 @@
 					</div>
 				</div>
 				<div class="messages-area" id="messagesArea">
-					<!-- Messages will be loaded here -->
+					<div class="empty-state">
+						<i class="fas fa-spinner fa-spin"></i>
+						<p>Loading messages...</p>
+					</div>
 				</div>
 				<div class="message-input-area">
 					<form class="message-input-form" onsubmit="sendMessage(event)">
@@ -433,34 +542,55 @@
 			`;
 			
 			$('#chatContent').html(chatHtml);
-			loadMessages(userId);
+			loadMessages(userId, userName);
 		}
 		
-		function loadMessages(userId) {
-			// This should be replaced with an actual API call
-			const sampleMessages = [
-				{id: 1, text: 'Hey, how are you?', sent: false, time: '10:30 AM'},
-				{id: 2, text: "I'm good, thanks! How about you?", sent: true, time: '10:32 AM'},
-				{id: 3, text: 'Doing great! Want to workout together?', sent: false, time: '10:35 AM'},
-			];
-			
-			const messagesArea = $('#messagesArea');
-			messagesArea.empty();
-			
-			sampleMessages.forEach(msg => {
-				const messageHtml = `
-					<div class="message ${msg.sent ? 'sent' : 'received'}">
-						<div class="message-content">
-							<div class="message-text">${msg.text}</div>
-							<div class="message-time">${msg.time}</div>
+		function loadMessages(userId, userName) {
+			$.ajax({
+				url: '/get_messages',
+				method: 'POST',
+				data: {
+					other_user_id: userId,
+					csrf_token: 'disabled'
+				},
+				success: function(response) {
+					const messagesArea = $('#messagesArea');
+					messagesArea.empty();
+					
+					if (response.success && response.messages && response.messages.length > 0) {
+						response.messages.forEach(msg => {
+							const messageHtml = `
+								<div class="message ${msg.sent ? 'sent' : 'received'}">
+									<div class="message-content">
+										<div class="message-text">${msg.text}</div>
+										<div class="message-time">${msg.time || 'Just now'}</div>
+									</div>
+								</div>
+							`;
+							messagesArea.append(messageHtml);
+						});
+					} else {
+						messagesArea.html(`
+							<div class="empty-state">
+								<i class="fas fa-comments"></i>
+								<p>No messages yet</p>
+								<p style="font-size: 12px; margin-top: 10px;">Start the conversation with ${userName}</p>
+							</div>
+						`);
+					}
+					
+					// Scroll to bottom
+					messagesArea.scrollTop(messagesArea[0].scrollHeight);
+				},
+				error: function() {
+					$('#messagesArea').html(`
+						<div class="empty-state">
+							<i class="fas fa-exclamation-triangle"></i>
+							<p>Error loading messages</p>
 						</div>
-					</div>
-				`;
-				messagesArea.append(messageHtml);
+					`);
+				}
 			});
-			
-			// Scroll to bottom
-			messagesArea.scrollTop(messagesArea[0].scrollHeight);
 		}
 		
 		function sendMessage(event) {
@@ -469,26 +599,59 @@
 			const message = input.val().trim();
 			
 			if (message && currentChatUser) {
-				// Add message to UI
-				const messageHtml = `
-					<div class="message sent">
+				// Add message to UI immediately (optimistic update)
+				const tempMessageHtml = `
+					<div class="message sent temp-message">
 						<div class="message-content">
 							<div class="message-text">${message}</div>
-							<div class="message-time">Now</div>
+							<div class="message-time">Sending...</div>
 						</div>
 					</div>
 				`;
 				
-				$('#messagesArea').append(messageHtml);
+				// Remove empty state if it exists
+				$('#messagesArea .empty-state').remove();
+				
+				$('#messagesArea').append(tempMessageHtml);
 				$('#messagesArea').scrollTop($('#messagesArea')[0].scrollHeight);
 				
 				// Clear input
 				input.val('');
 				
-				// Here you would send the message to the server
-				// $.ajax({...});
+				// Send to server
+				$.ajax({
+					url: '/send_message',
+					method: 'POST',
+					data: {
+						recipient_id: currentChatUser,
+						message: message,
+						csrf_token: 'disabled'
+					},
+					success: function(response) {
+						if (response.success) {
+							// Update the temporary message
+							$('.temp-message').removeClass('temp-message').find('.message-time').text('Just now');
+						} else {
+							// Remove failed message
+							$('.temp-message').remove();
+							alert('Failed to send message: ' + (response.error || 'Unknown error'));
+						}
+					},
+					error: function() {
+						// Remove failed message
+						$('.temp-message').remove();
+						alert('Error sending message. Please try again.');
+					}
+				});
 			}
 		}
+		
+		// Auto-refresh messages periodically when a chat is open
+		setInterval(function() {
+			if (currentChatUser) {
+				loadMessages(currentChatUser, currentChatUsername);
+			}
+		}, 10000); // Refresh every 10 seconds
 	</script>
 </body>
 </html>
