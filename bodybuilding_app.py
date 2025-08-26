@@ -4214,9 +4214,10 @@ def get_user_communities_with_members():
             for community in communities:
                 # Get members of each community with profile pictures
                 c.execute("""
-                    SELECT u.rowid as id, u.username, u.profile_pic
+                    SELECT u.rowid as id, u.username, p.profile_picture
                     FROM users u
                     JOIN user_communities uc ON u.rowid = uc.user_id
+                    LEFT JOIN user_profiles p ON u.username = p.username
                     WHERE uc.community_id = ? AND u.username != ?
                     ORDER BY u.username
                 """, (community['id'], username))
@@ -4226,7 +4227,7 @@ def get_user_communities_with_members():
                     members.append({
                         'id': member['id'],
                         'username': member['username'],
-                        'profile_pic': member['profile_pic'] if member['profile_pic'] else None,
+                        'profile_pic': member['profile_picture'] if member.get('profile_picture') else None,
                         'online': False  # You can implement online status tracking later
                     })
                 

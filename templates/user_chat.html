@@ -518,12 +518,10 @@
 		});
 		
 		function loadUserCommunities() {
-			console.log('Loading user communities...');
 			$.ajax({
 				url: '/get_user_communities_with_members',
 				method: 'GET',
 				success: function(response) {
-					console.log('Communities response:', response);
 					if (response.success && response.communities) {
 						displayCommunities(response.communities);
 					} else {
@@ -535,12 +533,9 @@
 					}
 				},
 				error: function(xhr, status, error) {
-					console.error('Error loading communities:', error);
-					console.error('Response:', xhr.responseText);
 					$('#loadingState').html(`
 						<i class="fas fa-exclamation-triangle"></i>
 						<p>Error loading communities</p>
-						<p style="font-size: 12px; margin-top: 10px;">${error}</p>
 					`);
 				}
 			});
@@ -577,7 +572,7 @@
 								community.members.map(member => {
 									const profilePicParam = member.profile_pic ? `'${member.profile_pic}'` : "''";
 									const avatarHtml = member.profile_pic ? 
-										`<img src="/static/uploads/${member.profile_pic}" alt="${member.username}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">` :
+										`<img src="/static/${member.profile_pic}" alt="${member.username}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">` :
 										`<i class="fas fa-user"></i>`;
 									
 									return `
@@ -624,7 +619,7 @@
 					<div class="chat-user-info">
 						<div class="user-avatar" style="margin-right: 12px;">
 							${profilePic ? 
-								`<img src="/static/uploads/${profilePic}" alt="${userName}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">` :
+								`<img src="/static/${profilePic}" alt="${userName}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">` :
 								`<i class="fas fa-user"></i>`
 							}
 						</div>
