@@ -14,8 +14,8 @@
             top: 0; 
             left: 200px; 
             right: 0; 
-            height: 60px; 
-            padding: 10px 20px;
+            height: 50px; 
+            padding: 8px 20px;
             background: #000000; 
             border-bottom: 1px solid #333333; 
             z-index: 900;
@@ -28,7 +28,7 @@
         .main-layout-container {
             max-width: 800px;
             margin: 0 auto;
-            padding: 80px 20px 20px 20px;
+            padding: 70px 20px 20px 20px;
             margin-left: 200px;
         }
         
@@ -83,9 +83,9 @@
         .sidebar-header { 
             display: flex; 
             align-items: center; 
-            padding: 10px; 
+            padding: 8px; 
             border-bottom: 1px solid #333333; 
-            height: 60px; 
+            height: 50px; 
             box-sizing: border-box; 
         }
         
@@ -102,7 +102,7 @@
             display: flex; 
             align-items: center; 
             color: #ffffff; 
-            font-size: 16px; 
+            font-size: 14px; 
             font-weight: 600; 
             padding-left: 10px; 
             overflow: hidden; 
@@ -123,25 +123,25 @@
         
         .sidebar-menu a { 
             display: block !important; 
-            padding: 12px 20px !important; 
+            padding: 10px 18px !important; 
             color: #ffffff !important; 
             text-decoration: none !important; 
             transition: all 0.3s ease !important; 
             border: none !important; 
-            font-size: 14px !important; 
+            font-size: 13px !important; 
         }
         
         .sidebar-menu a:hover { 
-            background: rgba(77, 182, 172, 0.2) !important; 
+            background: rgba(77, 182, 172, 0.15) !important; 
             color: #4db6ac !important; 
-            padding-left: 25px !important; 
+            padding-left: 22px !important; 
         }
         
         /* Compact Polls Sidebar */
         .polls-sidebar {
             position: fixed;
             left: 220px;
-            top: 80px;
+            top: 70px;
             width: 260px;
             max-height: 500px;
             background: linear-gradient(135deg, {{ community.card_color or '#1a3d3a' }} 0%, {{ community.background_color or '#0f2725' }} 100%);
@@ -245,7 +245,7 @@
             }
             
             .premium-header h1 {
-                font-size: 20px !important;
+                font-size: 16px !important;
             }
             
             .main-layout-container {
@@ -3700,22 +3700,22 @@
     <!-- Premium Header (matching dashboard) -->
     <div class="premium-header">
         <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
-            <div style="display: flex; align-items: center; gap: 20px;">
-                <h1 style="color: #ffffff; font-size: 24px; font-weight: 600; margin: 0;">{{ community.name }}</h1>
-                <span style="color: rgba(255,255,255,0.6); font-size: 14px;">{{ community.type }} Community</span>
+            <div style="display: flex; align-items: center; gap: 15px;">
+                <h1 style="color: #ffffff; font-size: 18px; font-weight: 600; margin: 0;">{{ community.name }}</h1>
+                <span style="color: rgba(255,255,255,0.6); font-size: 12px;">{{ community.type }} Community</span>
             </div>
             {% if parent_community %}
-            <div class="parent-community-link" style="display: flex; align-items: center; gap: 8px;">
+            <div class="parent-community-link" style="display: flex; align-items: center; gap: 6px;">
                 <a href="/community_feed/{{ parent_community.id }}" 
                    class="parent-link"
-                   style="color: #4db6ac; text-decoration: none; font-size: 14px; font-weight: 500; padding: 5px 14px; background: rgba(77, 182, 172, 0.1); border-radius: 20px; transition: all 0.2s ease; display: flex; align-items: center; gap: 6px;"
+                   style="color: #4db6ac; text-decoration: none; font-size: 12px; font-weight: 500; padding: 4px 10px; background: rgba(77, 182, 172, 0.1); border-radius: 16px; transition: all 0.2s ease; display: flex; align-items: center; gap: 5px;"
                    onmouseover="this.style.background='rgba(77, 182, 172, 0.2)'; this.style.transform='translateY(-1px)'"
                    onmouseout="this.style.background='rgba(77, 182, 172, 0.1)'; this.style.transform='translateY(0)'">
-                    <i class="fas fa-arrow-left" style="font-size: 11px;"></i>
+                    <i class="fas fa-arrow-left" style="font-size: 10px;"></i>
                     {% if parent_community.type == 'University' %}
-                    <i class="fas fa-university" style="font-size: 12px;"></i>
+                    <i class="fas fa-university" style="font-size: 11px;"></i>
                     {% else %}
-                    <i class="fas fa-layer-group" style="font-size: 12px;"></i>
+                    <i class="fas fa-layer-group" style="font-size: 11px;"></i>
                     {% endif %}
                     <span>{{ parent_community.name }}</span>
                 </a>
