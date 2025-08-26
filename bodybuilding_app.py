@@ -2339,23 +2339,28 @@ def business_register():
 
 @app.route('/business_login', methods=['GET', 'POST'])
 def business_login():
-    if request.method == 'POST':
-        email = request.form.get('email')
-        password = request.form.get('password')
-        try:
-            with get_db_connection() as conn:
-                c = conn.cursor()
-                c.execute("SELECT business_id, name, password FROM businesses WHERE email=?", (email,))
-                business = c.fetchone()
-            if business and business['password'] == password:
-                session['business_id'] = business['business_id']
-                session['business_name'] = business['name']
-                return redirect(url_for('business_dashboard'))
-            return render_template('index.html', error="Invalid email or password!")
-        except Exception as e:
-            logger.error(f"Error in business_login: {str(e)}")
-            abort(500)
-    return render_template('business_login.html')
+    # Business login temporarily disabled
+    flash('Business login is not available at this time.', 'error')
+    return redirect(url_for('index'))
+    
+    # Original code preserved for future use:
+    # if request.method == 'POST':
+    #     email = request.form.get('email')
+    #     password = request.form.get('password')
+    #     try:
+    #         with get_db_connection() as conn:
+    #             c = conn.cursor()
+    #             c.execute("SELECT business_id, name, password FROM businesses WHERE email=?", (email,))
+    #             business = c.fetchone()
+    #         if business and business['password'] == password:
+    #             session['business_id'] = business['business_id']
+    #             session['business_name'] = business['name']
+    #             return redirect(url_for('business_dashboard'))
+    #         return render_template('index.html', error="Invalid email or password!")
+    #     except Exception as e:
+    #         logger.error(f"Error in business_login: {str(e)}")
+    #         abort(500)
+    # return render_template('business_login.html')
 
 @app.route('/business_dashboard')
 @business_login_required
