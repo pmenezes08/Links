@@ -248,6 +248,46 @@
             animation: pulse 2s infinite;
         }
         
+        /* Custom Tooltips for header icons */
+        .header-icon-btn {
+            position: relative !important;
+        }
+        
+        .header-icon-btn .tooltip-text {
+            visibility: hidden;
+            background-color: rgba(0, 0, 0, 0.9);
+            color: white;
+            text-align: center;
+            padding: 5px 10px;
+            border-radius: 6px;
+            position: absolute;
+            z-index: 1001;
+            top: calc(100% + 8px);
+            left: 50%;
+            transform: translateX(-50%);
+            white-space: nowrap;
+            font-size: 12px;
+            opacity: 0;
+            transition: opacity 0.3s;
+            pointer-events: none;
+        }
+        
+        .header-icon-btn .tooltip-text::after {
+            content: "";
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            margin-left: -5px;
+            border-width: 5px;
+            border-style: solid;
+            border-color: transparent transparent rgba(0, 0, 0, 0.9) transparent;
+        }
+        
+        .header-icon-btn:hover .tooltip-text {
+            visibility: visible;
+            opacity: 1;
+        }
+        
         /* Responsive styles for mobile */
         @media (max-width: 768px) {
             .premium-header {
@@ -3757,9 +3797,9 @@
                        class="header-icon-btn"
                        style="position: relative; display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; background: rgba(255,255,255,0.05); border-radius: 50%; color: rgba(255,255,255,0.7); text-decoration: none; transition: all 0.2s ease;"
                        onmouseover="this.style.background='rgba(255,255,255,0.1)'; this.style.color='#ffffff'"
-                       onmouseout="this.style.background='rgba(255,255,255,0.05)'; this.style.color='rgba(255,255,255,0.7)'"
-                       title="Messages">
+                       onmouseout="this.style.background='rgba(255,255,255,0.05)'; this.style.color='rgba(255,255,255,0.7)'">
                         <i class="fas fa-comment" style="font-size: 14px;"></i>
+                        <span class="tooltip-text">Messages</span>
                         {% if unread_messages > 0 %}
                         <span class="notification-badge" style="position: absolute; top: -2px; right: -2px; background: #ef5350; color: white; font-size: 10px; min-width: 16px; height: 16px; border-radius: 8px; display: flex; align-items: center; justify-content: center; padding: 0 4px; font-weight: 600;">{{ unread_messages if unread_messages < 10 else '9+' }}</span>
                         {% endif %}
@@ -3770,9 +3810,9 @@
                        class="header-icon-btn"
                        style="position: relative; display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; background: rgba(255,255,255,0.05); border-radius: 50%; color: rgba(255,255,255,0.7); text-decoration: none; transition: all 0.2s ease;"
                        onmouseover="this.style.background='rgba(255,255,255,0.1)'; this.style.color='#ffffff'"
-                       onmouseout="this.style.background='rgba(255,255,255,0.05)'; this.style.color='rgba(255,255,255,0.7)'"
-                       title="Notifications">
+                       onmouseout="this.style.background='rgba(255,255,255,0.05)'; this.style.color='rgba(255,255,255,0.7)'">
                         <i class="fas fa-bell" style="font-size: 14px;"></i>
+                        <span class="tooltip-text">Notifications</span>
                         {% if unread_notifications > 0 %}
                         <span class="notification-badge" style="position: absolute; top: -2px; right: -2px; background: #ef5350; color: white; font-size: 10px; min-width: 16px; height: 16px; border-radius: 8px; display: flex; align-items: center; justify-content: center; padding: 0 4px; font-weight: 600;">{{ unread_notifications if unread_notifications < 10 else '9+' }}</span>
                         {% endif %}
