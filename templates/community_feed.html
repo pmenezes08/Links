@@ -31,7 +31,7 @@
         
         /* Main layout - centered with header offset */
         .main-layout-container {
-            max-width: 1200px;
+            max-width: 800px;
             margin: 0 auto;
             padding: 80px 20px 20px 20px;
             margin-left: 200px;
@@ -332,6 +332,11 @@
                 max-width: 100%;
                 padding-left: 10px;
                 padding-right: 10px;
+            }
+            
+            .community-actions {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 8px;
             }
             
             .sidebar {
@@ -736,13 +741,13 @@
         .container.feed {
             background-color: {{ '#ffffff' if community.template == 'light' else '#000000' }};
             padding: 10px;
-            max-width: 100%;
+            max-width: 90%;
             margin: 10px auto;
         }
         
         .community-header-image {
             width: 100%;
-            max-width: 100%;
+            max-width: 800px;
             margin: 0 auto 20px auto;
             border-radius: 12px;
             overflow: hidden;
@@ -855,36 +860,34 @@
             color: #6c757d !important;
         }
         
-        .members-btn, .admin-info-btn, .edit-community-btn, .polls-btn, .links-btn, .notifications-btn, .issues-btn {
+        .members-btn, .admin-info-btn, .edit-community-btn, .polls-btn, .links-btn, .notifications-btn, .issues-btn, .calendar-btn {
             background-color: #4db6ac !important;
             color: #ffffff !important;
             border: 1px solid #4db6ac !important;
         }
         
-        .members-btn:hover, .admin-info-btn:hover, .edit-community-btn:hover, .polls-btn:hover, .links-btn:hover, .notifications-btn:hover, .issues-btn:hover {
+        .members-btn:hover, .admin-info-btn:hover, .edit-community-btn:hover, .polls-btn:hover, .links-btn:hover, .notifications-btn:hover, .issues-btn:hover, .calendar-btn:hover {
             background-color: #37a69c !important;
         }
         {% endif %}
 
         /* Community Actions Button Styles - Updated */
         .community-actions {
-            display: flex;
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
             gap: 10px;
-            align-items: center;
-            flex-wrap: nowrap;
             margin-bottom: 20px;
             padding: 15px 0;
-            overflow-x: auto;
-            justify-content: flex-start;
         }
         
-        .members-btn, .admin-info-btn, .edit-community-btn, .polls-btn, .links-btn, .notifications-btn, .issues-btn {
+        .members-btn, .admin-info-btn, .edit-community-btn, .polls-btn, .links-btn, .notifications-btn, .issues-btn, .calendar-btn {
             display: flex;
             align-items: center;
+            justify-content: center;
             gap: 8px;
-            padding: 8px 16px;
+            padding: 12px 16px;
             border-radius: 6px;
-            font-size: 14px;
+            font-size: 13px;
             font-weight: 500;
             text-decoration: none;
             border: none;
@@ -892,15 +895,15 @@
             transition: all 0.2s ease;
             background-color: {{ community.accent_color or '#2d8a7e' }};
             color: {{ community.text_color or '#ffffff' }};
-            flex-shrink: 0;
+            width: 100%;
         }
         
-        .members-btn:hover, .admin-info-btn:hover, .edit-community-btn:hover, .polls-btn:hover, .links-btn:hover, .notifications-btn:hover, .issues-btn:hover {
+        .members-btn:hover, .admin-info-btn:hover, .edit-community-btn:hover, .polls-btn:hover, .links-btn:hover, .notifications-btn:hover, .issues-btn:hover, .calendar-btn:hover {
             background-color: {{ community.accent_color or '#2d8a7e' }}dd;
             transform: translateY(-1px);
         }
         
-        .members-btn i, .admin-info-btn i, .edit-community-btn i, .polls-btn i, .links-btn i, .notifications-btn i, .issues-btn i {
+        .members-btn i, .admin-info-btn i, .edit-community-btn i, .polls-btn i, .links-btn i, .notifications-btn i, .issues-btn i, .calendar-btn i {
             font-size: 14px;
         }
 
@@ -3904,27 +3907,33 @@
         
         <!-- Community Actions Buttons -->
         <div class="community-actions">
-            <button class="admin-info-btn" onclick="showAdminInfoModal()">
-                <i class="fas fa-bullhorn"></i> Announcements
-            </button>
+            <!-- Top row: Members, Announcements, Polls -->
             <button class="members-btn" onclick="showMembersModal()">
                 <i class="fas fa-users"></i> Members
+            </button>
+            <button class="admin-info-btn" onclick="showAdminInfoModal()">
+                <i class="fas fa-bullhorn"></i> Announcements
             </button>
             <button class="polls-btn" onclick="showPollsModal()">
                 <i class="fas fa-poll-h"></i> Polls
             </button>
-            {% if community.type == 'University' or community.type == 'Gym' %}
-            <button class="issues-btn" onclick="showIssuesModal()" 
-                    title="{% if community.type == 'University' %}Report campus issues{% else %}Report gym issues{% endif %}">
-                <i class="fas fa-exclamation-triangle"></i> Report Issue
-            </button>
-            {% endif %}
+            
+            <!-- Bottom row: Calendar, Useful Links, Report Issue -->
             <button class="calendar-btn" onclick="showCalendarModal()">
                 <i class="fas fa-calendar-alt"></i> Calendar
             </button>
             <button class="links-btn" onclick="showLinksModal()">
                 <i class="fas fa-link"></i> Useful Links
             </button>
+            {% if community.type == 'University' or community.type == 'Gym' %}
+            <button class="issues-btn" onclick="showIssuesModal()" 
+                    title="{% if community.type == 'University' %}Report campus issues{% else %}Report gym issues{% endif %}">
+                <i class="fas fa-exclamation-triangle"></i> Report Issue
+            </button>
+            {% else %}
+            <!-- Empty placeholder button for non-University/Gym communities to maintain grid -->
+            <div style="visibility: hidden;"></div>
+            {% endif %}
         </div>
 
         <!-- Toggle Button for Active Polls and Edit Community -->
