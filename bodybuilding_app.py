@@ -3664,7 +3664,9 @@ def create_notification(user_id, from_user, notification_type, post_id=None, com
 @login_required
 def notifications_page():
     """Display notifications page"""
-    return render_template('notifications.html', username=session['username'])
+    username = session.get('username')
+    logger.info(f"Notifications page accessed by {username}")
+    return render_template('notifications.html', username=username)
 
 
 
