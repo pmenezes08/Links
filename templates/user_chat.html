@@ -76,20 +76,17 @@
 		}
 		
 		.community-section {
-			margin-bottom: 10px;
-			background: rgba(255, 255, 255, 0.02);
-			border: 1px solid rgba(255, 255, 255, 0.08);
-			border-radius: 6px;
-			overflow: hidden;
+			margin-bottom: 8px;
 		}
 		
 		.community-header-btn {
 			width: 100%;
-			padding: 12px;
+			padding: 8px 12px;
 			background: rgba(77, 182, 172, 0.1);
-			border: none;
+			border: 1px solid rgba(255, 255, 255, 0.1);
+			border-radius: 6px;
 			color: #ffffff;
-			font-size: 14px;
+			font-size: 13px;
 			font-weight: 500;
 			text-align: left;
 			cursor: pointer;
@@ -105,17 +102,20 @@
 		
 		.community-header-btn.active {
 			background: rgba(77, 182, 172, 0.25);
+			border-radius: 6px 6px 0 0;
+			border-bottom: none;
 		}
 		
 		.community-name {
 			display: flex;
 			align-items: center;
-			gap: 8px;
+			gap: 6px;
 		}
 		
 		.community-arrow {
 			transition: transform 0.2s ease;
 			color: rgba(255, 255, 255, 0.6);
+			font-size: 12px;
 		}
 		
 		.community-header-btn.active .community-arrow {
@@ -124,8 +124,11 @@
 		
 		.community-users {
 			display: none;
-			padding: 5px;
+			padding: 4px;
 			background: rgba(0, 0, 0, 0.2);
+			border: 1px solid rgba(255, 255, 255, 0.1);
+			border-top: none;
+			border-radius: 0 0 6px 6px;
 		}
 		
 		.community-users.show {
@@ -135,10 +138,10 @@
 		.user-item {
 			display: flex;
 			align-items: center;
-			padding: 8px 10px;
-			margin: 3px 5px;
+			padding: 6px 8px;
+			margin: 2px 4px;
 			background: rgba(255, 255, 255, 0.03);
-			border-radius: 6px;
+			border-radius: 4px;
 			cursor: pointer;
 			transition: all 0.2s ease;
 			position: relative;
@@ -146,40 +149,46 @@
 		
 		.user-item:hover {
 			background: rgba(77, 182, 172, 0.15);
-			transform: translateX(3px);
+			transform: translateX(2px);
 		}
 		
 		.user-item.active {
 			background: rgba(77, 182, 172, 0.25);
-			border-left: 3px solid #4db6ac;
+			border-left: 2px solid #4db6ac;
+			padding-left: 6px;
 		}
 		
 		.user-avatar {
-			width: 35px;
-			height: 35px;
+			width: 28px;
+			height: 28px;
 			border-radius: 50%;
 			background: rgba(255, 255, 255, 0.1);
 			display: flex;
 			align-items: center;
 			justify-content: center;
-			margin-right: 10px;
-			font-size: 16px;
+			margin-right: 8px;
+			font-size: 14px;
 			color: #4db6ac;
+			flex-shrink: 0;
 		}
 		
 		.user-info {
 			flex: 1;
+			min-width: 0;
 		}
 		
 		.user-name {
 			color: #ffffff;
-			font-size: 14px;
+			font-size: 13px;
 			font-weight: 500;
+			white-space: nowrap;
+			overflow: hidden;
+			text-overflow: ellipsis;
 		}
 		
 		.user-status {
 			color: rgba(255, 255, 255, 0.6);
-			font-size: 12px;
+			font-size: 11px;
 		}
 		
 		.unread-indicator {
@@ -271,24 +280,28 @@
 		}
 		
 		.message-input-area {
-			padding: 15px;
+			padding: 12px;
 			background: rgba(0, 0, 0, 0.3);
 			border-top: 1px solid rgba(255, 255, 255, 0.1);
 		}
 		
 		.message-input-form {
 			display: flex;
-			gap: 10px;
+			gap: 8px;
+			align-items: flex-end;
 		}
 		
 		.message-input {
 			flex: 1;
-			padding: 10px 14px;
+			padding: 8px 12px;
 			background: rgba(255, 255, 255, 0.05);
 			border: 1px solid rgba(255, 255, 255, 0.1);
 			border-radius: 6px;
 			color: #ffffff;
 			font-size: 14px;
+			min-height: 38px;
+			max-height: 120px;
+			resize: vertical;
 		}
 		
 		.message-input:focus {
@@ -298,24 +311,31 @@
 		}
 		
 		.send-btn {
-			padding: 12px 24px;
+			padding: 8px 20px;
 			background: #4db6ac;
 			color: #ffffff;
 			border: none;
 			border-radius: 6px;
-			font-size: 15px;
-			font-weight: 500;
+			font-size: 14px;
+			font-weight: 600;
 			cursor: pointer;
 			transition: all 0.2s ease;
-			display: flex;
+			display: inline-flex;
 			align-items: center;
-			gap: 8px;
+			justify-content: center;
+			gap: 6px;
 			white-space: nowrap;
+			height: 38px;
+			min-width: 80px;
 		}
 		
 		.send-btn:hover {
 			background: #37a69c;
 			transform: translateY(-1px);
+		}
+		
+		.send-btn i {
+			font-size: 14px;
 		}
 		
 		/* Empty State */
@@ -533,9 +553,10 @@
 				</div>
 				<div class="message-input-area">
 					<form class="message-input-form" onsubmit="sendMessage(event)">
-						<input type="text" class="message-input" id="messageInput" placeholder="Type a message..." required>
+						<textarea class="message-input" id="messageInput" placeholder="Type a message..." rows="1" required></textarea>
 						<button type="submit" class="send-btn">
-							<i class="fas fa-paper-plane"></i> Send
+							<span>Send</span>
+							<i class="fas fa-paper-plane"></i>
 						</button>
 					</form>
 				</div>
@@ -652,6 +673,20 @@
 				loadMessages(currentChatUser, currentChatUsername);
 			}
 		}, 10000); // Refresh every 10 seconds
+		
+		// Auto-resize textarea
+		$('#messageInput').on('input', function() {
+			this.style.height = 'auto';
+			this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+		});
+		
+		// Handle Enter key for sending (Shift+Enter for new line)
+		$('#messageInput').on('keydown', function(e) {
+			if (e.key === 'Enter' && !e.shiftKey) {
+				e.preventDefault();
+				$(this).closest('form').submit();
+			}
+		});
 	</script>
 </body>
 </html>
