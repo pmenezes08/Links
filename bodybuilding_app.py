@@ -517,6 +517,17 @@ def init_db():
                           FOREIGN KEY (username) REFERENCES users (username),
                           UNIQUE(issue_id, username))''')
             
+            # Create password_reset_tokens table
+            logger.info("Creating password_reset_tokens table...")
+            c.execute('''CREATE TABLE IF NOT EXISTS password_reset_tokens
+                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                          username TEXT NOT NULL,
+                          email TEXT NOT NULL,
+                          token TEXT NOT NULL UNIQUE,
+                          created_at TEXT NOT NULL,
+                          used BOOLEAN DEFAULT 0,
+                          FOREIGN KEY (username) REFERENCES users (username))''')
+            
             conn.commit()
             logger.info("Database initialization completed successfully")
             
@@ -2797,6 +2808,141 @@ def reset_password_debug_hashed(username):
         return f"Password for {username} reset to hashed version of: '{new_password}'. <a href='/'>Go to login</a>"
     except Exception as e:
         return f"Error: {str(e)}"
+
+@app.route('/request_password_reset', methods=['POST'])
+def request_password_reset():
+    """Handle password reset requests"""
+    try:
+        data = request.get_json()
+        username = data.get('username')
+        email = data.get('email')
+        
+        if not username or not email:
+            return jsonify({'success': False, 'message': 'Username and email are required'}), 400
+        
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Check if user exists with matching email
+            c.execute("SELECT email FROM users WHERE username = ?", (username,))
+            result = c.fetchone()
+            
+            # For security, always return success even if user doesn't exist
+            if result and result['email'] == email:
+                # Generate secure token
+                token = secrets.token_urlsafe(32)
+                created_at = datetime.now().isoformat()
+                
+                # Delete any existing unused tokens for this user
+                c.execute("DELETE FROM password_reset_tokens WHERE username = ? AND used = 0", (username,))
+                
+                # Insert new token
+                c.execute("""
+                    INSERT INTO password_reset_tokens (username, email, token, created_at)
+                    VALUES (?, ?, ?, ?)
+                """, (username, email, token, created_at))
+                conn.commit()
+                
+                # In a production environment, you would send an email here
+                # For now, we'll log the reset link
+                reset_link = f"{request.host_url}reset_password/{token}"
+                logger.info(f"Password reset link for {username}: {reset_link}")
+                
+                # TODO: Implement email sending
+                # send_password_reset_email(email, username, reset_link)
+        
+        # Always return success for security
+        return jsonify({'success': True, 'message': 'If an account exists with the provided information, a reset link has been sent.'})
+        
+    except Exception as e:
+        logger.error(f"Error in password reset request: {e}")
+        # Still return success for security
+        return jsonify({'success': True, 'message': 'If an account exists with the provided information, a reset link has been sent.'})
+
+@app.route('/reset_password/<token>', methods=['GET', 'POST'])
+def reset_password(token):
+    """Handle password reset with token"""
+    if request.method == 'GET':
+        # Verify token is valid and not expired (24 hours)
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("""
+                SELECT username, created_at, used 
+                FROM password_reset_tokens 
+                WHERE token = ?
+            """, (token,))
+            result = c.fetchone()
+            
+            if not result:
+                flash('Invalid or expired reset link.', 'error')
+                return redirect(url_for('index'))
+            
+            if result['used']:
+                flash('This reset link has already been used.', 'error')
+                return redirect(url_for('index'))
+            
+            # Check if token is expired (24 hours)
+            created_at = datetime.fromisoformat(result['created_at'])
+            if datetime.now() - created_at > timedelta(hours=24):
+                flash('This reset link has expired.', 'error')
+                return redirect(url_for('index'))
+            
+            return render_template('reset_password.html', token=token, username=result['username'])
+    
+    elif request.method == 'POST':
+        new_password = request.form.get('password')
+        confirm_password = request.form.get('confirm_password')
+        
+        if not new_password or not confirm_password:
+            flash('Please fill in all fields.', 'error')
+            return redirect(url_for('reset_password', token=token))
+        
+        if new_password != confirm_password:
+            flash('Passwords do not match.', 'error')
+            return redirect(url_for('reset_password', token=token))
+        
+        if len(new_password) < 6:
+            flash('Password must be at least 6 characters long.', 'error')
+            return redirect(url_for('reset_password', token=token))
+        
+        try:
+            with get_db_connection() as conn:
+                c = conn.cursor()
+                
+                # Verify token again
+                c.execute("""
+                    SELECT username, created_at, used 
+                    FROM password_reset_tokens 
+                    WHERE token = ?
+                """, (token,))
+                result = c.fetchone()
+                
+                if not result or result['used']:
+                    flash('Invalid or expired reset link.', 'error')
+                    return redirect(url_for('index'))
+                
+                # Check expiration again
+                created_at = datetime.fromisoformat(result['created_at'])
+                if datetime.now() - created_at > timedelta(hours=24):
+                    flash('This reset link has expired.', 'error')
+                    return redirect(url_for('index'))
+                
+                # Update password
+                hashed_password = generate_password_hash(new_password)
+                c.execute("UPDATE users SET password = ? WHERE username = ?", 
+                         (hashed_password, result['username']))
+                
+                # Mark token as used
+                c.execute("UPDATE password_reset_tokens SET used = 1 WHERE token = ?", (token,))
+                conn.commit()
+                
+                flash('Your password has been successfully reset. You can now log in with your new password.', 'success')
+                return redirect(url_for('index'))
+                
+        except Exception as e:
+            logger.error(f"Error resetting password: {e}")
+            flash('An error occurred. Please try again.', 'error')
+            return redirect(url_for('reset_password', token=token))
 
 @app.route('/test_password_hash')
 def test_password_hash():
