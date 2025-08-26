@@ -716,35 +716,50 @@ def index():
 
 @app.route('/login_x')
 def login_x():
-    return x_auth.authorize(callback=url_for('authorized', _external=True))
+    # X/Twitter OAuth is not configured yet
+    # To enable this feature, you need to:
+    # 1. Register your app at https://developer.twitter.com/
+    # 2. Get API keys (consumer key and secret)
+    # 3. Install authlib: pip install authlib
+    # 4. Configure OAuth in the app
+    flash('Sign in with X is not available yet. This feature requires API configuration.', 'error')
+    return redirect(url_for('index'))
+    # When configured, uncomment the following:
+    # return x_auth.authorize(callback=url_for('authorized', _external=True))
 
 @app.route('/callback')
 def authorized():
-    try:
-        resp = x_auth.authorized_response()
-        if resp is None or resp.get('access_token') is None:
-            error_msg = request.args.get('error_description', 'Unknown error')
-            return render_template('index.html', error=f"Login failed: {error_msg}")
-        session['x_token'] = (resp['access_token'], '')
-        headers = {'Authorization': f"Bearer {resp['access_token']}"}
-        user_info = requests.get('https://api.x.com/2/users/me', headers=headers, params={'user.fields': 'username'})
-        if user_info.status_code != 200:
-            return render_template('index.html', error=f"X API error: {user_info.text}")
-        user_data = user_info.json()['data']
-        username = user_data['username']
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            c.execute("SELECT subscription FROM users WHERE username=?", (username,))
-            user = c.fetchone()
-            if not user:
-                c.execute("INSERT INTO users (username, subscription, password) VALUES (?, 'free', ?)",
-                          (username, 'default_password'))
-                conn.commit()
-        session['username'] = username
-        return redirect(url_for('premium_dashboard') if user and user['subscription'] == 'premium' else url_for('dashboard'))
-    except Exception as e:
-        logger.error(f"Error in authorized route: {str(e)}")
-        abort(500)
+    # This is the OAuth callback route for X/Twitter login
+    # Currently disabled as OAuth is not configured
+    flash('Sign in with X is not available yet. This feature requires API configuration.', 'error')
+    return redirect(url_for('index'))
+    
+    # When OAuth is configured, uncomment the following:
+    # try:
+    #     resp = x_auth.authorized_response()
+    #     if resp is None or resp.get('access_token') is None:
+    #         error_msg = request.args.get('error_description', 'Unknown error')
+    #         return render_template('index.html', error=f"Login failed: {error_msg}")
+    #     session['x_token'] = (resp['access_token'], '')
+    #     headers = {'Authorization': f"Bearer {resp['access_token']}"}
+    #     user_info = requests.get('https://api.x.com/2/users/me', headers=headers, params={'user.fields': 'username'})
+    #     if user_info.status_code != 200:
+    #         return render_template('index.html', error=f"X API error: {user_info.text}")
+    #     user_data = user_info.json()['data']
+    #     username = user_data['username']
+    #     with get_db_connection() as conn:
+    #         c = conn.cursor()
+    #         c.execute("SELECT subscription FROM users WHERE username=?", (username,))
+    #         user = c.fetchone()
+    #         if not user:
+    #             c.execute("INSERT INTO users (username, subscription, password) VALUES (?, 'free', ?)",
+    #                       (username, 'default_password'))
+    #             conn.commit()
+    #     session['username'] = username
+    #     return redirect(url_for('premium_dashboard') if user and user['subscription'] == 'premium' else url_for('dashboard'))
+    # except Exception as e:
+    #     logger.error(f"Error in authorized route: {str(e)}")
+    #     abort(500)
 
 @app.route('/signup', methods=['GET', 'POST'])
 # @csrf.exempt
