@@ -528,6 +528,24 @@ def init_db():
                           used BOOLEAN DEFAULT 0,
                           FOREIGN KEY (username) REFERENCES users (username))''')
             
+            # Create university_ads table
+            logger.info("Creating university_ads table...")
+            c.execute('''CREATE TABLE IF NOT EXISTS university_ads
+                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                          community_id INTEGER NOT NULL,
+                          title TEXT NOT NULL,
+                          description TEXT,
+                          price TEXT NOT NULL,
+                          image_url TEXT NOT NULL,
+                          link_url TEXT,
+                          is_active BOOLEAN DEFAULT 1,
+                          display_order INTEGER DEFAULT 0,
+                          created_at TEXT NOT NULL,
+                          created_by TEXT NOT NULL,
+                          clicks INTEGER DEFAULT 0,
+                          FOREIGN KEY (community_id) REFERENCES communities (id) ON DELETE CASCADE,
+                          FOREIGN KEY (created_by) REFERENCES users (username))''')
+            
             conn.commit()
             logger.info("Database initialization completed successfully")
             
@@ -4918,6 +4936,74 @@ def resolve_issue():
     except Exception as e:
         logger.error(f"Error resolving issue: {str(e)}")
         return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/get_university_ads')
+@login_required
+def get_university_ads():
+    """Get ads for a university community"""
+    try:
+        community_id = request.args.get('community_id', type=int)
+        
+        if not community_id:
+            return jsonify({'success': False, 'message': 'Community ID is required'}), 400
+        
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Get active ads for the community
+            c.execute("""
+                SELECT id, title, description, price, image_url, link_url
+                FROM university_ads
+                WHERE community_id = ? AND is_active = 1
+                ORDER BY display_order ASC, created_at DESC
+                LIMIT 10
+            """, (community_id,))
+            
+            ads = []
+            for row in c.fetchall():
+                ads.append({
+                    'id': row['id'],
+                    'title': row['title'],
+                    'description': row['description'],
+                    'price': row['price'],
+                    'image': row['image_url'],
+                    'link': row['link_url'] or '#'
+                })
+            
+            # If no ads, return sample data for demo
+            if not ads:
+                ads = [
+                    {
+                        'id': 1,
+                        'title': 'University Hoodie',
+                        'description': 'Official university hoodie',
+                        'price': '$49.99',
+                        'image': 'https://via.placeholder.com/250x180/2d8a7e/ffffff?text=University+Hoodie',
+                        'link': '#'
+                    },
+                    {
+                        'id': 2,
+                        'title': 'Campus T-Shirt',
+                        'description': 'Comfortable cotton t-shirt',
+                        'price': '$24.99',
+                        'image': 'https://via.placeholder.com/250x180/4db6ac/ffffff?text=Campus+Tee',
+                        'link': '#'
+                    },
+                    {
+                        'id': 3,
+                        'title': 'Student Backpack',
+                        'description': 'Durable laptop backpack',
+                        'price': '$79.99',
+                        'image': 'https://via.placeholder.com/250x180/37a69c/ffffff?text=Backpack',
+                        'link': '#'
+                    }
+                ]
+            
+            return jsonify({'success': True, 'ads': ads})
+            
+    except Exception as e:
+        logger.error(f"Error fetching university ads: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
 
 @app.route('/get_calendar_events')
 @login_required

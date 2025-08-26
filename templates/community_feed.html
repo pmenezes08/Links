@@ -156,9 +156,9 @@
         .polls-sidebar {
             position: fixed;
             right: 20px;
-            top: 80px;
+            top: {{ '420px' if community.type == 'University' else '80px' }};
             width: 320px;
-            max-height: 600px;
+            max-height: {{ '400px' if community.type == 'University' else '600px' }};
             background: {{ 'linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%)' if community.template == 'light' else ('linear-gradient(135deg, ' + (community.card_color or '#1a3d3a') + ' 0%, ' + (community.background_color or '#0f2725') + ' 100%)') }};
             border-radius: 12px;
             border: 1px solid {{ 'rgba(45, 138, 126, 0.2)' if community.template == 'light' else 'rgba(255, 255, 255, 0.1)' }};
@@ -167,6 +167,177 @@
             transition: all 0.3s ease;
             overflow: hidden;
         }
+        
+        /* University Ads Carousel */
+        {% if community.type == 'University' %}
+        .university-ads-carousel {
+            position: fixed;
+            right: 20px;
+            top: 80px;
+            width: 320px;
+            height: 320px;
+            background: {{ 'linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%)' if community.template == 'light' else 'linear-gradient(135deg, #1a1a1a 0%, #0f0f0f 100%)' }};
+            border-radius: 12px;
+            border: 1px solid {{ 'rgba(0, 0, 0, 0.1)' if community.template == 'light' else 'rgba(255, 255, 255, 0.1)' }};
+            box-shadow: 0 8px 24px {{ 'rgba(0, 0, 0, 0.1)' if community.template == 'light' else 'rgba(0, 0, 0, 0.4)' }};
+            z-index: 98;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .ads-header {
+            padding: 12px 15px;
+            border-bottom: 1px solid {{ 'rgba(0, 0, 0, 0.1)' if community.template == 'light' else 'rgba(255, 255, 255, 0.1)' }};
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: {{ 'rgba(0, 0, 0, 0.02)' if community.template == 'light' else 'rgba(255, 255, 255, 0.02)' }};
+        }
+        
+        .ads-header h3 {
+            font-size: 14px;
+            font-weight: 600;
+            color: {{ '#000000' if community.template == 'light' else '#ffffff' }};
+            margin: 0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .ads-header .sponsored-badge {
+            font-size: 10px;
+            color: {{ 'rgba(0, 0, 0, 0.5)' if community.template == 'light' else 'rgba(255, 255, 255, 0.5)' }};
+            background: {{ 'rgba(0, 0, 0, 0.05)' if community.template == 'light' else 'rgba(255, 255, 255, 0.05)' }};
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-weight: 400;
+        }
+        
+        .ads-carousel-container {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .ads-carousel {
+            display: flex;
+            transition: transform 0.5s ease;
+            height: 100%;
+        }
+        
+        .ad-slide {
+            min-width: 100%;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            position: relative;
+        }
+        
+        .ad-image {
+            width: 100%;
+            max-width: 250px;
+            height: 180px;
+            object-fit: cover;
+            border-radius: 8px;
+            margin-bottom: 12px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+        
+        .ad-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: {{ '#000000' if community.template == 'light' else '#ffffff' }};
+            text-align: center;
+            margin-bottom: 6px;
+        }
+        
+        .ad-price {
+            font-size: 16px;
+            font-weight: 700;
+            color: {{ '#2d8a7e' if community.template == 'light' else '#4db6ac' }};
+            margin-bottom: 8px;
+        }
+        
+        .ad-cta {
+            background: {{ '#2d8a7e' if community.template == 'light' else '#4db6ac' }};
+            color: white;
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 500;
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .ad-cta:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(77, 182, 172, 0.3);
+        }
+        
+        .carousel-nav {
+            position: absolute;
+            bottom: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 6px;
+            z-index: 2;
+        }
+        
+        .carousel-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: {{ 'rgba(0, 0, 0, 0.2)' if community.template == 'light' else 'rgba(255, 255, 255, 0.2)' }};
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .carousel-dot.active {
+            background: {{ '#2d8a7e' if community.template == 'light' else '#4db6ac' }};
+            width: 20px;
+            border-radius: 4px;
+        }
+        
+        .carousel-arrow {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            background: {{ 'rgba(0, 0, 0, 0.5)' if community.template == 'light' else 'rgba(255, 255, 255, 0.1)' }};
+            color: white;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            z-index: 2;
+        }
+        
+        .ads-carousel-container:hover .carousel-arrow {
+            opacity: 1;
+        }
+        
+        .carousel-arrow:hover {
+            background: {{ 'rgba(0, 0, 0, 0.7)' if community.template == 'light' else 'rgba(255, 255, 255, 0.2)' }};
+        }
+        
+        .carousel-arrow.prev {
+            left: 10px;
+        }
+        
+        .carousel-arrow.next {
+            right: 10px;
+        }
+        {% endif %}
         
         .polls-sidebar.collapsed {
             opacity: 0;
@@ -3980,6 +4151,33 @@
 
     <!-- Main Content -->
     <div class="main-layout-container">
+        <!-- University Ads Carousel (for University communities only) -->
+        {% if community.type == 'University' %}
+        <div class="university-ads-carousel" id="adsCarousel">
+            <div class="ads-header">
+                <h3>
+                    <i class="fas fa-shopping-bag"></i>
+                    University Store
+                </h3>
+                <span class="sponsored-badge">Sponsored</span>
+            </div>
+            <div class="ads-carousel-container">
+                <div class="ads-carousel" id="adsCarouselInner">
+                    <!-- Ads will be loaded here dynamically -->
+                </div>
+                <div class="carousel-arrow prev" onclick="changeSlide(-1)">
+                    <i class="fas fa-chevron-left"></i>
+                </div>
+                <div class="carousel-arrow next" onclick="changeSlide(1)">
+                    <i class="fas fa-chevron-right"></i>
+                </div>
+                <div class="carousel-nav" id="carouselNav">
+                    <!-- Navigation dots will be added dynamically -->
+                </div>
+            </div>
+        </div>
+        {% endif %}
+        
         <!-- Compact Polls Sidebar (Hidden by default) -->
         <div class="polls-sidebar collapsed" id="pollsSidebar">
             <div class="sidebar-header">
@@ -5601,6 +5799,157 @@
                 closeImageViewer();
             }
         });
+        
+        // University Ads Carousel
+        {% if community.type == 'University' %}
+        let currentSlide = 0;
+        let ads = [];
+        let autoRotateInterval;
+        
+        function loadUniversityAds() {
+            // Fetch ads from backend
+            fetch(`/get_university_ads?community_id={{ community.id }}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success && data.ads.length > 0) {
+                        ads = data.ads;
+                    } else {
+                        // Fallback sample data
+                        ads = [
+                            {
+                                id: 1,
+                                title: "{{ community.name }} Hoodie",
+                                price: "$49.99",
+                                image: "https://via.placeholder.com/250x180/2d8a7e/ffffff?text={{ community.name }}+Hoodie",
+                                link: "#",
+                                description: "Official university hoodie"
+                            },
+                            {
+                                id: 2,
+                                title: "Campus T-Shirt",
+                                price: "$24.99",
+                                image: "https://via.placeholder.com/250x180/4db6ac/ffffff?text=Campus+Tee",
+                                link: "#",
+                                description: "Comfortable cotton t-shirt"
+                            },
+                            {
+                                id: 3,
+                                title: "University Cap",
+                                price: "$19.99",
+                                image: "https://via.placeholder.com/250x180/37a69c/ffffff?text=University+Cap",
+                                link: "#",
+                                description: "Adjustable snapback cap"
+                            },
+                            {
+                                id: 4,
+                                title: "Student Backpack",
+                                price: "$79.99",
+                                image: "https://via.placeholder.com/250x180/2d7a6e/ffffff?text=Backpack",
+                                link: "#",
+                                description: "Durable laptop backpack"
+                            },
+                            {
+                                id: 5,
+                                title: "Water Bottle",
+                                price: "$14.99",
+                                image: "https://via.placeholder.com/250x180/4d9b8c/ffffff?text=Water+Bottle",
+                                link: "#",
+                                description: "Insulated steel bottle"
+                            }
+                        ];
+                    }
+                    renderAds();
+                })
+                .catch(error => {
+                    console.error('Error loading ads:', error);
+                    // Use fallback data on error
+                    ads = [
+                        {
+                            id: 1,
+                            title: "{{ community.name }} Merch",
+                            price: "Shop Now",
+                            image: "https://via.placeholder.com/250x180/2d8a7e/ffffff?text={{ community.name }}",
+                            link: "#",
+                            description: "Official merchandise"
+                        }
+                    ];
+                    renderAds();
+                });
+        }
+        
+        function renderAds() {
+            // Render ads
+            const carouselInner = document.getElementById('adsCarouselInner');
+            carouselInner.innerHTML = ads.map(ad => `
+                <div class="ad-slide" onclick="window.open('${ad.link}', '_blank')">
+                    <img src="${ad.image}" alt="${ad.title}" class="ad-image">
+                    <div class="ad-title">${ad.title}</div>
+                    <div class="ad-price">${ad.price}</div>
+                    <button class="ad-cta" onclick="event.stopPropagation(); window.open('${ad.link}', '_blank')">
+                        Shop Now
+                    </button>
+                </div>
+            `).join('');
+            
+            // Create navigation dots
+            const navContainer = document.getElementById('carouselNav');
+            navContainer.innerHTML = ads.map((_, index) => `
+                <div class="carousel-dot ${index === 0 ? 'active' : ''}" onclick="goToSlide(${index})"></div>
+            `).join('');
+            
+            // Reset to first slide
+            currentSlide = 0;
+            updateCarousel();
+            
+            // Start auto-rotation
+            startAutoRotate();
+        }
+        
+        function changeSlide(direction) {
+            currentSlide = (currentSlide + direction + ads.length) % ads.length;
+            updateCarousel();
+            restartAutoRotate();
+        }
+        
+        function goToSlide(index) {
+            currentSlide = index;
+            updateCarousel();
+            restartAutoRotate();
+        }
+        
+        function updateCarousel() {
+            const carousel = document.getElementById('adsCarouselInner');
+            carousel.style.transform = `translateX(-${currentSlide * 100}%)`;
+            
+            // Update navigation dots
+            document.querySelectorAll('.carousel-dot').forEach((dot, index) => {
+                dot.classList.toggle('active', index === currentSlide);
+            });
+        }
+        
+        function startAutoRotate() {
+            autoRotateInterval = setInterval(() => {
+                changeSlide(1);
+            }, 5000); // Change slide every 5 seconds
+        }
+        
+        function restartAutoRotate() {
+            clearInterval(autoRotateInterval);
+            startAutoRotate();
+        }
+        
+        // Load ads when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            loadUniversityAds();
+        });
+        
+        // Pause rotation on hover
+        const adsCarousel = document.getElementById('adsCarousel');
+        if (adsCarousel) {
+            adsCarousel.addEventListener('mouseenter', () => clearInterval(autoRotateInterval));
+            adsCarousel.addEventListener('mouseleave', () => startAutoRotate());
+        }
+        {% endif %}
         
         // Issues Modal Functions
         {% if community.type == 'University' or community.type == 'Gym' %}
