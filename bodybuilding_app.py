@@ -2427,58 +2427,6 @@ def user_chat():
         logger.error(f"Error in user_chat for {username}: {str(e)}")
         abort(500)
 
-@app.route('/get_messages', methods=['POST'])
-@login_required
-def get_messages():
-    username = session['username']
-    receiver = request.form.get('receiver')
-    if not receiver:
-        return jsonify({'success': False, 'error': 'No receiver specified'})
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            c.execute("SELECT subscription FROM users WHERE username=?", (username,))
-            user = c.fetchone()
-            if not user or user['subscription'] != 'premium':
-                return jsonify({'success': False, 'error': 'Premium subscription required!'})
-            c.execute("""
-                SELECT id, sender, receiver, message, timestamp, is_read
-                FROM messages
-                WHERE (sender=? AND receiver=?) OR (sender=? AND receiver=?)
-                ORDER BY timestamp ASC
-            """, (username, receiver, receiver, username))
-            messages = [dict(row) for row in c.fetchall()]
-            c.execute("UPDATE messages SET is_read=1 WHERE receiver=? AND sender=? AND is_read=0", (username, receiver))
-            conn.commit()
-        return jsonify({'success': True, 'messages': messages})
-    except Exception as e:
-        logger.error(f"Error getting messages for {username}: {str(e)}")
-        abort(500)
-
-@app.route('/send_message', methods=['POST'])
-@login_required
-def send_message():
-    username = session['username']
-    receiver = request.form.get('receiver')
-    message = request.form.get('message')
-    if not receiver or not message:
-        return jsonify({'success': False, 'error': 'Receiver and message required'})
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            c.execute("SELECT subscription FROM users WHERE username=?", (username,))
-            user = c.fetchone()
-            if not user or user['subscription'] != 'premium':
-                return jsonify({'success': False, 'error': 'Premium subscription required!'})
-            timestamp = datetime.now().strftime('%m.%d.%y')
-            c.execute("INSERT INTO messages (sender, receiver, message, timestamp) VALUES (?, ?, ?, ?)",
-                      (username, receiver, message, timestamp))
-            conn.commit()
-        return jsonify({'success': True})
-    except Exception as e:
-        logger.error(f"Error sending message for {username}: {str(e)}")
-        abort(500)
-
 @app.route('/delete_message', methods=['POST'])
 @login_required
 def delete_message():
