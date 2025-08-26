@@ -230,6 +230,19 @@
 			flex-direction: column;
 		}
 		
+		#chatContent {
+			flex: 1;
+			display: flex;
+			flex-direction: column;
+			justify-content: center;
+			align-items: center;
+		}
+		
+		#chatContent:has(.chat-header) {
+			justify-content: flex-start;
+			align-items: stretch;
+		}
+		
 		.chat-header {
 			padding: 15px;
 			background: rgba(0, 0, 0, 0.3);
@@ -361,6 +374,8 @@
 			justify-content: center;
 			height: 100%;
 			color: rgba(255, 255, 255, 0.5);
+			text-align: center;
+			padding: 20px;
 		}
 		
 		.empty-state i {
@@ -371,6 +386,7 @@
 		
 		.empty-state p {
 			font-size: 16px;
+			margin: 0;
 		}
 		
 		@media (max-width: 900px) {
