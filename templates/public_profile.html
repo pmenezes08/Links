@@ -418,12 +418,12 @@
         
         {% if profile[21] == 1 or is_own_profile %}
             <div class="profile-tabs">
-                <button class="tab active" onclick="switchTab('posts')">Posts</button>
+                <button class="tab active" onclick="switchTab('about')">About</button>
                 <button class="tab" onclick="switchTab('communities')">Communities</button>
-                <button class="tab" onclick="switchTab('about')">About</button>
+                <button class="tab" onclick="switchTab('posts')">Posts</button>
             </div>
             
-            <div id="posts-tab" class="tab-content active">
+            <div id="posts-tab" class="tab-content">
                 <div class="posts-grid">
                     {% if posts %}
                         {% for post in posts %}
@@ -455,7 +455,7 @@
                 </div>
             </div>
             
-            <div id="about-tab" class="tab-content">
+            <div id="about-tab" class="tab-content active">
                 <div class="profile-info">
                     <h3>Profile Information</h3>
                     <div class="profile-details" style="flex-direction: column;">

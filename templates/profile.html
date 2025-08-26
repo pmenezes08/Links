@@ -284,24 +284,24 @@
         .view-profile-btn {
             display: inline-flex;
             align-items: center;
-            gap: 8px;
-            padding: 12px 24px;
+            gap: 6px;
+            padding: 8px 16px;
             background: linear-gradient(135deg, #4db6ac, #2d8a7e);
             color: #ffffff;
             border: none;
-            border-radius: 6px;
+            border-radius: 4px;
             text-decoration: none;
-            font-size: 15px;
+            font-size: 13px;
             font-weight: 500;
-            margin-bottom: 20px;
+            margin-bottom: 15px;
             transition: all 0.2s ease;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.2);
         }
         
         .view-profile-btn:hover {
             background: linear-gradient(135deg, #5bc7bd, #3a9d91);
-            transform: translateY(-2px);
-            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+            transform: translateY(-1px);
+            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
             color: #ffffff;
         }
         
@@ -449,7 +449,7 @@
             </div>
             
             <div class="profile-link">
-                <a href="/profile/{{ username }}" target="_blank" class="view-profile-btn">
+                <a href="/profile/{{ username }}" class="view-profile-btn">
                     <i class="fas fa-external-link-alt"></i> View Public Profile
                 </a>
             </div>
