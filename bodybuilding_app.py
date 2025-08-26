@@ -174,7 +174,8 @@ def add_missing_tables():
                 ('background_color', 'TEXT'),
                 ('text_color', 'TEXT'),
                 ('accent_color', 'TEXT'),
-                ('card_color', 'TEXT')
+                ('card_color', 'TEXT'),
+                ('parent_community_id', 'INTEGER')
             ]
             
             for column_name, column_type in columns_to_add:
@@ -313,7 +314,9 @@ def init_db():
                           text_color TEXT DEFAULT '#ffffff',
                           accent_color TEXT DEFAULT '#4db6ac',
                           card_color TEXT DEFAULT '#1a2526',
-                          FOREIGN KEY (creator_username) REFERENCES users(username))''')
+                          parent_community_id INTEGER,
+                          FOREIGN KEY (creator_username) REFERENCES users(username),
+                          FOREIGN KEY (parent_community_id) REFERENCES communities(id))''')
 
             # Create user_communities table
             logger.info("Creating user_communities table...")
@@ -4974,6 +4977,7 @@ def create_community():
     text_color = request.form.get('text_color', '#ffffff')
     accent_color = request.form.get('accent_color', '#4db6ac')
     card_color = request.form.get('card_color', '#1a2526')
+    parent_community_id = request.form.get('parent_community_id', None)
     
     if not name or not community_type:
         return jsonify({'success': False, 'error': 'Name and type are required'}), 400
@@ -5002,9 +5006,9 @@ def create_community():
             
             # Create the community
             c.execute("""
-                INSERT INTO communities (name, type, creator_username, join_code, created_at, description, location, background_path, template, background_color, text_color, accent_color, card_color)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (name, community_type, username, join_code, datetime.now().strftime('%m.%d.%y %H:%M'), description, location, background_path, template, background_color, text_color, accent_color, card_color))
+                INSERT INTO communities (name, type, creator_username, join_code, created_at, description, location, background_path, template, background_color, text_color, accent_color, card_color, parent_community_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (name, community_type, username, join_code, datetime.now().strftime('%m.%d.%y %H:%M'), description, location, background_path, template, background_color, text_color, accent_color, card_color, parent_community_id if parent_community_id and parent_community_id != 'none' else None))
             
             community_id = c.lastrowid
             
@@ -5030,6 +5034,55 @@ def create_community():
     except Exception as e:
         logger.error(f"Error creating community: {str(e)}")
         return jsonify({'success': False, 'error': 'Failed to create community'}), 500
+
+@app.route('/get_available_parent_communities', methods=['GET'])
+@login_required
+def get_available_parent_communities():
+    """Get communities that can be parent communities (excluding the current one if editing)"""
+    username = session.get('username')
+    current_community_id = request.args.get('current_id', type=int)
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Get all communities that the user has access to or created
+            # Exclude the current community and its children to prevent circular references
+            if current_community_id:
+                c.execute("""
+                    SELECT DISTINCT c.id, c.name, c.type, c.parent_community_id
+                    FROM communities c
+                    LEFT JOIN user_communities uc ON c.id = uc.community_id
+                    LEFT JOIN users u ON uc.user_id = u.rowid
+                    WHERE (u.username = ? OR c.creator_username = ? OR ? = 'admin')
+                    AND c.id != ?
+                    AND (c.parent_community_id IS NULL OR c.parent_community_id != ?)
+                    ORDER BY c.name
+                """, (username, username, username, current_community_id, current_community_id))
+            else:
+                c.execute("""
+                    SELECT DISTINCT c.id, c.name, c.type, c.parent_community_id
+                    FROM communities c
+                    LEFT JOIN user_communities uc ON c.id = uc.community_id
+                    LEFT JOIN users u ON uc.user_id = u.rowid
+                    WHERE u.username = ? OR c.creator_username = ? OR ? = 'admin'
+                    ORDER BY c.name
+                """, (username, username, username))
+            
+            communities = []
+            for row in c.fetchall():
+                communities.append({
+                    'id': row['id'],
+                    'name': row['name'],
+                    'type': row['type'],
+                    'parent_community_id': row['parent_community_id']
+                })
+            
+            return jsonify({'success': True, 'communities': communities})
+            
+    except Exception as e:
+        logger.error(f"Error getting parent communities: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/get_user_communities_with_members', methods=['GET'])
 @login_required
@@ -5184,7 +5237,7 @@ def edit_community():
 @app.route('/update_community', methods=['POST'])
 @login_required
 def update_community():
-    """Update community details (name, description, type, background, template, colors)"""
+    """Update community details (name, description, type, background, template, colors, parent)"""
     username = session.get('username')
     community_id = request.form.get('community_id', type=int)
     name = request.form.get('name', '').strip()
@@ -5194,6 +5247,7 @@ def update_community():
     card_color = request.form.get('card_color', '#1a2526')
     accent_color = request.form.get('accent_color', '#4db6ac')
     text_color = request.form.get('text_color', '#ffffff')
+    parent_community_id = request.form.get('parent_community_id', None)
     
     if not community_id or not name:
         return jsonify({'success': False, 'error': 'Community ID and name are required'}), 400
@@ -5235,17 +5289,21 @@ def update_community():
             if background_path:
                 c.execute("""UPDATE communities 
                             SET name = ?, description = ?, type = ?, background_path = ?, template = ?, 
-                                card_color = ?, accent_color = ?, text_color = ? 
+                                card_color = ?, accent_color = ?, text_color = ?, parent_community_id = ? 
                             WHERE id = ?""", 
                          (name, description, community_type, background_path, template, 
-                          card_color, accent_color, text_color, community_id))
+                          card_color, accent_color, text_color, 
+                          parent_community_id if parent_community_id and parent_community_id != 'none' else None, 
+                          community_id))
             else:
                 c.execute("""UPDATE communities 
                             SET name = ?, description = ?, type = ?, template = ?, 
-                                card_color = ?, accent_color = ?, text_color = ? 
+                                card_color = ?, accent_color = ?, text_color = ?, parent_community_id = ? 
                             WHERE id = ?""", 
                          (name, description, community_type, template, 
-                          card_color, accent_color, text_color, community_id))
+                          card_color, accent_color, text_color, 
+                          parent_community_id if parent_community_id and parent_community_id != 'none' else None, 
+                          community_id))
             
             conn.commit()
             

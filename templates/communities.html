@@ -685,6 +685,14 @@
 							<label for="communityLocation">Location (Optional)</label>
 							<input type="text" id="communityLocation" name="location" placeholder="City, Country, or Online">
 						</div>
+						
+						<div class="form-group">
+							<label for="parentCommunity">Parent Community (Optional)</label>
+							<select id="parentCommunity" name="parent_community_id">
+								<option value="none">None - This is a top-level community</option>
+							</select>
+							<small style="color: rgba(255,255,255,0.5); font-size: 11px;">Select a parent community to create an umbrella structure</small>
+						</div>
 					</div>
 					
 					<div class="form-section">
@@ -786,6 +794,33 @@
 	<script src="{{ url_for('static', filename='script.js') }}"></script>
 	<script>
 		$(document).ready(function() {
+			// Function to load available parent communities
+			function loadParentCommunities(currentId = null) {
+				const url = currentId 
+					? `/get_available_parent_communities?current_id=${currentId}`
+					: '/get_available_parent_communities';
+				
+				$.ajax({
+					url: url,
+					type: 'GET',
+					success: function(response) {
+						if (response.success) {
+							const select = $('#parentCommunity');
+							select.empty();
+							select.append('<option value="none">None - This is a top-level community</option>');
+							
+							response.communities.forEach(function(community) {
+								// Don't show communities that already have this as parent (avoid circular)
+								select.append(`<option value="${community.id}">${community.name} (${community.type})</option>`);
+							});
+						}
+					},
+					error: function(xhr, status, error) {
+						console.error('Error loading parent communities:', error);
+					}
+				});
+			}
+			
 			// Load joined communities on page load
 			loadJoinedCommunities();
 
@@ -852,6 +887,8 @@
 			// Build community button
 			$('#buildCommunityBtn').on('click', function() {
 				$('#communityModal').show();
+				// Load available parent communities
+				loadParentCommunities();
 			});
 
 			// Close modal

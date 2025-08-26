@@ -2853,8 +2853,32 @@
             document.getElementById('adminInfoModal').style.display = 'none';
         }
         
+        function loadParentCommunitiesForEdit(currentId, currentParentId) {
+            $.ajax({
+                url: `/get_available_parent_communities?current_id=${currentId}`,
+                type: 'GET',
+                success: function(response) {
+                    if (response.success) {
+                        const select = $('#parentCommunityEdit');
+                        select.empty();
+                        select.append('<option value="none">None - This is a top-level community</option>');
+                        
+                        response.communities.forEach(function(community) {
+                            const selected = currentParentId && community.id === currentParentId ? 'selected' : '';
+                            select.append(`<option value="${community.id}" ${selected}>${community.name} (${community.type})</option>`);
+                        });
+                    }
+                },
+                error: function(xhr, status, error) {
+                    console.error('Error loading parent communities:', error);
+                }
+            });
+        }
+        
         function showEditCommunityModal() {
             document.getElementById('editCommunityModal').style.display = 'block';
+            // Load available parent communities
+            loadParentCommunitiesForEdit({{ community.id }}, {{ community.parent_community_id|tojson }});
         }
         
         function closeEditCommunityModal() {
@@ -3914,6 +3938,13 @@
                             <option value="Sports" {{ 'selected' if community.type == 'Sports' else '' }}>Sports</option>
                             <option value="General" {{ 'selected' if community.type == 'General' else '' }}>General</option>
                         </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="parentCommunityEdit">Parent Community:</label>
+                        <select id="parentCommunityEdit" name="parent_community_id">
+                            <option value="none">None - This is a top-level community</option>
+                        </select>
+                        <small style="color: rgba(255,255,255,0.5); font-size: 11px;">Select a parent community to create an umbrella structure</small>
                     </div>
                     <div class="form-group">
                         <label for="communityBackgroundFile">Background Image:</label>
