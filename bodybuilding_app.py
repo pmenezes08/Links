@@ -1425,11 +1425,6 @@ def public_profile(username):
     logger.info(f"Username parameter: {username}")
     logger.info(f"Request URL: {request.url}")
     logger.info(f"Request path: {request.path}")
-    
-    # Quick test - if username is "test", return a simple response
-    if username == "test":
-        return "Profile route is working! Username: test"
-    
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
