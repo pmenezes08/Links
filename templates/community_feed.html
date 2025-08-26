@@ -2718,7 +2718,7 @@
                         <div class="poll-item-meta">
                             <div class="poll-item-date">${poll.created_at}</div>
                             ${(poll.created_by === '{{ username }}' || '{{ username }}' === 'admin') ? 
-                                `<button class="close-poll-btn" onclick="closePoll(${poll.id})" title="Close Poll">
+                                `<button class="close-poll-btn" onclick="closePoll(${poll.id})">
                                     <i class="fas fa-lock"></i>
                                 </button>` : ''
                             }
@@ -2726,7 +2726,7 @@
                     </div>
                     <div class="poll-item-options">
                         ${poll.options.map(option => `
-                            <div class="poll-item-option ${option.user_voted ? 'voted' : ''}" data-poll-id="${poll.id}" data-option-id="${option.id}">
+                            <div class="poll-item-option ${option.user_voted ? 'voted' : ''}" data-poll-id="${poll.id}" data-option-id="${option.id}" style="cursor: pointer;">
                                 <div class="poll-item-option-text">${option.option_text}</div>
                                 <div class="poll-item-option-votes">${option.votes}</div>
                             </div>
@@ -2741,14 +2741,18 @@
             
             container.innerHTML = pollsHTML;
             
-            // Add click handlers for voting
-            container.querySelectorAll('.poll-item-option').forEach(option => {
-                option.addEventListener('click', function() {
-                    const pollId = this.dataset.pollId;
-                    const optionId = this.dataset.optionId;
-                    voteOnPoll(pollId, optionId, this);
+            // Add click handlers for voting with a small delay to ensure DOM is ready
+            setTimeout(() => {
+                container.querySelectorAll('.poll-item-option').forEach(option => {
+                    option.addEventListener('click', function(e) {
+                        e.stopPropagation();
+                        const pollId = this.dataset.pollId;
+                        const optionId = this.dataset.optionId;
+                        console.log('Voting on poll:', pollId, 'option:', optionId);
+                        voteOnPoll(pollId, optionId, this);
+                    });
                 });
-            });
+            }, 100);
         }
         
         function addModalPollOption() {
@@ -3851,10 +3855,10 @@
         <!-- Compact Polls Sidebar (Hidden by default) -->
         <div class="polls-sidebar collapsed" id="pollsSidebar">
             <div class="sidebar-header">
-                <button class="sidebar-close-btn" onclick="togglePollsSidebar()" title="Close">
+                <button class="sidebar-close-btn" onclick="togglePollsSidebar()">
                     <i class="fas fa-times"></i>
                 </button>
-                <button class="sidebar-action-btn" onclick="showPollsModal()" title="View All Polls">
+                <button class="sidebar-action-btn" onclick="showPollsModal()">
                     <i class="fas fa-expand"></i>
                 </button>
             </div>
@@ -4278,14 +4282,14 @@
                                     <div class="poll-question-compact">
                                         <i class="fas fa-poll-h"></i> ${poll.question}
                                         ${(poll.created_by === '{{ username }}' || '{{ username }}' === 'admin') ? 
-                                            `<button class="close-poll-btn-compact" onclick="closePoll(${poll.id})" title="Close Poll">
+                                            `<button class="close-poll-btn-compact" onclick="closePoll(${poll.id})">
                                                 <i class="fas fa-times-circle"></i>
                                             </button>` : ''
                                         }
                                     </div>
                                     <div class="poll-options-compact">
                                         ${poll.options.map(option => `
-                                            <div class="poll-option-compact" data-poll-id="${poll.id}" data-option-id="${option.id}">
+                                            <div class="poll-option-compact" data-poll-id="${poll.id}" data-option-id="${option.id}" style="cursor: pointer;">
                                                 <div class="poll-option-text-compact">${option.option_text}</div>
                                                 <div class="poll-option-votes-compact">${option.votes}</div>
                                             </div>
