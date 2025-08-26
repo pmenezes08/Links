@@ -3239,29 +3239,21 @@
                 if (data.success) {
                     const membersList = document.getElementById('membersList');
                     console.log('Members data received:', data.members);
-                    const membersHTML = data.members.map(member => `
-                        <div class="member-item">
-                            <a href="/profile/${member.username}" class="member-username" data-username="${member.username}">@${member.username}</a>
-                            ${member.username !== '{{ username }}' && ('{{ username }}' === '{{ community.creator_username }}' || '{{ username }}' === 'admin') ? 
-                                `<button onclick="removeMember('${member.username}', event)" class="remove-member-btn">Remove</button>` : ''}
-                        </div>
-                    `).join('');
+                    const membersHTML = data.members.map(member => {
+                        // Escape username for safe HTML insertion
+                        const safeUsername = member.username.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+                        return `
+                            <div class="member-item">
+                                <a href="/profile/${safeUsername}" class="member-username">@${safeUsername}</a>
+                                ${member.username !== '{{ username }}' && ('{{ username }}' === '{{ community.creator_username }}' || '{{ username }}' === 'admin') ? 
+                                    `<button onclick="removeMember('${safeUsername}', event)" class="remove-member-btn">Remove</button>` : ''}
+                            </div>
+                        `;
+                    }).join('');
                     membersList.innerHTML = membersHTML || '<p class="no-members">No members yet</p>';
                     
-                    // Add click handlers to member links
-                    document.querySelectorAll('.member-username').forEach(link => {
-                        link.addEventListener('click', function(e) {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            const username = this.dataset.username;
-                            console.log('Member clicked:', username);
-                            const profileUrl = `/profile/${encodeURIComponent(username)}`;
-                            console.log('Navigating to:', profileUrl);
-                            console.log('Current location:', window.location.href);
-                            // Use absolute navigation to ensure proper routing
-                            window.location.href = profileUrl;
-                        });
-                    });
+                    // Don't add click handlers - let the natural link behavior work
+                    // The href attribute will handle the navigation
                 } else {
                     console.error('Error loading members:', data.error);
                     document.getElementById('membersList').innerHTML = '<p class="error-message">Error loading members: ' + data.error + '</p>';

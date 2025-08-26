@@ -1421,7 +1421,15 @@ def admin_test():
 @app.route('/profile/<username>')
 def public_profile(username):
     """Public profile page for any user"""
-    logger.info(f"Accessing profile for username: {username}")
+    logger.info(f"=== PROFILE ROUTE ACCESSED ===")
+    logger.info(f"Username parameter: {username}")
+    logger.info(f"Request URL: {request.url}")
+    logger.info(f"Request path: {request.path}")
+    
+    # Quick test - if username is "test", return a simple response
+    if username == "test":
+        return "Profile route is working! Username: test"
+    
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
