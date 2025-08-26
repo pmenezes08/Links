@@ -3138,6 +3138,293 @@ def check_password_status():
         logger.error(f"Error checking password status: {str(e)}")
         return f"Error: {str(e)}", 500
 
+@app.route('/check_duplicate_users')
+def check_duplicate_users():
+    """Check for duplicate usernames in the database - ADMIN ONLY"""
+    if session.get('username') != 'admin':
+        return "Unauthorized", 403
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Check for duplicate usernames
+            c.execute("""
+                SELECT username, COUNT(*) as count, GROUP_CONCAT(rowid) as ids, 
+                       GROUP_CONCAT(password, '|||') as passwords,
+                       GROUP_CONCAT(email, '|||') as emails,
+                       GROUP_CONCAT(subscription, '|||') as subscriptions
+                FROM users 
+                GROUP BY LOWER(username) 
+                HAVING count > 1
+            """)
+            duplicates = c.fetchall()
+            
+            # Get all admin records specifically
+            c.execute("""
+                SELECT rowid, username, email, password, subscription, created_at
+                FROM users 
+                WHERE LOWER(username) = 'admin'
+                ORDER BY rowid
+            """)
+            admin_records = c.fetchall()
+            
+            return f"""
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Duplicate Users Check</title>
+                <style>
+                    body {{
+                        background: #000;
+                        color: #fff;
+                        font-family: Arial, sans-serif;
+                        padding: 20px;
+                        max-width: 1200px;
+                        margin: 0 auto;
+                    }}
+                    .section {{
+                        background: #1a1a1a;
+                        padding: 20px;
+                        border-radius: 8px;
+                        margin: 20px 0;
+                    }}
+                    .duplicate {{
+                        border-left: 4px solid #ef5350;
+                    }}
+                    .admin-records {{
+                        border-left: 4px solid #ffa726;
+                    }}
+                    table {{
+                        width: 100%;
+                        border-collapse: collapse;
+                        margin-top: 15px;
+                    }}
+                    th, td {{
+                        padding: 10px;
+                        text-align: left;
+                        border-bottom: 1px solid #333;
+                    }}
+                    th {{
+                        background: #0a0a0a;
+                        color: #4db6ac;
+                    }}
+                    .password-cell {{
+                        font-family: monospace;
+                        font-size: 12px;
+                        word-break: break-all;
+                    }}
+                    .fix-btn {{
+                        background: #ef5350;
+                        color: white;
+                        border: none;
+                        padding: 8px 15px;
+                        border-radius: 4px;
+                        cursor: pointer;
+                        margin: 5px;
+                    }}
+                    .fix-btn:hover {{
+                        background: #f44336;
+                    }}
+                    button {{
+                        background: #4db6ac;
+                        color: white;
+                        border: none;
+                        padding: 10px 20px;
+                        border-radius: 4px;
+                        cursor: pointer;
+                        margin-right: 10px;
+                    }}
+                    button:hover {{
+                        background: #5bc7bd;
+                    }}
+                    .warning {{
+                        background: rgba(255, 152, 0, 0.1);
+                        border: 1px solid #ff9800;
+                        padding: 15px;
+                        border-radius: 4px;
+                        margin: 15px 0;
+                    }}
+                </style>
+            </head>
+            <body>
+                <h1>Duplicate Users Check</h1>
+                
+                {f'''
+                <div class="section duplicate">
+                    <h2>⚠️ Duplicate Usernames Found ({len(duplicates)} usernames)</h2>
+                    <table>
+                        <tr>
+                            <th>Username</th>
+                            <th>Count</th>
+                            <th>Row IDs</th>
+                            <th>Passwords</th>
+                            <th>Emails</th>
+                            <th>Subscriptions</th>
+                            <th>Action</th>
+                        </tr>
+                        {''.join([f"""
+                        <tr>
+                            <td>{dup[0]}</td>
+                            <td>{dup[1]}</td>
+                            <td>{dup[2]}</td>
+                            <td class="password-cell">{dup[3][:50]}...</td>
+                            <td>{dup[4]}</td>
+                            <td>{dup[5]}</td>
+                            <td>
+                                <button class="fix-btn" onclick="if(confirm('Keep only the first record and delete duplicates for {dup[0]}?')) window.location.href='/fix_duplicate_user/{dup[0]}'">
+                                    Fix Duplicates
+                                </button>
+                            </td>
+                        </tr>
+                        """ for dup in duplicates])}
+                    </table>
+                </div>
+                ''' if duplicates else '''
+                <div class="section" style="border-left: 4px solid #4db6ac;">
+                    <h2>✅ No Duplicate Usernames Found</h2>
+                    <p>All usernames in the database are unique.</p>
+                </div>
+                '''}
+                
+                <div class="section admin-records">
+                    <h2>Admin Account Records ({len(admin_records)} records)</h2>
+                    {f'''
+                    <div class="warning">
+                        ⚠️ Found {len(admin_records)} records for admin account. There should only be 1.
+                    </div>
+                    ''' if len(admin_records) > 1 else ''}
+                    <table>
+                        <tr>
+                            <th>Row ID</th>
+                            <th>Username</th>
+                            <th>Email</th>
+                            <th>Password (first 30 chars)</th>
+                            <th>Subscription</th>
+                            <th>Created At</th>
+                        </tr>
+                        {''.join([f"""
+                        <tr>
+                            <td>{record[0]}</td>
+                            <td>{record[1]}</td>
+                            <td>{record[2] or 'N/A'}</td>
+                            <td class="password-cell">{record[3][:30] if record[3] else 'N/A'}...</td>
+                            <td>{record[4] or 'N/A'}</td>
+                            <td>{record[5] or 'N/A'}</td>
+                        </tr>
+                        """ for record in admin_records])}
+                    </table>
+                    {f'''
+                    <button class="fix-btn" onclick="if(confirm('This will keep the first admin record and delete the rest. Continue?')) window.location.href='/fix_duplicate_user/admin'">
+                        Fix Admin Duplicates
+                    </button>
+                    ''' if len(admin_records) > 1 else ''}
+                </div>
+                
+                <div style="margin-top: 30px;">
+                    <button onclick="window.location.href='/admin'">Back to Admin Dashboard</button>
+                    <button onclick="window.location.reload()">Refresh</button>
+                    <button onclick="window.location.href='/check_password_status'">Check Password Status</button>
+                </div>
+            </body>
+            </html>
+            """
+            
+    except Exception as e:
+        logger.error(f"Error checking duplicate users: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return f"Error: {str(e)}", 500
+
+@app.route('/fix_duplicate_user/<username>')
+def fix_duplicate_user(username):
+    """Fix duplicate user records by keeping only the first one - ADMIN ONLY"""
+    if session.get('username') != 'admin':
+        return "Unauthorized", 403
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Get all records for this username
+            c.execute("""
+                SELECT rowid, username, password, email, subscription
+                FROM users 
+                WHERE LOWER(username) = LOWER(?)
+                ORDER BY rowid
+            """, (username,))
+            records = c.fetchall()
+            
+            if len(records) <= 1:
+                return f"No duplicates found for {username}. <a href='/check_duplicate_users'>Go back</a>"
+            
+            # Keep the first record, delete the rest
+            keep_record = records[0]
+            delete_ids = [str(r[0]) for r in records[1:]]
+            
+            # Delete duplicate records
+            c.execute(f"""
+                DELETE FROM users 
+                WHERE rowid IN ({','.join(['?' for _ in delete_ids])})
+            """, delete_ids)
+            
+            conn.commit()
+            
+            return f"""
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Duplicate Fixed</title>
+                <style>
+                    body {{
+                        background: #000;
+                        color: #fff;
+                        font-family: Arial, sans-serif;
+                        padding: 20px;
+                        max-width: 800px;
+                        margin: 0 auto;
+                    }}
+                    .success {{
+                        background: rgba(77, 182, 172, 0.1);
+                        border: 1px solid #4db6ac;
+                        padding: 20px;
+                        border-radius: 8px;
+                        margin: 20px 0;
+                    }}
+                    button {{
+                        background: #4db6ac;
+                        color: white;
+                        border: none;
+                        padding: 10px 20px;
+                        border-radius: 4px;
+                        cursor: pointer;
+                        margin-right: 10px;
+                        margin-top: 20px;
+                    }}
+                    button:hover {{
+                        background: #5bc7bd;
+                    }}
+                </style>
+            </head>
+            <body>
+                <h1>Duplicate Fixed</h1>
+                <div class="success">
+                    <h2>✅ Successfully Fixed Duplicates for {username}</h2>
+                    <p>Kept record ID: {keep_record[0]}</p>
+                    <p>Deleted {len(delete_ids)} duplicate records (IDs: {', '.join(delete_ids)})</p>
+                    <p>Email: {keep_record[3] or 'N/A'}</p>
+                    <p>Subscription: {keep_record[4] or 'N/A'}</p>
+                </div>
+                <button onclick="window.location.href='/check_duplicate_users'">Check for More Duplicates</button>
+                <button onclick="window.location.href='/admin'">Back to Admin Dashboard</button>
+            </body>
+            </html>
+            """
+            
+    except Exception as e:
+        logger.error(f"Error fixing duplicate user {username}: {str(e)}")
+        return f"Error: {str(e)}", 500
+
 @app.route('/check_unread_messages')
 @login_required
 def check_unread_messages():
