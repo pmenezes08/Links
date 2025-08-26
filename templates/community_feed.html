@@ -21,12 +21,22 @@
             right: 0; 
             height: 60px; 
             padding: 10px 20px;
-            background: #000000; 
-            border-bottom: 1px solid #333333; 
+            background: {{ '#ffffff' if community.template == 'light' else '#000000' }}; 
+            border-bottom: 1px solid {{ '#dee2e6' if community.template == 'light' else '#333333' }}; 
             z-index: 900;
             box-sizing: border-box;
             display: flex;
             align-items: center;
+        }
+        
+        .premium-header h1,
+        .premium-header .community-name,
+        .premium-header .community-type {
+            color: {{ '#000000' if community.template == 'light' else '#ffffff' }} !important;
+        }
+        
+        .premium-header .parent-link {
+            color: {{ '#2d8a7e' if community.template == 'light' else '#4db6ac' }} !important;
         }
         
         /* Main layout - centered with header offset */
@@ -78,8 +88,8 @@
             left: 0 !important; 
             width: 200px !important; 
             height: 100vh !important; 
-            background: #1a1a1a !important; 
-            border-right: 1px solid #333333 !important; 
+            background: {{ '#f8f9fa' if community.template == 'light' else '#1a1a1a' }} !important; 
+            border-right: 1px solid {{ '#dee2e6' if community.template == 'light' else '#333333' }} !important; 
             z-index: 1000 !important; 
             display: flex !important; 
             flex-direction: column !important; 
@@ -89,7 +99,7 @@
             display: flex; 
             align-items: center; 
             padding: 10px; 
-            border-bottom: 1px solid #333333; 
+            border-bottom: 1px solid {{ '#dee2e6' if community.template == 'light' else '#333333' }}; 
             height: 60px; 
             box-sizing: border-box; 
         }
@@ -106,7 +116,7 @@
             flex: 1; 
             display: flex; 
             align-items: center; 
-            color: #ffffff; 
+            color: {{ '#000000' if community.template == 'light' else '#ffffff' }}; 
             font-size: 14px; 
             font-weight: 600; 
             padding-left: 10px; 
@@ -129,7 +139,7 @@
         .sidebar-menu a { 
             display: block !important; 
             padding: 10px 18px !important; 
-            color: #ffffff !important; 
+            color: {{ '#495057' if community.template == 'light' else '#ffffff' }} !important; 
             text-decoration: none !important; 
             transition: all 0.3s ease !important; 
             border: none !important; 
@@ -137,8 +147,8 @@
         }
         
         .sidebar-menu a:hover { 
-            background: rgba(77, 182, 172, 0.15) !important; 
-            color: #4db6ac !important; 
+            background: {{ 'rgba(45, 138, 126, 0.1)' if community.template == 'light' else 'rgba(77, 182, 172, 0.15)' }} !important; 
+            color: {{ '#2d8a7e' if community.template == 'light' else '#4db6ac' }} !important; 
             padding-left: 22px !important; 
         }
         
@@ -251,6 +261,17 @@
         
         .notification-badge {
             animation: pulse 2s infinite;
+        }
+        
+        /* Header icons color adaptation */
+        .header-icon-btn {
+            background: {{ 'rgba(0, 0, 0, 0.05)' if community.template == 'light' else 'rgba(255, 255, 255, 0.05)' }} !important;
+            color: {{ 'rgba(0, 0, 0, 0.7)' if community.template == 'light' else 'rgba(255, 255, 255, 0.7)' }} !important;
+        }
+        
+        .header-icon-btn:hover {
+            background: {{ 'rgba(0, 0, 0, 0.1)' if community.template == 'light' else 'rgba(255, 255, 255, 0.1)' }} !important;
+            color: {{ '#000000' if community.template == 'light' else '#ffffff' }} !important;
         }
         
         /* Custom Tooltips for header icons */
@@ -3838,15 +3859,15 @@
     <div class="premium-header">
         <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
             <div style="display: flex; align-items: center; gap: 15px;">
-                <h1 style="color: #ffffff; font-size: 18px; font-weight: 600; margin: 0;">{{ community.name }}</h1>
-                <span style="color: rgba(255,255,255,0.6); font-size: 12px;">{{ community.type }} Community</span>
+                <h1 style="font-size: 18px; font-weight: 600; margin: 0;">{{ community.name }}</h1>
+                <span class="community-type" style="font-size: 12px; opacity: 0.7;">{{ community.type }} Community</span>
             </div>
             <div style="display: flex; align-items: center; gap: 12px;">
                 {% if parent_community %}
                 <div class="parent-community-link" style="display: flex; align-items: center; gap: 6px;">
                     <a href="/community_feed/{{ parent_community.id }}" 
                        class="parent-link"
-                       style="color: #4db6ac; text-decoration: none; font-size: 12px; font-weight: 500; padding: 4px 10px; background: rgba(77, 182, 172, 0.1); border-radius: 16px; transition: all 0.2s ease; display: flex; align-items: center; gap: 5px;"
+                       style="text-decoration: none; font-size: 12px; font-weight: 500; padding: 4px 10px; background: rgba(77, 182, 172, 0.1); border-radius: 16px; transition: all 0.2s ease; display: flex; align-items: center; gap: 5px;"
                        onmouseover="this.style.background='rgba(77, 182, 172, 0.2)'; this.style.transform='translateY(-1px)'"
                        onmouseout="this.style.background='rgba(77, 182, 172, 0.1)'; this.style.transform='translateY(0)'">
                         <i class="fas fa-arrow-left" style="font-size: 10px;"></i>
@@ -3865,9 +3886,7 @@
                     <!-- Chat Icon -->
                     <a href="{{ url_for('user_chat') }}" 
                        class="header-icon-btn"
-                       style="position: relative; display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; background: rgba(255,255,255,0.05); border-radius: 50%; color: rgba(255,255,255,0.7); text-decoration: none; transition: all 0.2s ease;"
-                       onmouseover="this.style.background='rgba(255,255,255,0.1)'; this.style.color='#ffffff'"
-                       onmouseout="this.style.background='rgba(255,255,255,0.05)'; this.style.color='rgba(255,255,255,0.7)'">
+                       style="position: relative; display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 50%; text-decoration: none; transition: all 0.2s ease;">
                         <i class="fas fa-comment" style="font-size: 14px;"></i>
                         <span class="tooltip-text">Messages</span>
                         {% if unread_messages > 0 %}
@@ -3878,9 +3897,7 @@
                     <!-- Notification Bell -->
                     <a href="/notifications" 
                        class="header-icon-btn"
-                       style="position: relative; display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; background: rgba(255,255,255,0.05); border-radius: 50%; color: rgba(255,255,255,0.7); text-decoration: none; transition: all 0.2s ease;"
-                       onmouseover="this.style.background='rgba(255,255,255,0.1)'; this.style.color='#ffffff'"
-                       onmouseout="this.style.background='rgba(255,255,255,0.05)'; this.style.color='rgba(255,255,255,0.7)'">
+                       style="position: relative; display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 50%; text-decoration: none; transition: all 0.2s ease;">
                         <i class="fas fa-bell" style="font-size: 14px;"></i>
                         <span class="tooltip-text">Notifications</span>
                         {% if unread_notifications > 0 %}
