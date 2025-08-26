@@ -4232,7 +4232,7 @@ def get_user_communities_with_members():
                         members.append({
                             'id': member['id'],
                             'username': member['username'],
-                            'profile_pic': member['profile_picture'] if member.get('profile_picture') else None,
+                            'profile_pic': member['profile_picture'] if member['profile_picture'] else None,
                             'online': False  # You can implement online status tracking later
                         })
                     
@@ -4246,7 +4246,7 @@ def get_user_communities_with_members():
                         'members': members
                     })
                 except Exception as ce:
-                    logger.error(f"Error processing community {community.get('name', 'unknown')}: {str(ce)}")
+                    logger.error(f"Error processing community {community['name'] if 'name' in community else 'unknown'}: {str(ce)}")
                     continue
             
             logger.info(f"Returning {len(result)} communities with members")
