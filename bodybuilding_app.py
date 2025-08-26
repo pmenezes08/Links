@@ -1421,6 +1421,7 @@ def admin_test():
 @app.route('/profile/<username>')
 def public_profile(username):
     """Public profile page for any user"""
+    logger.info(f"Accessing profile for username: {username}")
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
@@ -1429,6 +1430,7 @@ def public_profile(username):
             c.execute("SELECT username FROM users WHERE username=?", (username,))
             user = c.fetchone()
             if not user:
+                logger.warning(f"User not found: {username}")
                 flash('User not found', 'error')
                 return redirect(url_for('feed'))
             
@@ -1446,6 +1448,13 @@ def public_profile(username):
             """, (username,))
             
             profile_data = c.fetchone()
+            
+            if not profile_data:
+                logger.error(f"No profile data found for user: {username}")
+                flash('Profile not found', 'error')
+                return redirect(url_for('feed'))
+                
+            logger.info(f"Profile data found for {username}")
             
             # Get user's posts
             c.execute("""

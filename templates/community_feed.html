@@ -3240,12 +3240,21 @@
                     const membersList = document.getElementById('membersList');
                     const membersHTML = data.members.map(member => `
                         <div class="member-item">
-                            <a href="/profile/${member.username}" class="member-username" onclick="event.stopPropagation()">@${member.username}</a>
+                            <a href="/profile/${member.username}" class="member-username" data-username="${member.username}">@${member.username}</a>
                             ${member.username !== '{{ username }}' && ('{{ username }}' === '{{ community.creator_username }}' || '{{ username }}' === 'admin') ? 
                                 `<button onclick="removeMember('${member.username}', event)" class="remove-member-btn">Remove</button>` : ''}
                         </div>
                     `).join('');
                     membersList.innerHTML = membersHTML || '<p class="no-members">No members yet</p>';
+                    
+                    // Add click handlers to member links
+                    document.querySelectorAll('.member-username').forEach(link => {
+                        link.addEventListener('click', function(e) {
+                            e.preventDefault();
+                            const username = this.dataset.username;
+                            window.location.href = `/profile/${username}`;
+                        });
+                    });
                 } else {
                     console.error('Error loading members:', data.error);
                     document.getElementById('membersList').innerHTML = '<p class="error-message">Error loading members: ' + data.error + '</p>';
