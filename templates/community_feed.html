@@ -8,6 +8,11 @@
     <meta name="csrf-token" content="{{ csrf_token }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v='3.1') }}">
     <style>
+        /* Global box-sizing to prevent overflow */
+        * {
+            box-sizing: border-box;
+        }
+        
         /* Premium Header (matching dashboard) */
         .premium-header { 
             position: fixed; 
@@ -26,7 +31,7 @@
         
         /* Main layout - centered with header offset */
         .main-layout-container {
-            max-width: 800px;
+            max-width: 1200px;
             margin: 0 auto;
             padding: 80px 20px 20px 20px;
             margin-left: 200px;
@@ -325,6 +330,8 @@
                 margin-left: 0;
                 padding-top: 120px;
                 max-width: 100%;
+                padding-left: 10px;
+                padding-right: 10px;
             }
             
             .sidebar {
@@ -497,6 +504,14 @@
             background-color: {{ '#f8f9fa' if community.template == 'light' else '#000000' }} !important;  /* Black background */
             border: 1px solid {{ '#e9ecef' if community.template == 'light' else (community.accent_color or '#4db6ac') }} !important;  /* Turquoise border */
             color: {{ '#495057' if community.template == 'light' else '#ffffff' }} !important;
+            max-width: 100%;
+            box-sizing: border-box;
+        }
+        
+        /* Ensure images don't overflow */
+        .post img, .composer-card img {
+            max-width: 100%;
+            height: auto;
         }
         
         .post {
@@ -504,6 +519,14 @@
             border: 1px solid {{ '#e9ecef' if community.template == 'light' else '#333333' }} !important;  /* Dark grey border */
             color: {{ '#495057' if community.template == 'light' else '#ffffff' }} !important;
             transition: border-color 0.3s ease !important;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+        }
+        
+        .post-content {
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+            max-width: 100%;
         }
         
         .post:hover {
@@ -713,13 +736,13 @@
         .container.feed {
             background-color: {{ '#ffffff' if community.template == 'light' else '#000000' }};
             padding: 10px;
-            max-width: 90%;
+            max-width: 100%;
             margin: 10px auto;
         }
         
         .community-header-image {
             width: 100%;
-            max-width: 800px;
+            max-width: 100%;
             margin: 0 auto 20px auto;
             border-radius: 12px;
             overflow: hidden;
