@@ -339,6 +339,14 @@
                 gap: 8px;
             }
             
+            .community-header-image {
+                max-height: 180px;
+            }
+            
+            .community-header-image img {
+                max-height: 180px;
+            }
+            
             .sidebar {
                 width: 100% !important;
                 height: 60px !important;
@@ -748,6 +756,7 @@
         .community-header-image {
             width: 100%;
             max-width: 800px;
+            max-height: 250px;
             margin: 0 auto 20px auto;
             border-radius: 12px;
             overflow: hidden;
@@ -759,11 +768,18 @@
         
         .community-header-image img {
             max-width: 100%;
-            max-height: 400px;
+            max-height: 250px;
             width: auto;
             height: auto;
             display: block;
             object-fit: contain;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+        
+        /* Optional: Show larger image on hover */
+        .community-header-image:hover img {
+            transform: scale(1.05);
         }
 
         /* Light theme specific styles */
@@ -3900,6 +3916,8 @@
             <img src="{% if community.background_path.startswith('http') %}{{ community.background_path }}{% else %}{{ url_for('static', filename='community_backgrounds/' + community.background_path.split('/')[-1]) }}{% endif %}" 
                  alt="{{ community.name }} Header" 
                  class="header-image"
+                 onclick="viewFullImage(this.src)"
+                 title="Click to view full size"
                  onerror="console.log('Header image failed to load:', this.src); this.style.display='none'; this.parentElement.style.display='none';"
                  onload="console.log('Header image loaded successfully:', this.src);">
         </div>
@@ -5008,6 +5026,14 @@
         </div>
     </div>
 
+    <!-- Image Viewer Modal -->
+    <div id="imageViewerModal" class="modal" style="display: none;">
+        <div class="modal-content" style="max-width: 90vw; max-height: 90vh; background: transparent; border: none; box-shadow: none;">
+            <span class="close" onclick="closeImageViewer()" style="color: white; font-size: 30px; position: fixed; top: 20px; right: 30px; z-index: 1001;">&times;</span>
+            <img id="fullSizeImage" src="" style="max-width: 100%; max-height: 90vh; display: block; margin: auto; border-radius: 8px;">
+        </div>
+    </div>
+    
     <!-- Issues Modal (for University and Gym communities) -->
     {% if community.type == 'University' or community.type == 'Gym' %}
     <div id="issuesModal" class="modal">
@@ -5470,6 +5496,23 @@
                         alert('Error adding link');
                     });
                 });
+            }
+        });
+        
+        // Image Viewer Functions
+        function viewFullImage(src) {
+            document.getElementById('fullSizeImage').src = src;
+            document.getElementById('imageViewerModal').style.display = 'block';
+        }
+        
+        function closeImageViewer() {
+            document.getElementById('imageViewerModal').style.display = 'none';
+        }
+        
+        // Close image viewer when clicking outside the image
+        document.getElementById('imageViewerModal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeImageViewer();
             }
         });
         
