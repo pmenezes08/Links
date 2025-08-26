@@ -885,8 +885,8 @@
                 <input type="hidden" name="csrf_token" value="disabled">
                 <input type="hidden" name="username" id="passwordUsername" value="">
                 <div class="form-group">
-                    <label for="newPassword">New Password:</label>
-                    <input type="password" name="new_password" id="newPassword" required>
+                    <label for="updatePassword">New Password:</label>
+                    <input type="password" name="new_password" id="updatePassword" required>
                 </div>
                 <div class="modal-actions">
                     <button type="button" class="btn btn-secondary" onclick="closePasswordModal()">Cancel</button>
@@ -978,7 +978,7 @@
             $('#passwordModalUsername').text(username);
             $('#passwordModal').show();
             // Focus on password field
-            setTimeout(() => $('#newPassword').focus(), 100);
+            setTimeout(() => $('#updatePassword').focus(), 100);
         }
         
         function closePasswordModal() {
@@ -1141,7 +1141,7 @@
             e.preventDefault();
             
             const username = $('#passwordUsername').val();
-            const newPassword = $('#newPassword').val();
+            const newPassword = $('#updatePassword').val();
             
             console.log('Form submission - Username:', username);
             console.log('Form submission - Password length:', newPassword ? newPassword.length : 0);
