@@ -3272,7 +3272,7 @@ def check_duplicate_users():
                             <td>{dup[4]}</td>
                             <td>{dup[5]}</td>
                             <td>
-                                <button class="fix-btn" onclick="if(confirm(&quot;Keep only the first record and delete duplicates for {dup[0]}?&quot;)) window.location.href=&quot;/fix_duplicate_user/{dup[0]}&quot;">
+                                <button class="fix-btn" onclick="if(confirm(&quot;Keep only the first record and delete duplicates for {str(dup[0])}?&quot;)) window.location.href=&quot;/fix_duplicate_user/{str(dup[0])}&quot;">
                                     Fix Duplicates
                                 </button>
                             </td>
