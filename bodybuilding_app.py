@@ -341,6 +341,21 @@ def init_db():
                           FOREIGN KEY (community_id) REFERENCES communities(id) ON DELETE CASCADE,
                           FOREIGN KEY (uploaded_by) REFERENCES users(username))''')
 
+            # Create notifications table
+            logger.info("Creating notifications table...")
+            c.execute('''CREATE TABLE IF NOT EXISTS notifications
+                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                          user_id TEXT NOT NULL,
+                          from_user TEXT,
+                          type TEXT NOT NULL,
+                          post_id INTEGER,
+                          community_id INTEGER,
+                          message TEXT,
+                          is_read INTEGER DEFAULT 0,
+                          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                          FOREIGN KEY (post_id) REFERENCES posts(id),
+                          FOREIGN KEY (community_id) REFERENCES communities(id))''')
+            
             # Create community_announcements table
             logger.info("Creating community_announcements table...")
             c.execute('''CREATE TABLE IF NOT EXISTS community_announcements
@@ -5653,21 +5668,35 @@ def community_feed(community_id):
                     ur = c.fetchone()
                     reply['user_reaction'] = ur['reaction_type'] if ur else None
             
-            # Get unread notification count
-            c.execute("""
-                SELECT COUNT(*) as count 
-                FROM notifications 
-                WHERE username = ? AND is_read = 0
-            """, (username,))
-            unread_notifications = c.fetchone()['count']
+            # Get unread notification count (safely handle if table doesn't exist)
+            unread_notifications = 0
+            try:
+                c.execute("""
+                    SELECT COUNT(*) as count 
+                    FROM notifications 
+                    WHERE user_id = ? AND is_read = 0
+                """, (username,))
+                result = c.fetchone()
+                if result:
+                    unread_notifications = result['count']
+            except Exception as e:
+                logger.debug(f"Notifications table not available or error: {e}")
+                unread_notifications = 0
             
             # Get unread message count
-            c.execute("""
-                SELECT COUNT(DISTINCT sender) as count 
-                FROM messages 
-                WHERE receiver = ? AND is_read = 0
-            """, (username,))
-            unread_messages = c.fetchone()['count']
+            unread_messages = 0
+            try:
+                c.execute("""
+                    SELECT COUNT(DISTINCT sender) as count 
+                    FROM messages 
+                    WHERE receiver = ? AND is_read = 0
+                """, (username,))
+                result = c.fetchone()
+                if result:
+                    unread_messages = result['count']
+            except Exception as e:
+                logger.debug(f"Messages query error: {e}")
+                unread_messages = 0
             
             return render_template('community_feed.html', 
                                 posts=posts, 
