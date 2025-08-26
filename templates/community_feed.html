@@ -1346,12 +1346,12 @@
         
         .poll-item-question {
             font-weight: 600;
-            color: {{ community.text_color or '#ffffff' }};
+            color: {{ '#000000' if community.template == 'light' else (community.text_color or '#ffffff') }};
         }
         
         .poll-item-date {
             font-size: 12px;
-            color: {{ community.text_color or '#ffffff' }}aa;
+            color: {{ '#000000aa' if community.template == 'light' else ((community.text_color or '#ffffff') + 'aa') }};
         }
         
         .poll-item-options {
@@ -1380,7 +1380,7 @@
         
         .poll-item-option-text {
             font-weight: 500;
-            color: {{ community.text_color or '#ffffff' }};
+            color: {{ '#000000' if community.template == 'light' else (community.text_color or '#ffffff') }};
         }
         
         .poll-item-option-votes {
@@ -1398,7 +1398,7 @@
         
         .poll-item-total {
             font-size: 12px;
-            color: {{ community.text_color or '#ffffff' }}aa;
+            color: {{ '#000000aa' if community.template == 'light' else ((community.text_color or '#ffffff') + 'aa') }};
         }
         
         .poll-item-voted {
@@ -2062,28 +2062,29 @@
         }
         
         .polls-modal .modal-header {
-            background: #000000 !important;
-            color: #ffffff !important;
+            background: {{ '#ffffff' if community.template == 'light' else '#000000' }} !important;
+            color: {{ '#000000' if community.template == 'light' else '#ffffff' }} !important;
             border-bottom: 1px solid rgba(45, 138, 126, 0.3) !important;
         }
         
         .polls-modal .modal-header h2 {
-            color: #ffffff;
+            color: {{ '#000000' if community.template == 'light' else '#ffffff' }};
         }
         
         .polls-modal .modal-header .close {
-            color: #9fb0b5;
+            color: {{ '#666666' if community.template == 'light' else '#9fb0b5' }};
         }
         
         .polls-modal .modal-header .close:hover {
-            color: #ffffff;
-            background: rgba(255, 255, 255, 0.1);
+            color: {{ '#000000' if community.template == 'light' else '#ffffff' }};
+            background: {{ 'rgba(0, 0, 0, 0.1)' if community.template == 'light' else 'rgba(255, 255, 255, 0.1)' }};
         }
         
         .polls-modal .modal-body {
             padding: 15px;
             max-height: 70vh;
             overflow-y: auto;
+            background: {{ '#ffffff' if community.template == 'light' else 'transparent' }};
         }
         
         #calendarModal .modal-body {
@@ -2106,7 +2107,7 @@
             border: none;
             padding: 8px 16px;
             cursor: pointer;
-            color: {{ community.text_color or '#ffffff' }}aa;
+            color: {{ '#000000aa' if community.template == 'light' else ((community.text_color or '#ffffff') + 'aa') }};
             font-size: 13px;
             font-weight: 500;
             transition: all 0.2s ease;
@@ -2115,7 +2116,7 @@
         }
         
         .poll-tab:hover {
-            color: {{ community.text_color or '#ffffff' }};
+            color: {{ '#000000' if community.template == 'light' else (community.text_color or '#ffffff') }};
             background: rgba(45, 138, 126, 0.1);
         }
         
@@ -2168,7 +2169,7 @@
         #pollsModalForm label {
             font-size: 13px;
             font-weight: 500;
-            color: {{ community.text_color or '#ffffff' }};
+            color: {{ '#000000' if community.template == 'light' else (community.text_color or '#ffffff') }};
             margin-bottom: 5px;
             display: block;
         }
@@ -2208,13 +2209,13 @@
         
         .poll-item-question {
             font-weight: 500;
-            color: {{ community.text_color or '#ffffff' }};
+            color: {{ '#000000' if community.template == 'light' else (community.text_color or '#ffffff') }};
             font-size: 13px;
         }
         
         .poll-item-date {
             font-size: 11px;
-            color: {{ community.text_color or '#ffffff' }}aa;
+            color: {{ '#000000aa' if community.template == 'light' else ((community.text_color or '#ffffff') + 'aa') }};
         }
         
         .poll-item-options {
@@ -2243,7 +2244,7 @@
         
         .poll-item-option-text {
             font-weight: 500;
-            color: {{ community.text_color or '#ffffff' }};
+            color: {{ '#000000' if community.template == 'light' else (community.text_color or '#ffffff') }};
             font-size: 12px;
         }
         
@@ -2263,7 +2264,7 @@
         
         .poll-item-total {
             font-size: 11px;
-            color: {{ community.text_color or '#ffffff' }}aa;
+            color: {{ '#000000aa' if community.template == 'light' else ((community.text_color or '#ffffff') + 'aa') }};
         }
         
         .poll-item-voted {
