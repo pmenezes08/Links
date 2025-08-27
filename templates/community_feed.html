@@ -6072,8 +6072,7 @@
         }
         {% endif %}
         
-        // Issues Modal Functions
-        {% if community.type == 'University' or community.type == 'Gym' %}
+        // More Options Modal Functions (available for all communities)
         function showMoreOptionsModal() {
             document.getElementById('moreOptionsModal').style.display = 'block';
         }
@@ -6081,6 +6080,9 @@
         function closeMoreOptionsModal() {
             document.getElementById('moreOptionsModal').style.display = 'none';
         }
+        
+        // Issues Modal Functions
+        {% if community.type == 'University' or community.type == 'Gym' %}
         
         function showIssuesModal() {
             document.getElementById('issuesModal').style.display = 'block';
