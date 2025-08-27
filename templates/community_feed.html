@@ -2319,6 +2319,25 @@
             overflow-y: auto;
         }
         
+        /* Make the add calendar tab scrollable independently */
+        #addCalendarTab {
+            max-height: 65vh;
+            overflow-y: auto;
+            overflow-x: hidden;
+            padding-right: 10px;
+        }
+        
+        /* Ensure members list is fully visible within the scrollable area */
+        #addCalendarTab .members-list {
+            position: relative;
+            z-index: 10;
+        }
+        
+        #addCalendarTab .members-checkbox-list {
+            max-height: 200px !important;
+            overflow-y: auto !important;
+        }
+        
         /* Polls tabs styling - compact and centered like announcements */
         .polls-tabs {
             display: flex;
@@ -5538,6 +5557,10 @@
             
             console.log('Rendering members list:', members);
             console.log('Current user:', currentUser);
+            console.log('Container element:', container);
+            
+            // Clear loading message
+            container.innerHTML = '';
             
             // Filter out current user
             const filteredMembers = members.filter(member => member.username !== currentUser);
@@ -5598,15 +5621,20 @@
             const membersList = document.getElementById('membersList');
             const icon = document.getElementById('membersToggleIcon');
             
-            if (membersList.style.display === 'none') {
+            console.log('Toggle members list called, current display:', membersList.style.display);
+            
+            if (membersList.style.display === 'none' || membersList.style.display === '') {
                 membersList.style.display = 'block';
                 icon.className = 'fas fa-chevron-up';
+                console.log('Showing members list, loaded members count:', loadedMembers.length);
                 if (loadedMembers.length === 0) {
+                    console.log('Loading community members...');
                     loadCommunityMembers();
                 }
             } else {
                 membersList.style.display = 'none';
                 icon.className = 'fas fa-chevron-down';
+                console.log('Hiding members list');
             }
         }
         
@@ -5834,12 +5862,13 @@
                                 </button>
                             </div>
                         </div>
-                        <div id="membersList" class="members-list" style="display: none;">
+                        <div id="membersList" class="members-list" style="display: none; margin-bottom: 10px;">
                             <div class="members-search">
                                 <input type="text" id="memberSearch" placeholder="Search members..." onkeyup="filterMembers()">
                             </div>
-                            <div id="membersCheckboxList" class="members-checkbox-list">
+                            <div id="membersCheckboxList" class="members-checkbox-list" style="min-height: 50px;">
                                 <!-- Members will be loaded here -->
+                                <div style="color: {{ 'rgba(0,0,0,0.5)' if community.template == 'light' else 'rgba(255,255,255,0.5)' }}; padding: 10px;">Loading...</div>
                             </div>
                         </div>
                         <input type="hidden" id="inviteAll" name="invite_all" value="false">
