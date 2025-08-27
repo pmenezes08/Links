@@ -7541,64 +7541,27 @@
         window.adsAutoRotateInterval = null;
         
         function extractImageColor(img, slideIndex) {
-            // Create a canvas to extract color
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d');
+            // Use backend to extract color to avoid CORS issues
+            const imageUrl = img.src;
             
-            // Set canvas size (small for performance)
-            canvas.width = 50;
-            canvas.height = 50;
-            
-            // Create new image to avoid CORS issues
-            const tempImg = new Image();
-            tempImg.crossOrigin = 'anonymous';
-            
-            tempImg.onload = function() {
-                try {
-                    // Draw scaled image
-                    ctx.drawImage(tempImg, 0, 0, 50, 50);
-                    
-                    // Get image data
-                    const imageData = ctx.getImageData(0, 0, 50, 50);
-                    const data = imageData.data;
-                    
-                    // Calculate dominant color
-                    let r = 0, g = 0, b = 0;
-                    let pixelCount = 0;
-                    
-                    // Sample every 5th pixel for performance
-                    for (let i = 0; i < data.length; i += 20) {
-                        r += data[i];
-                        g += data[i + 1];
-                        b += data[i + 2];
-                        pixelCount++;
+            // Fetch color from backend
+            fetch(`/get_image_color?url=${encodeURIComponent(imageUrl)}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success || data.color) {
+                        const color = data.color;
+                        const slide = document.getElementById(`ad-slide-${slideIndex}`);
+                        
+                        if (slide) {
+                            const opacity = {{ '0.15' if community.template == 'light' else '0.25' }};
+                            slide.style.setProperty('--ad-bg-color', `rgba(${color.r}, ${color.g}, ${color.b}, ${opacity})`);
+                            slide.setAttribute('data-bg-color', 'true');
+                        }
                     }
-                    
-                    // Calculate averages
-                    r = Math.round(r / pixelCount);
-                    g = Math.round(g / pixelCount);
-                    b = Math.round(b / pixelCount);
-                    
-                    // Apply the color with reduced opacity for subtle effect
-                    const slide = document.getElementById(`ad-slide-${slideIndex}`);
-                    if (slide) {
-                        const opacity = {{ '0.15' if community.template == 'light' else '0.25' }};
-                        slide.style.setProperty('--ad-bg-color', `rgba(${r}, ${g}, ${b}, ${opacity})`);
-                        slide.setAttribute('data-bg-color', 'true');
-                    }
-                } catch (e) {
-                    // Silently fail if CORS prevents color extraction
-                    console.log('Could not extract color from image:', e);
-                }
-            };
-            
-            tempImg.onerror = function() {
-                // Silently fail if image fails to load
-                console.log('Could not load image for color extraction');
-            };
-            
-            // Try to load the image
-            tempImg.src = img.src;
+                })
+                .catch(error => {
+                    console.log('Could not extract color from image:', error);
+                });
         }
         
         function loadUniversityAds() {

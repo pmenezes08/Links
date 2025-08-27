@@ -7200,6 +7200,72 @@ def get_calendar_event(event_id):
         logger.error(f"Error getting calendar event: {str(e)}")
         return jsonify({'success': False, 'message': str(e)})
 
+@app.route('/get_image_color')
+def get_image_color():
+    """Extract dominant color from an image URL"""
+    try:
+        import requests
+        from PIL import Image
+        from io import BytesIO
+        import numpy as np
+        from collections import Counter
+        
+        image_url = request.args.get('url')
+        if not image_url:
+            return jsonify({'success': False, 'message': 'No URL provided'})
+        
+        try:
+            # Download the image
+            response = requests.get(image_url, timeout=5)
+            response.raise_for_status()
+            
+            # Open image
+            img = Image.open(BytesIO(response.content))
+            
+            # Convert to RGB if necessary
+            if img.mode != 'RGB':
+                img = img.convert('RGB')
+            
+            # Resize for faster processing
+            img.thumbnail((100, 100))
+            
+            # Convert to numpy array
+            img_array = np.array(img)
+            
+            # Reshape to list of pixels
+            pixels = img_array.reshape(-1, 3)
+            
+            # Sample pixels (every 10th pixel for speed)
+            sampled_pixels = pixels[::10]
+            
+            # Calculate average color
+            avg_color = np.mean(sampled_pixels, axis=0).astype(int)
+            
+            # Return RGB values
+            return jsonify({
+                'success': True,
+                'color': {
+                    'r': int(avg_color[0]),
+                    'g': int(avg_color[1]),
+                    'b': int(avg_color[2])
+                }
+            })
+            
+        except Exception as e:
+            logger.error(f"Error processing image: {str(e)}")
+            # Return a neutral gray as fallback
+            return jsonify({
+                'success': False,
+                'color': {'r': 128, 'g': 128, 'b': 128}
+            })
+            
+    except Exception as e:
+        logger.error(f"Error in get_image_color: {str(e)}")
+        return jsonify({
+            'success': False,
+            'color': {'r': 128, 'g': 128, 'b': 128}
+        })
+
 @app.route('/get_event_rsvp_details')
 @login_required
 def get_event_rsvp_details():
