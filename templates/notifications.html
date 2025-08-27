@@ -317,13 +317,14 @@
                             
                             return `
                                 <div class="notification-item ${!notification.is_read ? 'unread' : ''}" 
-                                     onclick="handleNotificationClick(${notification.id}, ${notification.post_id}, ${notification.community_id})">
+                                     onclick="handleNotificationClick(${notification.id}, ${notification.post_id}, ${notification.community_id}, '${notification.link || ''}', '${notification.type || ''}')">
                                     <div class="notification-icon">
                                         <i class="${icon}"></i>
                                     </div>
                                     <div class="notification-content">
                                         <div class="notification-message">
-                                            <strong>@${notification.from_user}</strong> ${getNotificationText(notification.type)}
+                                            ${notification.type === 'event_invitation' ? notification.message : 
+                                             `<strong>@${notification.from_user}</strong> ${getNotificationText(notification.type)}`}
                                         </div>
                                         <div class="notification-time">${timeAgo}</div>
                                     </div>
@@ -358,7 +359,8 @@
                 'reply': 'fas fa-comment',
                 'mention': 'fas fa-at',
                 'follow': 'fas fa-user-plus',
-                'poll_vote': 'fas fa-poll-h'
+                'poll_vote': 'fas fa-poll-h',
+                'event_invitation': 'fas fa-calendar-check'
             };
             return icons[type] || 'fas fa-bell';
         }
@@ -386,19 +388,27 @@
             return date.toLocaleDateString();
         }
         
-        function handleNotificationClick(notificationId, postId, communityId) {
+        function handleNotificationClick(notificationId, postId, communityId, link, type) {
             // Mark as read
             fetch(`/api/notifications/${notificationId}/read`, {
                 method: 'POST'
             })
             .then(() => {
-                // Redirect to the post
-                if (communityId && postId) {
-                    // This would need a route to redirect to specific post in community
+                // Handle different notification types
+                if (type === 'event_invitation' && link) {
+                    // Redirect to the event RSVP page
+                    window.location.href = link;
+                } else if (communityId && postId) {
+                    // Redirect to the specific post in community
                     window.location.href = `/community/${communityId}#post-${postId}`;
+                } else if (link) {
+                    // Use the provided link
+                    window.location.href = link;
                 }
-                // Reload notifications
-                loadNotifications();
+                // Reload notifications if staying on the same page
+                if (!link && !postId) {
+                    loadNotifications();
+                }
             });
         }
         

@@ -6021,9 +6021,9 @@ def get_community_members_list(community_id):
             
             # Get community members with profile pictures
             c.execute("""
-                SELECT u.username, up.profile_picture
-                FROM users u
-                JOIN user_communities uc ON u.rowid = uc.user_id
+                SELECT DISTINCT u.username, up.profile_picture
+                FROM user_communities uc
+                JOIN users u ON uc.user_id = u.rowid
                 LEFT JOIN user_profiles up ON u.username = up.username
                 WHERE uc.community_id = ?
                 ORDER BY u.username
@@ -6046,6 +6046,78 @@ def get_community_members_list(community_id):
     except Exception as e:
         logger.error(f"Error fetching community members: {e}")
         return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/community/<int:community_id>/event/<int:event_id>/rsvp')
+@login_required
+def event_rsvp_page(community_id, event_id):
+    """Display RSVP page for an event invitation"""
+    username = session.get('username')
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Get event details
+            c.execute("""
+                SELECT e.*, c.name as community_name, c.background_color
+                FROM calendar_events e
+                JOIN communities c ON e.community_id = c.id
+                WHERE e.id = ? AND e.community_id = ?
+            """, (event_id, community_id))
+            
+            event = c.fetchone()
+            if not event:
+                flash('Event not found', 'error')
+                return redirect(url_for('community_feed', community_id=community_id))
+            
+            # Check if user is invited
+            c.execute("""
+                SELECT * FROM event_invitations
+                WHERE event_id = ? AND invited_username = ?
+            """, (event_id, username))
+            
+            invitation = c.fetchone()
+            
+            # Get current RSVP status
+            c.execute("""
+                SELECT response FROM event_rsvps
+                WHERE event_id = ? AND username = ?
+            """, (event_id, username))
+            
+            rsvp = c.fetchone()
+            
+            # Get RSVP counts
+            c.execute("""
+                SELECT response, COUNT(*) as count
+                FROM event_rsvps
+                WHERE event_id = ?
+                GROUP BY response
+            """, (event_id,))
+            
+            rsvp_counts = {'going': 0, 'maybe': 0, 'not_going': 0}
+            for row in c.fetchall():
+                rsvp_counts[row['response']] = row['count']
+            
+            # Mark invitation as viewed
+            if invitation:
+                c.execute("""
+                    UPDATE event_invitations
+                    SET viewed = 1
+                    WHERE event_id = ? AND invited_username = ?
+                """, (event_id, username))
+                conn.commit()
+            
+            return render_template('event_rsvp.html',
+                                   event=event,
+                                   community_id=community_id,
+                                   invitation=invitation,
+                                   current_rsvp=rsvp['response'] if rsvp else None,
+                                   rsvp_counts=rsvp_counts)
+    
+    except Exception as e:
+        logger.error(f"Error displaying RSVP page: {e}")
+        flash('An error occurred', 'error')
+        return redirect(url_for('community_feed', community_id=community_id))
 
 @app.route('/event/<int:event_id>/rsvp', methods=['POST'])
 @login_required
@@ -6687,24 +6759,33 @@ def add_calendar_event():
                 if invite_all:
                     # Get all members of the community
                     c.execute("""
-                        SELECT u.username 
-                        FROM users u
-                        JOIN user_communities uc ON u.rowid = uc.user_id
-                        JOIN communities c ON uc.community_id = c.id
-                        WHERE c.id = ? AND u.username != ?
+                        SELECT DISTINCT u.username 
+                        FROM user_communities uc
+                        JOIN users u ON uc.user_id = u.rowid
+                        WHERE uc.community_id = ? AND u.username != ?
                     """, (community_id, username))
                     invited_users = [row['username'] for row in c.fetchall()]
                 else:
                     # Use selected members
                     invited_users = invited_members
                 
-                # Insert invitations
+                # Insert invitations and create notifications
                 for invited_user in invited_users:
                     try:
                         c.execute("""
                             INSERT INTO event_invitations (event_id, invited_username, invited_by, invited_at)
                             VALUES (?, ?, ?, ?)
                         """, (event_id, invited_user, username, datetime.now().isoformat()))
+                        
+                        # Create notification for the invited user
+                        notification_message = f"{username} invited you to the event: {title}"
+                        notification_link = f"/community/{community_id}/event/{event_id}/rsvp"
+                        
+                        c.execute("""
+                            INSERT INTO notifications (username, message, created_at, is_read, link, type)
+                            VALUES (?, ?, ?, 0, ?, 'event_invitation')
+                        """, (invited_user, notification_message, datetime.now().isoformat(), notification_link))
+                        
                     except sqlite3.IntegrityError:
                         # Skip if already invited
                         pass
