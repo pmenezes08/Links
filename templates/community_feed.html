@@ -2762,6 +2762,133 @@
             background: rgba(77, 182, 172, 0.3);
         }
         
+        /* Invitation UI Styles */
+        .invite-controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+        }
+        
+        .invite-all-btn {
+            padding: 8px 16px;
+            background: rgba(77, 182, 172, 0.15);
+            border: 1px solid rgba(77, 182, 172, 0.3);
+            border-radius: 6px;
+            color: #4db6ac;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 13px;
+        }
+        
+        .invite-all-btn:hover {
+            background: rgba(77, 182, 172, 0.25);
+        }
+        
+        .invite-all-btn.active {
+            background: #4db6ac;
+            color: white;
+        }
+        
+        .toggle-members-btn {
+            padding: 8px 16px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 6px;
+            color: rgba(255, 255, 255, 0.8);
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .toggle-members-btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+        
+        .members-list {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 6px;
+            padding: 12px;
+            margin-top: 10px;
+        }
+        
+        .members-search {
+            margin-bottom: 12px;
+        }
+        
+        .members-search input {
+            width: 100%;
+            padding: 8px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+            color: white;
+            font-size: 13px;
+        }
+        
+        .members-checkbox-list {
+            max-height: 200px;
+            overflow-y: auto;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 8px;
+        }
+        
+        .member-checkbox {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 8px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .member-checkbox:hover {
+            background: rgba(255, 255, 255, 0.08);
+        }
+        
+        .member-checkbox input[type="checkbox"] {
+            cursor: pointer;
+        }
+        
+        .member-checkbox label {
+            cursor: pointer;
+            font-size: 13px;
+            flex: 1;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .member-avatar {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #4db6ac, #2d8a7e);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 10px;
+            font-weight: bold;
+        }
+        
+        .invited-badge {
+            display: inline-block;
+            padding: 2px 6px;
+            background: rgba(77, 182, 172, 0.2);
+            color: #4db6ac;
+            border-radius: 10px;
+            font-size: 10px;
+            margin-left: 4px;
+        }
+        
         #calendarModal .calendar-events {
             background: rgba(255, 255, 255, 0.02) !important;
             border: 1px solid rgba(255, 255, 255, 0.1) !important;
@@ -5049,14 +5176,19 @@
                     return div.innerHTML;
                 };
                 
-                // Get RSVP data
+                // Get RSVP and invitation data
                 const rsvpCounts = event.rsvp_counts || {going: 0, maybe: 0, not_going: 0};
                 const userRsvp = event.user_rsvp || null;
                 const totalRsvps = event.total_rsvps || 0;
+                const isInvited = event.is_invited || false;
+                const isCreator = event.is_creator || false;
                 
                 eventsHTML += `
                     <div class="event-item event-color-${colorIndex}" data-event-id="${event.id}">
-                        <div class="event-title">${escapeHtml(event.title)}</div>
+                        <div class="event-title">
+                            ${escapeHtml(event.title)}
+                            ${isInvited ? '<span class="invited-badge"><i class="fas fa-envelope"></i> Invited</span>' : ''}
+                        </div>
                         ${dateDisplay}
                         ${timeDisplay}
                         ${event.description ? `<div class="event-description">${escapeHtml(event.description)}</div>` : ''}
@@ -5356,6 +5488,92 @@
             }, 3000);
         }
         
+        // Invitation Functions
+        let inviteAllActive = false;
+        let loadedMembers = [];
+        
+        function loadCommunityMembers() {
+            const communityId = {{ community.id }};
+            fetch(`/community/${communityId}/members/list`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        loadedMembers = data.members;
+                        renderMembersList(loadedMembers);
+                    }
+                })
+                .catch(error => console.error('Error loading members:', error));
+        }
+        
+        function renderMembersList(members) {
+            const container = document.getElementById('membersCheckboxList');
+            const currentUser = {{ session.username|tojson|safe }};
+            
+            container.innerHTML = members
+                .filter(member => member.username !== currentUser)
+                .map(member => `
+                    <div class="member-checkbox">
+                        <input type="checkbox" id="member_${member.username}" name="invited_members[]" value="${member.username}">
+                        <label for="member_${member.username}">
+                            <span class="member-avatar">
+                                ${member.username.charAt(0).toUpperCase()}
+                            </span>
+                            ${member.username}
+                        </label>
+                    </div>
+                `).join('');
+        }
+        
+        function toggleInviteAll() {
+            inviteAllActive = !inviteAllActive;
+            const btn = document.querySelector('.invite-all-btn');
+            const inviteAllInput = document.getElementById('inviteAll');
+            
+            if (inviteAllActive) {
+                btn.classList.add('active');
+                inviteAllInput.value = 'true';
+                // Disable individual selection
+                document.querySelectorAll('#membersCheckboxList input').forEach(cb => {
+                    cb.checked = true;
+                    cb.disabled = true;
+                });
+            } else {
+                btn.classList.remove('active');
+                inviteAllInput.value = 'false';
+                // Enable individual selection
+                document.querySelectorAll('#membersCheckboxList input').forEach(cb => {
+                    cb.checked = false;
+                    cb.disabled = false;
+                });
+            }
+        }
+        
+        function toggleMembersList() {
+            const membersList = document.getElementById('membersList');
+            const icon = document.getElementById('membersToggleIcon');
+            
+            if (membersList.style.display === 'none') {
+                membersList.style.display = 'block';
+                icon.className = 'fas fa-chevron-up';
+                if (loadedMembers.length === 0) {
+                    loadCommunityMembers();
+                }
+            } else {
+                membersList.style.display = 'none';
+                icon.className = 'fas fa-chevron-down';
+            }
+        }
+        
+        function filterMembers() {
+            const searchTerm = document.getElementById('memberSearch').value.toLowerCase();
+            const checkboxes = document.querySelectorAll('.member-checkbox');
+            
+            checkboxes.forEach(checkbox => {
+                const username = checkbox.querySelector('label').textContent.toLowerCase();
+                checkbox.style.display = username.includes(searchTerm) ? 'flex' : 'none';
+            });
+        }
+        
         function deleteCalendarEvent(eventId) {
             console.log('Attempting to delete event with ID:', eventId);
             
@@ -5555,6 +5773,33 @@
                         <label for="eventDescription">Description</label>
                         <textarea id="eventDescription" name="description" placeholder="Event details..." rows="2"></textarea>
                     </div>
+                    
+                    <!-- Invitation Section -->
+                    <div class="form-group">
+                        <label>Invite Members</label>
+                        <div class="invite-controls">
+                            <button type="button" class="invite-all-btn" onclick="toggleInviteAll()">
+                                <i class="fas fa-users"></i> Invite All Community Members
+                            </button>
+                            <div class="member-selection-toggle">
+                                <button type="button" class="toggle-members-btn" onclick="toggleMembersList()">
+                                    <i class="fas fa-user-plus"></i> Select Specific Members
+                                    <i class="fas fa-chevron-down" id="membersToggleIcon"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div id="membersList" class="members-list" style="display: none;">
+                            <div class="members-search">
+                                <input type="text" id="memberSearch" placeholder="Search members..." onkeyup="filterMembers()">
+                            </div>
+                            <div id="membersCheckboxList" class="members-checkbox-list">
+                                <!-- Members will be loaded here -->
+                            </div>
+                        </div>
+                        <input type="hidden" id="inviteAll" name="invite_all" value="false">
+                        <input type="hidden" id="communityId" name="community_id" value="{{ community.id }}">
+                    </div>
+                    
                     <div class="form-actions">
                         <button type="submit" class="sleek-btn">
                             <i class="fas fa-save"></i> Save Event

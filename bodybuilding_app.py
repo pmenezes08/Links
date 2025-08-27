@@ -721,6 +721,14 @@ def init_db():
             c.execute("CREATE INDEX IF NOT EXISTS idx_community_admins_community ON community_admins(community_id)")
             c.execute("CREATE INDEX IF NOT EXISTS idx_community_admins_username ON community_admins(username)")
             
+            # Add community_id to calendar_events if it doesn't exist
+            logger.info("Checking calendar_events table...")
+            c.execute("PRAGMA table_info(calendar_events)")
+            calendar_columns = [col[1] for col in c.fetchall()]
+            if 'community_id' not in calendar_columns:
+                c.execute("ALTER TABLE calendar_events ADD COLUMN community_id INTEGER")
+                logger.info("Added community_id column to calendar_events table")
+            
             # Create event RSVPs table
             logger.info("Creating event RSVPs table...")
             c.execute('''CREATE TABLE IF NOT EXISTS event_rsvps
@@ -738,6 +746,25 @@ def init_db():
             c.execute("CREATE INDEX IF NOT EXISTS idx_rsvps_event ON event_rsvps(event_id)")
             c.execute("CREATE INDEX IF NOT EXISTS idx_rsvps_username ON event_rsvps(username)")
             c.execute("CREATE INDEX IF NOT EXISTS idx_rsvps_response ON event_rsvps(response)")
+            
+            # Create event invitations table
+            logger.info("Creating event invitations table...")
+            c.execute('''CREATE TABLE IF NOT EXISTS event_invitations
+                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                          event_id INTEGER NOT NULL,
+                          invited_username TEXT NOT NULL,
+                          invited_by TEXT NOT NULL,
+                          invited_at TEXT NOT NULL,
+                          viewed BOOLEAN DEFAULT 0,
+                          FOREIGN KEY (event_id) REFERENCES calendar_events (id) ON DELETE CASCADE,
+                          FOREIGN KEY (invited_username) REFERENCES users (username),
+                          FOREIGN KEY (invited_by) REFERENCES users (username),
+                          UNIQUE(event_id, invited_username))''')
+            
+            # Create indexes for invitations
+            c.execute("CREATE INDEX IF NOT EXISTS idx_invitations_event ON event_invitations(event_id)")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_invitations_username ON event_invitations(invited_username)")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_invitations_viewed ON event_invitations(viewed)")
             
             conn.commit()
             logger.info("Database initialization completed successfully")
@@ -5982,6 +6009,44 @@ def submit_feedback(community_id):
         logger.error(f"Error submitting feedback: {e}")
         return jsonify({'success': False, 'message': str(e)}), 500
 
+@app.route('/community/<int:community_id>/members/list')
+@login_required
+def get_community_members_list(community_id):
+    """Get list of community members for invitation selection"""
+    try:
+        username = session.get('username')
+        
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Get community members with profile pictures
+            c.execute("""
+                SELECT u.username, up.profile_picture
+                FROM users u
+                JOIN user_communities uc ON u.rowid = uc.user_id
+                LEFT JOIN user_profiles up ON u.username = up.username
+                WHERE uc.community_id = ?
+                ORDER BY u.username
+            """, (community_id,))
+            
+            members = []
+            for row in c.fetchall():
+                members.append({
+                    'username': row['username'],
+                    'profile_picture': row['profile_picture'],
+                    'is_current_user': row['username'] == username
+                })
+            
+            return jsonify({
+                'success': True,
+                'members': members,
+                'total': len(members)
+            })
+            
+    except Exception as e:
+        logger.error(f"Error fetching community members: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+
 @app.route('/event/<int:event_id>/rsvp', methods=['POST'])
 @login_required
 def rsvp_event(event_id):
@@ -6501,6 +6566,7 @@ def get_calendar_events():
                 # Get current user's RSVP if logged in
                 username = session.get('username')
                 user_rsvp = None
+                is_invited = False
                 if username:
                     c.execute("""
                         SELECT response FROM event_rsvps
@@ -6509,6 +6575,13 @@ def get_calendar_events():
                     result = c.fetchone()
                     if result:
                         user_rsvp = result['response']
+                    
+                    # Check if user is invited
+                    c.execute("""
+                        SELECT 1 FROM event_invitations
+                        WHERE event_id = ? AND invited_username = ?
+                    """, (event_id, username))
+                    is_invited = c.fetchone() is not None
                 
                 events.append({
                     'id': event['id'],
@@ -6523,7 +6596,9 @@ def get_calendar_events():
                     'created_at': event['created_at'],
                     'rsvp_counts': rsvp_counts,
                     'user_rsvp': user_rsvp,
-                    'total_rsvps': sum(rsvp_counts.values())
+                    'total_rsvps': sum(rsvp_counts.values()),
+                    'is_invited': is_invited,
+                    'is_creator': event['username'] == username
                 })
             
             return jsonify({'success': True, 'events': events})
@@ -6535,7 +6610,7 @@ def get_calendar_events():
 @app.route('/add_calendar_event', methods=['POST'])
 @login_required
 def add_calendar_event():
-    """Add a new calendar event"""
+    """Add a new calendar event with invitations"""
     try:
         username = session['username']
         title = request.form.get('title', '').strip()
@@ -6547,6 +6622,11 @@ def add_calendar_event():
         if not start_time:
             start_time = request.form.get('time', '').strip()
         description = request.form.get('description', '').strip()
+        
+        # Get community_id and invited members
+        community_id = request.form.get('community_id', type=int)
+        invited_members = request.form.getlist('invited_members[]')
+        invite_all = request.form.get('invite_all') == 'true'
         
         # Validate required fields
         if not title or not date:
@@ -6589,17 +6669,53 @@ def add_calendar_event():
             
             # Insert the event (keeping 'time' field for backward compatibility)
             c.execute("""
-                INSERT INTO calendar_events (username, title, date, end_date, time, start_time, end_time, description, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                INSERT INTO calendar_events (username, title, date, end_date, time, start_time, end_time, description, created_at, community_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), ?)
             """, (username, title, date, end_date if end_date else None, 
                   start_time if start_time else None,  # Keep time field for compatibility
                   start_time if start_time else None,  # start_time
                   end_time if end_time else None,      # end_time
-                  description if description else None))
+                  description if description else None,
+                  community_id))
+            
+            event_id = c.lastrowid
+            
+            # Handle invitations
+            if community_id:
+                invited_users = []
+                
+                if invite_all:
+                    # Get all members of the community
+                    c.execute("""
+                        SELECT u.username 
+                        FROM users u
+                        JOIN user_communities uc ON u.rowid = uc.user_id
+                        JOIN communities c ON uc.community_id = c.id
+                        WHERE c.id = ? AND u.username != ?
+                    """, (community_id, username))
+                    invited_users = [row['username'] for row in c.fetchall()]
+                else:
+                    # Use selected members
+                    invited_users = invited_members
+                
+                # Insert invitations
+                for invited_user in invited_users:
+                    try:
+                        c.execute("""
+                            INSERT INTO event_invitations (event_id, invited_username, invited_by, invited_at)
+                            VALUES (?, ?, ?, ?)
+                        """, (event_id, invited_user, username, datetime.now().isoformat()))
+                    except sqlite3.IntegrityError:
+                        # Skip if already invited
+                        pass
             
             conn.commit()
             
-            return jsonify({'success': True, 'message': 'Event added successfully'})
+            return jsonify({
+                'success': True, 
+                'message': f'Event added successfully. {len(invited_users) if community_id else 0} members invited.',
+                'event_id': event_id
+            })
             
     except Exception as e:
         logger.error(f"Error adding calendar event: {str(e)}")
