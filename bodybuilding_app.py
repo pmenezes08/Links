@@ -543,8 +543,16 @@ def init_db():
                           created_at TEXT NOT NULL,
                           created_by TEXT NOT NULL,
                           clicks INTEGER DEFAULT 0,
+                          impressions INTEGER DEFAULT 0,
                           FOREIGN KEY (community_id) REFERENCES communities (id) ON DELETE CASCADE,
                           FOREIGN KEY (created_by) REFERENCES users (username))''')
+            
+            # Add impressions column if it doesn't exist (for existing databases)
+            try:
+                c.execute("SELECT impressions FROM university_ads LIMIT 1")
+            except:
+                logger.info("Adding impressions column to university_ads table...")
+                c.execute("ALTER TABLE university_ads ADD COLUMN impressions INTEGER DEFAULT 0")
             
             conn.commit()
             logger.info("Database initialization completed successfully")
@@ -4960,6 +4968,7 @@ def get_university_ads():
             """, (community_id,))
             
             ads = []
+            ad_ids = []
             for row in c.fetchall():
                 ads.append({
                     'id': row['id'],
@@ -4969,12 +4978,22 @@ def get_university_ads():
                     'image': row['image_url'],
                     'link': row['link_url'] or '#'
                 })
+                ad_ids.append(row['id'])
+            
+            # Track impressions for displayed ads
+            if ad_ids:
+                c.execute(f"""
+                    UPDATE university_ads 
+                    SET impressions = impressions + 1 
+                    WHERE id IN ({','.join('?' * len(ad_ids))})
+                """, ad_ids)
+                conn.commit()
             
             # If no ads, return sample data for demo
             if not ads:
                 ads = [
                     {
-                        'id': 1,
+                        'id': 0,
                         'title': 'University Hoodie',
                         'description': 'Official university hoodie',
                         'price': '$49.99',
@@ -4982,7 +5001,7 @@ def get_university_ads():
                         'link': '#'
                     },
                     {
-                        'id': 2,
+                        'id': 0,
                         'title': 'Campus T-Shirt',
                         'description': 'Comfortable cotton t-shirt',
                         'price': '$24.99',
@@ -4990,7 +5009,7 @@ def get_university_ads():
                         'link': '#'
                     },
                     {
-                        'id': 3,
+                        'id': 0,
                         'title': 'Student Backpack',
                         'description': 'Durable laptop backpack',
                         'price': '$79.99',
@@ -5004,6 +5023,190 @@ def get_university_ads():
     except Exception as e:
         logger.error(f"Error fetching university ads: {e}")
         return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/track_ad_click', methods=['POST'])
+@login_required
+def track_ad_click():
+    """Track when an ad is clicked"""
+    try:
+        data = request.get_json()
+        ad_id = data.get('ad_id')
+        
+        if ad_id and ad_id != 0:  # Don't track sample ads
+            with get_db_connection() as conn:
+                c = conn.cursor()
+                c.execute("UPDATE university_ads SET clicks = clicks + 1 WHERE id = ?", (ad_id,))
+                conn.commit()
+        
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"Error tracking ad click: {e}")
+        return jsonify({'success': False}), 500
+
+@app.route('/manage_ads/<int:community_id>')
+@login_required
+def manage_ads(community_id):
+    """Ads management page for community admins"""
+    username = session.get('username')
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Check if user is admin or community creator
+            c.execute("SELECT * FROM communities WHERE id = ?", (community_id,))
+            community = c.fetchone()
+            
+            if not community:
+                flash('Community not found', 'error')
+                return redirect(url_for('communities'))
+            
+            if username != 'admin' and username != community['creator_username']:
+                flash('You do not have permission to manage ads for this community', 'error')
+                return redirect(url_for('community_feed', community_id=community_id))
+            
+            # Get all ads for this community
+            c.execute("""
+                SELECT id, title, description, price, image_url, link_url, 
+                       is_active, display_order, clicks, impressions, created_at
+                FROM university_ads
+                WHERE community_id = ?
+                ORDER BY display_order ASC, created_at DESC
+            """, (community_id,))
+            
+            ads = []
+            for row in c.fetchall():
+                ads.append({
+                    'id': row['id'],
+                    'title': row['title'],
+                    'description': row['description'],
+                    'price': row['price'],
+                    'image_url': row['image_url'],
+                    'link_url': row['link_url'],
+                    'is_active': row['is_active'],
+                    'display_order': row['display_order'],
+                    'clicks': row['clicks'],
+                    'impressions': row['impressions'],
+                    'ctr': f"{(row['clicks'] / row['impressions'] * 100):.2f}%" if row['impressions'] > 0 else "0%",
+                    'created_at': row['created_at']
+                })
+            
+            return render_template('manage_ads.html', 
+                                 community=community, 
+                                 ads=ads,
+                                 username=username)
+    except Exception as e:
+        logger.error(f"Error in manage_ads: {e}")
+        flash('An error occurred', 'error')
+        return redirect(url_for('communities'))
+
+@app.route('/add_ad/<int:community_id>', methods=['POST'])
+@login_required
+def add_ad(community_id):
+    """Add a new ad"""
+    username = session.get('username')
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Check permissions
+            c.execute("SELECT * FROM communities WHERE id = ?", (community_id,))
+            community = c.fetchone()
+            
+            if not community or (username != 'admin' and username != community['creator_username']):
+                return jsonify({'success': False, 'message': 'Unauthorized'}), 403
+            
+            # Get form data
+            title = request.form.get('title')
+            description = request.form.get('description')
+            price = request.form.get('price')
+            image_url = request.form.get('image_url')
+            link_url = request.form.get('link_url')
+            display_order = request.form.get('display_order', 0)
+            
+            # Insert new ad
+            c.execute("""
+                INSERT INTO university_ads 
+                (community_id, title, description, price, image_url, link_url, 
+                 display_order, created_at, created_by)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (community_id, title, description, price, image_url, link_url,
+                  display_order, datetime.now().isoformat(), username))
+            conn.commit()
+            
+            flash('Ad added successfully!', 'success')
+            return redirect(url_for('manage_ads', community_id=community_id))
+            
+    except Exception as e:
+        logger.error(f"Error adding ad: {e}")
+        flash('Error adding ad', 'error')
+        return redirect(url_for('manage_ads', community_id=community_id))
+
+@app.route('/toggle_ad/<int:ad_id>', methods=['POST'])
+@login_required
+def toggle_ad(ad_id):
+    """Toggle ad active status"""
+    username = session.get('username')
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Check permissions
+            c.execute("""
+                SELECT a.*, c.creator_username 
+                FROM university_ads a
+                JOIN communities c ON a.community_id = c.id
+                WHERE a.id = ?
+            """, (ad_id,))
+            ad = c.fetchone()
+            
+            if not ad or (username != 'admin' and username != ad['creator_username']):
+                return jsonify({'success': False, 'message': 'Unauthorized'}), 403
+            
+            # Toggle status
+            new_status = 0 if ad['is_active'] else 1
+            c.execute("UPDATE university_ads SET is_active = ? WHERE id = ?", (new_status, ad_id))
+            conn.commit()
+            
+            return jsonify({'success': True, 'new_status': new_status})
+            
+    except Exception as e:
+        logger.error(f"Error toggling ad: {e}")
+        return jsonify({'success': False}), 500
+
+@app.route('/delete_ad/<int:ad_id>', methods=['POST'])
+@login_required
+def delete_ad(ad_id):
+    """Delete an ad"""
+    username = session.get('username')
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Check permissions
+            c.execute("""
+                SELECT a.*, c.creator_username 
+                FROM university_ads a
+                JOIN communities c ON a.community_id = c.id
+                WHERE a.id = ?
+            """, (ad_id,))
+            ad = c.fetchone()
+            
+            if not ad or (username != 'admin' and username != ad['creator_username']):
+                return jsonify({'success': False, 'message': 'Unauthorized'}), 403
+            
+            # Delete ad
+            c.execute("DELETE FROM university_ads WHERE id = ?", (ad_id,))
+            conn.commit()
+            
+            return jsonify({'success': True})
+            
+    except Exception as e:
+        logger.error(f"Error deleting ad: {e}")
+        return jsonify({'success': False}), 500
 
 @app.route('/get_calendar_events')
 @login_required
