@@ -176,9 +176,9 @@
             top: 80px;
             width: 320px;
             height: 340px;
-            background: #000000;
+            background: {{ '#ffffff' if community.template == 'light' else '#1a1a1a' }};
             border-radius: 12px;
-            border: 2px solid #333333;
+            border: 2px solid {{ 'rgba(0, 0, 0, 0.1)' if community.template == 'light' else '#333333' }};
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
             z-index: 98;
             overflow: hidden;
@@ -256,7 +256,7 @@
             justify-content: center;
             cursor: pointer;
             position: relative;
-            background: #000000;
+            background: {{ 'rgba(0, 0, 0, 0.03)' if community.template == 'light' else 'rgba(255, 255, 255, 0.05)' }};
         }
         
         .ad-image {
@@ -264,7 +264,7 @@
             max-width: 290px;
             height: 220px;
             object-fit: contain;
-            background: #000000;
+            background: transparent;
             border-radius: 8px;
             margin-bottom: 10px;
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
