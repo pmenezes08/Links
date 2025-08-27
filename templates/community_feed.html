@@ -2339,6 +2339,13 @@
             display: block !important; /* Force display when toggled */
         }
         
+        /* Fallback class to force show */
+        .members-list.force-show {
+            display: block !important;
+            visibility: visible !important;
+            opacity: 1 !important;
+        }
+        
         #addCalendarTab .members-checkbox-list {
             max-height: 200px !important;
             overflow-y: auto !important;
@@ -5705,10 +5712,18 @@
             console.log('Members list element:', membersList);
             console.log('Checkbox list content:', checkboxList ? checkboxList.innerHTML : 'Not found');
             
-            if (membersList.style.display === 'none' || membersList.style.display === '') {
-                membersList.style.display = 'block';
+            // Check current state
+            const isHidden = membersList.style.display === 'none' || membersList.style.display === '' || !membersList.offsetHeight;
+            
+            if (isHidden) {
+                // FORCE display to block with important
+                membersList.style.setProperty('display', 'block', 'important');
+                membersList.style.visibility = 'visible';
+                membersList.style.opacity = '1';
+                
                 icon.className = 'fas fa-chevron-up';
-                console.log('Showing members list, loaded members count:', loadedMembers.length);
+                console.log('Forcing members list to show');
+                console.log('Loaded members count:', loadedMembers.length);
                 console.log('Loaded members:', loadedMembers);
                 
                 // Always re-render if we have members, or load if we don't
@@ -5723,15 +5738,27 @@
                 // Check actual visibility
                 setTimeout(() => {
                     const rect = membersList.getBoundingClientRect();
+                    const computedStyle = window.getComputedStyle(membersList);
                     console.log('Members list visibility check:', {
                         display: membersList.style.display,
+                        computedDisplay: computedStyle.display,
+                        visibility: computedStyle.visibility,
+                        opacity: computedStyle.opacity,
                         offsetHeight: membersList.offsetHeight,
                         rect: rect,
                         visible: rect.height > 0
                     });
+                    
+                    // If still not visible, try removing all inline styles and adding a class
+                    if (rect.height === 0) {
+                        console.warn('Members list still not visible, attempting fallback...');
+                        membersList.removeAttribute('style');
+                        membersList.classList.add('force-show');
+                    }
                 }, 100);
             } else {
                 membersList.style.display = 'none';
+                membersList.classList.remove('force-show');
                 icon.className = 'fas fa-chevron-down';
                 console.log('Hiding members list');
             }
