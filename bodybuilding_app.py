@@ -5208,6 +5208,121 @@ def delete_ad(ad_id):
         logger.error(f"Error deleting ad: {e}")
         return jsonify({'success': False}), 500
 
+@app.route('/admin/ads_overview')
+@login_required
+def admin_ads_overview():
+    """Admin page to view all ads performance across communities"""
+    username = session.get('username')
+    
+    # Check if user is admin
+    if username != 'admin':
+        flash('Access denied. Admin only.', 'error')
+        return redirect(url_for('index'))
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Get all communities with their parent relationships and ads
+            c.execute("""
+                SELECT 
+                    c.id,
+                    c.name,
+                    c.type,
+                    c.parent_community_id,
+                    pc.name as parent_name,
+                    COUNT(DISTINCT ua.id) as total_ads,
+                    COALESCE(SUM(ua.impressions), 0) as total_impressions,
+                    COALESCE(SUM(ua.clicks), 0) as total_clicks,
+                    COALESCE(SUM(CASE WHEN ua.is_active = 1 THEN 1 ELSE 0 END), 0) as active_ads
+                FROM communities c
+                LEFT JOIN communities pc ON c.parent_community_id = pc.id
+                LEFT JOIN university_ads ua ON c.id = ua.community_id
+                WHERE c.type = 'University'
+                GROUP BY c.id, c.name, c.type, c.parent_community_id, pc.name
+                ORDER BY pc.name NULLS FIRST, c.name
+            """)
+            
+            communities_data = []
+            for row in c.fetchall():
+                ctr = 0
+                if row['total_impressions'] > 0:
+                    ctr = round((row['total_clicks'] / row['total_impressions']) * 100, 2)
+                
+                communities_data.append({
+                    'id': row['id'],
+                    'name': row['name'],
+                    'type': row['type'],
+                    'parent_id': row['parent_community_id'],
+                    'parent_name': row['parent_name'],
+                    'total_ads': row['total_ads'],
+                    'active_ads': row['active_ads'],
+                    'impressions': row['total_impressions'],
+                    'clicks': row['total_clicks'],
+                    'ctr': ctr
+                })
+            
+            # Get detailed ads for each community
+            c.execute("""
+                SELECT 
+                    ua.*,
+                    c.name as community_name,
+                    pc.name as parent_community_name
+                FROM university_ads ua
+                JOIN communities c ON ua.community_id = c.id
+                LEFT JOIN communities pc ON c.parent_community_id = pc.id
+                ORDER BY pc.name NULLS FIRST, c.name, ua.created_at DESC
+            """)
+            
+            all_ads = []
+            for row in c.fetchall():
+                ad_ctr = 0
+                if row['impressions'] and row['impressions'] > 0:
+                    ad_ctr = round((row['clicks'] / row['impressions']) * 100, 2)
+                
+                all_ads.append({
+                    'id': row['id'],
+                    'community_id': row['community_id'],
+                    'community_name': row['community_name'],
+                    'parent_community_name': row['parent_community_name'],
+                    'title': row['title'],
+                    'description': row['description'],
+                    'price': row['price'],
+                    'image_url': row['image_url'],
+                    'link_url': row['link_url'],
+                    'is_active': row['is_active'],
+                    'impressions': row['impressions'] or 0,
+                    'clicks': row['clicks'] or 0,
+                    'ctr': ad_ctr,
+                    'created_at': row['created_at'],
+                    'created_by': row['created_by']
+                })
+            
+            # Calculate overall stats
+            total_communities = len(communities_data)
+            total_ads = sum(c['total_ads'] for c in communities_data)
+            total_active = sum(c['active_ads'] for c in communities_data)
+            total_impressions = sum(c['impressions'] for c in communities_data)
+            total_clicks = sum(c['clicks'] for c in communities_data)
+            overall_ctr = 0
+            if total_impressions > 0:
+                overall_ctr = round((total_clicks / total_impressions) * 100, 2)
+            
+            return render_template('admin_ads_overview.html',
+                                 communities=communities_data,
+                                 all_ads=all_ads,
+                                 total_communities=total_communities,
+                                 total_ads=total_ads,
+                                 total_active=total_active,
+                                 total_impressions=total_impressions,
+                                 total_clicks=total_clicks,
+                                 overall_ctr=overall_ctr)
+                                 
+    except Exception as e:
+        logger.error(f"Error loading admin ads overview: {e}")
+        flash('Error loading ads overview', 'error')
+        return redirect(url_for('admin'))
+
 @app.route('/get_calendar_events')
 @login_required
 def get_calendar_events():

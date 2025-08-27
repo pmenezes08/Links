@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin - Ads Performance Overview</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .admin-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+
+        .admin-header {
+            background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+            color: white;
+            padding: 25px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .admin-header h1 {
+            font-size: 28px;
+            font-weight: 600;
+        }
+
+        .back-btn {
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            text-decoration: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            transition: background 0.3s;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .back-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .stats-overview {
+            padding: 30px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #dee2e6;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 32px;
+            font-weight: bold;
+            color: #2d3748;
+            margin-bottom: 5px;
+        }
+
+        .stat-label {
+            font-size: 14px;
+            color: #718096;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .stat-card.ctr .stat-value {
+            color: #48bb78;
+        }
+
+        .content-area {
+            padding: 30px;
+        }
+
+        .section-tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 30px;
+            border-bottom: 2px solid #e2e8f0;
+        }
+
+        .tab-btn {
+            padding: 12px 24px;
+            background: none;
+            border: none;
+            color: #718096;
+            font-size: 16px;
+            font-weight: 500;
+            cursor: pointer;
+            position: relative;
+            transition: color 0.3s;
+        }
+
+        .tab-btn.active {
+            color: #2d3748;
+        }
+
+        .tab-btn.active::after {
+            content: '';
+            position: absolute;
+            bottom: -2px;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: #667eea;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .community-group {
+            margin-bottom: 40px;
+        }
+
+        .parent-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px 20px;
+            border-radius: 8px 8px 0 0;
+            font-size: 18px;
+            font-weight: 600;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .parent-stats {
+            display: flex;
+            gap: 20px;
+            font-size: 14px;
+            font-weight: normal;
+        }
+
+        .communities-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            border-radius: 0 0 8px 8px;
+            overflow: hidden;
+        }
+
+        .communities-table th {
+            background: #f7fafc;
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+            color: #4a5568;
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .communities-table td {
+            padding: 15px 12px;
+            border-top: 1px solid #e2e8f0;
+        }
+
+        .communities-table tr:hover {
+            background: #f7fafc;
+        }
+
+        .community-name {
+            font-weight: 600;
+            color: #2d3748;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .child-indicator {
+            font-size: 12px;
+            color: #718096;
+            padding-left: 20px;
+        }
+
+        .metric-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .metric-badge.active {
+            background: #c6f6d5;
+            color: #22543d;
+        }
+
+        .metric-badge.inactive {
+            background: #fed7d7;
+            color: #742a2a;
+        }
+
+        .ctr-value {
+            font-weight: 600;
+            color: #48bb78;
+        }
+
+        .manage-btn {
+            background: #667eea;
+            color: white;
+            text-decoration: none;
+            padding: 6px 12px;
+            border-radius: 4px;
+            font-size: 13px;
+            transition: background 0.3s;
+        }
+
+        .manage-btn:hover {
+            background: #5a67d8;
+        }
+
+        .ads-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 20px;
+        }
+
+        .ad-card {
+            background: white;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            overflow: hidden;
+            transition: box-shadow 0.3s;
+        }
+
+        .ad-card:hover {
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+
+        .ad-image {
+            width: 100%;
+            height: 180px;
+            object-fit: cover;
+            background: #f7fafc;
+        }
+
+        .ad-details {
+            padding: 15px;
+        }
+
+        .ad-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #2d3748;
+            margin-bottom: 5px;
+        }
+
+        .ad-community {
+            font-size: 12px;
+            color: #718096;
+            margin-bottom: 10px;
+        }
+
+        .ad-metrics {
+            display: flex;
+            justify-content: space-between;
+            padding-top: 10px;
+            border-top: 1px solid #e2e8f0;
+        }
+
+        .ad-metric {
+            text-align: center;
+        }
+
+        .ad-metric-value {
+            font-size: 18px;
+            font-weight: 600;
+            color: #2d3748;
+        }
+
+        .ad-metric-label {
+            font-size: 11px;
+            color: #a0aec0;
+            text-transform: uppercase;
+        }
+
+        .status-badge {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        .status-badge.active {
+            background: #48bb78;
+            color: white;
+        }
+
+        .status-badge.inactive {
+            background: #fc8181;
+            color: white;
+        }
+
+        .ad-card-header {
+            position: relative;
+        }
+
+        .no-data {
+            text-align: center;
+            padding: 40px;
+            color: #718096;
+        }
+
+        .filters {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #f7fafc;
+            border-radius: 8px;
+        }
+
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .filter-label {
+            font-size: 12px;
+            color: #718096;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .filter-select {
+            padding: 8px 12px;
+            border: 1px solid #cbd5e0;
+            border-radius: 4px;
+            font-size: 14px;
+            background: white;
+            min-width: 150px;
+        }
+    </style>
+</head>
+<body>
+    <div class="admin-container">
+        <div class="admin-header">
+            <h1><i class="fas fa-chart-line"></i> Ads Performance Overview</h1>
+            <a href="{{ url_for('admin') }}" class="back-btn">
+                <i class="fas fa-arrow-left"></i> Back to Dashboard
+            </a>
+        </div>
+
+        <div class="stats-overview">
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-value">{{ total_communities }}</div>
+                    <div class="stat-label">Universities</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">{{ total_ads }}</div>
+                    <div class="stat-label">Total Ads</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">{{ total_active }}</div>
+                    <div class="stat-label">Active Ads</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">{{ "{:,}".format(total_impressions) }}</div>
+                    <div class="stat-label">Impressions</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">{{ "{:,}".format(total_clicks) }}</div>
+                    <div class="stat-label">Clicks</div>
+                </div>
+                <div class="stat-card ctr">
+                    <div class="stat-value">{{ overall_ctr }}%</div>
+                    <div class="stat-label">Overall CTR</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="content-area">
+            <div class="section-tabs">
+                <button class="tab-btn active" onclick="switchTab('communities')">By Community</button>
+                <button class="tab-btn" onclick="switchTab('ads')">All Ads</button>
+            </div>
+
+            <!-- Communities Tab -->
+            <div id="communities-tab" class="tab-content active">
+                <div class="filters">
+                    <div class="filter-group">
+                        <label class="filter-label">Sort By</label>
+                        <select class="filter-select" id="sortCommunities" onchange="sortCommunitiesTable()">
+                            <option value="name">Name</option>
+                            <option value="ads">Total Ads</option>
+                            <option value="impressions">Impressions</option>
+                            <option value="clicks">Clicks</option>
+                            <option value="ctr">CTR</option>
+                        </select>
+                    </div>
+                </div>
+
+                {% set parent_groups = {} %}
+                {% for community in communities %}
+                    {% if community.parent_name %}
+                        {% if community.parent_name not in parent_groups %}
+                            {% set _ = parent_groups.update({community.parent_name: []}) %}
+                        {% endif %}
+                        {% set _ = parent_groups[community.parent_name].append(community) %}
+                    {% else %}
+                        {% if 'No Parent' not in parent_groups %}
+                            {% set _ = parent_groups.update({'No Parent': []}) %}
+                        {% endif %}
+                        {% set _ = parent_groups['No Parent'].append(community) %}
+                    {% endif %}
+                {% endfor %}
+
+                {% for parent_name, children in parent_groups.items() %}
+                <div class="community-group">
+                    <div class="parent-header">
+                        <span>
+                            {% if parent_name != 'No Parent' %}
+                                <i class="fas fa-university"></i> {{ parent_name }}
+                            {% else %}
+                                <i class="fas fa-globe"></i> Independent Universities
+                            {% endif %}
+                        </span>
+                        <div class="parent-stats">
+                            {% set parent_total_ads = children | sum(attribute='total_ads') %}
+                            {% set parent_impressions = children | sum(attribute='impressions') %}
+                            {% set parent_clicks = children | sum(attribute='clicks') %}
+                            <span>{{ parent_total_ads }} ads</span>
+                            <span>{{ "{:,}".format(parent_impressions) }} impressions</span>
+                            <span>{{ "{:,}".format(parent_clicks) }} clicks</span>
+                        </div>
+                    </div>
+                    <table class="communities-table">
+                        <thead>
+                            <tr>
+                                <th>Community</th>
+                                <th>Total Ads</th>
+                                <th>Active</th>
+                                <th>Impressions</th>
+                                <th>Clicks</th>
+                                <th>CTR</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for community in children %}
+                            <tr>
+                                <td>
+                                    <div class="community-name">
+                                        {% if parent_name != 'No Parent' %}
+                                            <span class="child-indicator">└</span>
+                                        {% endif %}
+                                        {{ community.name }}
+                                    </div>
+                                </td>
+                                <td>{{ community.total_ads }}</td>
+                                <td>
+                                    <span class="metric-badge {{ 'active' if community.active_ads > 0 else 'inactive' }}">
+                                        {{ community.active_ads }}
+                                    </span>
+                                </td>
+                                <td>{{ "{:,}".format(community.impressions) }}</td>
+                                <td>{{ "{:,}".format(community.clicks) }}</td>
+                                <td>
+                                    <span class="ctr-value">{{ community.ctr }}%</span>
+                                </td>
+                                <td>
+                                    <a href="{{ url_for('manage_ads', community_id=community.id) }}" class="manage-btn">
+                                        Manage
+                                    </a>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% endfor %}
+
+                {% if not communities %}
+                <div class="no-data">
+                    <i class="fas fa-inbox" style="font-size: 48px; color: #cbd5e0; margin-bottom: 10px;"></i>
+                    <p>No university communities found</p>
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- All Ads Tab -->
+            <div id="ads-tab" class="tab-content">
+                <div class="filters">
+                    <div class="filter-group">
+                        <label class="filter-label">Filter by Status</label>
+                        <select class="filter-select" id="statusFilter" onchange="filterAds()">
+                            <option value="all">All Ads</option>
+                            <option value="active">Active Only</option>
+                            <option value="inactive">Inactive Only</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label class="filter-label">Sort By</label>
+                        <select class="filter-select" id="sortAds" onchange="sortAds()">
+                            <option value="recent">Most Recent</option>
+                            <option value="impressions">Most Impressions</option>
+                            <option value="clicks">Most Clicks</option>
+                            <option value="ctr">Highest CTR</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="ads-grid" id="adsGrid">
+                    {% for ad in all_ads %}
+                    <div class="ad-card" data-status="{{ 'active' if ad.is_active else 'inactive' }}"
+                         data-impressions="{{ ad.impressions }}" data-clicks="{{ ad.clicks }}"
+                         data-ctr="{{ ad.ctr }}" data-created="{{ ad.created_at }}">
+                        <div class="ad-card-header">
+                            <img src="{{ ad.image_url }}" alt="{{ ad.title }}" class="ad-image">
+                            <span class="status-badge {{ 'active' if ad.is_active else 'inactive' }}">
+                                {{ 'Active' if ad.is_active else 'Inactive' }}
+                            </span>
+                        </div>
+                        <div class="ad-details">
+                            <div class="ad-title">{{ ad.title }}</div>
+                            <div class="ad-community">
+                                {% if ad.parent_community_name %}
+                                    {{ ad.parent_community_name }} > {{ ad.community_name }}
+                                {% else %}
+                                    {{ ad.community_name }}
+                                {% endif %}
+                            </div>
+                            <div class="ad-metrics">
+                                <div class="ad-metric">
+                                    <div class="ad-metric-value">{{ "{:,}".format(ad.impressions) }}</div>
+                                    <div class="ad-metric-label">Views</div>
+                                </div>
+                                <div class="ad-metric">
+                                    <div class="ad-metric-value">{{ "{:,}".format(ad.clicks) }}</div>
+                                    <div class="ad-metric-label">Clicks</div>
+                                </div>
+                                <div class="ad-metric">
+                                    <div class="ad-metric-value" style="color: #48bb78;">{{ ad.ctr }}%</div>
+                                    <div class="ad-metric-label">CTR</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+
+                {% if not all_ads %}
+                <div class="no-data">
+                    <i class="fas fa-ad" style="font-size: 48px; color: #cbd5e0; margin-bottom: 10px;"></i>
+                    <p>No ads found</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function switchTab(tab) {
+            // Remove active class from all tabs and buttons
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            
+            // Add active class to selected tab
+            if (tab === 'communities') {
+                document.querySelector('.tab-btn:nth-child(1)').classList.add('active');
+                document.getElementById('communities-tab').classList.add('active');
+            } else {
+                document.querySelector('.tab-btn:nth-child(2)').classList.add('active');
+                document.getElementById('ads-tab').classList.add('active');
+            }
+        }
+
+        function filterAds() {
+            const filter = document.getElementById('statusFilter').value;
+            const ads = document.querySelectorAll('.ad-card');
+            
+            ads.forEach(ad => {
+                if (filter === 'all') {
+                    ad.style.display = 'block';
+                } else {
+                    ad.style.display = ad.dataset.status === filter ? 'block' : 'none';
+                }
+            });
+        }
+
+        function sortAds() {
+            const sortBy = document.getElementById('sortAds').value;
+            const grid = document.getElementById('adsGrid');
+            const ads = Array.from(grid.querySelectorAll('.ad-card'));
+            
+            ads.sort((a, b) => {
+                switch(sortBy) {
+                    case 'recent':
+                        return new Date(b.dataset.created) - new Date(a.dataset.created);
+                    case 'impressions':
+                        return parseInt(b.dataset.impressions) - parseInt(a.dataset.impressions);
+                    case 'clicks':
+                        return parseInt(b.dataset.clicks) - parseInt(a.dataset.clicks);
+                    case 'ctr':
+                        return parseFloat(b.dataset.ctr) - parseFloat(a.dataset.ctr);
+                    default:
+                        return 0;
+                }
+            });
+            
+            // Re-append sorted ads
+            ads.forEach(ad => grid.appendChild(ad));
+        }
+
+        function sortCommunitiesTable() {
+            // This would require more complex implementation to sort table rows
+            // For now, we'll keep it as a placeholder
+            console.log('Sorting communities...');
+        }
+    </script>
+</body>
+</html>
