@@ -256,7 +256,7 @@
             justify-content: center;
             cursor: pointer;
             position: relative;
-            background: {{ 'rgba(0, 0, 0, 0.03)' if community.template == 'light' else 'rgba(255, 255, 255, 0.05)' }};
+            background: {{ '#ffffff' if community.template == 'light' else '#1a1a1a' }};
             transition: background-color 0.3s ease;
         }
         
@@ -7553,14 +7553,20 @@
                         const slide = document.getElementById(`ad-slide-${slideIndex}`);
                         
                         if (slide) {
-                            const opacity = {{ '0.15' if community.template == 'light' else '0.25' }};
-                            slide.style.setProperty('--ad-bg-color', `rgba(${color.r}, ${color.g}, ${color.b}, ${opacity})`);
+                            // Apply full background color (no transparency)
+                            slide.style.setProperty('--ad-bg-color', `rgb(${color.r}, ${color.g}, ${color.b})`);
                             slide.setAttribute('data-bg-color', 'true');
                         }
                     }
                 })
                 .catch(error => {
                     console.log('Could not extract color from image:', error);
+                    // Set white background as fallback
+                    const slide = document.getElementById(`ad-slide-${slideIndex}`);
+                    if (slide) {
+                        slide.style.setProperty('--ad-bg-color', {{ "'rgb(255, 255, 255)'" if community.template == 'light' else "'rgb(26, 26, 26)'" }});
+                        slide.setAttribute('data-bg-color', 'true');
+                    }
                 });
         }
         

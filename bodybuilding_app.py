@@ -7202,7 +7202,7 @@ def get_calendar_event(event_id):
 
 @app.route('/get_image_color')
 def get_image_color():
-    """Extract dominant color from an image URL"""
+    """Extract background color from an image URL"""
     try:
         import requests
         from PIL import Image
@@ -7223,47 +7223,71 @@ def get_image_color():
             img = Image.open(BytesIO(response.content))
             
             # Convert to RGB if necessary
-            if img.mode != 'RGB':
+            if img.mode == 'RGBA':
+                # Create white background
+                background = Image.new('RGB', img.size, (255, 255, 255))
+                background.paste(img, mask=img.split()[3] if len(img.split()) > 3 else None)
+                img = background
+            elif img.mode != 'RGB':
                 img = img.convert('RGB')
             
-            # Resize for faster processing
-            img.thumbnail((100, 100))
+            # Get image dimensions
+            width, height = img.size
             
-            # Convert to numpy array
-            img_array = np.array(img)
+            # Sample pixels from edges (likely background)
+            edge_pixels = []
             
-            # Reshape to list of pixels
-            pixels = img_array.reshape(-1, 3)
+            # Top edge
+            for x in range(0, width, 5):
+                edge_pixels.append(img.getpixel((x, 0)))
             
-            # Sample pixels (every 10th pixel for speed)
-            sampled_pixels = pixels[::10]
+            # Bottom edge
+            for x in range(0, width, 5):
+                edge_pixels.append(img.getpixel((x, height - 1)))
             
-            # Calculate average color
-            avg_color = np.mean(sampled_pixels, axis=0).astype(int)
+            # Left edge
+            for y in range(0, height, 5):
+                edge_pixels.append(img.getpixel((0, y)))
             
-            # Return RGB values
-            return jsonify({
-                'success': True,
-                'color': {
-                    'r': int(avg_color[0]),
-                    'g': int(avg_color[1]),
-                    'b': int(avg_color[2])
-                }
-            })
+            # Right edge
+            for y in range(0, height, 5):
+                edge_pixels.append(img.getpixel((width - 1, y)))
+            
+            # Find most common color (likely background)
+            if edge_pixels:
+                # Count color occurrences
+                color_counts = Counter(edge_pixels)
+                # Get most common color
+                most_common_color = color_counts.most_common(1)[0][0]
+                
+                return jsonify({
+                    'success': True,
+                    'color': {
+                        'r': most_common_color[0],
+                        'g': most_common_color[1],
+                        'b': most_common_color[2]
+                    }
+                })
+            else:
+                # Default to white for light theme, dark for dark theme
+                return jsonify({
+                    'success': True,
+                    'color': {'r': 255, 'g': 255, 'b': 255}
+                })
             
         except Exception as e:
             logger.error(f"Error processing image: {str(e)}")
-            # Return a neutral gray as fallback
+            # Return white as fallback
             return jsonify({
-                'success': False,
-                'color': {'r': 128, 'g': 128, 'b': 128}
+                'success': True,
+                'color': {'r': 255, 'g': 255, 'b': 255}
             })
             
     except Exception as e:
         logger.error(f"Error in get_image_color: {str(e)}")
         return jsonify({
-            'success': False,
-            'color': {'r': 128, 'g': 128, 'b': 128}
+            'success': True,
+            'color': {'r': 255, 'g': 255, 'b': 255}
         })
 
 @app.route('/get_event_rsvp_details')
