@@ -5240,16 +5240,23 @@ def admin_ads_overview():
                 LEFT JOIN university_ads ua ON c.id = ua.community_id
                 WHERE c.type = 'University'
                 GROUP BY c.id, c.name, c.type, c.parent_community_id, pc.name
-                ORDER BY pc.name NULLS FIRST, c.name
+                ORDER BY 
+                    CASE WHEN c.parent_community_id IS NULL THEN 0 ELSE 1 END,
+                    COALESCE(pc.name, c.name),
+                    c.parent_community_id IS NULL DESC,
+                    c.name
             """)
             
+            # Organize communities by parent groups
+            parent_groups = {}
             communities_data = []
+            
             for row in c.fetchall():
                 ctr = 0
                 if row['total_impressions'] > 0:
                     ctr = round((row['total_clicks'] / row['total_impressions']) * 100, 2)
                 
-                communities_data.append({
+                community = {
                     'id': row['id'],
                     'name': row['name'],
                     'type': row['type'],
@@ -5260,7 +5267,28 @@ def admin_ads_overview():
                     'impressions': row['total_impressions'],
                     'clicks': row['total_clicks'],
                     'ctr': ctr
-                })
+                }
+                communities_data.append(community)
+                
+                # Organize into parent groups
+                if row['parent_community_id'] is None:
+                    # This is a parent community
+                    if row['name'] not in parent_groups:
+                        parent_groups[row['name']] = {
+                            'parent': community,
+                            'children': []
+                        }
+                    else:
+                        parent_groups[row['name']]['parent'] = community
+                else:
+                    # This is a child community
+                    parent_name = row['parent_name']
+                    if parent_name not in parent_groups:
+                        parent_groups[parent_name] = {
+                            'parent': None,
+                            'children': []
+                        }
+                    parent_groups[parent_name]['children'].append(community)
             
             # Get detailed ads for each community
             c.execute("""
@@ -5310,6 +5338,7 @@ def admin_ads_overview():
             
             return render_template('admin_ads_overview.html',
                                  communities=communities_data,
+                                 parent_groups=parent_groups,
                                  all_ads=all_ads,
                                  total_communities=total_communities,
                                  total_ads=total_ads,
