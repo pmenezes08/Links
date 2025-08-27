@@ -6218,71 +6218,111 @@
             
             const rsvpCounts = event.rsvp_counts || {going: 0, maybe: 0, not_going: 0};
             const userRsvp = event.user_rsvp || null;
+            const totalInvited = (event.invited_users && event.invited_users.length) || 0;
+            const totalResponded = rsvpCounts.going + rsvpCounts.maybe + rsvpCounts.not_going;
             
             let detailsHTML = `
-                <div class="event-details-container">
-                    <div class="event-details-header">
-                        <h3>${escapeHtml(event.title)}</h3>
-                        ${event.is_invited ? '<span class="invited-badge"><i class="fas fa-envelope"></i> You were invited</span>' : ''}
+                <div class="event-details-container" style="padding: 20px; max-width: 500px; margin: 0 auto;">
+                    <!-- Title Section -->
+                    <div style="margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px solid {{ 'rgba(0, 0, 0, 0.1)' if community.template == 'light' else 'rgba(255, 255, 255, 0.1)' }};">
+                        <h3 style="margin: 0 0 8px 0; font-size: 20px; color: {{ '#212529' if community.template == 'light' else '#ffffff' }};">${escapeHtml(event.title)}</h3>
+                        ${event.is_invited ? '<span style="display: inline-block; padding: 3px 8px; background: rgba(77, 182, 172, 0.2); color: #4db6ac; border-radius: 12px; font-size: 11px;"><i class="fas fa-envelope" style="font-size: 10px;"></i> You were invited</span>' : ''}
                     </div>
                     
-                    <div class="event-details-info">
-                        <div class="detail-row">
-                            <i class="fas fa-calendar"></i>
+                    <!-- Event Info Grid -->
+                    <div style="display: grid; gap: 10px; margin-bottom: 20px;">
+                        <div style="display: flex; align-items: center; gap: 12px; font-size: 13px; color: {{ '#495057' if community.template == 'light' else '#e0e0e0' }};">
+                            <i class="fas fa-calendar" style="width: 16px; color: {{ community.accent_color or '#2d8a7e' }};"></i>
                             <span>${dateDisplay}</span>
                         </div>
                         ${timeDisplay ? `
-                            <div class="detail-row">
-                                <i class="fas fa-clock"></i>
+                            <div style="display: flex; align-items: center; gap: 12px; font-size: 13px; color: {{ '#495057' if community.template == 'light' else '#e0e0e0' }};">
+                                <i class="fas fa-clock" style="width: 16px; color: {{ community.accent_color or '#2d8a7e' }};"></i>
                                 <span>${timeDisplay}</span>
                             </div>
                         ` : ''}
-                        <div class="detail-row">
-                            <i class="fas fa-user"></i>
+                        <div style="display: flex; align-items: center; gap: 12px; font-size: 13px; color: {{ '#495057' if community.template == 'light' else '#e0e0e0' }};">
+                            <i class="fas fa-user" style="width: 16px; color: {{ community.accent_color or '#2d8a7e' }};"></i>
                             <span>Created by ${escapeHtml(event.username)}</span>
                         </div>
                     </div>
                     
                     ${event.description ? `
-                        <div class="event-details-description">
-                            <h4>Description</h4>
-                            <p>${escapeHtml(event.description)}</p>
+                        <!-- Description -->
+                        <div style="margin-bottom: 20px; padding: 12px; background: {{ 'rgba(0, 0, 0, 0.03)' if community.template == 'light' else 'rgba(255, 255, 255, 0.05)' }}; border-radius: 6px;">
+                            <h4 style="margin: 0 0 8px 0; font-size: 12px; font-weight: 600; color: {{ community.accent_color or '#2d8a7e' }};">Description</h4>
+                            <p style="margin: 0; font-size: 12px; line-height: 1.5; color: {{ '#495057' if community.template == 'light' else '#e0e0e0' }};">${escapeHtml(event.description)}</p>
                         </div>
                     ` : ''}
                     
-                    <div class="event-details-rsvp">
-                        <h4>RSVP</h4>
-                        <div class="rsvp-counts">
-                            <span class="rsvp-count going">
-                                <i class="fas fa-check-circle"></i> ${rsvpCounts.going} Going
-                            </span>
-                            <span class="rsvp-count maybe">
-                                <i class="fas fa-question-circle"></i> ${rsvpCounts.maybe} Maybe
-                            </span>
-                            <span class="rsvp-count not-going">
-                                <i class="fas fa-times-circle"></i> ${rsvpCounts.not_going} Not Going
-                            </span>
+                    <!-- RSVP Section -->
+                    <div style="margin-bottom: 20px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                            <h4 style="margin: 0; font-size: 13px; font-weight: 600; color: {{ community.accent_color or '#2d8a7e' }};">RSVP Status</h4>
+                            <button onclick="toggleRSVPDetails(${event.id})" style="background: transparent; border: 1px solid {{ 'rgba(0, 0, 0, 0.2)' if community.template == 'light' else 'rgba(255, 255, 255, 0.2)' }}; padding: 4px 10px; border-radius: 4px; font-size: 11px; color: {{ '#495057' if community.template == 'light' else '#e0e0e0' }}; cursor: pointer;">
+                                <i class="fas fa-users" style="font-size: 10px;"></i> View Attendees
+                            </button>
                         </div>
-                        <div class="rsvp-buttons" data-event-id="${event.id}">
-                            <button class="rsvp-btn ${userRsvp === 'going' ? 'active' : ''}" 
-                                    onclick="submitRSVPFromDetails(${event.id}, 'going')">
-                                <i class="fas fa-check"></i> Going
-                            </button>
-                            <button class="rsvp-btn ${userRsvp === 'maybe' ? 'active' : ''}" 
-                                    onclick="submitRSVPFromDetails(${event.id}, 'maybe')">
-                                <i class="fas fa-question"></i> Maybe
-                            </button>
-                            <button class="rsvp-btn ${userRsvp === 'not_going' ? 'active' : ''}" 
-                                    onclick="submitRSVPFromDetails(${event.id}, 'not_going')">
-                                <i class="fas fa-times"></i> Can't Go
-                            </button>
+                        
+                        <!-- RSVP Summary -->
+                        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px;">
+                            <div style="text-align: center; padding: 8px; background: rgba(76, 175, 80, 0.1); border-radius: 6px;">
+                                <div style="font-size: 18px; font-weight: 600; color: #4CAF50;">${rsvpCounts.going}</div>
+                                <div style="font-size: 11px; color: {{ '#495057' if community.template == 'light' else '#b0b0b0' }};">Going</div>
+                            </div>
+                            <div style="text-align: center; padding: 8px; background: rgba(255, 193, 7, 0.1); border-radius: 6px;">
+                                <div style="font-size: 18px; font-weight: 600; color: #FFC107;">${rsvpCounts.maybe}</div>
+                                <div style="font-size: 11px; color: {{ '#495057' if community.template == 'light' else '#b0b0b0' }};">Maybe</div>
+                            </div>
+                            <div style="text-align: center; padding: 8px; background: rgba(244, 67, 54, 0.1); border-radius: 6px;">
+                                <div style="font-size: 18px; font-weight: 600; color: #f44336;">${rsvpCounts.not_going}</div>
+                                <div style="font-size: 11px; color: {{ '#495057' if community.template == 'light' else '#b0b0b0' }};">Not Going</div>
+                            </div>
+                        </div>
+                        
+                        <!-- RSVP Details Dropdown (hidden by default) -->
+                        <div id="rsvpDetails-${event.id}" style="display: none; margin-top: 12px; padding: 12px; background: {{ 'rgba(0, 0, 0, 0.03)' if community.template == 'light' else 'rgba(255, 255, 255, 0.05)' }}; border-radius: 6px;">
+                            <div style="font-size: 11px; color: {{ '#495057' if community.template == 'light' else '#b0b0b0' }};">Loading attendees...</div>
+                        </div>
+                        
+                        <!-- Your RSVP -->
+                        <div style="margin-top: 12px;">
+                            <div style="font-size: 11px; margin-bottom: 8px; color: {{ '#495057' if community.template == 'light' else '#b0b0b0' }};">Your Response:</div>
+                            <div style="display: flex; gap: 6px;">
+                                <button class="compact-rsvp-btn ${userRsvp === 'going' ? 'active' : ''}" 
+                                        onclick="submitRSVPFromDetails(${event.id}, 'going')"
+                                        style="flex: 1; padding: 6px; font-size: 11px; border: 1px solid ${userRsvp === 'going' ? '#4CAF50' : '{{ "rgba(0, 0, 0, 0.2)" if community.template == "light" else "rgba(255, 255, 255, 0.2)" }}'}; background: ${userRsvp === 'going' ? 'rgba(76, 175, 80, 0.2)' : 'transparent'}; color: ${userRsvp === 'going' ? '#4CAF50' : '{{ "#495057" if community.template == "light" else "#e0e0e0" }}'}; border-radius: 4px; cursor: pointer;">
+                                    <i class="fas fa-check" style="font-size: 10px;"></i> Going
+                                </button>
+                                <button class="compact-rsvp-btn ${userRsvp === 'maybe' ? 'active' : ''}" 
+                                        onclick="submitRSVPFromDetails(${event.id}, 'maybe')"
+                                        style="flex: 1; padding: 6px; font-size: 11px; border: 1px solid ${userRsvp === 'maybe' ? '#FFC107' : '{{ "rgba(0, 0, 0, 0.2)" if community.template == "light" else "rgba(255, 255, 255, 0.2)" }}'}; background: ${userRsvp === 'maybe' ? 'rgba(255, 193, 7, 0.2)' : 'transparent'}; color: ${userRsvp === 'maybe' ? '#FFC107' : '{{ "#495057" if community.template == "light" else "#e0e0e0" }}'}; border-radius: 4px; cursor: pointer;">
+                                    <i class="fas fa-question" style="font-size: 10px;"></i> Maybe
+                                </button>
+                                <button class="compact-rsvp-btn ${userRsvp === 'not_going' ? 'active' : ''}" 
+                                        onclick="submitRSVPFromDetails(${event.id}, 'not_going')"
+                                        style="flex: 1; padding: 6px; font-size: 11px; border: 1px solid ${userRsvp === 'not_going' ? '#f44336' : '{{ "rgba(0, 0, 0, 0.2)" if community.template == "light" else "rgba(255, 255, 255, 0.2)" }}'}; background: ${userRsvp === 'not_going' ? 'rgba(244, 67, 54, 0.2)' : 'transparent'}; color: ${userRsvp === 'not_going' ? '#f44336' : '{{ "#495057" if community.template == "light" else "#e0e0e0" }}'}; border-radius: 4px; cursor: pointer;">
+                                    <i class="fas fa-times" style="font-size: 10px;"></i> Can't Go
+                                </button>
+                            </div>
                         </div>
                     </div>
                     
                     ${event.canEdit || event.canDelete ? `
-                        <div class="event-details-actions">
-                            ${event.canEdit ? `<button class="sleek-btn" onclick="editCalendarEventFromDetails(${event.id})"><i class="fas fa-edit"></i> Edit Event</button>` : ''}
-                            ${event.canDelete ? `<button class="sleek-btn danger" onclick="deleteCalendarEventFromDetails(${event.id})"><i class="fas fa-trash"></i> Delete Event</button>` : ''}
+                        <!-- Action Buttons -->
+                        <div style="display: flex; gap: 8px; justify-content: flex-end; padding-top: 15px; border-top: 1px solid {{ 'rgba(0, 0, 0, 0.1)' if community.template == 'light' else 'rgba(255, 255, 255, 0.1)' }};">
+                            ${event.canEdit ? `
+                                <button onclick="editCalendarEventFromDetails(${event.id})" 
+                                        style="padding: 8px 16px; font-size: 12px; background: {{ community.accent_color or '#2d8a7e' }}; color: #ffffff; border: none; border-radius: 4px; cursor: pointer;">
+                                    <i class="fas fa-edit" style="font-size: 11px;"></i> Edit Event
+                                </button>
+                            ` : ''}
+                            ${event.canDelete ? `
+                                <button onclick="deleteCalendarEventFromDetails(${event.id})" 
+                                        style="padding: 8px 16px; font-size: 12px; background: #ff4444; color: #ffffff; border: none; border-radius: 4px; cursor: pointer;">
+                                    <i class="fas fa-trash" style="font-size: 11px;"></i> Delete
+                                </button>
+                            ` : ''}
                         </div>
                     ` : ''}
                 </div>
@@ -6290,10 +6330,133 @@
             
             document.getElementById('eventDetailsContent').innerHTML = detailsHTML;
             document.getElementById('eventDetailsModal').style.display = 'block';
+            
+            // Load RSVP details in background
+            loadRSVPDetails(eventId);
         }
         
         function closeEventDetailsModal() {
             document.getElementById('eventDetailsModal').style.display = 'none';
+        }
+        
+        function toggleRSVPDetails(eventId) {
+            const detailsDiv = document.getElementById(`rsvpDetails-${eventId}`);
+            if (detailsDiv.style.display === 'none') {
+                detailsDiv.style.display = 'block';
+                // Load details if not already loaded
+                if (!detailsDiv.dataset.loaded) {
+                    loadRSVPDetails(eventId);
+                }
+            } else {
+                detailsDiv.style.display = 'none';
+            }
+        }
+        
+        function loadRSVPDetails(eventId) {
+            const event = window.calendarEventDetails[eventId];
+            const detailsDiv = document.getElementById(`rsvpDetails-${eventId}`);
+            
+            if (!event || !detailsDiv) return;
+            
+            // Use existing attendees data from viewEventAttendees if available
+            const attendees = event.attendees || {};
+            const invitedUsers = event.invited_users || [];
+            
+            // Fetch detailed RSVP data
+            fetch(`/get_event_rsvp_details?event_id=${eventId}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        const going = data.attendees.going || [];
+                        const maybe = data.attendees.maybe || [];
+                        const notGoing = data.attendees.not_going || [];
+                        const noResponse = data.attendees.no_response || [];
+                        
+                        let detailsHTML = `
+                            <div style="font-size: 11px;">
+                                ${going.length > 0 ? `
+                                    <div style="margin-bottom: 10px;">
+                                        <div style="font-weight: 600; color: #4CAF50; margin-bottom: 4px;">
+                                            <i class="fas fa-check-circle" style="font-size: 10px;"></i> Going (${going.length})
+                                        </div>
+                                        <div style="display: flex; flex-wrap: wrap; gap: 4px;">
+                                            ${going.map(user => `
+                                                <span style="padding: 2px 6px; background: rgba(76, 175, 80, 0.1); border: 1px solid rgba(76, 175, 80, 0.3); border-radius: 12px; font-size: 10px;">
+                                                    ${user.username}
+                                                </span>
+                                            `).join('')}
+                                        </div>
+                                    </div>
+                                ` : ''}
+                                
+                                ${maybe.length > 0 ? `
+                                    <div style="margin-bottom: 10px;">
+                                        <div style="font-weight: 600; color: #FFC107; margin-bottom: 4px;">
+                                            <i class="fas fa-question-circle" style="font-size: 10px;"></i> Maybe (${maybe.length})
+                                        </div>
+                                        <div style="display: flex; flex-wrap: wrap; gap: 4px;">
+                                            ${maybe.map(user => `
+                                                <span style="padding: 2px 6px; background: rgba(255, 193, 7, 0.1); border: 1px solid rgba(255, 193, 7, 0.3); border-radius: 12px; font-size: 10px;">
+                                                    ${user.username}
+                                                </span>
+                                            `).join('')}
+                                        </div>
+                                    </div>
+                                ` : ''}
+                                
+                                ${notGoing.length > 0 ? `
+                                    <div style="margin-bottom: 10px;">
+                                        <div style="font-weight: 600; color: #f44336; margin-bottom: 4px;">
+                                            <i class="fas fa-times-circle" style="font-size: 10px;"></i> Not Going (${notGoing.length})
+                                        </div>
+                                        <div style="display: flex; flex-wrap: wrap; gap: 4px;">
+                                            ${notGoing.map(user => `
+                                                <span style="padding: 2px 6px; background: rgba(244, 67, 54, 0.1); border: 1px solid rgba(244, 67, 54, 0.3); border-radius: 12px; font-size: 10px;">
+                                                    ${user.username}
+                                                </span>
+                                            `).join('')}
+                                        </div>
+                                    </div>
+                                ` : ''}
+                                
+                                ${noResponse.length > 0 ? `
+                                    <div>
+                                        <div style="font-weight: 600; color: {{ '#6c757d' if community.template == 'light' else '#9b9b9b' }}; margin-bottom: 4px;">
+                                            <i class="fas fa-clock" style="font-size: 10px;"></i> No Response Yet (${noResponse.length})
+                                        </div>
+                                        <div style="display: flex; flex-wrap: wrap; gap: 4px;">
+                                            ${noResponse.map(user => `
+                                                <span style="padding: 2px 6px; background: {{ 'rgba(0, 0, 0, 0.05)' if community.template == 'light' else 'rgba(255, 255, 255, 0.05)' }}; border: 1px solid {{ 'rgba(0, 0, 0, 0.1)' if community.template == 'light' else 'rgba(255, 255, 255, 0.1)' }}; border-radius: 12px; font-size: 10px; color: {{ '#6c757d' if community.template == 'light' else '#9b9b9b' }};">
+                                                    ${user.username}
+                                                </span>
+                                            `).join('')}
+                                        </div>
+                                    </div>
+                                ` : ''}
+                                
+                                ${going.length === 0 && maybe.length === 0 && notGoing.length === 0 && noResponse.length === 0 ? `
+                                    <div style="color: {{ '#6c757d' if community.template == 'light' else '#9b9b9b' }};">
+                                        No invitations sent for this event
+                                    </div>
+                                ` : ''}
+                            </div>
+                        `;
+                        
+                        detailsDiv.innerHTML = detailsHTML;
+                        detailsDiv.dataset.loaded = 'true';
+                    } else {
+                        // Fallback to simple display
+                        detailsDiv.innerHTML = `<div style="font-size: 11px; color: {{ '#6c757d' if community.template == 'light' else '#9b9b9b' }};">Unable to load attendee details</div>`;
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading RSVP details:', error);
+                    // Use cached data if available
+                    if (event.attendees) {
+                        // Display cached attendees data
+                        detailsDiv.innerHTML = `<div style="font-size: 11px; color: {{ '#6c757d' if community.template == 'light' else '#9b9b9b' }};">Loading attendee details...</div>`;
+                    }
+                });
         }
         
         function submitRSVPFromDetails(eventId, response) {

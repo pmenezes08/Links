@@ -7200,6 +7200,107 @@ def get_calendar_event(event_id):
         logger.error(f"Error getting calendar event: {str(e)}")
         return jsonify({'success': False, 'message': str(e)})
 
+@app.route('/get_event_rsvp_details')
+@login_required
+def get_event_rsvp_details():
+    """Get detailed RSVP information including non-responders"""
+    try:
+        event_id = request.args.get('event_id', type=int)
+        if not event_id:
+            return jsonify({'success': False, 'message': 'Event ID required'}), 400
+            
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Get all RSVPs for the event
+            c.execute("""
+                SELECT r.username, r.response, u.username as display_name
+                FROM event_rsvps r
+                JOIN users u ON r.username = u.username
+                WHERE r.event_id = ?
+                ORDER BY r.response, u.username
+            """, (event_id,))
+            
+            rsvps = c.fetchall()
+            
+            # Get all invited users
+            c.execute("""
+                SELECT i.invited_username, u.username as display_name
+                FROM event_invitations i
+                JOIN users u ON i.invited_username = u.username
+                WHERE i.event_id = ?
+                ORDER BY u.username
+            """, (event_id,))
+            
+            invited_users = c.fetchall()
+            
+            # Organize attendees by response
+            attendees = {
+                'going': [],
+                'maybe': [],
+                'not_going': [],
+                'no_response': []
+            }
+            
+            # Track who has responded
+            responded_users = set()
+            
+            # Categorize RSVPs
+            for rsvp in rsvps:
+                user_info = {
+                    'username': rsvp['display_name'] or rsvp['username']
+                }
+                attendees[rsvp['response']].append(user_info)
+                responded_users.add(rsvp['username'])
+            
+            # Find non-responders from invited users
+            for invitation in invited_users:
+                if invitation['invited_username'] not in responded_users:
+                    attendees['no_response'].append({
+                        'username': invitation['display_name'] or invitation['invited_username']
+                    })
+            
+            # If no specific invitations, check if it was an "invite all" event
+            if not invited_users:
+                c.execute("""
+                    SELECT e.*, c.id as community_id
+                    FROM calendar_events e
+                    LEFT JOIN communities c ON e.community_id = c.id
+                    WHERE e.id = ?
+                """, (event_id,))
+                
+                event = c.fetchone()
+                
+                # If it's a community event, get all community members who haven't responded
+                if event and event['community_id']:
+                    c.execute("""
+                        SELECT u.username
+                        FROM user_communities uc
+                        JOIN users u ON uc.user_id = u.rowid
+                        WHERE uc.community_id = ?
+                        AND u.username NOT IN (
+                            SELECT username FROM event_rsvps WHERE event_id = ?
+                        )
+                        ORDER BY u.username
+                    """, (event['community_id'], event_id))
+                    
+                    non_responders = c.fetchall()
+                    for user in non_responders:
+                        attendees['no_response'].append({
+                            'username': user['username']
+                        })
+            
+            return jsonify({
+                'success': True,
+                'attendees': attendees,
+                'total_invited': len(invited_users) if invited_users else len(attendees['no_response']) + len(responded_users),
+                'total_responded': len(responded_users)
+            })
+            
+    except Exception as e:
+        logger.error(f"Error getting RSVP details: {str(e)}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+
 @app.route('/delete_calendar_event', methods=['POST'])
 @login_required
 def delete_calendar_event():
