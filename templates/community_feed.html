@@ -176,7 +176,7 @@
             top: 80px;
             width: 320px;
             height: 320px;
-            background: {{ community.background_color or '#0f2725' }};
+            background: #000000;
             border-radius: 12px;
             border: 1px solid {{ 'rgba(0, 0, 0, 0.05)' if community.template == 'light' else 'rgba(255, 255, 255, 0.05)' }};
             box-shadow: 0 4px 12px {{ 'rgba(0, 0, 0, 0.05)' if community.template == 'light' else 'rgba(0, 0, 0, 0.2)' }};
@@ -226,16 +226,18 @@
             justify-content: center;
             cursor: pointer;
             position: relative;
+            background: #000000;
         }
         
         .ad-image {
             width: 100%;
-            max-width: 250px;
-            height: 180px;
-            object-fit: cover;
+            max-width: 280px;
+            height: 160px;
+            object-fit: contain;
+            background: #000000;
             border-radius: 8px;
-            margin-bottom: 12px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            margin-bottom: 10px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
         }
         
         .ad-title {
