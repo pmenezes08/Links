@@ -5569,8 +5569,16 @@
             const communityId = {{ community.id }};
             console.log('Loading members for community:', communityId);
             
+            // Show loading state immediately
+            const checkboxList = document.getElementById('membersCheckboxList');
+            const isLight = {{ 'true' if community.template == 'light' else 'false' }};
+            if (checkboxList) {
+                checkboxList.innerHTML = `<div style="color: ${isLight ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.5)'}; padding: 10px;">Loading members...</div>`;
+            }
+            
             fetch(`/community/${communityId}/members/list`)
                 .then(response => {
+                    console.log('Response status:', response.status);
                     if (!response.ok) {
                         throw new Error(`HTTP error! status: ${response.status}`);
                     }
@@ -5578,20 +5586,29 @@
                 })
                 .then(data => {
                     console.log('Members data received:', data);
-                    if (data.success && data.members) {
+                    console.log('Members array:', data.members);
+                    console.log('Total members:', data.total);
+                    
+                    if (data.success && data.members && data.members.length > 0) {
                         loadedMembers = data.members;
+                        console.log('Calling renderMembersList with', loadedMembers.length, 'members');
                         renderMembersList(loadedMembers);
                     } else {
-                        console.error('No members found or error:', data.message);
-                        const isLight = {{ 'true' if community.template == 'light' else 'false' }};
-                        document.getElementById('membersCheckboxList').innerHTML = 
-                            `<div style="color: ${isLight ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.5)'}; padding: 10px;">No members found</div>`;
+                        console.error('No members found or empty array:', data);
+                        const checkboxList = document.getElementById('membersCheckboxList');
+                        if (checkboxList) {
+                            checkboxList.innerHTML = 
+                                `<div style="color: ${isLight ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.5)'}; padding: 10px;">No members found in this community</div>`;
+                        }
                     }
                 })
                 .catch(error => {
                     console.error('Error loading members:', error);
-                    document.getElementById('membersCheckboxList').innerHTML = 
-                        '<div style="color: #f44336; padding: 10px;">Error loading members</div>';
+                    const checkboxList = document.getElementById('membersCheckboxList');
+                    if (checkboxList) {
+                        checkboxList.innerHTML = 
+                            '<div style="color: #f44336; padding: 10px;">Error loading members: ' + error.message + '</div>';
+                    }
                 });
         }
         
@@ -5599,15 +5616,25 @@
             const container = document.getElementById('membersCheckboxList');
             const currentUser = {{ session.username|tojson|safe }};
             
-            console.log('Rendering members list:', members);
-            console.log('Current user:', currentUser);
+            console.log('renderMembersList called');
             console.log('Container element:', container);
+            console.log('Members to render:', members);
+            console.log('Current user:', currentUser);
+            
+            if (!container) {
+                console.error('membersCheckboxList container not found!');
+                return;
+            }
             
             // Clear loading message
             container.innerHTML = '';
             
-            // Filter out current user
-            const filteredMembers = members.filter(member => member.username !== currentUser);
+            // Filter out current user and users marked as current
+            const filteredMembers = members.filter(member => 
+                member.username !== currentUser && !member.is_current_user
+            );
+            
+            console.log('Filtered members (excluding current user):', filteredMembers);
             
             if (filteredMembers.length === 0) {
                 const isLight = {{ 'true' if community.template == 'light' else 'false' }};
@@ -5615,18 +5642,26 @@
                 return;
             }
             
-            container.innerHTML = filteredMembers
-                .map(member => `
-                    <div class="member-checkbox">
-                        <input type="checkbox" id="member_${member.username}" name="invited_members[]" value="${member.username}">
-                        <label for="member_${member.username}">
-                            <span class="member-avatar">
-                                ${member.username.charAt(0).toUpperCase()}
-                            </span>
-                            ${member.username}
-                        </label>
-                    </div>
-                `).join('');
+            // Build HTML for each member
+            const membersHTML = filteredMembers
+                .map(member => {
+                    const username = member.username || 'Unknown';
+                    const initial = username.charAt(0).toUpperCase();
+                    return `
+                        <div class="member-checkbox">
+                            <input type="checkbox" id="member_${username}" name="invited_members[]" value="${username}">
+                            <label for="member_${username}">
+                                <span class="member-avatar">
+                                    ${initial}
+                                </span>
+                                ${username}
+                            </label>
+                        </div>
+                    `;
+                }).join('');
+            
+            console.log('Generated HTML for members:', membersHTML);
+            container.innerHTML = membersHTML;
                 
             // Update invite all button state if needed
             if (inviteAllActive) {
