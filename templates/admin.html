@@ -396,8 +396,8 @@
 
         /* Compact Modal Styles for Communities */
         .compact-modal {
-            max-width: 90%;
-            width: 1200px;
+            max-width: 95%;
+            width: 1400px;
             max-height: 85vh;
             display: flex;
             flex-direction: column;
@@ -464,6 +464,11 @@
             color: #4db6ac;
             border-bottom: 2px solid rgba(77, 182, 172, 0.3);
             white-space: nowrap;
+        }
+        
+        .communities-table th:last-child {
+            min-width: 140px;
+            text-align: center;
         }
 
         .communities-table tbody tr {
@@ -535,15 +540,30 @@
             color: #ff4444;
         }
 
+        .compact-actions {
+            display: flex;
+            gap: 6px;
+            justify-content: center;
+        }
+        
+        .actions-cell {
+            text-align: center;
+            white-space: nowrap;
+        }
+        
         .action-btn-compact {
-            padding: 4px 8px;
+            padding: 5px 10px;
             background: rgba(255, 255, 255, 0.05);
             border: 1px solid rgba(255, 255, 255, 0.1);
             border-radius: 4px;
             color: rgba(255, 255, 255, 0.7);
             cursor: pointer;
             transition: all 0.2s;
-            font-size: 12px;
+            font-size: 13px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 32px;
         }
 
         .action-btn-compact:hover {
@@ -586,6 +606,35 @@
 
         .text-center {
             text-align: center;
+        }
+        
+        /* Responsive adjustments for compact modal */
+        @media (max-width: 1500px) {
+            .compact-modal {
+                max-width: 98%;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .compact-modal {
+                width: 100%;
+                max-width: 100%;
+                max-height: 95vh;
+            }
+            
+            .communities-table {
+                font-size: 11px;
+            }
+            
+            .action-btn-compact {
+                padding: 4px 6px;
+                font-size: 11px;
+                min-width: 28px;
+            }
+            
+            .compact-actions {
+                gap: 3px;
+            }
         }
 
         .error-message {
