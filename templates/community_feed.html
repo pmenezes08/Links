@@ -3079,8 +3079,7 @@
         }
         
         .events-list {
-            max-height: 400px;
-            overflow-y: auto;
+            /* Remove fixed height to allow dynamic sizing */
             overflow-x: hidden;
             margin-bottom: 15px;
             word-wrap: break-word;
@@ -5379,18 +5378,31 @@
         function switchCalendarTab(tabName) {
             // Remove active class from all tabs and content
             document.querySelectorAll('#calendarModal .poll-tab').forEach(tab => tab.classList.remove('active'));
-            document.querySelectorAll('#calendarModal .poll-tab-content').forEach(content => content.classList.remove('active'));
+            document.querySelectorAll('#calendarModal .poll-tab-content').forEach(content => {
+                content.classList.remove('active');
+                content.style.display = 'none'; // Explicitly hide all tabs
+            });
             
-            // Hide/show edit tab button based on context
+            // Handle edit tab button visibility
             const editTabButton = document.getElementById('editTabButton');
-            if (tabName !== 'edit' && editTabButton.style.display === 'block') {
+            if (tabName === 'edit') {
+                // Show edit tab button when switching to edit
+                editTabButton.style.display = 'block';
+            } else if (editTabButton.style.display === 'block' && tabName !== 'edit') {
+                // Hide edit tab button when switching away from edit
                 editTabButton.style.display = 'none';
             }
             
             // Add active class to selected tab and content
-            document.querySelector(`#calendarModal [onclick="switchCalendarTab('${tabName}')"]`).classList.add('active');
-            document.getElementById(`${tabName}CalendarTab`).classList.add('active');
-            document.getElementById(`${tabName}CalendarTab`).style.display = 'block';
+            const targetTab = document.querySelector(`#calendarModal [onclick="switchCalendarTab('${tabName}')"]`);
+            if (targetTab) {
+                targetTab.classList.add('active');
+            }
+            const targetContent = document.getElementById(`${tabName}CalendarTab`);
+            if (targetContent) {
+                targetContent.classList.add('active');
+                targetContent.style.display = 'block'; // Explicitly show the selected tab
+            }
             
             if (tabName === 'view') {
                 renderCalendar();
@@ -6299,6 +6311,10 @@
         
         function editCalendarEventFromDetails(eventId) {
             closeEventDetailsModal();
+            // Make sure calendar modal is open
+            if (document.getElementById('calendarModal').style.display !== 'block') {
+                document.getElementById('calendarModal').style.display = 'block';
+            }
             editCalendarEvent(eventId);
         }
         
@@ -6610,7 +6626,7 @@
                 </div>
                 
                 <!-- Edit Event Tab -->
-                <div id="editCalendarTab" class="poll-tab-content" style="display:none;">
+                <div id="editCalendarTab" class="poll-tab-content">
                     <form id="editEventForm" style="max-width: 500px; margin: 0 auto;">
                         <input type="hidden" id="editEventId" name="event_id">
                         <div class="form-group">
