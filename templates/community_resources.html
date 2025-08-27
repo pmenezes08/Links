@@ -466,9 +466,14 @@
                 <div class="resource-post" data-post-id="{{ post.id }}">
                     <div class="post-header">
                         <div class="post-author">
+                            {% if post.profile_picture %}
+                            <div class="author-avatar" style="background-image: url('{{ url_for('static', filename=post.profile_picture) }}'); background-size: cover; background-position: center;">
+                            </div>
+                            {% else %}
                             <div class="author-avatar" style="background: linear-gradient(135deg, #4db6ac 0%, #2d8a7e 100%);">
                                 {{ post.username[0].upper() }}
                             </div>
+                            {% endif %}
                             <div class="author-info">
                                 <div class="author-name">{{ post.username }}</div>
                                 <div class="post-time" data-timestamp="{{ post.created_at }}"></div>

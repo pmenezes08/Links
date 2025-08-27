@@ -5420,13 +5420,15 @@ def community_resources(community_id):
                 flash('Community not found', 'error')
                 return redirect(url_for('communities'))
             
-            # Get resource posts for this community
+            # Get resource posts for this community with profile pictures
             c.execute("""
                 SELECT p.*,
+                       up.profile_picture,
                        (SELECT COUNT(*) FROM resource_comments WHERE post_id = p.id) as comment_count,
                        (SELECT COUNT(*) FROM resource_upvotes WHERE post_id = p.id) as upvote_count,
                        EXISTS(SELECT 1 FROM resource_upvotes WHERE post_id = p.id AND username = ?) as user_upvoted
                 FROM resource_posts p
+                LEFT JOIN user_profiles up ON p.username = up.username
                 WHERE p.community_id = ?
                 ORDER BY p.is_pinned DESC, p.created_at DESC
             """, (username, community_id))
