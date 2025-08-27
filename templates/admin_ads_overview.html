@@ -719,6 +719,10 @@
         $(document).ready(function() {
             console.log('Admin ads overview page script loaded');
             // Premium dashboard menu doesn't need dropdown logic
+            
+            // Ensure initial tab state is correct
+            document.getElementById('communities-tab').style.display = 'block';
+            document.getElementById('ads-tab').style.display = 'none';
         });
 
         function toggleGroup(index) {
@@ -753,17 +757,31 @@
         }
 
         function switchTab(tab) {
-            // Remove active class from all tabs and buttons
-            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            console.log('Switching to tab:', tab);
             
-            // Add active class to selected tab
+            // Hide all tab contents first
+            const communitiesTab = document.getElementById('communities-tab');
+            const adsTab = document.getElementById('ads-tab');
+            
+            communitiesTab.style.display = 'none';
+            adsTab.style.display = 'none';
+            communitiesTab.classList.remove('active');
+            adsTab.classList.remove('active');
+            
+            // Remove active from all tab buttons
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            
+            // Show the selected tab
             if (tab === 'communities') {
+                communitiesTab.style.display = 'block';
+                communitiesTab.classList.add('active');
                 document.querySelector('.tab-btn:nth-child(1)').classList.add('active');
-                document.getElementById('communities-tab').classList.add('active');
-            } else {
+            } else if (tab === 'ads') {
+                adsTab.style.display = 'block';
+                adsTab.classList.add('active');
                 document.querySelector('.tab-btn:nth-child(2)').classList.add('active');
-                document.getElementById('ads-tab').classList.add('active');
             }
         }
 
