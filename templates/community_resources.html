@@ -255,12 +255,15 @@
             width: 32px;
             height: 32px;
             border-radius: 50%;
-            background: #4db6ac;
+            background: linear-gradient(135deg, #4db6ac 0%, #2d8a7e 100%);
             display: flex;
             align-items: center;
             justify-content: center;
             font-weight: 600;
             font-size: 14px;
+            color: #ffffff;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.1);
         }
         
         .author-info {
@@ -447,12 +450,12 @@
                 <div class="resource-post">
                     <div class="post-header">
                         <div class="post-author">
-                            <div class="author-avatar">
+                            <div class="author-avatar" style="background: linear-gradient(135deg, #4db6ac 0%, #2d8a7e 100%);">
                                 {{ post.username[0].upper() }}
                             </div>
                             <div class="author-info">
                                 <div class="author-name">{{ post.username }}</div>
-                                <div class="post-time">{{ post.created_at }}</div>
+                                <div class="post-time" data-timestamp="{{ post.created_at }}"></div>
                             </div>
                         </div>
                         <div style="display: flex; align-items: center;">
@@ -508,7 +511,32 @@
             textarea.style.height = textarea.scrollHeight + 'px';
         }
         
-        // Initialize textarea auto-expand
+        // Format timestamp to readable date/time
+        function formatTimestamp(timestamp) {
+            const date = new Date(timestamp);
+            const now = new Date();
+            const diffMs = now - date;
+            const diffSecs = Math.floor(diffMs / 1000);
+            const diffMins = Math.floor(diffSecs / 60);
+            const diffHours = Math.floor(diffMins / 60);
+            const diffDays = Math.floor(diffHours / 24);
+            
+            if (diffSecs < 60) {
+                return 'just now';
+            } else if (diffMins < 60) {
+                return diffMins === 1 ? '1 minute ago' : `${diffMins} minutes ago`;
+            } else if (diffHours < 24) {
+                return diffHours === 1 ? '1 hour ago' : `${diffHours} hours ago`;
+            } else if (diffDays < 7) {
+                return diffDays === 1 ? '1 day ago' : `${diffDays} days ago`;
+            } else {
+                // Format as date
+                const options = { year: 'numeric', month: 'short', day: 'numeric' };
+                return date.toLocaleDateString('en-US', options);
+            }
+        }
+        
+        // Initialize textarea auto-expand and format timestamps
         document.addEventListener('DOMContentLoaded', function() {
             const textarea = document.getElementById('postContent');
             if (textarea) {
@@ -516,6 +544,14 @@
                     autoExpand(this);
                 });
             }
+            
+            // Format all timestamps
+            document.querySelectorAll('.post-time[data-timestamp]').forEach(element => {
+                const timestamp = element.getAttribute('data-timestamp');
+                if (timestamp) {
+                    element.textContent = formatTimestamp(timestamp);
+                }
+            });
         });
         
         function togglePostForm() {
