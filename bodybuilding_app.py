@@ -5577,6 +5577,43 @@ def delete_resource_post(post_id):
         logger.error(f"Error deleting post: {e}")
         return jsonify({'success': False, 'message': str(e)}), 500
 
+@app.route('/post/<int:post_id>/delete', methods=['DELETE'])
+@login_required
+def delete_community_post(post_id):
+    """Delete a community post"""
+    username = session.get('username')
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Get post details and community info
+            c.execute("""
+                SELECT p.*, c.creator_username 
+                FROM posts p
+                JOIN communities c ON p.community_id = c.id
+                WHERE p.id = ?
+            """, (post_id,))
+            
+            post = c.fetchone()
+            
+            if not post:
+                return jsonify({'success': False, 'message': 'Post not found'}), 404
+            
+            # Check permissions (post creator, admin, or community creator)
+            if username != post['username'] and username != 'admin' and username != post['creator_username']:
+                return jsonify({'success': False, 'message': 'Unauthorized'}), 403
+            
+            # Delete the post
+            c.execute("DELETE FROM posts WHERE id = ?", (post_id,))
+            conn.commit()
+            
+            return jsonify({'success': True, 'message': 'Post deleted successfully'})
+            
+    except Exception as e:
+        logger.error(f"Error deleting community post: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+
 @app.route('/community/<int:community_id>/clubs')
 @login_required
 def clubs_directory(community_id):
