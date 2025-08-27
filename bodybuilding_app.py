@@ -2898,7 +2898,7 @@ def get_community_members():
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
-            # Check if user is a member of this community
+            # Check if user is a member of this community - ALL members can see member list
             c.execute("""
                 SELECT 1 FROM user_communities uc
                 INNER JOIN users u ON uc.user_id = u.rowid
@@ -2907,7 +2907,12 @@ def get_community_members():
             if not c.fetchone():
                 return jsonify({'success': False, 'error': 'Not a member of this community'})
             
-            # Get all members of the community
+            # Get community owner
+            c.execute("SELECT creator_username FROM communities WHERE id = ?", (community_id,))
+            community = c.fetchone()
+            creator_username = community['creator_username'] if community else None
+            
+            # Get all members of the community with their roles
             c.execute("""
                 SELECT u.username, uc.joined_at
                 FROM user_communities uc
@@ -2915,14 +2920,49 @@ def get_community_members():
                 WHERE uc.community_id = ?
                 ORDER BY u.username
             """, (community_id,))
+            
             members = []
             for row in c.fetchall():
+                member_username = row['username']
                 joined_date = row['joined_at'] if row['joined_at'] else 'Unknown'
+                
+                # Determine role
+                role = 'member'
+                if member_username == creator_username:
+                    role = 'owner'
+                else:
+                    # Check if admin
+                    c.execute("SELECT 1 FROM community_admins WHERE community_id = ? AND username = ?",
+                             (community_id, member_username))
+                    if c.fetchone():
+                        role = 'admin'
+                
                 members.append({
-                    'username': row['username'],
-                    'joined_date': joined_date
+                    'username': member_username,
+                    'joined_date': joined_date,
+                    'role': role,
+                    'is_owner': member_username == creator_username,
+                    'is_admin': role == 'admin'
                 })
-        return jsonify({'success': True, 'members': members})
+            
+            # Check current user's role
+            current_user_role = 'member'
+            if username == creator_username:
+                current_user_role = 'owner'
+            elif username == 'admin':
+                current_user_role = 'app_admin'
+            else:
+                c.execute("SELECT 1 FROM community_admins WHERE community_id = ? AND username = ?",
+                         (community_id, username))
+                if c.fetchone():
+                    current_user_role = 'admin'
+            
+        return jsonify({
+            'success': True, 
+            'members': members,
+            'current_user_role': current_user_role,
+            'creator_username': creator_username
+        })
     except Exception as e:
         logger.error(f"Error getting community members for {username}: {str(e)}")
         return jsonify({'success': False, 'error': str(e)})
@@ -2969,6 +3009,94 @@ def add_community_member():
         return jsonify({'success': True})
     except Exception as e:
         logger.error(f"Error adding community member for {username}: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/update_member_role', methods=['POST'])
+@login_required
+def update_member_role():
+    """Update a member's role (make admin, remove admin, transfer ownership)"""
+    username = session['username']
+    community_id = request.form.get('community_id')
+    target_username = request.form.get('target_username')
+    new_role = request.form.get('new_role')  # 'admin', 'member', 'owner'
+    
+    if not all([community_id, target_username, new_role]):
+        return jsonify({'success': False, 'error': 'Missing required parameters'})
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Get community info
+            c.execute("SELECT creator_username FROM communities WHERE id = ?", (community_id,))
+            community = c.fetchone()
+            if not community:
+                return jsonify({'success': False, 'error': 'Community not found'})
+            
+            current_owner = community['creator_username']
+            
+            # Check permissions
+            is_app_admin = username == 'admin'
+            is_owner = username == current_owner
+            
+            # Check if current user is community admin
+            c.execute("SELECT 1 FROM community_admins WHERE community_id = ? AND username = ?",
+                     (community_id, username))
+            is_community_admin = c.fetchone() is not None
+            
+            # Permission checks based on action
+            if new_role == 'owner':
+                # Only app admin can transfer ownership
+                if not is_app_admin:
+                    return jsonify({'success': False, 'error': 'Only app admin can transfer ownership'})
+                
+                # Update community owner
+                c.execute("UPDATE communities SET creator_username = ? WHERE id = ?",
+                         (target_username, community_id))
+                
+                # Remove new owner from admins if they were one
+                c.execute("DELETE FROM community_admins WHERE community_id = ? AND username = ?",
+                         (community_id, target_username))
+                
+                # Make old owner an admin (unless they're the app admin)
+                if current_owner != 'admin' and current_owner != target_username:
+                    c.execute("""INSERT OR IGNORE INTO community_admins 
+                               (community_id, username, appointed_by, appointed_at)
+                               VALUES (?, ?, ?, ?)""",
+                             (community_id, current_owner, username, datetime.now().isoformat()))
+                
+            elif new_role == 'admin':
+                # Owner or app admin can make admins
+                if not (is_owner or is_app_admin):
+                    return jsonify({'success': False, 'error': 'Only owner or app admin can appoint admins'})
+                
+                # Can't make owner an admin
+                if target_username == current_owner:
+                    return jsonify({'success': False, 'error': 'Owner cannot be made an admin'})
+                
+                # Add as admin
+                c.execute("""INSERT OR IGNORE INTO community_admins 
+                           (community_id, username, appointed_by, appointed_at)
+                           VALUES (?, ?, ?, ?)""",
+                         (community_id, target_username, username, datetime.now().isoformat()))
+                
+            elif new_role == 'member':
+                # Remove admin role
+                # Owner or app admin can remove admins
+                if not (is_owner or is_app_admin):
+                    return jsonify({'success': False, 'error': 'Only owner or app admin can remove admins'})
+                
+                c.execute("DELETE FROM community_admins WHERE community_id = ? AND username = ?",
+                         (community_id, target_username))
+            
+            else:
+                return jsonify({'success': False, 'error': 'Invalid role specified'})
+            
+            conn.commit()
+            return jsonify({'success': True, 'message': f'Role updated successfully'})
+            
+    except Exception as e:
+        logger.error(f"Error updating member role: {str(e)}")
         return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/remove_community_member', methods=['POST'])

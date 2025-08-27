@@ -4081,21 +4081,102 @@
                 if (data.success) {
                     const membersList = document.getElementById('membersList');
                     console.log('Members data received:', data.members);
+                    console.log('Current user role:', data.current_user_role);
+                    
+                    const currentUserRole = data.current_user_role;
+                    const currentUsername = '{{ username }}';
+                    
                     const membersHTML = data.members.map(member => {
                         // Escape username for safe HTML insertion
                         const safeUsername = member.username.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+                        
+                        // Create role badge
+                        let roleBadge = '';
+                        if (member.role === 'owner') {
+                            roleBadge = '<span class="role-badge owner-badge">Owner</span>';
+                        } else if (member.role === 'admin') {
+                            roleBadge = '<span class="role-badge admin-badge">Admin</span>';
+                        }
+                        
+                        // Create action buttons based on permissions
+                        let actionButtons = '';
+                        
+                        // Don't show actions for self
+                        if (member.username !== currentUsername) {
+                            // App admin can do everything
+                            if (currentUserRole === 'app_admin') {
+                                if (member.role === 'owner') {
+                                    // Can transfer ownership
+                                    actionButtons = `
+                                        <button onclick="updateMemberRole('${safeUsername}', 'owner')" class="action-btn transfer-btn" title="Transfer Ownership">
+                                            <i class="fas fa-crown"></i>
+                                        </button>
+                                    `;
+                                } else if (member.role === 'admin') {
+                                    actionButtons = `
+                                        <button onclick="updateMemberRole('${safeUsername}', 'member')" class="action-btn demote-btn" title="Remove Admin">
+                                            <i class="fas fa-user-minus"></i>
+                                        </button>
+                                        <button onclick="updateMemberRole('${safeUsername}', 'owner')" class="action-btn transfer-btn" title="Make Owner">
+                                            <i class="fas fa-crown"></i>
+                                        </button>
+                                        <button onclick="removeMember('${safeUsername}', event)" class="action-btn remove-btn" title="Remove">
+                                            <i class="fas fa-times"></i>
+                                        </button>
+                                    `;
+                                } else {
+                                    actionButtons = `
+                                        <button onclick="updateMemberRole('${safeUsername}', 'admin')" class="action-btn promote-btn" title="Make Admin">
+                                            <i class="fas fa-user-shield"></i>
+                                        </button>
+                                        <button onclick="updateMemberRole('${safeUsername}', 'owner')" class="action-btn transfer-btn" title="Make Owner">
+                                            <i class="fas fa-crown"></i>
+                                        </button>
+                                        <button onclick="removeMember('${safeUsername}', event)" class="action-btn remove-btn" title="Remove">
+                                            <i class="fas fa-times"></i>
+                                        </button>
+                                    `;
+                                }
+                            }
+                            // Community owner can manage admins
+                            else if (currentUserRole === 'owner') {
+                                if (member.role === 'admin') {
+                                    actionButtons = `
+                                        <button onclick="updateMemberRole('${safeUsername}', 'member')" class="action-btn demote-btn" title="Remove Admin">
+                                            <i class="fas fa-user-minus"></i>
+                                        </button>
+                                        <button onclick="removeMember('${safeUsername}', event)" class="action-btn remove-btn" title="Remove">
+                                            <i class="fas fa-times"></i>
+                                        </button>
+                                    `;
+                                } else if (member.role === 'member') {
+                                    actionButtons = `
+                                        <button onclick="updateMemberRole('${safeUsername}', 'admin')" class="action-btn promote-btn" title="Make Admin">
+                                            <i class="fas fa-user-shield"></i>
+                                        </button>
+                                        <button onclick="removeMember('${safeUsername}', event)" class="action-btn remove-btn" title="Remove">
+                                            <i class="fas fa-times"></i>
+                                        </button>
+                                    `;
+                                }
+                            }
+                        }
+                        
                         return `
                             <div class="member-item">
-                                <a href="/profile/${safeUsername}" class="member-username">@${safeUsername}</a>
-                                ${member.username !== '{{ username }}' && ('{{ username }}' === '{{ community.creator_username }}' || '{{ username }}' === 'admin') ? 
-                                    `<button onclick="removeMember('${safeUsername}', event)" class="remove-member-btn">Remove</button>` : ''}
+                                <div class="member-info">
+                                    <a href="/profile/${safeUsername}" class="member-username">@${safeUsername}</a>
+                                    ${roleBadge}
+                                </div>
+                                <div class="member-actions">
+                                    ${actionButtons}
+                                </div>
                             </div>
                         `;
                     }).join('');
+                    
                     membersList.innerHTML = membersHTML || '<p class="no-members">No members yet</p>';
                     
-                    // Don't add click handlers - let the natural link behavior work
-                    // The href attribute will handle the navigation
                 } else {
                     console.error('Error loading members:', data.error);
                     document.getElementById('membersList').innerHTML = '<p class="error-message">Error loading members: ' + data.error + '</p>';
@@ -4153,6 +4234,47 @@
             .catch(error => {
                 console.error('Error:', error);
                 alert('Error adding member');
+            });
+        }
+        
+        function updateMemberRole(memberUsername, newRole) {
+            let confirmMessage = '';
+            if (newRole === 'owner') {
+                confirmMessage = `Are you sure you want to transfer ownership to @${memberUsername}? This action cannot be undone.`;
+            } else if (newRole === 'admin') {
+                confirmMessage = `Make @${memberUsername} a community admin?`;
+            } else if (newRole === 'member') {
+                confirmMessage = `Remove admin privileges from @${memberUsername}?`;
+            }
+            
+            if (!confirm(confirmMessage)) {
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append('community_id', '{{ community.id }}');
+            formData.append('target_username', memberUsername);
+            formData.append('new_role', newRole);
+            
+            fetch('/update_member_role', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    loadMembers(); // Reload the members list
+                    if (newRole === 'owner') {
+                        alert('Ownership transferred successfully. Refreshing page...');
+                        setTimeout(() => window.location.reload(), 1000);
+                    }
+                } else {
+                    alert('Error: ' + data.error);
+                }
+            })
+            .catch(error => {
+                console.error('Error updating member role:', error);
+                alert('Error updating member role');
             });
         }
         
