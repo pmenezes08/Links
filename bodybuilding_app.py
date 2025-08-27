@@ -1138,13 +1138,20 @@ def login_password():
         try:
             conn = get_db_connection()
             c = conn.cursor()
-            c.execute("SELECT password, subscription FROM users WHERE username=?", (username,))
+            c.execute("SELECT password, subscription, is_active FROM users WHERE username=?", (username,))
             user = c.fetchone()
             conn.close()
             print(f"DB query result: user found = {user is not None}")
             if user:
                 stored_password = user[0]
                 subscription = user[1]
+                is_active = user[2] if len(user) > 2 else True
+                
+                # Check if user is deactivated
+                if not is_active:
+                    flash('Your account has been deactivated. Please contact the administrator.', 'error')
+                    session.clear()
+                    return redirect(url_for('index'))
                 
                 # Check if password is hashed (bcrypt hashes start with $2b$, $2a$, or $2y$)
                 # or scrypt/pbkdf2 hashes from werkzeug start with 'scrypt:' or 'pbkdf2:'
@@ -1613,17 +1620,17 @@ def admin():
                 'total_posts': total_posts
             }
             
-            # Get users list
-            c.execute("SELECT username, subscription FROM users ORDER BY username")
+            # Get users list with is_active status
+            c.execute("SELECT username, subscription, is_active FROM users ORDER BY username")
             users = c.fetchall()
             
-            # Get all communities with member counts
+            # Get all communities with member counts and is_active status
             c.execute("""
                 SELECT c.id, c.name, c.type, c.creator_username, c.join_code,
-                       COUNT(uc.user_id) as member_count
+                       COUNT(uc.user_id) as member_count, c.is_active
                 FROM communities c
                 LEFT JOIN user_communities uc ON c.id = uc.community_id
-                GROUP BY c.id, c.name, c.type, c.creator_username, c.join_code
+                GROUP BY c.id, c.name, c.type, c.creator_username, c.join_code, c.is_active
                 ORDER BY c.name
             """)
             communities_raw = c.fetchall()
@@ -1637,7 +1644,8 @@ def admin():
                     'type': community[2],
                     'creator_username': community[3],
                     'join_code': community[4],
-                    'member_count': community[5]
+                    'member_count': community[5],
+                    'is_active': community[6] if len(community) > 6 else True
                 })
             
             if request.method == 'POST':
@@ -1650,7 +1658,7 @@ def admin():
                                   (new_username, new_subscription, new_password))
                         conn.commit()
                         # Refresh users list
-                        c.execute("SELECT username, subscription FROM users")
+                        c.execute("SELECT username, subscription, is_active FROM users ORDER BY username")
                         users = c.fetchall()
                     except sqlite3.IntegrityError:
                         return render_template('admin.html', users=users, communities=communities, stats=stats, error=f"Username {new_username} already exists!")
@@ -1661,7 +1669,7 @@ def admin():
                     c.execute("UPDATE users SET subscription=? WHERE username=?", (new_subscription, user_to_update))
                     conn.commit()
                     # Refresh users list
-                    c.execute("SELECT username, subscription FROM users")
+                    c.execute("SELECT username, subscription, is_active FROM users ORDER BY username")
                     users = c.fetchall()
                     
                 elif 'update_subscription' in request.form:
@@ -1670,7 +1678,7 @@ def admin():
                     c.execute("UPDATE users SET subscription=? WHERE username=?", (new_subscription, user_to_update))
                     conn.commit()
                     # Refresh users list
-                    c.execute("SELECT username, subscription FROM users")
+                    c.execute("SELECT username, subscription, is_active FROM users ORDER BY username")
                     users = c.fetchall()
                     
                 elif 'delete_user' in request.form:
@@ -1696,7 +1704,7 @@ def admin():
                         conn.commit()
                         
                         # Refresh users list
-                        c.execute("SELECT username, subscription FROM users")
+                        c.execute("SELECT username, subscription, is_active FROM users ORDER BY username")
                         users = c.fetchall()
                         
                     except Exception as delete_error:
@@ -7357,6 +7365,11 @@ def community_feed(community_id):
                 return jsonify({'success': False, 'error': 'Community not found'}), 404
             
             community = dict(community_row)
+            
+            # Check if community is deactivated (unless user is app admin)
+            if not community.get('is_active', True) and username != 'admin':
+                flash('This community has been deactivated.', 'error')
+                return redirect(url_for('communities'))
             
             # Get parent community info if it exists
             parent_community = None
