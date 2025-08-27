@@ -721,6 +721,24 @@ def init_db():
             c.execute("CREATE INDEX IF NOT EXISTS idx_community_admins_community ON community_admins(community_id)")
             c.execute("CREATE INDEX IF NOT EXISTS idx_community_admins_username ON community_admins(username)")
             
+            # Create event RSVPs table
+            logger.info("Creating event RSVPs table...")
+            c.execute('''CREATE TABLE IF NOT EXISTS event_rsvps
+                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                          event_id INTEGER NOT NULL,
+                          username TEXT NOT NULL,
+                          response TEXT NOT NULL CHECK(response IN ('going', 'maybe', 'not_going')),
+                          responded_at TEXT NOT NULL,
+                          note TEXT,
+                          FOREIGN KEY (event_id) REFERENCES calendar_events (id) ON DELETE CASCADE,
+                          FOREIGN KEY (username) REFERENCES users (username),
+                          UNIQUE(event_id, username))''')
+            
+            # Create indexes for RSVPs
+            c.execute("CREATE INDEX IF NOT EXISTS idx_rsvps_event ON event_rsvps(event_id)")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_rsvps_username ON event_rsvps(username)")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_rsvps_response ON event_rsvps(response)")
+            
             conn.commit()
             logger.info("Database initialization completed successfully")
             
@@ -5964,6 +5982,169 @@ def submit_feedback(community_id):
         logger.error(f"Error submitting feedback: {e}")
         return jsonify({'success': False, 'message': str(e)}), 500
 
+@app.route('/event/<int:event_id>/rsvp', methods=['POST'])
+@login_required
+def rsvp_event(event_id):
+    """RSVP to a calendar event"""
+    username = session.get('username')
+    
+    try:
+        data = request.get_json()
+        response = data.get('response')  # 'going', 'maybe', 'not_going'
+        note = data.get('note', '')
+        
+        if response not in ['going', 'maybe', 'not_going']:
+            return jsonify({'success': False, 'message': 'Invalid response'}), 400
+        
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Check if event exists
+            c.execute("SELECT 1 FROM calendar_events WHERE id = ?", (event_id,))
+            if not c.fetchone():
+                return jsonify({'success': False, 'message': 'Event not found'}), 404
+            
+            # Insert or update RSVP
+            c.execute("""
+                INSERT INTO event_rsvps (event_id, username, response, note, responded_at)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(event_id, username) 
+                DO UPDATE SET response = ?, note = ?, responded_at = ?
+            """, (event_id, username, response, note, datetime.now().isoformat(),
+                  response, note, datetime.now().isoformat()))
+            
+            conn.commit()
+            
+            # Get updated RSVP counts
+            c.execute("""
+                SELECT response, COUNT(*) as count
+                FROM event_rsvps
+                WHERE event_id = ?
+                GROUP BY response
+            """, (event_id,))
+            
+            counts = {'going': 0, 'maybe': 0, 'not_going': 0}
+            for row in c.fetchall():
+                counts[row['response']] = row['count']
+            
+            return jsonify({
+                'success': True,
+                'message': 'RSVP updated successfully',
+                'counts': counts
+            })
+            
+    except Exception as e:
+        logger.error(f"Error updating RSVP: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/event/<int:event_id>/rsvps')
+@login_required
+def get_event_rsvps(event_id):
+    """Get all RSVPs for an event"""
+    username = session.get('username')
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Get event details
+            c.execute("""
+                SELECT e.*, c.name as community_name
+                FROM calendar_events e
+                JOIN communities c ON e.community_id = c.id
+                WHERE e.id = ?
+            """, (event_id,))
+            
+            event = c.fetchone()
+            if not event:
+                return jsonify({'success': False, 'message': 'Event not found'}), 404
+            
+            # Get all RSVPs with user profiles
+            c.execute("""
+                SELECT r.*, up.profile_picture
+                FROM event_rsvps r
+                LEFT JOIN user_profiles up ON r.username = up.username
+                WHERE r.event_id = ?
+                ORDER BY r.response, r.responded_at DESC
+            """, (event_id,))
+            
+            rsvps = []
+            for row in c.fetchall():
+                rsvps.append({
+                    'username': row['username'],
+                    'response': row['response'],
+                    'note': row['note'],
+                    'responded_at': row['responded_at'],
+                    'profile_picture': row['profile_picture']
+                })
+            
+            # Get current user's RSVP
+            c.execute("""
+                SELECT response FROM event_rsvps
+                WHERE event_id = ? AND username = ?
+            """, (event_id, username))
+            
+            user_rsvp = c.fetchone()
+            
+            # Get counts
+            counts = {'going': 0, 'maybe': 0, 'not_going': 0}
+            for rsvp in rsvps:
+                counts[rsvp['response']] += 1
+            
+            return jsonify({
+                'success': True,
+                'event': dict(event),
+                'rsvps': rsvps,
+                'counts': counts,
+                'user_rsvp': user_rsvp['response'] if user_rsvp else None
+            })
+            
+    except Exception as e:
+        logger.error(f"Error fetching RSVPs: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/event/<int:event_id>/rsvp', methods=['DELETE'])
+@login_required
+def cancel_rsvp(event_id):
+    """Cancel RSVP for an event"""
+    username = session.get('username')
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            c.execute("""
+                DELETE FROM event_rsvps
+                WHERE event_id = ? AND username = ?
+            """, (event_id, username))
+            
+            if c.rowcount == 0:
+                return jsonify({'success': False, 'message': 'No RSVP found'}), 404
+            
+            conn.commit()
+            
+            # Get updated counts
+            c.execute("""
+                SELECT response, COUNT(*) as count
+                FROM event_rsvps
+                WHERE event_id = ?
+                GROUP BY response
+            """, (event_id,))
+            
+            counts = {'going': 0, 'maybe': 0, 'not_going': 0}
+            for row in c.fetchall():
+                counts[row['response']] = row['count']
+            
+            return jsonify({
+                'success': True,
+                'message': 'RSVP cancelled',
+                'counts': counts
+            })
+            
+    except Exception as e:
+        logger.error(f"Error cancelling RSVP: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+
 @app.route('/community/<int:community_id>/feedback/view')
 @login_required
 def view_feedback(community_id):
@@ -6303,6 +6484,32 @@ def get_calendar_events():
             
             events = []
             for event in events_raw:
+                event_id = event['id']
+                
+                # Get RSVP counts for this event
+                c.execute("""
+                    SELECT response, COUNT(*) as count
+                    FROM event_rsvps
+                    WHERE event_id = ?
+                    GROUP BY response
+                """, (event_id,))
+                
+                rsvp_counts = {'going': 0, 'maybe': 0, 'not_going': 0}
+                for row in c.fetchall():
+                    rsvp_counts[row['response']] = row['count']
+                
+                # Get current user's RSVP if logged in
+                username = session.get('username')
+                user_rsvp = None
+                if username:
+                    c.execute("""
+                        SELECT response FROM event_rsvps
+                        WHERE event_id = ? AND username = ?
+                    """, (event_id, username))
+                    result = c.fetchone()
+                    if result:
+                        user_rsvp = result['response']
+                
                 events.append({
                     'id': event['id'],
                     'username': event['username'],
@@ -6313,7 +6520,10 @@ def get_calendar_events():
                     'start_time': event['start_time'],
                     'end_time': event['end_time'],
                     'description': event['description'],
-                    'created_at': event['created_at']
+                    'created_at': event['created_at'],
+                    'rsvp_counts': rsvp_counts,
+                    'user_rsvp': user_rsvp,
+                    'total_rsvps': sum(rsvp_counts.values())
                 })
             
             return jsonify({'success': True, 'events': events})

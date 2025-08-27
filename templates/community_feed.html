@@ -2664,12 +2664,102 @@
             background: rgba(255, 255, 255, 0.05) !important;
             border: 1px solid rgba(255, 255, 255, 0.1) !important;
             border-radius: 3px !important;
-            padding: 4px !important;
-            padding-left: 8px !important;
-            margin-bottom: 4px !important;
-            cursor: pointer !important;
+            padding: 8px !important;
+            padding-left: 12px !important;
+            margin-bottom: 8px !important;
             transition: all 0.2s ease !important;
             position: relative;
+        }
+        
+        /* RSVP Styles */
+        .event-rsvp-section {
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .rsvp-counts {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            margin-bottom: 8px;
+            flex-wrap: wrap;
+        }
+        
+        .rsvp-count {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px 8px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.7);
+        }
+        
+        .rsvp-count.going {
+            background: rgba(76, 175, 80, 0.15);
+            color: #4CAF50;
+        }
+        
+        .rsvp-count.maybe {
+            background: rgba(255, 193, 7, 0.15);
+            color: #FFC107;
+        }
+        
+        .rsvp-count.not-going {
+            background: rgba(244, 67, 54, 0.15);
+            color: #F44336;
+        }
+        
+        .view-attendees-btn {
+            padding: 3px 10px;
+            background: rgba(77, 182, 172, 0.15);
+            color: #4db6ac;
+            border: 1px solid rgba(77, 182, 172, 0.3);
+            border-radius: 12px;
+            font-size: 11px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .view-attendees-btn:hover {
+            background: rgba(77, 182, 172, 0.25);
+        }
+        
+        .rsvp-buttons {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+        
+        .rsvp-btn {
+            padding: 5px 12px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 6px;
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+        
+        .rsvp-btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+            color: #ffffff;
+        }
+        
+        .rsvp-btn.active {
+            background: rgba(77, 182, 172, 0.2);
+            border-color: #4db6ac;
+            color: #4db6ac;
+        }
+        
+        .rsvp-btn.active:hover {
+            background: rgba(77, 182, 172, 0.3);
         }
         
         #calendarModal .calendar-events {
@@ -4959,6 +5049,11 @@
                     return div.innerHTML;
                 };
                 
+                // Get RSVP data
+                const rsvpCounts = event.rsvp_counts || {going: 0, maybe: 0, not_going: 0};
+                const userRsvp = event.user_rsvp || null;
+                const totalRsvps = event.total_rsvps || 0;
+                
                 eventsHTML += `
                     <div class="event-item event-color-${colorIndex}" data-event-id="${event.id}">
                         <div class="event-title">${escapeHtml(event.title)}</div>
@@ -4966,6 +5061,44 @@
                         ${timeDisplay}
                         ${event.description ? `<div class="event-description">${escapeHtml(event.description)}</div>` : ''}
                         <div class="event-creator">Created by ${escapeHtml(event.username)}</div>
+                        
+                        <!-- RSVP Section -->
+                        <div class="event-rsvp-section">
+                            <div class="rsvp-counts">
+                                <span class="rsvp-count going" title="${rsvpCounts.going} going">
+                                    <i class="fas fa-check-circle"></i> ${rsvpCounts.going}
+                                </span>
+                                <span class="rsvp-count maybe" title="${rsvpCounts.maybe} maybe">
+                                    <i class="fas fa-question-circle"></i> ${rsvpCounts.maybe}
+                                </span>
+                                <span class="rsvp-count not-going" title="${rsvpCounts.not_going} not attending">
+                                    <i class="fas fa-times-circle"></i> ${rsvpCounts.not_going}
+                                </span>
+                                ${totalRsvps > 0 ? `
+                                    <button class="view-attendees-btn" onclick="viewEventAttendees(${event.id})">
+                                        View Attendees
+                                    </button>
+                                ` : ''}
+                            </div>
+                            <div class="rsvp-buttons" data-event-id="${event.id}">
+                                <button class="rsvp-btn ${userRsvp === 'going' ? 'active' : ''}" 
+                                        onclick="submitRSVP(${event.id}, 'going')"
+                                        data-response="going">
+                                    <i class="fas fa-check"></i> Going
+                                </button>
+                                <button class="rsvp-btn ${userRsvp === 'maybe' ? 'active' : ''}" 
+                                        onclick="submitRSVP(${event.id}, 'maybe')"
+                                        data-response="maybe">
+                                    <i class="fas fa-question"></i> Maybe
+                                </button>
+                                <button class="rsvp-btn ${userRsvp === 'not_going' ? 'active' : ''}" 
+                                        onclick="submitRSVP(${event.id}, 'not_going')"
+                                        data-response="not_going">
+                                    <i class="fas fa-times"></i> Can't Go
+                                </button>
+                            </div>
+                        </div>
+                        
                         ${canDelete ? `<button class="event-delete-btn" onclick="deleteCalendarEvent(${event.id})">Delete</button>` : ''}
                     </div>
                 `;
@@ -5053,6 +5186,174 @@
                     console.error('Error loading events:', error);
                     alert('Failed to load calendar events. Please refresh the page.');
                 });
+        }
+        
+        // RSVP Functions
+        function submitRSVP(eventId, response) {
+            fetch(`/event/${eventId}/rsvp`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    response: response,
+                    note: ''
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Update button states
+                    const buttons = document.querySelectorAll(`.rsvp-buttons[data-event-id="${eventId}"] .rsvp-btn`);
+                    buttons.forEach(btn => {
+                        btn.classList.remove('active');
+                        if (btn.dataset.response === response) {
+                            btn.classList.add('active');
+                        }
+                    });
+                    
+                    // Reload calendar to update counts
+                    loadCalendarEvents(true);
+                    
+                    // Show success message
+                    showNotification('RSVP updated successfully!', 'success');
+                } else {
+                    showNotification(data.message || 'Error updating RSVP', 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showNotification('Error updating RSVP', 'error');
+            });
+        }
+        
+        function viewEventAttendees(eventId) {
+            fetch(`/event/${eventId}/rsvps`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showAttendeesModal(data);
+                } else {
+                    showNotification(data.message || 'Error loading attendees', 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showNotification('Error loading attendees', 'error');
+            });
+        }
+        
+        function showAttendeesModal(data) {
+            const event = data.event;
+            const rsvps = data.rsvps;
+            const counts = data.counts;
+            
+            // Group RSVPs by response
+            const going = rsvps.filter(r => r.response === 'going');
+            const maybe = rsvps.filter(r => r.response === 'maybe');
+            const notGoing = rsvps.filter(r => r.response === 'not_going');
+            
+            let modalHTML = `
+                <div class="modal" id="attendeesModal" style="display: block;">
+                    <div class="modal-content polls-modal" style="max-width: 600px;">
+                        <div class="modal-header">
+                            <h2>${event.title} - Attendees</h2>
+                            <span class="close" onclick="closeAttendeesModal()">&times;</span>
+                        </div>
+                        <div class="modal-body" style="max-height: 500px; overflow-y: auto;">
+                            <div class="attendees-tabs">
+                                <button class="attendee-tab active" onclick="switchAttendeeTab('going')">
+                                    Going (${counts.going})
+                                </button>
+                                <button class="attendee-tab" onclick="switchAttendeeTab('maybe')">
+                                    Maybe (${counts.maybe})
+                                </button>
+                                <button class="attendee-tab" onclick="switchAttendeeTab('notgoing')">
+                                    Can't Go (${counts.not_going})
+                                </button>
+                            </div>
+                            
+                            <div id="goingTab" class="attendee-list active">
+                                ${renderAttendeeList(going)}
+                            </div>
+                            <div id="maybeTab" class="attendee-list" style="display: none;">
+                                ${renderAttendeeList(maybe)}
+                            </div>
+                            <div id="notgoingTab" class="attendee-list" style="display: none;">
+                                ${renderAttendeeList(notGoing)}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // Add modal to body
+            const existingModal = document.getElementById('attendeesModal');
+            if (existingModal) {
+                existingModal.remove();
+            }
+            document.body.insertAdjacentHTML('beforeend', modalHTML);
+        }
+        
+        function renderAttendeeList(attendees) {
+            if (attendees.length === 0) {
+                return '<p style="text-align: center; color: rgba(255,255,255,0.5); padding: 20px;">No responses yet</p>';
+            }
+            
+            return attendees.map(attendee => `
+                <div class="attendee-item" style="display: flex; align-items: center; gap: 10px; padding: 8px; border-bottom: 1px solid rgba(255,255,255,0.1);">
+                    <div class="attendee-avatar" style="width: 32px; height: 32px; border-radius: 50%; background: linear-gradient(135deg, #4db6ac, #2d8a7e); display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">
+                        ${attendee.username.charAt(0).toUpperCase()}
+                    </div>
+                    <div style="flex: 1;">
+                        <div style="font-weight: 500;">${attendee.username}</div>
+                        ${attendee.note ? `<div style="font-size: 12px; color: rgba(255,255,255,0.6);">${attendee.note}</div>` : ''}
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        function switchAttendeeTab(tab) {
+            // Update tab buttons
+            document.querySelectorAll('.attendee-tab').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            event.target.classList.add('active');
+            
+            // Update tab content
+            document.querySelectorAll('.attendee-list').forEach(list => {
+                list.style.display = 'none';
+            });
+            document.getElementById(tab + 'Tab').style.display = 'block';
+        }
+        
+        function closeAttendeesModal() {
+            const modal = document.getElementById('attendeesModal');
+            if (modal) {
+                modal.remove();
+            }
+        }
+        
+        function showNotification(message, type) {
+            // Simple notification (you can enhance this)
+            const notification = document.createElement('div');
+            notification.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                padding: 12px 20px;
+                background: ${type === 'success' ? '#4CAF50' : '#F44336'};
+                color: white;
+                border-radius: 6px;
+                z-index: 10000;
+                animation: slideIn 0.3s ease;
+            `;
+            notification.textContent = message;
+            document.body.appendChild(notification);
+            
+            setTimeout(() => {
+                notification.remove();
+            }, 3000);
         }
         
         function deleteCalendarEvent(eventId) {
