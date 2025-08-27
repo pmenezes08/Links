@@ -190,9 +190,39 @@
             padding: 12px 15px;
             border-bottom: 1px solid #333333;
             display: flex;
-            justify-content: center;
+            justify-content: space-between;
             align-items: center;
             background: {{ 'rgba(0, 0, 0, 0.01)' if community.template == 'light' else 'rgba(255, 255, 255, 0.01)' }};
+        }
+        
+        .ads-minimize-btn {
+            background: none;
+            border: none;
+            color: {{ 'rgba(0, 0, 0, 0.4)' if community.template == 'light' else 'rgba(255, 255, 255, 0.4)' }};
+            cursor: pointer;
+            padding: 4px 8px;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        
+        .ads-minimize-btn:hover {
+            color: {{ 'rgba(0, 0, 0, 0.6)' if community.template == 'light' else 'rgba(255, 255, 255, 0.6)' }};
+        }
+        
+        .university-ads-carousel.minimized {
+            height: auto;
+        }
+        
+        .university-ads-carousel.minimized .ads-carousel-container,
+        .university-ads-carousel.minimized .ads-header a {
+            display: none;
+        }
+        
+        .university-ads-carousel.minimized .ads-header {
+            border-bottom: none;
         }
         
         .ads-header h3 {
@@ -4128,20 +4158,23 @@
     <!-- Main Content -->
     <div class="main-layout-container">
         <!-- University Ads Carousel (for University communities only) -->
-        {% if community.type == 'University' %}
+                {% if community.type == 'University' %}
         <div class="university-ads-carousel" id="adsCarousel">
             <div class="ads-header">
                 <h3>
                     <i class="fas fa-store" style="font-size: 11px;"></i>
-                    University Store
+                    <span id="adsHeaderText">University Store</span>
                     {% if username == 'admin' or username == community.creator_username %}
-                    <a href="{{ url_for('manage_ads', community_id=community.id) }}" 
+                    <a href="{{ url_for('manage_ads', community_id=community.id) }}"
                        style="margin-left: 10px; color: {{ 'rgba(0, 0, 0, 0.4)' if community.template == 'light' else 'rgba(255, 255, 255, 0.4)' }}; font-size: 10px; text-decoration: none;"
                        title="Manage Ads">
                         <i class="fas fa-cog"></i>
                     </a>
                     {% endif %}
                 </h3>
+                <button class="ads-minimize-btn" onclick="toggleAdsCarousel()" title="Minimize/Expand">
+                    <i class="fas fa-chevron-up" id="adsToggleIcon"></i>
+                </button>
             </div>
             <div class="ads-carousel-container">
                 <div class="ads-carousel" id="adsCarouselInner">
@@ -5787,6 +5820,7 @@
         let currentSlide = 0;
         let ads = [];
         let autoRotateInterval;
+        window.adsAutoRotateInterval = null;
         
         function loadUniversityAds() {
             // Fetch ads from backend
@@ -5910,6 +5944,7 @@
             autoRotateInterval = setInterval(() => {
                 changeSlide(1);
             }, 5000); // Change slide every 5 seconds
+            window.adsAutoRotateInterval = autoRotateInterval;
         }
         
         function restartAutoRotate() {
@@ -5935,9 +5970,44 @@
             }
         }
         
+        function toggleAdsCarousel() {
+            const carousel = document.getElementById('adsCarousel');
+            const icon = document.getElementById('adsToggleIcon');
+            
+            if (carousel.classList.contains('minimized')) {
+                // Expand
+                carousel.classList.remove('minimized');
+                icon.className = 'fas fa-chevron-up';
+                localStorage.setItem('adsMinimized_{{ community.id }}', 'false');
+                
+                // Restart auto-rotation
+                startAutoRotate();
+            } else {
+                // Minimize
+                carousel.classList.add('minimized');
+                icon.className = 'fas fa-chevron-down';
+                localStorage.setItem('adsMinimized_{{ community.id }}', 'true');
+                
+                // Stop auto-rotation
+                if (window.adsAutoRotateInterval) {
+                    clearInterval(window.adsAutoRotateInterval);
+                }
+            }
+        }
+        
         // Load ads when page loads
         document.addEventListener('DOMContentLoaded', function() {
             loadUniversityAds();
+            
+            // Check if ads were previously minimized
+            const adsMinimized = localStorage.getItem('adsMinimized_{{ community.id }}');
+            if (adsMinimized === 'true') {
+                document.getElementById('adsCarousel').classList.add('minimized');
+                document.getElementById('adsToggleIcon').className = 'fas fa-chevron-down';
+                if (window.adsAutoRotateInterval) {
+                    clearInterval(window.adsAutoRotateInterval);
+                }
+            }
         });
         
         // Pause rotation on hover
