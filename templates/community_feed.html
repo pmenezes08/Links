@@ -5314,10 +5314,10 @@
     
     <!-- More Options Modal -->
     <div id="moreOptionsModal" class="modal">
-        <div class="modal-content" style="max-width: 400px;">
-            <div class="modal-header" style="background: linear-gradient(135deg, {{ community.accent_color or '#2d8a7e' }} 0%, {{ community.card_color or '#1a5952' }} 100%);">
-                <h2 style="color: {{ community.text_color or '#ffffff' }};">More Options</h2>
-                <span class="close" onclick="closeMoreOptionsModal()" style="color: {{ community.text_color or '#ffffff' }};">&times;</span>
+        <div class="modal-content polls-modal" style="max-width: 400px;">
+            <div class="modal-header">
+                <h2>More Options</h2>
+                <span class="close" onclick="closeMoreOptionsModal()">&times;</span>
             </div>
             <div class="modal-body" style="padding: 20px; background: {{ '#ffffff' if community.template == 'light' else '#1a1a1a' }};">
                 <style>
@@ -5362,6 +5362,10 @@
                     <button class="more-option-btn" onclick="closeMoreOptionsModal(); showMembersModal();">
                         <i class="fas fa-users"></i>
                         <span>Members</span>
+                    </button>
+                    <button class="more-option-btn" onclick="window.location.href='/community/{{ community.id }}/resources';">
+                        <i class="fas fa-share-alt"></i>
+                        <span>Resource Sharing</span>
                     </button>
                     <button class="more-option-btn" onclick="closeMoreOptionsModal(); showLinksModal();">
                         <i class="fas fa-link"></i>

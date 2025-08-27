@@ -582,6 +582,57 @@ def init_db():
             c.execute("CREATE INDEX IF NOT EXISTS idx_visit_community ON community_visit_history(community_id)")
             c.execute("CREATE INDEX IF NOT EXISTS idx_visit_time ON community_visit_history(visit_time)")
             
+            # Create resource sharing tables
+            logger.info("Creating resource sharing tables...")
+            
+            # Resource posts table
+            c.execute('''CREATE TABLE IF NOT EXISTS resource_posts
+                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                          community_id INTEGER NOT NULL,
+                          username TEXT NOT NULL,
+                          title TEXT NOT NULL,
+                          content TEXT NOT NULL,
+                          category TEXT,
+                          attachment_url TEXT,
+                          created_at TEXT NOT NULL,
+                          updated_at TEXT,
+                          upvotes INTEGER DEFAULT 0,
+                          views INTEGER DEFAULT 0,
+                          is_pinned BOOLEAN DEFAULT 0,
+                          FOREIGN KEY (community_id) REFERENCES communities (id) ON DELETE CASCADE,
+                          FOREIGN KEY (username) REFERENCES users (username))''')
+            
+            # Resource comments table
+            c.execute('''CREATE TABLE IF NOT EXISTS resource_comments
+                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                          post_id INTEGER NOT NULL,
+                          username TEXT NOT NULL,
+                          content TEXT NOT NULL,
+                          created_at TEXT NOT NULL,
+                          upvotes INTEGER DEFAULT 0,
+                          FOREIGN KEY (post_id) REFERENCES resource_posts (id) ON DELETE CASCADE,
+                          FOREIGN KEY (username) REFERENCES users (username))''')
+            
+            # Resource upvotes table (to track who upvoted what)
+            c.execute('''CREATE TABLE IF NOT EXISTS resource_upvotes
+                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                          post_id INTEGER,
+                          comment_id INTEGER,
+                          username TEXT NOT NULL,
+                          created_at TEXT NOT NULL,
+                          FOREIGN KEY (post_id) REFERENCES resource_posts (id) ON DELETE CASCADE,
+                          FOREIGN KEY (comment_id) REFERENCES resource_comments (id) ON DELETE CASCADE,
+                          FOREIGN KEY (username) REFERENCES users (username),
+                          UNIQUE(post_id, username),
+                          UNIQUE(comment_id, username))''')
+            
+            # Create indexes for resource tables
+            c.execute("CREATE INDEX IF NOT EXISTS idx_resource_posts_community ON resource_posts(community_id)")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_resource_posts_username ON resource_posts(username)")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_resource_comments_post ON resource_comments(post_id)")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_resource_upvotes_post ON resource_upvotes(post_id)")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_resource_upvotes_comment ON resource_upvotes(comment_id)")
+            
             conn.commit()
             logger.info("Database initialization completed successfully")
             
@@ -5297,6 +5348,151 @@ def delete_ad(ad_id):
     except Exception as e:
         logger.error(f"Error deleting ad: {e}")
         return jsonify({'success': False}), 500
+
+@app.route('/community/<int:community_id>/resources')
+@login_required
+def community_resources(community_id):
+    """Community resource sharing forum"""
+    username = session.get('username')
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Get community info
+            c.execute("SELECT * FROM communities WHERE id = ?", (community_id,))
+            community = c.fetchone()
+            if not community:
+                flash('Community not found', 'error')
+                return redirect(url_for('communities'))
+            
+            # Get resource posts for this community
+            c.execute("""
+                SELECT p.*, u.profile_picture,
+                       (SELECT COUNT(*) FROM resource_comments WHERE post_id = p.id) as comment_count,
+                       (SELECT COUNT(*) FROM resource_upvotes WHERE post_id = p.id) as upvote_count,
+                       EXISTS(SELECT 1 FROM resource_upvotes WHERE post_id = p.id AND username = ?) as user_upvoted
+                FROM resource_posts p
+                JOIN users u ON p.username = u.username
+                WHERE p.community_id = ?
+                ORDER BY p.is_pinned DESC, p.created_at DESC
+            """, (username, community_id))
+            
+            posts = []
+            for row in c.fetchall():
+                posts.append(dict(row))
+            
+            return render_template('community_resources.html', 
+                                 community=dict(community), 
+                                 posts=posts,
+                                 username=username)
+                                 
+    except Exception as e:
+        logger.error(f"Error loading community resources: {e}")
+        flash('Error loading resources', 'error')
+        return redirect(url_for('community_feed', community_id=community_id))
+
+@app.route('/community/<int:community_id>/resources/create', methods=['POST'])
+@login_required
+def create_resource_post(community_id):
+    """Create a new resource post"""
+    username = session.get('username')
+    
+    try:
+        data = request.get_json()
+        title = data.get('title', '').strip()
+        content = data.get('content', '').strip()
+        category = data.get('category', 'General')
+        attachment_url = data.get('attachment_url', '')
+        
+        if not title or not content:
+            return jsonify({'success': False, 'message': 'Title and content are required'}), 400
+            
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Verify user is member of community
+            c.execute("""
+                SELECT 1 FROM community_members 
+                WHERE community_id = ? AND username = ?
+            """, (community_id, username))
+            
+            if not c.fetchone():
+                return jsonify({'success': False, 'message': 'You must be a member to post'}), 403
+            
+            # Create post
+            c.execute("""
+                INSERT INTO resource_posts 
+                (community_id, username, title, content, category, attachment_url, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (community_id, username, title, content, category, attachment_url, 
+                  datetime.now().isoformat()))
+            
+            conn.commit()
+            post_id = c.lastrowid
+            
+            return jsonify({'success': True, 'post_id': post_id})
+            
+    except Exception as e:
+        logger.error(f"Error creating resource post: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/resource/post/<int:post_id>/upvote', methods=['POST'])
+@login_required
+def upvote_resource_post(post_id):
+    """Toggle upvote on a resource post"""
+    username = session.get('username')
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Check if already upvoted
+            c.execute("""
+                SELECT 1 FROM resource_upvotes 
+                WHERE post_id = ? AND username = ?
+            """, (post_id, username))
+            
+            if c.fetchone():
+                # Remove upvote
+                c.execute("""
+                    DELETE FROM resource_upvotes 
+                    WHERE post_id = ? AND username = ?
+                """, (post_id, username))
+                
+                c.execute("""
+                    UPDATE resource_posts 
+                    SET upvotes = upvotes - 1 
+                    WHERE id = ?
+                """, (post_id,))
+                
+                action = 'removed'
+            else:
+                # Add upvote
+                c.execute("""
+                    INSERT INTO resource_upvotes (post_id, username, created_at)
+                    VALUES (?, ?, ?)
+                """, (post_id, username, datetime.now().isoformat()))
+                
+                c.execute("""
+                    UPDATE resource_posts 
+                    SET upvotes = upvotes + 1 
+                    WHERE id = ?
+                """, (post_id,))
+                
+                action = 'added'
+            
+            conn.commit()
+            
+            # Get updated count
+            c.execute("SELECT upvotes FROM resource_posts WHERE id = ?", (post_id,))
+            upvotes = c.fetchone()['upvotes']
+            
+            return jsonify({'success': True, 'action': action, 'upvotes': upvotes})
+            
+    except Exception as e:
+        logger.error(f"Error upvoting post: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
 
 @app.route('/admin/user_statistics')
 @login_required
