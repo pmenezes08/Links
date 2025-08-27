@@ -7,16 +7,19 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}?v=2.0">
     <style>
+        /* Theme-aware styles */
+        {% set is_light = community.template == 'light' %}
+        
         /* Premium Dashboard Menu Styles */
         .resources-page { margin-left: 200px; }
-        .resources-page .sidebar { position: fixed !important; top: 0 !important; left: 0 !important; width: 200px !important; height: 100vh !important; background: #1a1a1a !important; border-right: 1px solid #333333 !important; z-index: 1000 !important; display: flex !important; flex-direction: column !important; }
-        .resources-page .sidebar-header { display: flex; align-items: center; padding: 10px; border-bottom: 1px solid #333333; height: 60px; box-sizing: border-box; }
+        .resources-page .sidebar { position: fixed !important; top: 0 !important; left: 0 !important; width: 200px !important; height: 100vh !important; background: {{ '#f8f9fa' if is_light else '#1a1a1a' }} !important; border-right: 1px solid {{ '#dee2e6' if is_light else '#333333' }} !important; z-index: 1000 !important; display: flex !important; flex-direction: column !important; }
+        .resources-page .sidebar-header { display: flex; align-items: center; padding: 10px; border-bottom: 1px solid {{ '#dee2e6' if is_light else '#333333' }}; height: 60px; box-sizing: border-box; }
         .resources-page .sidebar-logo { padding: 5px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-        .resources-page .community-name { flex: 1; display: flex; align-items: center; color: #ffffff; font-size: 16px; font-weight: 600; padding-left: 10px; overflow: hidden; }
+        .resources-page .community-name { flex: 1; display: flex; align-items: center; color: {{ '#000000' if is_light else '#ffffff' }}; font-size: 16px; font-weight: 600; padding-left: 10px; overflow: hidden; }
         .resources-page .community-name span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .resources-page .sidebar-menu { flex: 1; padding: 10px 0; display: block !important; overflow-y: auto !important; }
-        .resources-page .sidebar-menu a { display: block !important; padding: 12px 20px !important; color: #ffffff !important; text-decoration: none !important; transition: all 0.3s ease !important; border: none !important; font-size: 14px !important; }
-        .resources-page .sidebar-menu a:hover { background: rgba(77, 182, 172, 0.2) !important; color: #4db6ac !important; padding-left: 25px !important; }
+        .resources-page .sidebar-menu a { display: block !important; padding: 12px 20px !important; color: {{ '#495057' if is_light else '#ffffff' }} !important; text-decoration: none !important; transition: all 0.3s ease !important; border: none !important; font-size: 14px !important; }
+        .resources-page .sidebar-menu a:hover { background: {{ 'rgba(45, 138, 126, 0.1)' if is_light else 'rgba(77, 182, 172, 0.15)' }} !important; color: {{ community.accent_color or '#4db6ac' }} !important; padding-left: 25px !important; }
         
         /* Header Bar */
         .resources-header-bar { 
@@ -25,8 +28,8 @@
             left: 200px; 
             right: 0; 
             height: 60px; 
-            background: #000000; 
-            border-bottom: 1px solid #333333;
+            background: {{ '#ffffff' if is_light else '#000000' }}; 
+            border-bottom: 1px solid {{ '#dee2e6' if is_light else '#333333' }};
             z-index: 900;
             display: flex;
             align-items: center;
@@ -48,32 +51,35 @@
         
         .header-title h1 {
             font-size: 18px;
-            color: #ffffff;
+            color: {{ '#000000' if is_light else '#ffffff' }};
             margin: 0;
         }
         
         .back-btn {
-            background: rgba(255, 255, 255, 0.1);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            color: #ffffff;
+            background: linear-gradient(135deg, {{ community.accent_color or '#4db6ac' }} 0%, {{ community.hover_color or '#2d8a7e' }} 100%);
+            color: white;
+            border: none;
             padding: 8px 16px;
-            border-radius: 6px;
+            border-radius: 20px;
             text-decoration: none;
             font-size: 14px;
+            font-weight: 500;
             transition: all 0.3s ease;
             display: inline-flex;
             align-items: center;
             gap: 6px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
         }
         
         .back-btn:hover {
-            background: rgba(255, 255, 255, 0.15);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
         }
         
         /* Main Content */
         body {
-            background-color: #000000;
-            color: #ffffff;
+            background-color: {{ '#ffffff' if is_light else '#000000' }};
+            color: {{ '#000000' if is_light else '#ffffff' }};
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             margin: 0;
             padding: 0;
@@ -87,11 +93,12 @@
         
         /* Create Post Section */
         .create-post-section {
-            background: #000000;
+            background: {{ '#ffffff' if is_light else '#000000' }};
             border-radius: 8px;
             padding: 12px;
             margin-bottom: 20px;
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            border: 1px solid {{ '#dee2e6' if is_light else 'rgba(255, 255, 255, 0.1)' }};
+            box-shadow: {{ '0 1px 3px rgba(0, 0, 0, 0.1)' if is_light else 'none' }};
         }
         
         .create-post-header {
@@ -104,25 +111,28 @@
         .create-post-title {
             font-size: 14px;
             font-weight: 600;
-            color: #4db6ac;
+            color: {{ community.accent_color or '#4db6ac' }};
         }
         
         .new-post-btn {
-            background: #4db6ac;
+            background: linear-gradient(135deg, {{ community.accent_color or '#4db6ac' }} 0%, {{ community.hover_color or '#2d8a7e' }} 100%);
             color: white;
             border: none;
             padding: 8px 16px;
-            border-radius: 6px;
+            border-radius: 20px;
             font-size: 13px;
+            font-weight: 500;
             cursor: pointer;
             transition: all 0.3s ease;
             display: flex;
             align-items: center;
             gap: 6px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
         }
         
         .new-post-btn:hover {
-            background: #2d8a7e;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
         }
         
         .post-form {
@@ -141,17 +151,17 @@
         .form-group label {
             display: block;
             font-size: 12px;
-            color: rgba(255, 255, 255, 0.7);
+            color: {{ 'rgba(0, 0, 0, 0.6)' if is_light else 'rgba(255, 255, 255, 0.7)' }};
             margin-bottom: 4px;
         }
         
         .form-input {
             width: calc(100% - 20px);
             padding: 8px 10px;
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.15);
+            background: {{ '#f8f9fa' if is_light else 'rgba(255, 255, 255, 0.05)' }};
+            border: 1px solid {{ '#dee2e6' if is_light else 'rgba(255, 255, 255, 0.15)' }};
             border-radius: 4px;
-            color: white;
+            color: {{ '#000000' if is_light else '#ffffff' }};
             font-size: 13px;
             box-sizing: border-box;
         }
@@ -159,10 +169,10 @@
         .form-textarea {
             width: calc(100% - 20px);
             padding: 8px 10px;
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.15);
+            background: {{ '#f8f9fa' if is_light else 'rgba(255, 255, 255, 0.05)' }};
+            border: 1px solid {{ '#dee2e6' if is_light else 'rgba(255, 255, 255, 0.15)' }};
             border-radius: 4px;
-            color: white;
+            color: {{ '#000000' if is_light else '#ffffff' }};
             font-size: 13px;
             min-height: 80px;
             resize: none;
@@ -175,12 +185,17 @@
         .form-select {
             width: calc(100% - 20px);
             padding: 8px 10px;
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.15);
+            background: {{ '#f8f9fa' if is_light else 'rgba(255, 255, 255, 0.05)' }};
+            border: 1px solid {{ '#dee2e6' if is_light else 'rgba(255, 255, 255, 0.15)' }};
             border-radius: 4px;
-            color: white;
+            color: {{ '#000000' if is_light else '#ffffff' }};
             font-size: 13px;
             box-sizing: border-box;
+        }
+        
+        .form-select option {
+            background: {{ '#ffffff' if is_light else '#1a1a1a' }};
+            color: {{ '#000000' if is_light else '#ffffff' }};
         }
         
         .form-actions {
@@ -191,33 +206,38 @@
         }
         
         .submit-btn {
-            background: #4db6ac;
+            background: linear-gradient(135deg, {{ community.accent_color or '#4db6ac' }} 0%, {{ community.hover_color or '#2d8a7e' }} 100%);
             color: white;
             border: none;
             padding: 8px 16px;
-            border-radius: 4px;
+            border-radius: 20px;
             font-size: 13px;
+            font-weight: 500;
             cursor: pointer;
             transition: all 0.3s ease;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
         }
         
         .submit-btn:hover {
-            background: #2d8a7e;
+            transform: translateY(-1px);
+            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.2);
         }
         
         .cancel-btn {
-            background: rgba(255, 255, 255, 0.05);
-            color: white;
-            border: 1px solid rgba(255, 255, 255, 0.15);
+            background: transparent;
+            color: {{ '#6c757d' if is_light else 'rgba(255, 255, 255, 0.7)' }};
+            border: 1px solid {{ '#dee2e6' if is_light else 'rgba(255, 255, 255, 0.2)' }};
             padding: 8px 16px;
-            border-radius: 4px;
+            border-radius: 20px;
             font-size: 13px;
             cursor: pointer;
             transition: all 0.3s ease;
         }
         
         .cancel-btn:hover {
-            background: rgba(255, 255, 255, 0.1);
+            background: {{ 'rgba(0, 0, 0, 0.05)' if is_light else 'rgba(255, 255, 255, 0.05)' }};
+            border-color: {{ community.accent_color or '#4db6ac' }};
+            color: {{ community.accent_color or '#4db6ac' }};
         }
         
         /* Posts List */
@@ -227,15 +247,17 @@
         }
         
         .resource-post {
-            background: #000000;
+            background: {{ '#ffffff' if is_light else '#000000' }};
             border-radius: 8px;
             padding: 12px;
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            border: 1px solid {{ '#dee2e6' if is_light else 'rgba(255, 255, 255, 0.1)' }};
             transition: all 0.3s ease;
+            box-shadow: {{ '0 1px 3px rgba(0, 0, 0, 0.1)' if is_light else 'none' }};
         }
         
         .resource-post:hover {
-            background: rgba(255, 255, 255, 0.02);
+            background: {{ 'rgba(0, 0, 0, 0.02)' if is_light else 'rgba(255, 255, 255, 0.02)' }};
+            box-shadow: {{ '0 2px 5px rgba(0, 0, 0, 0.15)' if is_light else 'none' }};
         }
         
         .post-header {
@@ -279,17 +301,17 @@
         .author-name {
             font-size: 13px;
             font-weight: 600;
-            color: #ffffff;
+            color: {{ '#000000' if is_light else '#ffffff' }};
         }
         
         .post-time {
             font-size: 11px;
-            color: rgba(255, 255, 255, 0.5);
+            color: {{ 'rgba(0, 0, 0, 0.5)' if is_light else 'rgba(255, 255, 255, 0.5)' }};
         }
         
         .post-category {
-            background: rgba(77, 182, 172, 0.2);
-            color: #4db6ac;
+            background: {{ 'rgba(77, 182, 172, 0.15)' if is_light else 'rgba(77, 182, 172, 0.2)' }};
+            color: {{ community.accent_color or '#4db6ac' }};
             padding: 3px 8px;
             border-radius: 10px;
             font-size: 11px;
@@ -299,13 +321,13 @@
         .post-title {
             font-size: 15px;
             font-weight: 600;
-            color: #ffffff;
+            color: {{ '#000000' if is_light else '#ffffff' }};
             margin-bottom: 8px;
         }
         
         .post-content {
             font-size: 13px;
-            color: rgba(255, 255, 255, 0.8);
+            color: {{ 'rgba(0, 0, 0, 0.8)' if is_light else 'rgba(255, 255, 255, 0.8)' }};
             line-height: 1.5;
             margin-bottom: 10px;
         }
@@ -315,7 +337,7 @@
             gap: 15px;
             align-items: center;
             padding-top: 10px;
-            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            border-top: 1px solid {{ '#dee2e6' if is_light else 'rgba(255, 255, 255, 0.1)' }};
         }
         
         .action-btn {
@@ -324,18 +346,18 @@
             gap: 4px;
             background: none;
             border: none;
-            color: rgba(255, 255, 255, 0.6);
+            color: {{ 'rgba(0, 0, 0, 0.6)' if is_light else 'rgba(255, 255, 255, 0.6)' }};
             font-size: 12px;
             cursor: pointer;
             transition: all 0.3s ease;
         }
         
         .action-btn:hover {
-            color: #4db6ac;
+            color: {{ community.accent_color or '#4db6ac' }};
         }
         
         .action-btn.upvoted {
-            color: #4db6ac;
+            color: {{ community.accent_color or '#4db6ac' }};
         }
         
         .pinned-badge {
@@ -350,7 +372,7 @@
         .delete-post-btn {
             background: none;
             border: none;
-            color: rgba(255, 255, 255, 0.4);
+            color: {{ 'rgba(0, 0, 0, 0.4)' if is_light else 'rgba(255, 255, 255, 0.4)' }};
             cursor: pointer;
             padding: 4px 8px;
             border-radius: 4px;
@@ -366,7 +388,7 @@
         .no-posts {
             text-align: center;
             padding: 60px 20px;
-            color: rgba(255, 255, 255, 0.5);
+            color: {{ 'rgba(0, 0, 0, 0.5)' if is_light else 'rgba(255, 255, 255, 0.5)' }};
         }
         
         .no-posts i {
@@ -407,7 +429,7 @@
     <div class="resources-header-bar">
         <div class="header-content">
             <div class="header-title">
-                <i class="fas fa-folder" style="color: #4db6ac;"></i>
+                <i class="fas fa-folder" style="color: {{ community.accent_color or '#4db6ac' }};"></i>
                 <h1>Misc</h1>
             </div>
             <a href="{{ url_for('community_feed', community_id=community.id) }}" class="back-btn">
@@ -501,7 +523,7 @@
                     
                     {% if post.attachment_url %}
                     <div style="margin-bottom: 15px;">
-                        <a href="{{ post.attachment_url }}" target="_blank" style="color: #4db6ac; text-decoration: none; font-size: 14px;">
+                        <a href="{{ post.attachment_url }}" target="_blank" style="color: {{ community.accent_color or '#4db6ac' }}; text-decoration: none; font-size: 14px;">
                             <i class="fas fa-paperclip"></i> View Attachment
                         </a>
                     </div>
