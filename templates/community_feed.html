@@ -156,9 +156,9 @@
         .polls-sidebar {
             position: fixed;
             right: 20px;
-            top: {{ '420px' if community.type == 'University' else '80px' }};
+            top: {{ '440px' if community.type == 'University' else '80px' }};
             width: 320px;
-            max-height: {{ '400px' if community.type == 'University' else '600px' }};
+            max-height: {{ '380px' if community.type == 'University' else '600px' }};
             background: {{ 'linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%)' if community.template == 'light' else ('linear-gradient(135deg, ' + (community.card_color or '#1a3d3a') + ' 0%, ' + (community.background_color or '#0f2725') + ' 100%)') }};
             border-radius: 12px;
             border: 1px solid {{ 'rgba(45, 138, 126, 0.2)' if community.template == 'light' else 'rgba(255, 255, 255, 0.1)' }};
@@ -175,7 +175,7 @@
             right: 20px;
             top: 80px;
             width: 320px;
-            height: 320px;
+            height: 340px;
             background: #000000;
             border-radius: 12px;
             border: 2px solid #333333;
