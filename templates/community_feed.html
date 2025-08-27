@@ -4299,7 +4299,7 @@
                                 <button class="reaction-btn thumbs-up {{ 'active' if post.user_reaction == 'thumbs-up' }}" data-reaction="thumbs-up" aria-label="Thumbs up"><i class="far fa-thumbs-up"></i> <span>{{ post.reactions['thumbs-up'] or 0 }}</span></button>
                                 <button class="reaction-btn thumbs-down {{ 'active' if post.user_reaction == 'thumbs-down' }}" data-reaction="thumbs-down" aria-label="Thumbs down"><i class="far fa-thumbs-down"></i> <span>{{ post.reactions['thumbs-down'] or 0 }}</span></button>
                             </div>
-                            {% if post.username == session['username'] or username == 'admin' or username == community.creator_username %}
+                            {% if post.username == session['username'] or username == 'admin' or username == community.creator_username or is_community_admin %}
                                 <button class="delete-post inline-action" data-post-id="{{ post.id }}" title="Delete"><i class="far fa-trash-alt"></i></button>
                             {% endif %}
                         </div>

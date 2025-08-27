@@ -687,6 +687,40 @@ def init_db():
             c.execute("CREATE INDEX IF NOT EXISTS idx_feedback_community ON anonymous_feedback(community_id)")
             c.execute("CREATE INDEX IF NOT EXISTS idx_feedback_status ON anonymous_feedback(status)")
             
+            # Create community admins table
+            logger.info("Creating community admins table...")
+            c.execute('''CREATE TABLE IF NOT EXISTS community_admins
+                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                          community_id INTEGER NOT NULL,
+                          username TEXT NOT NULL,
+                          appointed_by TEXT NOT NULL,
+                          appointed_at TEXT NOT NULL,
+                          FOREIGN KEY (community_id) REFERENCES communities (id) ON DELETE CASCADE,
+                          FOREIGN KEY (username) REFERENCES users (username),
+                          FOREIGN KEY (appointed_by) REFERENCES users (username),
+                          UNIQUE(community_id, username))''')
+            
+            # Add is_active columns to users and communities if they don't exist
+            logger.info("Adding is_active columns...")
+            
+            # Check and add is_active to users table
+            c.execute("PRAGMA table_info(users)")
+            user_columns = [col[1] for col in c.fetchall()]
+            if 'is_active' not in user_columns:
+                c.execute("ALTER TABLE users ADD COLUMN is_active BOOLEAN DEFAULT 1")
+                logger.info("Added is_active column to users table")
+            
+            # Check and add is_active to communities table  
+            c.execute("PRAGMA table_info(communities)")
+            community_columns = [col[1] for col in c.fetchall()]
+            if 'is_active' not in community_columns:
+                c.execute("ALTER TABLE communities ADD COLUMN is_active BOOLEAN DEFAULT 1")
+                logger.info("Added is_active column to communities table")
+            
+            # Create index for community admins
+            c.execute("CREATE INDEX IF NOT EXISTS idx_community_admins_community ON community_admins(community_id)")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_community_admins_username ON community_admins(username)")
+            
             conn.commit()
             logger.info("Database initialization completed successfully")
             
@@ -719,6 +753,46 @@ def ensure_indexes():
     except Exception as e:
         logger.error(f"Error ensuring indexes: {e}")
         abort(500)
+
+# Permission helper functions
+def is_app_admin(username):
+    """Check if user is the app admin"""
+    return username == 'admin'
+
+def is_community_owner(username, community_id):
+    """Check if user is the owner of a community"""
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT creator_username FROM communities WHERE id = ?", (community_id,))
+            result = c.fetchone()
+            return result and result['creator_username'] == username
+    except:
+        return False
+
+def is_community_admin(username, community_id):
+    """Check if user is an admin of a community"""
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT 1 FROM community_admins WHERE community_id = ? AND username = ?", 
+                     (community_id, username))
+            return c.fetchone() is not None
+    except:
+        return False
+
+def has_community_management_permission(username, community_id):
+    """Check if user can manage a community (app admin, owner, or community admin)"""
+    return (is_app_admin(username) or 
+            is_community_owner(username, community_id) or 
+            is_community_admin(username, community_id))
+
+def has_post_delete_permission(username, post_username, community_id):
+    """Check if user can delete a post"""
+    return (is_app_admin(username) or 
+            username == post_username or
+            is_community_owner(username, community_id) or 
+            is_community_admin(username, community_id))
 
 init_db()
 ensure_indexes()
@@ -5587,21 +5661,15 @@ def delete_community_post(post_id):
         with get_db_connection() as conn:
             c = conn.cursor()
             
-            # Get post details and community info
-            c.execute("""
-                SELECT p.*, c.creator_username 
-                FROM posts p
-                JOIN communities c ON p.community_id = c.id
-                WHERE p.id = ?
-            """, (post_id,))
-            
+            # Get post details
+            c.execute("SELECT * FROM posts WHERE id = ?", (post_id,))
             post = c.fetchone()
             
             if not post:
                 return jsonify({'success': False, 'message': 'Post not found'}), 404
             
-            # Check permissions (post creator, admin, or community creator)
-            if username != post['username'] and username != 'admin' and username != post['creator_username']:
+            # Check permissions using the new permission system
+            if not has_post_delete_permission(username, post['username'], post['community_id']):
                 return jsonify({'success': False, 'message': 'Unauthorized'}), 403
             
             # Delete the post
@@ -5612,6 +5680,111 @@ def delete_community_post(post_id):
             
     except Exception as e:
         logger.error(f"Error deleting community post: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/community/<int:community_id>/appoint_admin', methods=['POST'])
+@login_required
+def appoint_community_admin(community_id):
+    """Appoint a community admin (only community owner or app admin can do this)"""
+    username = session.get('username')
+    
+    try:
+        # Check if user has permission to appoint admins
+        if not is_app_admin(username) and not is_community_owner(username, community_id):
+            return jsonify({'success': False, 'message': 'Only community owner or app admin can appoint admins'}), 403
+        
+        data = request.get_json()
+        new_admin = data.get('username', '').strip()
+        
+        if not new_admin:
+            return jsonify({'success': False, 'message': 'Username is required'}), 400
+            
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Check if user exists
+            c.execute("SELECT 1 FROM users WHERE username = ?", (new_admin,))
+            if not c.fetchone():
+                return jsonify({'success': False, 'message': 'User not found'}), 404
+            
+            # Check if already an admin
+            c.execute("SELECT 1 FROM community_admins WHERE community_id = ? AND username = ?", 
+                     (community_id, new_admin))
+            if c.fetchone():
+                return jsonify({'success': False, 'message': 'User is already an admin'}), 400
+            
+            # Appoint as admin
+            c.execute("""
+                INSERT INTO community_admins (community_id, username, appointed_by, appointed_at)
+                VALUES (?, ?, ?, ?)
+            """, (community_id, new_admin, username, datetime.now().isoformat()))
+            
+            conn.commit()
+            
+            return jsonify({'success': True, 'message': f'{new_admin} appointed as community admin'})
+            
+    except Exception as e:
+        logger.error(f"Error appointing admin: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/community/<int:community_id>/remove_admin', methods=['POST'])
+@login_required
+def remove_community_admin(community_id):
+    """Remove a community admin (only community owner or app admin can do this)"""
+    username = session.get('username')
+    
+    try:
+        # Check if user has permission to remove admins
+        if not is_app_admin(username) and not is_community_owner(username, community_id):
+            return jsonify({'success': False, 'message': 'Only community owner or app admin can remove admins'}), 403
+        
+        data = request.get_json()
+        admin_to_remove = data.get('username', '').strip()
+        
+        if not admin_to_remove:
+            return jsonify({'success': False, 'message': 'Username is required'}), 400
+            
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Remove admin
+            c.execute("DELETE FROM community_admins WHERE community_id = ? AND username = ?", 
+                     (community_id, admin_to_remove))
+            
+            if c.rowcount == 0:
+                return jsonify({'success': False, 'message': 'User is not an admin'}), 404
+            
+            conn.commit()
+            
+            return jsonify({'success': True, 'message': f'{admin_to_remove} removed as community admin'})
+            
+    except Exception as e:
+        logger.error(f"Error removing admin: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/community/<int:community_id>/admins')
+@login_required
+def get_community_admins(community_id):
+    """Get list of community admins"""
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("""
+                SELECT ca.*, u.email 
+                FROM community_admins ca
+                JOIN users u ON ca.username = u.username
+                WHERE ca.community_id = ?
+                ORDER BY ca.appointed_at DESC
+            """, (community_id,))
+            
+            admins = []
+            for row in c.fetchall():
+                admins.append(dict(row))
+            
+            return jsonify({'success': True, 'admins': admins})
+            
+    except Exception as e:
+        logger.error(f"Error getting community admins: {e}")
         return jsonify({'success': False, 'message': str(e)}), 500
 
 @app.route('/community/<int:community_id>/clubs')
@@ -5815,6 +5988,71 @@ def view_feedback(community_id):
             
     except Exception as e:
         logger.error(f"Error viewing feedback: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/admin/deactivate_user/<username>', methods=['POST'])
+@login_required
+def deactivate_user(username):
+    """Deactivate/reactivate a user (app admin only)"""
+    current_user = session.get('username')
+    
+    if not is_app_admin(current_user):
+        return jsonify({'success': False, 'message': 'Unauthorized'}), 403
+    
+    if username == 'admin':
+        return jsonify({'success': False, 'message': 'Cannot deactivate app admin'}), 400
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Toggle user active status
+            c.execute("SELECT is_active FROM users WHERE username = ?", (username,))
+            user = c.fetchone()
+            
+            if not user:
+                return jsonify({'success': False, 'message': 'User not found'}), 404
+            
+            new_status = 0 if user['is_active'] else 1
+            c.execute("UPDATE users SET is_active = ? WHERE username = ?", (new_status, username))
+            conn.commit()
+            
+            action = 'activated' if new_status else 'deactivated'
+            return jsonify({'success': True, 'message': f'User {username} has been {action}'})
+            
+    except Exception as e:
+        logger.error(f"Error deactivating user: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/admin/deactivate_community/<int:community_id>', methods=['POST'])
+@login_required
+def deactivate_community(community_id):
+    """Deactivate/reactivate a community (app admin only)"""
+    current_user = session.get('username')
+    
+    if not is_app_admin(current_user):
+        return jsonify({'success': False, 'message': 'Unauthorized'}), 403
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Toggle community active status
+            c.execute("SELECT is_active, name FROM communities WHERE id = ?", (community_id,))
+            community = c.fetchone()
+            
+            if not community:
+                return jsonify({'success': False, 'message': 'Community not found'}), 404
+            
+            new_status = 0 if community['is_active'] else 1
+            c.execute("UPDATE communities SET is_active = ? WHERE id = ?", (new_status, community_id))
+            conn.commit()
+            
+            action = 'activated' if new_status else 'deactivated'
+            return jsonify({'success': True, 'message': f'Community {community["name"]} has been {action}'})
+            
+    except Exception as e:
+        logger.error(f"Error deactivating community: {e}")
         return jsonify({'success': False, 'message': str(e)}), 500
 
 @app.route('/admin/user_statistics')
@@ -7235,13 +7473,17 @@ def community_feed(community_id):
                 logger.debug(f"Messages query error: {e}")
                 unread_messages = 0
             
+            # Check if user is a community admin
+            is_community_admin_user = is_community_admin(username, community_id)
+            
             return render_template('community_feed.html', 
                                 posts=posts, 
                                 community=community,
                                 parent_community=parent_community,
                                 username=username,
                                 unread_notifications=unread_notifications,
-                                unread_messages=unread_messages)
+                                unread_messages=unread_messages,
+                                is_community_admin=is_community_admin_user)
             
     except Exception as e:
         logger.error(f"Error loading community feed: {str(e)}")
