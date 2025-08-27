@@ -6788,60 +6788,52 @@
                 
                 <!-- Edit Event Tab -->
                 <div id="editCalendarTab" class="poll-tab-content">
-                    <form id="editEventForm" style="max-width: 450px; margin: 0 auto;">
+                    <form id="editEventForm" style="max-width: 500px; margin: 0 auto;">
                         <input type="hidden" id="editEventId" name="event_id">
                         
                         <!-- Title -->
-                        <div class="form-group" style="margin-bottom: 12px;">
-                            <label for="editEventTitle" style="font-size: 11px; margin-bottom: 4px; display: block; color: {{ '#495057' if community.template == 'light' else '#9fb0b5' }}; font-weight: 600;">Event Title *</label>
-                            <input type="text" id="editEventTitle" name="title" placeholder="Enter event title" required 
-                                   style="width: 100%; padding: 6px 10px; font-size: 12px; border: 1px solid {{ '#dee2e6' if community.template == 'light' else 'rgba(255, 255, 255, 0.1)' }}; background: {{ '#f8f9fa' if community.template == 'light' else 'rgba(0, 0, 0, 0.3)' }}; color: {{ '#000000' if community.template == 'light' else '#ffffff' }}; border-radius: 4px;">
+                        <div class="form-group">
+                            <label for="editEventTitle">Event Title *</label>
+                            <input type="text" id="editEventTitle" name="title" placeholder="Enter event title" required>
                         </div>
                         
                         <!-- Dates Row -->
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px;">
+                        <div class="form-group" style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
                             <div>
-                                <label for="editEventDate" style="font-size: 11px; margin-bottom: 4px; display: block; color: {{ '#495057' if community.template == 'light' else '#9fb0b5' }}; font-weight: 600;">Start Date *</label>
-                                <input type="date" id="editEventDate" name="date" required
-                                       style="width: 100%; padding: 6px 10px; font-size: 12px; border: 1px solid {{ '#dee2e6' if community.template == 'light' else 'rgba(255, 255, 255, 0.1)' }}; background: {{ '#f8f9fa' if community.template == 'light' else 'rgba(0, 0, 0, 0.3)' }}; color: {{ '#000000' if community.template == 'light' else '#ffffff' }}; border-radius: 4px;">
+                                <label for="editEventDate">Start Date *</label>
+                                <input type="date" id="editEventDate" name="date" required>
                             </div>
                             <div>
-                                <label for="editEventEndDate" style="font-size: 11px; margin-bottom: 4px; display: block; color: {{ '#495057' if community.template == 'light' else '#9fb0b5' }}; font-weight: 600;">End Date</label>
-                                <input type="date" id="editEventEndDate" name="end_date"
-                                       style="width: 100%; padding: 6px 10px; font-size: 12px; border: 1px solid {{ '#dee2e6' if community.template == 'light' else 'rgba(255, 255, 255, 0.1)' }}; background: {{ '#f8f9fa' if community.template == 'light' else 'rgba(0, 0, 0, 0.3)' }}; color: {{ '#000000' if community.template == 'light' else '#ffffff' }}; border-radius: 4px;">
+                                <label for="editEventEndDate">End Date</label>
+                                <input type="date" id="editEventEndDate" name="end_date">
                             </div>
                         </div>
                         
                         <!-- Times Row -->
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px;">
+                        <div class="form-group" style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
                             <div>
-                                <label for="editEventStartTime" style="font-size: 11px; margin-bottom: 4px; display: block; color: {{ '#495057' if community.template == 'light' else '#9fb0b5' }}; font-weight: 600;">Start Time</label>
-                                <input type="time" id="editEventStartTime" name="start_time"
-                                       style="width: 100%; padding: 6px 10px; font-size: 12px; border: 1px solid {{ '#dee2e6' if community.template == 'light' else 'rgba(255, 255, 255, 0.1)' }}; background: {{ '#f8f9fa' if community.template == 'light' else 'rgba(0, 0, 0, 0.3)' }}; color: {{ '#000000' if community.template == 'light' else '#ffffff' }}; border-radius: 4px;">
+                                <label for="editEventStartTime">Start Time</label>
+                                <input type="time" id="editEventStartTime" name="start_time">
                             </div>
                             <div>
-                                <label for="editEventEndTime" style="font-size: 11px; margin-bottom: 4px; display: block; color: {{ '#495057' if community.template == 'light' else '#9fb0b5' }}; font-weight: 600;">End Time</label>
-                                <input type="time" id="editEventEndTime" name="end_time"
-                                       style="width: 100%; padding: 6px 10px; font-size: 12px; border: 1px solid {{ '#dee2e6' if community.template == 'light' else 'rgba(255, 255, 255, 0.1)' }}; background: {{ '#f8f9fa' if community.template == 'light' else 'rgba(0, 0, 0, 0.3)' }}; color: {{ '#000000' if community.template == 'light' else '#ffffff' }}; border-radius: 4px;">
+                                <label for="editEventEndTime">End Time</label>
+                                <input type="time" id="editEventEndTime" name="end_time">
                             </div>
                         </div>
                         
                         <!-- Description -->
-                        <div class="form-group" style="margin-bottom: 15px;">
-                            <label for="editEventDescription" style="font-size: 11px; margin-bottom: 4px; display: block; color: {{ '#495057' if community.template == 'light' else '#9fb0b5' }}; font-weight: 600;">Description</label>
-                            <textarea id="editEventDescription" name="description" placeholder="Event details (optional)" rows="3"
-                                      style="width: 100%; padding: 6px 10px; font-size: 12px; border: 1px solid {{ '#dee2e6' if community.template == 'light' else 'rgba(255, 255, 255, 0.1)' }}; background: {{ '#f8f9fa' if community.template == 'light' else 'rgba(0, 0, 0, 0.3)' }}; color: {{ '#000000' if community.template == 'light' else '#ffffff' }}; border-radius: 4px; resize: vertical; min-height: 50px; max-height: 100px;"></textarea>
+                        <div class="form-group">
+                            <label for="editEventDescription">Description</label>
+                            <textarea id="editEventDescription" name="description" placeholder="Event details (optional)" rows="4"></textarea>
                         </div>
                         
                         <!-- Actions -->
-                        <div class="form-actions" style="display: flex; gap: 8px; justify-content: flex-end;">
-                            <button type="button" class="sleek-btn secondary" onclick="switchCalendarTab('view')" 
-                                    style="padding: 8px 16px; font-size: 12px; background: transparent; border: 1px solid {{ '#dee2e6' if community.template == 'light' else 'rgba(255, 255, 255, 0.2)' }}; color: {{ '#495057' if community.template == 'light' else '#ffffff' }};">
-                                <i class="fas fa-times" style="font-size: 11px;"></i> Cancel
+                        <div class="form-actions">
+                            <button type="button" class="btn-secondary" onclick="switchCalendarTab('view')">
+                                Cancel
                             </button>
-                            <button type="submit" class="sleek-btn" 
-                                    style="padding: 8px 16px; font-size: 12px; background: {{ community.accent_color or '#2d8a7e' }}; color: #ffffff; border: none;">
-                                <i class="fas fa-save" style="font-size: 11px;"></i> Update Event
+                            <button type="submit" class="btn-primary">
+                                <i class="fas fa-save"></i> Update Event
                             </button>
                         </div>
                     </form>
