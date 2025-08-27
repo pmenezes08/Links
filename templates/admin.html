@@ -394,6 +394,200 @@
             gap: 8px;
         }
 
+        /* Compact Modal Styles for Communities */
+        .compact-modal {
+            max-width: 90%;
+            width: 1200px;
+            max-height: 85vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .compact-header {
+            padding: 15px 20px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .compact-header h3 {
+            font-size: 18px;
+            margin: 0;
+        }
+
+        .modal-body-compact {
+            flex: 1;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            padding: 0;
+        }
+
+        .communities-summary {
+            padding: 12px 20px;
+            background: rgba(77, 182, 172, 0.05);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+            display: flex;
+            gap: 20px;
+            font-size: 13px;
+            color: rgba(255, 255, 255, 0.8);
+        }
+
+        .communities-summary span {
+            padding: 4px 8px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 4px;
+        }
+
+        .communities-table-container {
+            flex: 1;
+            overflow-y: auto;
+            overflow-x: auto;
+            padding: 0;
+        }
+
+        .communities-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+
+        .communities-table thead {
+            background: rgba(255, 255, 255, 0.03);
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        .communities-table th {
+            padding: 10px 12px;
+            text-align: left;
+            font-weight: 600;
+            color: #4db6ac;
+            border-bottom: 2px solid rgba(77, 182, 172, 0.3);
+            white-space: nowrap;
+        }
+
+        .communities-table tbody tr {
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            transition: background 0.2s;
+        }
+
+        .communities-table tbody tr:hover {
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        .communities-table tbody tr.deactivated {
+            opacity: 0.7;
+            background: rgba(255, 68, 68, 0.02);
+        }
+
+        .communities-table td {
+            padding: 8px 12px;
+            vertical-align: middle;
+        }
+
+        .community-name-cell {
+            min-width: 150px;
+        }
+
+        .deactivated-badge-compact {
+            display: inline-block;
+            margin-left: 8px;
+            padding: 1px 6px;
+            background: rgba(255, 68, 68, 0.15);
+            color: #ff4444;
+            border-radius: 3px;
+            font-size: 10px;
+            font-weight: normal;
+        }
+
+        .type-badge {
+            padding: 2px 8px;
+            background: rgba(77, 182, 172, 0.1);
+            color: #4db6ac;
+            border-radius: 4px;
+            font-size: 11px;
+        }
+
+        .code-cell code {
+            padding: 2px 6px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 3px;
+            font-family: monospace;
+            font-size: 11px;
+            color: #ffa500;
+        }
+
+        .status-indicator {
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 500;
+        }
+
+        .status-indicator.active {
+            background: rgba(77, 182, 172, 0.15);
+            color: #4db6ac;
+        }
+
+        .status-indicator.inactive {
+            background: rgba(255, 68, 68, 0.15);
+            color: #ff4444;
+        }
+
+        .action-btn-compact {
+            padding: 4px 8px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+            color: rgba(255, 255, 255, 0.7);
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 12px;
+        }
+
+        .action-btn-compact:hover {
+            background: rgba(255, 255, 255, 0.08);
+            color: #ffffff;
+            transform: translateY(-1px);
+        }
+
+        .action-btn-compact.danger {
+            color: #ff4444;
+            border-color: rgba(255, 68, 68, 0.3);
+        }
+
+        .action-btn-compact.danger:hover {
+            background: rgba(255, 68, 68, 0.15);
+        }
+
+        .action-btn-compact.warning {
+            color: #ffa500;
+            border-color: rgba(255, 165, 0, 0.3);
+        }
+
+        .action-btn-compact.warning:hover {
+            background: rgba(255, 165, 0, 0.15);
+        }
+
+        .action-btn-compact.success {
+            color: #4db6ac;
+            border-color: rgba(77, 182, 172, 0.3);
+        }
+
+        .action-btn-compact.success:hover {
+            background: rgba(77, 182, 172, 0.15);
+        }
+
+        .modal-actions.compact-actions {
+            padding: 12px 20px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .text-center {
+            text-align: center;
+        }
+
         .error-message {
             background: rgba(255, 59, 48, 0.1);
             border: 1px solid rgba(255, 59, 48, 0.3);
@@ -899,50 +1093,78 @@
 
     <!-- Communities Modal -->
     <div id="communitiesModal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
+        <div class="modal-content compact-modal">
+            <div class="modal-header compact-header">
                 <h3>Community Management</h3>
                 <span class="close" onclick="closeCommunitiesModal()">&times;</span>
             </div>
-            <div class="communities-grid" id="communitiesGrid">
-                {% for community in communities %}
-                <div class="community-card" data-community-id="{{ community.id }}" data-active="{{ community.is_active|default(true) }}">
-                    <div class="community-header">
-                        <div class="community-name">
-                            {{ community.name }}
-                            {% if not community.is_active|default(true) %}
-                            <span style="color: #ff4444; font-size: 12px; margin-left: 8px;">(Deactivated)</span>
-                            {% endif %}
-                        </div>
-                        <div class="community-type">{{ community.type }}</div>
-                    </div>
-                    <div class="community-details">
-                        <div>Creator: {{ community.creator_username }}</div>
-                        <div>Members: {{ community.member_count }}</div>
-                        <div>Code: {{ community.join_code }}</div>
-                        <div>Status: 
-                            <span style="color: {{ '#4db6ac' if community.is_active|default(true) else '#ff4444' }}">
-                                {{ 'Active' if community.is_active|default(true) else 'Deactivated' }}
-                            </span>
-                        </div>
-                    </div>
-                    <div class="community-actions">
-                        <button onclick="showCommunityMembers('{{ community.id }}')" class="action-btn" title="View Members">
-                            <i class="fas fa-users"></i>
-                        </button>
-                        <button onclick="toggleCommunityStatus('{{ community.id }}', {{ 'false' if community.is_active|default(true) else 'true' }})" 
-                                class="action-btn {{ 'warning' if community.is_active|default(true) else 'success' }}" 
-                                title="{{ 'Deactivate' if community.is_active|default(true) else 'Activate' }} Community">
-                            <i class="fas fa-{{ 'ban' if community.is_active|default(true) else 'check-circle' }}"></i>
-                        </button>
-                        <button onclick="deleteCommunity('{{ community.id }}')" class="action-btn danger" title="Delete Community">
-                            <i class="fas fa-trash"></i>
-                        </button>
-                    </div>
+            <div class="modal-body-compact">
+                <div class="communities-summary">
+                    <span>Total: {{ communities|length }} communities</span>
+                    {% set active_count = communities|selectattr('is_active')|list|length %}
+                    {% set inactive_count = communities|length - active_count %}
+                    <span>Active: {{ active_count }}</span>
+                    <span>Deactivated: {{ inactive_count }}</span>
                 </div>
-                {% endfor %}
+                <div class="communities-table-container">
+                    <table class="communities-table">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Type</th>
+                                <th>Owner</th>
+                                <th>Members</th>
+                                <th>Code</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for community in communities %}
+                            <tr class="community-row {{ 'deactivated' if not community.is_active|default(true) else '' }}" 
+                                data-community-id="{{ community.id }}" 
+                                data-active="{{ community.is_active|default(true) }}">
+                                <td class="community-name-cell">
+                                    <strong>{{ community.name }}</strong>
+                                    {% if not community.is_active|default(true) %}
+                                    <span class="deactivated-badge-compact">Deactivated</span>
+                                    {% endif %}
+                                </td>
+                                <td><span class="type-badge">{{ community.type }}</span></td>
+                                <td>{{ community.creator_username }}</td>
+                                <td class="text-center">{{ community.member_count }}</td>
+                                <td class="code-cell">
+                                    <code>{{ community.join_code }}</code>
+                                </td>
+                                <td>
+                                    <span class="status-indicator {{ 'active' if community.is_active|default(true) else 'inactive' }}">
+                                        {{ 'Active' if community.is_active|default(true) else 'Inactive' }}
+                                    </span>
+                                </td>
+                                <td class="actions-cell">
+                                    <div class="compact-actions">
+                                        <button onclick="showCommunityMembers('{{ community.id }}')" 
+                                                class="action-btn-compact" title="View Members">
+                                            <i class="fas fa-users"></i>
+                                        </button>
+                                        <button onclick="toggleCommunityStatus('{{ community.id }}', {{ 'false' if community.is_active|default(true) else 'true' }})" 
+                                                class="action-btn-compact {{ 'warning' if community.is_active|default(true) else 'success' }}" 
+                                                title="{{ 'Deactivate' if community.is_active|default(true) else 'Activate' }}">
+                                            <i class="fas fa-{{ 'ban' if community.is_active|default(true) else 'check-circle' }}"></i>
+                                        </button>
+                                        <button onclick="deleteCommunity('{{ community.id }}')" 
+                                                class="action-btn-compact danger" title="Delete">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
             </div>
-            <div class="modal-actions">
+            <div class="modal-actions compact-actions">
                 <button type="button" class="btn btn-secondary" onclick="closeCommunitiesModal()">Close</button>
             </div>
         </div>
