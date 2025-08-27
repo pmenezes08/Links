@@ -178,8 +178,8 @@
             height: 320px;
             background: #000000;
             border-radius: 12px;
-            border: 1px solid {{ 'rgba(0, 0, 0, 0.05)' if community.template == 'light' else 'rgba(255, 255, 255, 0.05)' }};
-            box-shadow: 0 4px 12px {{ 'rgba(0, 0, 0, 0.05)' if community.template == 'light' else 'rgba(0, 0, 0, 0.2)' }};
+            border: 2px solid #333333;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
             z-index: 98;
             overflow: hidden;
             display: flex;
@@ -188,7 +188,7 @@
         
         .ads-header {
             padding: 12px 15px;
-            border-bottom: 1px solid {{ 'rgba(0, 0, 0, 0.05)' if community.template == 'light' else 'rgba(255, 255, 255, 0.05)' }};
+            border-bottom: 1px solid #333333;
             display: flex;
             justify-content: center;
             align-items: center;

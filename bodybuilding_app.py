@@ -5176,6 +5176,52 @@ def toggle_ad(ad_id):
         logger.error(f"Error toggling ad: {e}")
         return jsonify({'success': False}), 500
 
+@app.route('/update_ad/<int:ad_id>', methods=['POST'])
+@login_required
+def update_ad(ad_id):
+    """Update an existing ad"""
+    username = session.get('username')
+    
+    try:
+        data = request.get_json()
+        title = data.get('title', '').strip()
+        description = data.get('description', '').strip()
+        price = data.get('price', '').strip()
+        image_url = data.get('image_url', '').strip()
+        link_url = data.get('link_url', '').strip()
+        
+        if not title or not price or not image_url:
+            return jsonify({'success': False, 'message': 'Title, price, and image URL are required'}), 400
+            
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Check permissions
+            c.execute("""
+                SELECT a.*, c.creator_username 
+                FROM university_ads a
+                JOIN communities c ON a.community_id = c.id
+                WHERE a.id = ?
+            """, (ad_id,))
+            ad = c.fetchone()
+            
+            if not ad or (username != 'admin' and username != ad['creator_username']):
+                return jsonify({'success': False, 'message': 'Unauthorized'}), 403
+            
+            # Update ad
+            c.execute("""
+                UPDATE university_ads 
+                SET title = ?, description = ?, price = ?, image_url = ?, link_url = ?
+                WHERE id = ?
+            """, (title, description, price, image_url, link_url, ad_id))
+            conn.commit()
+            
+            return jsonify({'success': True})
+            
+    except Exception as e:
+        logger.error(f"Error updating ad: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+
 @app.route('/delete_ad/<int:ad_id>', methods=['POST'])
 @login_required
 def delete_ad(ad_id):

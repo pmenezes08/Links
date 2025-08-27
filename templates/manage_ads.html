@@ -241,6 +241,11 @@
             color: #4db6ac;
         }
 
+        .action-btn.edit:hover {
+            background: rgba(77, 182, 172, 0.2);
+            color: #4db6ac;
+        }
+
         .action-btn.delete:hover {
             background: rgba(239, 83, 80, 0.2);
             color: #ef5350;
@@ -382,6 +387,11 @@
                         <td class="ctr">{{ ad.ctr }}</td>
                         <td>
                             <div class="actions">
+                                <button class="action-btn edit" 
+                                        onclick="editAd({{ ad.id }}, '{{ ad.title }}', '{{ ad.description or '' }}', '{{ ad.price }}', '{{ ad.image_url }}', '{{ ad.link_url or '' }}')" 
+                                        title="Edit">
+                                    <i class="fas fa-edit"></i>
+                                </button>
                                 <button class="action-btn {{ 'toggle-active' if ad.is_active }}" 
                                         onclick="toggleAd({{ ad.id }})" 
                                         title="{{ 'Deactivate' if ad.is_active else 'Activate' }}">
@@ -407,6 +417,135 @@
         </div>
     </div>
 
+    <!-- Edit Ad Modal -->
+    <div id="editModal" class="modal" style="display: none;">
+        <div class="modal-content" style="max-width: 600px;">
+            <div class="modal-header">
+                <h2>Edit Ad</h2>
+                <button class="close" onclick="closeEditModal()">&times;</button>
+            </div>
+            <form id="editAdForm" onsubmit="submitEditAd(event)">
+                <input type="hidden" id="editAdId">
+                <div class="form-group">
+                    <label for="editTitle">Title *</label>
+                    <input type="text" id="editTitle" required placeholder="Product name">
+                </div>
+                <div class="form-group">
+                    <label for="editDescription">Description</label>
+                    <textarea id="editDescription" placeholder="Product description (optional)"></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="editPrice">Price *</label>
+                    <input type="text" id="editPrice" required placeholder="e.g., $29.99">
+                </div>
+                <div class="form-group">
+                    <label for="editImageUrl">Image URL *</label>
+                    <input type="url" id="editImageUrl" required placeholder="https://example.com/image.jpg">
+                </div>
+                <div class="form-group">
+                    <label for="editLinkUrl">Product Link</label>
+                    <input type="url" id="editLinkUrl" placeholder="https://example.com/product (optional)">
+                </div>
+                <button type="submit" class="sleek-btn">Update Ad</button>
+            </form>
+        </div>
+    </div>
+
+    <style>
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.8);
+            animation: fadeIn 0.3s;
+        }
+
+        .modal-content {
+            background-color: #1a1a1a;
+            margin: 50px auto;
+            padding: 0;
+            border-radius: 12px;
+            width: 90%;
+            max-width: 600px;
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.5);
+            animation: slideIn 0.3s;
+        }
+
+        .modal-header {
+            background: linear-gradient(135deg, #2d8a7e 0%, #1a5952 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 12px 12px 0 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-header h2 {
+            margin: 0;
+            font-size: 20px;
+        }
+
+        .close {
+            color: white;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+            background: none;
+            border: none;
+            opacity: 0.8;
+        }
+
+        .close:hover {
+            opacity: 1;
+        }
+
+        #editAdForm {
+            padding: 20px;
+        }
+
+        #editAdForm .form-group {
+            margin-bottom: 15px;
+        }
+
+        #editAdForm label {
+            display: block;
+            margin-bottom: 5px;
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 13px;
+        }
+
+        #editAdForm input,
+        #editAdForm textarea {
+            width: 100%;
+            padding: 10px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 6px;
+            color: white;
+            font-size: 14px;
+        }
+
+        #editAdForm textarea {
+            min-height: 80px;
+            resize: vertical;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        @keyframes slideIn {
+            from { transform: translateY(-50px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+    </style>
+
     <script>
         function toggleAd(adId) {
             fetch(`/toggle_ad/${adId}`, {
@@ -426,6 +565,53 @@
             .catch(error => {
                 console.error('Error:', error);
                 alert('Error toggling ad status');
+            });
+        }
+
+        function editAd(id, title, description, price, imageUrl, linkUrl) {
+            document.getElementById('editAdId').value = id;
+            document.getElementById('editTitle').value = title;
+            document.getElementById('editDescription').value = description;
+            document.getElementById('editPrice').value = price;
+            document.getElementById('editImageUrl').value = imageUrl;
+            document.getElementById('editLinkUrl').value = linkUrl;
+            document.getElementById('editModal').style.display = 'block';
+        }
+
+        function closeEditModal() {
+            document.getElementById('editModal').style.display = 'none';
+        }
+
+        function submitEditAd(event) {
+            event.preventDefault();
+            
+            const adId = document.getElementById('editAdId').value;
+            const data = {
+                title: document.getElementById('editTitle').value,
+                description: document.getElementById('editDescription').value,
+                price: document.getElementById('editPrice').value,
+                image_url: document.getElementById('editImageUrl').value,
+                link_url: document.getElementById('editLinkUrl').value
+            };
+
+            fetch(`/update_ad/${adId}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(data)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    location.reload();
+                } else {
+                    alert(data.message || 'Error updating ad');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Error updating ad');
             });
         }
 
@@ -449,6 +635,14 @@
                     console.error('Error:', error);
                     alert('Error deleting ad');
                 });
+            }
+        }
+
+        // Close modal when clicking outside of it
+        window.onclick = function(event) {
+            const modal = document.getElementById('editModal');
+            if (event.target == modal) {
+                closeEditModal();
             }
         }
     </script>
