@@ -2325,17 +2325,24 @@
             overflow-y: auto;
             overflow-x: hidden;
             padding-right: 10px;
+            padding-bottom: 20px; /* Add padding at bottom */
         }
         
         /* Ensure members list is fully visible within the scrollable area */
         #addCalendarTab .members-list {
             position: relative;
             z-index: 10;
+            display: none; /* Hidden by default, controlled by JS */
+        }
+        
+        #addCalendarTab .members-list[style*="display: block"] {
+            display: block !important; /* Force display when toggled */
         }
         
         #addCalendarTab .members-checkbox-list {
             max-height: 200px !important;
             overflow-y: auto !important;
+            min-height: 50px !important; /* Ensure minimum height */
         }
         
         /* Polls tabs styling - compact and centered like announcements */
@@ -5000,9 +5007,46 @@
             if (tabName === 'view') {
                 renderCalendar();
                 loadCalendarEvents(true);
-            } else if (tabName === 'add' && selectedDate) {
-                document.getElementById('eventDate').value = formatDateForInput(selectedDate);
+                // Reset members list when leaving add tab
+                resetMembersList();
+            } else if (tabName === 'add') {
+                if (selectedDate) {
+                    document.getElementById('eventDate').value = formatDateForInput(selectedDate);
+                }
+                // Clear any previous member selections
+                resetMembersList();
+                loadedMembers = []; // Reset loaded members to force fresh load
             }
+        }
+        
+        function resetMembersList() {
+            const membersList = document.getElementById('membersList');
+            const icon = document.getElementById('membersToggleIcon');
+            const checkboxList = document.getElementById('membersCheckboxList');
+            
+            // Hide the list
+            if (membersList) {
+                membersList.style.display = 'none';
+            }
+            
+            // Reset icon
+            if (icon) {
+                icon.className = 'fas fa-chevron-down';
+            }
+            
+            // Clear checkboxes but keep loading message
+            if (checkboxList) {
+                const isLight = {{ 'true' if community.template == 'light' else 'false' }};
+                checkboxList.innerHTML = `<div style="color: ${isLight ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.5)'}; padding: 10px;">Loading...</div>`;
+            }
+            
+            // Reset invite all
+            inviteAllActive = false;
+            const inviteAllBtn = document.querySelector('.invite-all-btn');
+            if (inviteAllBtn) {
+                inviteAllBtn.classList.remove('active');
+            }
+            document.getElementById('inviteAll').value = 'false';
         }
         
         function showAddEventForm() {
@@ -5620,17 +5664,37 @@
         function toggleMembersList() {
             const membersList = document.getElementById('membersList');
             const icon = document.getElementById('membersToggleIcon');
+            const checkboxList = document.getElementById('membersCheckboxList');
             
             console.log('Toggle members list called, current display:', membersList.style.display);
+            console.log('Members list element:', membersList);
+            console.log('Checkbox list content:', checkboxList ? checkboxList.innerHTML : 'Not found');
             
             if (membersList.style.display === 'none' || membersList.style.display === '') {
                 membersList.style.display = 'block';
                 icon.className = 'fas fa-chevron-up';
                 console.log('Showing members list, loaded members count:', loadedMembers.length);
-                if (loadedMembers.length === 0) {
+                console.log('Loaded members:', loadedMembers);
+                
+                // Always re-render if we have members, or load if we don't
+                if (loadedMembers.length > 0) {
+                    console.log('Re-rendering existing members...');
+                    renderMembersList(loadedMembers);
+                } else {
                     console.log('Loading community members...');
                     loadCommunityMembers();
                 }
+                
+                // Check actual visibility
+                setTimeout(() => {
+                    const rect = membersList.getBoundingClientRect();
+                    console.log('Members list visibility check:', {
+                        display: membersList.style.display,
+                        offsetHeight: membersList.offsetHeight,
+                        rect: rect,
+                        visible: rect.height > 0
+                    });
+                }, 100);
             } else {
                 membersList.style.display = 'none';
                 icon.className = 'fas fa-chevron-down';
