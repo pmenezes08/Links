@@ -2332,18 +2332,17 @@
         #addCalendarTab .members-list {
             position: relative;
             z-index: 10;
-            display: none; /* Hidden by default, controlled by JS */
+            /* Remove default display:none, let inline styles control it */
         }
         
+        /* Force show when has the class or inline style */
+        #addCalendarTab .members-list.force-show,
         #addCalendarTab .members-list[style*="display: block"] {
-            display: block !important; /* Force display when toggled */
-        }
-        
-        /* Fallback class to force show */
-        .members-list.force-show {
             display: block !important;
             visibility: visible !important;
             opacity: 1 !important;
+            min-height: 100px !important;
+            height: auto !important;
         }
         
         #addCalendarTab .members-checkbox-list {
@@ -2851,6 +2850,8 @@
             border-radius: 6px;
             padding: 12px;
             margin-top: 10px;
+            min-height: 100px !important; /* Ensure minimum height */
+            overflow: visible !important; /* Ensure content is not clipped */
         }
         
         .members-search {
@@ -2874,9 +2875,10 @@
         .members-checkbox-list {
             max-height: 200px;
             overflow-y: auto;
-            display: grid;
+            display: grid !important; /* Force grid display */
             grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
             gap: 8px;
+            min-height: 50px; /* Ensure minimum height */
         }
         
         .member-checkbox {
