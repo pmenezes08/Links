@@ -5494,23 +5494,49 @@
         
         function loadCommunityMembers() {
             const communityId = {{ community.id }};
+            console.log('Loading members for community:', communityId);
+            
             fetch(`/community/${communityId}/members/list`)
-                .then(response => response.json())
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response.json();
+                })
                 .then(data => {
-                    if (data.success) {
+                    console.log('Members data received:', data);
+                    if (data.success && data.members) {
                         loadedMembers = data.members;
                         renderMembersList(loadedMembers);
+                    } else {
+                        console.error('No members found or error:', data.message);
+                        document.getElementById('membersCheckboxList').innerHTML = 
+                            '<div style="color: rgba(255,255,255,0.5); padding: 10px;">No members found</div>';
                     }
                 })
-                .catch(error => console.error('Error loading members:', error));
+                .catch(error => {
+                    console.error('Error loading members:', error);
+                    document.getElementById('membersCheckboxList').innerHTML = 
+                        '<div style="color: #f44336; padding: 10px;">Error loading members</div>';
+                });
         }
         
         function renderMembersList(members) {
             const container = document.getElementById('membersCheckboxList');
             const currentUser = {{ session.username|tojson|safe }};
             
-            container.innerHTML = members
-                .filter(member => member.username !== currentUser)
+            console.log('Rendering members list:', members);
+            console.log('Current user:', currentUser);
+            
+            // Filter out current user
+            const filteredMembers = members.filter(member => member.username !== currentUser);
+            
+            if (filteredMembers.length === 0) {
+                container.innerHTML = '<div style="color: rgba(255,255,255,0.5); padding: 10px;">No other members to invite</div>';
+                return;
+            }
+            
+            container.innerHTML = filteredMembers
                 .map(member => `
                     <div class="member-checkbox">
                         <input type="checkbox" id="member_${member.username}" name="invited_members[]" value="${member.username}">
@@ -5522,6 +5548,14 @@
                         </label>
                     </div>
                 `).join('');
+                
+            // Update invite all button state if needed
+            if (inviteAllActive) {
+                document.querySelectorAll('#membersCheckboxList input').forEach(cb => {
+                    cb.checked = true;
+                    cb.disabled = true;
+                });
+            }
         }
         
         function toggleInviteAll() {

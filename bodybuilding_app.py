@@ -710,6 +710,13 @@ def init_db():
                 c.execute("ALTER TABLE users ADD COLUMN is_active BOOLEAN DEFAULT 1")
                 logger.info("Added is_active column to users table")
             
+            # Add link column to notifications table if it doesn't exist
+            c.execute("PRAGMA table_info(notifications)")
+            notification_columns = [col[1] for col in c.fetchall()]
+            if 'link' not in notification_columns:
+                c.execute("ALTER TABLE notifications ADD COLUMN link TEXT")
+                logger.info("Added link column to notifications table")
+            
             # Check and add is_active to communities table  
             c.execute("PRAGMA table_info(communities)")
             community_columns = [col[1] for col in c.fetchall()]
@@ -6015,9 +6022,17 @@ def get_community_members_list(community_id):
     """Get list of community members for invitation selection"""
     try:
         username = session.get('username')
+        logger.info(f"Fetching members for community {community_id} requested by {username}")
         
         with get_db_connection() as conn:
             c = conn.cursor()
+            
+            # First check if community exists
+            c.execute("SELECT name FROM communities WHERE id = ?", (community_id,))
+            community = c.fetchone()
+            if not community:
+                logger.warning(f"Community {community_id} not found")
+                return jsonify({'success': False, 'message': 'Community not found'}), 404
             
             # Get community members with profile pictures
             c.execute("""
@@ -6030,7 +6045,10 @@ def get_community_members_list(community_id):
             """, (community_id,))
             
             members = []
-            for row in c.fetchall():
+            rows = c.fetchall()
+            logger.info(f"Found {len(rows)} members in community {community_id}")
+            
+            for row in rows:
                 members.append({
                     'username': row['username'],
                     'profile_picture': row['profile_picture'],
@@ -6040,11 +6058,14 @@ def get_community_members_list(community_id):
             return jsonify({
                 'success': True,
                 'members': members,
-                'total': len(members)
+                'total': len(members),
+                'community_name': community['name']
             })
             
     except Exception as e:
-        logger.error(f"Error fetching community members: {e}")
+        logger.error(f"Error fetching community members for community {community_id}: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
         return jsonify({'success': False, 'message': str(e)}), 500
 
 @app.route('/community/<int:community_id>/event/<int:event_id>/rsvp')
@@ -6782,9 +6803,9 @@ def add_calendar_event():
                         notification_link = f"/community/{community_id}/event/{event_id}/rsvp"
                         
                         c.execute("""
-                            INSERT INTO notifications (username, message, created_at, is_read, link, type)
-                            VALUES (?, ?, ?, 0, ?, 'event_invitation')
-                        """, (invited_user, notification_message, datetime.now().isoformat(), notification_link))
+                            INSERT INTO notifications (user_id, from_user, message, created_at, is_read, link, type, community_id)
+                            VALUES (?, ?, ?, ?, 0, ?, 'event_invitation', ?)
+                        """, (invited_user, username, notification_message, datetime.now().isoformat(), notification_link, community_id))
                         
                     except sqlite3.IntegrityError:
                         # Skip if already invited
