@@ -351,6 +351,30 @@
 			background: rgba(255, 255, 255, 0.05);
 			border-color: rgba(255, 255, 255, 0.12);
 		}
+		
+		.community-card.deactivated {
+			background: rgba(255, 68, 68, 0.02);
+			border-color: rgba(255, 68, 68, 0.15);
+			opacity: 0.85;
+		}
+		
+		.community-card.deactivated:hover {
+			border-color: rgba(255, 68, 68, 0.3);
+			box-shadow: 0 2px 8px rgba(255, 68, 68, 0.1);
+		}
+		
+		.deactivated-badge {
+			display: inline-block;
+			margin-left: 10px;
+			padding: 2px 8px;
+			background: rgba(255, 68, 68, 0.1);
+			color: #ff4444;
+			border: 1px solid rgba(255, 68, 68, 0.2);
+			border-radius: 12px;
+			font-size: 11px;
+			font-weight: normal;
+			vertical-align: middle;
+		}
 
 		.community-header {
 			display: flex;
@@ -1200,11 +1224,18 @@
 				return;
 			}
 
-			const communitiesHtml = communities.map(community => `
-				<div class="community-card">
+			const communitiesHtml = communities.map(community => {
+				const isDeactivated = community.is_active === false || community.is_active === 0;
+				const username = '{{ session.username }}';
+				
+				return `
+				<div class="community-card ${isDeactivated ? 'deactivated' : ''}">
 					<div class="community-header">
 						<div class="community-info">
-							<h4>${community.name}</h4>
+							<h4>
+								${community.name}
+								${isDeactivated ? '<span class="deactivated-badge"><i class="fas fa-ban"></i> Deactivated</span>' : ''}
+							</h4>
 							<div class="community-meta">
 								<span><i class="fas fa-tag"></i> ${community.type}</span>
 								${community.location ? `<span><i class="fas fa-map-marker-alt"></i> ${community.location}</span>` : ''}
@@ -1219,9 +1250,10 @@
 							</button>
 						</div>
 					</div>
-					<button class="community-btn" onclick="location.href='/community_feed/${community.id}'">
-						<span>View Community</span>
-						<i class="fas fa-arrow-right"></i>
+					<button class="community-btn" onclick="location.href='/community_feed/${community.id}'" 
+							${isDeactivated && username !== 'admin' ? 'style="opacity: 0.6; cursor: not-allowed;" title="This community is deactivated"' : ''}>
+						<span>${isDeactivated ? 'Community Deactivated' : 'View Community'}</span>
+						<i class="fas fa-${isDeactivated ? 'lock' : 'arrow-right'}"></i>
 					</button>
 					<div class="join-code-section">
 						<span class="join-code-label">Join Code:</span>
@@ -1231,7 +1263,7 @@
 						</button>
 					</div>
 				</div>
-			`).join('');
+			`}).join('');
 
 			container.html(communitiesHtml);
 		}

@@ -6960,9 +6960,9 @@ def get_user_communities():
         with get_db_connection() as conn:
             c = conn.cursor()
             
-            # Get user's communities with creator information
+            # Get user's communities with creator information and active status
             c.execute("""
-                SELECT c.id, c.name, c.type, c.join_code, c.created_at, c.creator_username
+                SELECT c.id, c.name, c.type, c.join_code, c.created_at, c.creator_username, c.is_active
                 FROM communities c
                 JOIN user_communities uc ON c.id = uc.community_id
                 JOIN users u ON uc.user_id = u.rowid
@@ -6978,7 +6978,8 @@ def get_user_communities():
                     'type': row['type'],
                     'join_code': row['join_code'],
                     'created_at': row['created_at'],
-                    'is_creator': row['creator_username'] == username
+                    'is_creator': row['creator_username'] == username,
+                    'is_active': row['is_active'] if row['is_active'] is not None else True
                 })
             
             return jsonify({'success': True, 'communities': communities})
@@ -7366,10 +7367,15 @@ def community_feed(community_id):
             
             community = dict(community_row)
             
-            # Check if community is deactivated (unless user is app admin)
-            if not community.get('is_active', True) and username != 'admin':
-                flash('This community has been deactivated.', 'error')
-                return redirect(url_for('communities'))
+            # Check if community is deactivated
+            if not community.get('is_active', True):
+                # Allow admin to override with a parameter
+                admin_override = request.args.get('admin_override') == 'true'
+                if username != 'admin' or not admin_override:
+                    # Show the deactivated notification page
+                    return render_template('community_deactivated.html', 
+                                         community=community, 
+                                         username=username)
             
             # Get parent community info if it exists
             parent_community = None
