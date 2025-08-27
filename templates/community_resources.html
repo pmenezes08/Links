@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Resource Sharing - {{ community.name }}</title>
+    <title>Misc - {{ community.name }}</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}?v=2.0">
     <style>
@@ -405,8 +405,8 @@
     <div class="resources-header-bar">
         <div class="header-content">
             <div class="header-title">
-                <i class="fas fa-share-alt" style="color: #4db6ac;"></i>
-                <h1>Resource Sharing</h1>
+                <i class="fas fa-folder" style="color: #4db6ac;"></i>
+                <h1>Misc</h1>
             </div>
             <a href="{{ url_for('community_feed', community_id=community.id) }}" class="back-btn">
                 <i class="fas fa-arrow-left"></i> Back to Community
@@ -418,7 +418,7 @@
         <!-- Create Post Section -->
         <div class="create-post-section">
             <div class="create-post-header">
-                <div class="create-post-title">Share a Resource</div>
+                <div class="create-post-title">Create a Post</div>
                 <button class="new-post-btn" onclick="togglePostForm()">
                     <i class="fas fa-plus"></i> New Post
                 </button>
@@ -445,7 +445,7 @@
                     
                     <div class="form-group">
                         <label for="postContent">Content *</label>
-                        <textarea id="postContent" class="form-textarea" placeholder="Share your resource, knowledge, or question..." required></textarea>
+                        <textarea id="postContent" class="form-textarea" placeholder="Share your thoughts, ideas, or questions..." required></textarea>
                     </div>
                     
                     <div class="form-group">
@@ -524,7 +524,7 @@
             {% else %}
                 <div class="no-posts">
                     <i class="fas fa-inbox"></i>
-                    <p>No resources shared yet. Be the first to share!</p>
+                    <p>No posts yet. Be the first to share!</p>
                 </div>
             {% endif %}
         </div>
@@ -673,7 +673,7 @@
                                 postsContainer.innerHTML = `
                                     <div class="no-posts">
                                         <i class="fas fa-inbox"></i>
-                                        <p>No resources shared yet. Be the first to share!</p>
+                                        <p>No posts yet. Be the first to share!</p>
                                     </div>
                                 `;
                             }
