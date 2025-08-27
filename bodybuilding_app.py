@@ -5368,12 +5368,11 @@ def community_resources(community_id):
             
             # Get resource posts for this community
             c.execute("""
-                SELECT p.*, u.profile_picture,
+                SELECT p.*,
                        (SELECT COUNT(*) FROM resource_comments WHERE post_id = p.id) as comment_count,
                        (SELECT COUNT(*) FROM resource_upvotes WHERE post_id = p.id) as upvote_count,
                        EXISTS(SELECT 1 FROM resource_upvotes WHERE post_id = p.id AND username = ?) as user_upvoted
                 FROM resource_posts p
-                JOIN users u ON p.username = u.username
                 WHERE p.community_id = ?
                 ORDER BY p.is_pinned DESC, p.created_at DESC
             """, (username, community_id))
