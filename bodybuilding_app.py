@@ -7066,6 +7066,140 @@ def delete_link():
         logger.error(f"Error deleting link: {str(e)}")
         return jsonify({'success': False, 'error': str(e)})
 
+@app.route('/edit_calendar_event', methods=['POST'])
+@login_required
+def edit_calendar_event():
+    """Edit a calendar event"""
+    try:
+        username = session.get('username')
+        if not username:
+            return jsonify({'success': False, 'message': 'User not logged in'})
+        
+        # Get event details from form
+        event_id = request.form.get('event_id')
+        title = request.form.get('title', '').strip()
+        date = request.form.get('date', '').strip()
+        end_date = request.form.get('end_date', '').strip()
+        start_time = request.form.get('start_time', '').strip()
+        end_time = request.form.get('end_time', '').strip()
+        description = request.form.get('description', '').strip()
+        
+        if not all([event_id, title, date]):
+            return jsonify({'success': False, 'message': 'Event ID, title, and date are required'})
+        
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Get event details and community info
+            c.execute("""
+                SELECT e.username, e.community_id, c.creator_username
+                FROM calendar_events e
+                LEFT JOIN communities c ON e.community_id = c.id
+                WHERE e.id = ?
+            """, (event_id,))
+            event = c.fetchone()
+            
+            if not event:
+                return jsonify({'success': False, 'message': 'Event not found'})
+            
+            event_owner = event['username']
+            community_id = event['community_id']
+            community_owner = event['creator_username'] if event['creator_username'] else None
+            
+            # Check if user is community admin
+            is_community_admin = False
+            if community_id:
+                c.execute("SELECT 1 FROM community_admins WHERE community_id = ? AND username = ?",
+                         (community_id, username))
+                is_community_admin = c.fetchone() is not None
+            
+            # Check permissions: user can edit if they're the event owner, app admin, community owner, or community admin
+            can_edit = (
+                event_owner == username or 
+                username == 'admin' or 
+                (community_owner and username == community_owner) or
+                is_community_admin
+            )
+            
+            if not can_edit:
+                return jsonify({'success': False, 'message': 'You do not have permission to edit this event'})
+            
+            # Update the event
+            c.execute("""
+                UPDATE calendar_events 
+                SET title = ?, date = ?, end_date = ?, start_time = ?, end_time = ?, 
+                    time = ?, description = ?
+                WHERE id = ?
+            """, (title, date, end_date if end_date else None, 
+                  start_time if start_time else None, end_time if end_time else None,
+                  start_time if start_time else None,  # Keep time field for compatibility
+                  description, event_id))
+            
+            conn.commit()
+            
+            return jsonify({'success': True, 'message': 'Event updated successfully'})
+            
+    except Exception as e:
+        logger.error(f"Error editing calendar event: {str(e)}")
+        return jsonify({'success': False, 'message': str(e)})
+
+@app.route('/get_calendar_event/<int:event_id>')
+@login_required
+def get_calendar_event(event_id):
+    """Get details of a specific calendar event for editing"""
+    try:
+        username = session.get('username')
+        
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Get event details
+            c.execute("""
+                SELECT e.*, c.creator_username
+                FROM calendar_events e
+                LEFT JOIN communities c ON e.community_id = c.id
+                WHERE e.id = ?
+            """, (event_id,))
+            
+            event = c.fetchone()
+            
+            if not event:
+                return jsonify({'success': False, 'message': 'Event not found'})
+            
+            # Check if user is community admin
+            is_community_admin = False
+            if event['community_id']:
+                c.execute("SELECT 1 FROM community_admins WHERE community_id = ? AND username = ?",
+                         (event['community_id'], username))
+                is_community_admin = c.fetchone() is not None
+            
+            # Check if user can edit
+            can_edit = (
+                event['username'] == username or 
+                username == 'admin' or 
+                (event['creator_username'] and username == event['creator_username']) or
+                is_community_admin
+            )
+            
+            return jsonify({
+                'success': True,
+                'event': {
+                    'id': event['id'],
+                    'title': event['title'],
+                    'date': event['date'],
+                    'end_date': event['end_date'],
+                    'start_time': event['start_time'] or event['time'],
+                    'end_time': event['end_time'],
+                    'description': event['description'],
+                    'username': event['username'],
+                    'can_edit': can_edit
+                }
+            })
+            
+    except Exception as e:
+        logger.error(f"Error getting calendar event: {str(e)}")
+        return jsonify({'success': False, 'message': str(e)})
+
 @app.route('/delete_calendar_event', methods=['POST'])
 @login_required
 def delete_calendar_event():
@@ -7085,21 +7219,41 @@ def delete_calendar_event():
         with get_db_connection() as conn:
             c = conn.cursor()
             
-            # Check if event exists and get owner
-            c.execute("SELECT username FROM calendar_events WHERE id = ?", (event_id,))
+            # Get event details and community info
+            c.execute("""
+                SELECT e.username, e.community_id, c.creator_username
+                FROM calendar_events e
+                LEFT JOIN communities c ON e.community_id = c.id
+                WHERE e.id = ?
+            """, (event_id,))
             event = c.fetchone()
             
             if not event:
-                # List all event IDs for debugging
-                c.execute("SELECT id FROM calendar_events")
-                existing_ids = [row['id'] for row in c.fetchall()]
-                logger.warning(f"Event {event_id} not found. Existing IDs: {existing_ids}")
-                return jsonify({'success': False, 'message': f'Event not found (ID: {event_id}). Existing events: {existing_ids}'})
+                logger.warning(f"Event {event_id} not found")
+                return jsonify({'success': False, 'message': 'Event not found'})
             
-            # Check permission
-            if event['username'] != username and username != 'admin':
-                logger.warning(f"User {username} tried to delete event owned by {event['username']}")
-                return jsonify({'success': False, 'message': f'Unauthorized: you can only delete your own events'})
+            event_owner = event['username']
+            community_id = event['community_id']
+            community_owner = event['creator_username'] if event['creator_username'] else None
+            
+            # Check if user is community admin
+            is_community_admin = False
+            if community_id:
+                c.execute("SELECT 1 FROM community_admins WHERE community_id = ? AND username = ?",
+                         (community_id, username))
+                is_community_admin = c.fetchone() is not None
+            
+            # Check permissions: user can delete if they're the event owner, app admin, community owner, or community admin
+            can_delete = (
+                event_owner == username or 
+                username == 'admin' or 
+                (community_owner and username == community_owner) or
+                is_community_admin
+            )
+            
+            if not can_delete:
+                logger.warning(f"User {username} tried to delete event owned by {event_owner}")
+                return jsonify({'success': False, 'message': 'You do not have permission to delete this event'})
             
             # Delete the event
             c.execute("DELETE FROM calendar_events WHERE id = ?", (event_id,))

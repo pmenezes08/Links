@@ -3171,6 +3171,31 @@
             margin-bottom: 4px;
         }
         
+        .event-actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 8px;
+        }
+        
+        .event-edit-btn {
+            background: {{ community.accent_color or '#2d8a7e' }};
+            color: #ffffff;
+            border: none;
+            padding: 4px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 11px;
+            transition: all 0.2s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+        
+        .event-edit-btn:hover {
+            background: {{ community.accent_color or '#2d8a7e' }};
+            opacity: 0.8;
+        }
+        
         .event-delete-btn {
             background: #ff4444;
             color: #ffffff;
@@ -3179,8 +3204,10 @@
             border-radius: 4px;
             cursor: pointer;
             font-size: 11px;
-            margin-top: 8px;
             transition: all 0.2s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
         }
         
         .event-delete-btn:hover {
@@ -5259,9 +5286,16 @@
             document.querySelectorAll('#calendarModal .poll-tab').forEach(tab => tab.classList.remove('active'));
             document.querySelectorAll('#calendarModal .poll-tab-content').forEach(content => content.classList.remove('active'));
             
+            // Hide/show edit tab button based on context
+            const editTabButton = document.getElementById('editTabButton');
+            if (tabName !== 'edit' && editTabButton.style.display === 'block') {
+                editTabButton.style.display = 'none';
+            }
+            
             // Add active class to selected tab and content
             document.querySelector(`#calendarModal [onclick="switchCalendarTab('${tabName}')"]`).classList.add('active');
             document.getElementById(`${tabName}CalendarTab`).classList.add('active');
+            document.getElementById(`${tabName}CalendarTab`).style.display = 'block';
             
             if (tabName === 'view') {
                 renderCalendar();
@@ -5498,8 +5532,14 @@
                     timeDisplay = `<div class="event-time"><i class="far fa-clock"></i> ${escapeHtml(startTime)}</div>`;
                 }
                 
-                // Check if user can delete this event
-                const canDelete = (event.username === currentUser || isAdmin);
+                // Check permissions based on community roles
+                const communityOwner = {{ community.creator_username|tojson|safe if community.creator_username else 'null' }};
+                const isCommunityOwner = currentUser === communityOwner;
+                const isCommunityAdmin = {{ 'true' if username in community_admins else 'false' }}; // We'll need to pass this from backend
+                
+                // User can edit/delete if they're the event owner, app admin, community owner, or community admin
+                const canEdit = (event.username === currentUser || isAdmin || isCommunityOwner);
+                const canDelete = canEdit; // Same permissions for delete
                 
                 // Escape HTML in user content
                 const escapeHtml = (text) => {
@@ -5563,7 +5603,10 @@
                             </div>
                         </div>
                         
-                        ${canDelete ? `<button class="event-delete-btn" onclick="deleteCalendarEvent(${event.id})">Delete</button>` : ''}
+                        <div class="event-actions">
+                            ${canEdit ? `<button class="event-edit-btn" onclick="editCalendarEvent(${event.id})"><i class="fas fa-edit"></i> Edit</button>` : ''}
+                            ${canDelete ? `<button class="event-delete-btn" onclick="deleteCalendarEvent(${event.id})"><i class="fas fa-trash"></i> Delete</button>` : ''}
+                        </div>
                     </div>
                 `;
             });
@@ -6060,6 +6103,34 @@
             });
         }
         
+        function editCalendarEvent(eventId) {
+            // Fetch event details
+            fetch(`/get_calendar_event/${eventId}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success && data.event.can_edit) {
+                        // Populate edit form
+                        document.getElementById('editEventId').value = data.event.id;
+                        document.getElementById('editEventTitle').value = data.event.title || '';
+                        document.getElementById('editEventDate').value = data.event.date || '';
+                        document.getElementById('editEventEndDate').value = data.event.end_date || '';
+                        document.getElementById('editEventStartTime').value = data.event.start_time || '';
+                        document.getElementById('editEventEndTime').value = data.event.end_time || '';
+                        document.getElementById('editEventDescription').value = data.event.description || '';
+                        
+                        // Show edit tab
+                        document.getElementById('editTabButton').style.display = 'block';
+                        switchCalendarTab('edit');
+                    } else {
+                        alert('You do not have permission to edit this event');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error fetching event details:', error);
+                    alert('Error loading event details');
+                });
+        }
+        
         function deleteCalendarEvent(eventId) {
             console.log('Attempting to delete event with ID:', eventId);
             
@@ -6123,6 +6194,42 @@
         
         // Add event form submission
         document.addEventListener('DOMContentLoaded', function() {
+            // Edit event form submission
+            const editEventForm = document.getElementById('editEventForm');
+            if (editEventForm) {
+                editEventForm.addEventListener('submit', function(e) {
+                    e.preventDefault();
+                    
+                    const formData = new FormData(this);
+                    
+                    fetch('/edit_calendar_event', {
+                        method: 'POST',
+                        body: formData
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            document.getElementById('editEventForm').reset();
+                            document.getElementById('editTabButton').style.display = 'none';
+                            switchCalendarTab('view');
+                            loadCalendarEvents(true);
+                            setTimeout(() => {
+                                if (selectedDate) {
+                                    displayEventsForDate(selectedDate);
+                                }
+                            }, 200);
+                            alert('Event updated successfully!');
+                        } else {
+                            alert('Error updating event: ' + (data.message || 'Unknown error'));
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        alert('Error updating event');
+                    });
+                });
+            }
+            
             const addEventForm = document.getElementById('addEventForm');
             if (addEventForm) {
                 addEventForm.addEventListener('submit', function(e) {
@@ -6193,6 +6300,7 @@
                 <div class="polls-tabs">
                     <button class="poll-tab active" onclick="switchCalendarTab('view')">View Calendar</button>
                     <button class="poll-tab" onclick="switchCalendarTab('add')">Add Event</button>
+                    <button class="poll-tab" id="editTabButton" style="display:none;" onclick="switchCalendarTab('edit')">Edit Event</button>
                 </div>
                 
                 <div id="viewCalendarTab" class="poll-tab-content active">
@@ -6293,6 +6401,49 @@
                         </button>
                     </div>
                 </form>
+                </div>
+                
+                <!-- Edit Event Tab -->
+                <div id="editCalendarTab" class="poll-tab-content" style="display:none;">
+                    <form id="editEventForm" style="max-width: 500px; margin: 0 auto;">
+                        <input type="hidden" id="editEventId" name="event_id">
+                        <div class="form-group">
+                            <label for="editEventTitle">Event Title *</label>
+                            <input type="text" id="editEventTitle" name="title" placeholder="Enter event title" required>
+                        </div>
+                        <div class="form-group" style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                            <div>
+                                <label for="editEventDate">Start Date *</label>
+                                <input type="date" id="editEventDate" name="date" required>
+                            </div>
+                            <div>
+                                <label for="editEventEndDate">End Date</label>
+                                <input type="date" id="editEventEndDate" name="end_date">
+                            </div>
+                        </div>
+                        <div class="form-group" style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                            <div>
+                                <label for="editEventStartTime">Start Time</label>
+                                <input type="time" id="editEventStartTime" name="start_time">
+                            </div>
+                            <div>
+                                <label for="editEventEndTime">End Time</label>
+                                <input type="time" id="editEventEndTime" name="end_time">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="editEventDescription">Description</label>
+                            <textarea id="editEventDescription" name="description" placeholder="Event details..." rows="2"></textarea>
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit" class="sleek-btn">
+                                <i class="fas fa-save"></i> Update Event
+                            </button>
+                            <button type="button" class="sleek-btn secondary" onclick="switchCalendarTab('view')">
+                                <i class="fas fa-times"></i> Cancel
+                            </button>
+                        </div>
+                    </form>
                 </div>
             </div>
         </div>
