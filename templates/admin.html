@@ -608,6 +608,144 @@
             text-align: center;
         }
         
+        /* Users Table Styles */
+        .users-controls {
+            padding: 12px 20px;
+            background: rgba(255, 255, 255, 0.02);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        
+        .search-filter-container {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+        
+        .search-input-compact {
+            flex: 1;
+            padding: 8px 12px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 6px;
+            color: #ffffff;
+            font-size: 13px;
+        }
+        
+        .filter-select-compact {
+            padding: 8px 12px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 6px;
+            color: #ffffff;
+            font-size: 13px;
+            cursor: pointer;
+        }
+        
+        .users-summary {
+            display: flex;
+            gap: 20px;
+            font-size: 13px;
+            color: rgba(255, 255, 255, 0.8);
+        }
+        
+        .users-summary span {
+            padding: 4px 8px;
+            background: rgba(77, 182, 172, 0.05);
+            border-radius: 4px;
+        }
+        
+        .users-table-container {
+            flex: 1;
+            overflow-y: auto;
+            overflow-x: auto;
+            padding: 0;
+        }
+        
+        .users-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        
+        .users-table thead {
+            background: rgba(255, 255, 255, 0.03);
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+        
+        .users-table th {
+            padding: 10px 12px;
+            text-align: left;
+            font-weight: 600;
+            color: #4db6ac;
+            border-bottom: 2px solid rgba(77, 182, 172, 0.3);
+            white-space: nowrap;
+        }
+        
+        .users-table th:last-child {
+            min-width: 200px;
+            text-align: center;
+        }
+        
+        .users-table tbody tr {
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            transition: background 0.2s;
+        }
+        
+        .users-table tbody tr:hover {
+            background: rgba(255, 255, 255, 0.02);
+        }
+        
+        .users-table tbody tr.deactivated {
+            opacity: 0.7;
+            background: rgba(255, 68, 68, 0.02);
+        }
+        
+        .users-table td {
+            padding: 8px 12px;
+            vertical-align: middle;
+        }
+        
+        .user-display {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .user-icon-small {
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.5);
+        }
+        
+        .admin-badge {
+            padding: 2px 6px;
+            background: linear-gradient(135deg, #ffa500, #ff6b6b);
+            color: white;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        
+        .subscription-badge-compact {
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 500;
+            text-transform: uppercase;
+        }
+        
+        .subscription-badge-compact.premium {
+            background: linear-gradient(135deg, #FFD700, #FFA500);
+            color: #000000;
+        }
+        
+        .subscription-badge-compact.free {
+            background: rgba(255, 255, 255, 0.1);
+            color: rgba(255, 255, 255, 0.7);
+        }
+        
         /* Responsive adjustments for compact modal */
         @media (max-width: 1500px) {
             .compact-modal {
@@ -1076,65 +1214,103 @@
 
     <!-- Users Modal -->
     <div id="usersModal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
+        <div class="modal-content compact-modal">
+            <div class="modal-header compact-header">
                 <h3>User Management</h3>
                 <span class="close" onclick="closeUsersModal()">&times;</span>
             </div>
-            <div class="section-header">
-                <div>
-                    <input type="text" id="userSearch" placeholder="Search users..." class="search-input">
-                    <select id="userFilter" class="filter-select">
-                        <option value="all">All Users</option>
-                        <option value="premium">Premium</option>
-                        <option value="free">Free</option>
-                    </select>
-                </div>
-            </div>
-            <div class="users-grid" id="usersGrid">
-                {% for user in users %}
-                <div class="user-card" data-username="{{ user[0] }}" data-subscription="{{ user[1] }}" data-active="{{ user[2]|default(true) }}">
-                    <div class="user-header">
-                        <div class="user-avatar">
-                            <i class="fas fa-user"></i>
-                        </div>
-                        <div class="user-info">
-                            <h4>
-                                {{ user[0] }}
-                                {% if not user[2]|default(true) %}
-                                <span style="color: #ff4444; font-size: 11px;">(Deactivated)</span>
-                                {% endif %}
-                            </h4>
-                            <span class="subscription-badge {{ user[1] }}">
-                                {{ user[1]|title }}
-                            </span>
-                        </div>
+            <div class="modal-body-compact">
+                <div class="users-controls">
+                    <div class="search-filter-container">
+                        <input type="text" id="userSearch" placeholder="Search users..." class="search-input-compact">
+                        <select id="userFilter" class="filter-select-compact">
+                            <option value="all">All Users</option>
+                            <option value="premium">Premium</option>
+                            <option value="free">Free</option>
+                            <option value="active">Active</option>
+                            <option value="deactivated">Deactivated</option>
+                        </select>
                     </div>
-                    <div class="user-actions">
-                        <button onclick="showPasswordModal('{{ user[0] }}')" class="action-btn" title="Update Password">
-                            <i class="fas fa-key"></i>
-                        </button>
-                        <button onclick="showSubscriptionModal('{{ user[0] }}', '{{ user[1] }}')" class="action-btn" title="Change Subscription">
-                            <i class="fas fa-crown"></i>
-                        </button>
-                        <button onclick="showUserDetails('{{ user[0] }}')" class="action-btn" title="View Details">
-                            <i class="fas fa-eye"></i>
-                        </button>
-                        {% if user[0] != 'admin' %}
-                        <button onclick="toggleUserStatus('{{ user[0] }}', {{ 'false' if user[2]|default(true) else 'true' }})" 
-                                class="action-btn {{ 'warning' if user[2]|default(true) else 'success' }}" 
-                                title="{{ 'Deactivate' if user[2]|default(true) else 'Activate' }} User">
-                            <i class="fas fa-{{ 'ban' if user[2]|default(true) else 'check-circle' }}"></i>
-                        </button>
-                        <button onclick="deleteUser('{{ user[0] }}')" class="action-btn danger" title="Delete User">
-                            <i class="fas fa-trash"></i>
-                        </button>
-                        {% endif %}
+                    <div class="users-summary">
+                        <span>Total: {{ users|length }} users</span>
+                        {% set active_users = users|selectattr('2')|list|length %}
+                        {% set inactive_users = users|length - active_users %}
+                        <span>Active: {{ active_users }}</span>
+                        <span>Deactivated: {{ inactive_users }}</span>
                     </div>
                 </div>
-                {% endfor %}
+                <div class="users-table-container">
+                    <table class="users-table">
+                        <thead>
+                            <tr>
+                                <th>Username</th>
+                                <th>Subscription</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="usersTableBody">
+                            {% for user in users %}
+                            <tr class="user-row {{ 'deactivated' if not user[2]|default(true) else '' }}" 
+                                data-username="{{ user[0] }}" 
+                                data-subscription="{{ user[1] }}"
+                                data-active="{{ user[2]|default(true) }}">
+                                <td class="username-cell">
+                                    <div class="user-display">
+                                        <i class="fas fa-user user-icon-small"></i>
+                                        <strong>{{ user[0] }}</strong>
+                                        {% if user[0] == 'admin' %}
+                                        <span class="admin-badge">Admin</span>
+                                        {% endif %}
+                                        {% if not user[2]|default(true) %}
+                                        <span class="deactivated-badge-compact">Deactivated</span>
+                                        {% endif %}
+                                    </div>
+                                </td>
+                                <td>
+                                    <span class="subscription-badge-compact {{ user[1] }}">
+                                        {{ user[1]|title }}
+                                    </span>
+                                </td>
+                                <td>
+                                    <span class="status-indicator {{ 'active' if user[2]|default(true) else 'inactive' }}">
+                                        {{ 'Active' if user[2]|default(true) else 'Inactive' }}
+                                    </span>
+                                </td>
+                                <td class="actions-cell">
+                                    <div class="compact-actions">
+                                        <button onclick="showPasswordModal('{{ user[0] }}')" 
+                                                class="action-btn-compact" title="Update Password">
+                                            <i class="fas fa-key"></i>
+                                        </button>
+                                        <button onclick="showSubscriptionModal('{{ user[0] }}', '{{ user[1] }}')" 
+                                                class="action-btn-compact" title="Change Subscription">
+                                            <i class="fas fa-crown"></i>
+                                        </button>
+                                        <button onclick="showUserDetails('{{ user[0] }}')" 
+                                                class="action-btn-compact" title="View Details">
+                                            <i class="fas fa-eye"></i>
+                                        </button>
+                                        {% if user[0] != 'admin' %}
+                                        <button onclick="toggleUserStatus('{{ user[0] }}', {{ 'false' if user[2]|default(true) else 'true' }})" 
+                                                class="action-btn-compact {{ 'warning' if user[2]|default(true) else 'success' }}" 
+                                                title="{{ 'Deactivate' if user[2]|default(true) else 'Activate' }}">
+                                            <i class="fas fa-{{ 'ban' if user[2]|default(true) else 'check-circle' }}"></i>
+                                        </button>
+                                        <button onclick="deleteUser('{{ user[0] }}')" 
+                                                class="action-btn-compact danger" title="Delete">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                        {% endif %}
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
             </div>
-            <div class="modal-actions">
+            <div class="modal-actions compact-actions">
                 <button type="button" class="btn btn-secondary" onclick="closeUsersModal()">Close</button>
             </div>
         </div>
@@ -1411,11 +1587,54 @@
         
         function showUsersModal() {
             $('#usersModal').show();
+            // Initialize search and filter
+            filterUsers();
         }
         
         function closeUsersModal() {
             $('#usersModal').hide();
         }
+        
+        // User search and filter functionality
+        function filterUsers() {
+            const searchTerm = $('#userSearch').val().toLowerCase();
+            const filterType = $('#userFilter').val();
+            
+            $('#usersTableBody tr').each(function() {
+                const $row = $(this);
+                const username = $row.data('username').toLowerCase();
+                const subscription = $row.data('subscription');
+                const isActive = $row.data('active');
+                
+                let showRow = true;
+                
+                // Apply search filter
+                if (searchTerm && !username.includes(searchTerm)) {
+                    showRow = false;
+                }
+                
+                // Apply type filter
+                if (filterType !== 'all') {
+                    if (filterType === 'premium' && subscription !== 'premium') {
+                        showRow = false;
+                    } else if (filterType === 'free' && subscription !== 'free') {
+                        showRow = false;
+                    } else if (filterType === 'active' && !isActive) {
+                        showRow = false;
+                    } else if (filterType === 'deactivated' && isActive) {
+                        showRow = false;
+                    }
+                }
+                
+                $row.toggle(showRow);
+            });
+        }
+        
+        // Attach event listeners for search and filter
+        $(document).ready(function() {
+            $('#userSearch').on('keyup', filterUsers);
+            $('#userFilter').on('change', filterUsers);
+        });
         
         function showCommunitiesModal() {
             $('#communitiesModal').show();
