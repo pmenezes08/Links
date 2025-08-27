@@ -80,17 +80,17 @@
         }
         
         .resources-container {
-            padding: 80px 20px 20px 20px;
-            max-width: 1200px;
+            padding: 70px 15px 15px 15px;
+            max-width: 900px;
             margin: 0 auto;
         }
         
         /* Create Post Section */
         .create-post-section {
-            background: rgba(255, 255, 255, 0.05);
-            border-radius: 12px;
-            padding: 20px;
-            margin-bottom: 30px;
+            background: #000000;
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 20px;
             border: 1px solid rgba(255, 255, 255, 0.1);
         }
         
@@ -98,11 +98,11 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 15px;
+            margin-bottom: 10px;
         }
         
         .create-post-title {
-            font-size: 16px;
+            font-size: 14px;
             font-weight: 600;
             color: #4db6ac;
         }
@@ -111,14 +111,14 @@
             background: #4db6ac;
             color: white;
             border: none;
-            padding: 10px 20px;
+            padding: 8px 16px;
             border-radius: 6px;
-            font-size: 14px;
+            font-size: 13px;
             cursor: pointer;
             transition: all 0.3s ease;
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 6px;
         }
         
         .new-post-btn:hover {
@@ -127,7 +127,7 @@
         
         .post-form {
             display: none;
-            margin-top: 20px;
+            margin-top: 12px;
         }
         
         .post-form.active {
@@ -135,61 +135,68 @@
         }
         
         .form-group {
-            margin-bottom: 15px;
+            margin-bottom: 10px;
         }
         
         .form-group label {
             display: block;
-            font-size: 13px;
+            font-size: 12px;
             color: rgba(255, 255, 255, 0.7);
-            margin-bottom: 5px;
+            margin-bottom: 4px;
         }
         
         .form-input {
-            width: 100%;
-            padding: 10px;
-            background: rgba(255, 255, 255, 0.08);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            border-radius: 6px;
+            width: calc(100% - 20px);
+            padding: 8px 10px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 4px;
             color: white;
-            font-size: 14px;
+            font-size: 13px;
+            box-sizing: border-box;
         }
         
         .form-textarea {
-            width: 100%;
-            padding: 10px;
-            background: rgba(255, 255, 255, 0.08);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            border-radius: 6px;
+            width: calc(100% - 20px);
+            padding: 8px 10px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 4px;
             color: white;
-            font-size: 14px;
-            min-height: 120px;
-            resize: vertical;
+            font-size: 13px;
+            min-height: 80px;
+            resize: none;
+            overflow: hidden;
+            box-sizing: border-box;
+            font-family: inherit;
+            line-height: 1.5;
         }
         
         .form-select {
-            width: 100%;
-            padding: 10px;
-            background: rgba(255, 255, 255, 0.08);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            border-radius: 6px;
+            width: calc(100% - 20px);
+            padding: 8px 10px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 4px;
             color: white;
-            font-size: 14px;
+            font-size: 13px;
+            box-sizing: border-box;
         }
         
         .form-actions {
             display: flex;
-            gap: 10px;
+            gap: 8px;
             justify-content: flex-end;
+            margin-top: 12px;
         }
         
         .submit-btn {
             background: #4db6ac;
             color: white;
             border: none;
-            padding: 10px 20px;
-            border-radius: 6px;
-            font-size: 14px;
+            padding: 8px 16px;
+            border-radius: 4px;
+            font-size: 13px;
             cursor: pointer;
             transition: all 0.3s ease;
         }
@@ -199,61 +206,61 @@
         }
         
         .cancel-btn {
-            background: rgba(255, 255, 255, 0.1);
+            background: rgba(255, 255, 255, 0.05);
             color: white;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            padding: 10px 20px;
-            border-radius: 6px;
-            font-size: 14px;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            padding: 8px 16px;
+            border-radius: 4px;
+            font-size: 13px;
             cursor: pointer;
             transition: all 0.3s ease;
         }
         
         .cancel-btn:hover {
-            background: rgba(255, 255, 255, 0.15);
+            background: rgba(255, 255, 255, 0.1);
         }
         
         /* Posts List */
         .posts-container {
             display: grid;
-            gap: 20px;
+            gap: 12px;
         }
         
         .resource-post {
-            background: rgba(255, 255, 255, 0.05);
-            border-radius: 12px;
-            padding: 20px;
+            background: #000000;
+            border-radius: 8px;
+            padding: 12px;
             border: 1px solid rgba(255, 255, 255, 0.1);
             transition: all 0.3s ease;
         }
         
         .resource-post:hover {
-            background: rgba(255, 255, 255, 0.08);
+            background: rgba(255, 255, 255, 0.02);
         }
         
         .post-header {
             display: flex;
             justify-content: space-between;
             align-items: flex-start;
-            margin-bottom: 15px;
+            margin-bottom: 10px;
         }
         
         .post-author {
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 8px;
         }
         
         .author-avatar {
-            width: 40px;
-            height: 40px;
+            width: 32px;
+            height: 32px;
             border-radius: 50%;
             background: #4db6ac;
             display: flex;
             align-items: center;
             justify-content: center;
             font-weight: 600;
-            font-size: 16px;
+            font-size: 14px;
         }
         
         .author-info {
@@ -262,55 +269,55 @@
         }
         
         .author-name {
-            font-size: 14px;
+            font-size: 13px;
             font-weight: 600;
             color: #ffffff;
         }
         
         .post-time {
-            font-size: 12px;
+            font-size: 11px;
             color: rgba(255, 255, 255, 0.5);
         }
         
         .post-category {
             background: rgba(77, 182, 172, 0.2);
             color: #4db6ac;
-            padding: 4px 12px;
-            border-radius: 12px;
-            font-size: 12px;
+            padding: 3px 8px;
+            border-radius: 10px;
+            font-size: 11px;
             font-weight: 500;
         }
         
         .post-title {
-            font-size: 18px;
+            font-size: 15px;
             font-weight: 600;
             color: #ffffff;
-            margin-bottom: 10px;
+            margin-bottom: 8px;
         }
         
         .post-content {
-            font-size: 14px;
+            font-size: 13px;
             color: rgba(255, 255, 255, 0.8);
-            line-height: 1.6;
-            margin-bottom: 15px;
+            line-height: 1.5;
+            margin-bottom: 10px;
         }
         
         .post-actions {
             display: flex;
-            gap: 20px;
+            gap: 15px;
             align-items: center;
-            padding-top: 15px;
+            padding-top: 10px;
             border-top: 1px solid rgba(255, 255, 255, 0.1);
         }
         
         .action-btn {
             display: flex;
             align-items: center;
-            gap: 6px;
+            gap: 4px;
             background: none;
             border: none;
             color: rgba(255, 255, 255, 0.6);
-            font-size: 14px;
+            font-size: 12px;
             cursor: pointer;
             transition: all 0.3s ease;
         }
@@ -495,11 +502,30 @@
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="{{ url_for('static', filename='script.js') }}"></script>
     <script>
+        // Auto-expand textarea
+        function autoExpand(textarea) {
+            textarea.style.height = 'auto';
+            textarea.style.height = textarea.scrollHeight + 'px';
+        }
+        
+        // Initialize textarea auto-expand
+        document.addEventListener('DOMContentLoaded', function() {
+            const textarea = document.getElementById('postContent');
+            if (textarea) {
+                textarea.addEventListener('input', function() {
+                    autoExpand(this);
+                });
+            }
+        });
+        
         function togglePostForm() {
             const form = document.getElementById('postForm');
             form.classList.toggle('active');
             if (form.classList.contains('active')) {
                 document.getElementById('postTitle').focus();
+                // Reset textarea height
+                const textarea = document.getElementById('postContent');
+                textarea.style.height = '80px';
             }
         }
         

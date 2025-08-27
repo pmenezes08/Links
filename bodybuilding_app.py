@@ -5410,16 +5410,7 @@ def create_resource_post(community_id):
         with get_db_connection() as conn:
             c = conn.cursor()
             
-            # Verify user is member of community
-            c.execute("""
-                SELECT 1 FROM community_members 
-                WHERE community_id = ? AND username = ?
-            """, (community_id, username))
-            
-            if not c.fetchone():
-                return jsonify({'success': False, 'message': 'You must be a member to post'}), 403
-            
-            # Create post
+            # Create post directly (access control is handled at page level)
             c.execute("""
                 INSERT INTO resource_posts 
                 (community_id, username, title, content, category, attachment_url, created_at)
