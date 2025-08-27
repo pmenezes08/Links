@@ -2549,16 +2549,17 @@
         }
         
         #currentMonth {
-            color: #ffffff;
+            color: {{ '#212529' if community.template == 'light' else '#ffffff' }};
             font-size: 18px;
             font-weight: 600;
             margin: 0;
         }
         
         #calendarModal .calendar-grid {
-            background: rgba(255, 255, 255, 0.05) !important;
+            background: {{ 'rgba(0, 0, 0, 0.03)' if community.template == 'light' else 'rgba(255, 255, 255, 0.05)' }} !important;
             border-radius: 6px !important;
             padding: 5px !important;
+            border: 1px solid {{ '#dee2e6' if community.template == 'light' else 'transparent' }} !important;
         }
         
         #calendarModal .calendar-weekdays {
@@ -2574,19 +2575,20 @@
             color: {{ community.accent_color or '#2d8a7e' }} !important;
             font-weight: 600 !important;
             font-size: 10px !important;
+            background: {{ 'rgba(0, 0, 0, 0.03)' if community.template == 'light' else 'transparent' }} !important;
         }
         
         #calendarModal .calendar-days {
             display: grid !important;
             grid-template-columns: repeat(7, 1fr) !important;
             gap: 1px !important;
-            background: rgba(255, 255, 255, 0.05) !important;
+            background: {{ 'rgba(0, 0, 0, 0.05)' if community.template == 'light' else 'rgba(255, 255, 255, 0.05)' }} !important;
         }
         
         #calendarModal .calendar-day {
             /* Removed aspect-ratio to allow smaller height */
-            background: rgba(255, 255, 255, 0.02) !important;
-            border: 1px solid rgba(255, 255, 255, 0.1) !important;
+            background: {{ '#ffffff' if community.template == 'light' else 'rgba(255, 255, 255, 0.02)' }} !important;
+            border: 1px solid {{ '#dee2e6' if community.template == 'light' else 'rgba(255, 255, 255, 0.1)' }} !important;
             padding: 1px !important;
             cursor: pointer !important;
             transition: all 0.2s ease !important;
@@ -2600,13 +2602,13 @@
         }
         
         .calendar-day:hover {
-            background: rgba(45, 138, 126, 0.2);
-            border-color: {{ community.accent_color or '#2d8a7e' }};
+            background: {{ 'rgba(45, 138, 126, 0.15)' if community.template == 'light' else 'rgba(45, 138, 126, 0.2)' }} !important;
+            border-color: {{ community.accent_color or '#2d8a7e' }} !important;
         }
         
         .calendar-day.selected {
-            background: rgba(45, 138, 126, 0.3);
-            border-color: {{ community.accent_color or '#2d8a7e' }};
+            background: {{ 'rgba(45, 138, 126, 0.2)' if community.template == 'light' else 'rgba(45, 138, 126, 0.3)' }} !important;
+            border-color: {{ community.accent_color or '#2d8a7e' }} !important;
         }
         
         .calendar-day.other-month {
@@ -2618,7 +2620,7 @@
         }
         
         .day-number {
-            color: #ffffff;
+            color: {{ '#212529' if community.template == 'light' else '#ffffff' }};
             font-weight: 500;
             font-size: 14px;
         }
@@ -2661,8 +2663,8 @@
         .event-dot-9 { background-color: #fdcb6e; }
         
         #calendarModal .event-item {
-            background: rgba(255, 255, 255, 0.05) !important;
-            border: 1px solid rgba(255, 255, 255, 0.1) !important;
+            background: {{ 'rgba(0, 0, 0, 0.03)' if community.template == 'light' else 'rgba(255, 255, 255, 0.05)' }} !important;
+            border: 1px solid {{ '#dee2e6' if community.template == 'light' else 'rgba(255, 255, 255, 0.1)' }} !important;
             border-radius: 3px !important;
             padding: 8px !important;
             padding-left: 12px !important;
@@ -2908,7 +2910,7 @@
         }
         
         #calendarModal .calendar-events h4 {
-            color: #ffffff !important;
+            color: {{ '#212529' if community.template == 'light' else '#ffffff' }} !important;
             margin: 0 0 5px 0 !important;
             font-size: 12px !important;
         }
@@ -2927,7 +2929,7 @@
         }
         
         #calendarModal .event-title {
-            color: #ffffff !important;
+            color: {{ '#212529' if community.template == 'light' else '#ffffff' }} !important;
             font-weight: 500 !important;
             margin-bottom: 1px !important;
             word-wrap: break-word !important;
@@ -2944,7 +2946,7 @@
         }
         
         #calendarModal .event-description {
-            color: #9fb0b5 !important;
+            color: {{ '#6c757d' if community.template == 'light' else '#9fb0b5' }} !important;
             font-size: 9px !important;
             word-wrap: break-word !important;
             overflow-wrap: break-word !important;
@@ -5518,8 +5520,9 @@
                         renderMembersList(loadedMembers);
                     } else {
                         console.error('No members found or error:', data.message);
+                        const isLight = {{ 'true' if community.template == 'light' else 'false' }};
                         document.getElementById('membersCheckboxList').innerHTML = 
-                            '<div style="color: rgba(255,255,255,0.5); padding: 10px;">No members found</div>';
+                            `<div style="color: ${isLight ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.5)'}; padding: 10px;">No members found</div>`;
                     }
                 })
                 .catch(error => {
@@ -5540,7 +5543,8 @@
             const filteredMembers = members.filter(member => member.username !== currentUser);
             
             if (filteredMembers.length === 0) {
-                container.innerHTML = '<div style="color: rgba(255,255,255,0.5); padding: 10px;">No other members to invite</div>';
+                const isLight = {{ 'true' if community.template == 'light' else 'false' }};
+                container.innerHTML = `<div style="color: ${isLight ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.5)'}; padding: 10px;">No other members to invite</div>`;
                 return;
             }
             
