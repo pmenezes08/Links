@@ -2772,30 +2772,30 @@
         
         .invite-all-btn {
             padding: 8px 16px;
-            background: rgba(77, 182, 172, 0.15);
+            background: {{ 'rgba(77, 182, 172, 0.1)' if community.template == 'light' else 'rgba(77, 182, 172, 0.15)' }};
             border: 1px solid rgba(77, 182, 172, 0.3);
             border-radius: 6px;
-            color: #4db6ac;
+            color: {{ community.accent_color or '#4db6ac' }};
             cursor: pointer;
             transition: all 0.2s;
             font-size: 13px;
         }
         
         .invite-all-btn:hover {
-            background: rgba(77, 182, 172, 0.25);
+            background: {{ 'rgba(77, 182, 172, 0.2)' if community.template == 'light' else 'rgba(77, 182, 172, 0.25)' }};
         }
         
         .invite-all-btn.active {
-            background: #4db6ac;
+            background: {{ community.accent_color or '#4db6ac' }};
             color: white;
         }
         
         .toggle-members-btn {
             padding: 8px 16px;
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: {{ '#f8f9fa' if community.template == 'light' else 'rgba(255, 255, 255, 0.05)' }};
+            border: 1px solid {{ '#dee2e6' if community.template == 'light' else 'rgba(255, 255, 255, 0.1)' }};
             border-radius: 6px;
-            color: rgba(255, 255, 255, 0.8);
+            color: {{ '#495057' if community.template == 'light' else 'rgba(255, 255, 255, 0.8)' }};
             cursor: pointer;
             transition: all 0.2s;
             font-size: 13px;
@@ -2805,12 +2805,14 @@
         }
         
         .toggle-members-btn:hover {
-            background: rgba(255, 255, 255, 0.1);
+            background: {{ '#e9ecef' if community.template == 'light' else 'rgba(255, 255, 255, 0.1)' }};
+            border-color: {{ community.accent_color or '#4db6ac' }};
+            color: {{ community.accent_color or '#4db6ac' }};
         }
         
         .members-list {
-            background: rgba(255, 255, 255, 0.03);
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: {{ 'rgba(0, 0, 0, 0.03)' if community.template == 'light' else 'rgba(255, 255, 255, 0.03)' }};
+            border: 1px solid {{ '#dee2e6' if community.template == 'light' else 'rgba(255, 255, 255, 0.1)' }};
             border-radius: 6px;
             padding: 12px;
             margin-top: 10px;
@@ -2823,11 +2825,15 @@
         .members-search input {
             width: 100%;
             padding: 8px;
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: {{ '#f8f9fa' if community.template == 'light' else 'rgba(255, 255, 255, 0.05)' }};
+            border: 1px solid {{ '#dee2e6' if community.template == 'light' else 'rgba(255, 255, 255, 0.1)' }};
             border-radius: 4px;
-            color: white;
+            color: {{ '#000000' if community.template == 'light' else '#ffffff' }};
             font-size: 13px;
+        }
+        
+        .members-search input::placeholder {
+            color: {{ 'rgba(0, 0, 0, 0.5)' if community.template == 'light' else 'rgba(255, 255, 255, 0.5)' }};
         }
         
         .members-checkbox-list {
@@ -2843,14 +2849,15 @@
             align-items: center;
             gap: 8px;
             padding: 6px 8px;
-            background: rgba(255, 255, 255, 0.05);
+            background: {{ '#f8f9fa' if community.template == 'light' else 'rgba(255, 255, 255, 0.05)' }};
             border-radius: 4px;
             cursor: pointer;
             transition: all 0.2s;
+            border: 1px solid {{ '#dee2e6' if community.template == 'light' else 'transparent' }};
         }
         
         .member-checkbox:hover {
-            background: rgba(255, 255, 255, 0.08);
+            background: {{ '#e9ecef' if community.template == 'light' else 'rgba(255, 255, 255, 0.08)' }};
         }
         
         .member-checkbox input[type="checkbox"] {
@@ -2864,6 +2871,7 @@
             display: flex;
             align-items: center;
             gap: 6px;
+            color: {{ '#000000' if community.template == 'light' else '#ffffff' }};
         }
         
         .member-avatar {
@@ -2953,7 +2961,7 @@
             font-size: 11px !important;
             margin-bottom: 3px !important;
             display: block;
-            color: #9fb0b5 !important;
+            color: {{ '#495057' if community.template == 'light' else '#9fb0b5' }} !important;
             font-weight: 600;
         }
         
@@ -2963,9 +2971,9 @@
         #addCalendarTab textarea {
             padding: 5px 8px !important;
             font-size: 12px !important;
-            border: 1px solid rgba(255, 255, 255, 0.1) !important;
-            background: rgba(0, 0, 0, 0.3) !important;
-            color: #ffffff !important;
+            border: 1px solid {{ '#dee2e6' if community.template == 'light' else 'rgba(255, 255, 255, 0.1)' }} !important;
+            background: {{ '#f8f9fa' if community.template == 'light' else 'rgba(0, 0, 0, 0.3)' }} !important;
+            color: {{ '#000000' if community.template == 'light' else '#ffffff' }} !important;
             width: 100% !important;
             box-sizing: border-box !important;
         }
