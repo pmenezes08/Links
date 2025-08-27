@@ -633,6 +633,60 @@ def init_db():
             c.execute("CREATE INDEX IF NOT EXISTS idx_resource_upvotes_post ON resource_upvotes(post_id)")
             c.execute("CREATE INDEX IF NOT EXISTS idx_resource_upvotes_comment ON resource_upvotes(comment_id)")
             
+            # Create clubs and organizations tables
+            logger.info("Creating clubs and organizations tables...")
+            
+            # Clubs table
+            c.execute('''CREATE TABLE IF NOT EXISTS clubs
+                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                          community_id INTEGER NOT NULL,
+                          name TEXT NOT NULL,
+                          description TEXT,
+                          category TEXT,
+                          contact_email TEXT,
+                          contact_person TEXT,
+                          meeting_schedule TEXT,
+                          location TEXT,
+                          website_url TEXT,
+                          logo_url TEXT,
+                          is_active BOOLEAN DEFAULT 1,
+                          member_count INTEGER DEFAULT 0,
+                          created_by TEXT NOT NULL,
+                          created_at TEXT NOT NULL,
+                          FOREIGN KEY (community_id) REFERENCES communities (id) ON DELETE CASCADE,
+                          FOREIGN KEY (created_by) REFERENCES users (username))''')
+            
+            # Club members table
+            c.execute('''CREATE TABLE IF NOT EXISTS club_members
+                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                          club_id INTEGER NOT NULL,
+                          username TEXT NOT NULL,
+                          role TEXT DEFAULT 'member',
+                          joined_at TEXT NOT NULL,
+                          FOREIGN KEY (club_id) REFERENCES clubs (id) ON DELETE CASCADE,
+                          FOREIGN KEY (username) REFERENCES users (username),
+                          UNIQUE(club_id, username))''')
+            
+            # Anonymous feedback table
+            c.execute('''CREATE TABLE IF NOT EXISTS anonymous_feedback
+                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                          community_id INTEGER NOT NULL,
+                          feedback_text TEXT NOT NULL,
+                          category TEXT,
+                          priority TEXT DEFAULT 'normal',
+                          status TEXT DEFAULT 'unread',
+                          submitted_at TEXT NOT NULL,
+                          response TEXT,
+                          responded_at TEXT,
+                          FOREIGN KEY (community_id) REFERENCES communities (id) ON DELETE CASCADE)''')
+            
+            # Create indexes for clubs and feedback
+            c.execute("CREATE INDEX IF NOT EXISTS idx_clubs_community ON clubs(community_id)")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_club_members_club ON club_members(club_id)")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_club_members_username ON club_members(username)")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_feedback_community ON anonymous_feedback(community_id)")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_feedback_status ON anonymous_feedback(status)")
+            
             conn.commit()
             logger.info("Database initialization completed successfully")
             
@@ -5482,6 +5536,209 @@ def upvote_resource_post(post_id):
             
     except Exception as e:
         logger.error(f"Error upvoting post: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/community/<int:community_id>/clubs')
+@login_required
+def clubs_directory(community_id):
+    """Clubs and organizations directory for university communities"""
+    username = session.get('username')
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Get community info
+            c.execute("SELECT * FROM communities WHERE id = ?", (community_id,))
+            community = c.fetchone()
+            if not community:
+                flash('Community not found', 'error')
+                return redirect(url_for('communities'))
+            
+            # Check if this is a parent university community
+            if community['type'] != 'University' or community['parent_community_id']:
+                flash('Clubs directory is only available for main university communities', 'error')
+                return redirect(url_for('community_feed', community_id=community_id))
+            
+            # Get all clubs for this community
+            c.execute("""
+                SELECT c.*, 
+                       (SELECT COUNT(*) FROM club_members WHERE club_id = c.id) as member_count,
+                       EXISTS(SELECT 1 FROM club_members WHERE club_id = c.id AND username = ?) as is_member,
+                       (SELECT role FROM club_members WHERE club_id = c.id AND username = ?) as user_role
+                FROM clubs c
+                WHERE c.community_id = ? AND c.is_active = 1
+                ORDER BY c.name
+            """, (username, username, community_id))
+            
+            clubs = []
+            for row in c.fetchall():
+                clubs.append(dict(row))
+            
+            return render_template('clubs_directory.html', 
+                                 community=dict(community), 
+                                 clubs=clubs,
+                                 username=username)
+                                 
+    except Exception as e:
+        logger.error(f"Error loading clubs directory: {e}")
+        flash('Error loading clubs directory', 'error')
+        return redirect(url_for('community_feed', community_id=community_id))
+
+@app.route('/community/<int:community_id>/clubs/create', methods=['POST'])
+@login_required
+def create_club(community_id):
+    """Create a new club"""
+    username = session.get('username')
+    
+    try:
+        data = request.get_json()
+        name = data.get('name', '').strip()
+        description = data.get('description', '').strip()
+        category = data.get('category', 'General')
+        contact_email = data.get('contact_email', '')
+        contact_person = data.get('contact_person', '')
+        meeting_schedule = data.get('meeting_schedule', '')
+        location = data.get('location', '')
+        website_url = data.get('website_url', '')
+        
+        if not name or not description:
+            return jsonify({'success': False, 'message': 'Name and description are required'}), 400
+            
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Create club
+            c.execute("""
+                INSERT INTO clubs 
+                (community_id, name, description, category, contact_email, contact_person,
+                 meeting_schedule, location, website_url, created_by, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (community_id, name, description, category, contact_email, contact_person,
+                  meeting_schedule, location, website_url, username, datetime.now().isoformat()))
+            
+            club_id = c.lastrowid
+            
+            # Add creator as president
+            c.execute("""
+                INSERT INTO club_members (club_id, username, role, joined_at)
+                VALUES (?, ?, 'president', ?)
+            """, (club_id, username, datetime.now().isoformat()))
+            
+            conn.commit()
+            
+            return jsonify({'success': True, 'club_id': club_id})
+            
+    except Exception as e:
+        logger.error(f"Error creating club: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/club/<int:club_id>/join', methods=['POST'])
+@login_required
+def join_club(club_id):
+    """Join or leave a club"""
+    username = session.get('username')
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Check if already a member
+            c.execute("""
+                SELECT 1 FROM club_members 
+                WHERE club_id = ? AND username = ?
+            """, (club_id, username))
+            
+            if c.fetchone():
+                # Leave club
+                c.execute("""
+                    DELETE FROM club_members 
+                    WHERE club_id = ? AND username = ?
+                """, (club_id, username))
+                action = 'left'
+            else:
+                # Join club
+                c.execute("""
+                    INSERT INTO club_members (club_id, username, joined_at)
+                    VALUES (?, ?, ?)
+                """, (club_id, username, datetime.now().isoformat()))
+                action = 'joined'
+            
+            conn.commit()
+            
+            # Get updated member count
+            c.execute("SELECT COUNT(*) as count FROM club_members WHERE club_id = ?", (club_id,))
+            member_count = c.fetchone()['count']
+            
+            return jsonify({'success': True, 'action': action, 'member_count': member_count})
+            
+    except Exception as e:
+        logger.error(f"Error joining/leaving club: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/community/<int:community_id>/feedback', methods=['POST'])
+@login_required
+def submit_feedback(community_id):
+    """Submit anonymous feedback"""
+    try:
+        data = request.get_json()
+        feedback_text = data.get('feedback', '').strip()
+        category = data.get('category', 'General')
+        priority = data.get('priority', 'normal')
+        
+        if not feedback_text:
+            return jsonify({'success': False, 'message': 'Feedback text is required'}), 400
+            
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Submit feedback
+            c.execute("""
+                INSERT INTO anonymous_feedback 
+                (community_id, feedback_text, category, priority, submitted_at)
+                VALUES (?, ?, ?, ?, ?)
+            """, (community_id, feedback_text, category, priority, datetime.now().isoformat()))
+            
+            conn.commit()
+            
+            return jsonify({'success': True, 'message': 'Feedback submitted successfully'})
+            
+    except Exception as e:
+        logger.error(f"Error submitting feedback: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/community/<int:community_id>/feedback/view')
+@login_required
+def view_feedback(community_id):
+    """View feedback (admin/creator only)"""
+    username = session.get('username')
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Check permissions
+            c.execute("SELECT creator_username FROM communities WHERE id = ?", (community_id,))
+            community = c.fetchone()
+            
+            if not community or (username != 'admin' and username != community['creator_username']):
+                return jsonify({'success': False, 'message': 'Unauthorized'}), 403
+            
+            # Get feedback
+            c.execute("""
+                SELECT * FROM anonymous_feedback 
+                WHERE community_id = ?
+                ORDER BY submitted_at DESC
+            """, (community_id,))
+            
+            feedback = []
+            for row in c.fetchall():
+                feedback.append(dict(row))
+            
+            return jsonify({'success': True, 'feedback': feedback})
+            
+    except Exception as e:
+        logger.error(f"Error viewing feedback: {e}")
         return jsonify({'success': False, 'message': str(e)}), 500
 
 @app.route('/admin/user_statistics')
