@@ -666,6 +666,10 @@
                 <i class="fas fa-chart-bar"></i>
                 <span>View Statistics</span>
             </button>
+            <button class="admin-action-btn" onclick="showUserActivityModal()">
+                <i class="fas fa-user-clock"></i>
+                <span>User Activity</span>
+            </button>
             <button class="admin-action-btn" onclick="showUsersModal()">
                 <i class="fas fa-users"></i>
                 <span>Manage Users ({{ users|length }})</span>
@@ -782,6 +786,27 @@
             </div>
             <div class="modal-actions">
                 <button type="button" class="btn btn-secondary" onclick="closeStatsModal()">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- User Activity Modal -->
+    <div id="userActivityModal" class="modal">
+        <div class="modal-content" style="max-width: 900px;">
+            <div class="modal-header">
+                <h3>User Activity Statistics</h3>
+                <span class="close" onclick="closeUserActivityModal()">&times;</span>
+            </div>
+            <div class="modal-body" style="max-height: 600px; overflow-y: auto;">
+                <div id="userActivityContent">
+                    <div style="text-align: center; padding: 20px;">
+                        <i class="fas fa-spinner fa-spin" style="font-size: 24px; color: #4db6ac;"></i>
+                        <p>Loading user statistics...</p>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-secondary" onclick="closeUserActivityModal()">Close</button>
             </div>
         </div>
     </div>
@@ -937,6 +962,135 @@
         
         function closeStatsModal() {
             $('#statsModal').hide();
+        }
+        
+        function showUserActivityModal() {
+            $('#userActivityModal').show();
+            loadUserActivityData();
+        }
+        
+        function closeUserActivityModal() {
+            $('#userActivityModal').hide();
+        }
+        
+        function loadUserActivityData() {
+            fetch('/admin/user_statistics')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        displayUserActivityData(data.user_stats, data.community_visits);
+                    } else {
+                        document.getElementById('userActivityContent').innerHTML = 
+                            '<p style="color: red; text-align: center;">Error loading statistics</p>';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    document.getElementById('userActivityContent').innerHTML = 
+                        '<p style="color: red; text-align: center;">Error loading statistics</p>';
+                });
+        }
+        
+        function displayUserActivityData(userStats, communityVisits) {
+            let html = `
+                <style>
+                    .activity-table {
+                        width: 100%;
+                        border-collapse: collapse;
+                        margin-top: 10px;
+                    }
+                    .activity-table th {
+                        background: rgba(77, 182, 172, 0.1);
+                        padding: 10px;
+                        text-align: left;
+                        font-size: 12px;
+                        font-weight: 600;
+                        border-bottom: 2px solid rgba(255, 255, 255, 0.1);
+                    }
+                    .activity-table td {
+                        padding: 8px 10px;
+                        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+                        font-size: 13px;
+                    }
+                    .activity-table tr:hover {
+                        background: rgba(255, 255, 255, 0.02);
+                    }
+                    .subscription-badge {
+                        display: inline-block;
+                        padding: 2px 8px;
+                        border-radius: 12px;
+                        font-size: 11px;
+                        font-weight: 600;
+                    }
+                    .subscription-badge.premium {
+                        background: rgba(255, 215, 0, 0.2);
+                        color: #ffd700;
+                    }
+                    .subscription-badge.free {
+                        background: rgba(255, 255, 255, 0.1);
+                        color: rgba(255, 255, 255, 0.6);
+                    }
+                    .community-visits {
+                        font-size: 11px;
+                        color: rgba(255, 255, 255, 0.7);
+                        max-width: 300px;
+                    }
+                    .community-tag {
+                        display: inline-block;
+                        background: rgba(77, 182, 172, 0.2);
+                        padding: 2px 6px;
+                        border-radius: 4px;
+                        margin: 2px;
+                        font-size: 10px;
+                    }
+                </style>
+                <table class="activity-table">
+                    <thead>
+                        <tr>
+                            <th>Username</th>
+                            <th>Type</th>
+                            <th>Logins</th>
+                            <th>Total Visits</th>
+                            <th>Communities</th>
+                            <th>Last Login</th>
+                            <th>Top Communities</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+            
+            userStats.forEach(user => {
+                const userVisits = communityVisits[user.username] || [];
+                const topCommunities = userVisits.slice(0, 3).map(v => 
+                    `<span class="community-tag">${v.community} (${v.visits})</span>`
+                ).join('');
+                
+                const lastLogin = user.last_login !== 'Never' ? 
+                    new Date(user.last_login).toLocaleDateString() : 'Never';
+                
+                html += `
+                    <tr>
+                        <td><strong>${user.username}</strong></td>
+                        <td>
+                            <span class="subscription-badge ${user.subscription}">
+                                ${user.subscription}
+                            </span>
+                        </td>
+                        <td>${user.login_count}</td>
+                        <td>${user.total_visits}</td>
+                        <td>${user.unique_communities}</td>
+                        <td>${lastLogin}</td>
+                        <td class="community-visits">${topCommunities || 'None'}</td>
+                    </tr>
+                `;
+            });
+            
+            html += `
+                    </tbody>
+                </table>
+            `;
+            
+            document.getElementById('userActivityContent').innerHTML = html;
         }
         
         function showUsersModal() {

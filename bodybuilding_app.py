@@ -554,6 +554,34 @@ def init_db():
                 logger.info("Adding impressions column to university_ads table...")
                 c.execute("ALTER TABLE university_ads ADD COLUMN impressions INTEGER DEFAULT 0")
             
+            # Create user activity tracking tables
+            logger.info("Creating user activity tracking tables...")
+            
+            # Login history table
+            c.execute('''CREATE TABLE IF NOT EXISTS user_login_history
+                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                          username TEXT NOT NULL,
+                          login_time TEXT NOT NULL,
+                          ip_address TEXT,
+                          user_agent TEXT,
+                          FOREIGN KEY (username) REFERENCES users (username))''')
+            
+            # Community visit history table
+            c.execute('''CREATE TABLE IF NOT EXISTS community_visit_history
+                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                          username TEXT NOT NULL,
+                          community_id INTEGER NOT NULL,
+                          visit_time TEXT NOT NULL,
+                          FOREIGN KEY (username) REFERENCES users (username),
+                          FOREIGN KEY (community_id) REFERENCES communities (id))''')
+            
+            # Create indexes for better performance
+            c.execute("CREATE INDEX IF NOT EXISTS idx_login_username ON user_login_history(username)")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_login_time ON user_login_history(login_time)")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_visit_username ON community_visit_history(username)")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_visit_community ON community_visit_history(community_id)")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_visit_time ON community_visit_history(visit_time)")
+            
             conn.commit()
             logger.info("Database initialization completed successfully")
             
@@ -953,6 +981,22 @@ def login_password():
                 
                 if password_correct:
                     print(f"Password matches, subscription: {subscription}")
+                    
+                    # Track login
+                    try:
+                        conn = get_db_connection()
+                        c = conn.cursor()
+                        c.execute("""
+                            INSERT INTO user_login_history (username, login_time, ip_address, user_agent)
+                            VALUES (?, ?, ?, ?)
+                        """, (username, datetime.now().isoformat(), 
+                              request.remote_addr, 
+                              request.headers.get('User-Agent', '')))
+                        conn.commit()
+                        conn.close()
+                    except Exception as e:
+                        logger.error(f"Error tracking login: {e}")
+                    
                     if subscription == 'premium':
                         print("Redirecting to premium_dashboard")
                         return redirect(url_for('premium_dashboard'))
@@ -5254,6 +5298,80 @@ def delete_ad(ad_id):
         logger.error(f"Error deleting ad: {e}")
         return jsonify({'success': False}), 500
 
+@app.route('/admin/user_statistics')
+@login_required
+def admin_user_statistics():
+    """Admin endpoint to view user activity statistics"""
+    username = session.get('username')
+    
+    # Check if user is admin
+    if username != 'admin':
+        return jsonify({'success': False, 'message': 'Unauthorized'}), 403
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Get user statistics
+            c.execute("""
+                SELECT 
+                    u.username,
+                    u.subscription,
+                    u.created_at,
+                    COUNT(DISTINCT lh.id) as login_count,
+                    COUNT(DISTINCT vh.id) as total_visits,
+                    COUNT(DISTINCT vh.community_id) as unique_communities_visited,
+                    MAX(lh.login_time) as last_login
+                FROM users u
+                LEFT JOIN user_login_history lh ON u.username = lh.username
+                LEFT JOIN community_visit_history vh ON u.username = vh.username
+                GROUP BY u.username
+                ORDER BY login_count DESC, total_visits DESC
+            """)
+            
+            user_stats = []
+            for row in c.fetchall():
+                user_stats.append({
+                    'username': row['username'],
+                    'subscription': row['subscription'],
+                    'created_at': row['created_at'],
+                    'login_count': row['login_count'],
+                    'total_visits': row['total_visits'],
+                    'unique_communities': row['unique_communities_visited'],
+                    'last_login': row['last_login'] or 'Never'
+                })
+            
+            # Get community visit details for each user
+            c.execute("""
+                SELECT 
+                    vh.username,
+                    c.name as community_name,
+                    COUNT(*) as visit_count
+                FROM community_visit_history vh
+                JOIN communities c ON vh.community_id = c.id
+                GROUP BY vh.username, vh.community_id, c.name
+                ORDER BY vh.username, visit_count DESC
+            """)
+            
+            user_community_visits = {}
+            for row in c.fetchall():
+                if row['username'] not in user_community_visits:
+                    user_community_visits[row['username']] = []
+                user_community_visits[row['username']].append({
+                    'community': row['community_name'],
+                    'visits': row['visit_count']
+                })
+            
+            return jsonify({
+                'success': True,
+                'user_stats': user_stats,
+                'community_visits': user_community_visits
+            })
+            
+    except Exception as e:
+        logger.error(f"Error getting user statistics: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+
 @app.route('/admin/ads_overview')
 @login_required
 def admin_ads_overview():
@@ -6463,6 +6581,16 @@ def community_feed(community_id):
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
+            
+            # Track community visit
+            try:
+                c.execute("""
+                    INSERT INTO community_visit_history (username, community_id, visit_time)
+                    VALUES (?, ?, ?)
+                """, (username, community_id, datetime.now().isoformat()))
+                conn.commit()
+            except Exception as e:
+                logger.error(f"Error tracking community visit: {e}")
             
             # Get community info
             c.execute("SELECT * FROM communities WHERE id = ?", (community_id,))
