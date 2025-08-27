@@ -261,8 +261,8 @@
         
         .ad-image {
             width: 100%;
-            max-width: 280px;
-            height: 160px;
+            max-width: 290px;
+            height: 220px;
             object-fit: contain;
             background: #000000;
             border-radius: 8px;
@@ -276,13 +276,7 @@
             color: {{ '#000000' if community.template == 'light' else '#ffffff' }};
             text-align: center;
             margin-bottom: 6px;
-        }
-        
-        .ad-price {
-            font-size: 16px;
-            font-weight: 700;
-            color: {{ '#2d8a7e' if community.template == 'light' else '#4db6ac' }};
-            margin-bottom: 8px;
+            padding: 0 10px;
         }
         
         .carousel-nav {
@@ -5900,7 +5894,6 @@
                 <div class="ad-slide" onclick="trackAdClick(${ad.id}, '${ad.link}')">
                     <img src="${ad.image}" alt="${ad.title}" class="ad-image">
                     <div class="ad-title">${ad.title}</div>
-                    <div class="ad-price">${ad.price}</div>
                 </div>
             `).join('');
             
