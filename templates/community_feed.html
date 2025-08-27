@@ -1081,13 +1081,13 @@
             color: #6c757d !important;
         }
         
-        .members-btn, .admin-info-btn, .edit-community-btn, .polls-btn, .links-btn, .notifications-btn, .issues-btn, .calendar-btn {
+        .members-btn, .admin-info-btn, .edit-community-btn, .polls-btn, .links-btn, .notifications-btn, .issues-btn, .calendar-btn, .more-btn {
             background-color: #4db6ac !important;
             color: #ffffff !important;
             border: 1px solid #4db6ac !important;
         }
         
-        .members-btn:hover, .admin-info-btn:hover, .edit-community-btn:hover, .polls-btn:hover, .links-btn:hover, .notifications-btn:hover, .issues-btn:hover, .calendar-btn:hover {
+        .members-btn:hover, .admin-info-btn:hover, .edit-community-btn:hover, .polls-btn:hover, .links-btn:hover, .notifications-btn:hover, .issues-btn:hover, .calendar-btn:hover, .more-btn:hover {
             background-color: #37a69c !important;
         }
         {% endif %}
@@ -1095,13 +1095,13 @@
         /* Community Actions Button Styles - Updated */
         .community-actions {
             display: grid;
-            grid-template-columns: repeat(3, 1fr);
+            grid-template-columns: repeat(4, 1fr);
             gap: 10px;
             margin-bottom: 20px;
             padding: 15px 0;
         }
         
-        .members-btn, .admin-info-btn, .edit-community-btn, .polls-btn, .links-btn, .notifications-btn, .issues-btn, .calendar-btn {
+        .members-btn, .admin-info-btn, .edit-community-btn, .polls-btn, .links-btn, .notifications-btn, .issues-btn, .calendar-btn, .more-btn {
             display: flex;
             align-items: center;
             justify-content: center;
@@ -1119,12 +1119,12 @@
             width: 100%;
         }
         
-        .members-btn:hover, .admin-info-btn:hover, .edit-community-btn:hover, .polls-btn:hover, .links-btn:hover, .notifications-btn:hover, .issues-btn:hover, .calendar-btn:hover {
+        .members-btn:hover, .admin-info-btn:hover, .edit-community-btn:hover, .polls-btn:hover, .links-btn:hover, .notifications-btn:hover, .issues-btn:hover, .calendar-btn:hover, .more-btn:hover {
             background-color: {{ community.accent_color or '#2d8a7e' }}dd;
             transform: translateY(-1px);
         }
         
-        .members-btn i, .admin-info-btn i, .edit-community-btn i, .polls-btn i, .links-btn i, .notifications-btn i, .issues-btn i, .calendar-btn i {
+        .members-btn i, .admin-info-btn i, .edit-community-btn i, .polls-btn i, .links-btn i, .notifications-btn i, .issues-btn i, .calendar-btn i, .more-btn i {
             font-size: 14px;
         }
 
@@ -4218,33 +4218,18 @@
         
         <!-- Community Actions Buttons -->
         <div class="community-actions">
-            <!-- Top row: Members, Announcements, Polls -->
-            <button class="members-btn" onclick="showMembersModal()">
-                <i class="fas fa-users"></i> Members
-            </button>
             <button class="admin-info-btn" onclick="showAdminInfoModal()">
                 <i class="fas fa-bullhorn"></i> Announcements
             </button>
             <button class="polls-btn" onclick="showPollsModal()">
                 <i class="fas fa-poll-h"></i> Polls
             </button>
-            
-            <!-- Bottom row: Calendar, Useful Links, Report Issue -->
             <button class="calendar-btn" onclick="showCalendarModal()">
                 <i class="fas fa-calendar-alt"></i> Calendar
             </button>
-            <button class="links-btn" onclick="showLinksModal()">
-                <i class="fas fa-link"></i> Useful Links
+            <button class="more-btn" onclick="showMoreOptionsModal()">
+                <i class="fas fa-ellipsis-h"></i> More
             </button>
-            {% if community.type == 'University' or community.type == 'Gym' %}
-            <button class="issues-btn" onclick="showIssuesModal()" 
-                    title="{% if community.type == 'University' %}Report campus issues{% else %}Report gym issues{% endif %}">
-                <i class="fas fa-exclamation-triangle"></i> Report Issue
-            </button>
-            {% else %}
-            <!-- Empty placeholder button for non-University/Gym communities to maintain grid -->
-            <div style="visibility: hidden;"></div>
-            {% endif %}
         </div>
 
         <!-- Toggle Button for Active Polls and Edit Community -->
@@ -5327,6 +5312,78 @@
         </div>
     </div>
     
+    <!-- More Options Modal -->
+    <div id="moreOptionsModal" class="modal">
+        <div class="modal-content" style="max-width: 400px;">
+            <div class="modal-header" style="background: linear-gradient(135deg, {{ community.accent_color or '#2d8a7e' }} 0%, {{ community.card_color or '#1a5952' }} 100%);">
+                <h2 style="color: {{ community.text_color or '#ffffff' }};">More Options</h2>
+                <span class="close" onclick="closeMoreOptionsModal()" style="color: {{ community.text_color or '#ffffff' }};">&times;</span>
+            </div>
+            <div class="modal-body" style="padding: 20px; background: {{ '#ffffff' if community.template == 'light' else '#1a1a1a' }};">
+                <style>
+                    .more-options-grid {
+                        display: grid;
+                        grid-template-columns: repeat(2, 1fr);
+                        gap: 15px;
+                    }
+                    
+                    .more-option-btn {
+                        display: flex;
+                        flex-direction: column;
+                        align-items: center;
+                        justify-content: center;
+                        padding: 20px;
+                        background: {{ 'rgba(77, 182, 172, 0.1)' if community.template == 'light' else 'rgba(255, 255, 255, 0.05)' }};
+                        border: 1px solid {{ 'rgba(77, 182, 172, 0.3)' if community.template == 'light' else 'rgba(255, 255, 255, 0.1)' }};
+                        border-radius: 8px;
+                        cursor: pointer;
+                        transition: all 0.3s ease;
+                        color: {{ '#000000' if community.template == 'light' else '#ffffff' }};
+                        min-height: 100px;
+                    }
+                    
+                    .more-option-btn:hover {
+                        background: {{ 'rgba(77, 182, 172, 0.2)' if community.template == 'light' else 'rgba(255, 255, 255, 0.1)' }};
+                        transform: translateY(-2px);
+                    }
+                    
+                    .more-option-btn i {
+                        font-size: 24px;
+                        margin-bottom: 8px;
+                        color: {{ community.accent_color or '#4db6ac' }};
+                    }
+                    
+                    .more-option-btn span {
+                        font-size: 13px;
+                        font-weight: 500;
+                    }
+                </style>
+                <div class="more-options-grid">
+                    <button class="more-option-btn" onclick="closeMoreOptionsModal(); showMembersModal();">
+                        <i class="fas fa-users"></i>
+                        <span>Members</span>
+                    </button>
+                    <button class="more-option-btn" onclick="closeMoreOptionsModal(); showLinksModal();">
+                        <i class="fas fa-link"></i>
+                        <span>Useful Links</span>
+                    </button>
+                    {% if community.type == 'University' or community.type == 'Gym' %}
+                    <button class="more-option-btn" onclick="closeMoreOptionsModal(); showIssuesModal();">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <span>Report Issue</span>
+                    </button>
+                    {% endif %}
+                    {% if username == 'admin' or username == community.creator_username %}
+                    <button class="more-option-btn" onclick="closeMoreOptionsModal(); openEditModal();">
+                        <i class="fas fa-edit"></i>
+                        <span>Edit Community</span>
+                    </button>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Issues Modal (for University and Gym communities) -->
     {% if community.type == 'University' or community.type == 'Gym' %}
     <div id="issuesModal" class="modal">
@@ -6013,6 +6070,14 @@
         
         // Issues Modal Functions
         {% if community.type == 'University' or community.type == 'Gym' %}
+        function showMoreOptionsModal() {
+            document.getElementById('moreOptionsModal').style.display = 'block';
+        }
+        
+        function closeMoreOptionsModal() {
+            document.getElementById('moreOptionsModal').style.display = 'none';
+        }
+        
         function showIssuesModal() {
             document.getElementById('issuesModal').style.display = 'block';
             switchIssuesTab('active');
