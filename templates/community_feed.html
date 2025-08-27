@@ -2319,13 +2319,21 @@
             overflow-y: auto;
         }
         
+        /* Allow overflow when add tab is active */
+        #calendarModal .modal-body:has(#addCalendarTab.active) {
+            overflow: visible !important;
+            max-height: none !important;
+        }
+        
         /* Make the add calendar tab scrollable independently */
         #addCalendarTab {
-            max-height: 65vh;
-            overflow-y: auto;
+            /* Remove max-height to allow full expansion */
+            /* max-height: 65vh; */
+            overflow-y: visible; /* Change to visible to allow content to show */
             overflow-x: hidden;
             padding-right: 10px;
             padding-bottom: 20px; /* Add padding at bottom */
+            min-height: 400px; /* Ensure minimum height */
         }
         
         /* Ensure members list is fully visible within the scrollable area */
@@ -5741,6 +5749,12 @@
                 setTimeout(() => {
                     const rect = membersList.getBoundingClientRect();
                     const computedStyle = window.getComputedStyle(membersList);
+                    
+                    // Check parent containers
+                    const addTab = document.getElementById('addCalendarTab');
+                    const modal = document.getElementById('calendarModal');
+                    const modalBody = modal.querySelector('.modal-body');
+                    
                     console.log('Members list visibility check:', {
                         display: membersList.style.display,
                         computedDisplay: computedStyle.display,
@@ -5751,11 +5765,39 @@
                         visible: rect.height > 0
                     });
                     
+                    console.log('Parent containers check:', {
+                        addTab: {
+                            display: addTab ? window.getComputedStyle(addTab).display : 'not found',
+                            height: addTab ? addTab.offsetHeight : 0,
+                            overflow: addTab ? window.getComputedStyle(addTab).overflow : 'not found'
+                        },
+                        modalBody: {
+                            display: modalBody ? window.getComputedStyle(modalBody).display : 'not found',
+                            height: modalBody ? modalBody.offsetHeight : 0,
+                            overflow: modalBody ? window.getComputedStyle(modalBody).overflow : 'not found'
+                        }
+                    });
+                    
                     // If still not visible, try removing all inline styles and adding a class
                     if (rect.height === 0) {
-                        console.warn('Members list still not visible, attempting fallback...');
+                        console.warn('Members list still not visible, attempting aggressive fix...');
+                        
+                        // Remove inline style completely
                         membersList.removeAttribute('style');
                         membersList.classList.add('force-show');
+                        
+                        // Force reflow
+                        membersList.style.display = 'none';
+                        membersList.offsetHeight; // Trigger reflow
+                        membersList.style.display = 'block';
+                        
+                        // Set explicit height based on content
+                        const checkboxList = document.getElementById('membersCheckboxList');
+                        if (checkboxList) {
+                            const contentHeight = checkboxList.scrollHeight;
+                            membersList.style.minHeight = (contentHeight + 100) + 'px';
+                            console.log('Set explicit min-height:', contentHeight + 100);
+                        }
                     }
                 }, 100);
             } else {
