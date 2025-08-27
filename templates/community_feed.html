@@ -1774,36 +1774,47 @@
             border-color: {{ community.accent_color or '#2d8a7e' }} !important;
         }
         
-        /* Member list styles */
+        /* Member list styles - Compact */
         .member-item {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 12px;
+            padding: 8px 12px;
             background: rgba(255, 255, 255, 0.05);
             border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 8px;
-            margin-bottom: 8px;
-            cursor: pointer;
+            border-radius: 6px;
+            margin-bottom: 6px;
             transition: all 0.2s ease;
+            min-height: 40px;
         }
         
         .member-item:hover {
             background: rgba(255, 255, 255, 0.08);
-            transform: translateY(-1px);
         }
         
         .member-item:last-child {
             margin-bottom: 0;
         }
         
+        /* Member info section */
+        .member-info {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex: 1;
+            min-width: 0; /* Allow text truncation */
+        }
+        
         .member-username {
             font-weight: 500;
             color: {{ community.text_color or '#ffffff' }};
             text-decoration: none;
-            flex: 1;
             cursor: pointer;
             transition: all 0.2s ease;
+            font-size: 14px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
         
         .member-username:hover {
@@ -1811,6 +1822,88 @@
             text-decoration: underline;
         }
         
+        /* Role badges */
+        .role-badge {
+            padding: 2px 6px;
+            border-radius: 10px;
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+        
+        .owner-badge {
+            background: linear-gradient(135deg, #ffd700, #ffed4e);
+            color: #333;
+        }
+        
+        .admin-badge {
+            background: linear-gradient(135deg, #4db6ac, #2d8a7e);
+            color: #ffffff;
+        }
+        
+        /* Member actions container */
+        .member-actions {
+            display: flex;
+            gap: 4px;
+            align-items: center;
+            flex-shrink: 0;
+        }
+        
+        /* Action buttons - Compact and aligned */
+        .action-btn {
+            background: transparent;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: rgba(255, 255, 255, 0.7);
+            padding: 4px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-size: 11px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 28px;
+            height: 28px;
+            white-space: nowrap;
+        }
+        
+        .action-btn i {
+            font-size: 12px;
+        }
+        
+        .action-btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: rgba(255, 255, 255, 0.3);
+            color: #ffffff;
+        }
+        
+        .action-btn.promote-btn:hover {
+            background: rgba(77, 182, 172, 0.2);
+            border-color: #4db6ac;
+            color: #4db6ac;
+        }
+        
+        .action-btn.demote-btn:hover {
+            background: rgba(255, 152, 0, 0.2);
+            border-color: #ff9800;
+            color: #ff9800;
+        }
+        
+        .action-btn.transfer-btn:hover {
+            background: rgba(255, 215, 0, 0.2);
+            border-color: #ffd700;
+            color: #ffd700;
+        }
+        
+        .action-btn.remove-btn:hover {
+            background: rgba(244, 67, 54, 0.2);
+            border-color: #f44336;
+            color: #f44336;
+        }
+        
+        /* Legacy remove button style for compatibility */
         .remove-member-btn {
             background: transparent;
             color: #9fb0b5;
@@ -1828,6 +1921,33 @@
         .remove-member-btn:hover {
             background: #9fb0b5;
             color: #1a1a1a;
+        }
+        
+        /* Responsive adjustments for member list */
+        @media (max-width: 480px) {
+            .member-item {
+                padding: 6px 10px;
+            }
+            
+            .member-username {
+                font-size: 13px;
+                max-width: 120px;
+            }
+            
+            .role-badge {
+                font-size: 9px;
+                padding: 2px 4px;
+            }
+            
+            .action-btn {
+                min-width: 26px;
+                height: 26px;
+                padding: 3px 6px;
+            }
+            
+            .action-btn i {
+                font-size: 11px;
+            }
         }
         
         .add-member-section {
