@@ -257,6 +257,11 @@
             cursor: pointer;
             position: relative;
             background: {{ 'rgba(0, 0, 0, 0.03)' if community.template == 'light' else 'rgba(255, 255, 255, 0.05)' }};
+            transition: background-color 0.3s ease;
+        }
+        
+        .ad-slide[data-bg-color] {
+            background: var(--ad-bg-color) !important;
         }
         
         .ad-image {
@@ -265,9 +270,10 @@
             height: 220px;
             object-fit: contain;
             background: transparent;
-            border-radius: 8px;
+            border-radius: 12px;
             margin-bottom: 10px;
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+            overflow: hidden;
         }
         
         .ad-title {
@@ -7534,6 +7540,67 @@
         let autoRotateInterval;
         window.adsAutoRotateInterval = null;
         
+        function extractImageColor(img, slideIndex) {
+            // Create a canvas to extract color
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            
+            // Set canvas size (small for performance)
+            canvas.width = 50;
+            canvas.height = 50;
+            
+            // Create new image to avoid CORS issues
+            const tempImg = new Image();
+            tempImg.crossOrigin = 'anonymous';
+            
+            tempImg.onload = function() {
+                try {
+                    // Draw scaled image
+                    ctx.drawImage(tempImg, 0, 0, 50, 50);
+                    
+                    // Get image data
+                    const imageData = ctx.getImageData(0, 0, 50, 50);
+                    const data = imageData.data;
+                    
+                    // Calculate dominant color
+                    let r = 0, g = 0, b = 0;
+                    let pixelCount = 0;
+                    
+                    // Sample every 5th pixel for performance
+                    for (let i = 0; i < data.length; i += 20) {
+                        r += data[i];
+                        g += data[i + 1];
+                        b += data[i + 2];
+                        pixelCount++;
+                    }
+                    
+                    // Calculate averages
+                    r = Math.round(r / pixelCount);
+                    g = Math.round(g / pixelCount);
+                    b = Math.round(b / pixelCount);
+                    
+                    // Apply the color with reduced opacity for subtle effect
+                    const slide = document.getElementById(`ad-slide-${slideIndex}`);
+                    if (slide) {
+                        const opacity = {{ '0.15' if community.template == 'light' else '0.25' }};
+                        slide.style.setProperty('--ad-bg-color', `rgba(${r}, ${g}, ${b}, ${opacity})`);
+                        slide.setAttribute('data-bg-color', 'true');
+                    }
+                } catch (e) {
+                    // Silently fail if CORS prevents color extraction
+                    console.log('Could not extract color from image:', e);
+                }
+            };
+            
+            tempImg.onerror = function() {
+                // Silently fail if image fails to load
+                console.log('Could not load image for color extraction');
+            };
+            
+            // Try to load the image
+            tempImg.src = img.src;
+        }
+        
         function loadUniversityAds() {
             // Fetch ads from backend
             fetch(`/get_university_ads?community_id={{ community.id }}`)
@@ -7608,9 +7675,9 @@
         function renderAds() {
             // Render ads
             const carouselInner = document.getElementById('adsCarouselInner');
-            carouselInner.innerHTML = ads.map(ad => `
-                <div class="ad-slide" onclick="trackAdClick(${ad.id}, '${ad.link}')">
-                    <img src="${ad.image}" alt="${ad.title}" class="ad-image">
+            carouselInner.innerHTML = ads.map((ad, index) => `
+                <div class="ad-slide" id="ad-slide-${index}" onclick="trackAdClick(${ad.id}, '${ad.link}')">
+                    <img src="${ad.image}" alt="${ad.title}" class="ad-image" onload="extractImageColor(this, ${index})">
                     <div class="ad-title">${ad.title}</div>
                 </div>
             `).join('');
