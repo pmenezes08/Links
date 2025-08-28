@@ -8313,6 +8313,41 @@ def join_community():
                 VALUES (?, ?, datetime('now'))
             """, (user_id, community_id))
 
+            # If the community has a parent, auto-add membership to the parent community as well
+            try:
+                c.execute("SELECT parent_community_id FROM communities WHERE id = ?", (community_id,))
+                parent_row = c.fetchone()
+                parent_id = parent_row['parent_community_id'] if parent_row else None
+                if parent_id:
+                    # Check if already a member of the parent
+                    c.execute("SELECT 1 FROM user_communities WHERE user_id = ? AND community_id = ?", (user_id, parent_id))
+                    if not c.fetchone():
+                        c.execute("""
+                            INSERT INTO user_communities (user_id, community_id, joined_at)
+                            VALUES (?, ?, datetime('now'))
+                        """, (user_id, parent_id))
+
+                        # Notify user about parent membership
+                        try:
+                            c.execute("SELECT name FROM communities WHERE id = ?", (parent_id,))
+                            parent_name_row = c.fetchone()
+                            parent_name = parent_name_row['name'] if parent_name_row else 'Parent Community'
+                            c.execute("""
+                                INSERT INTO notifications (user_id, from_user, type, community_id, message, link)
+                                VALUES (?, ?, ?, ?, ?, ?)
+                            """, (
+                                username,
+                                'system',
+                                'community_join',
+                                parent_id,
+                                f'Access granted to parent community "{parent_name}".',
+                                f'/community_feed/{parent_id}'
+                            ))
+                        except Exception as parent_notify_err:
+                            logger.warning(f"Failed to create parent join notification for {username}: {parent_notify_err}")
+            except Exception as parent_err:
+                logger.warning(f"Parent community auto-join failed for user {username} on child {community_id}: {parent_err}")
+
             # Create a notification for the user with a link to the community page
             try:
                 c.execute("""
