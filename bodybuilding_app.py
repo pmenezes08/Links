@@ -6192,7 +6192,7 @@ def submit_feedback(community_id):
 @app.route('/community/<int:community_id>/members/list')
 @login_required
 def get_community_members_list(community_id):
-    """Get list of community members for invitation selection"""
+    """Get list of community members - visible to all members of the community"""
     try:
         username = session.get('username')
         logger.info(f"Fetching members for community {community_id} requested by {username}")
@@ -6206,6 +6206,21 @@ def get_community_members_list(community_id):
             if not community:
                 logger.warning(f"Community {community_id} not found")
                 return jsonify({'success': False, 'message': 'Community not found'}), 404
+
+            # Ensure the requester is a member of the community
+            c.execute("SELECT rowid FROM users WHERE username = ?", (username,))
+            user_row = c.fetchone()
+            if not user_row:
+                return jsonify({'success': False, 'message': 'User not found'}), 404
+            requester_user_id = user_row['rowid']
+            c.execute("""
+                SELECT 1 FROM user_communities 
+                WHERE user_id = ? AND community_id = ?
+            """, (requester_user_id, community_id))
+            is_member = c.fetchone() is not None
+            if not is_member:
+                logger.info(f"User {username} attempted to view members of community {community_id} without membership")
+                return jsonify({'success': False, 'message': 'Forbidden: not a member of this community'}), 403
             
             # Get community members with profile pictures
             c.execute("""
