@@ -14,7 +14,7 @@
         .signup-card { width: 100%; max-width: 420px; background: rgba(0,0,0,0.85); border: 1px solid #222; border-radius: 12px; padding: 18px; margin: 0 auto; align-self: center; justify-self: center; }
         .signup-card { font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; }
         .signup-card input, .signup-card label, .signup-card button, .signup-card p { font-family: "Helvetica Neue", Helvetica, Arial, sans-serif !important; }
-        .signup-card h1 { display:none; }
+        .signup-card h1 { display:block; color:#ffffff; font-size:20px; margin: 0 0 8px 0; }
         .signup-card .signup-subtitle { display:none; }
         .form-group { margin-bottom: 10px; }
         .form-group label { display: block; margin-bottom: 4px; font-size: 12px; }
@@ -33,7 +33,7 @@
         </div>
         <div class="signup-right">
             <div class="signup-card">
-                <h1>Join C.Point</h1>
+                <h1>Create Account</h1>
                 <p class="signup-subtitle">Start your journey today</p>
                 {% if error %}
                     <p class="error-message">{{ error }}</p>
@@ -64,6 +64,11 @@
                         <button type="button" onclick="location.href='/'" class="sleek-btn small secondary">Cancel</button>
                     </div>
                 </form>
+                <div class="legal-note" style="margin-top: 10px; font-size: 12px; color: #9fb0b5;">
+                    By clicking Create account, you agreeing to our 
+                    <a href="/privacy" style="color: #4db6ac; text-decoration: none;">Privacy Policy</a> and 
+                    <a href="/terms" style="color: #4db6ac; text-decoration: none;">Terms of Use</a>
+                </div>
                 <div class="login-link" style="margin-top: 8px;">
                     <p>Already have an account? <a href="/">Login here</a></p>
                 </div>
@@ -84,5 +89,8 @@
             }
         });
     </script>
+    <div style="position: fixed; bottom: 8px; left: 0; right: 0; text-align: center; color: #9fb0b5; font-size: 12px;">
+        © 2025 C.Point
+    </div>
 </body>
 </html>
