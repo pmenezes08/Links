@@ -1108,6 +1108,8 @@ def signup():
             # Log the user in automatically
             session['username'] = username
             session['user_id'] = c.lastrowid
+            # Show community join prompt on first dashboard visit after signup
+            session['show_join_community_prompt'] = True
             
             return redirect(url_for('dashboard'))
             
@@ -1275,9 +1277,12 @@ def dashboard():
             """, (username,))
             communities = [{'id': row['id'], 'name': row['name'], 'type': row['type']} for row in c.fetchall()]
             
+        # Determine if we should show the first-time join community prompt
+        show_join_prompt = session.pop('show_join_community_prompt', False)
+        
         if user['subscription'] == 'premium':
             return redirect(url_for('premium_dashboard'))
-        return render_template('dashboard.html', name=username, communities=communities)
+        return render_template('dashboard.html', name=username, communities=communities, show_join_prompt=show_join_prompt)
     except Exception as e:
         logger.error(f"Error in dashboard for {username}: {str(e)}")
         abort(500)
@@ -8252,7 +8257,23 @@ def join_community():
                 INSERT INTO user_communities (user_id, community_id, joined_at)
                 VALUES (?, ?, datetime('now'))
             """, (user_id, community_id))
-            
+
+            # Create a notification for the user with a link to the community page
+            try:
+                c.execute("""
+                    INSERT INTO notifications (user_id, from_user, type, community_id, message, link)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """, (
+                    username,
+                    'system',
+                    'community_join',
+                    community_id,
+                    f'Successfully joined "{community_name}". Click to visit the community.',
+                    f'/community_feed/{community_id}'
+                ))
+            except Exception as notify_err:
+                logger.warning(f"Failed to create join notification for {username}: {notify_err}")
+
             conn.commit()
             
         return jsonify({

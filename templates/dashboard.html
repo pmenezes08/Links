@@ -330,6 +330,26 @@
 		</div>
 	</div>
 	
+	<!-- First-Time Join Community Modal -->
+	{% if show_join_prompt %}
+	<div id="joinCommunityPrompt" class="modal">
+		<div class="modal-content">
+			<div class="modal-header">
+				<h2>Join a community</h2>
+				<span class="close-modal" id="closeJoinPrompt">&times;</span>
+			</div>
+			<div class="modal-body">
+				<p style="color:#ccc; margin-bottom:12px;">Have a community code? Enter it below to join immediately.</p>
+				<div style="display:flex; gap:8px;">
+					<input type="text" id="communityCodeInput" placeholder="Enter community code" style="flex:1; padding:10px; border-radius:6px; border:1px solid #333; background:#111; color:#fff;">
+					<button id="joinCommunityBtn" class="sleek-btn">Join</button>
+				</div>
+				<div id="joinCommunityFeedback" style="margin-top:10px; color:#e74c3c; display:none;"></div>
+			</div>
+		</div>
+	</div>
+	{% endif %}
+
 	<!-- Communities Modal -->
 	<div id="communitiesModal" class="modal" style="display: none;">
 		<div class="modal-content">
@@ -412,6 +432,45 @@
 				} else {
 					list.removeClass('has-scroll');
 				}
+			}
+
+			// First-time join community prompt handlers
+			const joinPrompt = document.getElementById('joinCommunityPrompt');
+			if (joinPrompt) {
+				// Close on X or background click
+				$('#closeJoinPrompt, #joinCommunityPrompt').on('click', function(e) {
+					if (e.target === this) {
+						$('#joinCommunityPrompt').fadeOut(150);
+					}
+				});
+
+				// Join by code
+				$('#joinCommunityBtn').on('click', function() {
+					const code = $('#communityCodeInput').val().trim();
+					const feedback = $('#joinCommunityFeedback');
+					feedback.hide().text('');
+					if (!code) {
+						feedback.text('Please enter a community code.').show();
+						return;
+					}
+					$.ajax({
+						type: 'POST',
+						url: '/join_community',
+						data: { community_code: code },
+						success: function(resp) {
+							if (resp && resp.success) {
+								// Show success and redirect to community page
+								feedback.css('color', '#2ecc71').text(resp.message || 'Joined successfully!').show();
+								setTimeout(function(){ window.location.href = '/community_feed/' + resp.community_id; }, 800);
+							} else {
+								feedback.css('color', '#e74c3c').text(resp && resp.error ? resp.error : 'Failed to join community.').show();
+							}
+						},
+						error: function() {
+							feedback.css('color', '#e74c3c').text('Server error. Please try again.').show();
+						}
+					});
+				});
 			}
 		});
 	</script>
