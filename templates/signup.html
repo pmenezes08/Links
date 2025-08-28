@@ -17,11 +17,11 @@
         .form-group label { display: block; margin-bottom: 4px; font-size: 12px; }
         .form-group input { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #333; background: #0a0a0a; color: #fff; font-size: 14px; }
         .form-actions { margin-top: 6px; display: flex; gap: 8px; justify-content: flex-end; }
-        .sleek-btn { font-size: 14px; padding: 8px 14px; white-space: nowrap; }
+        .sleek-btn { font-size: 12px; padding: 6px 10px; white-space: nowrap; width: auto; max-width: none; }
         @media (max-width: 900px) { .signup-split { grid-template-columns: 1fr; } .signup-left { display: none; } }
     </style>
 </head>
-<body id="signupPage">
+<body id="signupPage" style="font-family: inherit;">
     <div class="signup-split">
         <div class="signup-left">
             <img src="{{ url_for('static', filename='signup_side.jpg') }}" alt="Welcome" onerror="this.onerror=null;this.src='{{ url_for('static', filename='logo.jpg') }}'">
@@ -43,7 +43,7 @@
                         <input type="email" id="email" name="email" placeholder="your.email@example.com" value="{{ email or '' }}" required>
                     </div>
                     <div class="form-group">
-                        <label for="mobile">Mobile (optional)</label>
+                        <label for="mobile">Mobile</label>
                         <input type="text" id="mobile" name="mobile" placeholder="e.g. +44 7700 900123" value="{{ mobile or '' }}">
                     </div>
                     <div class="form-group">
