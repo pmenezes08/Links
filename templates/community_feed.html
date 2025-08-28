@@ -4825,9 +4825,7 @@
                 <div class="carousel-arrow next" onclick="changeSlide(1)">
                     <i class="fas fa-chevron-right"></i>
                 </div>
-                <div class="carousel-nav" id="carouselNav">
-                    <!-- Navigation dots will be added dynamically -->
-                </div>
+                <!-- Navigation dots removed -->
             </div>
         </div>
         {% endif %}
@@ -7695,11 +7693,7 @@
                 </div>
             `).join('');
             
-            // Create navigation dots
-            const navContainer = document.getElementById('carouselNav');
-            navContainer.innerHTML = ads.map((_, index) => `
-                <div class="carousel-dot ${index === 0 ? 'active' : ''}" onclick="goToSlide(${index})"></div>
-            `).join('');
+            // Navigation dots removed per request
             
             // Reset to first slide
             currentSlide = 0;
