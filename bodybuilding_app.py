@@ -1066,19 +1066,29 @@ def signup():
     
     # Validation
     if not all([username, email, password, confirm_password, first_name, last_name]):
-        return render_template('signup.html', error='All required fields must be filled')
+        return render_template('signup.html', error='All required fields must be filled',
+                               username=username, email=email, first_name=first_name, last_name=last_name,
+                               age=age, gender=gender, primary_goal=primary_goal)
     
     if password != confirm_password:
-        return render_template('signup.html', error='Passwords do not match')
+        return render_template('signup.html', error='Passwords do not match',
+                               username=username, email=email, first_name=first_name, last_name=last_name,
+                               age=age, gender=gender, primary_goal=primary_goal)
     
     if len(password) < 6:
-        return render_template('signup.html', error='Password must be at least 6 characters long')
+        return render_template('signup.html', error='Password must be at least 6 characters long',
+                               username=username, email=email, first_name=first_name, last_name=last_name,
+                               age=age, gender=gender, primary_goal=primary_goal)
     
     if not re.match(r'^[a-zA-Z0-9_]+$', username):
-        return render_template('signup.html', error='Username can only contain letters, numbers, and underscores')
+        return render_template('signup.html', error='Username can only contain letters, numbers, and underscores',
+                               username=username, email=email, first_name=first_name, last_name=last_name,
+                               age=age, gender=gender, primary_goal=primary_goal)
     
     if len(username) < 3:
-        return render_template('signup.html', error='Username must be at least 3 characters long')
+        return render_template('signup.html', error='Username must be at least 3 characters long',
+                               username=username, email=email, first_name=first_name, last_name=last_name,
+                               age=age, gender=gender, primary_goal=primary_goal)
     
     try:
         with get_db_connection() as conn:
@@ -1087,12 +1097,16 @@ def signup():
             # Check if username already exists
             c.execute("SELECT 1 FROM users WHERE username = ?", (username,))
             if c.fetchone():
-                return render_template('signup.html', error='Username already exists')
+                return render_template('signup.html', error='Username already exists',
+                                       username=username, email=email, first_name=first_name, last_name=last_name,
+                                       age=age, gender=gender, primary_goal=primary_goal)
             
             # Check if email already exists
             c.execute("SELECT 1 FROM users WHERE email = ?", (email,))
             if c.fetchone():
-                return render_template('signup.html', error='Email already registered')
+                return render_template('signup.html', error='Email already registered',
+                                       username=username, email=email, first_name=first_name, last_name=last_name,
+                                       age=age, gender=gender, primary_goal=primary_goal)
             
             # Hash the password
             hashed_password = generate_password_hash(password)
@@ -1115,7 +1129,9 @@ def signup():
             
     except Exception as e:
         logger.error(f"Error during user registration: {str(e)}")
-        return render_template('signup.html', error='An error occurred during registration. Please try again.')
+        return render_template('signup.html', error='An error occurred during registration. Please try again.',
+                               username=username, email=email, first_name=first_name, last_name=last_name,
+                               age=age, gender=gender, primary_goal=primary_goal)
 
 @app.route('/admin_profile')
 @login_required
