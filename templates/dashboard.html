@@ -139,15 +139,15 @@
 		}
 		
 		.modal-content {
-			background: #1a1a1a;
-			border: 1px solid #333333;
+			background: #000000; /* pure black sleek */
+			border: 1px solid #222222;
 			border-radius: 12px;
-			max-width: 420px; /* more compact */
+			max-width: 520px; /* allow more room for input */
 			width: 92%;
 			max-height: 70vh;
 			overflow: hidden;
-			padding: 12px;
-			margin-top: 28px; /* push down a bit from very top */
+			padding: 14px;
+			margin-top: 24px; /* push down a bit from very top */
 		}
 		
 		.modal-header {
@@ -344,10 +344,12 @@
 			</div>
 			<div class="modal-body">
 				<p style="color:#ccc; margin: 2px 0 10px 0; font-size: 14px;">Join your first community to connect with others. If you have a code, enter it below.</p>
-				<div style="display:flex; gap:8px; align-items:center;">
-					<input type="text" id="communityCodeInput" placeholder="Enter community code" style="flex:1; padding:10px; border-radius:6px; border:1px solid #333; background:#111; color:#fff;">
-					<button id="joinCommunityBtn" class="sleek-btn">Join</button>
-					<button id="skipJoinPrompt" class="sleek-btn secondary" style="background: transparent; border: 1px solid #333; color: #9fb0b5;">Skip</button>
+				<div style="display:flex; flex-wrap:wrap; gap:10px; align-items:center;">
+					<input type="text" id="communityCodeInput" placeholder="Enter community code" style="flex:1 1 100%; padding:12px; border-radius:8px; border:1px solid #333; background:#0a0a0a; color:#fff; font-size:14px;">
+					<div style="display:flex; gap:8px; width:100%; justify-content:flex-end;">
+						<button id="joinCommunityBtn" class="sleek-btn compact" style="min-width:auto;">Join</button>
+						<button id="skipJoinPrompt" class="sleek-btn compact" style="background: transparent; border: 1px solid #333; color: #9fb0b5; min-width:auto;">Skip</button>
+					</div>
 				</div>
 				<div id="joinCommunityFeedback" style="margin-top:10px; color:#e74c3c; display:none;"></div>
 			</div>
