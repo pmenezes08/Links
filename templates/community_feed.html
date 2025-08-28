@@ -264,7 +264,7 @@
             max-width: 290px;
             height: 220px;
             object-fit: contain;
-            background: #ffffff;
+            background: transparent;
             border-radius: 12px;
             margin-bottom: 10px;
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
@@ -7539,6 +7539,12 @@
         function extractImageColor(img, imageIndex) {
             // Use backend to extract color to avoid CORS issues
             const imageUrl = img.src;
+            const imageElement = document.getElementById(`ad-image-${imageIndex}`);
+            
+            // Set initial state while loading
+            if (imageElement) {
+                imageElement.style.backgroundColor = 'transparent';
+            }
             
             // Fetch color from backend
             fetch(`/get_image_color?url=${encodeURIComponent(imageUrl)}`)
@@ -7546,18 +7552,23 @@
                 .then(data => {
                     if (data.success && data.color) {
                         const color = data.color;
-                        const imageElement = document.getElementById(`ad-image-${imageIndex}`);
                         
                         if (imageElement) {
                             // Apply background color directly to the image element
                             imageElement.style.backgroundColor = `rgb(${color.r}, ${color.g}, ${color.b})`;
                             console.log(`Applied background color rgb(${color.r}, ${color.g}, ${color.b}) to ad-image-${imageIndex}`);
                         }
+                    } else if (imageElement) {
+                        // If color extraction fails, set a neutral background
+                        imageElement.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
                     }
                 })
                 .catch(error => {
                     console.log('Could not extract color from image:', error);
-                    // Keep white background as fallback (already set in CSS)
+                    // Set subtle fallback
+                    if (imageElement) {
+                        imageElement.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
+                    }
                 });
         }
         
