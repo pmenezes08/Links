@@ -6,136 +6,75 @@
     <title>Sign Up - C.Point</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}?v=5.0">
     <style>
-        #signupPage .container { max-width: 640px; padding-top: 10px; }
-        #signupPage h1 { margin: 10px 0 6px 0; font-size: 24px; }
-        #signupPage .signup-subtitle { margin: 0 0 12px 0; }
-        #signupForm { max-width: 640px; }
-        #signupForm .form-section { margin-bottom: 10px; }
-        #signupForm .form-section h3 { margin: 8px 0; font-size: 16px; }
-        #signupForm .form-group { margin-bottom: 8px; }
-        #signupForm .form-actions { margin-top: 6px; display: flex; gap: 8px; }
+        .signup-split { display: grid; grid-template-columns: 1fr 1fr; min-height: 100vh; }
+        .signup-left { position: relative; background: #000; }
+        .signup-left img { width: 100%; height: 100%; object-fit: cover; opacity: 0.85; }
+        .signup-right { display: flex; align-items: center; justify-content: center; padding: 20px; }
+        .signup-card { width: 100%; max-width: 420px; background: rgba(0,0,0,0.85); border: 1px solid #222; border-radius: 12px; padding: 18px; }
+        .signup-card h1 { margin: 0 0 6px 0; font-size: 22px; }
+        .signup-card .signup-subtitle { margin: 0 0 14px 0; color: #9fb0b5; }
+        .form-group { margin-bottom: 10px; }
+        .form-group label { display: block; margin-bottom: 6px; }
+        .form-group input { width: 100%; padding: 12px; border-radius: 8px; border: 1px solid #333; background: #0a0a0a; color: #fff; }
+        .form-actions { margin-top: 8px; display: flex; gap: 8px; justify-content: flex-end; }
+        @media (max-width: 900px) { .signup-split { grid-template-columns: 1fr; } .signup-left { display: none; } }
     </style>
 </head>
 <body id="signupPage">
-    <div class="container">
-        <h1>Create Your Account</h1>
-        <p class="signup-subtitle">Join C.Point and start your fitness journey</p>
-        
-        {% if error %}
-            <p class="error-message">{{ error }}</p>
-        {% endif %}
-        
-        <form method="POST" action="/signup" class="signup-form" id="signupForm">
-            <div class="form-section">
-                <h3>Basic Information</h3>
-                <div class="form-group">
-                    <label for="username">Username *</label>
-                    <input type="text" id="username" name="username" placeholder="Choose a username" value="{{ username or '' }}" required>
-                </div>
-                <div class="form-group">
-                    <label for="email">Email *</label>
-                    <input type="email" id="email" name="email" placeholder="your.email@example.com" value="{{ email or '' }}" required>
-                </div>
-                <div class="form-group">
-                    <label for="password">Password *</label>
-                    <input type="password" id="password" name="password" placeholder="Create a strong password" required>
-                </div>
-                <div class="form-group">
-                    <label for="confirm_password">Confirm Password *</label>
-                    <input type="password" id="confirm_password" name="confirm_password" placeholder="Confirm your password" required>
-                </div>
-            </div>
-            
-            <div class="form-section">
-                <h3>Personal Information</h3>
-                <div class="form-group">
-                    <label for="first_name">First Name *</label>
-                    <input type="text" id="first_name" name="first_name" placeholder="Your first name" value="{{ first_name or '' }}" required>
-                </div>
-                <div class="form-group">
-                    <label for="last_name">Last Name *</label>
-                    <input type="text" id="last_name" name="last_name" placeholder="Your last name" value="{{ last_name or '' }}" required>
-                </div>
-                <div class="form-group">
-                    <label for="age">Age</label>
-                    <input type="number" id="age" name="age" placeholder="Your age" min="13" max="120" value="{{ age or '' }}">
-                </div>
-                <div class="form-group">
-                    <label for="gender">Gender</label>
-                    <select id="gender" name="gender">
-                        <option value="" {{ 'selected' if (gender or '') == '' else '' }}>Select gender</option>
-                        <option value="male" {{ 'selected' if gender == 'male' else '' }}>Male</option>
-                        <option value="female" {{ 'selected' if gender == 'female' else '' }}>Female</option>
-                        <option value="other" {{ 'selected' if gender == 'other' else '' }}>Other</option>
-                        <option value="prefer_not_to_say" {{ 'selected' if gender == 'prefer_not_to_say' else '' }}>Prefer not to say</option>
-                    </select>
+    <div class="signup-split">
+        <div class="signup-left">
+            <img src="{{ url_for('static', filename='signup_side.jpg') }}" alt="Welcome" onerror="this.onerror=null;this.src='{{ url_for('static', filename='logo.jpg') }}'">
+        </div>
+        <div class="signup-right">
+            <div class="signup-card">
+                <h1>Join C.Point</h1>
+                <p class="signup-subtitle">Start your journey today</p>
+                {% if error %}
+                    <p class="error-message">{{ error }}</p>
+                {% endif %}
+                <form method="POST" action="/signup" id="signupForm">
+                    <div class="form-group">
+                        <label for="full_name">Full name *</label>
+                        <input type="text" id="full_name" name="full_name" placeholder="Your full name" value="{{ full_name or '' }}" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="email">Email *</label>
+                        <input type="email" id="email" name="email" placeholder="your.email@example.com" value="{{ email or '' }}" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="mobile">Mobile (optional)</label>
+                        <input type="text" id="mobile" name="mobile" placeholder="e.g. +44 7700 900123" value="{{ mobile or '' }}">
+                    </div>
+                    <div class="form-group">
+                        <label for="password">Password *</label>
+                        <input type="password" id="password" name="password" placeholder="Create a strong password" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="confirm_password">Confirm Password *</label>
+                        <input type="password" id="confirm_password" name="confirm_password" placeholder="Confirm your password" required>
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" class="sleek-btn primary">Create Account</button>
+                        <button type="button" onclick="location.href='/'" class="sleek-btn secondary">Cancel</button>
+                    </div>
+                </form>
+                <div class="login-link" style="margin-top: 8px;">
+                    <p>Already have an account? <a href="/">Login here</a></p>
                 </div>
             </div>
-            
-            			<div class="form-section">
-				<h3>Fitness Goals</h3>
-				<div class="form-group">
-					<label for="primary_goal">Primary Goal</label>
-					<select id="primary_goal" name="primary_goal">
-						<option value="" {{ 'selected' if (primary_goal or '') == '' else '' }}>Select your primary goal</option>
-						<option value="weight_loss" {{ 'selected' if primary_goal == 'weight_loss' else '' }}>Weight Loss</option>
-						<option value="muscle_gain" {{ 'selected' if primary_goal == 'muscle_gain' else '' }}>Muscle Gain</option>
-						<option value="strength" {{ 'selected' if primary_goal == 'strength' else '' }}>Strength</option>
-						<option value="endurance" {{ 'selected' if primary_goal == 'endurance' else '' }}>Endurance</option>
-						<option value="general_fitness" {{ 'selected' if primary_goal == 'general_fitness' else '' }}>General Fitness</option>
-						<option value="sports_performance" {{ 'selected' if primary_goal == 'sports_performance' else '' }}>Sports Performance</option>
-					</select>
-				</div>
-			</div>
-            
-            <div class="form-actions">
-                <button type="submit" class="sleek-btn primary">Create Account</button>
-                <button type="button" onclick="location.href='/'" class="sleek-btn secondary">Cancel</button>
-            </div>
-        </form>
-        
-        <div class="login-link">
-            <p>Already have an account? <a href="/">Login here</a></p>
         </div>
     </div>
-    
-    <script>
-        // Remove Fitness Goals section (if present) to simplify and compact the form
-        document.addEventListener('DOMContentLoaded', function () {
-            try {
-                var primaryGoal = document.getElementById('primary_goal');
-                if (primaryGoal && primaryGoal.closest) {
-                    var section = primaryGoal.closest('.form-section');
-                    if (section && section.parentNode) {
-                        section.parentNode.removeChild(section);
-                    }
-                }
-            } catch (e) { /* no-op */ }
-        });
 
+    <script>
         // Password confirmation validation
-        document.getElementById('confirm_password').addEventListener('input', function() {
-            const password = document.getElementById('password').value;
-            const confirmPassword = this.value;
-            
-            if (password !== confirmPassword) {
-                this.setCustomValidity('Passwords do not match');
-            } else {
-                this.setCustomValidity('');
-            }
-        });
-        
-        // Username validation (no spaces, alphanumeric and underscores only)
-        document.getElementById('username').addEventListener('input', function() {
-            const username = this.value;
-            const usernameRegex = /^[a-zA-Z0-9_]+$/;
-            
-            if (!usernameRegex.test(username)) {
-                this.setCustomValidity('Username can only contain letters, numbers, and underscores');
-            } else if (username.length < 3) {
-                this.setCustomValidity('Username must be at least 3 characters long');
-            } else {
-                this.setCustomValidity('');
+        document.addEventListener('DOMContentLoaded', function () {
+            var confirmInput = document.getElementById('confirm_password');
+            if (confirmInput) {
+                confirmInput.addEventListener('input', function() {
+                    var password = document.getElementById('password').value;
+                    var confirmPassword = this.value;
+                    this.setCustomValidity(password !== confirmPassword ? 'Passwords do not match' : '');
+                });
             }
         });
     </script>
