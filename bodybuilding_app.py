@@ -7234,24 +7234,39 @@ def get_image_color():
             # Get image dimensions
             width, height = img.size
             
-            # Sample pixels from edges (likely background)
+            # Sample pixels from corners and edges (likely background)
             edge_pixels = []
             
+            # Corners (most likely to be background)
+            corners = [
+                (0, 0), (width-1, 0),  # Top corners
+                (0, height-1), (width-1, height-1)  # Bottom corners
+            ]
+            
+            # Add corner pixels multiple times to give them more weight
+            for corner in corners:
+                for _ in range(10):  # Weight corners heavily
+                    edge_pixels.append(img.getpixel(corner))
+            
             # Top edge
-            for x in range(0, width, 5):
+            for x in range(0, width, 10):
                 edge_pixels.append(img.getpixel((x, 0)))
+                edge_pixels.append(img.getpixel((x, 1)))  # Second row too
             
             # Bottom edge
-            for x in range(0, width, 5):
+            for x in range(0, width, 10):
                 edge_pixels.append(img.getpixel((x, height - 1)))
+                edge_pixels.append(img.getpixel((x, height - 2)))  # Second to last row
             
             # Left edge
-            for y in range(0, height, 5):
+            for y in range(0, height, 10):
                 edge_pixels.append(img.getpixel((0, y)))
+                edge_pixels.append(img.getpixel((1, y)))  # Second column
             
             # Right edge
-            for y in range(0, height, 5):
+            for y in range(0, height, 10):
                 edge_pixels.append(img.getpixel((width - 1, y)))
+                edge_pixels.append(img.getpixel((width - 2, y)))  # Second to last column
             
             # Find most common color (likely background)
             if edge_pixels:

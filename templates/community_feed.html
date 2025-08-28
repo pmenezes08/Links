@@ -272,10 +272,6 @@
             transition: background-color 0.3s ease;
         }
         
-        .ad-image[data-bg-color] {
-            background: var(--img-bg-color) !important;
-        }
-        
         .ad-title {
             font-size: 14px;
             font-weight: 600;
@@ -7548,14 +7544,14 @@
             fetch(`/get_image_color?url=${encodeURIComponent(imageUrl)}`)
                 .then(response => response.json())
                 .then(data => {
-                    if (data.success || data.color) {
+                    if (data.success && data.color) {
                         const color = data.color;
                         const imageElement = document.getElementById(`ad-image-${imageIndex}`);
                         
                         if (imageElement) {
-                            // Apply background color to the image element
-                            imageElement.style.setProperty('--img-bg-color', `rgb(${color.r}, ${color.g}, ${color.b})`);
-                            imageElement.setAttribute('data-bg-color', 'true');
+                            // Apply background color directly to the image element
+                            imageElement.style.backgroundColor = `rgb(${color.r}, ${color.g}, ${color.b})`;
+                            console.log(`Applied background color rgb(${color.r}, ${color.g}, ${color.b}) to ad-image-${imageIndex}`);
                         }
                     }
                 })
