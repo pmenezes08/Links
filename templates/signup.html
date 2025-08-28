@@ -17,7 +17,7 @@
         .form-group label { display: block; margin-bottom: 4px; font-size: 12px; }
         .form-group input { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #333; background: #0a0a0a; color: #fff; font-size: 14px; }
         .form-actions { margin-top: 6px; display: flex; gap: 8px; justify-content: flex-end; }
-        .sleek-btn { font-size: 12px; padding: 6px 10px; white-space: nowrap; width: auto; max-width: none; }
+        .signup-card .sleek-btn { font-size: 12px; padding: 6px 10px; white-space: nowrap; width: auto !important; max-width: none !important; display: inline-block; }
         @media (max-width: 900px) { .signup-split { grid-template-columns: 1fr; } .signup-left { display: none; } }
     </style>
 </head>
@@ -55,8 +55,8 @@
                         <input type="password" id="confirm_password" name="confirm_password" placeholder="Confirm your password" required>
                     </div>
                     <div class="form-actions">
-                        <button type="submit" class="sleek-btn primary">Create Account</button>
-                        <button type="button" onclick="location.href='/'" class="sleek-btn secondary">Cancel</button>
+                        <button type="submit" class="sleek-btn small primary">Create Account</button>
+                        <button type="button" onclick="location.href='/'" class="sleek-btn small secondary">Cancel</button>
                     </div>
                 </form>
                 <div class="login-link" style="margin-top: 8px;">
