@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign Up - C.Point</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}?v=5.0">
+</head>
+<body>
+    <div class="container">
+        <h1>Create Your Account</h1>
+        <p class="signup-subtitle">Join C.Point and start your fitness journey</p>
+        
+        {% if error %}
+            <p class="error-message">{{ error }}</p>
+        {% endif %}
+        
+        <form method="POST" action="/signup" class="signup-form">
+            <div class="form-section">
+                <h3>Basic Information</h3>
+                <div class="form-group">
+                    <label for="username">Username *</label>
+                    <input type="text" id="username" name="username" placeholder="Choose a username" required>
+                </div>
+                <div class="form-group">
+                    <label for="email">Email *</label>
+                    <input type="email" id="email" name="email" placeholder="your.email@example.com" required>
+                </div>
+                <div class="form-group">
+                    <label for="password">Password *</label>
+                    <input type="password" id="password" name="password" placeholder="Create a strong password" required>
+                </div>
+                <div class="form-group">
+                    <label for="confirm_password">Confirm Password *</label>
+                    <input type="password" id="confirm_password" name="confirm_password" placeholder="Confirm your password" required>
+                </div>
+            </div>
+            
+            <div class="form-section">
+                <h3>Personal Information</h3>
+                <div class="form-group">
+                    <label for="first_name">First Name *</label>
+                    <input type="text" id="first_name" name="first_name" placeholder="Your first name" required>
+                </div>
+                <div class="form-group">
+                    <label for="last_name">Last Name *</label>
+                    <input type="text" id="last_name" name="last_name" placeholder="Your last name" required>
+                </div>
+                <div class="form-group">
+                    <label for="age">Age</label>
+                    <input type="number" id="age" name="age" placeholder="Your age" min="13" max="120">
+                </div>
+                <div class="form-group">
+                    <label for="gender">Gender</label>
+                    <select id="gender" name="gender">
+                        <option value="">Select gender</option>
+                        <option value="male">Male</option>
+                        <option value="female">Female</option>
+                        <option value="other">Other</option>
+                        <option value="prefer_not_to_say">Prefer not to say</option>
+                    </select>
+                </div>
+            </div>
+            
+            			<div class="form-section">
+				<h3>Fitness Goals</h3>
+				<div class="form-group">
+					<label for="primary_goal">Primary Goal</label>
+					<select id="primary_goal" name="primary_goal">
+						<option value="">Select your primary goal</option>
+						<option value="weight_loss">Weight Loss</option>
+						<option value="muscle_gain">Muscle Gain</option>
+						<option value="strength">Strength</option>
+						<option value="endurance">Endurance</option>
+						<option value="general_fitness">General Fitness</option>
+						<option value="sports_performance">Sports Performance</option>
+					</select>
+				</div>
+			</div>
+            
+            <div class="form-actions">
+                <button type="submit" class="sleek-btn primary">Create Account</button>
+                <button type="button" onclick="location.href='/'" class="sleek-btn secondary">Cancel</button>
+            </div>
+        </form>
+        
+        <div class="login-link">
+            <p>Already have an account? <a href="/">Login here</a></p>
+        </div>
+    </div>
+    
+    <script>
+        // Password confirmation validation
+        document.getElementById('confirm_password').addEventListener('input', function() {
+            const password = document.getElementById('password').value;
+            const confirmPassword = this.value;
+            
+            if (password !== confirmPassword) {
+                this.setCustomValidity('Passwords do not match');
+            } else {
+                this.setCustomValidity('');
+            }
+        });
+        
+        // Username validation (no spaces, alphanumeric and underscores only)
+        document.getElementById('username').addEventListener('input', function() {
+            const username = this.value;
+            const usernameRegex = /^[a-zA-Z0-9_]+$/;
+            
+            if (!usernameRegex.test(username)) {
+                this.setCustomValidity('Username can only contain letters, numbers, and underscores');
+            } else if (username.length < 3) {
+                this.setCustomValidity('Username must be at least 3 characters long');
+            } else {
+                this.setCustomValidity('');
+            }
+        });
+    </script>
+</body>
+</html>

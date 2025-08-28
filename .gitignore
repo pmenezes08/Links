@@ -1,0 +1,16 @@
+__pycache__/
+*.db
+users.db
+users_local.db
+FETCH_HEAD
+fix_database.py
+static/community_files/
+templates/build_workout.html
+templates/choose_workout_type.html
+
+# Local development files
+.env.local
+.env
+*.log
+.DS_Store
+Thumbs.db

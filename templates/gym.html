@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gym</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v='1.1') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+        /* Premium Dashboard Menu Styles */
+        .gym-page { margin-left: 200px; }
+        .gym-page .sidebar { position: fixed !important; top: 0 !important; left: 0 !important; width: 200px !important; height: 100vh !important; background: #1a1a1a !important; border-right: 1px solid #333333 !important; z-index: 1000 !important; display: flex !important; flex-direction: column !important; }
+        .gym-page .sidebar-header { display: flex; align-items: center; padding: 10px; border-bottom: 1px solid #333333; height: 60px; box-sizing: border-box; }
+        .gym-page .sidebar-logo { padding: 5px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+        .gym-page .community-name { flex: 1; display: flex; align-items: center; color: #ffffff; font-size: 16px; font-weight: 600; padding-left: 10px; overflow: hidden; }
+        .gym-page .community-name span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .gym-page .sidebar-menu { flex: 1; padding: 10px 0; display: block !important; overflow-y: auto !important; }
+        .gym-page .sidebar-menu a { display: block !important; padding: 12px 20px !important; color: #ffffff !important; text-decoration: none !important; transition: all 0.3s ease !important; border: none !important; font-size: 14px !important; }
+        .gym-page .sidebar-menu a:hover { background: rgba(77, 182, 172, 0.2) !important; color: #4db6ac !important; padding-left: 25px !important; }
+        .gym-page .menu-btn, .gym-page .dropdown-content { display: none !important; }
+        .gym-page .container { margin-left: 0; padding: 0; height: 100vh; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+        /* Header bar matching other pages */
+        .gym-header { 
+            position: fixed; 
+            top: 0; 
+            left: 200px; 
+            right: 0; 
+            height: 60px; 
+            background: transparent; 
+            border-bottom: 1px solid #333333; 
+            z-index: 900;
+            box-sizing: border-box;
+        }
+        @media (max-width: 768px) {
+            .gym-header { left: 0 !important; }
+            .gym-page { margin-left: 0 !important; padding-top: 60px !important; }
+            .gym-page .sidebar { width: 100% !important; height: 60px !important; overflow: visible !important; }
+            .gym-page .sidebar-header { padding: 8px !important; height: 60px !important; }
+            .gym-page .community-name { font-size: 14px !important; }
+            .gym-page .sidebar-menu { display: none !important; position: absolute !important; top: 60px !important; left: 0 !important; right: 0 !important; background: #1a1a1a !important; border-top: 1px solid #333333 !important; max-height: calc(100vh - 60px) !important; overflow-y: auto !important; }
+            .gym-page .sidebar:hover .sidebar-menu, .gym-page .sidebar:focus-within .sidebar-menu { display: block !important; }
+        }
+    </style>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="{{ url_for('static', filename='script.js', v='1.1') }}"></script>
+</head>
+<body class="gym-page">
+    <!-- Sidebar Menu -->
+    <div class="sidebar">
+        <div class="sidebar-header">
+            <div class="sidebar-logo" id="sidebarLogo"></div>
+            <div class="community-name">
+                <span>Gym</span>
+            </div>
+        </div>
+        <div class="sidebar-menu">
+			{% if session['username'] == 'admin' %}
+			<a href="{{ url_for('admin_profile') }}">Admin Profile</a>
+			<a href="{{ url_for('admin') }}">Admin Dashboard</a>
+			{% endif %}
+			<a href="{{ url_for('dashboard') }}">Dashboard</a>
+			<a href="{{ url_for('profile') }}">Profile</a>
+			<a href="{{ url_for('user_chat') }}">Messages</a>
+			<a href="{{ url_for('communities') }}">Your Communities</a>
+			<a href="{{ url_for('your_sports') }}">Your Sports</a>
+			<a href="{{ url_for('logout') }}">Logout</a>
+		</div>
+    </div>
+    
+    <div class="gym-header"></div>
+
+    <!-- Main Content -->
+    <div class="container">
+        <div class="gym-sections" style="padding: 20px;">
+            <!-- Workout Generator Section -->
+            <div class="gym-section-card" onclick="window.location.href='{{ url_for('workout_generator') }}'">
+                <div class="section-icon">
+                    <i class="fas fa-magic"></i>
+                </div>
+                <div class="section-content">
+                    <h3>Workout Generator</h3>
+                    <p>Generate personalized workout plans based on your goals and fitness level</p>
+                    <div class="section-features">
+                        <span class="feature-tag">AI-Powered</span>
+                        <span class="feature-tag">Personalized</span>
+                        <span class="feature-tag">Multiple Goals</span>
+                    </div>
+                </div>
+                <div class="section-arrow">
+                    <i class="fas fa-chevron-right"></i>
+                </div>
+            </div>
+            
+            <!-- Workout Tracking Section -->
+            <div class="gym-section-card" onclick="window.location.href='{{ url_for('workout_tracking') }}'">
+                <div class="section-icon">
+                    <i class="fas fa-chart-line"></i>
+                </div>
+                <div class="section-content">
+                    <h3>Workout Tracking</h3>
+                    <p>Track your workouts, progress, and performance over time</p>
+                    <div class="section-features">
+                        <span class="feature-tag">Progress Tracking</span>
+                        <span class="feature-tag">Analytics</span>
+                        <span class="feature-tag">History</span>
+                    </div>
+                </div>
+                <div class="section-arrow">
+                    <i class="fas fa-chevron-right"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

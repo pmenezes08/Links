@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clubs & Organizations - {{ community.name }}</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}?v=2.0">
+    <style>
+        /* Premium Dashboard Menu Styles */
+        .clubs-page { margin-left: 200px; }
+        .clubs-page .sidebar { position: fixed !important; top: 0 !important; left: 0 !important; width: 200px !important; height: 100vh !important; background: #1a1a1a !important; border-right: 1px solid #333333 !important; z-index: 1000 !important; display: flex !important; flex-direction: column !important; }
+        .clubs-page .sidebar-header { display: flex; align-items: center; padding: 10px; border-bottom: 1px solid #333333; height: 60px; box-sizing: border-box; }
+        .clubs-page .sidebar-logo { padding: 5px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+        .clubs-page .community-name { flex: 1; display: flex; align-items: center; color: #ffffff; font-size: 16px; font-weight: 600; padding-left: 10px; overflow: hidden; }
+        .clubs-page .community-name span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .clubs-page .sidebar-menu { flex: 1; padding: 10px 0; display: block !important; overflow-y: auto !important; }
+        .clubs-page .sidebar-menu a { display: block !important; padding: 12px 20px !important; color: #ffffff !important; text-decoration: none !important; transition: all 0.3s ease !important; border: none !important; font-size: 14px !important; }
+        .clubs-page .sidebar-menu a:hover { background: rgba(77, 182, 172, 0.2) !important; color: #4db6ac !important; padding-left: 25px !important; }
+        
+        /* Header Bar */
+        .clubs-header-bar { 
+            position: fixed; 
+            top: 0; 
+            left: 200px; 
+            right: 0; 
+            height: 60px; 
+            background: #000000; 
+            border-bottom: 1px solid #333333;
+            z-index: 900;
+            display: flex;
+            align-items: center;
+            padding: 0 20px;
+        }
+        
+        .header-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+        }
+        
+        .header-title {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .header-title h1 {
+            font-size: 18px;
+            color: #ffffff;
+            margin: 0;
+        }
+        
+        .header-actions {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .back-btn, .create-club-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #ffffff;
+            padding: 8px 16px;
+            border-radius: 6px;
+            text-decoration: none;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+        }
+        
+        .create-club-btn {
+            background: #4db6ac;
+            border-color: #4db6ac;
+        }
+        
+        .back-btn:hover {
+            background: rgba(255, 255, 255, 0.15);
+        }
+        
+        .create-club-btn:hover {
+            background: #2d8a7e;
+        }
+        
+        /* Main Content */
+        body {
+            background-color: #000000;
+            color: #ffffff;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+        
+        .clubs-container {
+            padding: 70px 15px 15px 15px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        /* Search and Filter Section */
+        .search-section {
+            background: #000000;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        
+        .search-input {
+            flex: 1;
+            padding: 8px 12px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 4px;
+            color: white;
+            font-size: 14px;
+        }
+        
+        .filter-select {
+            padding: 8px 12px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 4px;
+            color: white;
+            font-size: 14px;
+            min-width: 150px;
+        }
+        
+        /* Clubs Grid */
+        .clubs-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 15px;
+        }
+        
+        .club-card {
+            background: #000000;
+            border-radius: 8px;
+            padding: 15px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: all 0.3s ease;
+        }
+        
+        .club-card:hover {
+            background: rgba(255, 255, 255, 0.02);
+            transform: translateY(-2px);
+        }
+        
+        .club-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 10px;
+        }
+        
+        .club-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #4db6ac;
+            margin-bottom: 5px;
+        }
+        
+        .club-category {
+            background: rgba(77, 182, 172, 0.2);
+            color: #4db6ac;
+            padding: 3px 8px;
+            border-radius: 10px;
+            font-size: 11px;
+            font-weight: 500;
+        }
+        
+        .club-description {
+            font-size: 13px;
+            color: rgba(255, 255, 255, 0.8);
+            line-height: 1.5;
+            margin-bottom: 12px;
+        }
+        
+        .club-info {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.6);
+            margin-bottom: 12px;
+        }
+        
+        .club-info-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .club-actions {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-top: 12px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .member-count {
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.6);
+        }
+        
+        .join-btn {
+            padding: 6px 14px;
+            background: #4db6ac;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .join-btn:hover {
+            background: #2d8a7e;
+        }
+        
+        .join-btn.joined {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .no-clubs {
+            text-align: center;
+            padding: 60px 20px;
+            color: rgba(255, 255, 255, 0.5);
+        }
+        
+        .no-clubs i {
+            font-size: 48px;
+            margin-bottom: 10px;
+            opacity: 0.5;
+        }
+        
+        /* Create Club Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 2000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.8);
+        }
+        
+        .modal-content {
+            background: #1a1a1a;
+            margin: 5% auto;
+            padding: 0;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            width: 90%;
+            max-width: 600px;
+            border-radius: 8px;
+        }
+        
+        .modal-header {
+            background: linear-gradient(135deg, #4db6ac 0%, #2d8a7e 100%);
+            padding: 15px 20px;
+            border-radius: 8px 8px 0 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .modal-header h2 {
+            margin: 0;
+            font-size: 18px;
+            color: white;
+        }
+        
+        .close {
+            color: white;
+            font-size: 24px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        
+        .close:hover {
+            opacity: 0.8;
+        }
+        
+        .modal-body {
+            padding: 20px;
+        }
+        
+        .form-group {
+            margin-bottom: 15px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 13px;
+            color: rgba(255, 255, 255, 0.8);
+        }
+        
+        .form-input, .form-textarea, .form-select {
+            width: 100%;
+            padding: 8px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 4px;
+            color: white;
+            font-size: 13px;
+        }
+        
+        .form-textarea {
+            min-height: 80px;
+            resize: vertical;
+        }
+        
+        .form-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            margin-top: 20px;
+        }
+        
+        .btn-cancel, .btn-submit {
+            padding: 8px 16px;
+            border-radius: 4px;
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .btn-cancel {
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .btn-submit {
+            background: #4db6ac;
+            color: white;
+            border: none;
+        }
+        
+        .btn-cancel:hover {
+            background: rgba(255, 255, 255, 0.15);
+        }
+        
+        .btn-submit:hover {
+            background: #2d8a7e;
+        }
+        
+        @media (max-width: 768px) {
+            .clubs-page { margin-left: 0 !important; padding-top: 60px !important; }
+            .clubs-header-bar { left: 0 !important; }
+            .clubs-grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body class="clubs-page">
+    <div class="sidebar">
+        <div class="sidebar-header">
+            <div class="sidebar-logo" id="sidebarLogo"></div>
+            <div class="community-name">
+                <span>{{ community.name }}</span>
+            </div>
+        </div>
+        <div class="sidebar-menu">
+            {% if session['username'] == 'admin' %}
+            <a href="{{ url_for('admin_profile') }}">Admin Profile</a>
+            <a href="{{ url_for('admin') }}">Admin Dashboard</a>
+            {% endif %}
+            <a href="{{ url_for('dashboard') }}">Dashboard</a>
+            <a href="{{ url_for('profile') }}">Profile</a>
+            <a href="{{ url_for('user_chat') }}">Messages</a>
+            <a href="{{ url_for('communities') }}">Your Communities</a>
+            <a href="{{ url_for('community_feed', community_id=community.id) }}">Community Feed</a>
+            <a href="{{ url_for('logout') }}">Logout</a>
+        </div>
+    </div>
+    
+    <div class="clubs-header-bar">
+        <div class="header-content">
+            <div class="header-title">
+                <i class="fas fa-sitemap" style="color: #4db6ac;"></i>
+                <h1>Clubs & Organizations Directory</h1>
+            </div>
+            <div class="header-actions">
+                <button class="create-club-btn" onclick="showCreateModal()">
+                    <i class="fas fa-plus"></i> Create Club
+                </button>
+                <a href="{{ url_for('community_feed', community_id=community.id) }}" class="back-btn">
+                    <i class="fas fa-arrow-left"></i> Back
+                </a>
+            </div>
+        </div>
+    </div>
+    
+    <div class="clubs-container">
+        <!-- Search and Filter -->
+        <div class="search-section">
+            <input type="text" class="search-input" placeholder="Search clubs..." onkeyup="searchClubs(this.value)">
+            <select class="filter-select" onchange="filterClubs(this.value)">
+                <option value="">All Categories</option>
+                <option value="Academic">Academic</option>
+                <option value="Sports">Sports</option>
+                <option value="Cultural">Cultural</option>
+                <option value="Professional">Professional</option>
+                <option value="Social">Social</option>
+                <option value="Technology">Technology</option>
+                <option value="Arts">Arts</option>
+                <option value="Service">Service</option>
+            </select>
+        </div>
+        
+        <!-- Clubs Grid -->
+        <div class="clubs-grid" id="clubsGrid">
+            {% if clubs %}
+                {% for club in clubs %}
+                <div class="club-card" data-name="{{ club.name.lower() }}" data-category="{{ club.category }}">
+                    <div class="club-header">
+                        <div>
+                            <div class="club-title">{{ club.name }}</div>
+                        </div>
+                        <span class="club-category">{{ club.category or 'General' }}</span>
+                    </div>
+                    
+                    <div class="club-description">{{ club.description }}</div>
+                    
+                    <div class="club-info">
+                        {% if club.contact_person %}
+                        <div class="club-info-item">
+                            <i class="fas fa-user"></i>
+                            <span>{{ club.contact_person }}</span>
+                        </div>
+                        {% endif %}
+                        {% if club.meeting_schedule %}
+                        <div class="club-info-item">
+                            <i class="fas fa-calendar"></i>
+                            <span>{{ club.meeting_schedule }}</span>
+                        </div>
+                        {% endif %}
+                        {% if club.location %}
+                        <div class="club-info-item">
+                            <i class="fas fa-map-marker-alt"></i>
+                            <span>{{ club.location }}</span>
+                        </div>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="club-actions">
+                        <span class="member-count">
+                            <i class="fas fa-users"></i> {{ club.member_count }} members
+                        </span>
+                        <button class="join-btn {{ 'joined' if club.is_member else '' }}" onclick="toggleMembership({{ club.id }}, this)">
+                            {{ 'Leave' if club.is_member else 'Join' }}
+                        </button>
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <div class="no-clubs">
+                    <i class="fas fa-users-slash"></i>
+                    <p>No clubs found. Be the first to create one!</p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+    
+    <!-- Create Club Modal -->
+    <div id="createModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Create New Club</h2>
+                <span class="close" onclick="closeCreateModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <form id="createClubForm" onsubmit="submitClub(event)">
+                    <div class="form-group">
+                        <label for="clubName">Club Name *</label>
+                        <input type="text" id="clubName" class="form-input" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="clubCategory">Category</label>
+                        <select id="clubCategory" class="form-select">
+                            <option value="General">General</option>
+                            <option value="Academic">Academic</option>
+                            <option value="Sports">Sports</option>
+                            <option value="Cultural">Cultural</option>
+                            <option value="Professional">Professional</option>
+                            <option value="Social">Social</option>
+                            <option value="Technology">Technology</option>
+                            <option value="Arts">Arts</option>
+                            <option value="Service">Service</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="clubDescription">Description *</label>
+                        <textarea id="clubDescription" class="form-textarea" required></textarea>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="contactPerson">Contact Person</label>
+                        <input type="text" id="contactPerson" class="form-input">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="contactEmail">Contact Email</label>
+                        <input type="email" id="contactEmail" class="form-input">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="meetingSchedule">Meeting Schedule</label>
+                        <input type="text" id="meetingSchedule" class="form-input" placeholder="e.g., Every Tuesday 6 PM">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="location">Location</label>
+                        <input type="text" id="location" class="form-input" placeholder="e.g., Room 301, Student Center">
+                    </div>
+                    
+                    <div class="form-actions">
+                        <button type="button" class="btn-cancel" onclick="closeCreateModal()">Cancel</button>
+                        <button type="submit" class="btn-submit">Create Club</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script>
+        function searchClubs(query) {
+            const cards = document.querySelectorAll('.club-card');
+            query = query.toLowerCase();
+            
+            cards.forEach(card => {
+                const name = card.getAttribute('data-name');
+                if (name.includes(query)) {
+                    card.style.display = 'block';
+                } else {
+                    card.style.display = 'none';
+                }
+            });
+        }
+        
+        function filterClubs(category) {
+            const cards = document.querySelectorAll('.club-card');
+            
+            cards.forEach(card => {
+                if (!category || card.getAttribute('data-category') === category) {
+                    card.style.display = 'block';
+                } else {
+                    card.style.display = 'none';
+                }
+            });
+        }
+        
+        function toggleMembership(clubId, button) {
+            fetch(`/club/${clubId}/join`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    if (data.action === 'joined') {
+                        button.classList.add('joined');
+                        button.textContent = 'Leave';
+                    } else {
+                        button.classList.remove('joined');
+                        button.textContent = 'Join';
+                    }
+                    // Update member count
+                    const memberCount = button.parentElement.querySelector('.member-count');
+                    memberCount.innerHTML = `<i class="fas fa-users"></i> ${data.member_count} members`;
+                }
+            })
+            .catch(error => console.error('Error:', error));
+        }
+        
+        function showCreateModal() {
+            document.getElementById('createModal').style.display = 'block';
+        }
+        
+        function closeCreateModal() {
+            document.getElementById('createModal').style.display = 'none';
+            document.getElementById('createClubForm').reset();
+        }
+        
+        function submitClub(event) {
+            event.preventDefault();
+            
+            const data = {
+                name: document.getElementById('clubName').value,
+                category: document.getElementById('clubCategory').value,
+                description: document.getElementById('clubDescription').value,
+                contact_person: document.getElementById('contactPerson').value,
+                contact_email: document.getElementById('contactEmail').value,
+                meeting_schedule: document.getElementById('meetingSchedule').value,
+                location: document.getElementById('location').value
+            };
+            
+            fetch('/community/{{ community.id }}/clubs/create', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(data)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    location.reload();
+                } else {
+                    alert(data.message || 'Error creating club');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Error creating club');
+            });
+        }
+    </script>
+</body>
+</html>

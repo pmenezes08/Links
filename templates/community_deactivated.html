@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Community Deactivated - Links</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: #000000;
+            color: #ffffff;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .notification-container {
+            background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+            border: 2px solid #333333;
+            border-radius: 16px;
+            padding: 60px 40px;
+            max-width: 600px;
+            width: 100%;
+            text-align: center;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+            animation: slideIn 0.5s ease-out;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .icon-container {
+            margin-bottom: 30px;
+            position: relative;
+            display: inline-block;
+        }
+
+        .main-icon {
+            font-size: 80px;
+            color: #ff4444;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                transform: scale(1);
+                opacity: 0.8;
+            }
+            50% {
+                transform: scale(1.05);
+                opacity: 1;
+            }
+        }
+
+        .lock-icon {
+            position: absolute;
+            bottom: -5px;
+            right: -15px;
+            font-size: 40px;
+            color: #ffa500;
+            background: #1a1a1a;
+            border-radius: 50%;
+            padding: 8px;
+            border: 2px solid #333333;
+        }
+
+        h1 {
+            font-size: 32px;
+            margin-bottom: 20px;
+            color: #ffffff;
+            font-weight: 600;
+        }
+
+        .community-name {
+            color: #ff4444;
+            font-weight: 700;
+        }
+
+        .message {
+            font-size: 18px;
+            line-height: 1.6;
+            color: #cccccc;
+            margin-bottom: 30px;
+        }
+
+        .sub-message {
+            font-size: 14px;
+            color: #999999;
+            margin-bottom: 40px;
+            padding: 20px;
+            background: rgba(255, 68, 68, 0.05);
+            border-left: 4px solid #ff4444;
+            border-radius: 8px;
+            text-align: left;
+        }
+
+        .action-buttons {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 12px 30px;
+            font-size: 16px;
+            font-weight: 500;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.3s ease;
+        }
+
+        .btn-primary {
+            background: #4db6ac;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #2d8a7e;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(77, 182, 172, 0.3);
+        }
+
+        .btn-secondary {
+            background: transparent;
+            color: #4db6ac;
+            border: 2px solid #4db6ac;
+        }
+
+        .btn-secondary:hover {
+            background: rgba(77, 182, 172, 0.1);
+            transform: translateY(-2px);
+        }
+
+        .info-box {
+            margin-top: 40px;
+            padding: 20px;
+            background: rgba(77, 182, 172, 0.05);
+            border: 1px solid rgba(77, 182, 172, 0.2);
+            border-radius: 8px;
+        }
+
+        .info-box h3 {
+            font-size: 16px;
+            color: #4db6ac;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .info-box p {
+            font-size: 14px;
+            color: #999999;
+            line-height: 1.5;
+        }
+
+        .admin-notice {
+            margin-top: 30px;
+            padding: 15px;
+            background: rgba(255, 165, 0, 0.05);
+            border: 1px solid rgba(255, 165, 0, 0.2);
+            border-radius: 8px;
+            color: #ffa500;
+            font-size: 14px;
+        }
+
+        @media (max-width: 600px) {
+            .notification-container {
+                padding: 40px 25px;
+            }
+            
+            h1 {
+                font-size: 26px;
+            }
+            
+            .main-icon {
+                font-size: 60px;
+            }
+            
+            .lock-icon {
+                font-size: 30px;
+            }
+            
+            .message {
+                font-size: 16px;
+            }
+            
+            .action-buttons {
+                flex-direction: column;
+            }
+            
+            .btn {
+                width: 100%;
+                justify-content: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="notification-container">
+        <div class="icon-container">
+            <i class="fas fa-users-slash main-icon"></i>
+            <i class="fas fa-lock lock-icon"></i>
+        </div>
+        
+        <h1>Community Deactivated</h1>
+        
+        <p class="message">
+            The community <span class="community-name">"{{ community.name }}"</span> has been temporarily deactivated.
+        </p>
+        
+        <div class="sub-message">
+            <i class="fas fa-info-circle"></i> This community is currently unavailable. It may be undergoing maintenance, review, or has been temporarily suspended by the administrators.
+        </div>
+        
+        <div class="action-buttons">
+            <a href="{{ url_for('communities') }}" class="btn btn-primary">
+                <i class="fas fa-arrow-left"></i>
+                Browse Communities
+            </a>
+            <a href="{{ url_for('premium_dashboard') }}" class="btn btn-secondary">
+                <i class="fas fa-home"></i>
+                Go to Dashboard
+            </a>
+        </div>
+        
+        <div class="info-box">
+            <h3><i class="fas fa-question-circle"></i> Why was this community deactivated?</h3>
+            <p>
+                Communities may be deactivated for various reasons including:
+                <br>• Violation of community guidelines
+                <br>• Scheduled maintenance or updates
+                <br>• Request from the community owner
+                <br>• Administrative review
+            </p>
+        </div>
+        
+        {% if username == 'admin' %}
+        <div class="admin-notice">
+            <i class="fas fa-shield-alt"></i> <strong>Admin Notice:</strong> As an app administrator, you can still access this community.
+            <br>
+            <a href="{{ url_for('community_feed', community_id=community.id) }}?admin_override=true" style="color: #ffa500; text-decoration: underline; margin-top: 10px; display: inline-block;">
+                Access Community (Admin Override)
+            </a>
+        </div>
+        {% endif %}
+    </div>
+</body>
+</html>

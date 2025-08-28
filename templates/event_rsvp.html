@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Event RSVP - {{ event.title }}</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        
+        .rsvp-container {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            max-width: 600px;
+            width: 100%;
+            padding: 40px;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+        
+        .event-header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .event-icon {
+            width: 80px;
+            height: 80px;
+            background: linear-gradient(135deg, #4db6ac, #2d8a7e);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 20px;
+            font-size: 36px;
+            color: white;
+        }
+        
+        .event-title {
+            font-size: 28px;
+            font-weight: bold;
+            color: white;
+            margin-bottom: 10px;
+        }
+        
+        .community-name {
+            color: #4db6ac;
+            font-size: 16px;
+            margin-bottom: 5px;
+        }
+        
+        .invited-by {
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 14px;
+        }
+        
+        .event-details {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .detail-row {
+            display: flex;
+            align-items: center;
+            margin-bottom: 15px;
+            color: rgba(255, 255, 255, 0.9);
+        }
+        
+        .detail-row:last-child {
+            margin-bottom: 0;
+        }
+        
+        .detail-icon {
+            width: 40px;
+            color: #4db6ac;
+            font-size: 18px;
+        }
+        
+        .detail-text {
+            flex: 1;
+            font-size: 15px;
+        }
+        
+        .detail-label {
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 12px;
+            margin-bottom: 3px;
+        }
+        
+        .rsvp-counts {
+            display: flex;
+            justify-content: space-around;
+            margin-bottom: 30px;
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.02);
+            border-radius: 12px;
+        }
+        
+        .count-item {
+            text-align: center;
+        }
+        
+        .count-number {
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        
+        .count-label {
+            font-size: 13px;
+            color: rgba(255, 255, 255, 0.6);
+        }
+        
+        .count-item.going .count-number {
+            color: #4caf50;
+        }
+        
+        .count-item.maybe .count-number {
+            color: #ffc107;
+        }
+        
+        .count-item.not-going .count-number {
+            color: #f44336;
+        }
+        
+        .rsvp-section {
+            margin-bottom: 30px;
+        }
+        
+        .rsvp-question {
+            text-align: center;
+            color: white;
+            font-size: 18px;
+            margin-bottom: 20px;
+        }
+        
+        .rsvp-buttons {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+        }
+        
+        .rsvp-btn {
+            padding: 15px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 2px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            color: rgba(255, 255, 255, 0.8);
+            cursor: pointer;
+            transition: all 0.3s;
+            font-size: 15px;
+            font-weight: 500;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .rsvp-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+        }
+        
+        .rsvp-btn i {
+            font-size: 24px;
+        }
+        
+        .rsvp-btn.going {
+            border-color: #4caf50;
+            color: #4caf50;
+        }
+        
+        .rsvp-btn.going:hover {
+            background: rgba(76, 175, 80, 0.1);
+        }
+        
+        .rsvp-btn.maybe {
+            border-color: #ffc107;
+            color: #ffc107;
+        }
+        
+        .rsvp-btn.maybe:hover {
+            background: rgba(255, 193, 7, 0.1);
+        }
+        
+        .rsvp-btn.not-going {
+            border-color: #f44336;
+            color: #f44336;
+        }
+        
+        .rsvp-btn.not-going:hover {
+            background: rgba(244, 67, 54, 0.1);
+        }
+        
+        .rsvp-btn.active {
+            background: rgba(77, 182, 172, 0.2);
+            border-color: #4db6ac;
+            color: #4db6ac;
+        }
+        
+        .action-buttons {
+            display: flex;
+            gap: 12px;
+        }
+        
+        .action-btn {
+            flex: 1;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-decoration: none;
+            text-align: center;
+            display: inline-block;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #4db6ac, #2d8a7e);
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 5px 15px rgba(77, 182, 172, 0.3);
+        }
+        
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.05);
+            color: rgba(255, 255, 255, 0.8);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.08);
+        }
+        
+        .success-message {
+            background: rgba(76, 175, 80, 0.1);
+            border: 1px solid rgba(76, 175, 80, 0.3);
+            color: #4caf50;
+            padding: 12px;
+            border-radius: 8px;
+            text-align: center;
+            margin-bottom: 20px;
+            display: none;
+        }
+        
+        .success-message.show {
+            display: block;
+        }
+        
+        @media (max-width: 600px) {
+            .rsvp-container {
+                padding: 30px 20px;
+            }
+            
+            .rsvp-buttons {
+                grid-template-columns: 1fr;
+            }
+            
+            .event-title {
+                font-size: 24px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="rsvp-container">
+        <div class="event-header">
+            <div class="event-icon">
+                <i class="fas fa-calendar-check"></i>
+            </div>
+            <h1 class="event-title">{{ event.title }}</h1>
+            <div class="community-name">{{ event.community_name }}</div>
+            {% if invitation %}
+            <div class="invited-by">Invited by {{ invitation.invited_by }}</div>
+            {% endif %}
+        </div>
+        
+        <div class="event-details">
+            <div class="detail-row">
+                <i class="fas fa-calendar detail-icon"></i>
+                <div class="detail-text">
+                    <div class="detail-label">Date</div>
+                    <div>{{ event.date }}{% if event.end_date %} - {{ event.end_date }}{% endif %}</div>
+                </div>
+            </div>
+            
+            {% if event.start_time %}
+            <div class="detail-row">
+                <i class="fas fa-clock detail-icon"></i>
+                <div class="detail-text">
+                    <div class="detail-label">Time</div>
+                    <div>{{ event.start_time }}{% if event.end_time %} - {{ event.end_time }}{% endif %}</div>
+                </div>
+            </div>
+            {% endif %}
+            
+            {% if event.description %}
+            <div class="detail-row">
+                <i class="fas fa-info-circle detail-icon"></i>
+                <div class="detail-text">
+                    <div class="detail-label">Description</div>
+                    <div>{{ event.description }}</div>
+                </div>
+            </div>
+            {% endif %}
+            
+            <div class="detail-row">
+                <i class="fas fa-user detail-icon"></i>
+                <div class="detail-text">
+                    <div class="detail-label">Organizer</div>
+                    <div>{{ event.username }}</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="rsvp-counts">
+            <div class="count-item going">
+                <div class="count-number">{{ rsvp_counts.going }}</div>
+                <div class="count-label">Going</div>
+            </div>
+            <div class="count-item maybe">
+                <div class="count-number">{{ rsvp_counts.maybe }}</div>
+                <div class="count-label">Maybe</div>
+            </div>
+            <div class="count-item not-going">
+                <div class="count-number">{{ rsvp_counts.not_going }}</div>
+                <div class="count-label">Can't Go</div>
+            </div>
+        </div>
+        
+        <div class="rsvp-section">
+            <div class="rsvp-question">Will you attend this event?</div>
+            <div class="success-message" id="successMessage">
+                Your response has been saved!
+            </div>
+            <div class="rsvp-buttons">
+                <button class="rsvp-btn going {% if current_rsvp == 'going' %}active{% endif %}" 
+                        onclick="submitRSVP('going')">
+                    <i class="fas fa-check-circle"></i>
+                    Going
+                </button>
+                <button class="rsvp-btn maybe {% if current_rsvp == 'maybe' %}active{% endif %}" 
+                        onclick="submitRSVP('maybe')">
+                    <i class="fas fa-question-circle"></i>
+                    Maybe
+                </button>
+                <button class="rsvp-btn not-going {% if current_rsvp == 'not_going' %}active{% endif %}" 
+                        onclick="submitRSVP('not_going')">
+                    <i class="fas fa-times-circle"></i>
+                    Can't Go
+                </button>
+            </div>
+        </div>
+        
+        <div class="action-buttons">
+            <a href="{{ url_for('community_feed', community_id=community_id) }}" class="action-btn btn-primary">
+                View Community
+            </a>
+            <a href="{{ url_for('dashboard') }}" class="action-btn btn-secondary">
+                Back to Dashboard
+            </a>
+        </div>
+    </div>
+    
+    <script>
+        function submitRSVP(response) {
+            const eventId = {{ event.id }};
+            
+            fetch(`/event/${eventId}/rsvp`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ response: response })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Update button states
+                    document.querySelectorAll('.rsvp-btn').forEach(btn => {
+                        btn.classList.remove('active');
+                    });
+                    
+                    // Add active class to clicked button
+                    document.querySelector(`.rsvp-btn.${response}`).classList.add('active');
+                    
+                    // Update counts
+                    updateCounts(data.rsvp_counts);
+                    
+                    // Show success message
+                    const successMsg = document.getElementById('successMessage');
+                    successMsg.classList.add('show');
+                    setTimeout(() => {
+                        successMsg.classList.remove('show');
+                    }, 3000);
+                } else {
+                    alert('Failed to submit RSVP: ' + (data.message || 'Unknown error'));
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('An error occurred while submitting your RSVP');
+            });
+        }
+        
+        function updateCounts(counts) {
+            if (counts) {
+                document.querySelector('.count-item.going .count-number').textContent = counts.going || 0;
+                document.querySelector('.count-item.maybe .count-number').textContent = counts.maybe || 0;
+                document.querySelector('.count-item.not-going .count-number').textContent = counts.not_going || 0;
+            }
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Misc - {{ community.name }}</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}?v=2.0">
+    <style>
+        /* Theme-aware styles */
+        {% set is_light = community.template == 'light' %}
+        
+        /* Premium Dashboard Menu Styles */
+        .resources-page { margin-left: 200px; }
+        .resources-page .sidebar { position: fixed !important; top: 0 !important; left: 0 !important; width: 200px !important; height: 100vh !important; background: {{ '#f8f9fa' if is_light else '#1a1a1a' }} !important; border-right: 1px solid {{ '#dee2e6' if is_light else '#333333' }} !important; z-index: 1000 !important; display: flex !important; flex-direction: column !important; }
+        .resources-page .sidebar-header { display: flex; align-items: center; padding: 10px; border-bottom: 1px solid {{ '#dee2e6' if is_light else '#333333' }}; height: 60px; box-sizing: border-box; }
+        .resources-page .sidebar-logo { padding: 5px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+        .resources-page .community-name { flex: 1; display: flex; align-items: center; color: {{ '#000000' if is_light else '#ffffff' }}; font-size: 16px; font-weight: 600; padding-left: 10px; overflow: hidden; }
+        .resources-page .community-name span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .resources-page .sidebar-menu { flex: 1; padding: 10px 0; display: block !important; overflow-y: auto !important; }
+        .resources-page .sidebar-menu a { display: block !important; padding: 12px 20px !important; color: {{ '#495057' if is_light else '#ffffff' }} !important; text-decoration: none !important; transition: all 0.3s ease !important; border: none !important; font-size: 14px !important; }
+        .resources-page .sidebar-menu a:hover { background: {{ 'rgba(45, 138, 126, 0.1)' if is_light else 'rgba(77, 182, 172, 0.15)' }} !important; color: {{ community.accent_color or '#4db6ac' }} !important; padding-left: 25px !important; }
+        
+        /* Header Bar */
+        .resources-header-bar { 
+            position: fixed; 
+            top: 0; 
+            left: 200px; 
+            right: 0; 
+            height: 60px; 
+            background: {{ '#ffffff' if is_light else '#000000' }}; 
+            border-bottom: 1px solid {{ '#dee2e6' if is_light else '#333333' }};
+            z-index: 900;
+            display: flex;
+            align-items: center;
+            padding: 0 20px;
+        }
+        
+        .header-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+        }
+        
+        .header-title {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .header-title h1 {
+            font-size: 18px;
+            color: {{ '#000000' if is_light else '#ffffff' }};
+            margin: 0;
+        }
+        
+        .back-btn {
+            background: linear-gradient(135deg, {{ community.accent_color or '#4db6ac' }} 0%, {{ community.hover_color or '#2d8a7e' }} 100%);
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 20px;
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+        }
+        
+        .back-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+        
+        /* Main Content */
+        body {
+            background-color: {{ '#ffffff' if is_light else '#000000' }};
+            color: {{ '#000000' if is_light else '#ffffff' }};
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+        
+        .resources-container {
+            padding: 70px 15px 15px 15px;
+            max-width: 900px;
+            margin: 0 auto;
+        }
+        
+        /* Create Post Section */
+        .create-post-section {
+            background: {{ '#ffffff' if is_light else '#000000' }};
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 20px;
+            border: 1px solid {{ '#dee2e6' if is_light else 'rgba(255, 255, 255, 0.1)' }};
+            box-shadow: {{ '0 1px 3px rgba(0, 0, 0, 0.1)' if is_light else 'none' }};
+        }
+        
+        .create-post-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        
+        .create-post-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: {{ community.accent_color or '#4db6ac' }};
+        }
+        
+        .new-post-btn {
+            background: linear-gradient(135deg, {{ community.accent_color or '#4db6ac' }} 0%, {{ community.hover_color or '#2d8a7e' }} 100%);
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+        }
+        
+        .new-post-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+        
+        .post-form {
+            display: none;
+            margin-top: 12px;
+        }
+        
+        .post-form.active {
+            display: block;
+        }
+        
+        .form-group {
+            margin-bottom: 10px;
+        }
+        
+        .form-group label {
+            display: block;
+            font-size: 12px;
+            color: {{ 'rgba(0, 0, 0, 0.6)' if is_light else 'rgba(255, 255, 255, 0.7)' }};
+            margin-bottom: 4px;
+        }
+        
+        .form-input {
+            width: calc(100% - 20px);
+            padding: 8px 10px;
+            background: {{ '#f8f9fa' if is_light else 'rgba(255, 255, 255, 0.05)' }};
+            border: 1px solid {{ '#dee2e6' if is_light else 'rgba(255, 255, 255, 0.15)' }};
+            border-radius: 4px;
+            color: {{ '#000000' if is_light else '#ffffff' }};
+            font-size: 13px;
+            box-sizing: border-box;
+        }
+        
+        .form-textarea {
+            width: calc(100% - 20px);
+            padding: 8px 10px;
+            background: {{ '#f8f9fa' if is_light else 'rgba(255, 255, 255, 0.05)' }};
+            border: 1px solid {{ '#dee2e6' if is_light else 'rgba(255, 255, 255, 0.15)' }};
+            border-radius: 4px;
+            color: {{ '#000000' if is_light else '#ffffff' }};
+            font-size: 13px;
+            min-height: 80px;
+            resize: none;
+            overflow: hidden;
+            box-sizing: border-box;
+            font-family: inherit;
+            line-height: 1.5;
+        }
+        
+        .form-select {
+            width: calc(100% - 20px);
+            padding: 8px 10px;
+            background: {{ '#f8f9fa' if is_light else 'rgba(255, 255, 255, 0.05)' }};
+            border: 1px solid {{ '#dee2e6' if is_light else 'rgba(255, 255, 255, 0.15)' }};
+            border-radius: 4px;
+            color: {{ '#000000' if is_light else '#ffffff' }};
+            font-size: 13px;
+            box-sizing: border-box;
+        }
+        
+        .form-select option {
+            background: {{ '#ffffff' if is_light else '#1a1a1a' }};
+            color: {{ '#000000' if is_light else '#ffffff' }};
+        }
+        
+        .form-actions {
+            display: flex;
+            gap: 8px;
+            justify-content: flex-end;
+            margin-top: 12px;
+        }
+        
+        .submit-btn {
+            background: linear-gradient(135deg, {{ community.accent_color or '#4db6ac' }} 0%, {{ community.hover_color or '#2d8a7e' }} 100%);
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+        }
+        
+        .submit-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.2);
+        }
+        
+        .cancel-btn {
+            background: transparent;
+            color: {{ '#6c757d' if is_light else 'rgba(255, 255, 255, 0.7)' }};
+            border: 1px solid {{ '#dee2e6' if is_light else 'rgba(255, 255, 255, 0.2)' }};
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .cancel-btn:hover {
+            background: {{ 'rgba(0, 0, 0, 0.05)' if is_light else 'rgba(255, 255, 255, 0.05)' }};
+            border-color: {{ community.accent_color or '#4db6ac' }};
+            color: {{ community.accent_color or '#4db6ac' }};
+        }
+        
+        /* Posts List */
+        .posts-container {
+            display: grid;
+            gap: 12px;
+        }
+        
+        .resource-post {
+            background: {{ '#ffffff' if is_light else '#000000' }};
+            border-radius: 8px;
+            padding: 12px;
+            border: 1px solid {{ '#dee2e6' if is_light else 'rgba(255, 255, 255, 0.1)' }};
+            transition: all 0.3s ease;
+            box-shadow: {{ '0 1px 3px rgba(0, 0, 0, 0.1)' if is_light else 'none' }};
+        }
+        
+        .resource-post:hover {
+            background: {{ 'rgba(0, 0, 0, 0.02)' if is_light else 'rgba(255, 255, 255, 0.02)' }};
+            box-shadow: {{ '0 2px 5px rgba(0, 0, 0, 0.15)' if is_light else 'none' }};
+        }
+        
+        .post-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 10px;
+        }
+        
+        .post-author {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .author-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #4db6ac 0%, #2d8a7e 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 14px;
+            color: #ffffff;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+            background-size: cover;
+            background-position: center;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            flex-shrink: 0;
+            background-size: cover;
+            background-position: center;
+        }
+        
+        .author-info {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .author-name {
+            font-size: 13px;
+            font-weight: 600;
+            color: {{ '#000000' if is_light else '#ffffff' }};
+        }
+        
+        .post-time {
+            font-size: 11px;
+            color: {{ 'rgba(0, 0, 0, 0.5)' if is_light else 'rgba(255, 255, 255, 0.5)' }};
+        }
+        
+        .post-category {
+            background: {{ 'rgba(77, 182, 172, 0.15)' if is_light else 'rgba(77, 182, 172, 0.2)' }};
+            color: {{ community.accent_color or '#4db6ac' }};
+            padding: 3px 8px;
+            border-radius: 10px;
+            font-size: 11px;
+            font-weight: 500;
+        }
+        
+        .post-title {
+            font-size: 15px;
+            font-weight: 600;
+            color: {{ '#000000' if is_light else '#ffffff' }};
+            margin-bottom: 8px;
+        }
+        
+        .post-content {
+            font-size: 13px;
+            color: {{ 'rgba(0, 0, 0, 0.8)' if is_light else 'rgba(255, 255, 255, 0.8)' }};
+            line-height: 1.5;
+            margin-bottom: 10px;
+        }
+        
+        .post-actions {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            padding-top: 10px;
+            border-top: 1px solid {{ '#dee2e6' if is_light else 'rgba(255, 255, 255, 0.1)' }};
+        }
+        
+        .action-btn {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            background: none;
+            border: none;
+            color: {{ 'rgba(0, 0, 0, 0.6)' if is_light else 'rgba(255, 255, 255, 0.6)' }};
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .action-btn:hover {
+            color: {{ community.accent_color or '#4db6ac' }};
+        }
+        
+        .action-btn.upvoted {
+            color: {{ community.accent_color or '#4db6ac' }};
+        }
+        
+        .pinned-badge {
+            background: #ffd700;
+            color: #000;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        
+        .delete-post-btn {
+            background: none;
+            border: none;
+            color: {{ 'rgba(0, 0, 0, 0.4)' if is_light else 'rgba(255, 255, 255, 0.4)' }};
+            cursor: pointer;
+            padding: 4px 8px;
+            border-radius: 4px;
+            transition: all 0.3s ease;
+            font-size: 12px;
+        }
+        
+        .delete-post-btn:hover {
+            background: rgba(255, 0, 0, 0.1);
+            color: #ff4444;
+        }
+        
+        .no-posts {
+            text-align: center;
+            padding: 60px 20px;
+            color: {{ 'rgba(0, 0, 0, 0.5)' if is_light else 'rgba(255, 255, 255, 0.5)' }};
+        }
+        
+        .no-posts i {
+            font-size: 48px;
+            margin-bottom: 10px;
+            opacity: 0.5;
+        }
+        
+        @media (max-width: 768px) {
+            .resources-page { margin-left: 0 !important; padding-top: 60px !important; }
+            .resources-header-bar { left: 0 !important; }
+            .resources-container { padding: 80px 15px 20px 15px; }
+        }
+    </style>
+</head>
+<body class="resources-page">
+    <div class="sidebar">
+        <div class="sidebar-header">
+            <div class="sidebar-logo" id="sidebarLogo"></div>
+            <div class="community-name">
+                <span>{{ community.name }}</span>
+            </div>
+        </div>
+        <div class="sidebar-menu">
+            {% if session['username'] == 'admin' %}
+            <a href="{{ url_for('admin_profile') }}">Admin Profile</a>
+            <a href="{{ url_for('admin') }}">Admin Dashboard</a>
+            {% endif %}
+            <a href="{{ url_for('dashboard') }}">Dashboard</a>
+            <a href="{{ url_for('profile') }}">Profile</a>
+            <a href="{{ url_for('user_chat') }}">Messages</a>
+            <a href="{{ url_for('communities') }}">Your Communities</a>
+            <a href="{{ url_for('community_feed', community_id=community.id) }}">Community Feed</a>
+            <a href="{{ url_for('logout') }}">Logout</a>
+        </div>
+    </div>
+    
+    <div class="resources-header-bar">
+        <div class="header-content">
+            <div class="header-title">
+                <i class="fas fa-folder" style="color: {{ community.accent_color or '#4db6ac' }};"></i>
+                <h1>Misc</h1>
+            </div>
+            <a href="{{ url_for('community_feed', community_id=community.id) }}" class="back-btn">
+                <i class="fas fa-arrow-left"></i> Back to Community
+            </a>
+        </div>
+    </div>
+    
+    <div class="resources-container">
+        <!-- Create Post Section -->
+        <div class="create-post-section">
+            <div class="create-post-header">
+                <div class="create-post-title">Create a Post</div>
+                <button class="new-post-btn" onclick="togglePostForm()">
+                    <i class="fas fa-plus"></i> New Post
+                </button>
+            </div>
+            
+            <div id="postForm" class="post-form">
+                <form onsubmit="submitPost(event)">
+                    <div class="form-group">
+                        <label for="postTitle">Title *</label>
+                        <input type="text" id="postTitle" class="form-input" placeholder="Enter a descriptive title" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="postCategory">Category</label>
+                        <select id="postCategory" class="form-select">
+                            <option value="General">General</option>
+                            <option value="Study Materials">Study Materials</option>
+                            <option value="Notes">Notes</option>
+                            <option value="Tips & Tricks">Tips & Tricks</option>
+                            <option value="Questions">Questions</option>
+                            <option value="Announcements">Announcements</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="postContent">Content *</label>
+                        <textarea id="postContent" class="form-textarea" placeholder="Share your thoughts, ideas, or questions..." required></textarea>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="postAttachment">Attachment URL (optional)</label>
+                        <input type="url" id="postAttachment" class="form-input" placeholder="Link to document, image, or external resource">
+                    </div>
+                    
+                    <div class="form-actions">
+                        <button type="button" class="cancel-btn" onclick="togglePostForm()">Cancel</button>
+                        <button type="submit" class="submit-btn">Post</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        <!-- Posts List -->
+        <div class="posts-container">
+            {% if posts %}
+                {% for post in posts %}
+                <div class="resource-post" data-post-id="{{ post.id }}">
+                    <div class="post-header">
+                        <div class="post-author">
+                            {% if post.profile_picture %}
+                            <div class="author-avatar" style="background-image: url('{{ url_for('static', filename=post.profile_picture) }}');">
+                            </div>
+                            {% else %}
+                            <div class="author-avatar">
+                                {{ post.username[0].upper() }}
+                            </div>
+                            {% endif %}
+                            <div class="author-info">
+                                <div class="author-name">{{ post.username }}</div>
+                                <div class="post-time" data-timestamp="{{ post.created_at }}"></div>
+                            </div>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            {% if post.is_pinned %}
+                            <span class="pinned-badge">PINNED</span>
+                            {% endif %}
+                            <span class="post-category">{{ post.category or 'General' }}</span>
+                            {% if username == post.username or username == 'admin' or username == community.creator_username %}
+                            <button class="delete-post-btn" onclick="deletePost({{ post.id }})" title="Delete post">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                            {% endif %}
+                        </div>
+                    </div>
+                    
+                    <h3 class="post-title">{{ post.title }}</h3>
+                    <div class="post-content">{{ post.content }}</div>
+                    
+                    {% if post.attachment_url %}
+                    <div style="margin-bottom: 15px;">
+                        <a href="{{ post.attachment_url }}" target="_blank" style="color: {{ community.accent_color or '#4db6ac' }}; text-decoration: none; font-size: 14px;">
+                            <i class="fas fa-paperclip"></i> View Attachment
+                        </a>
+                    </div>
+                    {% endif %}
+                    
+                    <div class="post-actions">
+                        <button class="action-btn {{ 'upvoted' if post.user_upvoted else '' }}" onclick="toggleUpvote({{ post.id }}, this)">
+                            <i class="fas fa-arrow-up"></i>
+                            <span class="upvote-count">{{ post.upvote_count or 0 }}</span>
+                        </button>
+                        <button class="action-btn" onclick="showComments({{ post.id }})">
+                            <i class="fas fa-comment"></i>
+                            <span>{{ post.comment_count or 0 }} Comments</span>
+                        </button>
+                        <button class="action-btn">
+                            <i class="fas fa-eye"></i>
+                            <span>{{ post.views or 0 }} Views</span>
+                        </button>
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <div class="no-posts">
+                    <i class="fas fa-inbox"></i>
+                    <p>No posts yet. Be the first to share!</p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+    
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+    <script>
+        // Auto-expand textarea
+        function autoExpand(textarea) {
+            textarea.style.height = 'auto';
+            textarea.style.height = textarea.scrollHeight + 'px';
+        }
+        
+        // Format timestamp to readable date/time
+        function formatTimestamp(timestamp) {
+            const date = new Date(timestamp);
+            const now = new Date();
+            const diffMs = now - date;
+            const diffSecs = Math.floor(diffMs / 1000);
+            const diffMins = Math.floor(diffSecs / 60);
+            const diffHours = Math.floor(diffMins / 60);
+            const diffDays = Math.floor(diffHours / 24);
+            
+            if (diffSecs < 60) {
+                return 'just now';
+            } else if (diffMins < 60) {
+                return diffMins === 1 ? '1 minute ago' : `${diffMins} minutes ago`;
+            } else if (diffHours < 24) {
+                return diffHours === 1 ? '1 hour ago' : `${diffHours} hours ago`;
+            } else if (diffDays < 7) {
+                return diffDays === 1 ? '1 day ago' : `${diffDays} days ago`;
+            } else {
+                // Format as date
+                const options = { year: 'numeric', month: 'short', day: 'numeric' };
+                return date.toLocaleDateString('en-US', options);
+            }
+        }
+        
+        // Initialize textarea auto-expand and format timestamps
+        document.addEventListener('DOMContentLoaded', function() {
+            const textarea = document.getElementById('postContent');
+            if (textarea) {
+                textarea.addEventListener('input', function() {
+                    autoExpand(this);
+                });
+            }
+            
+            // Format all timestamps
+            document.querySelectorAll('.post-time[data-timestamp]').forEach(element => {
+                const timestamp = element.getAttribute('data-timestamp');
+                if (timestamp) {
+                    element.textContent = formatTimestamp(timestamp);
+                }
+            });
+        });
+        
+        function togglePostForm() {
+            const form = document.getElementById('postForm');
+            form.classList.toggle('active');
+            if (form.classList.contains('active')) {
+                document.getElementById('postTitle').focus();
+                // Reset textarea height
+                const textarea = document.getElementById('postContent');
+                textarea.style.height = '80px';
+            }
+        }
+        
+        function submitPost(event) {
+            event.preventDefault();
+            
+            const data = {
+                title: document.getElementById('postTitle').value,
+                category: document.getElementById('postCategory').value,
+                content: document.getElementById('postContent').value,
+                attachment_url: document.getElementById('postAttachment').value
+            };
+            
+            fetch('/community/{{ community.id }}/resources/create', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(data)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    location.reload();
+                } else {
+                    alert(data.message || 'Error creating post');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Error creating post');
+            });
+        }
+        
+        function toggleUpvote(postId, button) {
+            fetch(`/resource/post/${postId}/upvote`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    button.classList.toggle('upvoted');
+                    button.querySelector('.upvote-count').textContent = data.upvotes;
+                }
+            })
+            .catch(error => console.error('Error:', error));
+        }
+        
+        function showComments(postId) {
+            // TODO: Implement comments view
+            console.log('Show comments for post', postId);
+        }
+        
+        function deletePost(postId) {
+            if (!confirm('Are you sure you want to delete this post? This action cannot be undone.')) {
+                return;
+            }
+            
+            fetch(`/resource/post/${postId}/delete`, {
+                method: 'DELETE',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Remove the post from the DOM
+                    const postElement = document.querySelector(`[data-post-id="${postId}"]`);
+                    if (postElement) {
+                        postElement.style.transition = 'opacity 0.3s';
+                        postElement.style.opacity = '0';
+                        setTimeout(() => {
+                            postElement.remove();
+                            // Check if no posts remain
+                            const postsContainer = document.querySelector('.posts-container');
+                            if (postsContainer && !postsContainer.querySelector('.resource-post')) {
+                                postsContainer.innerHTML = `
+                                    <div class="no-posts">
+                                        <i class="fas fa-inbox"></i>
+                                        <p>No posts yet. Be the first to share!</p>
+                                    </div>
+                                `;
+                            }
+                        }, 300);
+                    }
+                } else {
+                    alert(data.message || 'Error deleting post');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Error deleting post');
+            });
+        }
+    </script>
+</body>
+</html>
