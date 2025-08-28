@@ -231,7 +231,8 @@ def init_db():
                 ('school', 'TEXT'),
                 ('skills', 'TEXT'),
                 ('linkedin', 'TEXT'),
-                ('experience', 'INTEGER')
+                ('experience', 'INTEGER'),
+                ('mobile', 'TEXT')
             ]
             
             for column_name, column_type in columns_to_add:
