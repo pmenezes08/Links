@@ -273,6 +273,28 @@
 	
 	<div class="container">
 		<div class="dashboard-content" style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center;">
+			<!-- Logo Section Above Buttons -->
+			<div class="logo-section" style="margin-bottom: 20px; text-align: center;">
+				<div class="logo-container" style="position: relative; display: inline-block;">
+					<img id="dashboardLogo" src="{{ url_for('static', filename='logo.png') }}" alt="Logo" 
+					     style="max-height: 160px; max-width: 480px; width: auto; height: auto; opacity: 0.9; transition: opacity 0.3s;"
+					     onerror="this.style.display='none'; document.getElementById('logoPlaceholder').style.display='block';">
+					<div id="logoPlaceholder" style="display: none; color: #9fb0b5; font-size: 16px;">
+						<i class="fas fa-image" style="font-size: 50px; margin-bottom: 8px; display: block;"></i>
+						Logo
+					</div>
+					{% if session['username'] == 'admin' %}
+					<button class="logo-update-btn" onclick="document.getElementById('logoUpload').click()"
+					        style="position: absolute; top: -10px; right: -10px; background: rgba(77, 182, 172, 0.2); 
+					               border: 1px solid rgba(77, 182, 172, 0.4); border-radius: 50%; width: 30px; height: 30px;
+					               display: flex; align-items: center; justify-content: center; cursor: pointer;
+					               opacity: 0; transition: opacity 0.3s;">
+						<i class="fas fa-edit" style="color: #4db6ac; font-size: 12px;"></i>
+					</button>
+					<input type="file" id="logoUpload" accept="image/*" style="display: none;" onchange="uploadLogo(this)">
+					{% endif %}
+				</div>
+			</div>
 			<!-- Create/Join Community Button -->
 			<div class="create-community-section" style="margin-bottom: 15px;">
 				<button onclick="location.href='{{ url_for('communities') }}'" class="view-communities-btn">
@@ -310,28 +332,6 @@
 			{% endif %}
 		</div>
 		
-		<!-- Logo Section at Bottom -->
-		<div class="logo-section" style="position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); text-align: center; z-index: 100;">
-			<div class="logo-container" style="position: relative; display: inline-block;">
-				<img id="dashboardLogo" src="{{ url_for('static', filename='logo.png') }}" alt="Logo" 
-				     style="max-height: 100px; max-width: 333px; opacity: 0.8; transition: opacity 0.3s;"
-				     onerror="this.style.display='none'; document.getElementById('logoPlaceholder').style.display='block';">
-				<div id="logoPlaceholder" style="display: none; color: #9fb0b5; font-size: 16px;">
-					<i class="fas fa-image" style="font-size: 50px; margin-bottom: 8px; display: block;"></i>
-					Logo
-				</div>
-				{% if session['username'] == 'admin' %}
-				<button class="logo-update-btn" onclick="document.getElementById('logoUpload').click()"
-				        style="position: absolute; top: -10px; right: -10px; background: rgba(77, 182, 172, 0.2); 
-				               border: 1px solid rgba(77, 182, 172, 0.4); border-radius: 50%; width: 30px; height: 30px;
-				               display: flex; align-items: center; justify-content: center; cursor: pointer;
-				               opacity: 0; transition: opacity 0.3s;">
-					<i class="fas fa-edit" style="color: #4db6ac; font-size: 12px;"></i>
-				</button>
-				<input type="file" id="logoUpload" accept="image/*" style="display: none;" onchange="uploadLogo(this)">
-				{% endif %}
-			</div>
-		</div>
 	</div>
 	
 	<!-- First-Time Join Community Modal -->
