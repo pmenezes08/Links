@@ -7200,6 +7200,84 @@ def get_calendar_event(event_id):
         logger.error(f"Error getting calendar event: {str(e)}")
         return jsonify({'success': False, 'message': str(e)})
 
+@app.route('/test_color_detection')
+def test_color_detection():
+    """Test page for color detection"""
+    return '''
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Color Detection Test</title>
+        <style>
+            body { font-family: Arial; padding: 20px; background: #f0f0f0; }
+            .container { max-width: 800px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; }
+            input { width: 100%; padding: 10px; margin: 10px 0; }
+            button { padding: 10px 20px; background: #4CAF50; color: white; border: none; cursor: pointer; }
+            #result { margin-top: 20px; padding: 20px; background: #f9f9f9; border-radius: 4px; }
+            #preview { max-width: 300px; margin: 20px 0; }
+            #colorBox { width: 100px; height: 100px; border: 2px solid #333; margin: 10px 0; }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>Image Color Detection Test</h1>
+            <input type="text" id="imageUrl" placeholder="Enter image URL" value="">
+            <button onclick="testColor()">Test Color Detection</button>
+            <div id="result"></div>
+            <img id="preview" style="display:none;">
+            <div id="colorBox" style="display:none;"></div>
+        </div>
+        <script>
+            function testColor() {
+                const url = document.getElementById('imageUrl').value;
+                if (!url) {
+                    alert('Please enter an image URL');
+                    return;
+                }
+                
+                // Show preview
+                const preview = document.getElementById('preview');
+                preview.src = url;
+                preview.style.display = 'block';
+                
+                // Fetch color
+                fetch(`/get_image_color?url=${encodeURIComponent(url)}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        console.log('Full response:', data);
+                        
+                        let html = '<h3>Detection Results:</h3>';
+                        if (data.success) {
+                            const color = data.color;
+                            const rgbStr = `rgb(${color.r}, ${color.g}, ${color.b})`;
+                            
+                            html += `<p><strong>Detected Background Color:</strong> ${rgbStr}</p>`;
+                            
+                            // Show color box
+                            const colorBox = document.getElementById('colorBox');
+                            colorBox.style.backgroundColor = rgbStr;
+                            colorBox.style.display = 'block';
+                            
+                            if (data.debug) {
+                                html += '<h4>Debug Info:</h4>';
+                                html += `<p><strong>Corner Colors:</strong><br>${data.debug.corner_colors.join('<br>')}</p>`;
+                                html += `<p><strong>Top Colors Overall:</strong><br>${data.debug.top_colors.join('<br>')}</p>`;
+                            }
+                        } else {
+                            html += '<p>Color detection failed</p>';
+                        }
+                        
+                        document.getElementById('result').innerHTML = html;
+                    })
+                    .catch(error => {
+                        document.getElementById('result').innerHTML = `<p>Error: ${error}</p>`;
+                    });
+            }
+        </script>
+    </body>
+    </html>
+    '''
+
 @app.route('/get_image_color')
 def get_image_color():
     """Extract background color from an image URL"""

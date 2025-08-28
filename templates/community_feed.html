@@ -265,7 +265,7 @@
             height: 220px;
             object-fit: contain;
             background: transparent;
-            border-radius: 12px;
+            border-radius: 0;
             margin-bottom: 10px;
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
             overflow: hidden;
@@ -7565,8 +7565,11 @@
                             
                             // Also log debug info if available
                             if (data.debug) {
-                                console.log(`Debug info for ${imageIndex}:`, data.debug);
-                                console.log(`Top colors detected:`, data.debug.top_colors);
+                                console.log(`Debug info for ad-image-${imageIndex}:`);
+                                console.log(`  URL: ${data.debug.url}`);
+                                console.log(`  Detected color: ${data.debug.detected}`);
+                                console.log(`  Corner colors:`, data.debug.corner_colors);
+                                console.log(`  Top colors:`, data.debug.top_colors);
                             }
                             
                             // Double-check it was applied
