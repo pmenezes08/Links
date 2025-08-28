@@ -7671,7 +7671,9 @@
             const carouselInner = document.getElementById('adsCarouselInner');
             carouselInner.innerHTML = ads.map((ad, index) => `
                 <div class="ad-slide" onclick="trackAdClick(${ad.id}, '${ad.link}')">
-                    <img src="${ad.image}" alt="${ad.title}" class="ad-image" id="ad-image-${index}" onload="extractImageColor(this, ${index})">
+                    <div class="ad-image" id="ad-image-${index}" style="background-color: transparent;">
+                        <img src="${ad.image}" alt="${ad.title}" style="width: 100%; height: 100%; object-fit: contain;" onload="extractImageColor(this, ${index})">
+                    </div>
                     <div class="ad-title">${ad.title}</div>
                 </div>
             `).join('');

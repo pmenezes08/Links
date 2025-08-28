@@ -7209,6 +7209,7 @@ def get_image_color():
         from io import BytesIO
         import numpy as np
         from collections import Counter
+        import colorsys
         
         image_url = request.args.get('url')
         if not image_url:
@@ -7234,89 +7235,87 @@ def get_image_color():
             # Get image dimensions
             width, height = img.size
             
-            # Sample pixels from corners and edges (likely background)
-            edge_pixels = []
+            # Method 1: Get the most common color from corners (usually background)
+            corner_pixels = []
+            corner_size = 10  # Sample 10x10 pixel corners
             
-            # Sample size for edges
-            sample_depth = min(20, width // 10, height // 10)  # Sample deeper into the image
-            
-            # Sample corners more heavily (they're most likely background)
-            corner_regions = [
-                # Top-left corner region
-                [(x, y) for x in range(sample_depth) for y in range(sample_depth)],
-                # Top-right corner region
-                [(width-1-x, y) for x in range(sample_depth) for y in range(sample_depth)],
-                # Bottom-left corner region
-                [(x, height-1-y) for x in range(sample_depth) for y in range(sample_depth)],
-                # Bottom-right corner region
-                [(width-1-x, height-1-y) for x in range(sample_depth) for y in range(sample_depth)]
+            # Sample all four corners
+            corners = [
+                (0, 0),  # Top-left
+                (width - corner_size, 0),  # Top-right
+                (0, height - corner_size),  # Bottom-left
+                (width - corner_size, height - corner_size)  # Bottom-right
             ]
             
-            # Sample corner regions
-            for region in corner_regions:
-                for x, y in region[::3]:  # Sample every 3rd pixel in corner regions
-                    try:
-                        edge_pixels.append(img.getpixel((x, y)))
-                    except:
-                        pass
+            for corner_x, corner_y in corners:
+                for x in range(corner_x, min(corner_x + corner_size, width)):
+                    for y in range(corner_y, min(corner_y + corner_size, height)):
+                        corner_pixels.append(img.getpixel((x, y)))
             
-            # Also sample from middle of edges (not just corners)
-            # Top edge middle
-            mid_x = width // 2
-            for y in range(min(10, height // 10)):
-                edge_pixels.append(img.getpixel((mid_x, y)))
+            # Method 2: Also get border pixels
+            border_pixels = []
             
-            # Bottom edge middle
-            for y in range(max(0, height - 10), height):
-                edge_pixels.append(img.getpixel((mid_x, y)))
+            # Top and bottom borders
+            for x in range(0, width, 2):
+                border_pixels.append(img.getpixel((x, 0)))
+                border_pixels.append(img.getpixel((x, height - 1)))
             
-            # Left edge middle
-            mid_y = height // 2
-            for x in range(min(10, width // 10)):
-                edge_pixels.append(img.getpixel((x, mid_y)))
+            # Left and right borders
+            for y in range(0, height, 2):
+                border_pixels.append(img.getpixel((0, y)))
+                border_pixels.append(img.getpixel((width - 1, y)))
             
-            # Right edge middle
-            for x in range(max(0, width - 10), width):
-                edge_pixels.append(img.getpixel((x, mid_y)))
+            # Combine corner and border pixels
+            all_background_pixels = corner_pixels + border_pixels
             
             # Find most common color (likely background)
-            if edge_pixels:
+            if all_background_pixels:
                 # Count color occurrences
-                color_counts = Counter(edge_pixels)
+                color_counts = Counter(all_background_pixels)
                 
                 # Get top colors
-                top_colors = color_counts.most_common(5)
+                top_colors = color_counts.most_common(10)
                 
-                # Find the most common non-white color
-                # (sometimes images have white borders but colored backgrounds)
-                most_common_color = None
-                for color, count in top_colors:
-                    # Check if this is not pure white or very close to white
-                    r, g, b = color
-                    if not (r > 250 and g > 250 and b > 250):  # Not white
-                        most_common_color = color
-                        break
+                # Strategy: Find the dominant background color
+                # First, try to find the most common color in corners only
+                corner_color_counts = Counter(corner_pixels)
+                corner_top = corner_color_counts.most_common(3)
                 
-                # If all colors are white-ish, use the most common one
-                if most_common_color is None:
-                    most_common_color = top_colors[0][0] if top_colors else (255, 255, 255)
+                # Use the most common corner color as background
+                background_color = corner_top[0][0] if corner_top else (255, 255, 255)
+                
+                # Special handling: if the detected color is very light/white, 
+                # check if there's a more prominent non-white color
+                r, g, b = background_color
+                if r > 245 and g > 245 and b > 245:  # Very light/white
+                    # Look for a non-white color in top colors
+                    for color, count in top_colors:
+                        r2, g2, b2 = color
+                        # If we find a non-white color that's common, use it
+                        if not (r2 > 245 and g2 > 245 and b2 > 245) and count > len(all_background_pixels) * 0.1:
+                            background_color = color
+                            logger.info(f"Overriding white with color: RGB{color}")
+                            break
                 
                 # Log for debugging
                 logger.info(f"Image URL: {image_url}")
-                logger.info(f"Detected background color: RGB({most_common_color[0]}, {most_common_color[1]}, {most_common_color[2]})")
-                logger.info(f"Top 5 colors: {[(color, count) for color, count in top_colors[:5]]}")
+                logger.info(f"Image size: {width}x{height}")
+                logger.info(f"Detected background color: RGB{background_color}")
+                logger.info(f"Top corner colors: {corner_top[:3]}")
+                logger.info(f"Top overall colors: {top_colors[:5]}")
                 
                 return jsonify({
                     'success': True,
                     'color': {
-                        'r': most_common_color[0],
-                        'g': most_common_color[1],
-                        'b': most_common_color[2]
+                        'r': background_color[0],
+                        'g': background_color[1],
+                        'b': background_color[2]
                     },
                     'debug': {
                         'url': image_url,
-                        'detected': f"rgb({most_common_color[0]}, {most_common_color[1]}, {most_common_color[2]})",
-                        'top_colors': [f"rgb{color[0]} ({count} pixels)" for color, count in top_colors[:5]]
+                        'detected': f"rgb({background_color[0]}, {background_color[1]}, {background_color[2]})",
+                        'corner_colors': [f"rgb{color} ({count} px)" for color, count in corner_top[:3]],
+                        'top_colors': [f"rgb{color} ({count} px)" for color, count in top_colors[:5]]
                     }
                 })
             else:
