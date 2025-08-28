@@ -1083,6 +1083,10 @@
                 <i class="fas fa-image"></i>
                 <span>Change Site Logo</span>
             </button>
+            <button class="admin-action-btn" onclick="showSignupImageModal()">
+                <i class="fas fa-photo-video"></i>
+                <span>Update Signup Image</span>
+            </button>
             <button class="admin-action-btn" onclick="window.location.href='{{ url_for('admin_ads_overview') }}'">
                 <i class="fas fa-ad"></i>
                 <span>Ads Performance</span>
@@ -1090,6 +1094,33 @@
         </div>
     </div>
 
+    <!-- Signup Image Upload Modal -->
+    <div id="signupImageModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Update Signup Side Image</h3>
+                <span class="close" onclick="closeSignupImageModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <form id="signupImageUploadForm" enctype="multipart/form-data">
+                    <div class="form-group">
+                        <label for="signupImageFile">Select Image (PNG, JPG, GIF, WEBP):</label>
+                        <input type="file" id="signupImageFile" name="image" accept="image/*" required>
+                    </div>
+                    <div id="signupImagePreviewWrap" style="display:none; margin: 20px 0; text-align: center;">
+                        <h4>Preview:</h4>
+                        <div style="background: #1a1a1a; padding: 20px; border-radius: 8px;">
+                            <img id="signupPreviewImage" style="max-width: 100%; max-height: 260px; width: auto; height: auto;" />
+                        </div>
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" class="submit-btn">Upload Image</button>
+                        <button type="button" class="cancel-btn" onclick="closeSignupImageModal()">Cancel</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
     <!-- Logo Upload Modal -->
     <div id="logoModal" class="modal">
         <div class="modal-content">
@@ -1706,6 +1737,16 @@
             document.getElementById('logoFile').value = '';
             document.getElementById('newLogoPreview').style.display = 'none';
         }
+
+        function showSignupImageModal() {
+            document.getElementById('signupImageModal').style.display = 'block';
+        }
+
+        function closeSignupImageModal() {
+            document.getElementById('signupImageModal').style.display = 'none';
+            document.getElementById('signupImageFile').value = '';
+            document.getElementById('signupImagePreviewWrap').style.display = 'none';
+        }
         
         function loadCurrentLogo() {
             fetch('/get_logo')
@@ -1757,6 +1798,19 @@
                     reader.readAsDataURL(file);
                 }
             });
+
+            // Preview signup image before upload
+            $('#signupImageFile').on('change', function(e) {
+                const file = e.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        $('#signupPreviewImage').attr('src', e.target.result);
+                        $('#signupImagePreviewWrap').show();
+                    };
+                    reader.readAsDataURL(file);
+                }
+            });
             
             // Handle logo upload
             $('#logoUploadForm').on('submit', function(e) {
@@ -1787,6 +1841,34 @@
                     error: function(error) {
                         console.error('Error:', error);
                         alert('Error uploading logo');
+                    }
+                });
+            });
+
+            // Handle signup image upload
+            $('#signupImageUploadForm').on('submit', function(e) {
+                e.preventDefault();
+                const formData = new FormData();
+                const fileInput = document.getElementById('signupImageFile');
+                if (!fileInput.files[0]) { return; }
+                formData.append('image', fileInput.files[0]);
+                $.ajax({
+                    url: '/upload_signup_image',
+                    method: 'POST',
+                    data: formData,
+                    processData: false,
+                    contentType: false,
+                    success: function(data) {
+                        if (data.success) {
+                            alert('Signup image uploaded successfully!');
+                            closeSignupImageModal();
+                        } else {
+                            alert('Error uploading image: ' + data.error);
+                        }
+                    },
+                    error: function(err) {
+                        console.error('Error:', err);
+                        alert('Server error while uploading image');
                     }
                 });
             });
