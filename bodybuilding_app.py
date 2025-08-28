@@ -7280,14 +7280,14 @@ def test_color_detection():
 
 @app.route('/get_image_color')
 def get_image_color():
-    """Extract background color from an image URL"""
+    """Extract background color from an image URL using clustering approach"""
     try:
         import requests
         from PIL import Image
         from io import BytesIO
         import numpy as np
+        from sklearn.cluster import KMeans
         from collections import Counter
-        import colorsys
         
         image_url = request.args.get('url')
         if not image_url:
@@ -7303,104 +7303,97 @@ def get_image_color():
             
             # Convert to RGB if necessary
             if img.mode == 'RGBA':
-                # Create white background
-                background = Image.new('RGB', img.size, (255, 255, 255))
-                background.paste(img, mask=img.split()[3] if len(img.split()) > 3 else None)
-                img = background
+                # For RGBA, let's preserve transparency info
+                img = img.convert('RGB')
             elif img.mode != 'RGB':
                 img = img.convert('RGB')
             
-            # Get image dimensions
+            # Resize for faster processing (keep aspect ratio)
+            img.thumbnail((200, 200))
             width, height = img.size
             
-            # NEW APPROACH: Analyze the image in a smarter way
-            # Instead of just looking at corners, let's understand the image structure
+            # APPROACH: Use K-means clustering to find dominant colors
+            # Then identify which one is likely the background
             
-            # Step 1: Get a color histogram of the entire image
+            # Convert image to numpy array
             img_array = np.array(img)
             pixels = img_array.reshape(-1, 3)
             
-            # Count all colors in the image
-            all_colors = Counter(map(tuple, pixels))
-            total_pixels = len(pixels)
+            # Use K-means to find the dominant colors (5 clusters)
+            n_colors = 5
+            kmeans = KMeans(n_clusters=n_colors, random_state=42, n_init=10)
+            kmeans.fit(pixels)
             
-            # Step 2: Find the most dominant color (likely background)
-            # Background is usually the color that covers the most area
-            most_common_colors = all_colors.most_common(20)
+            # Get the color of each cluster center
+            colors = kmeans.cluster_centers_.astype(int)
             
-            # Step 3: Smart detection - background is usually:
-            # 1. One of the top 3 most common colors
-            # 2. Present in at least 3 corners
-            # 3. Forms large continuous areas
+            # Count pixels in each cluster
+            labels = kmeans.labels_
+            label_counts = Counter(labels)
             
-            # Check what colors are in each corner (single pixel from each corner)
-            corner_colors = [
-                img.getpixel((0, 0)),  # Top-left
-                img.getpixel((width-1, 0)),  # Top-right
-                img.getpixel((0, height-1)),  # Bottom-left
-                img.getpixel((width-1, height-1))  # Bottom-right
-            ]
+            # Sort colors by frequency
+            sorted_colors = sorted(
+                [(colors[i], label_counts[i]) for i in range(n_colors)],
+                key=lambda x: x[1],
+                reverse=True
+            )
             
-            # Also check a few pixels inward from each corner (5 pixels in)
-            if width > 10 and height > 10:
-                corner_colors.extend([
-                    img.getpixel((5, 5)),
-                    img.getpixel((width-6, 5)),
-                    img.getpixel((5, height-6)),
-                    img.getpixel((width-6, height-6))
-                ])
+            # Now determine which color is the background
+            # Strategy: Check which dominant color appears most at the edges
             
-            # Count how many corners have each color
-            corner_color_counts = Counter(corner_colors)
+            # Sample edge pixels (not just corners, but entire edges)
+            edge_pixels = []
             
-            # Find the background color
-            background_color = None
+            # Top and bottom edges
+            for x in range(width):
+                edge_pixels.append(tuple(img_array[0, x]))  # Top edge
+                edge_pixels.append(tuple(img_array[height-1, x]))  # Bottom edge
             
-            # Strategy 1: If a color appears in 3+ corners, it's likely the background
-            for color, count in corner_color_counts.most_common():
-                if count >= 3:  # Appears in at least 3 corners
-                    background_color = color
-                    logger.info(f"Background found in {count} corners: RGB{color}")
-                    break
+            # Left and right edges
+            for y in range(height):
+                edge_pixels.append(tuple(img_array[y, 0]))  # Left edge
+                edge_pixels.append(tuple(img_array[y, width-1]))  # Right edge
             
-            # Strategy 2: If no clear corner color, use the most common color that's also in at least one corner
-            if background_color is None:
-                for color, pixel_count in most_common_colors:
-                    if color in corner_colors:
-                        background_color = color
-                        percentage = (pixel_count / total_pixels) * 100
-                        logger.info(f"Background is most common color in corners: RGB{color} ({percentage:.1f}% of image)")
-                        break
+            # Find which cluster each edge pixel belongs to
+            edge_pixel_clusters = []
+            for pixel in edge_pixels:
+                # Find closest cluster center
+                distances = [np.linalg.norm(np.array(pixel) - center) for center in colors]
+                closest_cluster = np.argmin(distances)
+                edge_pixel_clusters.append(closest_cluster)
             
-            # Strategy 3: Just use the most common color overall
-            if background_color is None and most_common_colors:
-                background_color = most_common_colors[0][0]
-                percentage = (most_common_colors[0][1] / total_pixels) * 100
-                logger.info(f"Using most common color as background: RGB{background_color} ({percentage:.1f}% of image)")
+            # Count which cluster appears most at edges
+            edge_cluster_counts = Counter(edge_pixel_clusters)
+            most_common_edge_cluster = edge_cluster_counts.most_common(1)[0][0]
             
-            # Fallback
-            if background_color is None:
-                background_color = (255, 255, 255)
-                
+            # The background is the color of the most common edge cluster
+            background_color = tuple(colors[most_common_edge_cluster])
+            
+            # Calculate percentage
+            total_pixels = width * height
+            bg_pixel_count = label_counts[most_common_edge_cluster]
+            bg_percentage = (bg_pixel_count / total_pixels) * 100
+            
             # Log for debugging
             logger.info(f"Image URL: {image_url}")
-            logger.info(f"Image size: {width}x{height}")
-            logger.info(f"Final background color: RGB{background_color}")
-            logger.info(f"Corner colors: {corner_colors[:4]}")
-            logger.info(f"Top 5 colors by area: {[(c, f'{(cnt/total_pixels)*100:.1f}%') for c, cnt in most_common_colors[:5]]}")
+            logger.info(f"Image size (resized): {width}x{height}")
+            logger.info(f"Background color detected: RGB{background_color} ({bg_percentage:.1f}% of image)")
+            logger.info(f"All dominant colors: {[(tuple(c), label_counts[i]) for i, (c, _) in enumerate(sorted_colors)]}")
             
             return jsonify({
                 'success': True,
                 'color': {
-                    'r': background_color[0],
-                    'g': background_color[1],
-                    'b': background_color[2]
+                    'r': int(background_color[0]),
+                    'g': int(background_color[1]),
+                    'b': int(background_color[2])
                 },
                 'debug': {
                     'url': image_url,
-                    'detected': f"rgb({background_color[0]}, {background_color[1]}, {background_color[2]})",
-                    'corner_colors': [f"rgb{color}" for color in corner_colors[:4]],
-                    'top_colors': [f"rgb{color} ({(count/total_pixels)*100:.1f}%)" for color, count in most_common_colors[:5]]
+                    'detected': f"rgb{background_color}",
+                    'percentage': f"{bg_percentage:.1f}%",
+                    'all_colors': [f"rgb({int(c[0])},{int(c[1])},{int(c[2])}) - {(count/total_pixels)*100:.1f}%" 
+                                  for c, count in sorted_colors],
+                    'method': 'K-means clustering with edge detection'
                 }
             })
             
