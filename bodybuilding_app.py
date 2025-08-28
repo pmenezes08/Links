@@ -7237,48 +7237,74 @@ def get_image_color():
             # Sample pixels from corners and edges (likely background)
             edge_pixels = []
             
-            # Corners (most likely to be background)
-            corners = [
-                (0, 0), (width-1, 0),  # Top corners
-                (0, height-1), (width-1, height-1)  # Bottom corners
+            # Sample size for edges
+            sample_depth = min(20, width // 10, height // 10)  # Sample deeper into the image
+            
+            # Sample corners more heavily (they're most likely background)
+            corner_regions = [
+                # Top-left corner region
+                [(x, y) for x in range(sample_depth) for y in range(sample_depth)],
+                # Top-right corner region
+                [(width-1-x, y) for x in range(sample_depth) for y in range(sample_depth)],
+                # Bottom-left corner region
+                [(x, height-1-y) for x in range(sample_depth) for y in range(sample_depth)],
+                # Bottom-right corner region
+                [(width-1-x, height-1-y) for x in range(sample_depth) for y in range(sample_depth)]
             ]
             
-            # Add corner pixels multiple times to give them more weight
-            for corner in corners:
-                for _ in range(10):  # Weight corners heavily
-                    edge_pixels.append(img.getpixel(corner))
+            # Sample corner regions
+            for region in corner_regions:
+                for x, y in region[::3]:  # Sample every 3rd pixel in corner regions
+                    try:
+                        edge_pixels.append(img.getpixel((x, y)))
+                    except:
+                        pass
             
-            # Top edge
-            for x in range(0, width, 10):
-                edge_pixels.append(img.getpixel((x, 0)))
-                edge_pixels.append(img.getpixel((x, 1)))  # Second row too
+            # Also sample from middle of edges (not just corners)
+            # Top edge middle
+            mid_x = width // 2
+            for y in range(min(10, height // 10)):
+                edge_pixels.append(img.getpixel((mid_x, y)))
             
-            # Bottom edge
-            for x in range(0, width, 10):
-                edge_pixels.append(img.getpixel((x, height - 1)))
-                edge_pixels.append(img.getpixel((x, height - 2)))  # Second to last row
+            # Bottom edge middle
+            for y in range(max(0, height - 10), height):
+                edge_pixels.append(img.getpixel((mid_x, y)))
             
-            # Left edge
-            for y in range(0, height, 10):
-                edge_pixels.append(img.getpixel((0, y)))
-                edge_pixels.append(img.getpixel((1, y)))  # Second column
+            # Left edge middle
+            mid_y = height // 2
+            for x in range(min(10, width // 10)):
+                edge_pixels.append(img.getpixel((x, mid_y)))
             
-            # Right edge
-            for y in range(0, height, 10):
-                edge_pixels.append(img.getpixel((width - 1, y)))
-                edge_pixels.append(img.getpixel((width - 2, y)))  # Second to last column
+            # Right edge middle
+            for x in range(max(0, width - 10), width):
+                edge_pixels.append(img.getpixel((x, mid_y)))
             
             # Find most common color (likely background)
             if edge_pixels:
                 # Count color occurrences
                 color_counts = Counter(edge_pixels)
-                # Get most common color
-                most_common_color = color_counts.most_common(1)[0][0]
+                
+                # Get top colors
+                top_colors = color_counts.most_common(5)
+                
+                # Find the most common non-white color
+                # (sometimes images have white borders but colored backgrounds)
+                most_common_color = None
+                for color, count in top_colors:
+                    # Check if this is not pure white or very close to white
+                    r, g, b = color
+                    if not (r > 250 and g > 250 and b > 250):  # Not white
+                        most_common_color = color
+                        break
+                
+                # If all colors are white-ish, use the most common one
+                if most_common_color is None:
+                    most_common_color = top_colors[0][0] if top_colors else (255, 255, 255)
                 
                 # Log for debugging
                 logger.info(f"Image URL: {image_url}")
                 logger.info(f"Detected background color: RGB({most_common_color[0]}, {most_common_color[1]}, {most_common_color[2]})")
-                logger.info(f"Top 3 colors: {color_counts.most_common(3)}")
+                logger.info(f"Top 5 colors: {[(color, count) for color, count in top_colors[:5]]}")
                 
                 return jsonify({
                     'success': True,
@@ -7290,7 +7316,7 @@ def get_image_color():
                     'debug': {
                         'url': image_url,
                         'detected': f"rgb({most_common_color[0]}, {most_common_color[1]}, {most_common_color[2]})",
-                        'top_colors': [f"rgb{color[0]}" for color in color_counts.most_common(3)]
+                        'top_colors': [f"rgb{color[0]} ({count} pixels)" for color, count in top_colors[:5]]
                     }
                 })
             else:

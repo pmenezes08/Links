@@ -7558,20 +7558,27 @@
                         const color = data.color;
                         
                         if (imageElement) {
-                            // Apply background color directly to the image element
+                            // Apply background color directly to the image element with !important
                             const bgColor = `rgb(${color.r}, ${color.g}, ${color.b})`;
-                            imageElement.style.backgroundColor = bgColor;
+                            imageElement.style.setProperty('background-color', bgColor, 'important');
                             console.log(`Applied background color ${bgColor} to ad-image-${imageIndex}`);
                             
                             // Also log debug info if available
                             if (data.debug) {
                                 console.log(`Debug info for ${imageIndex}:`, data.debug);
+                                console.log(`Top colors detected:`, data.debug.top_colors);
                             }
                             
                             // Double-check it was applied
                             setTimeout(() => {
                                 const appliedBg = window.getComputedStyle(imageElement).backgroundColor;
                                 console.log(`Verified background for ad-image-${imageIndex}: ${appliedBg}`);
+                                
+                                // If it doesn't match, force it again
+                                if (appliedBg !== bgColor) {
+                                    console.log(`Background mismatch! Reapplying ${bgColor}`);
+                                    imageElement.style.cssText += `background-color: ${bgColor} !important;`;
+                                }
                             }, 100);
                         }
                     } else if (imageElement) {
