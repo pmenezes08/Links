@@ -5,8 +5,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sign Up - C.Point</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}?v=5.0">
+    <style>
+        #signupPage .container { max-width: 640px; padding-top: 10px; }
+        #signupPage h1 { margin: 10px 0 6px 0; font-size: 24px; }
+        #signupPage .signup-subtitle { margin: 0 0 12px 0; }
+        #signupForm { max-width: 640px; }
+        #signupForm .form-section { margin-bottom: 10px; }
+        #signupForm .form-section h3 { margin: 8px 0; font-size: 16px; }
+        #signupForm .form-group { margin-bottom: 8px; }
+        #signupForm .form-actions { margin-top: 6px; display: flex; gap: 8px; }
+    </style>
 </head>
-<body>
+<body id="signupPage">
     <div class="container">
         <h1>Create Your Account</h1>
         <p class="signup-subtitle">Join C.Point and start your fitness journey</p>
@@ -15,7 +25,7 @@
             <p class="error-message">{{ error }}</p>
         {% endif %}
         
-        <form method="POST" action="/signup" class="signup-form">
+        <form method="POST" action="/signup" class="signup-form" id="signupForm">
             <div class="form-section">
                 <h3>Basic Information</h3>
                 <div class="form-group">
@@ -90,6 +100,19 @@
     </div>
     
     <script>
+        // Remove Fitness Goals section (if present) to simplify and compact the form
+        document.addEventListener('DOMContentLoaded', function () {
+            try {
+                var primaryGoal = document.getElementById('primary_goal');
+                if (primaryGoal && primaryGoal.closest) {
+                    var section = primaryGoal.closest('.form-section');
+                    if (section && section.parentNode) {
+                        section.parentNode.removeChild(section);
+                    }
+                }
+            } catch (e) { /* no-op */ }
+        });
+
         // Password confirmation validation
         document.getElementById('confirm_password').addEventListener('input', function() {
             const password = document.getElementById('password').value;
