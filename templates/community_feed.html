@@ -176,9 +176,9 @@
             top: 80px;
             width: 320px;
             height: 340px;
-            background: {{ '#ffffff' if community.template == 'light' else '#1a1a1a' }};
+            background: #000000;
             border-radius: 12px;
-            border: 2px solid {{ 'rgba(0, 0, 0, 0.1)' if community.template == 'light' else '#333333' }};
+            border: 2px solid #333333;
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
             z-index: 98;
             overflow: hidden;
@@ -192,7 +192,7 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            background: {{ 'rgba(0, 0, 0, 0.01)' if community.template == 'light' else 'rgba(255, 255, 255, 0.01)' }};
+            background: #000000;
         }
         
         .ads-minimize-btn {
@@ -228,7 +228,7 @@
         .ads-header h3 {
             font-size: 13px;
             font-weight: 500;
-            color: {{ 'rgba(0, 0, 0, 0.6)' if community.template == 'light' else 'rgba(255, 255, 255, 0.6)' }};
+            color: rgba(255, 255, 255, 0.8);
             margin: 0;
             display: flex;
             align-items: center;
@@ -256,12 +256,7 @@
             justify-content: center;
             cursor: pointer;
             position: relative;
-            background: {{ '#ffffff' if community.template == 'light' else '#1a1a1a' }};
-            transition: background-color 0.3s ease;
-        }
-        
-        .ad-slide[data-bg-color] {
-            background: var(--ad-bg-color) !important;
+            background: #000000;
         }
         
         .ad-image {
@@ -269,17 +264,22 @@
             max-width: 290px;
             height: 220px;
             object-fit: contain;
-            background: transparent;
+            background: #ffffff;
             border-radius: 12px;
             margin-bottom: 10px;
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
             overflow: hidden;
+            transition: background-color 0.3s ease;
+        }
+        
+        .ad-image[data-bg-color] {
+            background: var(--img-bg-color) !important;
         }
         
         .ad-title {
             font-size: 14px;
             font-weight: 600;
-            color: {{ '#000000' if community.template == 'light' else '#ffffff' }};
+            color: #ffffff;
             text-align: center;
             margin-bottom: 6px;
             padding: 0 10px;
@@ -7540,7 +7540,7 @@
         let autoRotateInterval;
         window.adsAutoRotateInterval = null;
         
-        function extractImageColor(img, slideIndex) {
+        function extractImageColor(img, imageIndex) {
             // Use backend to extract color to avoid CORS issues
             const imageUrl = img.src;
             
@@ -7550,23 +7550,18 @@
                 .then(data => {
                     if (data.success || data.color) {
                         const color = data.color;
-                        const slide = document.getElementById(`ad-slide-${slideIndex}`);
+                        const imageElement = document.getElementById(`ad-image-${imageIndex}`);
                         
-                        if (slide) {
-                            // Apply full background color (no transparency)
-                            slide.style.setProperty('--ad-bg-color', `rgb(${color.r}, ${color.g}, ${color.b})`);
-                            slide.setAttribute('data-bg-color', 'true');
+                        if (imageElement) {
+                            // Apply background color to the image element
+                            imageElement.style.setProperty('--img-bg-color', `rgb(${color.r}, ${color.g}, ${color.b})`);
+                            imageElement.setAttribute('data-bg-color', 'true');
                         }
                     }
                 })
                 .catch(error => {
                     console.log('Could not extract color from image:', error);
-                    // Set white background as fallback
-                    const slide = document.getElementById(`ad-slide-${slideIndex}`);
-                    if (slide) {
-                        slide.style.setProperty('--ad-bg-color', {{ "'rgb(255, 255, 255)'" if community.template == 'light' else "'rgb(26, 26, 26)'" }});
-                        slide.setAttribute('data-bg-color', 'true');
-                    }
+                    // Keep white background as fallback (already set in CSS)
                 });
         }
         
@@ -7645,8 +7640,8 @@
             // Render ads
             const carouselInner = document.getElementById('adsCarouselInner');
             carouselInner.innerHTML = ads.map((ad, index) => `
-                <div class="ad-slide" id="ad-slide-${index}" onclick="trackAdClick(${ad.id}, '${ad.link}')">
-                    <img src="${ad.image}" alt="${ad.title}" class="ad-image" onload="extractImageColor(this, ${index})">
+                <div class="ad-slide" onclick="trackAdClick(${ad.id}, '${ad.link}')">
+                    <img src="${ad.image}" alt="${ad.title}" class="ad-image" id="ad-image-${index}" onload="extractImageColor(this, ${index})">
                     <div class="ad-title">${ad.title}</div>
                 </div>
             `).join('');
