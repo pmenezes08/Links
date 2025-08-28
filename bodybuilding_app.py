@@ -1054,60 +1054,57 @@ def signup():
     if request.method == 'GET':
         return render_template('signup.html')
     
-    # Handle POST request for user registration
-    username = request.form.get('username', '').strip()
+    # Handle POST request for user registration (new compact form)
+    full_name = request.form.get('full_name', '').strip()
     email = request.form.get('email', '').strip()
+    mobile = request.form.get('mobile', '').strip()
     password = request.form.get('password', '')
     confirm_password = request.form.get('confirm_password', '')
-    first_name = request.form.get('first_name', '').strip()
-    last_name = request.form.get('last_name', '').strip()
-    age = request.form.get('age', type=int)
-    gender = request.form.get('gender', '').strip()
-    primary_goal = request.form.get('primary_goal', '').strip()
+    
+    # Split full name into first and last names
+    first_name = ''
+    last_name = ''
+    if full_name:
+        parts = full_name.split()
+        first_name = parts[0]
+        last_name = ' '.join(parts[1:]) if len(parts) > 1 else ''
     
     # Validation
-    if not all([username, email, password, confirm_password, first_name, last_name]):
+    if not all([full_name, email, password, confirm_password]):
         return render_template('signup.html', error='All required fields must be filled',
-                               username=username, email=email, first_name=first_name, last_name=last_name,
-                               age=age, gender=gender, primary_goal=primary_goal)
+                               full_name=full_name, email=email, mobile=mobile)
     
     if password != confirm_password:
         return render_template('signup.html', error='Passwords do not match',
-                               username=username, email=email, first_name=first_name, last_name=last_name,
-                               age=age, gender=gender, primary_goal=primary_goal)
+                               full_name=full_name, email=email, mobile=mobile)
     
     if len(password) < 6:
         return render_template('signup.html', error='Password must be at least 6 characters long',
-                               username=username, email=email, first_name=first_name, last_name=last_name,
-                               age=age, gender=gender, primary_goal=primary_goal)
+                               full_name=full_name, email=email, mobile=mobile)
     
-    if not re.match(r'^[a-zA-Z0-9_]+$', username):
-        return render_template('signup.html', error='Username can only contain letters, numbers, and underscores',
-                               username=username, email=email, first_name=first_name, last_name=last_name,
-                               age=age, gender=gender, primary_goal=primary_goal)
-    
-    if len(username) < 3:
-        return render_template('signup.html', error='Username must be at least 3 characters long',
-                               username=username, email=email, first_name=first_name, last_name=last_name,
-                               age=age, gender=gender, primary_goal=primary_goal)
+    # Username will be generated automatically
     
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
             
-            # Check if username already exists
-            c.execute("SELECT 1 FROM users WHERE username = ?", (username,))
-            if c.fetchone():
-                return render_template('signup.html', error='Username already exists',
-                                       username=username, email=email, first_name=first_name, last_name=last_name,
-                                       age=age, gender=gender, primary_goal=primary_goal)
-            
             # Check if email already exists
             c.execute("SELECT 1 FROM users WHERE email = ?", (email,))
             if c.fetchone():
                 return render_template('signup.html', error='Email already registered',
-                                       username=username, email=email, first_name=first_name, last_name=last_name,
-                                       age=age, gender=gender, primary_goal=primary_goal)
+                                       full_name=full_name, email=email, mobile=mobile)
+            
+            # Generate a unique username based on email or name
+            base_username = (email.split('@')[0] if email else (first_name + last_name)).lower()
+            base_username = re.sub(r'[^a-z0-9_]', '', base_username) or 'user'
+            username = base_username
+            suffix = 1
+            while True:
+                c.execute("SELECT 1 FROM users WHERE username = ?", (username,))
+                if not c.fetchone():
+                    break
+                suffix += 1
+                username = f"{base_username}{suffix}"
             
             # Hash the password
             hashed_password = generate_password_hash(password)
@@ -1116,7 +1113,11 @@ def signup():
             c.execute("""
                 INSERT INTO users (username, email, password, first_name, last_name, age, gender, primary_goal, subscription, created_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'free', ?)
-            """, (username, email, hashed_password, first_name, last_name, age, gender, primary_goal, datetime.now().strftime('%m.%d.%y %H:%M')))
+            """, (username, email, hashed_password, first_name, last_name, None, '', '', datetime.now().strftime('%m.%d.%y %H:%M')))
+            
+            # Store mobile if provided
+            if mobile:
+                c.execute("UPDATE users SET mobile = ? WHERE username = ?", (mobile, username))
             
             conn.commit()
             
@@ -1131,8 +1132,7 @@ def signup():
     except Exception as e:
         logger.error(f"Error during user registration: {str(e)}")
         return render_template('signup.html', error='An error occurred during registration. Please try again.',
-                               username=username, email=email, first_name=first_name, last_name=last_name,
-                               age=age, gender=gender, primary_goal=primary_goal)
+                               full_name=full_name, email=email, mobile=mobile)
 
 @app.route('/admin_profile')
 @login_required
@@ -2007,6 +2007,29 @@ def upload_logo():
             
     except Exception as e:
         logger.error(f"Error uploading logo: {str(e)}")
+        return jsonify({'success': False, 'error': 'Server error'})
+
+@app.route('/upload_signup_image', methods=['POST'])
+@login_required
+def upload_signup_image():
+    """Upload the left-side signup image (admin only)"""
+    username = session.get('username')
+    if username != 'admin':
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    try:
+        if 'image' not in request.files:
+            return jsonify({'success': False, 'error': 'No file provided'})
+        file = request.files['image']
+        if file.filename == '':
+            return jsonify({'success': False, 'error': 'No file selected'})
+        if file and allowed_file(file.filename):
+            filename = 'signup_side.jpg'
+            filepath = os.path.join('static', filename)
+            file.save(filepath)
+            return jsonify({'success': True, 'image_url': url_for('static', filename=filename)})
+        return jsonify({'success': False, 'error': 'Invalid file type'})
+    except Exception as e:
+        logger.error(f"Error uploading signup image: {str(e)}")
         return jsonify({'success': False, 'error': 'Server error'})
 
 @app.route('/check_profile_picture')
