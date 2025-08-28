@@ -10,9 +10,10 @@
         .signup-split { display: grid; grid-template-columns: 1fr 1fr; height: 100vh; overflow: hidden; }
         .signup-left { position: relative; background: #000; height: 100vh; overflow: hidden; display: flex; align-items: center; justify-content: center; }
         .signup-left img { max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain; object-position: center; opacity: 0.85; display: block; }
-        .signup-right { display: flex; align-items: center; justify-content: center; padding: 20px; height: 100vh; overflow-y: auto; }
-        .signup-card { width: 100%; max-width: 420px; background: rgba(0,0,0,0.85); border: 1px solid #222; border-radius: 12px; padding: 18px; }
-        .signup-card { font-family: "Font Awesome 6 Free", "FontAwesome", var(--fa-font-solid), "Helvetica Neue", Helvetica, Arial, sans-serif; margin: 0 auto; }
+        .signup-right { display: grid; place-items: center; padding: 20px; height: 100vh; overflow-y: auto; }
+        .signup-card { width: 100%; max-width: 420px; background: rgba(0,0,0,0.85); border: 1px solid #222; border-radius: 12px; padding: 18px; margin: 0 auto; align-self: center; justify-self: center; }
+        .signup-card { font-family: "Font Awesome 6 Free", "FontAwesome", var(--fa-font-solid), "Helvetica Neue", Helvetica, Arial, sans-serif; }
+        .signup-card input, .signup-card label, .signup-card button, .signup-card p { font-family: "Font Awesome 6 Free", "FontAwesome", var(--fa-font-solid), "Helvetica Neue", Helvetica, Arial, sans-serif !important; }
         .signup-card h1 { display:none; }
         .signup-card .signup-subtitle { display:none; }
         .form-group { margin-bottom: 10px; }
