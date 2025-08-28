@@ -7357,29 +7357,41 @@ def get_image_color():
                 # Strategy: Find the dominant background color
                 # First, try to find the most common color in corners only
                 corner_color_counts = Counter(corner_pixels)
-                corner_top = corner_color_counts.most_common(3)
+                corner_top = corner_color_counts.most_common(5)
                 
-                # Use the most common corner color as background
-                background_color = corner_top[0][0] if corner_top else (255, 255, 255)
+                # Look for the most common NON-WHITE color in corners
+                background_color = None
                 
-                # Special handling: if the detected color is very light/white, 
-                # check if there's a more prominent non-white color
-                r, g, b = background_color
-                if r > 245 and g > 245 and b > 245:  # Very light/white
-                    # Look for a non-white color in top colors
-                    for color, count in top_colors:
-                        r2, g2, b2 = color
-                        # If we find a non-white color that's common, use it
-                        if not (r2 > 245 and g2 > 245 and b2 > 245) and count > len(all_background_pixels) * 0.1:
+                # First pass: try to find a non-white color in corners
+                for color, count in corner_top:
+                    r, g, b = color
+                    # If this is not white/very light, use it
+                    if not (r > 240 and g > 240 and b > 240):
+                        background_color = color
+                        logger.info(f"Using non-white corner color: RGB{color}")
+                        break
+                
+                # If all corner colors are white-ish, use the most common one
+                if background_color is None:
+                    # Check if there's any colored pixel in the corners at all
+                    for color, count in corner_top:
+                        r, g, b = color
+                        # Even if not the most common, if it's colored and represents >20% of corners, use it
+                        if not (r > 240 and g > 240 and b > 240) and count > len(corner_pixels) * 0.2:
                             background_color = color
-                            logger.info(f"Overriding white with color: RGB{color}")
+                            logger.info(f"Found significant colored corner: RGB{color}")
                             break
+                    
+                    # Last resort: use the most common corner color even if white
+                    if background_color is None:
+                        background_color = corner_top[0][0] if corner_top else (255, 255, 255)
                 
                 # Log for debugging
                 logger.info(f"Image URL: {image_url}")
                 logger.info(f"Image size: {width}x{height}")
-                logger.info(f"Detected background color: RGB{background_color}")
-                logger.info(f"Top corner colors: {corner_top[:3]}")
+                logger.info(f"Final detected background color: RGB{background_color}")
+                logger.info(f"Top corner colors: {corner_top[:5]}")
+                logger.info(f"Corner pixels analyzed: {len(corner_pixels)}")
                 logger.info(f"Top overall colors: {top_colors[:5]}")
                 
                 return jsonify({
