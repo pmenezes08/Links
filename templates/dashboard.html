@@ -133,7 +133,7 @@
 			height: 100%;
 			background: rgba(0, 0, 0, 0.8);
 			display: flex;
-			align-items: center;
+			align-items: flex-start; /* top aligned */
 			justify-content: center;
 			z-index: 2000;
 		}
@@ -142,31 +142,35 @@
 			background: #1a1a1a;
 			border: 1px solid #333333;
 			border-radius: 12px;
-			max-width: 500px;
-			width: 90%;
-			max-height: 80vh;
+			max-width: 420px; /* more compact */
+			width: 92%;
+			max-height: 70vh;
 			overflow: hidden;
-			padding: 16px;
+			padding: 12px;
+			margin-top: 28px; /* push down a bit from very top */
 		}
 		
 		.modal-header {
 			display: flex;
 			justify-content: space-between;
 			align-items: center;
-			padding: 8px 0;
+			padding: 10px 12px;
 			border-bottom: 1px solid #333333;
 			margin-bottom: 12px;
+			background: #000000; /* match calendar modal */
+			color: #ffffff;
+			border-radius: 8px;
 		}
 		
 		.modal-header h2 {
 			color: #ffffff;
-			font-size: 18px;
+			font-size: 16px;
 			margin: 0;
 		}
 		
 		.close-modal {
 			color: #999;
-			font-size: 24px;
+			font-size: 18px;
 			cursor: pointer;
 			transition: color 0.3s;
 		}
@@ -335,14 +339,15 @@
 	<div id="joinCommunityPrompt" class="modal">
 		<div class="modal-content">
 			<div class="modal-header">
-				<h2>Join a community</h2>
+				<h2>Welcome</h2>
 				<span class="close-modal" id="closeJoinPrompt">&times;</span>
 			</div>
 			<div class="modal-body">
-				<p style="color:#ccc; margin-bottom:12px;">Have a community code? Enter it below to join immediately.</p>
-				<div style="display:flex; gap:8px;">
+				<p style="color:#ccc; margin: 2px 0 10px 0; font-size: 14px;">Join your first community to connect with others. If you have a code, enter it below.</p>
+				<div style="display:flex; gap:8px; align-items:center;">
 					<input type="text" id="communityCodeInput" placeholder="Enter community code" style="flex:1; padding:10px; border-radius:6px; border:1px solid #333; background:#111; color:#fff;">
 					<button id="joinCommunityBtn" class="sleek-btn">Join</button>
+					<button id="skipJoinPrompt" class="sleek-btn secondary" style="background: transparent; border: 1px solid #333; color: #9fb0b5;">Skip</button>
 				</div>
 				<div id="joinCommunityFeedback" style="margin-top:10px; color:#e74c3c; display:none;"></div>
 			</div>
@@ -470,6 +475,12 @@
 							feedback.css('color', '#e74c3c').text('Server error. Please try again.').show();
 						}
 					});
+				});
+
+				// Skip button hides the prompt
+				$('#skipJoinPrompt').on('click', function(e) {
+					e.preventDefault();
+					$('#joinCommunityPrompt').fadeOut(150);
 				});
 			}
 		});
