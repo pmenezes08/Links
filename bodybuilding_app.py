@@ -7275,12 +7275,22 @@ def get_image_color():
                 # Get most common color
                 most_common_color = color_counts.most_common(1)[0][0]
                 
+                # Log for debugging
+                logger.info(f"Image URL: {image_url}")
+                logger.info(f"Detected background color: RGB({most_common_color[0]}, {most_common_color[1]}, {most_common_color[2]})")
+                logger.info(f"Top 3 colors: {color_counts.most_common(3)}")
+                
                 return jsonify({
                     'success': True,
                     'color': {
                         'r': most_common_color[0],
                         'g': most_common_color[1],
                         'b': most_common_color[2]
+                    },
+                    'debug': {
+                        'url': image_url,
+                        'detected': f"rgb({most_common_color[0]}, {most_common_color[1]}, {most_common_color[2]})",
+                        'top_colors': [f"rgb{color[0]}" for color in color_counts.most_common(3)]
                     }
                 })
             else:

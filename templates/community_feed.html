@@ -7541,6 +7541,8 @@
             const imageUrl = img.src;
             const imageElement = document.getElementById(`ad-image-${imageIndex}`);
             
+            console.log(`Extracting color for ad-image-${imageIndex}, URL: ${imageUrl}`);
+            
             // Set initial state while loading
             if (imageElement) {
                 imageElement.style.backgroundColor = 'transparent';
@@ -7550,21 +7552,35 @@
             fetch(`/get_image_color?url=${encodeURIComponent(imageUrl)}`)
                 .then(response => response.json())
                 .then(data => {
+                    console.log(`Color detection response for ad-image-${imageIndex}:`, data);
+                    
                     if (data.success && data.color) {
                         const color = data.color;
                         
                         if (imageElement) {
                             // Apply background color directly to the image element
-                            imageElement.style.backgroundColor = `rgb(${color.r}, ${color.g}, ${color.b})`;
-                            console.log(`Applied background color rgb(${color.r}, ${color.g}, ${color.b}) to ad-image-${imageIndex}`);
+                            const bgColor = `rgb(${color.r}, ${color.g}, ${color.b})`;
+                            imageElement.style.backgroundColor = bgColor;
+                            console.log(`Applied background color ${bgColor} to ad-image-${imageIndex}`);
+                            
+                            // Also log debug info if available
+                            if (data.debug) {
+                                console.log(`Debug info for ${imageIndex}:`, data.debug);
+                            }
+                            
+                            // Double-check it was applied
+                            setTimeout(() => {
+                                const appliedBg = window.getComputedStyle(imageElement).backgroundColor;
+                                console.log(`Verified background for ad-image-${imageIndex}: ${appliedBg}`);
+                            }, 100);
                         }
                     } else if (imageElement) {
-                        // If color extraction fails, set a neutral background
+                        console.log(`Color extraction failed for ad-image-${imageIndex}, using fallback`);
                         imageElement.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
                     }
                 })
                 .catch(error => {
-                    console.log('Could not extract color from image:', error);
+                    console.error('Could not extract color from image:', error);
                     // Set subtle fallback
                     if (imageElement) {
                         imageElement.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
