@@ -1590,10 +1590,14 @@
                     const select = $('#compare-community-select');
                     select.empty();
                     select.append('<option value="">Select Gym Community</option>');
-                    if (resp.success && resp.communities && resp.communities.length) {
-                        resp.communities
-                            .filter(c => (c.type || '').toLowerCase() === 'gym')
-                            .forEach(c => select.append(`<option value="${c.id}">${c.name}</option>`));
+                    if (resp && resp.success && Array.isArray(resp.communities)) {
+                        const allCommunities = resp.communities;
+                        const gymCommunities = allCommunities.filter(c => String(c.type || '').toLowerCase() === 'gym');
+                        const listToShow = gymCommunities.length ? gymCommunities : allCommunities;
+                        console.log('Comparison: communities returned =', allCommunities.length, '| gyms =', gymCommunities.length);
+                        listToShow.forEach(c => select.append(`<option value="${c.id}">${c.name}</option>`));
+                    } else {
+                        console.warn('Comparison: failed to load communities or empty list', resp);
                     }
                 }
             });
