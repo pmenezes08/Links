@@ -8907,18 +8907,41 @@ def edit_exercise():
         username = session.get('username')
         exercise_id = request.form.get('exercise_id')
         name = request.form.get('name')
+        muscle_group = request.form.get('muscle_group', '').strip()
         
-        if not all([exercise_id, name]):
-            return jsonify({'success': False, 'error': 'Exercise ID and name are required'})
+        if not exercise_id:
+            return jsonify({'success': False, 'error': 'Exercise ID is required'})
+        if not name and not muscle_group:
+            return jsonify({'success': False, 'error': 'Nothing to update'})
         
         conn = sqlite3.connect('users.db')
         cursor = conn.cursor()
         
-        cursor.execute('''
-            UPDATE exercises 
-            SET name = ? 
-            WHERE id = ? AND username = ?
-        ''', (name, exercise_id, username))
+        # Normalize and validate muscle group if provided
+        if muscle_group:
+            normalized_group = muscle_group.capitalize()
+            allowed_groups = {'Chest','Back','Shoulders','Biceps','Triceps','Legs','Core','Glutes','Other'}
+            if normalized_group not in allowed_groups:
+                normalized_group = 'Other'
+        
+        if name and muscle_group:
+            cursor.execute('''
+                UPDATE exercises 
+                SET name = ?, muscle_group = ?
+                WHERE id = ? AND username = ?
+            ''', (name, normalized_group, exercise_id, username))
+        elif name:
+            cursor.execute('''
+                UPDATE exercises 
+                SET name = ?
+                WHERE id = ? AND username = ?
+            ''', (name, exercise_id, username))
+        elif muscle_group:
+            cursor.execute('''
+                UPDATE exercises 
+                SET muscle_group = ?
+                WHERE id = ? AND username = ?
+            ''', (normalized_group, exercise_id, username))
         
         conn.commit()
         conn.close()

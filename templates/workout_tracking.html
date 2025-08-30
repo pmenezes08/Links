@@ -788,23 +788,39 @@
             $('#one-rep-max').attr('title', 'Estimated using Epley formula');
             
             // Display sets history
-            const setsHtml = exercise.sets_data.length > 0 ? 
-                exercise.sets_data.map(set => `
-                    <div class="set-item">
-                        <div class="set-info">
-                            <span class="set-weight">${set.weight} kg</span>
-                            <span class="set-reps">${set.reps} reps</span>
+            // Group sets by year/month for scalability
+            let setsHtml = '<p>No sets recorded yet</p>';
+            if (exercise.sets_data.length > 0) {
+                const groups = {};
+                exercise.sets_data.forEach(set => {
+                    const d = new Date(set.created_at || set.date);
+                    const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+                    if (!groups[key]) groups[key] = [];
+                    groups[key].push(set);
+                });
+                const sections = Object.keys(groups).sort().map(k => {
+                    const [y,m] = k.split('-');
+                    const title = `${y}-${m}`;
+                    const items = groups[k].map(set => `
+                        <div class="set-item">
+                            <div class="set-info">
+                                <span class="set-weight">${set.weight} kg</span>
+                                <span class="set-reps">${set.reps} reps</span>
+                            </div>
+                            <div class="set-actions">
+                                <button onclick="editSet(${set.id})" class="action-btn">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                <button onclick="deleteSet(${set.id})" class="action-btn">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </div>
                         </div>
-                        <div class="set-actions">
-                            <button onclick="editSet(${set.id})" class="action-btn">
-                                <i class="fas fa-edit"></i>
-                            </button>
-                            <button onclick="deleteSet(${set.id})" class="action-btn">
-                                <i class="fas fa-trash"></i>
-                            </button>
-                        </div>
-                    </div>
-                `).join('') : '<p>No sets recorded yet</p>';
+                    `).join('');
+                    return `<div class="sets-group"><h5 style="margin:8px 0; color:#9fb0b5;">${title}</h5>${items}</div>`;
+                });
+                setsHtml = sections.join('');
+            }
             
             $('#sets-history').html(setsHtml);
         }
@@ -1790,6 +1806,9 @@
                                     <span class="exercise-count">${exercise.weight_history ? exercise.weight_history.length : 0} entries</span>
                                 </div>
                                 <div class="exercise-actions">
+                                    <button onclick="event.stopPropagation(); openEditExercise(${exercise.id}, '${exercise.name}', '${muscleGroup}')" class="action-btn small" title="Edit exercise">
+                                        <i class="fas fa-edit"></i> Edit
+                                    </button>
                                     <button onclick="event.stopPropagation(); openLogWeightModal(${exercise.id}, '${exercise.name}')" class="action-btn small">
                                         <i class="fas fa-plus"></i> Add Weight
                                     </button>
@@ -1810,11 +1829,11 @@
                 
                 return `
                     <div class="muscle-group-section">
-                        <div class="muscle-group-title-row" style="display:flex; align-items:center; justify-content: space-between; cursor:pointer;" onclick="toggleGroupVisibility('${muscleGroup}')">
+                        <div class="muscle-group-title-row" style="display:flex; align-items:center; justify-content: space-between; cursor:pointer; padding: 6px 0;" onclick="toggleGroupVisibility('${muscleGroup}')">
                             <h3 class="muscle-group-title" style="margin:0;">${muscleGroup}</h3>
                             <i class="fas fa-chevron-down" id="group-toggle-icon-${muscleGroup}"></i>
                         </div>
-                        <div class="exercises-list" id="group-exercises-${muscleGroup}" style="display:block;">
+                        <div class="exercises-list" id="group-exercises-${muscleGroup}" style="display:block; margin-top: 6px;">
                             ${exercisesList}
                         </div>
                     </div>
@@ -1822,6 +1841,28 @@
             }).join('');
             
             $('#exercises-management-list').html(exercisesHtml);
+        }
+
+        function openEditExercise(exerciseId, currentName, currentGroup) {
+            const newName = prompt('Edit exercise name:', currentName);
+            if (newName === null) return; // cancelled
+            const groups = ['Chest','Back','Shoulders','Biceps','Triceps','Legs','Core','Glutes','Other'];
+            let newGroup = prompt('Edit muscle group (Chest, Back, Shoulders, Biceps, Triceps, Legs, Core, Glutes, Other):', currentGroup);
+            if (newGroup === null) return; // cancelled
+            newGroup = newGroup.trim();
+            if (!groups.includes(newGroup)) {
+                alert('Invalid group. Using Other.');
+                newGroup = 'Other';
+            }
+            $.post('/edit_exercise', { exercise_id: exerciseId, name: newName, muscle_group: newGroup }, function(resp) {
+                if (resp && resp.success) {
+                    loadMuscleGroups();
+                    loadExercisesManagement();
+                    alert('Exercise updated');
+                } else {
+                    alert('Error updating exercise');
+                }
+            });
         }
 
         function toggleGroupVisibility(groupName) {
