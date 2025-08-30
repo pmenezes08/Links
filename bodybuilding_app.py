@@ -9002,9 +9002,10 @@ def compare_exercise_in_community():
             if not community_max_weights:
                 return jsonify({'success': False, 'error': 'No comparable data'})
 
-            # Compute community average excluding zeros
+            # Compute community average and max excluding zeros
             valid = [w for w in community_max_weights if w and w > 0]
             avg = round(sum(valid) / len(valid), 1) if valid else 0
+            community_max = round(max(valid), 1) if valid else 0
 
             # Percentile of user's max within community distribution (<= user_max)
             percentile = 0
@@ -9020,9 +9021,9 @@ def compare_exercise_in_community():
             summary = (
                 f"Your max for {exercise_name}: {user_max or 0} kg. "
                 f"Community avg: {avg} kg. "
-                f"Percentile: {percentile}%"
+                f"Percentile: {percentile}% • Top: {community_max} kg"
             )
-            return jsonify({'success': True, 'data': data, 'summary': summary})
+            return jsonify({'success': True, 'data': data, 'summary': summary, 'percentile': percentile, 'community_max': community_max})
     except Exception as e:
         logger.error(f"Error in comparison endpoint: {e}")
         return jsonify({'success': False, 'error': 'Server error'})
@@ -9082,6 +9083,7 @@ def compare_overview_in_community():
                         maxima.append(max_w)
 
                 community_avg = round(sum(maxima) / len(maxima), 1) if maxima else 0
+                community_top = round(max(maxima), 1) if maxima else 0
 
                 # Percentile calculation of user's max among community maxima
                 percentile = 0
@@ -9094,6 +9096,7 @@ def compare_overview_in_community():
                     'name': ex_name,
                     'user_max': float(user_max or 0),
                     'community_avg': float(community_avg or 0),
+                    'community_max': float(community_top or 0),
                     'percentile': int(percentile)
                 })
 
