@@ -28,6 +28,45 @@
             </div>
         </div>
 
+        <!-- Edit Exercise (Name/Group) Modal -->
+        <div id="edit-exercise-info-modal" class="modal">
+            <div class="modal-content" style="max-width: 420px;">
+                <div class="modal-header">
+                    <h3>Edit Exercise</h3>
+                    <button class="close-btn" onclick="closeEditExerciseInfoModal()">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <form id="edit-exercise-info-form" class="exercise-form">
+                        <input type="hidden" id="edit-exercise-id">
+                        <div class="form-group">
+                            <label for="edit-exercise-name-input">Exercise Name</label>
+                            <input type="text" id="edit-exercise-name-input" placeholder="e.g., Bench Press" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="edit-muscle-group-select">Muscle Group</label>
+                            <select id="edit-muscle-group-select" required>
+                                <option value="Chest">Chest</option>
+                                <option value="Back">Back</option>
+                                <option value="Shoulders">Shoulders</option>
+                                <option value="Biceps">Biceps</option>
+                                <option value="Triceps">Triceps</option>
+                                <option value="Legs">Legs</option>
+                                <option value="Core">Core</option>
+                                <option value="Glutes">Glutes</option>
+                                <option value="Other">Other</option>
+                            </select>
+                        </div>
+                        <div class="form-actions" style="margin-top: 8px; display:flex; gap:8px; justify-content:flex-end;">
+                            <button type="button" class="submit-btn" onclick="closeEditExerciseInfoModal()" style="background: transparent; border: 1px solid #333;">Cancel</button>
+                            <button type="submit" class="submit-btn"><i class="fas fa-save"></i> Save</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
         <!-- Comparison Tab -->
         <div id="comparison" class="tab-content">
             <div class="workouts-container">
@@ -1844,26 +1883,32 @@
         }
 
         function openEditExercise(exerciseId, currentName, currentGroup) {
-            const newName = prompt('Edit exercise name:', currentName);
-            if (newName === null) return; // cancelled
-            const groups = ['Chest','Back','Shoulders','Biceps','Triceps','Legs','Core','Glutes','Other'];
-            let newGroup = prompt('Edit muscle group (Chest, Back, Shoulders, Biceps, Triceps, Legs, Core, Glutes, Other):', currentGroup);
-            if (newGroup === null) return; // cancelled
-            newGroup = newGroup.trim();
-            if (!groups.includes(newGroup)) {
-                alert('Invalid group. Using Other.');
-                newGroup = 'Other';
-            }
+            $('#edit-exercise-id').val(exerciseId);
+            $('#edit-exercise-name-input').val(currentName);
+            $('#edit-muscle-group-select').val(currentGroup);
+            $('#edit-exercise-info-modal').show();
+        }
+
+        function closeEditExerciseInfoModal() {
+            $('#edit-exercise-info-modal').hide();
+        }
+
+        $('#edit-exercise-info-form').on('submit', function(e) {
+            e.preventDefault();
+            const exerciseId = $('#edit-exercise-id').val();
+            const newName = $('#edit-exercise-name-input').val().trim();
+            const newGroup = $('#edit-muscle-group-select').val();
+            if (!newName) { alert('Please enter a name'); return; }
             $.post('/edit_exercise', { exercise_id: exerciseId, name: newName, muscle_group: newGroup }, function(resp) {
                 if (resp && resp.success) {
+                    closeEditExerciseInfoModal();
                     loadMuscleGroups();
                     loadExercisesManagement();
-                    alert('Exercise updated');
                 } else {
-                    alert('Error updating exercise');
+                    alert(resp && resp.error ? resp.error : 'Error updating exercise');
                 }
             });
-        }
+        });
 
         function toggleGroupVisibility(groupName) {
             const listEl = document.getElementById(`group-exercises-${groupName}`);
