@@ -88,7 +88,8 @@
                             </button>
                         </div>
                     </div>
-                    <div class="chart-container" style="min-height:260px;">
+                    <div id="compare-overview" class="overview-list" style="margin-top:8px;"></div>
+                    <div class="chart-container" id="compare-chart-container" style="min-height:260px; display:none;">
                         <canvas id="compareChart"></canvas>
                     </div>
                     <div id="compare-summary" style="color:#b0b8b9; font-size:13px; margin-top:8px;"></div>
@@ -1618,12 +1619,52 @@
                 }
             });
 
+            // Overview loads when a community is selected
+            $('#compare-community-select').off('change').on('change', function() {
+                const communityId = $(this).val();
+                $('#compare-overview').empty();
+                $('#compare-summary').empty();
+                $('#compare-chart-container').hide();
+                if (communityId) {
+                    loadComparisonOverview(communityId);
+                }
+            });
+
             $('#load-compare-btn').off('click').on('click', function() {
                 const communityId = $('#compare-community-select').val();
                 const exerciseId = $('#compare-exercise-select').val();
                 if (!communityId) { alert('Please select a gym community first.'); return; }
-                if (!exerciseId) { alert('Please select an exercise.'); return; }
+                if (!exerciseId) {
+                    alert('Select an exercise to view the graph. The overview above shows all your exercises.');
+                    return;
+                }
                 loadComparisonData(communityId, exerciseId);
+            });
+        }
+
+        function loadComparisonOverview(communityId) {
+            $.ajax({
+                url: '/compare_overview_in_community',
+                method: 'GET',
+                data: { community_id: communityId },
+                success: function(resp) {
+                    if (resp.success && Array.isArray(resp.overview)) {
+                        const rows = resp.overview.map(item => `
+                            <div class=\"overview-row\" style=\"display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px solid #1f2a2e;\">
+                                <div style=\"flex:1; color:#cfd8dc;\">${item.name}</div>
+                                <div style=\"width:120px; text-align:right; color:#9fb0b5;\">You: ${item.user_max} kg</div>
+                                <div style=\"width:150px; text-align:right; color:#9fb0b5;\">Avg: ${item.community_avg} kg</div>
+                                <div style=\"width:110px; text-align:right; color:#9fb0b5;\">Pct: ${item.percentile}%</div>
+                            </div>
+                        `).join('');
+                        $('#compare-overview').html(rows || '<div style="color:#9fb0b5;">No exercises found.</div>');
+                    } else {
+                        $('#compare-overview').html('<div style="color:#9fb0b5;">No overview available.</div>');
+                    }
+                },
+                error: function() {
+                    $('#compare-overview').html('<div style="color:#9fb0b5;">Server error loading overview.</div>');
+                }
             });
         }
 
@@ -1634,6 +1675,7 @@
                 data: { community_id: communityId, exercise_id: exerciseId },
                 success: function(resp) {
                     if (resp.success) {
+                        $('#compare-chart-container').show();
                         renderComparison(resp.data);
                         $('#compare-summary').text(resp.summary || '');
                     } else {
