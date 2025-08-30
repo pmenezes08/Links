@@ -18,6 +18,7 @@
     <style>
         /* Ensure Helvetica across comparison tab */
         #comparison, #comparison * { font-family: Helvetica, Arial, sans-serif; }
+        #compareChart { width: 100% !important; height: 100% !important; }
     </style>
 </head>
 <body>
@@ -98,7 +99,7 @@
                             </button>
                         </div>
                     </div>
-                    <div id="compare-overview" class="overview-list" style="margin-top:8px; font-family: Helvetica, Arial, sans-serif;"></div>
+                    <div id="compare-overview" class="overview-list" style="margin-top:8px; font-family: Helvetica, Arial, sans-serif; display:none;"></div>
                     <div class="chart-container" id="compare-chart-container" style="min-height:260px; display:none; font-family: Helvetica, Arial, sans-serif;">
                         <canvas id="compareChart"></canvas>
                     </div>
@@ -1643,10 +1644,13 @@
                 if (communityId) {
                     const kpi = $('#kpi-select').val() || 'strength';
                     if (kpi === 'strength') {
-                        loadComparisonOverview(communityId);
+                        // Hide overview for requested simplification, wait for exercise+Load to show chart
+                        $('#compare-overview').hide();
                     } else if (kpi === 'attendance') {
+                        $('#compare-overview').show();
                         loadAttendanceOverview(communityId);
                     } else if (kpi === 'improvement') {
+                        $('#compare-overview').show();
                         loadImprovementOverview(communityId);
                     }
                 }
@@ -1661,10 +1665,12 @@
                 if (!communityId) return;
                 const kpi = $(this).val();
                 if (kpi === 'strength') {
-                    loadComparisonOverview(communityId);
+                    $('#compare-overview').hide();
                 } else if (kpi === 'attendance') {
+                    $('#compare-overview').show();
                     loadAttendanceOverview(communityId);
                 } else if (kpi === 'improvement') {
+                    $('#compare-overview').show();
                     loadImprovementOverview(communityId);
                 }
             });
@@ -1736,7 +1742,8 @@
                 success: function(resp) {
                     if (resp.success) {
                         $('#compare-chart-container').show();
-                        renderComparison(resp.data);
+                        // ensure canvas has size and reflow
+                        setTimeout(() => { renderComparison(resp.data); }, 50);
                         const extra = resp.community_max ? ` • Top: ${resp.community_max} kg` : '';
                         $('#compare-summary').text((resp.summary || '') + '');
                     } else {
