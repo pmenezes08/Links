@@ -15,6 +15,10 @@
         // Force cache refresh
         window.cacheVersion = '1.7';
     </script>
+    <style>
+        /* Ensure Helvetica across comparison tab */
+        #comparison, #comparison * { font-family: Helvetica, Arial, sans-serif; }
+    </style>
 </head>
 <body>
     <div class="workout-container">
@@ -1704,8 +1708,11 @@
                                 `).join('');
                             return `
                                 <div class=\"muscle-group-block\" style=\"margin:8px 0;\">
-                                    <div style=\"font-weight:600; color:#9fb0b5; margin-bottom:4px; font-family: Helvetica, Arial, sans-serif;\">${group}</div>
-                                    ${items}
+                                    <div style=\"display:flex; align-items:center; justify-content:space-between; cursor:pointer; font-weight:600; color:#9fb0b5; margin-bottom:4px; font-family: Helvetica, Arial, sans-serif;\" onclick=\"toggleStrengthGroup('${group.replace(/'/g, "&apos;")}')\">
+                                        <span>${group}</span>
+                                        <i class=\"fas fa-chevron-down\" id=\"strength-group-icon-${group}\"></i>
+                                    </div>
+                                    <div id=\"strength-group-list-${group}\">${items}</div>
                                 </div>
                             `;
                         }).join('');
@@ -1770,6 +1777,19 @@
             });
         }
 
+        function toggleStrengthGroup(groupName) {
+            const list = document.getElementById(`strength-group-list-${groupName}`);
+            const icon = document.getElementById(`strength-group-icon-${groupName}`);
+            if (!list) return;
+            if (list.style.display === 'none') {
+                list.style.display = 'block';
+                if (icon) { icon.classList.remove('fa-chevron-right'); icon.classList.add('fa-chevron-down'); }
+            } else {
+                list.style.display = 'none';
+                if (icon) { icon.classList.remove('fa-chevron-down'); icon.classList.add('fa-chevron-right'); }
+            }
+        }
+
         function loadImprovementOverview(communityId) {
             $.ajax({
                 url: '/compare_improvement_in_community',
@@ -1801,6 +1821,9 @@
         let compareChart = null;
         function renderComparison(data) {
             const ctx = document.getElementById('compareChart').getContext('2d');
+            if (Chart && Chart.defaults && Chart.defaults.font) {
+                Chart.defaults.font.family = 'Helvetica, Arial, sans-serif';
+            }
             if (compareChart) { compareChart.destroy(); }
             compareChart = new Chart(ctx, {
                 type: 'bar',
