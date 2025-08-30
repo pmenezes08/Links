@@ -9105,6 +9105,172 @@ def compare_overview_in_community():
         logger.error(f"Error in comparison overview endpoint: {e}")
         return jsonify({'success': False, 'error': 'Server error'})
 
+@app.route('/compare_attendance_in_community', methods=['GET'])
+@login_required
+def compare_attendance_in_community():
+    """Compare number of workouts attended in a period vs community average and percentile."""
+    try:
+        username = session.get('username')
+        community_id = int(request.args.get('community_id', '0'))
+        period_days = int(request.args.get('period_days', '30'))
+        if not community_id:
+            return jsonify({'success': False, 'error': 'Missing community_id'})
+
+        with get_db_connection() as conn:
+            c = conn.cursor()
+
+            # Get all usernames in the community
+            c.execute(
+                """
+                SELECT u.username
+                FROM user_communities uc
+                JOIN users u ON uc.user_id = u.rowid
+                WHERE uc.community_id = ?
+                """,
+                (community_id,)
+            )
+            users = [row['username'] for row in c.fetchall()]
+            if not users:
+                return jsonify({'success': False, 'error': 'No users in community'})
+
+            # Attendance counts per user in given period
+            attendance = []
+            user_attendance = 0
+            for user in users:
+                c.execute(
+                    """
+                    SELECT COUNT(*) as cnt
+                    FROM workouts
+                    WHERE username = ? AND date >= date('now', ?)
+                    """,
+                    (user, f'-{period_days} days')
+                )
+                cnt_row = c.fetchone()
+                cnt = cnt_row['cnt'] if cnt_row and cnt_row['cnt'] is not None else 0
+                attendance.append(cnt)
+                if user == username:
+                    user_attendance = cnt
+
+            valid = attendance  # zero is allowed for attendance
+            avg = round(sum(valid) / len(valid), 1) if valid else 0
+            community_max = max(valid) if valid else 0
+            percentile = 0
+            if valid:
+                less_or_equal = sum(1 for v in valid if v <= user_attendance)
+                percentile = round((less_or_equal / len(valid)) * 100)
+
+            summary = (
+                f"Attendance last {period_days}d — You: {user_attendance}, Avg: {avg}, "
+                f"Pct: {percentile}% • Top: {community_max}"
+            )
+
+            return jsonify({
+                'success': True,
+                'attendance': {
+                    'user': int(user_attendance),
+                    'avg': float(avg),
+                    'percentile': int(percentile),
+                    'community_max': int(community_max),
+                    'period_days': int(period_days)
+                },
+                'summary': summary
+            })
+    except Exception as e:
+        logger.error(f"Error in attendance comparison endpoint: {e}")
+        return jsonify({'success': False, 'error': 'Server error'})
+
+@app.route('/compare_improvement_in_community', methods=['GET'])
+@login_required
+def compare_improvement_in_community():
+    """Compare percent improvement in 1RM over timeframe vs community average and percentile."""
+    try:
+        username = session.get('username')
+        community_id = int(request.args.get('community_id', '0'))
+        months = int(request.args.get('months', '3'))
+        if not community_id:
+            return jsonify({'success': False, 'error': 'Missing community_id'})
+
+        with get_db_connection() as conn:
+            c = conn.cursor()
+
+            # Community users
+            c.execute(
+                """
+                SELECT u.username
+                FROM user_communities uc
+                JOIN users u ON uc.user_id = u.rowid
+                WHERE uc.community_id = ?
+                """,
+                (community_id,)
+            )
+            users = [row['username'] for row in c.fetchall()]
+            if not users:
+                return jsonify({'success': False, 'error': 'No users in community'})
+
+            # Helper to compute average improvement percent for a user across their exercises
+            def compute_user_improvement(user_name: str) -> float:
+                # Get user's exercises
+                c.execute("SELECT id FROM exercises WHERE username = ?", (user_name,))
+                user_exs = [r['id'] for r in c.fetchall()]
+                improvements = []
+                for ex_id in user_exs:
+                    c.execute(
+                        """
+                        SELECT weight, reps, created_at
+                        FROM exercise_sets
+                        WHERE exercise_id = ? AND created_at >= date('now', ?)
+                        ORDER BY created_at ASC
+                        """,
+                        (ex_id, f'-{months} months')
+                    )
+                    sets = c.fetchall()
+                    if not sets or len(sets) < 2:
+                        continue
+                    # Compute 1RM per entry
+                    one_rms = [row['weight'] * (1 + row['reps'] / 30.0) for row in sets]
+                    baseline = one_rms[0]
+                    current = max(one_rms)
+                    if baseline and baseline > 0:
+                        improvements.append(((current - baseline) / baseline) * 100.0)
+                if not improvements:
+                    return 0.0
+                return sum(improvements) / len(improvements)
+
+            community_improvements = []
+            user_improvement = 0.0
+            for user in users:
+                imp = compute_user_improvement(user)
+                community_improvements.append(imp)
+                if user == username:
+                    user_improvement = imp
+
+            valid = community_improvements
+            avg = round(sum(valid) / len(valid), 1) if valid else 0.0
+            community_max = round(max(valid), 1) if valid else 0.0
+            percentile = 0
+            if valid:
+                less_or_equal = sum(1 for v in valid if v <= user_improvement)
+                percentile = round((less_or_equal / len(valid)) * 100)
+
+            summary = (
+                f"Improvement last {months}m — You: {round(user_improvement,1)}%, Avg: {avg}%, "
+                f"Pct: {percentile}% • Top: {community_max}%"
+            )
+
+            return jsonify({
+                'success': True,
+                'improvement': {
+                    'user': round(user_improvement, 1),
+                    'avg': float(avg),
+                    'percentile': int(percentile),
+                    'community_max': float(community_max),
+                    'months': int(months)
+                },
+                'summary': summary
+            })
+    except Exception as e:
+        logger.error(f"Error in improvement comparison endpoint: {e}")
+        return jsonify({'success': False, 'error': 'Server error'})
 @app.route('/delete_exercise', methods=['POST'])
 @login_required
 def delete_exercise():
