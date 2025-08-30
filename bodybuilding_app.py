@@ -8984,11 +8984,9 @@ def compare_exercise_in_community():
                 return jsonify({'success': False, 'error': 'Exercise not found for user'})
             exercise_name = row['name']
 
-            labels = []
-            user_max_weights = []
-            all_max_weights = []
+            community_max_weights = []
+            user_max = 0
             for user in users:
-                # Find that user's exercise with same name (if exists)
                 c.execute("SELECT id FROM exercises WHERE username = ? AND name = ?", (user, exercise_name))
                 ex_row = c.fetchone()
                 if not ex_row:
@@ -8997,28 +8995,111 @@ def compare_exercise_in_community():
                 c.execute("SELECT MAX(weight) as mw FROM exercise_sets WHERE exercise_id = ?", (ex_id,))
                 mw_row = c.fetchone()
                 max_w = mw_row['mw'] if mw_row and mw_row['mw'] is not None else 0
-                labels.append(user)
-                all_max_weights.append(max_w)
-                user_max_weights.append(max_w if user == username else 0)
+                community_max_weights.append(max_w)
+                if user == username:
+                    user_max = max_w
 
-            if not labels:
+            if not community_max_weights:
                 return jsonify({'success': False, 'error': 'No comparable data'})
 
-            # Compute average excluding zeros
-            avg = 0
-            valid = [w for w in all_max_weights if w and w > 0]
-            if valid:
-                avg = round(sum(valid) / len(valid), 1)
+            # Compute community average excluding zeros
+            valid = [w for w in community_max_weights if w and w > 0]
+            avg = round(sum(valid) / len(valid), 1) if valid else 0
+
+            # Percentile of user's max within community distribution (<= user_max)
+            percentile = 0
+            if valid and user_max and user_max > 0:
+                less_or_equal = sum(1 for w in valid if w <= user_max)
+                percentile = round((less_or_equal / len(valid)) * 100)
 
             data = {
-                'labels': labels,
-                'avgMaxWeights': [avg for _ in labels],
-                'userMaxWeights': all_max_weights
+                'labels': ['You'],
+                'avgMaxWeights': [avg],
+                'userMaxWeights': [user_max]
             }
-            summary = f"Average max weight for {exercise_name} in selected community: {avg} kg"
+            summary = (
+                f"Your max for {exercise_name}: {user_max or 0} kg. "
+                f"Community avg: {avg} kg. "
+                f"Percentile: {percentile}%"
+            )
             return jsonify({'success': True, 'data': data, 'summary': summary})
     except Exception as e:
         logger.error(f"Error in comparison endpoint: {e}")
+        return jsonify({'success': False, 'error': 'Server error'})
+
+@app.route('/compare_overview_in_community', methods=['GET'])
+@login_required
+def compare_overview_in_community():
+    """Overview across all of the user's exercises: user max, community average, percentile."""
+    try:
+        username = session.get('username')
+        community_id = int(request.args.get('community_id', '0'))
+        if not community_id:
+            return jsonify({'success': False, 'error': 'Missing community_id'})
+
+        with get_db_connection() as conn:
+            c = conn.cursor()
+
+            # Community users
+            c.execute(
+                """
+                SELECT u.username
+                FROM user_communities uc
+                JOIN users u ON uc.user_id = u.rowid
+                WHERE uc.community_id = ?
+                """,
+                (community_id,)
+            )
+            users = [row['username'] for row in c.fetchall()]
+            if not users:
+                return jsonify({'success': False, 'error': 'No users in community'})
+
+            # User's exercises
+            c.execute("SELECT id, name FROM exercises WHERE username = ?", (username,))
+            user_exercises = c.fetchall()
+
+            overview = []
+            for ex in user_exercises:
+                ex_id = ex['id']
+                ex_name = ex['name']
+
+                # User max for this exercise
+                c.execute("SELECT MAX(weight) as mw FROM exercise_sets WHERE exercise_id = ?", (ex_id,))
+                mw_row = c.fetchone()
+                user_max = mw_row['mw'] if mw_row and mw_row['mw'] is not None else 0
+
+                # Community maxima for the same-named exercise
+                maxima = []
+                for user in users:
+                    c.execute("SELECT id FROM exercises WHERE username = ? AND name = ?", (user, ex_name))
+                    ex_row = c.fetchone()
+                    if not ex_row:
+                        continue
+                    c.execute("SELECT MAX(weight) as mw FROM exercise_sets WHERE exercise_id = ?", (ex_row['id'],))
+                    r = c.fetchone()
+                    max_w = r['mw'] if r and r['mw'] is not None else 0
+                    if max_w and max_w > 0:
+                        maxima.append(max_w)
+
+                community_avg = round(sum(maxima) / len(maxima), 1) if maxima else 0
+
+                # Percentile calculation of user's max among community maxima
+                percentile = 0
+                if maxima and user_max and user_max > 0:
+                    less_or_equal = sum(1 for w in maxima if w <= user_max)
+                    percentile = round((less_or_equal / len(maxima)) * 100)
+
+                overview.append({
+                    'exercise_id': ex_id,
+                    'name': ex_name,
+                    'user_max': float(user_max or 0),
+                    'community_avg': float(community_avg or 0),
+                    'percentile': int(percentile)
+                })
+
+            return jsonify({'success': True, 'overview': overview})
+    except Exception as e:
+        logger.error(f"Error in comparison overview endpoint: {e}")
         return jsonify({'success': False, 'error': 'Server error'})
 
 @app.route('/delete_exercise', methods=['POST'])
