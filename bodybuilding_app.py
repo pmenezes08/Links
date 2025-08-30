@@ -8924,6 +8924,12 @@ def edit_exercise():
         conn.close()
         
         return jsonify({'success': True})
+    except Exception as e:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        return jsonify({'success': False, 'error': str(e)})
 @app.route('/compare_exercise_in_community', methods=['GET'])
 @login_required
 def compare_exercise_in_community():
@@ -8991,10 +8997,6 @@ def compare_exercise_in_community():
     except Exception as e:
         logger.error(f"Error in comparison endpoint: {e}")
         return jsonify({'success': False, 'error': 'Server error'})
-
-        
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/delete_exercise', methods=['POST'])
 @login_required
