@@ -28,6 +28,34 @@
             </div>
         </div>
 
+        <!-- Comparison Tab -->
+        <div id="comparison" class="tab-content">
+            <div class="workouts-container">
+                <div class="header-section">
+                    <h3>Compare Your Progress</h3>
+                </div>
+                <div class="analytics-section">
+                    <div class="analytics-header">
+                        <h4>Select Community and Exercise</h4>
+                        <div class="analytics-controls">
+                            <select id="compare-community-select" class="analytics-select">
+                                <option value="">Select Gym Community</option>
+                            </select>
+                            <select id="compare-exercise-select" class="analytics-select" disabled>
+                                <option value="">Select Exercise</option>
+                            </select>
+                            <button class="share-btn" id="load-compare-btn" title="Load Comparison" disabled>
+                                <i class="fas fa-sync"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="chart-container" style="min-height:260px;">
+                        <canvas id="compareChart"></canvas>
+                    </div>
+                    <div id="compare-summary" style="color:#b0b8b9; font-size:13px; margin-top:8px;"></div>
+                </div>
+            </div>
+        </div>
         <!-- Tab Navigation -->
         <div class="tab-navigation">
             <button class="tab-btn active" data-tab="performance-tracking">
@@ -41,6 +69,10 @@
             <button class="tab-btn" data-tab="workouts">
                 <i class="fas fa-calendar-alt"></i>
                 Workouts
+            </button>
+            <button class="tab-btn" data-tab="comparison">
+                <i class="fas fa-chart-bar"></i>
+                Comparison
             </button>
         </div>
 
@@ -96,9 +128,14 @@
             <div class="exercise-management-container">
                 <div class="header-section">
                     <h3>Exercise Management</h3>
-                    <button class="add-btn" onclick="openAddExerciseModal()">
-                        <i class="fas fa-plus"></i> Add Exercise
-                    </button>
+                    <div style="display:flex; gap:8px; align-items:center;">
+                        <button class="add-btn" onclick="openAddExerciseModal()">
+                            <i class="fas fa-plus"></i> Add Exercise
+                        </button>
+                        <button class="add-btn" onclick="toggleExercisesVisibility()" title="Hide/Show all exercises">
+                            <i class="fas fa-eye-slash"></i> Toggle Exercises
+                        </button>
+                    </div>
                 </div>
                 
                 <div class="exercises-list-section">
@@ -203,6 +240,7 @@
                             <option value="Triceps">Triceps</option>
                             <option value="Legs">Legs</option>
                             <option value="Core">Core</option>
+                            <option value="Glutes">Glutes</option>
                             <option value="Other">Other</option>
                         </select>
                     </div>
@@ -458,6 +496,10 @@
                 const tabId = $(this).data('tab');
                 $('.tab-content').removeClass('active');
                 $('#' + tabId).addClass('active');
+
+                if (tabId === 'comparison') {
+                    initComparisonTab();
+                }
             });
 
             // Modal event handlers
@@ -1480,6 +1522,85 @@
             });
         }
 
+        // Comparison Tab Functions
+        function initComparisonTab() {
+            // Load gym communities into selector
+            $.ajax({
+                url: '/get_user_communities',
+                method: 'GET',
+                success: function(resp) {
+                    const select = $('#compare-community-select');
+                    select.empty();
+                    select.append('<option value="">Select Gym Community</option>');
+                    if (resp.success && resp.communities && resp.communities.length) {
+                        resp.communities
+                            .filter(c => (c.type || '').toLowerCase() === 'gym')
+                            .forEach(c => select.append(`<option value="${c.id}">${c.name}</option>`));
+                    }
+                }
+            });
+
+            // Load exercises for selection (user's exercises)
+            $.ajax({
+                url: '/get_user_exercises',
+                method: 'GET',
+                success: function(resp) {
+                    const exSel = $('#compare-exercise-select');
+                    exSel.empty();
+                    exSel.append('<option value="">Select Exercise</option>');
+                    if (resp.success && resp.exercises) {
+                        resp.exercises.forEach(ex => exSel.append(`<option value="${ex.id}">${ex.name} (${ex.muscle_group})</option>`));
+                    }
+                    exSel.prop('disabled', false);
+                    $('#load-compare-btn').prop('disabled', false);
+                }
+            });
+
+            $('#load-compare-btn').off('click').on('click', function() {
+                const communityId = $('#compare-community-select').val();
+                const exerciseId = $('#compare-exercise-select').val();
+                if (!communityId) { alert('Please select a gym community first.'); return; }
+                if (!exerciseId) { alert('Please select an exercise.'); return; }
+                loadComparisonData(communityId, exerciseId);
+            });
+        }
+
+        function loadComparisonData(communityId, exerciseId) {
+            $.ajax({
+                url: '/compare_exercise_in_community',
+                method: 'GET',
+                data: { community_id: communityId, exercise_id: exerciseId },
+                success: function(resp) {
+                    if (resp.success) {
+                        renderComparison(resp.data);
+                        $('#compare-summary').text(resp.summary || '');
+                    } else {
+                        alert(resp.error || 'Failed to load comparison data');
+                    }
+                },
+                error: function() {
+                    alert('Server error loading comparison data');
+                }
+            });
+        }
+
+        let compareChart = null;
+        function renderComparison(data) {
+            const ctx = document.getElementById('compareChart').getContext('2d');
+            if (compareChart) { compareChart.destroy(); }
+            compareChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: data.labels,
+                    datasets: [
+                        { label: 'Avg Max Weight (kg)', data: data.avgMaxWeights, backgroundColor: 'rgba(77, 182, 172, 0.4)', borderColor: '#4db6ac', borderWidth: 1 },
+                        { label: 'Your Max (kg)', data: data.userMaxWeights, backgroundColor: 'rgba(255, 255, 255, 0.4)', borderColor: '#ffffff', borderWidth: 1 }
+                    ]
+                },
+                options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } }, plugins: { legend: { position: 'bottom' } } }
+            });
+        }
+
         function shareProgress() {
             const selectedCommunities = [];
             $('#communities-list input:checked').each(function() {
@@ -1689,8 +1810,11 @@
                 
                 return `
                     <div class="muscle-group-section">
-                        <h3 class="muscle-group-title">${muscleGroup}</h3>
-                        <div class="exercises-list">
+                        <div class="muscle-group-title-row" style="display:flex; align-items:center; justify-content: space-between; cursor:pointer;" onclick="toggleGroupVisibility('${muscleGroup}')">
+                            <h3 class="muscle-group-title" style="margin:0;">${muscleGroup}</h3>
+                            <i class="fas fa-chevron-down" id="group-toggle-icon-${muscleGroup}"></i>
+                        </div>
+                        <div class="exercises-list" id="group-exercises-${muscleGroup}" style="display:block;">
                             ${exercisesList}
                         </div>
                     </div>
@@ -1698,6 +1822,37 @@
             }).join('');
             
             $('#exercises-management-list').html(exercisesHtml);
+        }
+
+        function toggleGroupVisibility(groupName) {
+            const listEl = document.getElementById(`group-exercises-${groupName}`);
+            const iconEl = document.getElementById(`group-toggle-icon-${groupName}`);
+            if (!listEl) return;
+            if (listEl.style.display === 'none') {
+                listEl.style.display = 'block';
+                if (iconEl) { iconEl.classList.remove('fa-chevron-right'); iconEl.classList.add('fa-chevron-down'); }
+            } else {
+                listEl.style.display = 'none';
+                if (iconEl) { iconEl.classList.remove('fa-chevron-down'); iconEl.classList.add('fa-chevron-right'); }
+            }
+        }
+
+        function toggleExercisesVisibility() {
+            const sections = document.querySelectorAll('#exercises-management-list .exercises-list');
+            sections.forEach(section => {
+                const isHidden = section.style.display === 'none';
+                section.style.display = isHidden ? 'block' : 'none';
+            });
+            const icons = document.querySelectorAll('[id^="group-toggle-icon-"]');
+            icons.forEach(icon => {
+                if (icon.classList.contains('fa-chevron-down')) {
+                    icon.classList.remove('fa-chevron-down');
+                    icon.classList.add('fa-chevron-right');
+                } else if (icon.classList.contains('fa-chevron-right')) {
+                    icon.classList.remove('fa-chevron-right');
+                    icon.classList.add('fa-chevron-down');
+                }
+            });
         }
 
         function addExercise() {

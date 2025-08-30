@@ -8729,6 +8729,9 @@ def add_exercise():
         username = session.get('username')
         name = request.form.get('name')
         muscle_group = request.form.get('muscle_group', 'Other')
+        # Normalize new group values
+        if muscle_group.lower() == 'glutes':
+            muscle_group = 'Glutes'
         weight = request.form.get('weight')
         reps = request.form.get('reps')
         date = request.form.get('date')
@@ -8921,6 +8924,74 @@ def edit_exercise():
         conn.close()
         
         return jsonify({'success': True})
+@app.route('/compare_exercise_in_community', methods=['GET'])
+@login_required
+def compare_exercise_in_community():
+    try:
+        username = session.get('username')
+        community_id = int(request.args.get('community_id', '0'))
+        exercise_id = int(request.args.get('exercise_id', '0'))
+        if not community_id or not exercise_id:
+            return jsonify({'success': False, 'error': 'Missing parameters'})
+
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            # Get all usernames in the community
+            c.execute("""
+                SELECT u.username
+                FROM user_communities uc
+                JOIN users u ON uc.user_id = u.rowid
+                WHERE uc.community_id = ?
+            """, (community_id,))
+            users = [row['username'] for row in c.fetchall()]
+            if not users:
+                return jsonify({'success': False, 'error': 'No users in community'})
+
+            # For each user, compute their max weight for the selected exercise name
+            # First get the exercise name for the requesting user
+            c.execute("SELECT name FROM exercises WHERE id = ? AND username = ?", (exercise_id, username))
+            row = c.fetchone()
+            if not row:
+                return jsonify({'success': False, 'error': 'Exercise not found for user'})
+            exercise_name = row['name']
+
+            labels = []
+            user_max_weights = []
+            all_max_weights = []
+            for user in users:
+                # Find that user's exercise with same name (if exists)
+                c.execute("SELECT id FROM exercises WHERE username = ? AND name = ?", (user, exercise_name))
+                ex_row = c.fetchone()
+                if not ex_row:
+                    continue
+                ex_id = ex_row['id']
+                c.execute("SELECT MAX(weight) as mw FROM exercise_sets WHERE exercise_id = ?", (ex_id,))
+                mw_row = c.fetchone()
+                max_w = mw_row['mw'] if mw_row and mw_row['mw'] is not None else 0
+                labels.append(user)
+                all_max_weights.append(max_w)
+                user_max_weights.append(max_w if user == username else 0)
+
+            if not labels:
+                return jsonify({'success': False, 'error': 'No comparable data'})
+
+            # Compute average excluding zeros
+            avg = 0
+            valid = [w for w in all_max_weights if w and w > 0]
+            if valid:
+                avg = round(sum(valid) / len(valid), 1)
+
+            data = {
+                'labels': labels,
+                'avgMaxWeights': [avg for _ in labels],
+                'userMaxWeights': all_max_weights
+            }
+            summary = f"Average max weight for {exercise_name} in selected community: {avg} kg"
+            return jsonify({'success': True, 'data': data, 'summary': summary})
+    except Exception as e:
+        logger.error(f"Error in comparison endpoint: {e}")
+        return jsonify({'success': False, 'error': 'Server error'})
+
         
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
@@ -10051,7 +10122,7 @@ def get_user_exercises():
             FROM exercises e
             LEFT JOIN exercise_sets es ON e.id = es.exercise_id
             WHERE e.username = ?
-            ORDER BY e.name, es.created_at DESC
+            ORDER BY e.muscle_group, e.name, es.created_at DESC
         ''', (username,))
         
         rows = cursor.fetchall()
