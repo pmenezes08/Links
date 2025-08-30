@@ -9055,14 +9055,15 @@ def compare_overview_in_community():
             if not users:
                 return jsonify({'success': False, 'error': 'No users in community'})
 
-            # User's exercises
-            c.execute("SELECT id, name FROM exercises WHERE username = ?", (username,))
+            # User's exercises (include muscle group for grouping in UI)
+            c.execute("SELECT id, name, muscle_group FROM exercises WHERE username = ?", (username,))
             user_exercises = c.fetchall()
 
             overview = []
             for ex in user_exercises:
                 ex_id = ex['id']
                 ex_name = ex['name']
+                ex_group = ex['muscle_group'] or 'Other'
 
                 # User max for this exercise
                 c.execute("SELECT MAX(weight) as mw FROM exercise_sets WHERE exercise_id = ?", (ex_id,))
@@ -9094,6 +9095,7 @@ def compare_overview_in_community():
                 overview.append({
                     'exercise_id': ex_id,
                     'name': ex_name,
+                    'muscle_group': ex_group,
                     'user_max': float(user_max or 0),
                     'community_avg': float(community_avg or 0),
                     'community_max': float(community_top or 0),
