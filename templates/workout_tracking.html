@@ -174,6 +174,9 @@
                         <button class="add-btn" onclick="toggleExercisesVisibility()" title="Hide/Show all exercises">
                             <i class="fas fa-eye-slash"></i> Toggle Exercises
                         </button>
+                        <button class="add-btn" onclick="toggleGroupByDate()" title="Group by Date">
+                            <i class="fas fa-calendar"></i> Group by Date
+                        </button>
                     </div>
                 </div>
                 
@@ -1795,13 +1798,19 @@
         }
 
         // New Functions for Exercise Management
+        let viewByDate = false;
+
         function loadExercisesManagement() {
             $.ajax({
                 url: '/get_user_exercises',
                 method: 'GET',
                 success: function(response) {
                     if (response.success && response.exercises) {
-                        displayExercisesManagement(response.exercises);
+                        if (viewByDate) {
+                            displayExercisesManagementByDate(response.exercises);
+                        } else {
+                            displayExercisesManagement(response.exercises);
+                        }
                     } else {
                         $('#exercises-management-list').html('<p style="color: #b0b8b9; text-align: center; padding: 20px;">No exercises found. Add your first exercise to get started!</p>');
                     }
@@ -1810,6 +1819,11 @@
                     $('#exercises-management-list').html('<p style="color: #b0b8b9; text-align: center; padding: 20px;">Error loading exercises. Please try again.</p>');
                 }
             });
+        }
+
+        function toggleGroupByDate() {
+            viewByDate = !viewByDate;
+            loadExercisesManagement();
         }
 
         function displayExercisesManagement(exercises) {
@@ -1925,7 +1939,12 @@
 
         function toggleExercisesVisibility() {
             const sections = document.querySelectorAll('#exercises-management-list .exercises-list');
+            const dateSections = document.querySelectorAll('#exercises-management-list .date-group-list');
             sections.forEach(section => {
+                const isHidden = section.style.display === 'none';
+                section.style.display = isHidden ? 'block' : 'none';
+            });
+            dateSections.forEach(section => {
                 const isHidden = section.style.display === 'none';
                 section.style.display = isHidden ? 'block' : 'none';
             });
@@ -1939,6 +1958,96 @@
                     icon.classList.add('fa-chevron-down');
                 }
             });
+        }
+
+        function displayExercisesManagementByDate(exercises) {
+            // Group by muscle group first
+            const muscleGroups = {};
+            exercises.forEach(ex => {
+                if (!muscleGroups[ex.muscle_group]) muscleGroups[ex.muscle_group] = [];
+                muscleGroups[ex.muscle_group].push(ex);
+            });
+
+            const html = Object.keys(muscleGroups).map(group => {
+                const exInGroup = muscleGroups[group];
+                // Build date map YYYY-MM -> list of {exercise, entry}
+                const dateMap = {};
+                exInGroup.forEach(ex => {
+                    (ex.weight_history || []).forEach(entry => {
+                        const d = new Date(entry.date);
+                        const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+                        if (!dateMap[key]) dateMap[key] = {};
+                        if (!dateMap[key][ex.name]) dateMap[key][ex.name] = [];
+                        dateMap[key][ex.name].push(entry);
+                    });
+                });
+
+                const dateSections = Object.keys(dateMap).sort().map(key => {
+                    const ymTitle = formatMonthTitle(key);
+                    const entriesByExercise = dateMap[key];
+                    const inner = Object.keys(entriesByExercise).map(exName => {
+                        const entries = entriesByExercise[exName];
+                        const items = entries.map(entry => `
+                            <div class=\"weight-entry\">
+                                <span class=\"weight-value\">${entry.weight} kg × ${entry.reps} reps</span>
+                                <span class=\"weight-date\">${formatDate(entry.date)}</span>
+                            </div>
+                        `).join('');
+                        return `
+                            <div class=\"exercise-row\">
+                                <div class=\"exercise-header\" style=\"cursor:default;\">
+                                    <div class=\"exercise-info\">
+                                        <span class=\"exercise-name\">${exName}</span>
+                                    </div>
+                                    <div class=\"exercise-actions\"></div>
+                                </div>
+                                <div class=\"weight-history\">${items}</div>
+                            </div>
+                        `;
+                    }).join('');
+
+                    return `
+                        <div class=\"date-group-section\">
+                            <div class=\"muscle-group-title-row\" style=\"display:flex; align-items:center; justify-content: space-between; cursor:pointer; padding: 4px 0;\" onclick=\"toggleDateGroupVisibility('${group}','${key}')\">
+                                <h4 style=\"margin:0; color:#9fb0b5;\">${ymTitle}</h4>
+                                <i class=\"fas fa-chevron-down\" id=\"date-toggle-icon-${group}-${key}\"></i>
+                            </div>
+                            <div class=\"date-group-list\" id=\"date-group-${group}-${key}\" style=\"display:block; margin:6px 0;\">${inner}</div>
+                        </div>
+                    `;
+                }).join('');
+
+                return `
+                    <div class=\"muscle-group-section\">
+                        <div class=\"muscle-group-title-row\" style=\"display:flex; align-items:center; justify-content: space-between; cursor:pointer; padding: 6px 0;\" onclick=\"toggleGroupVisibility('${group}')\">
+                            <h3 class=\"muscle-group-title\" style=\"margin:0;\">${group}</h3>
+                            <i class=\"fas fa-chevron-down\" id=\"group-toggle-icon-${group}\"></i>
+                        </div>
+                        <div class=\"exercises-list\" id=\"group-exercises-${group}\" style=\"display:block; margin-top: 6px;\">${dateSections || '<div class=\"no-weights\">No entries</div>'}</div>
+                    </div>
+                `;
+            }).join('');
+
+            $('#exercises-management-list').html(html);
+        }
+
+        function toggleDateGroupVisibility(groupName, dateKey) {
+            const listEl = document.getElementById(`date-group-${groupName}-${dateKey}`);
+            const iconEl = document.getElementById(`date-toggle-icon-${groupName}-${dateKey}`);
+            if (!listEl) return;
+            if (listEl.style.display === 'none') {
+                listEl.style.display = 'block';
+                if (iconEl) { iconEl.classList.remove('fa-chevron-right'); iconEl.classList.add('fa-chevron-down'); }
+            } else {
+                listEl.style.display = 'none';
+                if (iconEl) { iconEl.classList.remove('fa-chevron-down'); iconEl.classList.add('fa-chevron-right'); }
+            }
+        }
+
+        function formatMonthTitle(key) {
+            const [y,m] = key.split('-');
+            const date = new Date(parseInt(y), parseInt(m)-1, 1);
+            return date.toLocaleString('en-US', { month: 'short', year: 'numeric' });
         }
 
         function addExercise() {
