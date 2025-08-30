@@ -71,15 +71,21 @@
         <div id="comparison" class="tab-content">
             <div class="workouts-container">
                 <div class="header-section">
-                    <h3>Compare Your Progress</h3>
+                    <h3>You vs Community</h3>
                 </div>
                 <div class="analytics-section">
                     <div class="analytics-header">
-                        <h4>Select Community and Exercise</h4>
+                        <h4>Select Community and KPI</h4>
                         <div class="analytics-controls">
                             <select id="compare-community-select" class="analytics-select">
                                 <option value="">Select Gym Community</option>
                             </select>
+                            <select id="kpi-select" class="analytics-select" disabled>
+                                <option value="strength">Strength</option>
+                                <option value="attendance">Attendance</option>
+                                <option value="improvement">Improvement</option>
+                            </select>
+                            <span id="selected-community-name" style="color:#9fb0b5; margin-left:8px;"></span>
                             <select id="compare-exercise-select" class="analytics-select" disabled>
                                 <option value="">Select Exercise</option>
                             </select>
@@ -1583,20 +1589,22 @@
 
         // Comparison Tab Functions
         function initComparisonTab() {
-            // Load gym communities into selector
+            // Load communities into selector
             $.ajax({
                 url: '/get_user_communities',
                 method: 'GET',
                 success: function(resp) {
                     const select = $('#compare-community-select');
                     select.empty();
-                    select.append('<option value="">Select Gym Community</option>');
+                    select.append('<option value="">Select Community</option>');
                     if (resp && resp.success && Array.isArray(resp.communities)) {
                         const allCommunities = resp.communities;
                         const gymCommunities = allCommunities.filter(c => String(c.type || '').toLowerCase() === 'gym');
                         const listToShow = gymCommunities.length ? gymCommunities : allCommunities;
                         console.log('Comparison: communities returned =', allCommunities.length, '| gyms =', gymCommunities.length);
                         listToShow.forEach(c => select.append(`<option value="${c.id}">${c.name}</option>`));
+                        // cache for name lookup
+                        window.__comparisonCommunities = listToShow.reduce((acc,c)=>{acc[c.id]=c.name;return acc;},{});
                     } else {
                         console.warn('Comparison: failed to load communities or empty list', resp);
                     }
@@ -1619,14 +1627,41 @@
                 }
             });
 
-            // Overview loads when a community is selected
+            // Overview loads when a community is selected; enable KPI selector and show community name
             $('#compare-community-select').off('change').on('change', function() {
                 const communityId = $(this).val();
                 $('#compare-overview').empty();
                 $('#compare-summary').empty();
                 $('#compare-chart-container').hide();
+                const name = window.__comparisonCommunities && window.__comparisonCommunities[communityId] ? window.__comparisonCommunities[communityId] : '';
+                $('#selected-community-name').text(name ? `• ${name}` : '');
+                $('#kpi-select').prop('disabled', !communityId);
                 if (communityId) {
+                    const kpi = $('#kpi-select').val() || 'strength';
+                    if (kpi === 'strength') {
+                        loadComparisonOverview(communityId);
+                    } else if (kpi === 'attendance') {
+                        loadAttendanceOverview(communityId);
+                    } else if (kpi === 'improvement') {
+                        loadImprovementOverview(communityId);
+                    }
+                }
+            });
+
+            // Re-load data when KPI changes
+            $('#kpi-select').off('change').on('change', function() {
+                const communityId = $('#compare-community-select').val();
+                $('#compare-overview').empty();
+                $('#compare-summary').empty();
+                $('#compare-chart-container').hide();
+                if (!communityId) return;
+                const kpi = $(this).val();
+                if (kpi === 'strength') {
                     loadComparisonOverview(communityId);
+                } else if (kpi === 'attendance') {
+                    loadAttendanceOverview(communityId);
+                } else if (kpi === 'improvement') {
+                    loadImprovementOverview(communityId);
                 }
             });
 
@@ -1678,13 +1713,70 @@
                     if (resp.success) {
                         $('#compare-chart-container').show();
                         renderComparison(resp.data);
-                        $('#compare-summary').text(resp.summary || '');
+                        const extra = resp.community_max ? ` • Top: ${resp.community_max} kg` : '';
+                        $('#compare-summary').text((resp.summary || '') + '');
                     } else {
                         alert(resp.error || 'Failed to load comparison data');
                     }
                 },
                 error: function() {
                     alert('Server error loading comparison data');
+                }
+            });
+        }
+
+        function loadAttendanceOverview(communityId) {
+            $.ajax({
+                url: '/compare_attendance_in_community',
+                method: 'GET',
+                data: { community_id: communityId, period_days: 30 },
+                success: function(resp) {
+                    if (resp.success) {
+                        const a = resp.attendance;
+                        const row = `
+                            <div style=\"display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid #1f2a2e;\">
+                                <div style=\"flex:1; color:#cfd8dc;\">Attendance (last ${a.period_days} days)</div>
+                                <div style=\"width:120px; text-align:right; color:#9fb0b5;\">You: ${a.user}</div>
+                                <div style=\"width:150px; text-align:right; color:#9fb0b5;\">Avg: ${a.avg}</div>
+                                <div style=\"width:110px; text-align:right; color:#9fb0b5;\">Pct: ${a.percentile}%</div>
+                                <div style=\"width:120px; text-align:right; color:#9fb0b5;\">Max: ${a.community_max}</div>
+                            </div>`;
+                        $('#compare-overview').html(row);
+                        $('#compare-summary').text(resp.summary || '');
+                    } else {
+                        $('#compare-overview').html('<div style="color:#9fb0b5;">No attendance data.</div>');
+                    }
+                },
+                error: function() {
+                    $('#compare-overview').html('<div style="color:#9fb0b5;">Server error loading attendance.</div>');
+                }
+            });
+        }
+
+        function loadImprovementOverview(communityId) {
+            $.ajax({
+                url: '/compare_improvement_in_community',
+                method: 'GET',
+                data: { community_id: communityId, months: 3 },
+                success: function(resp) {
+                    if (resp.success) {
+                        const m = resp.improvement;
+                        const row = `
+                            <div style=\"display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid #1f2a2e;\">
+                                <div style=\"flex:1; color:#cfd8dc;\">Improvement (last ${m.months} months)</div>
+                                <div style=\"width:120px; text-align:right; color:#9fb0b5;\">You: ${m.user}%</div>
+                                <div style=\"width:150px; text-align:right; color:#9fb0b5;\">Avg: ${m.avg}%</div>
+                                <div style=\"width:110px; text-align:right; color:#9fb0b5;\">Pct: ${m.percentile}%</div>
+                                <div style=\"width:120px; text-align:right; color:#9fb0b5;\">Max: ${m.community_max}%</div>
+                            </div>`;
+                        $('#compare-overview').html(row);
+                        $('#compare-summary').text(resp.summary || '');
+                    } else {
+                        $('#compare-overview').html('<div style="color:#9fb0b5;">No improvement data.</div>');
+                    }
+                },
+                error: function() {
+                    $('#compare-overview').html('<div style="color:#9fb0b5;">Server error loading improvement.</div>');
                 }
             });
         }
