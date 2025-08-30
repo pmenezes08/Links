@@ -94,11 +94,11 @@
                             </button>
                         </div>
                     </div>
-                    <div id="compare-overview" class="overview-list" style="margin-top:8px;"></div>
-                    <div class="chart-container" id="compare-chart-container" style="min-height:260px; display:none;">
+                    <div id="compare-overview" class="overview-list" style="margin-top:8px; font-family: Helvetica, Arial, sans-serif;"></div>
+                    <div class="chart-container" id="compare-chart-container" style="min-height:260px; display:none; font-family: Helvetica, Arial, sans-serif;">
                         <canvas id="compareChart"></canvas>
                     </div>
-                    <div id="compare-summary" style="color:#b0b8b9; font-size:13px; margin-top:8px;"></div>
+                    <div id="compare-summary" style="color:#b0b8b9; font-size:13px; margin-top:8px; font-family: Helvetica, Arial, sans-serif;"></div>
                 </div>
             </div>
         </div>
@@ -1684,22 +1684,39 @@
                 data: { community_id: communityId },
                 success: function(resp) {
                     if (resp.success && Array.isArray(resp.overview)) {
-                        const rows = resp.overview.map(item => `
-                            <div class=\"overview-row\" style=\"display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px solid #1f2a2e;\">
-                                <div style=\"flex:1; color:#cfd8dc;\">${item.name}</div>
-                                <div style=\"width:120px; text-align:right; color:#9fb0b5;\">You: ${item.user_max} kg</div>
-                                <div style=\"width:150px; text-align:right; color:#9fb0b5;\">Avg: ${item.community_avg} kg</div>
-                                <div style=\"width:110px; text-align:right; color:#9fb0b5;\">Pct: ${item.percentile}%</div>
-                                <div style=\"width:120px; text-align:right; color:#9fb0b5;\">Max: ${item.community_max} kg</div>
-                            </div>
-                        `).join('');
-                        $('#compare-overview').html(rows || '<div style="color:#9fb0b5;">No exercises found.</div>');
+                        // Group by muscle_group
+                        const byGroup = {};
+                        resp.overview.forEach(it => {
+                            const g = it.muscle_group || 'Other';
+                            if (!byGroup[g]) byGroup[g] = [];
+                            byGroup[g].push(it);
+                        });
+
+                        const sections = Object.keys(byGroup).sort().map(group => {
+                            const items = byGroup[group]
+                                .sort((a,b)=>a.name.localeCompare(b.name))
+                                .map(item => `
+                                    <div class=\"overview-row\" style=\"display:flex; justify-content:space-between; padding:4px 2px; border-bottom:1px solid #1f2a2e; font-family: Helvetica, Arial, sans-serif;\">
+                                        <div style=\"flex:1; color:#cfd8dc;\">${item.name} <span style=\"color:#81939a; font-size:12px; margin-left:6px;\">(${item.percentile}% • Max ${item.community_max}kg)</span></div>
+                                        <div style=\"width:110px; text-align:right; color:#9fb0b5;\">You: ${item.user_max}kg</div>
+                                        <div style=\"width:130px; text-align:right; color:#9fb0b5;\">Avg: ${item.community_avg}kg</div>
+                                    </div>
+                                `).join('');
+                            return `
+                                <div class=\"muscle-group-block\" style=\"margin:8px 0;\">
+                                    <div style=\"font-weight:600; color:#9fb0b5; margin-bottom:4px; font-family: Helvetica, Arial, sans-serif;\">${group}</div>
+                                    ${items}
+                                </div>
+                            `;
+                        }).join('');
+
+                        $('#compare-overview').html(sections || '<div style="color:#9fb0b5; font-family: Helvetica, Arial, sans-serif;">No exercises found.</div>');
                     } else {
-                        $('#compare-overview').html('<div style="color:#9fb0b5;">No overview available.</div>');
+                        $('#compare-overview').html('<div style="color:#9fb0b5; font-family: Helvetica, Arial, sans-serif;">No overview available.</div>');
                     }
                 },
                 error: function() {
-                    $('#compare-overview').html('<div style="color:#9fb0b5;">Server error loading overview.</div>');
+                    $('#compare-overview').html('<div style="color:#9fb0b5; font-family: Helvetica, Arial, sans-serif;">Server error loading overview.</div>');
                 }
             });
         }
