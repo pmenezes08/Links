@@ -9061,6 +9061,30 @@ def add_exercise():
         
         print(f"Debug: Added initial weight entry: {weight}kg x {reps} reps on {date}")
         
+        # Cross-sync initial entry to crossfit_entries for overlapping lift names
+        try:
+            overlapping = {'Back Squat','Front Squat','Overhead Squat','Deadlift','Clean','Jerk','Clean & Jerk','Snatch','Bench Press','Push Press','Thruster','Overhead Press'}
+            if name in overlapping:
+                cursor.execute('''
+                    CREATE TABLE IF NOT EXISTS crossfit_entries (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        username TEXT NOT NULL,
+                        type TEXT NOT NULL,
+                        name TEXT NOT NULL,
+                        weight REAL,
+                        reps INTEGER,
+                        score TEXT,
+                        score_numeric REAL,
+                        created_at TEXT NOT NULL
+                    )
+                ''')
+                cursor.execute('''
+                    INSERT INTO crossfit_entries (username, type, name, weight, reps, created_at)
+                    VALUES (?, 'lift', ?, ?, ?, ?)
+                ''', (username, name, float(weight), int(reps), date))
+        except Exception as _e:
+            pass
+        
         conn.commit()
         conn.close()
         

@@ -2482,6 +2482,11 @@
                 },
                 success: function(response) {
                     if (response.success) {
+                        // Reset canvas to avoid stale chart instance
+                        const progCanvas = document.getElementById('progressChart');
+                        if (progCanvas && progCanvas.parentElement) {
+                            progCanvas.parentElement.innerHTML = '<canvas id="progressChart"></canvas>';
+                        }
                         renderProgressChart(response.data);
                     }
                 },
