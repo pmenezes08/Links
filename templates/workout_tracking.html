@@ -539,11 +539,11 @@
             loadAnalyticsData();
 
             // Analytics event listeners
-            $('#exercise-select').change(function() {
+            $('#exercise-select').off('change').on('change', function() {
                 updateProgressChart();
             });
 
-            $('#time-range').change(function() {
+            $('#time-range').off('change').on('change', function() {
                 updateProgressChart();
             });
 
@@ -1845,8 +1845,8 @@
                 data: {
                     labels: data.labels,
                     datasets: [
-                        { label: 'Avg Max Weight (kg)', data: data.avgMaxWeights, backgroundColor: 'rgba(77, 182, 172, 0.4)', borderColor: '#4db6ac', borderWidth: 1 },
-                        { label: 'Your Max (kg)', data: data.userMaxWeights, backgroundColor: 'rgba(255, 255, 255, 0.4)', borderColor: '#ffffff', borderWidth: 1 }
+                        { label: 'Your Max (kg)', data: data.userMaxWeights, backgroundColor: 'rgba(77, 182, 172, 0.6)', borderColor: '#4db6ac', borderWidth: 1 },
+                        { label: 'Avg Max Weight (kg)', data: data.avgMaxWeights, backgroundColor: 'rgba(176, 184, 185, 0.5)', borderColor: '#9fb0b5', borderWidth: 1 }
                     ]
                 },
                 options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } }, plugins: { legend: { position: 'bottom' } } }
