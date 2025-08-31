@@ -863,6 +863,29 @@ def has_post_delete_permission(username, post_username, community_id):
 init_db()
 ensure_indexes()
 
+def ensure_admin_member_of_all():
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            # Get admin id
+            c.execute("SELECT rowid FROM users WHERE username='admin'")
+            row = c.fetchone()
+            if not row:
+                return
+            admin_id = row[0]
+            # Get all communities
+            c.execute("SELECT id FROM communities")
+            comms = [r[0] if not isinstance(r, dict) else r['id'] for r in c.fetchall()]
+            for cid in comms:
+                c.execute("SELECT 1 FROM user_communities WHERE user_id=? AND community_id=?", (admin_id, cid))
+                if not c.fetchone():
+                    c.execute("INSERT INTO user_communities (user_id, community_id, joined_at) VALUES (?, ?, ?)", (admin_id, cid, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+            conn.commit()
+    except Exception as e:
+        logger.error(f"ensure_admin_member_of_all error: {e}")
+
+ensure_admin_member_of_all()
+
 # Initialize database on application startup
 try:
     ensure_database_exists()
@@ -7827,6 +7850,18 @@ def create_community():
                     INSERT INTO user_communities (user_id, community_id, joined_at)
                     VALUES (?, ?, ?)
                 """, (user_id, community_id, datetime.now().strftime('%m.%d.%y %H:%M')))
+            
+            # Ensure admin is also a member of every community
+            c.execute("SELECT rowid FROM users WHERE username = 'admin'")
+            admin_row = c.fetchone()
+            if admin_row:
+                admin_id = admin_row[0]
+                c.execute("SELECT 1 FROM user_communities WHERE user_id=? AND community_id=?", (admin_id, community_id))
+                if not c.fetchone():
+                    c.execute("""
+                        INSERT INTO user_communities (user_id, community_id, joined_at)
+                        VALUES (?, ?, ?)
+                    """, (admin_id, community_id, datetime.now().strftime('%m.%d.%y %H:%M')))
             
             conn.commit()
             
