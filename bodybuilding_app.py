@@ -7833,7 +7833,7 @@ def create_community():
             # Generate unique join code
             join_code = generate_join_code()
             
-            # Create the community
+            # Create the community (support types like 'gym', 'crossfit', etc.)
             c.execute("""
                 INSERT INTO communities (name, type, creator_username, join_code, created_at, description, location, background_path, template, background_color, text_color, accent_color, card_color, parent_community_id)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -8707,6 +8707,12 @@ def your_sports():
 def gym():
     username = session.get('username')
     return render_template('gym.html', username=username)
+
+@app.route('/crossfit')
+@login_required
+def crossfit():
+    username = session.get('username')
+    return render_template('crossfit.html', username=username)
 
 @app.route('/workout_generator')
 @login_required
