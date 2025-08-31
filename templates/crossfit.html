@@ -29,6 +29,10 @@
 				<i class="fas fa-dumbbell"></i>
 				Workout Management
 			</button>
+			<button class="tab-btn" data-tab="cf-comparison">
+				<i class="fas fa-chart-bar"></i>
+				You vs Your Box
+			</button>
 		</div>
 
 		<div id="cf-tracking" class="tab-content active">
@@ -81,6 +85,39 @@
 				</div>
 				<div class="exercises-list-section">
 					<div id="cf-management-list" class="exercises-list"></div>
+				</div>
+			</div>
+		</div>
+
+		<!-- Comparison Tab -->
+		<div id="cf-comparison" class="tab-content">
+			<div class="workouts-container">
+				<div class="header-section">
+					<h3>You vs Your Box</h3>
+				</div>
+				<div class="analytics-section">
+					<div class="analytics-header">
+						<h4>Select Community and Item</h4>
+						<div class="analytics-controls">
+							<select id="cf-community-select" class="analytics-select">
+								<option value="">Select Community</option>
+							</select>
+							<select id="cf-item-type" class="analytics-select" disabled>
+								<option value="lift">Lift</option>
+								<option value="wod">WOD</option>
+							</select>
+							<select id="cf-item-select" class="analytics-select" disabled>
+								<option value="">Select Lift or WOD</option>
+							</select>
+							<button class="share-btn" id="cf-load-compare-btn" title="Load Comparison" disabled>
+								<i class="fas fa-sync"></i>
+							</button>
+						</div>
+					</div>
+					<div class="chart-container" id="cf-compare-chart-container" style="min-height:260px; display:none;">
+						<canvas id="cfCompareChart"></canvas>
+					</div>
+					<div id="cf-compare-summary" style="color:#b0b8b9; font-size:13px; margin-top:8px;"></div>
 				</div>
 			</div>
 		</div>
@@ -145,6 +182,7 @@
 				$('#' + tabId).addClass('active');
 			});
 			$('#cf-add-form').on('submit', function(e){ e.preventDefault(); addCFEntry(); });
+			initCFComparison();
 		});
 
 		function loadCFSelections(){
@@ -227,20 +265,92 @@
 		function closeAddCFEntryModal(){ $('#cf-add-modal').hide(); }
 
 		function addCFEntry(){
-			// TODO: Persist to backend similar to gym; placeholder for now
 			const type = $('#cf-type').val();
 			const name = $('#cf-name').val();
 			const weight = $('#cf-weight').val();
 			const reps = $('#cf-reps').val();
 			const date = $('#cf-date').val();
-			const list = $(`#cf-list-${type}-${name}`);
-			const cur = list.html();
-			const row = `<div class="weight-entry"><span class="weight-value">${weight ? weight+' kg' : ''} ${reps || ''}</span><span class="weight-date">${date}</span></div>`;
-			list.html(cur === 'No entries yet' ? row : cur + row);
-			const countEl = $(`#cf-count-${type}-${name}`);
-			const num = (parseInt(countEl.text())||0) + 1;
-			countEl.text(num + ' entries');
-			closeAddCFEntryModal();
+			$.post('/cf_add_entry', { type, name, weight, reps, score: reps, date }, function(resp){
+				if (resp && resp.success){
+					const list = $(`#cf-list-${type}-${name}`);
+					const cur = list.html();
+					const row = `<div class="weight-entry"><span class="weight-value">${weight ? weight+' kg' : ''} ${reps || ''}</span><span class="weight-date">${date}</span></div>`;
+					list.html(cur === 'No entries yet' ? row : cur + row);
+					const countEl = $(`#cf-count-${type}-${name}`);
+					const num = (parseInt(countEl.text())||0) + 1;
+					countEl.text(num + ' entries');
+					closeAddCFEntryModal();
+				} else {
+					alert(resp && resp.error ? resp.error : 'Error adding entry');
+				}
+			});
+		}
+
+		function initCFComparison(){
+			// Load user communities
+			$.get('/get_user_communities', function(resp){
+				const select = $('#cf-community-select');
+				select.empty();
+				select.append('<option value="">Select Community</option>');
+				if (resp && resp.success && Array.isArray(resp.communities)){
+					resp.communities.forEach(c => select.append(`<option value="${c.id}">${c.name}</option>`));
+				}
+			});
+
+			$('#cf-community-select').on('change', function(){
+				const has = !!$(this).val();
+				$('#cf-item-type').prop('disabled', !has);
+				$('#cf-item-select').prop('disabled', !has);
+				$('#cf-load-compare-btn').prop('disabled', !has);
+				loadCFItemOptions();
+			});
+
+			$('#cf-item-type').on('change', function(){ loadCFItemOptions(); });
+
+			$('#cf-load-compare-btn').on('click', function(){
+				const community_id = $('#cf-community-select').val();
+				const item_type = $('#cf-item-type').val();
+				const item_sel = $('#cf-item-select').val();
+				if (!community_id || !item_sel){ alert('Select community and item'); return; }
+				const item_name = item_sel.replace(/^(lift:|wod:)/,'');
+				$.get('/cf_compare_item_in_box', { community_id, item_type, item_name }, function(resp){
+					if (resp && resp.success){
+						$('#cf-compare-chart-container').show();
+						renderCFComparison(resp.data);
+						$('#cf-compare-summary').text(resp.summary || '');
+					} else {
+						alert(resp && resp.error ? resp.error : 'Failed to load comparison');
+					}
+				});
+			});
+		}
+
+		function loadCFItemOptions(){
+			const type = $('#cf-item-type').val() || 'lift';
+			const sel = $('#cf-item-select');
+			sel.empty();
+			if (type === 'lift'){
+				sel.append('<optgroup label="Lifts">'+ commonLifts.map(n=>`<option value="lift:${n}">${n}</option>`).join('') +'</optgroup>');
+			} else {
+				sel.append('<optgroup label="WODs">'+ commonWODs.map(n=>`<option value="wod:${n}">${n}</option>`).join('') +'</optgroup>');
+			}
+		}
+
+		let cfCompareChart = null;
+		function renderCFComparison(data){
+			const ctx = document.getElementById('cfCompareChart').getContext('2d');
+			if (cfCompareChart){ cfCompareChart.destroy(); }
+			cfCompareChart = new Chart(ctx, {
+				type: 'bar',
+				data: {
+					labels: data.labels,
+					datasets: [
+						{ label: `Avg (${data.unit})`, data: data.avgValues, backgroundColor: 'rgba(77, 182, 172, 0.4)', borderColor: '#4db6ac', borderWidth: 1 },
+						{ label: `You (${data.unit})`, data: data.userValues, backgroundColor: 'rgba(255, 255, 255, 0.4)', borderColor: '#ffffff', borderWidth: 1 }
+					]
+				},
+				options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } }, plugins: { legend: { position: 'bottom' } } }
+			});
 		}
 	</script>
 </body>
