@@ -97,6 +97,11 @@
                             <button class="share-btn" id="load-compare-btn" title="Load Comparison" disabled>
                                 <i class="fas fa-sync"></i>
                             </button>
+                            {% if username == 'admin' %}
+                            <button class="add-btn" id="seed-dummy-btn" onclick="seedDummyData()" title="Generate Dummy Data" style="margin-left:8px;">
+                                <i class="fas fa-seedling"></i> Seed Data
+                            </button>
+                            {% endif %}
                         </div>
                     </div>
                     <div id="compare-overview" class="overview-list" style="margin-top:8px; font-family: Helvetica, Arial, sans-serif; display:none;"></div>
@@ -1845,6 +1850,19 @@
                     ]
                 },
                 options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } }, plugins: { legend: { position: 'bottom' } } }
+            });
+        }
+
+        function seedDummyData(){
+            if (!confirm('Generate 20 demo users with 6 months of data?')) return;
+            $.post('/seed_dummy_data', {}, function(resp){
+                if (resp && resp.success){
+                    alert('Dummy data generated successfully. Users: ' + resp.users_created + ', weeks: ' + resp.dates);
+                } else {
+                    alert('Failed to seed data: ' + (resp && resp.error ? resp.error : 'Unknown error'));
+                }
+            }).fail(function(){
+                alert('Server error seeding data');
             });
         }
 
