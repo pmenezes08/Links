@@ -8757,6 +8757,47 @@ def cf_add_entry():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
+@app.route('/sync_gym_to_crossfit', methods=['POST'])
+@login_required
+def sync_gym_to_crossfit():
+    try:
+        username = session.get('username')
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            # Find overlapping exercise names
+            overlapping = {'Back Squat','Front Squat','Overhead Squat','Deadlift','Clean','Jerk','Clean & Jerk','Snatch','Bench Press','Push Press','Thruster','Overhead Press'}
+            # Get all user gym sets for overlapping exercises
+            c.execute('''
+                SELECT e.name, es.weight, es.reps, es.created_at
+                FROM exercises e
+                JOIN exercise_sets es ON e.id = es.exercise_id
+                WHERE e.username = ? AND e.name IN ({})
+            '''.format(','.join('?'*len(overlapping))), (username, *overlapping))
+            rows = c.fetchall()
+
+            c.execute('''CREATE TABLE IF NOT EXISTS crossfit_entries (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT NOT NULL,
+                type TEXT NOT NULL,
+                name TEXT NOT NULL,
+                weight REAL,
+                reps INTEGER,
+                score TEXT,
+                score_numeric REAL,
+                created_at TEXT NOT NULL
+            )''')
+
+            # Insert any missing entries
+            for r in rows:
+                name, weight, reps, created_at = r
+                c.execute('''INSERT INTO crossfit_entries (username, type, name, weight, reps, created_at)
+                             VALUES (?, 'lift', ?, ?, ?, ?)''', (username, name, weight, reps, created_at))
+
+            conn.commit()
+        return jsonify({'success': True, 'synced': len(rows)})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
 @app.route('/cf_compare_item_in_box', methods=['GET'])
 @login_required
 def cf_compare_item_in_box():
@@ -9500,6 +9541,36 @@ def log_weight_set():
             INSERT INTO exercise_sets (exercise_id, weight, reps, created_at)
             VALUES (?, ?, ?, ?)
         ''', (exercise_id, weight, reps, date))
+
+        # Cross-sync to crossfit_entries for overlapping lift names
+        try:
+            # Fetch exercise name
+            cursor.execute('SELECT name FROM exercises WHERE id=?', (exercise_id,))
+            row = cursor.fetchone()
+            if row:
+                ex_name = row[0] if isinstance(row, tuple) else row[0]
+                # Only sync for known overlapping lifts
+                overlapping = {'Back Squat','Front Squat','Overhead Squat','Deadlift','Clean','Jerk','Clean & Jerk','Snatch','Bench Press','Push Press','Thruster','Overhead Press'}
+                if ex_name in overlapping:
+                    cursor.execute('''
+                        CREATE TABLE IF NOT EXISTS crossfit_entries (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            username TEXT NOT NULL,
+                            type TEXT NOT NULL,
+                            name TEXT NOT NULL,
+                            weight REAL,
+                            reps INTEGER,
+                            score TEXT,
+                            score_numeric REAL,
+                            created_at TEXT NOT NULL
+                        )
+                    ''')
+                    cursor.execute('''
+                        INSERT INTO crossfit_entries (username, type, name, weight, reps, created_at)
+                        VALUES (?, 'lift', ?, ?, ?, ?)
+                    ''', (username, ex_name, float(weight), int(reps), date))
+        except Exception as _e:
+            pass
         
         print(f"Debug: Weight logged successfully for exercise {exercise_id}")
         

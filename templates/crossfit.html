@@ -309,9 +309,9 @@
 
 			$('#cf-load-compare-btn').on('click', function(){
 				const community_id = $('#cf-community-select').val();
-				const item_type = $('#cf-item-type').val();
 				const item_sel = $('#cf-item-select').val();
 				if (!community_id || !item_sel){ alert('Select community and item'); return; }
+				const item_type = item_sel.startsWith('wod:') ? 'wod' : 'lift';
 				const item_name = item_sel.replace(/^(lift:|wod:)/,'');
 				$.get('/cf_compare_item_in_box', { community_id, item_type, item_name }, function(resp){
 					if (resp && resp.success){
