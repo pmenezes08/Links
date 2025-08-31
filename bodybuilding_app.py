@@ -9296,6 +9296,56 @@ def compare_exercise_in_community():
         logger.error(f"Error in comparison endpoint: {e}")
         return jsonify({'success': False, 'error': 'Server error'})
 
+@app.route('/leaderboard_exercise_in_community', methods=['GET'])
+@login_required
+def leaderboard_exercise_in_community():
+    try:
+        username = session.get('username')
+        community_id = int(request.args.get('community_id', '0'))
+        exercise_id = int(request.args.get('exercise_id', '0'))
+        if not community_id or not exercise_id:
+            return jsonify({'success': False, 'error': 'Missing parameters'})
+
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            # Community users
+            c.execute("""
+                SELECT u.username
+                FROM user_communities uc
+                JOIN users u ON uc.user_id = u.rowid
+                WHERE uc.community_id = ?
+            """, (community_id,))
+            users = [row['username'] for row in c.fetchall()]
+            if not users:
+                return jsonify({'success': False, 'error': 'No users in community'})
+
+            # Get exercise name for requesting user
+            c.execute("SELECT name FROM exercises WHERE id = ? AND username = ?", (exercise_id, username))
+            row = c.fetchone()
+            if not row:
+                return jsonify({'success': False, 'error': 'Exercise not found for user'})
+            exercise_name = row['name']
+
+            # Compute each user's max for that exercise name
+            leaderboard = []
+            for user in users:
+                c.execute("SELECT id FROM exercises WHERE username = ? AND name = ?", (user, exercise_name))
+                ex_row = c.fetchone()
+                if not ex_row:
+                    continue
+                ex_id = ex_row['id']
+                c.execute("SELECT MAX(weight) as mw FROM exercise_sets WHERE exercise_id = ?", (ex_id,))
+                mw_row = c.fetchone()
+                max_w = mw_row['mw'] if mw_row and mw_row['mw'] is not None else 0
+                leaderboard.append({ 'username': user, 'max': float(max_w) })
+
+            # Sort descending by max
+            leaderboard.sort(key=lambda x: x['max'], reverse=True)
+            return jsonify({ 'success': True, 'exercise_name': exercise_name, 'entries': leaderboard })
+    except Exception as e:
+        logger.error(f"Error in leaderboard endpoint: {e}")
+        return jsonify({'success': False, 'error': 'Server error'})
+
 @app.route('/compare_overview_in_community', methods=['GET'])
 @login_required
 def compare_overview_in_community():

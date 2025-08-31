@@ -126,6 +126,10 @@
                 <i class="fas fa-calendar-alt"></i>
                 Workouts
             </button>
+            <button class="tab-btn" data-tab="community-leaderboard">
+                <i class="fas fa-trophy"></i>
+                Community Leaderboard
+            </button>
             <button class="tab-btn" data-tab="comparison">
                 <i class="fas fa-chart-bar"></i>
                 You vs Community
@@ -219,6 +223,32 @@
                     <div id="workouts-list" class="workouts-list">
                         <!-- Workouts will be loaded here -->
                     </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Community Leaderboard Tab -->
+        <div id="community-leaderboard" class="tab-content">
+            <div class="workouts-container">
+                <div class="header-section">
+                    <h3>Community Leaderboard</h3>
+                </div>
+                <div class="analytics-section">
+                    <div class="analytics-header">
+                        <h4>Choose Community and Exercise</h4>
+                        <div class="analytics-controls">
+                            <select id="lb-community-select" class="analytics-select">
+                                <option value="">Select Community</option>
+                            </select>
+                            <select id="lb-exercise-select" class="analytics-select" disabled>
+                                <option value="">Select Exercise</option>
+                            </select>
+                            <button class="share-btn" id="load-leaderboard-btn" title="Load Leaderboard" disabled>
+                                <i class="fas fa-list-ol"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div id="leaderboard-list" class="workouts-list"></div>
                 </div>
             </div>
         </div>
@@ -558,6 +588,8 @@
 
                 if (tabId === 'comparison') {
                     initComparisonTab();
+                } else if (tabId === 'community-leaderboard') {
+                    initLeaderboardTab();
                 }
             });
 
@@ -1689,6 +1721,61 @@
                     return;
                 }
                 loadComparisonData(communityId, exerciseId);
+            });
+        }
+
+        // Leaderboard Tab
+        function initLeaderboardTab(){
+            // Load communities
+            $.get('/get_user_communities', function(resp){
+                const sel = $('#lb-community-select');
+                sel.empty();
+                sel.append('<option value="">Select Community</option>');
+                if (resp && resp.success && Array.isArray(resp.communities)){
+                    resp.communities.forEach(c => sel.append(`<option value="${c.id}">${c.name}</option>`));
+                }
+            });
+            // Load user exercises for selection
+            $.get('/get_user_exercises', function(resp){
+                const exSel = $('#lb-exercise-select');
+                exSel.empty();
+                exSel.append('<option value="">Select Exercise</option>');
+                if (resp && resp.success && Array.isArray(resp.exercises)){
+                    resp.exercises.forEach(ex => exSel.append(`<option value="${ex.id}">${ex.name} (${ex.muscle_group})</option>`));
+                }
+                exSel.prop('disabled', false);
+                $('#load-leaderboard-btn').prop('disabled', false);
+            });
+
+            $('#load-leaderboard-btn').off('click').on('click', function(){
+                const community_id = $('#lb-community-select').val();
+                const exercise_id = $('#lb-exercise-select').val();
+                if (!community_id || !exercise_id){ alert('Select community and exercise'); return; }
+                loadLeaderboard(community_id, exercise_id);
+            });
+        }
+
+        function loadLeaderboard(communityId, exerciseId){
+            $.get('/leaderboard_exercise_in_community', { community_id: communityId, exercise_id: exerciseId }, function(resp){
+                if (resp && resp.success){
+                    const rows = resp.entries.map((e, idx) => `
+                        <div class=\"workout-item\" style=\"display:flex; justify-content:space-between; align-items:center;\">
+                            <div class=\"workout-content\" style=\"flex:1;\">
+                                <div class=\"workout-header\">
+                                    <div class=\"workout-title\">
+                                        <h4 class=\"workout-name\">#${idx+1} ${e.username}</h4>
+                                    </div>
+                                </div>
+                            </div>
+                            <div style=\"color:#9fb0b5;\">${e.max} kg</div>
+                        </div>
+                    `).join('');
+                    $('#leaderboard-list').html(rows || '<p>No entries</p>');
+                } else {
+                    $('#leaderboard-list').html('<p>Error loading leaderboard</p>');
+                }
+            }).fail(function(){
+                $('#leaderboard-list').html('<p>Error loading leaderboard</p>');
             });
         }
 
