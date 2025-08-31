@@ -316,6 +316,8 @@
 				$.get('/cf_compare_item_in_box', { community_id, item_type, item_name }, function(resp){
 					if (resp && resp.success){
 						$('#cf-compare-chart-container').show();
+						// Reset canvas to avoid Chart.js reuse issues
+						document.getElementById('cf-compare-chart-container').innerHTML = '<canvas id="cfCompareChart"></canvas>';
 						renderCFComparison(resp.data);
 						$('#cf-compare-summary').text(resp.summary || '');
 					} else {

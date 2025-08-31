@@ -1742,6 +1742,9 @@
                 success: function(resp) {
                     if (resp.success) {
                         $('#compare-chart-container').show();
+                        // Force fresh canvas to avoid reuse issues
+                        const cont = document.getElementById('compare-chart-container');
+                        if (cont) { cont.innerHTML = '<canvas id="compareChart"></canvas>'; }
                         // ensure canvas has size and reflow
                         setTimeout(() => { renderComparison(resp.data); }, 50);
                         const extra = resp.community_max ? ` • Top: ${resp.community_max} kg` : '';
