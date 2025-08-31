@@ -8726,7 +8726,7 @@ def cf_add_entry():
         score = request.form.get('score', '').strip()
         date = request.form.get('date', '').strip()
 
-      	# Basic validation
+        # Basic validation
         if not entry_type or not name or not date:
             return jsonify({'success': False, 'error': 'Type, name and date are required'})
 
@@ -8842,7 +8842,7 @@ def cf_compare_item_in_box():
                     FROM crossfit_entries
                     WHERE username = ? AND type = 'lift' AND name = ?
                 ''', (user, item_name))
-            	row = c.fetchone()
+                row = c.fetchone()
                 val = row['val'] if row and row['val'] is not None else 0
                 values.append(val)
                 if user == username:
