@@ -252,6 +252,19 @@ def init_db():
             
             # Create posts table
             logger.info("Creating posts table...")
+            # Create crossfit entries table (for lifts and WODs)
+            logger.info("Creating crossfit entries table...")
+            c.execute('''CREATE TABLE IF NOT EXISTS crossfit_entries (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT NOT NULL,
+                type TEXT NOT NULL,
+                name TEXT NOT NULL,
+                weight REAL,
+                reps INTEGER,
+                score TEXT,
+                score_numeric REAL,
+                created_at TEXT NOT NULL
+            )''')
             c.execute('''CREATE TABLE IF NOT EXISTS posts
                          (id INTEGER PRIMARY KEY AUTOINCREMENT,
                           username TEXT NOT NULL,
@@ -8730,24 +8743,22 @@ def cf_add_entry():
         if not entry_type or not name or not date:
             return jsonify({'success': False, 'error': 'Type, name and date are required'})
 
-        import sqlite3
-        conn = sqlite3.connect('users.db')
-        conn.row_factory = sqlite3.Row
-        c = conn.cursor()
+        with get_db_connection() as conn:
+            c = conn.cursor()
 
-        c.execute('''
-            CREATE TABLE IF NOT EXISTS crossfit_entries (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT NOT NULL,
-                type TEXT NOT NULL,
-                name TEXT NOT NULL,
-                weight REAL,
-                reps INTEGER,
-                score TEXT,
-                score_numeric REAL,
-                created_at TEXT NOT NULL
-            )
-        ''')
+            c.execute('''
+                CREATE TABLE IF NOT EXISTS crossfit_entries (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username TEXT NOT NULL,
+                    type TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    weight REAL,
+                    reps INTEGER,
+                    score TEXT,
+                    score_numeric REAL,
+                    created_at TEXT NOT NULL
+                )
+            ''')
 
         # Helper to parse time strings like HH:MM:SS or MM:SS
         def parse_time_to_seconds(value: str):
@@ -8774,19 +8785,14 @@ def cf_add_entry():
             if score:
                 score_numeric = parse_time_to_seconds(score)
 
-        c.execute('''
-            INSERT INTO crossfit_entries (username, type, name, weight, reps, score, score_numeric, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (username, entry_type, name, weight_val, reps_val, score if score else None, score_numeric, date))
+            c.execute('''
+                INSERT INTO crossfit_entries (username, type, name, weight, reps, score, score_numeric, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (username, entry_type, name, weight_val, reps_val, score if score else None, score_numeric, date))
 
-        conn.commit()
-        conn.close()
-        return jsonify({'success': True})
+            conn.commit()
+            return jsonify({'success': True})
     except Exception as e:
-        try:
-            conn.close()
-        except Exception:
-            pass
         return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/cf_compare_item_in_box', methods=['GET'])
@@ -8800,10 +8806,8 @@ def cf_compare_item_in_box():
         if not community_id or not item_type or not item_name:
             return jsonify({'success': False, 'error': 'Missing parameters'})
 
-        import sqlite3
-        conn = sqlite3.connect('users.db')
-        conn.row_factory = sqlite3.Row
-        c = conn.cursor()
+        with get_db_connection() as conn:
+            c = conn.cursor()
 
         # Community users
         c.execute('''
@@ -8885,30 +8889,28 @@ def cf_compare_item_in_box():
             unit = 'sec'
             lower_is_better = True
 
-        conn.close()
-
-        data = {
+            data = {
             'labels': ['You'],
             'avgValues': [avg],
             'userValues': [user_value or 0],
             'unit': unit,
             'lowerIsBetter': lower_is_better
-        }
-        if item_type == 'lift':
-            summary = f"Your max for {item_name}: {user_value or 0} {unit}. Box avg: {avg} {unit}. Percentile: {percentile}% • Top: {top} {unit}"
-        else:
-            # Format seconds to m:ss for readability
-            def fmt_seconds(s):
-                try:
-                    s = int(round(s))
-                    m = s // 60
-                    sec = s % 60
-                    return f"{m}:{sec:02d}"
-                except Exception:
-                    return str(s)
-            summary = f"Your best time for {item_name}: {fmt_seconds(user_value or 0)}. Box avg: {fmt_seconds(avg)}. Percentile: {percentile}% • Top: {fmt_seconds(top)}"
+            }
+            if item_type == 'lift':
+                summary = f"Your max for {item_name}: {user_value or 0} {unit}. Box avg: {avg} {unit}. Percentile: {percentile}% • Top: {top} {unit}"
+            else:
+                # Format seconds to m:ss for readability
+                def fmt_seconds(s):
+                    try:
+                        s = int(round(s))
+                        m = s // 60
+                        sec = s % 60
+                        return f"{m}:{sec:02d}"
+                    except Exception:
+                        return str(s)
+                summary = f"Your best time for {item_name}: {fmt_seconds(user_value or 0)}. Box avg: {fmt_seconds(avg)}. Percentile: {percentile}% • Top: {fmt_seconds(top)}"
 
-        return jsonify({'success': True, 'data': data, 'summary': summary, 'percentile': percentile, 'community_max': top})
+            return jsonify({'success': True, 'data': data, 'summary': summary, 'percentile': percentile, 'community_max': top})
     except Exception as e:
         logger.error(f"Error in CF comparison endpoint: {e}")
         return jsonify({'success': False, 'error': 'Server error'})
