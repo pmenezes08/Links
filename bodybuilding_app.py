@@ -1059,7 +1059,6 @@ def authorized():
     # except Exception as e:
     #     logger.error(f"Error in authorized route: {str(e)}")
     #     abort(500)
-
 @app.route('/signup', methods=['GET', 'POST'])
 # @csrf.exempt
 def signup():
@@ -1673,7 +1672,6 @@ def delete_weight():
     except Exception as e:
         logger.error(f"Error deleting weight for {username}: {str(e)}")
         return jsonify({'success': False, 'error': f'Unexpected error: {str(e)}'}), 500
-
 @app.route('/admin', methods=['GET', 'POST'])
 @login_required
 def admin():
@@ -2323,7 +2321,6 @@ def generate_workout():
     except Exception as e:
         logger.error(f"Server error in generate_workout for {username}: {str(e)}")
         return jsonify({'error': 'Server error. Please try again later.'}), 500
-
 @app.route('/blood_test_analysis', methods=['GET', 'POST'])
 @login_required
 def blood_test_analysis():
@@ -2945,7 +2942,6 @@ def delete_message():
     except Exception as e:
         logger.error(f"Error deleting message for {username}: {str(e)}")
         abort(500)
-
 @app.route('/get_community_members', methods=['POST'])
 @login_required
 def get_community_members():
@@ -3587,7 +3583,6 @@ def test_specific_password():
             
     except Exception as e:
         return f"Error: {str(e)}"
-
 @app.route('/migrate_passwords')
 def migrate_passwords():
     """Migrate all plain text passwords to hashed passwords - ADMIN ONLY"""
@@ -4178,14 +4173,10 @@ def check_unread_messages():
     except Exception as e:
         logger.error(f"Error checking unread messages for {username}: {str(e)}")
         abort(500)
-
 @app.route('/feed')
 @login_required
 def feed():
     username = session.get('username')
-    
-    # Temporarily disable CSRF token generation
-    # token = generate_csrf()
     
     try:
         with get_db_connection() as conn:
@@ -4264,9 +4255,6 @@ def feed():
 @login_required
 def add_reaction():
     username = session['username']
-    # Temporarily disable CSRF validation
-    # if not validate_csrf():
-    #     return jsonify({'success': False, 'error': 'Invalid CSRF token'}), 400
     post_id = request.form.get('post_id')
     reaction_type = request.form.get('reaction')
 
@@ -4592,17 +4580,6 @@ def delete_read_notifications():
 @login_required
 def post_status():
     username = session['username']
-    # Temporarily disable CSRF validation
-    # if not validate_csrf():
-    #     if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-    #         return jsonify({'success': False, 'error': 'Invalid CSRF token'}), 400
-    #     else:
-    #         community_id = request.form.get('community_id', type=int)
-    #         if community_id:
-    #             return redirect(url_for('community_feed', community_id=community_id) + '?error=Invalid CSRF token')
-    #         else:
-    #             return redirect(url_for('feed') + '?error=Invalid CSRF token')
-    
     content = request.form.get('content', '').strip()
     community_id_raw = request.form.get('community_id')
     community_id = int(community_id_raw) if community_id_raw else None
@@ -4721,7 +4698,6 @@ def post_status():
 
 @app.route('/post_reply', methods=['POST'])
 @login_required
-# @csrf.exempt
 def post_reply():
     username = session['username']
     
@@ -4729,13 +4705,6 @@ def post_reply():
     logger.info(f"CSRF validation for user {username}")
     logger.info(f"Request form data: {dict(request.form)}")
     logger.info(f"Request headers: {dict(request.headers)}")
-    
-    # Temporarily skip CSRF validation
-    # if not validate_csrf():
-    #     logger.error(f"CSRF validation failed for user {username}")
-    #     return jsonify({'success': False, 'error': 'Invalid CSRF token'}), 400
-    
-    logger.info(f"CSRF validation passed for user {username}")
     
     post_id = request.form.get('post_id', type=int)
     content = request.form.get('content', '').strip()
@@ -4807,7 +4776,6 @@ def post_reply():
     except Exception as e:
         logger.error(f"Error posting reply for {username}: {str(e)}", exc_info=True)
         return jsonify({'success': False, 'error': f'Unexpected error: {str(e)}'}), 500
-
 @app.route('/create_poll', methods=['POST'])
 @login_required
 def create_poll():
@@ -5413,7 +5381,6 @@ def resolve_issue():
     except Exception as e:
         logger.error(f"Error resolving issue: {str(e)}")
         return jsonify({'success': False, 'error': str(e)})
-
 @app.route('/get_university_ads')
 @login_required
 def get_university_ads():
@@ -6032,7 +5999,6 @@ def get_community_admins(community_id):
     except Exception as e:
         logger.error(f"Error getting community admins: {e}")
         return jsonify({'success': False, 'message': str(e)}), 500
-
 @app.route('/community/<int:community_id>/clubs')
 @login_required
 def clubs_directory(community_id):
@@ -6676,7 +6642,6 @@ def admin_user_statistics():
     except Exception as e:
         logger.error(f"Error getting user statistics: {e}")
         return jsonify({'success': False, 'message': str(e)}), 500
-
 @app.route('/admin/ads_overview')
 @login_required
 def admin_ads_overview():
@@ -7272,7 +7237,6 @@ def get_calendar_event(event_id):
     except Exception as e:
         logger.error(f"Error getting calendar event: {str(e)}")
         return jsonify({'success': False, 'message': str(e)})
-
 @app.route('/test_color_detection')
 def test_color_detection():
     """Test page for color detection"""
@@ -7876,7 +7840,6 @@ def create_community():
     except Exception as e:
         logger.error(f"Error creating community: {str(e)}")
         return jsonify({'success': False, 'error': 'Failed to create community'}), 500
-
 @app.route('/get_available_parent_communities', methods=['GET'])
 @login_required
 def get_available_parent_communities():
@@ -8442,7 +8405,6 @@ def leave_community():
     except Exception as e:
         logger.error(f"Error leaving community: {str(e)}")
         return jsonify({'success': False, 'error': 'An error occurred while leaving the community'})
-
 @app.route('/community_feed/<int:community_id>')
 @login_required
 def community_feed(community_id):
@@ -9031,7 +8993,6 @@ def add_exercise():
         
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
-
 @app.route('/get_workout_exercises', methods=['GET'])
 @login_required
 def get_workout_exercises():
@@ -9674,7 +9635,6 @@ def formatDate(date_string):
     """Format date for chart labels"""
     date = datetime.strptime(date_string, '%Y-%m-%d')
     return date.strftime('%b %d')
-
 @app.route('/get_exercise_progress', methods=['GET'])
 @login_required
 def get_exercise_progress():
@@ -10224,7 +10184,6 @@ def get_individual_workout_summary():
         
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
-
 @app.route('/share_individual_workout', methods=['POST'])
 @login_required
 def share_individual_workout():
@@ -10874,7 +10833,6 @@ def save_community_info():
     except Exception as e:
         logger.error(f"Error saving community info: {e}")
         return jsonify({'success': False, 'error': str(e)})
-
 @app.route('/upload_community_files', methods=['POST'])
 def upload_community_files():
     try:
@@ -11351,6 +11309,133 @@ def cleanup_missing_images():
             
     except Exception as e:
         logger.error(f"Error cleaning missing images: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/seed_dummy_data', methods=['POST'])
+@login_required
+def seed_dummy_data():
+    try:
+        # Only allow admin to seed
+        username = session.get('username')
+        if username != 'admin':
+            return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+
+        import random
+        from datetime import datetime, timedelta
+
+        with get_db_connection() as conn:
+            c = conn.cursor()
+
+            # Ensure crossfit_entries table exists
+            c.execute('''CREATE TABLE IF NOT EXISTS crossfit_entries (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT NOT NULL,
+                type TEXT NOT NULL,
+                name TEXT NOT NULL,
+                weight REAL,
+                reps INTEGER,
+                score TEXT,
+                score_numeric REAL,
+                created_at TEXT NOT NULL
+            )''')
+
+            # Create or get Gym and Crossfit communities
+            def get_or_create_community(name, ctype):
+                c.execute('SELECT id FROM communities WHERE name=? AND type=?', (name, ctype))
+                r = c.fetchone()
+                if r:
+                    return r['id'] if isinstance(r, sqlite3.Row) else r[0]
+                join_code = generate_join_code()
+                c.execute('''INSERT INTO communities (name, type, creator_username, join_code, created_at)
+                             VALUES (?, ?, ?, ?, ?)''', (name, ctype, 'admin', join_code, datetime.now().strftime('%m.%d.%y %H:%M')))
+                return c.lastrowid
+
+            gym_comm_id = get_or_create_community('Demo Gym', 'gym')
+            cf_comm_id = get_or_create_community('Demo Crossfit Box', 'crossfit')
+
+            # Helper to get or create user and map to communities
+            def ensure_user(u):
+                c.execute('SELECT rowid FROM users WHERE username=?', (u,))
+                row = c.fetchone()
+                if not row:
+                    c.execute('''INSERT INTO users (username, email, password, created_at)
+                                 VALUES (?, ?, ?, ?)''', (u, f'{u}@example.com', '12345', datetime.now().strftime('%m.%d.%y %H:%M')))
+                    c.execute('SELECT rowid FROM users WHERE username=?', (u,))
+                    row = c.fetchone()
+                user_id = row['rowid'] if isinstance(row, sqlite3.Row) else row[0]
+                # Add to communities if not already
+                for comm_id in (gym_comm_id, cf_comm_id):
+                    c.execute('SELECT 1 FROM user_communities WHERE user_id=? AND community_id=?', (user_id, comm_id))
+                    if not c.fetchone():
+                        c.execute('INSERT INTO user_communities (user_id, community_id, joined_at) VALUES (?, ?, ?)', (user_id, comm_id, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+
+            # Generate 20 users
+            users = [f'user{i:02d}' for i in range(1, 21)]
+            for u in users:
+                ensure_user(u)
+
+            # Gym seed data: a few common exercises
+            gym_exercises = [
+                ('Bench Press', 'Chest'),
+                ('Back Squat', 'Legs'),
+                ('Deadlift', 'Back'),
+                ('Overhead Press', 'Shoulders')
+            ]
+
+            # Crossfit lists (subset)
+            cf_lifts = ['Back Squat','Deadlift','Clean','Snatch','Thruster']
+            cf_wods = ['Fran','Cindy','Helen','Grace','Isabel']
+
+            # 6-month timeline (roughly every 7 days)
+            today = datetime.now().date()
+            start_date = today - timedelta(days=180)
+            dates = [start_date + timedelta(days=7*i) for i in range(27)]
+
+            # Seed gym exercises/sets
+            for u in users:
+                for name, group in gym_exercises:
+                    # Ensure exercise row exists for user
+                    c.execute('SELECT id FROM exercises WHERE username=? AND name=?', (u, name))
+                    row = c.fetchone()
+                    if row:
+                        ex_id = row['id'] if isinstance(row, sqlite3.Row) else row[0]
+                    else:
+                        c.execute('INSERT INTO exercises (username, name, muscle_group) VALUES (?, ?, ?)', (u, name, group))
+                        ex_id = c.lastrowid
+                    # Generate progressive sets over dates
+                    base = random.randint(50, 90)
+                    for idx, d in enumerate(dates):
+                        weight = base + int(idx * random.uniform(0.2, 0.8))
+                        reps = random.choice([3,5,8])
+                        c.execute('INSERT INTO exercise_sets (exercise_id, weight, reps, created_at) VALUES (?, ?, ?, ?)', (ex_id, weight, reps, d.isoformat()))
+
+            # Seed crossfit lifts and WODs
+            def time_str(seconds):
+                m = seconds // 60; s = seconds % 60
+                return f"{int(m)}:{int(s):02d}"
+
+            for u in users:
+                # Lifts
+                for name in cf_lifts:
+                    base = random.randint(40, 100)
+                    for idx, d in enumerate(dates):
+                        w = base + int(idx * random.uniform(0.3, 1.0))
+                        reps = random.choice([1,3,5])
+                        c.execute('''INSERT INTO crossfit_entries (username, type, name, weight, reps, created_at)
+                                     VALUES (?, 'lift', ?, ?, ?, ?)''', (u, name, w, reps, d.isoformat()))
+                # WODs (lower is better)
+                for name in cf_wods:
+                    base = random.randint(300, 1200)  # seconds
+                    for idx, d in enumerate(dates):
+                        seconds = max(120, int(base - idx * random.uniform(1.0, 4.0)))
+                        score = time_str(seconds)
+                        c.execute('''INSERT INTO crossfit_entries (username, type, name, score, score_numeric, created_at)
+                                     VALUES (?, 'wod', ?, ?, ?, ?)''', (u, name, score, seconds, d.isoformat()))
+
+            conn.commit()
+
+        return jsonify({'success': True, 'users_created': len(users), 'dates': len(dates)})
+    except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
 if __name__ == '__main__':
