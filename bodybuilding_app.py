@@ -4891,15 +4891,38 @@ def close_poll():
             c = conn.cursor()
             
             # Check if poll exists and user has permission to close it
-            c.execute("SELECT created_by FROM polls WHERE id = ? AND is_active = 1", (poll_id,))
+            c.execute("SELECT created_by, post_id FROM polls WHERE id = ? AND is_active = 1", (poll_id,))
             poll_data = c.fetchone()
             
             if not poll_data:
                 return jsonify({'success': False, 'error': 'Poll not found or already closed'})
             
-            # Only poll creator or admin can close polls
-            if poll_data['created_by'] != username and username != 'admin':
-                return jsonify({'success': False, 'error': 'You can only close your own polls'})
+            # Only poll creator, community admin/owner, or global admin can close
+            allowed = False
+            if poll_data['created_by'] == username or username == 'admin':
+                allowed = True
+            else:
+                # Determine community of the poll via post
+                c.execute("SELECT community_id FROM posts WHERE id = ?", (poll_data['post_id'],))
+                pr = c.fetchone()
+                community_id = pr['community_id'] if pr else None
+                if community_id:
+                    # Check if user is community admin or owner
+                    # Owner = communities.creator_username
+                    c.execute("SELECT creator_username FROM communities WHERE id = ?", (community_id,))
+                    cr = c.fetchone()
+                    if cr and cr['creator_username'] == username:
+                        allowed = True
+                    else:
+                        # Community admin check (if you have a roles table, replace this logic)
+                        c.execute("""
+                            SELECT 1 FROM community_admins
+                            WHERE community_id = ? AND username = ?
+                        """, (community_id, username))
+                        if c.fetchone():
+                            allowed = True
+            if not allowed:
+                return jsonify({'success': False, 'error': 'You do not have permission to close this poll'})
             
             # Close the poll
             c.execute("UPDATE polls SET is_active = 0 WHERE id = ?", (poll_id,))

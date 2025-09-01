@@ -2446,6 +2446,9 @@
             max-height: 70vh;
             overflow-y: auto;
             background: {{ '#ffffff' if community.template == 'light' else 'transparent' }};
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
         }
         
         #calendarModal .modal-body {
@@ -4880,7 +4883,7 @@
             <button class="polls-toggle-btn" onclick="togglePollsSidebar()" style="display: none;">
                 <i class="fas fa-poll-h"></i> See active polls
             </button>
-            {% if username == community.creator_username or username == 'admin' %}
+            {% if username == community.creator_username or username == 'admin' or is_community_admin %}
             <button class="edit-community-btn" onclick="showEditCommunityModal()">
                 <i class="fas fa-edit"></i> Edit Community
             </button>
@@ -5150,12 +5153,9 @@
                         </div>
                         <div class="form-group">
                             <label>Vote Settings:</label>
-                            <div class="vote-settings">
-                                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 5px; border: 1px solid #ccc; padding: 10px; background: rgba(255,255,255,0.1);">
-                                    <input type="checkbox" id="singleVoteCheckbox" name="single_vote" checked style="width: 20px !important; height: 20px !important; margin: 0 !important; cursor: pointer !important; opacity: 1 !important; visibility: visible !important; display: block !important; position: static !important; clip: auto !important; overflow: visible !important;">
-                                    <label for="singleVoteCheckbox" style="cursor: pointer; margin: 0; color: white;">Single vote per user</label>
-                                </div>
-                                <small style="margin-left: 24px; color: #9fb0b5;">Uncheck to allow multiple votes per user</small>
+                            <div class="vote-settings" style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
+                                <input type="checkbox" id="singleVoteCheckbox" name="single_vote" checked style="width:16px;height:16px;margin:0;">
+                                <label for="singleVoteCheckbox" style="cursor:pointer; margin:0; color: white; font-size: 14px;">Single vote per user</label>
                             </div>
                         </div>
                         <div class="form-group">
