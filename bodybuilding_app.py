@@ -1371,46 +1371,20 @@ def free_workouts():
 @app.route('/premium_dashboard')
 @login_required
 def premium_dashboard():
-    username = session['username']
+    # Serve React build for Premium Dashboard; React consumes Flask APIs
     try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            c.execute("SELECT subscription FROM users WHERE username=?", (username,))
-            user = c.fetchone()
-            
-            # Get user profile data including profile picture
-            c.execute("""
-                SELECT u.username, u.email, u.subscription, u.age, u.gender, 
-                       u.weight, u.height, u.blood_type, u.muscle_mass, u.bmi,
-                       u.country, u.city, u.industry,
-                       p.display_name, p.bio, p.location, p.website, 
-                       p.instagram, p.twitter, p.profile_picture, p.cover_photo,
-                       p.is_public
-                FROM users u
-                LEFT JOIN user_profiles p ON u.username = p.username
-                WHERE u.username = ?
-            """, (username,))
-            profile = c.fetchone()
-            
-            # Get user's communities
-            c.execute("""
-                SELECT c.id, c.name, c.type
-                FROM communities c
-                JOIN user_communities uc ON c.id = uc.community_id
-                JOIN users u ON uc.user_id = u.rowid
-                WHERE u.username = ?
-                ORDER BY c.name
-            """, (username,))
-            communities = [{'id': row['id'], 'name': row['name'], 'type': row['type']} for row in c.fetchall()]
-            
-        if not user or user['subscription'] != 'premium':
-            logger.warning(f"User {username} attempted to access premium_dashboard without premium subscription")
-            return redirect(url_for('dashboard'))
-        logger.info(f"Rendering premium_dashboard for {username}")
-        return render_template('premium_dashboard.html', name=username, profile=profile, communities=communities)
+        return send_from_directory(os.path.join(os.getcwd(), 'client', 'dist'), 'index.html')
     except Exception as e:
-        logger.error(f"Error in premium_dashboard for {username}: {str(e)}")
+        logger.error(f"Error serving React Premium Dashboard: {str(e)}")
         abort(500)
+
+@app.route('/assets/<path:filename>')
+def react_assets(filename):
+    try:
+        return send_from_directory(os.path.join(os.getcwd(), 'client', 'dist', 'assets'), filename)
+    except Exception as e:
+        logger.error(f"Error serving React asset {filename}: {str(e)}")
+        abort(404)
 
 @app.route('/saved_workouts')
 @login_required
