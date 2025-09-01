@@ -5131,8 +5131,8 @@
                     <button class="poll-tab" onclick="switchPollTab('create')">Create New Poll</button>
                 </div>
                 
-                <div id="activePollsTab" class="poll-tab-content active">
-                    <div id="activePollsList">
+                <div id="activePollsTab" class="poll-tab-content active" style="max-height:60vh; overflow:auto;">
+                    <div id="activePollsList" style="display:flex; flex-direction:column; gap:12px;">
                         <!-- Active polls will be loaded here -->
                     </div>
                 </div>
@@ -5153,9 +5153,12 @@
                         </div>
                         <div class="form-group">
                             <label>Vote Settings:</label>
-                            <div class="vote-settings" style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
-                                <input type="checkbox" id="singleVoteCheckbox" name="single_vote" checked style="width:16px;height:16px;margin:0;">
-                                <label for="singleVoteCheckbox" style="cursor:pointer; margin:0; color: white; font-size: 14px;">Single vote per user</label>
+                            <div class="vote-settings" style="display:flex; align-items:center; gap:12px; margin-bottom:8px;">
+                                <span style="color:#9fb0b5; font-size:13px;">Allow multiple votes?</span>
+                                <label style="display:inline-flex; align-items:center; gap:6px; cursor:pointer;">
+                                    <input type="checkbox" id="singleVoteCheckbox" name="single_vote" checked style="width:16px;height:16px;margin:0;">
+                                    <span style="color:white; font-size:13px;">No (single vote per user)</span>
+                                </label>
                             </div>
                         </div>
                         <div class="form-group">
