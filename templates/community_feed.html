@@ -2415,6 +2415,8 @@
             width: 800px;
             background: {{ '#ffffff' if community.template == 'light' else '#1a2526' }} !important;
         }
+        #pollsModal .modal-content { max-height: 85vh; display: flex; flex-direction: column; }
+        #pollsModal .modal-body { flex: 1 1 auto; overflow-y: auto; }
         
         /* Make calendar modal more compact */
         #calendarModal .polls-modal {
@@ -5153,11 +5155,11 @@
                         </div>
                         <div class="form-group">
                             <label>Vote Settings:</label>
-                            <div class="vote-settings" style="display:flex; align-items:center; gap:12px; margin-bottom:8px;">
-                                <span style="color:#9fb0b5; font-size:13px;">Allow multiple votes?</span>
-                                <button type="button" id="multiVoteToggle" class="sleek-btn small" style="display:inline-flex; align-items:center; gap:6px;">
-                                    <span id="multiVoteMark" style="font-weight:700;"> </span>
-                                    <span id="multiVoteText">No (single vote)</span>
+                            <div class="vote-settings" style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+                                <span style="color:#9fb0b5; font-size:12px;">Allow multiple votes?</span>
+                                <button type="button" id="multiVoteToggle" class="sleek-btn small" style="padding:4px 8px; display:inline-flex; align-items:center; gap:6px; font-size:12px;">
+                                    <span id="multiVoteMark" style="font-weight:700; width:10px; display:inline-block; text-align:center;"> </span>
+                                    <span id="multiVoteText">No</span>
                                 </button>
                                 <input type="checkbox" id="singleVoteCheckbox" name="single_vote" checked style="display:none;">
                             </div>
@@ -5370,20 +5372,17 @@
             // Toggle multiple votes button (updates hidden checkbox and label/X)
             const toggleBtn = document.getElementById('multiVoteToggle');
             if (toggleBtn) {
-                toggleBtn.addEventListener('click', function(){
+                toggleBtn.addEventListener('click', function(e){
+                    e.preventDefault();
                     const cb = document.getElementById('singleVoteCheckbox');
                     const mark = document.getElementById('multiVoteMark');
                     const text = document.getElementById('multiVoteText');
                     if (!cb) return;
-                    // Checkbox true => single vote (No multiple)
-                    cb.checked = !cb.checked; // invert on click
-                    if (cb.checked) {
-                        if (mark) mark.textContent = ' ';
-                        if (text) text.textContent = 'No (single vote)';
-                    } else {
-                        if (mark) mark.textContent = 'X';
-                        if (text) text.textContent = 'Yes (multiple votes)';
-                    }
+                    // Invert: cb.checked=true means single vote (No)
+                    cb.checked = !cb.checked;
+                    const multiple = !cb.checked;
+                    if (mark) mark.textContent = multiple ? 'X' : ' ';
+                    if (text) text.textContent = multiple ? 'Yes' : 'No';
                 });
             }
         }
