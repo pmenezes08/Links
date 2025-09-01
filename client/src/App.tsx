@@ -9,8 +9,10 @@ export default function App() {
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <Routes>
-          <Route path="/" element={<Navigate to="/premium" replace />} />
+          <Route path="/" element={<Navigate to="/premium_dashboard" replace />} />
           <Route path="/premium" element={<PremiumDashboard />} />
+          <Route path="/premium_dashboard" element={<PremiumDashboard />} />
+          <Route path="*" element={<PremiumDashboard />} />
         </Routes>
       </BrowserRouter>
     </QueryClientProvider>

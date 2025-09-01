@@ -1408,6 +1408,16 @@ def react_assets(filename):
             return send_from_directory(assets_dir, filename)
         logger.warning(f"React asset not found: {asset_path}")
         abort(404)
+
+@app.route('/vite.svg')
+def vite_svg():
+    try:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        dist_dir = os.path.join(base_dir, 'client', 'dist')
+        return send_from_directory(dist_dir, 'vite.svg')
+    except Exception as e:
+        logger.error(f"Error serving vite.svg: {str(e)}")
+        abort(404)
     except Exception as e:
         logger.error(f"Error serving React asset {filename}: {str(e)}")
         abort(404)
