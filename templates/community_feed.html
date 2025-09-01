@@ -5158,7 +5158,6 @@
                             <div class="vote-settings" style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
                                 <span style="color:#9fb0b5; font-size:12px;">Allow multiple votes?</span>
                                 <button type="button" id="multiVoteToggle" class="sleek-btn small" style="padding:4px 8px; display:inline-flex; align-items:center; gap:6px; font-size:12px;">
-                                    <span id="multiVoteMark" style="font-weight:700; width:10px; display:inline-block; text-align:center;"> </span>
                                     <span id="multiVoteText">No</span>
                                 </button>
                                 <input type="checkbox" id="singleVoteCheckbox" name="single_vote" checked style="display:none;">
@@ -5369,19 +5368,17 @@
                 });
             });
 
-            // Toggle multiple votes button (updates hidden checkbox and label/X)
+            // Toggle multiple votes button (updates hidden checkbox and label)
             const toggleBtn = document.getElementById('multiVoteToggle');
             if (toggleBtn) {
                 toggleBtn.addEventListener('click', function(e){
                     e.preventDefault();
                     const cb = document.getElementById('singleVoteCheckbox');
-                    const mark = document.getElementById('multiVoteMark');
                     const text = document.getElementById('multiVoteText');
                     if (!cb) return;
                     // Invert: cb.checked=true means single vote (No)
                     cb.checked = !cb.checked;
                     const multiple = !cb.checked;
-                    if (mark) mark.textContent = multiple ? 'X' : ' ';
                     if (text) text.textContent = multiple ? 'Yes' : 'No';
                 });
             }

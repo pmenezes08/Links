@@ -501,6 +501,30 @@ def init_db():
                           FOREIGN KEY (poll_id) REFERENCES polls (id) ON DELETE CASCADE,
                           FOREIGN KEY (option_id) REFERENCES poll_options (id) ON DELETE CASCADE,
                           UNIQUE(poll_id, username))''')
+            # Migrate poll_votes unique constraint to allow multiple votes per user per poll option
+            try:
+                c.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='poll_votes'")
+                row = c.fetchone()
+                if row and row['sql'] and 'UNIQUE(poll_id, username)' in row['sql'] and 'option_id' not in row['sql'].split('UNIQUE')[-1]:
+                    logger.info('Migrating poll_votes unique constraint to (poll_id, username, option_id)')
+                    c.execute('PRAGMA foreign_keys=OFF')
+                    c.execute('''CREATE TABLE IF NOT EXISTS poll_votes_new (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        poll_id INTEGER NOT NULL,
+                        option_id INTEGER NOT NULL,
+                        username TEXT NOT NULL,
+                        voted_at TEXT NOT NULL,
+                        FOREIGN KEY (poll_id) REFERENCES polls (id) ON DELETE CASCADE,
+                        FOREIGN KEY (option_id) REFERENCES poll_options (id) ON DELETE CASCADE,
+                        UNIQUE(poll_id, username, option_id)
+                    )''')
+                    c.execute('INSERT OR IGNORE INTO poll_votes_new (poll_id, option_id, username, voted_at) SELECT poll_id, option_id, username, voted_at FROM poll_votes')
+                    c.execute('DROP TABLE poll_votes')
+                    c.execute('ALTER TABLE poll_votes_new RENAME TO poll_votes')
+                    c.execute('PRAGMA foreign_keys=ON')
+                    logger.info('poll_votes migration completed')
+            except Exception as e:
+                logger.warning(f'poll_votes migration skipped or failed: {e}')
             
             # Create community_issues table
             logger.info("Creating community_issues table...")
