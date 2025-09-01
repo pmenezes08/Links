@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import PremiumDashboard from './pages/PremiumDashboard'
 import Crossfit from './pages/Crossfit'
+import Gym from './pages/Gym'
 
 const queryClient = new QueryClient()
 
@@ -14,6 +15,7 @@ export default function App() {
           <Route path="/premium" element={<PremiumDashboard />} />
           <Route path="/premium_dashboard" element={<PremiumDashboard />} />
           <Route path="/crossfit" element={<Crossfit />} />
+          <Route path="/gym" element={<Gym />} />
           <Route path="*" element={<PremiumDashboard />} />
         </Routes>
       </BrowserRouter>
