@@ -1373,15 +1373,41 @@ def free_workouts():
 def premium_dashboard():
     # Serve React build for Premium Dashboard; React consumes Flask APIs
     try:
-        return send_from_directory(os.path.join(os.getcwd(), 'client', 'dist'), 'index.html')
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        dist_dir = os.path.join(base_dir, 'client', 'dist')
+        index_path = os.path.join(dist_dir, 'index.html')
+        if os.path.exists(index_path):
+            return send_from_directory(dist_dir, 'index.html')
+        logger.warning(f"React build not found at {index_path}. Run: cd client && npm install && npm run build")
+        # Graceful fallback page
+        return (
+            """
+            <!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>Premium Dashboard</title></head>
+            <body style=\"font-family: Helvetica, Arial, sans-serif; background:#0b0f10; color:#fff; display:flex; align-items:center; justify-content:center; height:100vh; margin:0;\">
+              <div style=\"text-align:center; max-width:600px;\">
+                <h2 style=\"margin:0 0 10px\">Premium Dashboard</h2>
+                <p style=\"margin:0 0 16px; color:#9fb0b5\">React build not found on the server.</p>
+                <code style=\"display:inline-block; padding:8px 10px; background:#1a1a1a; border:1px solid #333; border-radius:6px;\">cd client && npm install && npm run build</code>
+              </div>
+            </body></html>
+            """,
+            200,
+            {"Content-Type": "text/html"},
+        )
     except Exception as e:
         logger.error(f"Error serving React Premium Dashboard: {str(e)}")
-        abort(500)
+        return ("Internal Server Error", 500)
 
 @app.route('/assets/<path:filename>')
 def react_assets(filename):
     try:
-        return send_from_directory(os.path.join(os.getcwd(), 'client', 'dist', 'assets'), filename)
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        assets_dir = os.path.join(base_dir, 'client', 'dist', 'assets')
+        asset_path = os.path.join(assets_dir, filename)
+        if os.path.exists(asset_path):
+            return send_from_directory(assets_dir, filename)
+        logger.warning(f"React asset not found: {asset_path}")
+        abort(404)
     except Exception as e:
         logger.error(f"Error serving React asset {filename}: {str(e)}")
         abort(404)
