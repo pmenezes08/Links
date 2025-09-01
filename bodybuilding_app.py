@@ -8815,8 +8815,17 @@ def gym():
 @app.route('/crossfit')
 @login_required
 def crossfit():
-    username = session.get('username')
-    return render_template('crossfit.html', username=username)
+    try:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        dist_dir = os.path.join(base_dir, 'client', 'dist')
+        index_path = os.path.join(dist_dir, 'index.html')
+        if os.path.exists(index_path):
+            return send_from_directory(dist_dir, 'index.html')
+        logger.warning("React build missing for /crossfit; showing fallback")
+        return redirect(url_for('premium_dashboard'))
+    except Exception as e:
+        logger.error(f"Error serving React Crossfit: {str(e)}")
+        abort(500)
 
 @app.route('/cf_add_entry', methods=['POST'])
 @login_required
