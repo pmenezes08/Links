@@ -59,9 +59,12 @@
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>Login</h1>
-        <p>Welcome back, {{ username }}</p>
+    <div class="container" style="max-width:420px; margin:0 auto; padding:24px 16px;">
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+            <img src="{{ url_for('static', filename='logo.png') }}" alt="C.Point" style="width:28px;height:28px; border-radius:6px;">
+            <h1 style="font-size:20px; margin:0;">Login</h1>
+        </div>
+        <p style="margin:0 0 16px 0; color:#9fb0b5;">Welcome back{{ ' ' + username if username else '' }}</p>
         
         {% if error %}
             <div class="error-message">
@@ -69,16 +72,16 @@
             </div>
         {% endif %}
         
-        <form method="POST" action="/login_password">
+        <form method="POST" action="/login_password" style="display:flex; flex-direction:column; gap:12px;">
             <div class="password-input-container">
-                <input type="password" id="password" name="password" placeholder="Enter your password" required autofocus>
-                <button type="button" class="show-password" onclick="togglePassword()">👁</button>
+                <input type="password" id="password" name="password" placeholder="Enter your password" required autofocus style="height:44px;">
+                <button type="button" class="show-password" onclick="togglePassword()" aria-label="Show password">👁</button>
             </div>
-            <button type="submit" class="sleek-btn">Login</button>
+            <button type="submit" class="sleek-btn" style="height:44px;">Login</button>
         </form>
         
-        <div class="login-actions">
-            <button onclick="location.href='/'" class="sleek-btn secondary">Go Back</button>
+        <div class="login-actions" style="margin-top:8px; display:flex; gap:8px;">
+            <button onclick="location.href='/'" class="sleek-btn secondary" style="height:40px; flex:1;">Go Back</button>
         </div>
     </div>
     
