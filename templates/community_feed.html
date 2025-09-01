@@ -3543,17 +3543,17 @@
                 return;
             }
             
+            const isHistorical = containerId === 'historicalPollsList';
             const pollsHTML = polls.map(poll => `
                 <div class="poll-item">
                     <div class="poll-item-header">
                         <div class="poll-item-question">${poll.question}</div>
                         <div class="poll-item-meta">
                             <div class="poll-item-date">${poll.created_at}</div>
-                            ${(poll.created_by === '{{ username }}' || '{{ username }}' === 'admin') ? 
-                                `<button class="close-poll-btn" onclick="closePoll(${poll.id})">
-                                    <i class="fas fa-lock"></i>
-                                </button>` : ''
-                            }
+                            ${(!isHistorical && (poll.created_by === '{{ username }}' || '{{ username }}' === 'admin')) ? 
+                                `<button class=\"close-poll-btn\" onclick=\"closePoll(${poll.id})\"><i class=\"fas fa-lock\"></i></button>` : ''}
+                            ${(isHistorical && ('{{ username }}' === 'admin' || poll.created_by === '{{ username }}')) ?
+                                `<button class=\"close-poll-btn\" onclick=\"deletePoll(${poll.id})\" title=\"Delete poll\"><i class=\"fas fa-trash\"></i></button>` : ''}
                         </div>
                     </div>
                     <div class="poll-item-options">
@@ -5305,6 +5305,18 @@
                     voteOnPoll(pollId, optionId, pollOption);
                 }
             });
+            window.deletePoll = function(pollId){
+                if (!confirm('Delete this poll permanently?')) return;
+                fetch('/delete_poll', { method: 'POST', headers: { 'Content-Type':'application/json' }, body: JSON.stringify({ poll_id: pollId }) })
+                    .then(r=>r.json()).then(d=>{
+                        if (d && d.success){
+                            alert('Poll deleted');
+                            loadHistoricalPolls();
+                        } else {
+                            alert('Error deleting poll: ' + (d && d.error ? d.error : 'Unknown error'));
+                        }
+                    }).catch(()=> alert('Server error deleting poll'));
+            }
             
             // Polls modal form submission
             document.getElementById('pollsModalForm').addEventListener('submit', function(e) {

@@ -5150,6 +5150,43 @@ def get_active_polls():
         logger.error(f"Error getting active polls: {str(e)}")
         return jsonify({'success': False, 'error': str(e)})
 
+@app.route('/delete_poll', methods=['POST'])
+@login_required
+def delete_poll():
+    """Delete a poll permanently (admin or poll creator or community owner)"""
+    username = session['username']
+    data = request.get_json(silent=True) or {}
+    poll_id = data.get('poll_id') or request.form.get('poll_id', type=int)
+    if not poll_id:
+        return jsonify({'success': False, 'error': 'Invalid poll ID'})
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            # Fetch poll and related post/community
+            c.execute("SELECT p.created_by, p.post_id FROM polls p WHERE p.id=?", (poll_id,))
+            pr = c.fetchone()
+            if not pr:
+                return jsonify({'success': False, 'error': 'Poll not found'})
+            created_by = pr['created_by']
+            c.execute("SELECT community_id FROM posts WHERE id=?", (pr['post_id'],))
+            sr = c.fetchone()
+            community_id = sr['community_id'] if sr else None
+            # Permission: admin, poll creator, or community owner
+            allowed = username == 'admin' or username == created_by
+            if community_id and not allowed:
+                c.execute("SELECT creator_username FROM communities WHERE id=?", (community_id,))
+                cr = c.fetchone()
+                if cr and cr['creator_username'] == username:
+                    allowed = True
+            if not allowed:
+                return jsonify({'success': False, 'error': 'Not authorized'})
+            # Delete poll (cascade removes options and votes)
+            c.execute("DELETE FROM polls WHERE id=?", (poll_id,))
+            conn.commit()
+            return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"Error deleting poll: {e}")
+        return jsonify({'success': False, 'error': 'Error deleting poll'})
 @app.route('/remove_poll_option', methods=['POST'])
 @login_required
 def remove_poll_option():
