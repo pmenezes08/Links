@@ -157,17 +157,16 @@ function PostCard({ post, currentUser, isAdmin }: { post: Post, currentUser: str
           <ReactionButton label="❤️" count={post.reactions?.love||0} active={post.user_reaction==='love'} onClick={()=> toggleReaction(post.id, 'love')} />
           <ReactionButton label="👏" count={post.reactions?.clap||0} active={post.user_reaction==='clap'} onClick={()=> toggleReaction(post.id, 'clap')} />
         </div>
-        {post.replies?.length ? (
-          <div className="rounded border border-white/10">
-            {post.replies.map(r => (
-              <div key={r.id} className="px-3 py-2 border-b border-white/10 text-sm">
-                <div className="font-medium">{r.username}</div>
-                <div className="text-[#dfe6e9] whitespace-pre-wrap">{r.content}</div>
-                <div className="text-[11px] text-[#9fb0b5]">{r.timestamp}</div>
-              </div>
-            ))}
-          </div>
-        ) : null}
+        <div className="rounded border border-white/10">
+          {post.replies?.map(r => (
+            <div key={r.id} className="px-3 py-2 border-b border-white/10 text-sm">
+              <div className="font-medium">{r.username}</div>
+              <div className="text-[#dfe6e9] whitespace-pre-wrap">{r.content}</div>
+              <div className="text-[11px] text-[#9fb0b5]">{r.timestamp}</div>
+            </div>
+          ))}
+          <ReplyComposer postId={post.id} />
+        </div>
       </div>
     </div>
   )
@@ -227,6 +226,28 @@ function Composer({ communityId, onPosted }: { communityId: string, onPosted: ()
         <input type="file" accept="image/*" onChange={(e)=> setImageFile(e.target.files?.[0]||null)} />
         <button className="ml-auto px-3 py-2 rounded bg-teal-700/20 text-teal-300 border border-teal-500/40" onClick={submit}>Post</button>
       </div>
+    </div>
+  )
+}
+
+function ReplyComposer({ postId }: { postId: number }){
+  const [content, setContent] = useState('')
+  const [imageFile, setImageFile] = useState<File | null>(null)
+  async function submit(){
+    if (!content && !imageFile) return
+    const fd = new FormData()
+    fd.append('post_id', String(postId))
+    fd.append('content', content)
+    if (imageFile) fd.append('image', imageFile)
+    await fetch('/post_reply', { method: 'POST', credentials: 'include', body: fd })
+    setContent(''); setImageFile(null)
+    location.reload()
+  }
+  return (
+    <div className="p-2 flex items-center gap-2">
+      <input className="flex-1 px-3 py-2 rounded bg-[#0b0f10] border border-[#333] text-sm" placeholder="Write a reply…" value={content} onChange={(e)=> setContent(e.target.value)} />
+      <input type="file" accept="image/*" onChange={(e)=> setImageFile(e.target.files?.[0]||null)} />
+      <button className="px-2.5 py-1.5 rounded border border-[#4db6ac] text-[#4db6ac]" onClick={submit}>Reply</button>
     </div>
   )
 }
