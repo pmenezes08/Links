@@ -30,6 +30,7 @@ export default function PostDetail(){
   const [error, setError] = useState<string| null>(null)
   const [content, setContent] = useState('')
   const [file, setFile] = useState<File|null>(null)
+  const [composerActive, setComposerActive] = useState(false)
 
   useEffect(() => {
     let mounted = true
@@ -137,13 +138,26 @@ export default function PostDetail(){
 
       {/* Fixed-bottom reply composer */}
       <div className="fixed left-0 right-0 bottom-0 z-50 bg-black/85 border-t border-white/10 backdrop-blur">
-        <div className="max-w-2xl mx-auto px-3 py-2 flex items-center gap-2">
-          <textarea className="flex-1 resize-none max-h-40 min-h-[44px] px-3 py-2 rounded bg-black border border-[#4db6ac] text-sm focus:outline-none focus:ring-1 focus:ring-[#4db6ac]" placeholder="Write a reply…" value={content} onChange={(e)=> setContent(e.target.value)} />
-          <label className="px-2.5 py-1.5 rounded-full border border-white/10 text-xs text-[#9fb0b5] hover:border-[#2a3f41] cursor-pointer">
-            <i className="fa-regular fa-image" style={{ color: '#4db6ac' }} />
-            <input type="file" accept="image/*" onChange={(e)=> setFile(e.target.files?.[0]||null)} style={{ display: 'none' }} />
-          </label>
-          <button className="px-3 py-2 rounded-full bg-[#4db6ac] text-white border border-[#4db6ac] hover:brightness-110" onClick={submitReply}>Reply</button>
+        <div className="px-3 py-2 flex items-center gap-2">
+          <textarea
+            className="flex-1 resize-none max-h-40 min-h-[36px] px-2.5 py-2 rounded bg-black border border-[#4db6ac] text-sm focus:outline-none focus:ring-1 focus:ring-[#4db6ac]"
+            placeholder="Write a reply…"
+            value={content}
+            onChange={(e)=> setContent(e.target.value)}
+            onFocus={()=> setComposerActive(true)}
+            onBlur={()=> { if (!content && !file) setComposerActive(false) }}
+          />
+          {(composerActive || !!content || !!file) ? (
+            <>
+              <label className="px-2.5 py-1.5 rounded-full border border-white/10 text-xs text-[#9fb0b5] hover:border-[#2a3f41] cursor-pointer">
+                <i className="fa-regular fa-image" style={{ color: '#4db6ac' }} />
+                <input type="file" accept="image/*" onChange={(e)=> setFile(e.target.files?.[0]||null)} style={{ display: 'none' }} />
+              </label>
+              <button className="px-2.5 py-2 rounded-full bg-[#4db6ac] text-white border border-[#4db6ac] hover:brightness-110" onClick={submitReply} aria-label="Send reply">
+                <i className="fa-solid fa-paper-plane" />
+              </button>
+            </>
+          ) : null}
         </div>
       </div>
     </div>
