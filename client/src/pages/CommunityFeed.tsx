@@ -228,13 +228,20 @@ export default function CommunityFeed() {
           </div>
         ) : null}
 
-        {/* Action bar burger + inline */}
+        {/* Action bar: burger + swipable horizontal nav */}
         <div className="mb-3 flex items-center gap-2">
           <button className="px-3 py-2 rounded-full border border-white/10 hover:border-[#2a3f41]" onClick={()=> setActionsOpen(true)} aria-label="Community menu"><i className="fa-solid fa-bars" style={{ color: '#4db6ac' }} /></button>
-          <div className="flex flex-wrap gap-2">
-            <ActionPill icon="fa-users" label="Members" onClick={openMembers} />
-            <ActionPill icon="fa-bullhorn" label="Announcements" onClick={openAnnouncements} />
-            <ActionPill icon="fa-chart-pie" label="Polls" onClick={()=> window.location.href = `/community_feed/${community_id}`} />
+          <div className="flex-1 overflow-x-auto">
+            <div className="flex gap-2 pr-3">
+              <ActionPill icon="fa-users" label="Members" onClick={openMembers} />
+              <ActionPill icon="fa-bullhorn" label="Announcements" onClick={openAnnouncements} />
+              <ActionPill icon="fa-chart-pie" label="Polls" onClick={()=> window.location.href = `/community_feed/${community_id}`} />
+              <ActionPill icon="fa-link" label="Links" onClick={()=> window.location.href = `/community/${community_id}/resources`} />
+              <ActionPill icon="fa-bell" label="Notifications" onClick={()=> window.location.href = `/notifications`} />
+              <ActionPill icon="fa-flag" label="Issues" onClick={()=> {}} />
+              <ActionPill icon="fa-calendar" label="Calendar" onClick={()=> window.location.href = `/community/${community_id}/calendar`} />
+              <ActionPill icon="fa-ellipsis" label="More" onClick={()=> {}} />
+            </div>
           </div>
         </div>
 
@@ -316,7 +323,7 @@ export default function CommunityFeed() {
 
 function ActionPill({ icon, label, onClick }:{ icon: string, label: string, onClick: ()=>void }){
   return (
-    <button className="px-3 py-1.5 rounded-full border border-white/10 text-xs text-[#cfd8dc] hover:border-[#2a3f41]" onClick={onClick}>
+    <button className="shrink-0 px-3 py-1.5 rounded-full border border-white/10 text-xs text-[#cfd8dc] hover:border-[#2a3f41]" onClick={onClick}>
       <i className={`fa-solid ${icon} mr-1`} style={{ color: '#4db6ac' }} />{label}
     </button>
   )
