@@ -215,6 +215,17 @@ export default function CommunityFeed() {
         <div className="fixed inset-0 z-[110] bg-black/80 backdrop-blur" onClick={(e)=> e.currentTarget===e.target && setPostModal({ open:false, post:null })}>
           <div className="w-[92%] max-w-[700px] mx-auto mt-10 rounded-2xl border border-white/10 bg-black p-3 max-h-[80vh] overflow-y-auto">
             <PostCard key={`modal-${postModal.post.id}`} post={postModal.post} currentUser={data.username} isAdmin={!!data.is_community_admin} onOpen={()=>{}} />
+            {postModal.post.replies?.length ? (
+              <div className="mt-2 rounded-xl border border-white/10">
+                {postModal.post.replies.map(r => (
+                  <div key={r.id} className="px-3 py-2 border-b border-white/10 text-sm">
+                    <div className="font-medium">{r.username}</div>
+                    <div className="text-[#dfe6e9] whitespace-pre-wrap">{r.content}</div>
+                    <div className="text-[11px] text-[#9fb0b5]">{r.timestamp}</div>
+                  </div>
+                ))}
+              </div>
+            ) : null}
             <div className="mt-2 rounded-xl border border-white/10 p-2">
               <ReplyComposer postId={postModal.post.id} />
             </div>
@@ -242,16 +253,23 @@ function AdsCard({ communityId: _communityId, ad }:{ communityId: string, ad: an
     if (ad.link_url) window.open(ad.link_url, '_blank')
   }
   return (
-    <div className="rounded-xl border border-white/10 bg-white/[0.04] p-3 flex items-center gap-3 shadow-sm shadow-black/20">
-      <div className="w-12 h-12 rounded bg-white/10 overflow-hidden flex items-center justify-center">
-        {ad.image_url ? (<img src={ad.image_url} alt={ad.title} className="w-full h-full object-cover" />) : (<i className="fa-solid fa-store" />)}
+    <div className="rounded-xl border border-white/10 bg-white/[0.04] p-3 shadow-sm shadow-black/20">
+      <div className="flex items-center gap-3">
+        <div className="w-12 h-12 rounded bg-white/10 overflow-hidden flex items-center justify-center">
+          {ad.image_url ? (<img src={ad.image_url} alt={ad.title} className="w-full h-full object-cover" />) : (<i className="fa-solid fa-store" />)}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="text-xs text-[#9fb0b5]">Sponsored • University Store</div>
+          <div className="font-medium truncate">{ad.title || 'Store'}</div>
+          <div className="text-sm text-[#9fb0b5] truncate">{ad.description || 'Explore official merch and accessories.'}</div>
+        </div>
+        <button className="px-3 py-2 rounded-full bg-[#4db6ac] text-white border border-[#4db6ac] hover:brightness-110" onClick={onClick}>Shop</button>
       </div>
-      <div className="flex-1 min-w-0">
-        <div className="text-xs text-[#9fb0b5]">Sponsored • University Store</div>
-        <div className="font-medium truncate">{ad.title || 'Store'}</div>
-        <div className="text-sm text-[#9fb0b5] truncate">{ad.description || 'Explore official merch and accessories.'}</div>
-      </div>
-      <button className="px-3 py-2 rounded-full bg-[#4db6ac] text-white border border-[#4db6ac] hover:brightness-110" onClick={onClick}>Shop</button>
+      {ad.image_url ? (
+        <div className="mt-2 rounded-lg overflow-hidden border border-white/10">
+          <img src={ad.image_url} alt={ad.title} className="w-full h-auto" onClick={onClick} style={{ cursor: 'pointer' }} />
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -363,7 +381,7 @@ function Composer({ communityId, onPosted }: { communityId: string, onPosted: ()
   }
   return (
     <div className="rounded-xl border border-white/10 bg-black p-3 mb-3">
-      <textarea className="w-full resize-y min-h-[60px] p-2 rounded bg-black border border-[#333] text-sm"
+      <textarea className="w-full resize-none min-h-[60px] p-2 rounded bg-black border border-[#4db6ac] text-sm focus:outline-none focus:ring-1 focus:ring-[#4db6ac]"
         placeholder="Write something…" value={content} onChange={(e)=> setContent(e.target.value)} />
       <div className="mt-2 flex items-center gap-2">
         <input ref={fileRef} type="file" accept="image/*" onChange={(e)=> setImageFile(e.target.files?.[0]||null)} style={{ display: 'none' }} />
@@ -392,7 +410,7 @@ function ReplyComposer({ postId }: { postId: number }){
   }
   return (
     <div className="p-2 space-y-2">
-      <textarea className="w-full resize-y min-h-[44px] px-3 py-2 rounded bg-black border border-[#333] text-sm" placeholder="Write a reply…" value={content} onChange={(e)=> setContent(e.target.value)} />
+      <textarea className="w-full resize-none min-h-[44px] px-3 py-2 rounded bg-black border border-[#4db6ac] text-sm focus:outline-none focus:ring-1 focus:ring-[#4db6ac]" placeholder="Write a reply…" value={content} onChange={(e)=> setContent(e.target.value)} />
       <div className="flex items-center gap-2">
         <input ref={fileRef} type="file" accept="image/*" onChange={(e)=> setImageFile(e.target.files?.[0]||null)} style={{ display: 'none' }} />
         <button className="px-2.5 py-1.5 rounded-full border border-white/10 text-xs text-[#9fb0b5] hover:border-[#2a3f41]" onClick={()=> fileRef.current?.click()} aria-label="Add image">

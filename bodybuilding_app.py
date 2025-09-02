@@ -8539,6 +8539,13 @@ def leave_community():
 def community_feed(community_id):
     """Community-specific social feed"""
     username = session.get('username')
+    # Mobile users -> React version
+    try:
+        ua = request.headers.get('User-Agent', '')
+        if any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad']):
+            return redirect(url_for('community_feed_react', community_id=community_id))
+    except Exception:
+        pass
     
     try:
         with get_db_connection() as conn:
