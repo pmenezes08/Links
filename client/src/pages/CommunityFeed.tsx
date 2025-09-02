@@ -12,10 +12,13 @@ export default function CommunityFeed() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string| null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
+  const [actionsOpen, setActionsOpen] = useState(false)
   const [showMembers, setShowMembers] = useState(false)
   const [members, setMembers] = useState<Array<{username:string, profile_picture?:string|null}>>([])
   const [showAnnouncements, setShowAnnouncements] = useState(false)
   const [announcements, setAnnouncements] = useState<Array<{id:number, content:string, created_by:string, created_at:string}>>([])
+  const [ad, setAd] = useState<any>(null)
+  const [postModal, setPostModal] = useState<{open: boolean, post: Post|null}>({ open: false, post: null })
 
   useEffect(() => {
     // Inject legacy css to match compact desktop/brand styles
@@ -35,6 +38,24 @@ export default function CommunityFeed() {
       .catch(() => isMounted && setError('Error loading feed'))
       .finally(() => isMounted && setLoading(false))
     return () => { isMounted = false }
+  }, [community_id])
+
+  useEffect(() => {
+    // Pull ads from backend ads section for the community
+    async function loadAds(){
+      try{
+        const r = await fetch(`/get_university_ads?community_id=${community_id}`, { credentials: 'include' })
+        const j = await r.json()
+        if (j?.success && j.ads?.length){
+          setAd(j.ads[0])
+        } else {
+          setAd(null)
+        }
+      }catch{
+        setAd(null)
+      }
+    }
+    loadAds()
   }, [community_id])
 
   async function openMembers(){
@@ -85,16 +106,17 @@ export default function CommunityFeed() {
         <div className="font-semibold truncate tracking-[-0.01em]">{data.community?.name || 'Community'}</div>
       </div>
 
-      {/* Mobile drawer menu (same links structure as desktop) */}
+      {/* Full-screen burger menu */}
       {menuOpen && (
-        <div className="fixed top-14 left-0 right-0 bg-[#1a1a1a] border-t border-[#333] md:hidden z-30">
-          <nav className="flex flex-col">
-            <a className="px-5 py-3 border-b border-[#222]" href="/dashboard">Dashboard</a>
-            <a className="px-5 py-3 border-b border-[#222]" href="/profile">Profile</a>
-            <a className="px-5 py-3 border-b border-[#222]" href="/user_chat">Messages</a>
-            <a className="px-5 py-3 border-b border-[#222]" href="/communities">Your Communities</a>
-            <a className="px-5 py-3" href="/your_sports">Your Sports</a>
-          </nav>
+        <div className="fixed inset-0 z-[90] bg-black/90 backdrop-blur" onClick={(e)=> e.currentTarget===e.target && setMenuOpen(false)}>
+          <div className="max-w-sm mx-auto mt-16 p-4 space-y-2">
+            <a className="block px-4 py-3 rounded-xl border border-white/10 hover:border-[#2a3f41]" href="/dashboard">Dashboard</a>
+            <a className="block px-4 py-3 rounded-xl border border-white/10 hover:border-[#2a3f41]" href="/profile">Profile</a>
+            <a className="block px-4 py-3 rounded-xl border border-white/10 hover:border-[#2a3f41]" href="/user_chat">Messages</a>
+            <a className="block px-4 py-3 rounded-xl border border-white/10 hover:border-[#2a3f41]" href="/communities">Your Communities</a>
+            <a className="block px-4 py-3 rounded-xl border border-white/10 hover:border-[#2a3f41]" href="/your_sports">Your Sports</a>
+            <button className="mt-3 w-full px-4 py-3 rounded-full border border-white/10" onClick={()=> setMenuOpen(false)}>Close</button>
+          </div>
         </div>
       )}
 
@@ -107,16 +129,14 @@ export default function CommunityFeed() {
           </div>
         ) : null}
 
-        {/* Action bar (compact pills) */}
-        <div className="mb-3 flex flex-wrap gap-2">
-          <ActionPill icon="fa-users" label="Members" onClick={openMembers} />
-          <ActionPill icon="fa-bullhorn" label="Announcements" onClick={openAnnouncements} />
-          <ActionPill icon="fa-chart-pie" label="Polls" onClick={()=> window.location.href = `/community_feed/${community_id}`} />
-          <ActionPill icon="fa-link" label="Links" onClick={()=> window.location.href = `/community/${community_id}/resources`} />
-          <ActionPill icon="fa-bell" label="Notifications" onClick={()=> window.location.href = `/notifications`} />
-          <ActionPill icon="fa-flag" label="Issues" onClick={()=> {}} />
-          <ActionPill icon="fa-calendar" label="Calendar" onClick={()=> window.location.href = `/community/${community_id}/calendar`} />
-          <ActionPill icon="fa-ellipsis" label="More" onClick={()=> {}} />
+        {/* Action bar burger + inline */}
+        <div className="mb-3 flex items-center gap-2">
+          <button className="px-3 py-2 rounded-full border border-white/10 hover:border-[#2a3f41]" onClick={()=> setActionsOpen(true)} aria-label="Community menu"><i className="fa-solid fa-bars" style={{ color: '#4db6ac' }} /></button>
+          <div className="flex flex-wrap gap-2">
+            <ActionPill icon="fa-users" label="Members" onClick={openMembers} />
+            <ActionPill icon="fa-bullhorn" label="Announcements" onClick={openAnnouncements} />
+            <ActionPill icon="fa-chart-pie" label="Polls" onClick={()=> window.location.href = `/community_feed/${community_id}`} />
+          </div>
         </div>
 
         {/* Composer */}
@@ -124,9 +144,9 @@ export default function CommunityFeed() {
 
         <div className="space-y-3">
           {timeline.map((item, i) => item.type === 'ad' ? (
-            <UniversityStoreAd key={`ad-${i}`} community={data.community} />
+            <AdsCard key={`ad-${i}`} communityId={String(community_id)} ad={ad} />
           ) : (
-            <PostCard key={item.post!.id} post={item.post!} currentUser={data.username} isAdmin={!!data.is_community_admin} />
+            <PostCard key={item.post!.id} post={item.post!} currentUser={data.username} isAdmin={!!data.is_community_admin} onOpen={() => setPostModal({ open: true, post: item.post! })} />
           ))}
         </div>
       </div>
@@ -172,6 +192,35 @@ export default function CommunityFeed() {
           </div>
         </div>
       )}
+
+      {/* Actions full-screen overlay */}
+      {actionsOpen && (
+        <div className="fixed inset-0 z-[95] bg-black/90 backdrop-blur" onClick={(e)=> e.currentTarget===e.target && setActionsOpen(false)}>
+          <div className="max-w-sm mx-auto mt-16 p-4 grid grid-cols-2 gap-2">
+            <ActionPill icon="fa-users" label="Members" onClick={openMembers} />
+            <ActionPill icon="fa-bullhorn" label="Announcements" onClick={openAnnouncements} />
+            <ActionPill icon="fa-chart-pie" label="Polls" onClick={()=> window.location.href = `/community_feed/${community_id}`} />
+            <ActionPill icon="fa-link" label="Links" onClick={()=> window.location.href = `/community/${community_id}/resources`} />
+            <ActionPill icon="fa-bell" label="Notifications" onClick={()=> window.location.href = `/notifications`} />
+            <ActionPill icon="fa-flag" label="Issues" onClick={()=> {}} />
+            <ActionPill icon="fa-calendar" label="Calendar" onClick={()=> window.location.href = `/community/${community_id}/calendar`} />
+            <ActionPill icon="fa-ellipsis" label="More" onClick={()=> {}} />
+            <button className="col-span-2 mt-2 px-4 py-3 rounded-full border border-white/10" onClick={()=> setActionsOpen(false)}>Close</button>
+          </div>
+        </div>
+      )}
+
+      {/* Post detail modal with replies */}
+      {postModal.open && postModal.post && (
+        <div className="fixed inset-0 z-[110] bg-black/80 backdrop-blur" onClick={(e)=> e.currentTarget===e.target && setPostModal({ open:false, post:null })}>
+          <div className="w-[92%] max-w-[700px] mx-auto mt-10 rounded-2xl border border-white/10 bg-black p-3 max-h-[80vh] overflow-y-auto">
+            <PostCard key={`modal-${postModal.post.id}`} post={postModal.post} currentUser={data.username} isAdmin={!!data.is_community_admin} onOpen={()=>{}} />
+            <div className="mt-2 rounded-xl border border-white/10 p-2">
+              <ReplyComposer postId={postModal.post.id} />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -184,19 +233,25 @@ function ActionPill({ icon, label, onClick }:{ icon: string, label: string, onCl
   )
 }
 
-function UniversityStoreAd({ community }: { community: any }) {
-  const isUni = (community?.type||'').toLowerCase() === 'university'
+function AdsCard({ communityId: _communityId, ad }:{ communityId: string, ad: any }){
+  if (!ad) return null
+  const onClick = async () => {
+    try{
+      await fetch('/track_ad_click', { method: 'POST', credentials: 'include', headers: { 'Content-Type':'application/json' }, body: JSON.stringify({ ad_id: ad.id }) })
+    }catch{}
+    if (ad.link_url) window.open(ad.link_url, '_blank')
+  }
   return (
     <div className="rounded-xl border border-white/10 bg-white/[0.04] p-3 flex items-center gap-3 shadow-sm shadow-black/20">
-      <div className="w-12 h-12 rounded bg-white/10 flex items-center justify-center">
-        <i className="fa-solid fa-graduation-cap" />
+      <div className="w-12 h-12 rounded bg-white/10 overflow-hidden flex items-center justify-center">
+        {ad.image_url ? (<img src={ad.image_url} alt={ad.title} className="w-full h-full object-cover" />) : (<i className="fa-solid fa-store" />)}
       </div>
       <div className="flex-1 min-w-0">
         <div className="text-xs text-[#9fb0b5]">Sponsored • University Store</div>
-        <div className="font-medium truncate">Official {community?.name || 'University'} Merch</div>
-        <div className="text-sm text-[#9fb0b5] truncate">Hoodies, tees, and accessories. Show your colors.</div>
+        <div className="font-medium truncate">{ad.title || 'Store'}</div>
+        <div className="text-sm text-[#9fb0b5] truncate">{ad.description || 'Explore official merch and accessories.'}</div>
       </div>
-      <button className="px-3 py-2 rounded-full bg-[#4db6ac] text-white border border-[#4db6ac] hover:brightness-110" onClick={() => window.open(isUni ? 'https://store.university.example' : 'https://store.c-point.co', '_blank')}>Shop</button>
+      <button className="px-3 py-2 rounded-full bg-[#4db6ac] text-white border border-[#4db6ac] hover:brightness-110" onClick={onClick}>Shop</button>
     </div>
   )
 }
@@ -207,7 +262,7 @@ async function toggleReaction(postId: number, reaction: string){
   location.reload()
 }
 
-function PostCard({ post, currentUser, isAdmin }: { post: Post, currentUser: string, isAdmin: boolean }) {
+function PostCard({ post, currentUser, isAdmin, onOpen }: { post: Post, currentUser: string, isAdmin: boolean, onOpen: ()=>void }) {
   const cardRef = useRef<HTMLDivElement|null>(null)
   useEffect(() => {
     const el = cardRef.current
@@ -225,14 +280,14 @@ function PostCard({ post, currentUser, isAdmin }: { post: Post, currentUser: str
     return () => { el.removeEventListener('mouseenter', onEnter); el.removeEventListener('mouseleave', onLeave) }
   }, [])
   return (
-    <div ref={cardRef} className="rounded-2xl border border-white/10 bg-white/[0.035] shadow-sm shadow-black/20 transition-[box-shadow,border]">
+    <div ref={cardRef} className="rounded-2xl border border-white/10 bg-white/[0.035] shadow-sm shadow-black/20 transition-[box-shadow,border]" onClick={onOpen}>
       <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2">
         <div className="w-8 h-8 rounded-full bg-white/10" />
         <div className="font-medium tracking-[-0.01em]">{post.username}</div>
         <div className="text-xs text-[#9fb0b5] ml-auto tabular-nums">{post.timestamp}</div>
         {(post.username === currentUser || isAdmin) && (
           <button className="ml-2 px-2 py-1 rounded-full border border-white/10 hover:border-[#2a3f41]" title="Delete"
-            onClick={async()=> { const ok = confirm('Delete this post?'); if(!ok) return; const fd = new FormData(); fd.append('post_id', String(post.id)); await fetch('/delete_post', { method:'POST', credentials:'include', body: fd }); location.reload() }}>
+            onClick={async(e)=> { e.stopPropagation(); const ok = confirm('Delete this post?'); if(!ok) return; const fd = new FormData(); fd.append('post_id', String(post.id)); await fetch('/delete_post', { method:'POST', credentials:'include', body: fd }); location.reload() }}>
             <i className="fa-regular fa-trash-can" style={{ color: '#ef5350' }} />
           </button>
         )}
@@ -243,20 +298,10 @@ function PostCard({ post, currentUser, isAdmin }: { post: Post, currentUser: str
           <img src={post.image_path.startsWith('/uploads') || post.image_path.startsWith('/static') ? post.image_path : `/uploads/${post.image_path}`} alt="" className="max-h-[360px] rounded border border-white/10" />
         ) : null}
         {post.poll ? <PollBlock poll={post.poll} postId={post.id} /> : null}
-        <div className="flex items-center gap-2 text-xs">
+        <div className="flex items-center gap-2 text-xs" onClick={(e)=> e.stopPropagation()}>
           <ReactionButton label="👍" count={post.reactions?.like||0} active={post.user_reaction==='like'} onClick={()=> toggleReaction(post.id, 'like')} />
           <ReactionButton label="❤️" count={post.reactions?.love||0} active={post.user_reaction==='love'} onClick={()=> toggleReaction(post.id, 'love')} />
           <ReactionButton label="👏" count={post.reactions?.clap||0} active={post.user_reaction==='clap'} onClick={()=> toggleReaction(post.id, 'clap')} />
-        </div>
-        <div className="rounded border border-white/10">
-          {post.replies?.map(r => (
-            <div key={r.id} className="px-3 py-2 border-b border-white/10 text-sm">
-              <div className="font-medium">{r.username}</div>
-              <div className="text-[#dfe6e9] whitespace-pre-wrap">{r.content}</div>
-              <div className="text-[11px] text-[#9fb0b5]">{r.timestamp}</div>
-            </div>
-          ))}
-          <ReplyComposer postId={post.id} />
         </div>
       </div>
     </div>
