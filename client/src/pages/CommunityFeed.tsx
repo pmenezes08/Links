@@ -422,10 +422,10 @@ function PostCard({ post, currentUser, isAdmin, onOpen, onToggleReaction }: { po
         <div className="w-8 h-8 rounded-full bg-white/10" />
         <div className="font-medium tracking-[-0.01em]">{post.username}</div>
         <div className="text-xs text-[#9fb0b5] ml-auto tabular-nums">{formatTimestamp(post.timestamp)}</div>
-        {(post.username === currentUser || isAdmin) && (
-          <button className="ml-2 px-2 py-1 rounded-full border border-white/10 hover:border-[#2a3f41]" title="Delete"
+        {(post.username === currentUser || isAdmin || currentUser === 'admin') && (
+          <button className="ml-2 px-2 py-1 rounded-full text-[#6c757d] hover:text-[#4db6ac]" title="Delete"
             onClick={async(e)=> { e.stopPropagation(); const ok = confirm('Delete this post?'); if(!ok) return; const fd = new FormData(); fd.append('post_id', String(post.id)); await fetch('/delete_post', { method:'POST', credentials:'include', body: fd }); location.reload() }}>
-            <i className="fa-regular fa-trash-can" style={{ color: '#ef5350' }} />
+            <i className="fa-regular fa-trash-can" style={{ color: 'inherit' }} />
           </button>
         )}
       </div>
