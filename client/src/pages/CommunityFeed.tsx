@@ -317,9 +317,9 @@ function PostCard({ post, currentUser, isAdmin, onOpen }: { post: Post, currentU
         ) : null}
         {post.poll ? <PollBlock poll={post.poll} postId={post.id} /> : null}
         <div className="flex items-center gap-2 text-xs" onClick={(e)=> e.stopPropagation()}>
-          <ReactionButton label="👍" count={post.reactions?.like||0} active={post.user_reaction==='like'} onClick={()=> toggleReaction(post.id, 'like')} />
-          <ReactionButton label="❤️" count={post.reactions?.love||0} active={post.user_reaction==='love'} onClick={()=> toggleReaction(post.id, 'love')} />
-          <ReactionButton label="👏" count={post.reactions?.clap||0} active={post.user_reaction==='clap'} onClick={()=> toggleReaction(post.id, 'clap')} />
+          <ReactionFA icon="fa-regular fa-thumbs-up" count={post.reactions?.like||0} active={post.user_reaction==='like'} onClick={()=> toggleReaction(post.id, 'like')} />
+          <ReactionFA icon="fa-regular fa-heart" count={post.reactions?.love||0} active={post.user_reaction==='love'} onClick={()=> toggleReaction(post.id, 'love')} />
+          <ReactionFA icon="fa-solid fa-hands-clapping" count={post.reactions?.clap||0} active={post.user_reaction==='clap'} onClick={()=> toggleReaction(post.id, 'clap')} />
           <button className="ml-auto px-3 py-1 rounded-full border border-white/10 hover:border-[#2a3f41] text-[#9fb0b5]"
             onClick={(e)=> { e.stopPropagation(); onOpen() }}>
             <span className="mr-1" style={{ color: '#4db6ac' }}>💬</span>{post.replies?.length || 0}
@@ -330,18 +330,19 @@ function PostCard({ post, currentUser, isAdmin, onOpen }: { post: Post, currentU
   )
 }
 
-function ReactionButton({ label, count, active, onClick }:{ label: string, count: number, active: boolean, onClick: ()=>void }){
-  // Match HTML: compact pill, default subtle border/text; active = turquoise bg + white text
+function ReactionFA({ icon, count, active, onClick }:{ icon: string, count: number, active: boolean, onClick: ()=>void }){
+  // Match HTML colors: neutral subtle border/text; active = turquoise bg + white text
   const baseStyle: React.CSSProperties = active
     ? { backgroundColor: '#4db6ac', color: '#ffffff', borderColor: '#4db6ac' }
-    : { backgroundColor: 'transparent', color: '#cfd8dc', borderColor: 'rgba(255,255,255,0.1)' }
+    : { backgroundColor: '#00000000', color: '#6c757d', borderColor: '#dee2e6' }
   return (
     <button
-      className="px-3 py-1 rounded-full border transition-colors hover:border-[#4db6ac]"
+      className="reaction-btn px-3 py-1 rounded-full border transition-colors hover:border-[#4db6ac] hover:text-[#4db6ac]"
       style={baseStyle}
       onClick={onClick}
     >
-      <span className="mr-1">{label}</span>{count}
+      <i className={icon} style={{ color: 'inherit' }}></i>
+      <span className="ml-1">{count}</span>
     </button>
   )
 }
