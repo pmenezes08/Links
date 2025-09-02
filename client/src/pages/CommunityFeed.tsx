@@ -6,6 +6,39 @@ type Poll = { id: number; question: string; is_active: number; options: PollOpti
 type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null }
 type Post = { id: number; username: string; content: string; image_path?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; poll?: Poll|null; replies: Reply[] }
 
+function formatTimestamp(input: string): string {
+  // Try robust parsing for common formats: ISO, 'YYYY-MM-DD HH:MM:SS'
+  let date = new Date(input)
+  if (isNaN(date.getTime())){
+    const normalized = input.replace(' ', 'T')
+    const tryDate = new Date(normalized)
+    if (!isNaN(tryDate.getTime())) date = tryDate
+  }
+  if (isNaN(date.getTime())) return input
+  const now = new Date()
+  let diffMs = now.getTime() - date.getTime()
+  if (diffMs < 0) diffMs = 0
+  const minuteMs = 60 * 1000
+  const hourMs = 60 * minuteMs
+  const dayMs = 24 * hourMs
+  if (diffMs < hourMs){
+    const mins = Math.floor(diffMs / minuteMs)
+    return `${mins}m`
+  }
+  if (diffMs < dayMs){
+    const hours = Math.floor(diffMs / hourMs)
+    return `${hours}h`
+  }
+  const days = Math.floor(diffMs / dayMs)
+  if (days < 10){
+    return `${days}d`
+  }
+  const mm = String(date.getMonth() + 1).padStart(2, '0')
+  const dd = String(date.getDate()).padStart(2, '0')
+  const yy = String(date.getFullYear() % 100).padStart(2, '0')
+  return `${mm}/${dd}/${yy}`
+}
+
 export default function CommunityFeed() {
   const { community_id } = useParams()
   const [data, setData] = useState<any>(null)
@@ -301,7 +334,7 @@ function PostCard({ post, currentUser, isAdmin, onOpen, onToggleReaction }: { po
       <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2">
         <div className="w-8 h-8 rounded-full bg-white/10" />
         <div className="font-medium tracking-[-0.01em]">{post.username}</div>
-        <div className="text-xs text-[#9fb0b5] ml-auto tabular-nums">{post.timestamp}</div>
+        <div className="text-xs text-[#9fb0b5] ml-auto tabular-nums">{formatTimestamp(post.timestamp)}</div>
         {(post.username === currentUser || isAdmin) && (
           <button className="ml-2 px-2 py-1 rounded-full border border-white/10 hover:border-[#2a3f41]" title="Delete"
             onClick={async(e)=> { e.stopPropagation(); const ok = confirm('Delete this post?'); if(!ok) return; const fd = new FormData(); fd.append('post_id', String(post.id)); await fetch('/delete_post', { method:'POST', credentials:'include', body: fd }); location.reload() }}>
