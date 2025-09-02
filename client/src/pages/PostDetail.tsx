@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
-type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null }
+type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null, parent_reply_id?: number|null, children?: Reply[] }
 type Post = { id: number; username: string; content: string; image_path?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; replies: Reply[] }
 
 function formatTimestamp(input: string): string {
@@ -68,22 +68,45 @@ export default function PostDetail(){
     if (j?.success){
       setPost(p => {
         if (!p) return p
-        const replies = p.replies.map(rep => rep.id===replyId ? ({ ...rep, reactions: { ...rep.reactions, ...j.counts }, user_reaction: j.user_reaction }) : rep)
-        return { ...p, replies }
+        function update(list: Reply[]): Reply[] {
+          return list.map(rep => {
+            if (rep.id === replyId){
+              return { ...rep, reactions: { ...rep.reactions, ...j.counts }, user_reaction: j.user_reaction }
+            }
+            return { ...rep, children: rep.children ? update(rep.children) : rep.children }
+          })
+        }
+        return { ...p, replies: update(p.replies) }
       })
     }
   }
 
-  async function submitReply(){
+  async function submitReply(parentReplyId?: number){
     if (!post || (!content && !file)) return
     const fd = new FormData()
     fd.append('post_id', String(post.id))
     fd.append('content', content)
+    if (parentReplyId) fd.append('parent_reply_id', String(parentReplyId))
     if (file) fd.append('image', file)
     const r = await fetch('/post_reply', { method:'POST', credentials:'include', body: fd })
     const j = await r.json().catch(()=>null)
     if (j?.success && j.reply){
-      setPost(p => p ? ({ ...p, replies: [j.reply, ...p.replies] }) : p)
+      setPost(p => {
+        if (!p) return p
+        if (parentReplyId){
+          function attach(list: Reply[]): Reply[] {
+            return list.map(item => {
+              if (item.id === parentReplyId){
+                const children = item.children ? [j.reply, ...item.children] : [j.reply]
+                return { ...item, children }
+              }
+              return { ...item, children: item.children ? attach(item.children) : item.children }
+            })
+          }
+          return { ...p, replies: attach(p.replies) }
+        }
+        return { ...p, replies: [j.reply, ...p.replies] }
+      })
       setContent(''); setFile(null)
     }
   }
@@ -122,16 +145,7 @@ export default function PostDetail(){
 
         <div className="mt-3 rounded-2xl border border-white/10">
           {post.replies.map(r => (
-            <div key={r.id} className="px-3 py-2 border-b border-white/10 text-sm">
-              <div className="font-medium">{r.username}</div>
-              <div className="text-[#dfe6e9] whitespace-pre-wrap">{r.content}</div>
-              <div className="text-[11px] text-[#9fb0b5]">{formatTimestamp(r.timestamp)}</div>
-              <div className="mt-1 flex items-center gap-2 text-[11px]">
-                <Reaction icon="fa-regular fa-heart" count={r.reactions?.['heart']||0} active={r.user_reaction==='heart'} onClick={()=> toggleReplyReaction(r.id, 'heart')} />
-                <Reaction icon="fa-regular fa-thumbs-up" count={r.reactions?.['thumbs-up']||0} active={r.user_reaction==='thumbs-up'} onClick={()=> toggleReplyReaction(r.id, 'thumbs-up')} />
-                <Reaction icon="fa-regular fa-thumbs-down" count={r.reactions?.['thumbs-down']||0} active={r.user_reaction==='thumbs-down'} onClick={()=> toggleReplyReaction(r.id, 'thumbs-down')} />
-              </div>
-            </div>
+            <ReplyNode key={r.id} reply={r} onToggle={(id, reaction)=> toggleReplyReaction(id, reaction)} onReply={(id)=> submitReply(id)} />
           ))}
         </div>
       </div>
@@ -153,7 +167,7 @@ export default function PostDetail(){
                 <i className="fa-regular fa-image" style={{ color: '#4db6ac' }} />
                 <input type="file" accept="image/*" onChange={(e)=> setFile(e.target.files?.[0]||null)} style={{ display: 'none' }} />
               </label>
-              <button className="px-2.5 py-1.5 rounded-full bg-[#4db6ac] text-white border border-[#4db6ac] hover:brightness-110" onClick={submitReply} aria-label="Send reply">
+              <button className="px-2.5 py-1.5 rounded-full bg-[#4db6ac] text-white border border-[#4db6ac] hover:brightness-110" onClick={()=> submitReply()} aria-label="Send reply">
                 <i className="fa-solid fa-paper-plane" />
               </button>
             </div>
@@ -171,5 +185,36 @@ function Reaction({ icon, count, active, onClick }:{ icon: string, count: number
       <i className={icon} style={{ color:'inherit' }} />
       <span className="ml-1">{count}</span>
     </button>
+  )
+}
+
+function ReplyNode({ reply, depth=0, onToggle, onReply }:{ reply: Reply, depth?: number, onToggle: (id:number, reaction:string)=>void, onReply: (id:number)=>void }){
+  const [showComposer, setShowComposer] = useState(false)
+  const [text, setText] = useState('')
+  return (
+    <div className="border-b border-white/10" style={{ paddingLeft: depth ? Math.min(depth*16, 48) : 0 }}>
+      <div className="px-3 py-2 text-sm">
+        <div className="font-medium">{reply.username}</div>
+        <div className="text-[#dfe6e9] whitespace-pre-wrap">{reply.content}</div>
+        <div className="text-[11px] text-[#9fb0b5]">{formatTimestamp(reply.timestamp)}</div>
+        <div className="mt-1 flex items-center gap-2 text-[11px]">
+          <Reaction icon="fa-regular fa-heart" count={reply.reactions?.['heart']||0} active={reply.user_reaction==='heart'} onClick={()=> onToggle(reply.id, 'heart')} />
+          <Reaction icon="fa-regular fa-thumbs-up" count={reply.reactions?.['thumbs-up']||0} active={reply.user_reaction==='thumbs-up'} onClick={()=> onToggle(reply.id, 'thumbs-up')} />
+          <Reaction icon="fa-regular fa-thumbs-down" count={reply.reactions?.['thumbs-down']||0} active={reply.user_reaction==='thumbs-down'} onClick={()=> onToggle(reply.id, 'thumbs-down')} />
+          <button className="ml-2 px-2 py-1 rounded-full text-[#9fb0b5] hover:text-[#4db6ac]" onClick={()=> setShowComposer(v=>!v)}>Reply</button>
+        </div>
+        {showComposer ? (
+          <div className="mt-2 flex items-center gap-2">
+            <input className="flex-1 px-3 py-1.5 rounded-full bg-black border border-[#4db6ac] text-sm focus:outline-none focus:ring-1 focus:ring-[#4db6ac]" value={text} onChange={(e)=> setText(e.target.value)} placeholder={`Reply to @${reply.username}`} />
+            <button className="px-2.5 py-1.5 rounded-full bg-[#4db6ac] text-white border border-[#4db6ac] hover:brightness-110" onClick={()=> { if (!text) return; const fd = new FormData(); fd.append('post_id',''+(reply as any).post_id||''); fd.append('content', text); fd.append('parent_reply_id',''+reply.id); fetch('/post_reply',{method:'POST',credentials:'include',body:fd}).then(r=>r.json()).then(j=>{ if(j?.success){ setText(''); setShowComposer(false); onReply(reply.id) } }); }} aria-label="Send reply">
+              <i className="fa-solid fa-paper-plane" />
+            </button>
+          </div>
+        ) : null}
+      </div>
+      {reply.children && reply.children.length ? reply.children.map(ch => (
+        <ReplyNode key={ch.id} reply={ch} depth={Math.min(depth+1, 3)} onToggle={onToggle} onReply={onReply} />
+      )) : null}
+    </div>
   )
 }
