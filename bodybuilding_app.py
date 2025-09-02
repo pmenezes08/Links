@@ -8765,6 +8765,122 @@ def uploaded_file(filename):
         logger.error(f"Error serving image {filename}: {str(e)}")
         return "Error serving image", 500
 
+@app.route('/api/community_feed/<int:community_id>')
+@login_required
+def api_community_feed(community_id):
+    """JSON API for community feed data (posts, polls, replies, reactions)."""
+    username = session.get('username')
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+
+            # Community info
+            c.execute("SELECT * FROM communities WHERE id = ?", (community_id,))
+            community_row = c.fetchone()
+            if not community_row:
+                return jsonify({'success': False, 'error': 'Community not found'}), 404
+            community = dict(community_row)
+
+            # Parent community (optional)
+            parent_community = None
+            if community.get('parent_community_id'):
+                c.execute("SELECT id, name, type FROM communities WHERE id = ?", (community['parent_community_id'],))
+                parent_row = c.fetchone()
+                if parent_row:
+                    parent_community = dict(parent_row)
+
+            # Posts
+            c.execute(
+                """
+                SELECT * FROM posts 
+                WHERE community_id = ? 
+                ORDER BY id DESC
+                """,
+                (community_id,)
+            )
+            posts_raw = c.fetchall()
+            posts = [dict(row) for row in posts_raw]
+
+            # Enrich posts
+            for post in posts:
+                post_id = post['id']
+                # Reaction counts for post
+                c.execute(
+                    """
+                    SELECT reaction_type, COUNT(*) as count
+                    FROM reactions
+                    WHERE post_id = ?
+                    GROUP BY reaction_type
+                    """,
+                    (post_id,)
+                )
+                post['reactions'] = {r['reaction_type']: r['count'] for r in c.fetchall()}
+
+                # Current user's reaction
+                c.execute("SELECT reaction_type FROM reactions WHERE post_id = ? AND username = ?", (post_id, username))
+                r = c.fetchone()
+                post['user_reaction'] = r['reaction_type'] if r else None
+
+                # Active poll on this post (if any)
+                c.execute("SELECT * FROM polls WHERE post_id = ? AND is_active = 1", (post_id,))
+                poll_raw = c.fetchone()
+                if poll_raw:
+                    poll = dict(poll_raw)
+                    c.execute("SELECT * FROM poll_options WHERE poll_id = ? ORDER BY id", (poll['id'],))
+                    options = [dict(o) for o in c.fetchall()]
+                    poll['options'] = options
+                    # Current user's vote
+                    c.execute("SELECT option_id FROM poll_votes WHERE poll_id = ? AND username = ?", (poll['id'], username))
+                    uv = c.fetchone()
+                    poll['user_vote'] = uv['option_id'] if uv else None
+                    poll['total_votes'] = sum(opt.get('votes', 0) for opt in options)
+                    post['poll'] = poll
+                else:
+                    post['poll'] = None
+
+                # Replies
+                c.execute("SELECT * FROM replies WHERE post_id = ? ORDER BY timestamp DESC", (post_id,))
+                replies = [dict(row) for row in c.fetchall()]
+                for reply in replies:
+                    reply_id = reply['id']
+                    c.execute(
+                        """
+                        SELECT reaction_type, COUNT(*) as count
+                        FROM reply_reactions
+                        WHERE reply_id = ?
+                        GROUP BY reaction_type
+                        """,
+                        (reply_id,)
+                    )
+                    reply['reactions'] = {rr['reaction_type']: rr['count'] for rr in c.fetchall()}
+                    c.execute("SELECT reaction_type FROM reply_reactions WHERE reply_id = ? AND username = ?", (reply_id, username))
+                    urr = c.fetchone()
+                    reply['user_reaction'] = urr['reaction_type'] if urr else None
+                post['replies'] = replies
+
+            return jsonify({
+                'success': True,
+                'community': community,
+                'parent_community': parent_community,
+                'username': username,
+                'is_community_admin': is_community_admin(username, community_id),
+                'posts': posts,
+            })
+    except Exception as e:
+        logger.error(f"Error in api_community_feed for {community_id}: {e}")
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
+@app.route('/community_feed_react/<int:community_id>')
+@login_required
+def community_feed_react(community_id):
+    try:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        dist_dir = os.path.join(base_dir, 'client', 'dist')
+        return send_from_directory(dist_dir, 'index.html')
+    except Exception as e:
+        logger.error(f"Error serving React community feed: {str(e)}")
+        abort(500)
+
 @app.route('/static/uploads/<path:filename>')
 def static_uploaded_file(filename):
     """Alternative route for static uploads"""
