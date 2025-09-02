@@ -174,11 +174,13 @@ function PostCard({ post, currentUser, isAdmin }: { post: Post, currentUser: str
 }
 
 function ReactionButton({ label, count, active, onClick }:{ label: string, count: number, active: boolean, onClick: ()=>void }){
-  const cls = active
-    ? 'bg-black text-[#4db6ac] border border-[#4db6ac]'
-    : 'bg-black text-[#9fb0b5] border border-[#4db6ac]'
+  const style: React.CSSProperties = {
+    borderColor: '#4db6ac',
+    backgroundColor: 'transparent',
+    color: active ? '#4db6ac' : '#9fb0b5',
+  }
   return (
-    <button className={`reaction-btn px-2.5 py-1 rounded transition-colors ${cls}`} onClick={onClick}>
+    <button className="px-2.5 py-1 rounded border transition-colors" style={style} onClick={onClick}>
       <span className="mr-1">{label}</span>{count}
     </button>
   )
