@@ -8905,6 +8905,17 @@ def community_feed_react(community_id):
         logger.error(f"Error serving React community feed: {str(e)}")
         abort(500)
 
+@app.route('/post/<int:post_id>')
+@login_required
+def react_post_detail(post_id):
+    try:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        dist_dir = os.path.join(base_dir, 'client', 'dist')
+        return send_from_directory(dist_dir, 'index.html')
+    except Exception as e:
+        logger.error(f"Error serving React post detail: {str(e)}")
+        abort(500)
+
 @app.route('/static/uploads/<path:filename>')
 def static_uploaded_file(filename):
     """Alternative route for static uploads"""
