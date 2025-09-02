@@ -50,12 +50,12 @@ export default function CommunityFeed() {
 
   return (
     <div className="min-h-screen bg-[#0b0f10] text-white">
-      {/* Header + burger */}
-      <div className="fixed left-0 right-0 top-0 h-14 border-b border-[#333] bg-black flex items-center px-3 z-40">
+      {/* Header + burger (subtle translucency, compact) */}
+      <div className="fixed left-0 right-0 top-0 h-14 border-b border-[#262f30] bg-black/70 backdrop-blur flex items-center px-3 z-40">
         <button className="px-3 py-2 rounded border border-[#333] bg-[#1a1a1a] mr-3 md:hidden" onClick={() => setMenuOpen(v=>!v)} aria-label="Menu">
           <i className="fa-solid fa-bars" />
         </button>
-        <div className="font-semibold truncate">{data.community?.name || 'Community'}</div>
+        <div className="font-semibold truncate tracking-[-0.01em]">{data.community?.name || 'Community'}</div>
       </div>
 
       {/* Mobile drawer menu (same links structure as desktop) */}
@@ -71,12 +71,12 @@ export default function CommunityFeed() {
         </div>
       )}
 
-      <div className="max-w-3xl mx-auto pt-16 px-3">
+      <div className="max-w-2xl mx-auto pt-16 px-3">
         {/* Top header image from legacy template */}
         {data.community?.background_path ? (
-          <div className="community-header-image mb-3">
+          <div className="community-header-image mb-3 overflow-hidden rounded-xl border border-white/10">
             <img src={data.community.background_path.startsWith('http') ? data.community.background_path : `/static/community_backgrounds/${data.community.background_path.split('/').slice(-1)[0]}`}
-                 alt={data.community?.name + ' Header'} className="header-image" />
+                 alt={data.community?.name + ' Header'} className="header-image transition-transform duration-300 hover:scale-[1.015]" />
           </div>
         ) : null}
 
@@ -98,7 +98,7 @@ export default function CommunityFeed() {
 function UniversityStoreAd({ community }: { community: any }) {
   const isUni = (community?.type||'').toLowerCase() === 'university'
   return (
-    <div className="rounded-lg border border-white/10 bg-white/5 p-3 flex items-center gap-3">
+    <div className="rounded-xl border border-white/10 bg-white/[0.04] p-3 flex items-center gap-3 shadow-sm shadow-black/20">
       <div className="w-12 h-12 rounded bg-white/10 flex items-center justify-center">
         <i className="fa-solid fa-graduation-cap" />
       </div>
@@ -107,7 +107,7 @@ function UniversityStoreAd({ community }: { community: any }) {
         <div className="font-medium truncate">Official {community?.name || 'University'} Merch</div>
         <div className="text-sm text-[#9fb0b5] truncate">Hoodies, tees, and accessories. Show your colors.</div>
       </div>
-      <button className="px-3 py-2 rounded bg-teal-700/20 text-teal-300 border border-teal-500/40" onClick={() => window.open(isUni ? 'https://store.university.example' : 'https://store.c-point.co', '_blank')}>Shop</button>
+      <button className="px-3 py-2 rounded bg-[#4db6ac] text-white border border-[#4db6ac] hover:brightness-110" onClick={() => window.open(isUni ? 'https://store.university.example' : 'https://store.c-point.co', '_blank')}>Shop</button>
     </div>
   )
 }
@@ -120,22 +120,22 @@ async function toggleReaction(postId: number, reaction: string){
 
 function PostCard({ post }: { post: Post }) {
   return (
-    <div className="rounded-lg border border-white/10 bg-white/5">
+    <div className="rounded-2xl border border-white/10 bg-white/[0.035] shadow-sm shadow-black/20">
       <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2">
         <div className="w-8 h-8 rounded-full bg-white/10" />
-        <div className="font-medium">{post.username}</div>
-        <div className="text-xs text-[#9fb0b5] ml-auto">{post.timestamp}</div>
+        <div className="font-medium tracking-[-0.01em]">{post.username}</div>
+        <div className="text-xs text-[#9fb0b5] ml-auto tabular-nums">{post.timestamp}</div>
       </div>
       <div className="px-3 py-2 space-y-2">
-        <div className="whitespace-pre-wrap text-[14px] leading-snug">{post.content}</div>
+        <div className="whitespace-pre-wrap text-[14px] leading-relaxed tracking-[0]">{post.content}</div>
         {post.image_path ? (
           <img src={post.image_path.startsWith('/uploads') || post.image_path.startsWith('/static') ? post.image_path : `/uploads/${post.image_path}`} alt="" className="max-h-[360px] rounded border border-white/10" />
         ) : null}
         {post.poll ? <PollBlock poll={post.poll} postId={post.id} /> : null}
-        <div className="flex items-center gap-2 text-xs text-[#9fb0b5]">
-          <button className="px-2 py-1 rounded border border-white/10 bg-white/5" onClick={()=> toggleReaction(post.id, 'like')}>👍 {post.reactions?.like||0}</button>
-          <button className="px-2 py-1 rounded border border-white/10 bg-white/5" onClick={()=> toggleReaction(post.id, 'love')}>❤️ {post.reactions?.love||0}</button>
-          <button className="px-2 py-1 rounded border border-white/10 bg-white/5" onClick={()=> toggleReaction(post.id, 'clap')}>👏 {post.reactions?.clap||0}</button>
+        <div className="flex items-center gap-2 text-xs">
+          <ReactionButton label="👍" count={post.reactions?.like||0} active={post.user_reaction==='like'} onClick={()=> toggleReaction(post.id, 'like')} />
+          <ReactionButton label="❤️" count={post.reactions?.love||0} active={post.user_reaction==='love'} onClick={()=> toggleReaction(post.id, 'love')} />
+          <ReactionButton label="👏" count={post.reactions?.clap||0} active={post.user_reaction==='clap'} onClick={()=> toggleReaction(post.id, 'clap')} />
         </div>
         {post.replies?.length ? (
           <div className="rounded border border-white/10">
@@ -150,6 +150,17 @@ function PostCard({ post }: { post: Post }) {
         ) : null}
       </div>
     </div>
+  )
+}
+
+function ReactionButton({ label, count, active, onClick }:{ label: string, count: number, active: boolean, onClick: ()=>void }){
+  const cls = active
+    ? 'bg-[#4db6ac] text-white border border-[#4db6ac]'
+    : 'bg-white/5 text-[#9fb0b5] border border-white/10 hover:border-[#4db6ac] hover:text-[#cfeeea]'
+  return (
+    <button className={`reaction-btn px-2.5 py-1 rounded transition-colors ${cls}`} onClick={onClick}>
+      <span className="mr-1">{label}</span>{count}
+    </button>
   )
 }
 
