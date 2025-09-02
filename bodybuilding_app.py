@@ -8815,13 +8815,7 @@ def gym():
 @app.route('/crossfit')
 @login_required
 def crossfit():
-    try:
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        dist_dir = os.path.join(base_dir, 'client', 'dist')
-        return send_from_directory(dist_dir, 'index.html')
-    except Exception as e:
-        logger.error(f"Error serving /crossfit: {str(e)}")
-        abort(500)
+    return redirect(url_for('crossfit_react'))
 
 @app.route('/crossfit_react')
 @login_required
