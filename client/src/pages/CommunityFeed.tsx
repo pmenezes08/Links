@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 
 type PollOption = { id: number; text: string; votes: number }
@@ -49,7 +49,7 @@ export default function CommunityFeed() {
   if (!data) return null
 
   return (
-    <div className="min-h-screen bg-[#0b0f10] text-white">
+    <div className="min-h-screen bg-black text-white">
       {/* Header + burger (subtle translucency, compact) */}
       <div className="fixed left-0 right-0 top-0 h-14 border-b border-[#262f30] bg-black/70 backdrop-blur flex items-center px-3 z-40">
         <button className="px-3 py-2 rounded border border-[#333] bg-[#1a1a1a] mr-3 md:hidden" onClick={() => setMenuOpen(v=>!v)} aria-label="Menu">
@@ -87,7 +87,7 @@ export default function CommunityFeed() {
           {timeline.map((item, i) => item.type === 'ad' ? (
             <UniversityStoreAd key={`ad-${i}`} community={data.community} />
           ) : (
-            <PostCard key={item.post!.id} post={item.post!} />
+            <PostCard key={item.post!.id} post={item.post!} currentUser={data.username} isAdmin={!!data.is_community_admin} />
           ))}
         </div>
       </div>
@@ -118,13 +118,33 @@ async function toggleReaction(postId: number, reaction: string){
   location.reload()
 }
 
-function PostCard({ post }: { post: Post }) {
+function PostCard({ post, currentUser, isAdmin }: { post: Post, currentUser: string, isAdmin: boolean }) {
+  const cardRef = useRef<HTMLDivElement|null>(null)
+  useEffect(() => {
+    const el = cardRef.current
+    if (!el) return
+    const onEnter = () => {
+      el.classList.add('ring-1')
+      el.classList.add('ring-[#4db6ac]')
+    }
+    const onLeave = () => {
+      el.classList.remove('ring-1')
+      el.classList.remove('ring-[#4db6ac]')
+    }
+    el.addEventListener('mouseenter', onEnter)
+    el.addEventListener('mouseleave', onLeave)
+    return () => { el.removeEventListener('mouseenter', onEnter); el.removeEventListener('mouseleave', onLeave) }
+  }, [])
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/[0.035] shadow-sm shadow-black/20">
+    <div ref={cardRef} className="rounded-2xl border border-white/10 bg-white/[0.035] shadow-sm shadow-black/20 transition-[box-shadow,border]">
       <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2">
         <div className="w-8 h-8 rounded-full bg-white/10" />
         <div className="font-medium tracking-[-0.01em]">{post.username}</div>
         <div className="text-xs text-[#9fb0b5] ml-auto tabular-nums">{post.timestamp}</div>
+        {(post.username === currentUser || isAdmin) && (
+          <button className="ml-2 px-2 py-1 rounded text-xs border border-[#4db6ac] text-[#4db6ac] hover:bg-[#07201e]"
+            onClick={async()=> { const ok = confirm('Delete this post?'); if(!ok) return; const fd = new FormData(); fd.append('post_id', String(post.id)); await fetch('/delete_post', { method:'POST', credentials:'include', body: fd }); location.reload() }}>Delete</button>
+        )}
       </div>
       <div className="px-3 py-2 space-y-2">
         <div className="whitespace-pre-wrap text-[14px] leading-relaxed tracking-[0]">{post.content}</div>
@@ -155,8 +175,8 @@ function PostCard({ post }: { post: Post }) {
 
 function ReactionButton({ label, count, active, onClick }:{ label: string, count: number, active: boolean, onClick: ()=>void }){
   const cls = active
-    ? 'bg-[#4db6ac] text-white border border-[#4db6ac]'
-    : 'bg-white/5 text-[#9fb0b5] border border-white/10 hover:border-[#4db6ac] hover:text-[#cfeeea]'
+    ? 'bg-black text-[#4db6ac] border border-[#4db6ac]'
+    : 'bg-black text-[#9fb0b5] border border-[#4db6ac]'
   return (
     <button className={`reaction-btn px-2.5 py-1 rounded transition-colors ${cls}`} onClick={onClick}>
       <span className="mr-1">{label}</span>{count}
