@@ -317,9 +317,9 @@ function PostCard({ post, currentUser, isAdmin, onOpen }: { post: Post, currentU
         ) : null}
         {post.poll ? <PollBlock poll={post.poll} postId={post.id} /> : null}
         <div className="flex items-center gap-2 text-xs" onClick={(e)=> e.stopPropagation()}>
-          <ReactionFA icon="fa-regular fa-thumbs-up" count={post.reactions?.like||0} active={post.user_reaction==='like'} onClick={()=> toggleReaction(post.id, 'like')} />
-          <ReactionFA icon="fa-regular fa-heart" count={post.reactions?.love||0} active={post.user_reaction==='love'} onClick={()=> toggleReaction(post.id, 'love')} />
-          <ReactionFA icon="fa-solid fa-hands-clapping" count={post.reactions?.clap||0} active={post.user_reaction==='clap'} onClick={()=> toggleReaction(post.id, 'clap')} />
+          <ReactionFA icon="fa-regular fa-heart" count={post.reactions?.['heart']||0} active={post.user_reaction==='heart'} onClick={()=> toggleReaction(post.id, 'heart')} />
+          <ReactionFA icon="fa-regular fa-thumbs-up" count={post.reactions?.['thumbs-up']||0} active={post.user_reaction==='thumbs-up'} onClick={()=> toggleReaction(post.id, 'thumbs-up')} />
+          <ReactionFA icon="fa-regular fa-thumbs-down" count={post.reactions?.['thumbs-down']||0} active={post.user_reaction==='thumbs-down'} onClick={()=> toggleReaction(post.id, 'thumbs-down')} />
           <button className="ml-auto px-3 py-1 rounded-full border border-white/10 hover:border-[#2a3f41] text-[#9fb0b5]"
             onClick={(e)=> { e.stopPropagation(); onOpen() }}>
             <span className="mr-1" style={{ color: '#4db6ac' }}>💬</span>{post.replies?.length || 0}
@@ -331,13 +331,13 @@ function PostCard({ post, currentUser, isAdmin, onOpen }: { post: Post, currentU
 }
 
 function ReactionFA({ icon, count, active, onClick }:{ icon: string, count: number, active: boolean, onClick: ()=>void }){
-  // Match HTML colors: neutral subtle border/text; active = turquoise bg + white text
+  // No borders; active = turquoise bg + white text; neutral = transparent bg + grey text
   const baseStyle: React.CSSProperties = active
-    ? { backgroundColor: '#4db6ac', color: '#ffffff', borderColor: '#4db6ac' }
-    : { backgroundColor: '#00000000', color: '#6c757d', borderColor: '#dee2e6' }
+    ? { backgroundColor: '#4db6ac', color: '#ffffff' }
+    : { backgroundColor: 'transparent', color: '#6c757d' }
   return (
     <button
-      className="reaction-btn px-3 py-1 rounded-full border transition-colors hover:border-[#4db6ac] hover:text-[#4db6ac]"
+      className="px-3 py-1 rounded-full transition-colors hover:text-[#4db6ac]"
       style={baseStyle}
       onClick={onClick}
     >
