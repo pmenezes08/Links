@@ -12,6 +12,10 @@ export default function CommunityFeed() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string| null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
+  const [showMembers, setShowMembers] = useState(false)
+  const [members, setMembers] = useState<Array<{username:string, profile_picture?:string|null}>>([])
+  const [showAnnouncements, setShowAnnouncements] = useState(false)
+  const [announcements, setAnnouncements] = useState<Array<{id:number, content:string, created_by:string, created_at:string}>>([])
 
   useEffect(() => {
     // Inject legacy css to match compact desktop/brand styles
@@ -32,6 +36,29 @@ export default function CommunityFeed() {
       .finally(() => isMounted && setLoading(false))
     return () => { isMounted = false }
   }, [community_id])
+
+  async function openMembers(){
+    try{
+      const r = await fetch(`/community/${community_id}/members/list`, { credentials: 'include' })
+      const j = await r.json()
+      if (j && j.success !== false){
+        const list = Array.isArray(j) ? j : (j.members || [])
+        setMembers(list)
+        setShowMembers(true)
+      }
+    }catch{}
+  }
+
+  async function openAnnouncements(){
+    try{
+      const r = await fetch(`/get_community_announcements?community_id=${community_id}`, { credentials: 'include' })
+      const j = await r.json()
+      if (j?.success){
+        setAnnouncements(j.announcements || [])
+        setShowAnnouncements(true)
+      }
+    }catch{}
+  }
 
   const timeline = useMemo(() => {
     if (!data?.posts) return []
@@ -80,6 +107,18 @@ export default function CommunityFeed() {
           </div>
         ) : null}
 
+        {/* Action bar (compact pills) */}
+        <div className="mb-3 flex flex-wrap gap-2">
+          <ActionPill icon="fa-users" label="Members" onClick={openMembers} />
+          <ActionPill icon="fa-bullhorn" label="Announcements" onClick={openAnnouncements} />
+          <ActionPill icon="fa-chart-pie" label="Polls" onClick={()=> window.location.href = `/community_feed/${community_id}`} />
+          <ActionPill icon="fa-link" label="Links" onClick={()=> window.location.href = `/community/${community_id}/resources`} />
+          <ActionPill icon="fa-bell" label="Notifications" onClick={()=> window.location.href = `/notifications`} />
+          <ActionPill icon="fa-flag" label="Issues" onClick={()=> {}} />
+          <ActionPill icon="fa-calendar" label="Calendar" onClick={()=> window.location.href = `/community/${community_id}/calendar`} />
+          <ActionPill icon="fa-ellipsis" label="More" onClick={()=> {}} />
+        </div>
+
         {/* Composer */}
         <Composer communityId={String(community_id)} onPosted={() => location.reload()} />
 
@@ -91,7 +130,57 @@ export default function CommunityFeed() {
           ))}
         </div>
       </div>
+
+      {/* Members modal */}
+      {showMembers && (
+        <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur flex items-center justify-center" onClick={(e)=> e.currentTarget===e.target && setShowMembers(false)}>
+          <div className="w-[90%] max-w-[480px] rounded-2xl border border-white/10 bg-black p-3">
+            <div className="flex items-center justify-between mb-2">
+              <div className="font-semibold">Members</div>
+              <button className="px-2 py-1 rounded-full border border-white/10" onClick={()=> setShowMembers(false)}>✕</button>
+            </div>
+            <div className="max-h-[380px] overflow-y-auto space-y-2">
+              {members.map((m,i)=> (
+                <div key={i} className="flex items-center gap-2 p-2 rounded border border-white/10">
+                  <div className="w-8 h-8 rounded-full bg-white/10" />
+                  <div className="text-sm">{m.username || (m as any)}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Announcements modal */}
+      {showAnnouncements && (
+        <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur flex items-center justify-center" onClick={(e)=> e.currentTarget===e.target && setShowAnnouncements(false)}>
+          <div className="w-[92%] max-w-[560px] rounded-2xl border border-white/10 bg-black p-3">
+            <div className="flex items-center justify-between mb-2">
+              <div className="font-semibold">Announcements</div>
+              <button className="px-2 py-1 rounded-full border border-white/10" onClick={()=> setShowAnnouncements(false)}>✕</button>
+            </div>
+            <div className="space-y-3 max-h-[420px] overflow-y-auto">
+              {announcements.length === 0 ? (
+                <div className="text-sm text-[#9fb0b5]">No announcements.</div>
+              ) : announcements.map(a=> (
+                <div key={a.id} className="rounded-xl border border-white/10 p-3 bg-white/[0.03]">
+                  <div className="text-xs text-[#9fb0b5] mb-1">{a.created_by} • {a.created_at}</div>
+                  <div className="whitespace-pre-wrap text-sm">{a.content}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
+  )
+}
+
+function ActionPill({ icon, label, onClick }:{ icon: string, label: string, onClick: ()=>void }){
+  return (
+    <button className="px-3 py-1.5 rounded-full border border-white/10 text-xs text-[#cfd8dc] hover:border-[#2a3f41]" onClick={onClick}>
+      <i className={`fa-solid ${icon} mr-1`} style={{ color: '#4db6ac' }} />{label}
+    </button>
   )
 }
 
@@ -107,7 +196,7 @@ function UniversityStoreAd({ community }: { community: any }) {
         <div className="font-medium truncate">Official {community?.name || 'University'} Merch</div>
         <div className="text-sm text-[#9fb0b5] truncate">Hoodies, tees, and accessories. Show your colors.</div>
       </div>
-      <button className="px-3 py-2 rounded bg-[#4db6ac] text-white border border-[#4db6ac] hover:brightness-110" onClick={() => window.open(isUni ? 'https://store.university.example' : 'https://store.c-point.co', '_blank')}>Shop</button>
+      <button className="px-3 py-2 rounded-full bg-[#4db6ac] text-white border border-[#4db6ac] hover:brightness-110" onClick={() => window.open(isUni ? 'https://store.university.example' : 'https://store.c-point.co', '_blank')}>Shop</button>
     </div>
   )
 }
@@ -142,8 +231,10 @@ function PostCard({ post, currentUser, isAdmin }: { post: Post, currentUser: str
         <div className="font-medium tracking-[-0.01em]">{post.username}</div>
         <div className="text-xs text-[#9fb0b5] ml-auto tabular-nums">{post.timestamp}</div>
         {(post.username === currentUser || isAdmin) && (
-          <button className="ml-2 px-2 py-1 rounded text-xs border border-[#4db6ac] text-[#4db6ac] hover:bg-[#07201e]"
-            onClick={async()=> { const ok = confirm('Delete this post?'); if(!ok) return; const fd = new FormData(); fd.append('post_id', String(post.id)); await fetch('/delete_post', { method:'POST', credentials:'include', body: fd }); location.reload() }}>Delete</button>
+          <button className="ml-2 px-2 py-1 rounded-full border border-white/10 hover:border-[#2a3f41]" title="Delete"
+            onClick={async()=> { const ok = confirm('Delete this post?'); if(!ok) return; const fd = new FormData(); fd.append('post_id', String(post.id)); await fetch('/delete_post', { method:'POST', credentials:'include', body: fd }); location.reload() }}>
+            <i className="fa-regular fa-trash-can" style={{ color: '#ef5350' }} />
+          </button>
         )}
       </div>
       <div className="px-3 py-2 space-y-2">
