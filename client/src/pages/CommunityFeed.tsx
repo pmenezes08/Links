@@ -80,12 +80,8 @@ export default function CommunityFeed() {
           </div>
         ) : null}
 
-        {/* Composer (stub for now) */}
-        <div className="rounded-lg border border-white/10 bg-white/5 p-3 mb-3 flex items-center gap-2">
-          <div className="w-8 h-8 rounded-full bg-white/10" />
-          <button className="flex-1 text-left text-sm text-[#9fb0b5] px-3 py-2 rounded border border-white/10 bg-white/5">Write something…</button>
-          <button className="px-3 py-2 rounded bg-teal-700/20 text-teal-300 border border-teal-500/40">Post</button>
-        </div>
+        {/* Composer */}
+        <Composer communityId={String(community_id)} onPosted={() => location.reload()} />
 
         <div className="space-y-3">
           {timeline.map((item, i) => item.type === 'ad' ? (
@@ -116,6 +112,12 @@ function UniversityStoreAd({ community }: { community: any }) {
   )
 }
 
+async function toggleReaction(postId: number, reaction: string){
+  const form = new URLSearchParams({ post_id: String(postId), reaction })
+  await fetch('/add_reaction', { method: 'POST', credentials: 'include', headers: { 'Content-Type':'application/x-www-form-urlencoded' }, body: form })
+  location.reload()
+}
+
 function PostCard({ post }: { post: Post }) {
   return (
     <div className="rounded-lg border border-white/10 bg-white/5">
@@ -130,7 +132,11 @@ function PostCard({ post }: { post: Post }) {
           <img src={post.image_path.startsWith('/uploads') || post.image_path.startsWith('/static') ? post.image_path : `/uploads/${post.image_path}`} alt="" className="max-h-[360px] rounded border border-white/10" />
         ) : null}
         {post.poll ? <PollBlock poll={post.poll} postId={post.id} /> : null}
-        <div className="text-xs text-[#9fb0b5]">{Object.entries(post.reactions||{}).map(([k,v])=> `${k} ${v}`).join('  ') || 'No reactions yet'}</div>
+        <div className="flex items-center gap-2 text-xs text-[#9fb0b5]">
+          <button className="px-2 py-1 rounded border border-white/10 bg-white/5" onClick={()=> toggleReaction(post.id, 'like')}>👍 {post.reactions?.like||0}</button>
+          <button className="px-2 py-1 rounded border border-white/10 bg-white/5" onClick={()=> toggleReaction(post.id, 'love')}>❤️ {post.reactions?.love||0}</button>
+          <button className="px-2 py-1 rounded border border-white/10 bg-white/5" onClick={()=> toggleReaction(post.id, 'clap')}>👏 {post.reactions?.clap||0}</button>
+        </div>
         {post.replies?.length ? (
           <div className="rounded border border-white/10">
             {post.replies.map(r => (
@@ -164,6 +170,30 @@ function PollBlock({ poll, postId }: { poll: Poll, postId: number }) {
         ))}
       </div>
       <div className="text-xs text-[#9fb0b5] mt-1">Total votes: {poll.total_votes}</div>
+    </div>
+  )
+}
+
+function Composer({ communityId, onPosted }: { communityId: string, onPosted: ()=>void }){
+  const [content, setContent] = useState('')
+  const [imageFile, setImageFile] = useState<File | null>(null)
+  async function submit(){
+    if (!content && !imageFile) return
+    const fd = new FormData()
+    fd.append('content', content)
+    fd.append('community_id', communityId)
+    if (imageFile) fd.append('image', imageFile)
+    await fetch('/post_status', { method: 'POST', credentials: 'include', body: fd })
+    onPosted()
+  }
+  return (
+    <div className="rounded-lg border border-white/10 bg-white/5 p-3 mb-3">
+      <textarea className="w-full resize-y min-h-[60px] p-2 rounded bg-[#1a1a1a] border border-[#333] text-sm"
+        placeholder="Write something…" value={content} onChange={(e)=> setContent(e.target.value)} />
+      <div className="mt-2 flex items-center gap-2">
+        <input type="file" accept="image/*" onChange={(e)=> setImageFile(e.target.files?.[0]||null)} />
+        <button className="ml-auto px-3 py-2 rounded bg-teal-700/20 text-teal-300 border border-teal-500/40" onClick={submit}>Post</button>
+      </div>
     </div>
   )
 }
