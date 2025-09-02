@@ -81,6 +81,24 @@ export default function CommunityFeed() {
     }catch{}
   }
 
+  async function handleToggleReaction(postId: number, reaction: string){
+    try{
+      const form = new URLSearchParams({ post_id: String(postId), reaction })
+      const r = await fetch('/add_reaction', { method: 'POST', credentials: 'include', headers: { 'Content-Type':'application/x-www-form-urlencoded' }, body: form })
+      const j = await r.json()
+      if (!j?.success) return
+      setData((prev:any) => {
+        if (!prev) return prev
+        const updatedPosts = (prev.posts || []).map((p: any) => p.id === postId ? ({ ...p, reactions: { ...p.reactions, ...j.counts }, user_reaction: j.user_reaction }) : p)
+        return { ...prev, posts: updatedPosts }
+      })
+      setPostModal(pm => {
+        if (!pm.open || !pm.post || pm.post.id !== postId) return pm
+        return { open: true, post: { ...pm.post, reactions: { ...pm.post.reactions, ...j.counts }, user_reaction: j.user_reaction } }
+      })
+    }catch{}
+  }
+
   const timeline = useMemo(() => {
     if (!data?.posts) return []
     const items: Array<{ type: 'post'|'ad'; post?: Post }> = []
@@ -146,7 +164,7 @@ export default function CommunityFeed() {
           {timeline.map((item, i) => item.type === 'ad' ? (
             <AdsCard key={`ad-${i}`} communityId={String(community_id)} ad={ad} />
           ) : (
-            <PostCard key={item.post!.id} post={item.post!} currentUser={data.username} isAdmin={!!data.is_community_admin} onOpen={() => setPostModal({ open: true, post: item.post! })} />
+            <PostCard key={item.post!.id} post={item.post!} currentUser={data.username} isAdmin={!!data.is_community_admin} onOpen={() => setPostModal({ open: true, post: item.post! })} onToggleReaction={handleToggleReaction} />
           ))}
         </div>
       </div>
@@ -214,7 +232,7 @@ export default function CommunityFeed() {
       {postModal.open && postModal.post && (
         <div className="fixed inset-0 z-[110] bg-black/80 backdrop-blur" onClick={(e)=> e.currentTarget===e.target && setPostModal({ open:false, post:null })}>
           <div className="w-[92%] max-w-[700px] mx-auto mt-10 rounded-2xl border border-white/10 bg-black p-3 max-h-[80vh] overflow-y-auto">
-            <PostCard key={`modal-${postModal.post.id}`} post={postModal.post} currentUser={data.username} isAdmin={!!data.is_community_admin} onOpen={()=>{}} />
+            <PostCard key={`modal-${postModal.post.id}`} post={postModal.post} currentUser={data.username} isAdmin={!!data.is_community_admin} onOpen={()=>{}} onToggleReaction={handleToggleReaction} />
             {postModal.post.replies?.length ? (
               <div className="mt-2 rounded-xl border border-white/10">
                 {postModal.post.replies.map(r => (
@@ -274,31 +292,12 @@ function AdsCard({ communityId: _communityId, ad }:{ communityId: string, ad: an
   )
 }
 
-async function toggleReaction(postId: number, reaction: string){
-  const form = new URLSearchParams({ post_id: String(postId), reaction })
-  await fetch('/add_reaction', { method: 'POST', credentials: 'include', headers: { 'Content-Type':'application/x-www-form-urlencoded' }, body: form })
-  location.reload()
-}
+// Removed legacy toggleReaction; reactions handled inline with state
 
-function PostCard({ post, currentUser, isAdmin, onOpen }: { post: Post, currentUser: string, isAdmin: boolean, onOpen: ()=>void }) {
+function PostCard({ post, currentUser, isAdmin, onOpen, onToggleReaction }: { post: Post, currentUser: string, isAdmin: boolean, onOpen: ()=>void, onToggleReaction: (postId:number, reaction:string)=>void }) {
   const cardRef = useRef<HTMLDivElement|null>(null)
-  useEffect(() => {
-    const el = cardRef.current
-    if (!el) return
-    const onEnter = () => {
-      el.classList.add('ring-1')
-      el.classList.add('ring-[#4db6ac]')
-    }
-    const onLeave = () => {
-      el.classList.remove('ring-1')
-      el.classList.remove('ring-[#4db6ac]')
-    }
-    el.addEventListener('mouseenter', onEnter)
-    el.addEventListener('mouseleave', onLeave)
-    return () => { el.removeEventListener('mouseenter', onEnter); el.removeEventListener('mouseleave', onLeave) }
-  }, [])
   return (
-    <div ref={cardRef} className="rounded-2xl border border-white/10 bg-white/[0.035] shadow-sm shadow-black/20 transition-[box-shadow,border]" onClick={onOpen}>
+    <div ref={cardRef} className="rounded-2xl border border-white/10 bg-white/[0.035] shadow-sm shadow-black/20" onClick={onOpen}>
       <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2">
         <div className="w-8 h-8 rounded-full bg-white/10" />
         <div className="font-medium tracking-[-0.01em]">{post.username}</div>
@@ -317,12 +316,13 @@ function PostCard({ post, currentUser, isAdmin, onOpen }: { post: Post, currentU
         ) : null}
         {post.poll ? <PollBlock poll={post.poll} postId={post.id} /> : null}
         <div className="flex items-center gap-2 text-xs" onClick={(e)=> e.stopPropagation()}>
-          <ReactionFA icon="fa-regular fa-heart" count={post.reactions?.['heart']||0} active={post.user_reaction==='heart'} onClick={()=> toggleReaction(post.id, 'heart')} />
-          <ReactionFA icon="fa-regular fa-thumbs-up" count={post.reactions?.['thumbs-up']||0} active={post.user_reaction==='thumbs-up'} onClick={()=> toggleReaction(post.id, 'thumbs-up')} />
-          <ReactionFA icon="fa-regular fa-thumbs-down" count={post.reactions?.['thumbs-down']||0} active={post.user_reaction==='thumbs-down'} onClick={()=> toggleReaction(post.id, 'thumbs-down')} />
-          <button className="ml-auto px-3 py-1 rounded-full border border-white/10 hover:border-[#2a3f41] text-[#9fb0b5]"
+          <ReactionFA icon="fa-regular fa-heart" count={post.reactions?.['heart']||0} active={post.user_reaction==='heart'} onClick={()=> onToggleReaction(post.id, 'heart')} />
+          <ReactionFA icon="fa-regular fa-thumbs-up" count={post.reactions?.['thumbs-up']||0} active={post.user_reaction==='thumbs-up'} onClick={()=> onToggleReaction(post.id, 'thumbs-up')} />
+          <ReactionFA icon="fa-regular fa-thumbs-down" count={post.reactions?.['thumbs-down']||0} active={post.user_reaction==='thumbs-down'} onClick={()=> onToggleReaction(post.id, 'thumbs-down')} />
+          <button className="ml-auto px-2.5 py-1 rounded-full text-[#cfd8dc]"
             onClick={(e)=> { e.stopPropagation(); onOpen() }}>
-            <span className="mr-1" style={{ color: '#4db6ac' }}>💬</span>{post.replies?.length || 0}
+            <i className="fa-regular fa-comment" />
+            <span className="ml-1">{post.replies?.length || 0}</span>
           </button>
         </div>
       </div>
