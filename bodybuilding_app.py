@@ -8951,101 +8951,109 @@ def cf_compare_item_in_box():
         item_name = request.args.get('item_name', '').strip()
         if not community_id or not item_type or not item_name:
             return jsonify({'success': False, 'error': 'Missing parameters'})
-
         with get_db_connection() as conn:
             c = conn.cursor()
 
-        # Community users
-        c.execute('''
-            SELECT u.username
-            FROM user_communities uc
-            JOIN users u ON uc.user_id = u.rowid
-            WHERE uc.community_id = ?
-        ''', (community_id,))
-        users = [row['username'] for row in c.fetchall()]
-        if not users:
-            return jsonify({'success': False, 'error': 'No users in community'})
+            # Community users
+            c.execute(
+                '''
+                SELECT u.username
+                FROM user_communities uc
+                JOIN users u ON uc.user_id = u.rowid
+                WHERE uc.community_id = ?
+                ''',
+                (community_id,)
+            )
+            users = [row['username'] for row in c.fetchall()]
+            if not users:
+                return jsonify({'success': False, 'error': 'No users in community'})
 
-        # Helper to parse time strings
-        def parse_time_to_seconds(value: str):
-            try:
-                parts = value.split(':')
-                parts = [int(p) for p in parts]
-                if len(parts) == 3:
-                    return parts[0]*3600 + parts[1]*60 + parts[2]
-                if len(parts) == 2:
-                    return parts[0]*60 + parts[1]
-            except Exception:
-                pass
-            try:
-                return float(value)
-            except Exception:
-                return None
+            # Helper to parse time strings
+            def parse_time_to_seconds(value: str):
+                try:
+                    parts = value.split(':')
+                    parts = [int(p) for p in parts]
+                    if len(parts) == 3:
+                        return parts[0]*3600 + parts[1]*60 + parts[2]
+                    if len(parts) == 2:
+                        return parts[0]*60 + parts[1]
+                except Exception:
+                    pass
+                try:
+                    return float(value)
+                except Exception:
+                    return None
 
-        values = []
-        user_value = None
+            values = []
+            user_value = None
 
-        if item_type == 'lift':
-            for user in users:
-                c.execute('''
-                    SELECT MAX(weight) as val
-                    FROM crossfit_entries
-                    WHERE username = ? AND type = 'lift' AND name = ?
-                ''', (user, item_name))
-                row = c.fetchone()
-                val = row['val'] if row and row['val'] is not None else 0
-                values.append(val)
-                if user == username:
-                    user_value = val
-            valid = [v for v in values if v and v > 0]
-            avg = round(sum(valid)/len(valid), 1) if valid else 0
-            top = round(max(valid), 1) if valid else 0
-            percentile = 0
-            if valid and user_value and user_value > 0:
-                less_or_equal = sum(1 for v in valid if v <= user_value)
-                percentile = round((less_or_equal / len(valid)) * 100)
-            unit = 'kg'
-            lower_is_better = False
-        else:  # wod
-            for user in users:
-                c.execute('''
-                    SELECT score, score_numeric
-                    FROM crossfit_entries
-                    WHERE username = ? AND type = 'wod' AND name = ?
-                ''', (user, item_name))
-                rows = c.fetchall()
-                best = None
-                for r in rows:
-                    n = r['score_numeric'] if r['score_numeric'] is not None else (parse_time_to_seconds(r['score']) if r['score'] else None)
-                    if n is None:
-                        continue
-                    if best is None or n < best:
-                        best = n
-                val = best if best is not None else 0
-                values.append(val)
-                if user == username:
-                    user_value = val
-            valid = [v for v in values if v and v > 0]
-            avg = round(sum(valid)/len(valid), 1) if valid else 0
-            top = round(min(valid), 1) if valid else 0  # best (fastest) time
-            percentile = 0
-            if valid and user_value and user_value > 0:
-                greater_or_equal = sum(1 for v in valid if v >= user_value)  # lower is better
-                percentile = round((greater_or_equal / len(valid)) * 100)
-            unit = 'sec'
-            lower_is_better = True
+            if item_type == 'lift':
+                for user in users:
+                    c.execute(
+                        '''
+                        SELECT MAX(weight) as val
+                        FROM crossfit_entries
+                        WHERE username = ? AND type = 'lift' AND name = ?
+                        ''',
+                        (user, item_name)
+                    )
+                    row = c.fetchone()
+                    val = row['val'] if row and row['val'] is not None else 0
+                    values.append(val)
+                    if user == username:
+                        user_value = val
+                valid = [v for v in values if v and v > 0]
+                avg = round(sum(valid)/len(valid), 1) if valid else 0
+                top = round(max(valid), 1) if valid else 0
+                percentile = 0
+                if valid and user_value and user_value > 0:
+                    less_or_equal = sum(1 for v in valid if v <= user_value)
+                    percentile = round((less_or_equal / len(valid)) * 100)
+                unit = 'kg'
+                lower_is_better = False
+            else:  # wod
+                for user in users:
+                    c.execute(
+                        '''
+                        SELECT score, score_numeric
+                        FROM crossfit_entries
+                        WHERE username = ? AND type = 'wod' AND name = ?
+                        ''',
+                        (user, item_name)
+                    )
+                    rows = c.fetchall()
+                    best = None
+                    for r in rows:
+                        n = r['score_numeric'] if r['score_numeric'] is not None else (parse_time_to_seconds(r['score']) if r['score'] else None)
+                        if n is None:
+                            continue
+                        if best is None or n < best:
+                            best = n
+                    val = best if best is not None else 0
+                    values.append(val)
+                    if user == username:
+                        user_value = val
+                valid = [v for v in values if v and v > 0]
+                avg = round(sum(valid)/len(valid), 1) if valid else 0
+                top = round(min(valid), 1) if valid else 0  # best (fastest) time
+                percentile = 0
+                if valid and user_value and user_value > 0:
+                    greater_or_equal = sum(1 for v in valid if v >= user_value)  # lower is better
+                    percentile = round((greater_or_equal / len(valid)) * 100)
+                unit = 'sec'
+                lower_is_better = True
 
             data = {
-            'labels': ['You'],
-            'avgValues': [avg],
-            'userValues': [user_value or 0],
-            'unit': unit,
-            'lowerIsBetter': lower_is_better
+                'labels': ['You'],
+                'avgValues': [avg],
+                'userValues': [user_value or 0],
+                'unit': unit,
+                'lowerIsBetter': lower_is_better,
             }
+
             if item_type == 'lift':
                 summary = f"Your max for {item_name}: {user_value or 0} {unit}. Box avg: {avg} {unit}. Percentile: {percentile}% • Top: {top} {unit}"
             else:
-                # Format seconds to m:ss for readability
                 def fmt_seconds(s):
                     try:
                         s = int(round(s))
