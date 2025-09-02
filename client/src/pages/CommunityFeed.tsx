@@ -302,6 +302,10 @@ function PostCard({ post, currentUser, isAdmin, onOpen }: { post: Post, currentU
           <ReactionButton label="👍" count={post.reactions?.like||0} active={post.user_reaction==='like'} onClick={()=> toggleReaction(post.id, 'like')} />
           <ReactionButton label="❤️" count={post.reactions?.love||0} active={post.user_reaction==='love'} onClick={()=> toggleReaction(post.id, 'love')} />
           <ReactionButton label="👏" count={post.reactions?.clap||0} active={post.user_reaction==='clap'} onClick={()=> toggleReaction(post.id, 'clap')} />
+          <button className="ml-auto px-3 py-1 rounded-full border border-white/10 hover:border-[#2a3f41] text-[#9fb0b5]"
+            onClick={(e)=> { e.stopPropagation(); onOpen() }}>
+            <span className="mr-1" style={{ color: '#4db6ac' }}>💬</span>{post.replies?.length || 0}
+          </button>
         </div>
       </div>
     </div>
