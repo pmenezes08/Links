@@ -188,6 +188,23 @@ def add_missing_tables():
                     else:
                         logger.warning(f"Could not add column {column_name}: {e}")
             
+            # Add parent_reply_id column to replies if missing
+            try:
+                c.execute("ALTER TABLE replies ADD COLUMN parent_reply_id INTEGER")
+                logger.info("Added column parent_reply_id to replies table")
+            except sqlite3.OperationalError as e:
+                if "duplicate column name" in str(e):
+                    logger.info("Column parent_reply_id already exists in replies table")
+                else:
+                    logger.warning(f"Could not add column parent_reply_id: {e}")
+
+            # Ensure helpful indexes
+            try:
+                c.execute("CREATE INDEX IF NOT EXISTS idx_replies_post ON replies(post_id)")
+                c.execute("CREATE INDEX IF NOT EXISTS idx_replies_parent ON replies(parent_reply_id)")
+            except Exception as e:
+                logger.warning(f"Could not create replies indexes: {e}")
+
             conn.commit()
             logger.info("Missing tables and columns added successfully")
             
@@ -4799,8 +4816,9 @@ def post_reply():
             post_data = c.fetchone()
             community_id = post_data['community_id'] if post_data else None
             
-            c.execute("INSERT INTO replies (post_id, username, content, image_path, timestamp, community_id) VALUES (?, ?, ?, ?, ?, ?)",
-                      (post_id, username, content, image_path, timestamp_db, community_id))
+            parent_reply_id = request.form.get('parent_reply_id', type=int)
+            c.execute("INSERT INTO replies (post_id, username, content, image_path, timestamp, community_id, parent_reply_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                      (post_id, username, content, image_path, timestamp_db, community_id, parent_reply_id))
             reply_id = c.lastrowid
             
             # Get post owner to send notification
@@ -4827,7 +4845,10 @@ def post_reply():
                 'username': username,
                 'content': content,
                 'image_path': image_path,
-                'timestamp': timestamp_display  # Use the display-friendly timestamp
+                'timestamp': timestamp_display,  # Use the display-friendly timestamp
+                'reactions': {},
+                'user_reaction': None,
+                'parent_reply_id': parent_reply_id
             }
         }), 200
     except Exception as e:
@@ -7832,10 +7853,21 @@ def get_post():
             
             post = dict(post_raw)
             
-            # Fetch replies for the post
+            # Fetch replies for the post (top-level first)
             c.execute("SELECT * FROM replies WHERE post_id = ? ORDER BY timestamp DESC", (post_id,))
-            replies_raw = c.fetchall()
-            post['replies'] = [dict(row) for row in replies_raw]
+            replies_raw = [dict(row) for row in c.fetchall()]
+            # Build nested tree by parent_reply_id
+            children_map = {}
+            for r in replies_raw:
+                pid = r.get('parent_reply_id')
+                children_map.setdefault(pid, []).append(r)
+            def build_tree(parent_id=None):
+                arr = []
+                for r in children_map.get(parent_id, []):
+                    r['children'] = build_tree(r['id'])
+                    arr.append(r)
+                return arr
+            post['replies'] = build_tree(None)
             
             # Fetch reactions for the post
             c.execute("""
@@ -7853,7 +7885,7 @@ def get_post():
             post['user_reaction'] = user_reaction_raw['reaction_type'] if user_reaction_raw else None
             
             # Add reaction counts for each reply and user reaction
-            for reply in post['replies']:
+            def hydrate_reply_metrics(reply):
                 c.execute("""
                     SELECT reaction_type, COUNT(*) as count
                     FROM reply_reactions
@@ -7862,10 +7894,13 @@ def get_post():
                 """, (reply['id'],))
                 rr = c.fetchall()
                 reply['reactions'] = {r['reaction_type']: r['count'] for r in rr}
-                
                 c.execute("SELECT reaction_type FROM reply_reactions WHERE reply_id = ? AND username = ?", (reply['id'], username))
                 ur = c.fetchone()
                 reply['user_reaction'] = ur['reaction_type'] if ur else None
+                for ch in reply.get('children', []):
+                    hydrate_reply_metrics(ch)
+            for reply in post['replies']:
+                hydrate_reply_metrics(reply)
             
             return jsonify({'success': True, 'post': post})
             
