@@ -8765,6 +8765,23 @@ def uploaded_file(filename):
         logger.error(f"Error serving image {filename}: {str(e)}")
         return "Error serving image", 500
 
+@app.route('/community_feed_smart/<int:community_id>')
+@login_required
+def community_feed_smart(community_id):
+    """Serve HTML on desktop and React on mobile based on User-Agent."""
+    try:
+        ua = request.headers.get('User-Agent', '')
+        is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
+        if is_mobile:
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            dist_dir = os.path.join(base_dir, 'client', 'dist')
+            return send_from_directory(dist_dir, 'index.html')
+        # Fallback to HTML feed
+        return redirect(url_for('community_feed', community_id=community_id))
+    except Exception as e:
+        logger.error(f"Error in community_feed_smart: {e}")
+        abort(500)
+
 @app.route('/api/community_feed/<int:community_id>')
 @login_required
 def api_community_feed(community_id):
