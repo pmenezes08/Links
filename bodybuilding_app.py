@@ -8818,6 +8818,21 @@ def crossfit():
     username = session.get('username')
     return render_template('crossfit.html', username=username)
 
+@app.route('/crossfit_react')
+@login_required
+def crossfit_react():
+    try:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        dist_dir = os.path.join(base_dir, 'client', 'dist')
+        index_path = os.path.join(dist_dir, 'index.html')
+        if os.path.exists(index_path):
+            return send_from_directory(dist_dir, 'index.html')
+        logger.warning("React build missing for /crossfit_react; redirecting to /crossfit")
+        return redirect(url_for('crossfit'))
+    except Exception as e:
+        logger.error(f"Error serving React CrossfitExact: {str(e)}")
+        abort(500)
+
 @app.route('/cf_add_entry', methods=['POST'])
 @login_required
 def cf_add_entry():
