@@ -4,6 +4,7 @@ import PremiumDashboard from './pages/PremiumDashboard'
 import CrossfitExact from './pages/CrossfitExact'
 import Gym from './pages/Gym'
 import CommunityFeed from './pages/CommunityFeed'
+import PostDetail from './pages/PostDetail'
 
 const queryClient = new QueryClient()
 
@@ -19,6 +20,7 @@ export default function App() {
           <Route path="/crossfit_react" element={<CrossfitExact />} />
           <Route path="/gym" element={<Gym />} />
           <Route path="/community_feed_react/:community_id" element={<CommunityFeed />} />
+          <Route path="/post/:post_id" element={<PostDetail />} />
           <Route path="*" element={<PremiumDashboard />} />
         </Routes>
       </BrowserRouter>
