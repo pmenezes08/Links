@@ -331,16 +331,17 @@ function PostCard({ post, currentUser, isAdmin, onOpen }: { post: Post, currentU
 }
 
 function ReactionButton({ label, count, active, onClick }:{ label: string, count: number, active: boolean, onClick: ()=>void }){
-  // X-like: compact pill, no turquoise border; emoji is turquoise, count subtle
-  const buttonStyle: React.CSSProperties = {
-    backgroundColor: 'transparent',
-    borderColor: 'rgba(255,255,255,0.1)',
-    color: active ? '#cfeeea' : '#9fb0b5',
-  }
-  const emojiStyle: React.CSSProperties = { color: '#4db6ac' }
+  // Match HTML: compact pill, default subtle border/text; active = turquoise bg + white text
+  const baseStyle: React.CSSProperties = active
+    ? { backgroundColor: '#4db6ac', color: '#ffffff', borderColor: '#4db6ac' }
+    : { backgroundColor: 'transparent', color: '#cfd8dc', borderColor: 'rgba(255,255,255,0.1)' }
   return (
-    <button className="px-3 py-1 rounded-full border transition-colors hover:border-[#2a3f41]" style={buttonStyle} onClick={onClick}>
-      <span className="mr-1" style={emojiStyle}>{label}</span>{count}
+    <button
+      className="px-3 py-1 rounded-full border transition-colors hover:border-[#4db6ac]"
+      style={baseStyle}
+      onClick={onClick}
+    >
+      <span className="mr-1">{label}</span>{count}
     </button>
   )
 }
