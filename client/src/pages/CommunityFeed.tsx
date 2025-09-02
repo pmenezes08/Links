@@ -132,6 +132,27 @@ export default function CommunityFeed() {
     }catch{}
   }
 
+  async function handleToggleReplyReaction(replyId: number, reaction: string){
+    try{
+      const form = new URLSearchParams({ reply_id: String(replyId), reaction })
+      const r = await fetch('/add_reply_reaction', { method: 'POST', credentials: 'include', headers: { 'Content-Type':'application/x-www-form-urlencoded' }, body: form })
+      const j = await r.json()
+      if (!j?.success) return
+      setPostModal(pm => {
+        if (!pm.open || !pm.post) return pm
+        const updatedReplies = pm.post.replies.map(rep => rep.id === replyId ? ({ ...rep, reactions: { ...rep.reactions, ...j.counts }, user_reaction: j.user_reaction }) : rep)
+        const updated = { ...pm.post, replies: updatedReplies }
+        // Also reflect into main feed list
+        setData((prev:any) => {
+          if (!prev) return prev
+          const posts = (prev.posts||[]).map((p:any)=> p.id===updated.id ? updated : p)
+          return { ...prev, posts }
+        })
+        return { open: true, post: updated }
+      })
+    }catch{}
+  }
+
   const timeline = useMemo(() => {
     if (!data?.posts) return []
     const items: Array<{ type: 'post'|'ad'; post?: Post }> = []
@@ -272,13 +293,30 @@ export default function CommunityFeed() {
                   <div key={r.id} className="px-3 py-2 border-b border-white/10 text-sm">
                     <div className="font-medium">{r.username}</div>
                     <div className="text-[#dfe6e9] whitespace-pre-wrap">{r.content}</div>
-                    <div className="text-[11px] text-[#9fb0b5]">{r.timestamp}</div>
+                    <div className="text-[11px] text-[#9fb0b5]">{formatTimestamp(r.timestamp)}</div>
+                    <div className="mt-1 flex items-center gap-2 text-[11px]" onClick={(e)=> e.stopPropagation()}>
+                      <ReactionFA icon="fa-regular fa-heart" count={r.reactions?.['heart']||0} active={r.user_reaction==='heart'} onClick={()=> handleToggleReplyReaction(r.id, 'heart')} />
+                      <ReactionFA icon="fa-regular fa-thumbs-up" count={r.reactions?.['thumbs-up']||0} active={r.user_reaction==='thumbs-up'} onClick={()=> handleToggleReplyReaction(r.id, 'thumbs-up')} />
+                      <ReactionFA icon="fa-regular fa-thumbs-down" count={r.reactions?.['thumbs-down']||0} active={r.user_reaction==='thumbs-down'} onClick={()=> handleToggleReplyReaction(r.id, 'thumbs-down')} />
+                    </div>
                   </div>
                 ))}
               </div>
             ) : null}
             <div className="mt-2 rounded-xl border border-white/10 p-2">
-              <ReplyComposer postId={postModal.post.id} />
+              <ReplyComposerInline postId={postModal.post.id} onAdded={(newReply)=> {
+                setPostModal(pm => {
+                  if (!pm.open || !pm.post) return pm
+                  const updated = { ...pm.post, replies: [newReply, ...pm.post.replies] }
+                  // Sync main list
+                  setData((prev:any) => {
+                    if (!prev) return prev
+                    const posts = (prev.posts||[]).map((p:any)=> p.id===updated.id ? updated : p)
+                    return { ...prev, posts }
+                  })
+                  return { open: true, post: updated }
+                })
+              }} />
             </div>
           </div>
         </div>
@@ -429,7 +467,7 @@ function Composer({ communityId, onPosted }: { communityId: string, onPosted: ()
   )
 }
 
-function ReplyComposer({ postId }: { postId: number }){
+function ReplyComposerInline({ postId, onAdded }: { postId: number, onAdded: (reply: Reply)=>void }){
   const [content, setContent] = useState('')
   const [imageFile, setImageFile] = useState<File | null>(null)
   const fileRef = useRef<HTMLInputElement|null>(null)
@@ -439,9 +477,17 @@ function ReplyComposer({ postId }: { postId: number }){
     fd.append('post_id', String(postId))
     fd.append('content', content)
     if (imageFile) fd.append('image', imageFile)
-    await fetch('/post_reply', { method: 'POST', credentials: 'include', body: fd })
+    const r = await fetch('/post_reply', { method: 'POST', credentials: 'include', body: fd })
+    try{
+      const j = await r.json()
+      if (j?.success && j.reply){
+        onAdded(j.reply)
+        setContent(''); setImageFile(null)
+        return
+      }
+    }catch{}
+    // Fallback: if backend didn't return the new reply, refresh the modal by reloading post
     setContent(''); setImageFile(null)
-    location.reload()
   }
   return (
     <div className="p-2 space-y-2">
