@@ -173,14 +173,16 @@ function PostCard({ post, currentUser, isAdmin }: { post: Post, currentUser: str
 }
 
 function ReactionButton({ label, count, active, onClick }:{ label: string, count: number, active: boolean, onClick: ()=>void }){
-  const style: React.CSSProperties = {
-    borderColor: '#4db6ac',
+  // X-like: compact pill, no turquoise border; emoji is turquoise, count subtle
+  const buttonStyle: React.CSSProperties = {
     backgroundColor: 'transparent',
-    color: active ? '#4db6ac' : '#9fb0b5',
+    borderColor: 'rgba(255,255,255,0.1)',
+    color: active ? '#cfeeea' : '#9fb0b5',
   }
+  const emojiStyle: React.CSSProperties = { color: '#4db6ac' }
   return (
-    <button className="px-2.5 py-1 rounded border transition-colors" style={style} onClick={onClick}>
-      <span className="mr-1">{label}</span>{count}
+    <button className="px-3 py-1 rounded-full border transition-colors hover:border-[#2a3f41]" style={buttonStyle} onClick={onClick}>
+      <span className="mr-1" style={emojiStyle}>{label}</span>{count}
     </button>
   )
 }
@@ -209,6 +211,7 @@ function PollBlock({ poll, postId }: { poll: Poll, postId: number }) {
 function Composer({ communityId, onPosted }: { communityId: string, onPosted: ()=>void }){
   const [content, setContent] = useState('')
   const [imageFile, setImageFile] = useState<File | null>(null)
+  const fileRef = useRef<HTMLInputElement|null>(null)
   async function submit(){
     if (!content && !imageFile) return
     const fd = new FormData()
@@ -219,12 +222,15 @@ function Composer({ communityId, onPosted }: { communityId: string, onPosted: ()
     onPosted()
   }
   return (
-    <div className="rounded-lg border border-white/10 bg-white/5 p-3 mb-3">
-      <textarea className="w-full resize-y min-h-[60px] p-2 rounded bg-[#1a1a1a] border border-[#333] text-sm"
+    <div className="rounded-xl border border-white/10 bg-black p-3 mb-3">
+      <textarea className="w-full resize-y min-h-[60px] p-2 rounded bg-black border border-[#333] text-sm"
         placeholder="Write something…" value={content} onChange={(e)=> setContent(e.target.value)} />
       <div className="mt-2 flex items-center gap-2">
-        <input type="file" accept="image/*" onChange={(e)=> setImageFile(e.target.files?.[0]||null)} />
-        <button className="ml-auto px-3 py-2 rounded bg-teal-700/20 text-teal-300 border border-teal-500/40" onClick={submit}>Post</button>
+        <input ref={fileRef} type="file" accept="image/*" onChange={(e)=> setImageFile(e.target.files?.[0]||null)} style={{ display: 'none' }} />
+        <button className="px-2.5 py-1.5 rounded-full border border-white/10 text-xs text-[#9fb0b5] hover:border-[#2a3f41]" onClick={()=> fileRef.current?.click()} aria-label="Add image">
+          <i className="fa-regular fa-image" style={{ color: '#4db6ac' }} />
+        </button>
+        <button className="ml-auto px-3 py-2 rounded-full bg-[#4db6ac] text-white border border-[#4db6ac] hover:brightness-110" onClick={submit}>Post</button>
       </div>
     </div>
   )
@@ -233,6 +239,7 @@ function Composer({ communityId, onPosted }: { communityId: string, onPosted: ()
 function ReplyComposer({ postId }: { postId: number }){
   const [content, setContent] = useState('')
   const [imageFile, setImageFile] = useState<File | null>(null)
+  const fileRef = useRef<HTMLInputElement|null>(null)
   async function submit(){
     if (!content && !imageFile) return
     const fd = new FormData()
@@ -244,10 +251,15 @@ function ReplyComposer({ postId }: { postId: number }){
     location.reload()
   }
   return (
-    <div className="p-2 flex items-center gap-2">
-      <input className="flex-1 px-3 py-2 rounded bg-[#0b0f10] border border-[#333] text-sm" placeholder="Write a reply…" value={content} onChange={(e)=> setContent(e.target.value)} />
-      <input type="file" accept="image/*" onChange={(e)=> setImageFile(e.target.files?.[0]||null)} />
-      <button className="px-2.5 py-1.5 rounded border border-[#4db6ac] text-[#4db6ac]" onClick={submit}>Reply</button>
+    <div className="p-2 space-y-2">
+      <textarea className="w-full resize-y min-h-[44px] px-3 py-2 rounded bg-black border border-[#333] text-sm" placeholder="Write a reply…" value={content} onChange={(e)=> setContent(e.target.value)} />
+      <div className="flex items-center gap-2">
+        <input ref={fileRef} type="file" accept="image/*" onChange={(e)=> setImageFile(e.target.files?.[0]||null)} style={{ display: 'none' }} />
+        <button className="px-2.5 py-1.5 rounded-full border border-white/10 text-xs text-[#9fb0b5] hover:border-[#2a3f41]" onClick={()=> fileRef.current?.click()} aria-label="Add image">
+          <i className="fa-regular fa-image" style={{ color: '#4db6ac' }} />
+        </button>
+        <button className="ml-auto px-3 py-1.5 rounded-full bg-[#4db6ac] text-white text-xs border border-[#4db6ac] hover:brightness-110" onClick={submit}>Reply</button>
+      </div>
     </div>
   )
 }
