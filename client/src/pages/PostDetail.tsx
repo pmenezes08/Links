@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
-type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null, parent_reply_id?: number|null, children?: Reply[] }
+type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null, parent_reply_id?: number|null, children?: Reply[], profile_picture?: string|null }
 type Post = { id: number; username: string; content: string; image_path?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; replies: Reply[] }
 
 function formatTimestamp(input: string): string {
@@ -218,9 +218,19 @@ function ReplyNode({ reply, depth=0, onToggle, onInlineReply }:{ reply: Reply, d
   const [text, setText] = useState('')
   return (
     <div className="border-b border-white/10" style={{ paddingLeft: depth ? Math.min(depth*16, 48) : 0 }}>
-      <div className="px-3 py-2 text-sm">
-        <div className="font-medium">{reply.username}</div>
-        <div className="text-[#dfe6e9] whitespace-pre-wrap">{reply.content}</div>
+      <div className="px-3 py-2 text-sm relative">
+        {depth > 0 ? (<div className="absolute left-2 top-0 bottom-0 w-px bg-white/10" />) : null}
+        <div className="flex items-start gap-2">
+          <div className="w-7 h-7 rounded-full bg-white/10 overflow-hidden">
+            {reply.profile_picture ? (
+              <img src={(reply.profile_picture?.startsWith('http') || reply.profile_picture?.startsWith('/static')) ? reply.profile_picture! : `/static/${reply.profile_picture}`} alt="" className="w-full h-full object-cover" />
+            ) : null}
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="font-medium">{reply.username}</div>
+            <div className="text-[#dfe6e9] whitespace-pre-wrap">{reply.content}</div>
+          </div>
+        </div>
         <div className="text-[11px] text-[#9fb0b5]">{formatTimestamp(reply.timestamp)}</div>
         <div className="mt-1 flex items-center gap-2 text-[11px]">
           <Reaction icon="fa-regular fa-heart" count={reply.reactions?.['heart']||0} active={reply.user_reaction==='heart'} onClick={()=> onToggle(reply.id, 'heart')} />

@@ -8863,6 +8863,13 @@ def api_community_feed(community_id):
             # Enrich posts
             for post in posts:
                 post_id = post['id']
+                # Add profile picture for post author
+                try:
+                    c.execute("SELECT profile_picture FROM user_profiles WHERE username = ?", (post['username'],))
+                    pp = c.fetchone()
+                    post['profile_picture'] = pp['profile_picture'] if pp and 'profile_picture' in pp.keys() else None
+                except Exception:
+                    post['profile_picture'] = None
                 # Reaction counts for post
                 c.execute(
                     """
@@ -8900,7 +8907,22 @@ def api_community_feed(community_id):
                 # Replies
                 c.execute("SELECT * FROM replies WHERE post_id = ? ORDER BY timestamp DESC", (post_id,))
                 replies = [dict(row) for row in c.fetchall()]
+                # Attach profile pictures for replies
                 for reply in replies:
+                    try:
+                        c.execute("SELECT profile_picture FROM user_profiles WHERE username = ?", (reply['username'],))
+                        pr = c.fetchone()
+                        reply['profile_picture'] = pr['profile_picture'] if pr and 'profile_picture' in pr.keys() else None
+                    except Exception:
+                        reply['profile_picture'] = None
+                for reply in replies:
+                    # Add profile picture for reply author
+                    try:
+                        c.execute("SELECT profile_picture FROM user_profiles WHERE username = ?", (reply['username'],))
+                        pr = c.fetchone()
+                        reply['profile_picture'] = pr['profile_picture'] if pr and 'profile_picture' in pr.keys() else None
+                    except Exception:
+                        reply['profile_picture'] = None
                     reply_id = reply['id']
                     c.execute(
                         """

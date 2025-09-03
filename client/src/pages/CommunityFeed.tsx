@@ -3,8 +3,8 @@ import { useParams } from 'react-router-dom'
 
 type PollOption = { id: number; text: string; votes: number }
 type Poll = { id: number; question: string; is_active: number; options: PollOption[]; user_vote: number|null; total_votes: number }
-type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null }
-type Post = { id: number; username: string; content: string; image_path?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; poll?: Poll|null; replies: Reply[] }
+type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null, profile_picture?: string|null }
+type Post = { id: number; username: string; content: string; image_path?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; poll?: Poll|null; replies: Reply[], profile_picture?: string|null }
 
 function formatTimestamp(input: string): string {
   function parseDate(str: string): Date | null {
@@ -346,7 +346,12 @@ function PostCard({ post, currentUser, isAdmin, onOpen, onToggleReaction }: { po
   return (
     <div ref={cardRef} className="rounded-2xl border border-white/10 bg-white/[0.035] shadow-sm shadow-black/20" onClick={onOpen}>
       <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2">
-        <div className="w-8 h-8 rounded-full bg-white/10" />
+        <div className="w-8 h-8 rounded-full bg-white/10 overflow-hidden">
+          {post.profile_picture ? (
+            <img src={(post.profile_picture.startsWith('http') || post.profile_picture.startsWith('/static')) ? post.profile_picture : `/static/${post.profile_picture}`}
+                 alt="" className="w-full h-full object-cover" />
+          ) : null}
+        </div>
         <div className="font-medium tracking-[-0.01em]">{post.username}</div>
         <div className="text-xs text-[#9fb0b5] ml-auto tabular-nums">{formatTimestamp(post.timestamp)}</div>
         {(post.username === currentUser || isAdmin || currentUser === 'admin') && (
