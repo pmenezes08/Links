@@ -95,8 +95,7 @@ export default function CommunityFeed() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string| null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
-  const [showMembers, setShowMembers] = useState(false)
-  const [members, setMembers] = useState<Array<{username:string, profile_picture?:string|null}>>([])
+  const [hasUnseenAnnouncements, setHasUnseenAnnouncements] = useState(false)
   const [showAnnouncements, _setShowAnnouncements] = useState(false)
   const [_announcements, _setAnnouncements] = useState<Array<{id:number, content:string, created_by:string, created_at:string}>>([])
   const [ad, setAd] = useState<any>(null)
@@ -142,17 +141,26 @@ export default function CommunityFeed() {
     loadAds()
   }, [community_id])
 
-  async function openMembers(){
-    try{
-      const r = await fetch(`/community/${community_id}/members/list`, { credentials: 'include' })
-      const j = await r.json()
-      if (j && j.success !== false){
-        const list = Array.isArray(j) ? j : (j.members || [])
-        setMembers(list)
-        setShowMembers(true)
-      }
-    }catch{}
-  }
+  useEffect(() => {
+    // Check for unseen announcements (highlight icon)
+    let mounted = true
+    async function check(){
+      try{
+        const r = await fetch(`/get_community_announcements?community_id=${community_id}`, { credentials: 'include' })
+        const j = await r.json()
+        if (!mounted) return
+        if (j?.success){
+          const key = `ann_last_seen_${community_id}`
+          const lastSeenStr = localStorage.getItem(key)
+          const lastSeen = lastSeenStr ? Date.parse(lastSeenStr) : 0
+          const hasNew = (j.announcements || []).some((a:any) => Date.parse(a.created_at) > lastSeen)
+          setHasUnseenAnnouncements(hasNew)
+        }
+      }catch{}
+    }
+    check()
+    return () => { mounted = false }
+  }, [community_id])
 
   async function fetchAnnouncements(){
     try{
@@ -161,6 +169,11 @@ export default function CommunityFeed() {
       if (j?.success){
         _setAnnouncements(j.announcements || [])
         _setShowAnnouncements(true)
+        try{
+          const key = `ann_last_seen_${community_id}`
+          localStorage.setItem(key, new Date().toISOString())
+          setHasUnseenAnnouncements(false)
+        }catch{}
       }
     }catch{}
   }
@@ -287,25 +300,7 @@ export default function CommunityFeed() {
         </div>
       </div>
 
-      {/* Members modal */}
-      {showMembers && (
-        <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur flex items-center justify-center" onClick={(e)=> e.currentTarget===e.target && setShowMembers(false)}>
-          <div className="w-[90%] max-w-[480px] rounded-2xl border border-white/10 bg-black p-3">
-            <div className="flex items-center justify-between mb-2">
-              <div className="font-semibold">Members</div>
-              <button className="px-2 py-1 rounded-full border border-white/10" onClick={()=> setShowMembers(false)}>✕</button>
-            </div>
-            <div className="max-h-[380px] overflow-y-auto space-y-2">
-              {members.map((m,i)=> (
-                <div key={i} className="flex items-center gap-2 p-2 rounded border border-white/10">
-                  <div className="w-8 h-8 rounded-full bg-white/10" />
-                  <div className="text-sm">{m.username || (m as any)}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Members modal removed: dedicated page now */}
 
       {/* Announcements modal */}
       {showAnnouncements && (
@@ -335,14 +330,17 @@ export default function CommunityFeed() {
           <button className="p-2 rounded-full hover:bg-white/5" aria-label="Home" onClick={()=> scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}>
             <i className="fa-solid fa-house" />
           </button>
-          <button className="p-2 rounded-full hover:bg-white/5" aria-label="Members" onClick={openMembers}>
+          <button className="p-2 rounded-full hover:bg-white/5" aria-label="Members" onClick={()=> navigate(`/community/${community_id}/members`)}>
             <i className="fa-solid fa-users" />
           </button>
           <button className="w-10 h-10 rounded-md bg-[#4db6ac] text-black hover:brightness-110 grid place-items-center" aria-label="New Post" onClick={()=> navigate(`/compose?community_id=${community_id}`)}>
             <i className="fa-solid fa-plus" />
           </button>
-          <button className="p-2 rounded-full hover:bg-white/5" aria-label="Announcements" onClick={()=> { fetchAnnouncements() }}>
-            <i className="fa-solid fa-bullhorn" />
+          <button className="relative p-2 rounded-full hover:bg-white/5" aria-label="Announcements" onClick={()=> { fetchAnnouncements() }}>
+            <span className="relative inline-block">
+              <i className="fa-solid fa-bullhorn" style={hasUnseenAnnouncements ? { color:'#4db6ac' } : undefined} />
+              {hasUnseenAnnouncements ? (<span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-[#4db6ac] rounded-full" />) : null}
+            </span>
           </button>
           <button className="p-2 rounded-full hover:bg-white/5" aria-label="More" onClick={()=> setMoreOpen(true)}>
             <i className="fa-solid fa-ellipsis" />

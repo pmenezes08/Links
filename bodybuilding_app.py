@@ -8999,6 +8999,17 @@ def react_post_detail(post_id):
         logger.error(f"Error serving React post detail: {str(e)}")
         abort(500)
 
+@app.route('/community/<int:community_id>/members')
+@login_required
+def react_members_page(community_id):
+    try:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        dist_dir = os.path.join(base_dir, 'client', 'dist')
+        return send_from_directory(dist_dir, 'index.html')
+    except Exception as e:
+        logger.error(f"Error serving React community members page: {str(e)}")
+        abort(500)
+
 @app.route('/static/uploads/<path:filename>')
 def static_uploaded_file(filename):
     """Alternative route for static uploads"""
