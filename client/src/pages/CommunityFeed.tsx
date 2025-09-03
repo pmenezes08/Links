@@ -166,17 +166,36 @@ export default function CommunityFeed() {
   }
 
   async function handleToggleReaction(postId: number, reaction: string){
+    // Optimistic update: toggle user reaction and adjust counts immediately
+    setData((prev:any) => {
+      if (!prev) return prev
+      const updatedPosts = (prev.posts || []).map((p: any) => {
+        if (p.id !== postId) return p
+        const prevUserReaction = p.user_reaction
+        const nextUserReaction = prevUserReaction === reaction ? null : reaction
+        const counts = { ...(p.reactions || {}) }
+        if (prevUserReaction){
+          counts[prevUserReaction] = Math.max(0, (counts[prevUserReaction] || 0) - 1)
+        }
+        if (nextUserReaction){
+          counts[nextUserReaction] = (counts[nextUserReaction] || 0) + 1
+        }
+        return { ...p, user_reaction: nextUserReaction, reactions: counts }
+      })
+      return { ...prev, posts: updatedPosts }
+    })
+
     try{
       const form = new URLSearchParams({ post_id: String(postId), reaction })
       const r = await fetch('/add_reaction', { method: 'POST', credentials: 'include', headers: { 'Content-Type':'application/x-www-form-urlencoded' }, body: form })
-      const j = await r.json()
+      const j = await r.json().catch(()=>null)
       if (!j?.success) return
+      // Reconcile with server counts
       setData((prev:any) => {
         if (!prev) return prev
         const updatedPosts = (prev.posts || []).map((p: any) => p.id === postId ? ({ ...p, reactions: { ...p.reactions, ...j.counts }, user_reaction: j.user_reaction }) : p)
         return { ...prev, posts: updatedPosts }
       })
-      // If viewing detail page, it will handle its own state
     }catch{}
   }
 
@@ -424,18 +443,14 @@ function PostCard({ post, currentUser, isAdmin, onOpen, onToggleReaction }: { po
 }
 
 function ReactionFA({ icon, count, active, onClick }:{ icon: string, count: number, active: boolean, onClick: ()=>void }){
-  // No borders; active = turquoise bg + white text; neutral = transparent bg + grey text
-  const baseStyle: React.CSSProperties = active
-    ? { backgroundColor: '#4db6ac', color: '#ffffff' }
-    : { backgroundColor: 'transparent', color: '#6c757d' }
+  // Border-only turquoise for active icon (stroke/outline vibe); neutral grey. No pill/border backgrounds.
+  const iconStyle: React.CSSProperties = active
+    ? { color: '#4db6ac', WebkitTextStroke: '1px #4db6ac' }
+    : { color: '#6c757d' }
   return (
-    <button
-      className="px-3 py-1 rounded-full transition-colors hover:text-[#4db6ac]"
-      style={baseStyle}
-      onClick={onClick}
-    >
-      <i className={icon} style={{ color: 'inherit' }}></i>
-      <span className="ml-1">{count}</span>
+    <button className="px-2 py-1 rounded transition-colors" onClick={onClick}>
+      <i className={icon} style={iconStyle} />
+      <span className="ml-1" style={{ color: active ? '#cfe9e7' : '#9fb0b5' }}>{count}</span>
     </button>
   )
 }

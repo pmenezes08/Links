@@ -84,6 +84,16 @@ export default function PostDetail(){
 
   async function toggleReaction(reaction: string){
     if (!post) return
+    // Optimistic update
+    setPost(p => {
+      if (!p) return p
+      const prevUser = p.user_reaction
+      const nextUser = prevUser === reaction ? null : reaction
+      const counts = { ...(p.reactions || {}) }
+      if (prevUser) counts[prevUser] = Math.max(0, (counts[prevUser] || 0) - 1)
+      if (nextUser) counts[nextUser] = (counts[nextUser] || 0) + 1
+      return { ...p, user_reaction: nextUser, reactions: counts }
+    })
     const form = new URLSearchParams({ post_id: String(post.id), reaction })
     const r = await fetch('/add_reaction', { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: form })
     const j = await r.json().catch(()=>null)
@@ -239,11 +249,14 @@ export default function PostDetail(){
 }
 
 function Reaction({ icon, count, active, onClick }:{ icon: string, count: number, active: boolean, onClick: ()=>void }){
-  const baseStyle: React.CSSProperties = active ? { backgroundColor:'#4db6ac', color:'#fff' } : { backgroundColor:'transparent', color:'#6c757d' }
+  // Border-only turquoise for active icon
+  const iconStyle: React.CSSProperties = active
+    ? { color: '#4db6ac', WebkitTextStroke: '1px #4db6ac' }
+    : { color: '#6c757d' }
   return (
-    <button className="px-3 py-1 rounded-full transition-colors hover:text-[#4db6ac]" style={baseStyle} onClick={onClick}>
-      <i className={icon} style={{ color:'inherit' }} />
-      <span className="ml-1">{count}</span>
+    <button className="px-2 py-1 rounded transition-colors" onClick={onClick}>
+      <i className={icon} style={iconStyle} />
+      <span className="ml-1" style={{ color: active ? '#cfe9e7' : '#9fb0b5' }}>{count}</span>
     </button>
   )
 }
