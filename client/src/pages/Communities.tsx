@@ -89,7 +89,15 @@ export default function Communities(){
             {communities.length === 0 ? (
               <div className="text-[#9fb0b5]">You are not a member of any communities.</div>
             ) : communities.map(c => (
-              <button key={c.id} type="button" className="w-full text-left px-3 py-2 rounded-2xl bg-white/[0.035] hover:bg-white/[0.06]" onClick={()=> { window.location.href = `/community_feed/${c.id}` }}>
+              <button key={c.id} type="button" className="w-full text-left px-3 py-2 rounded-2xl bg-white/[0.035] hover:bg-white/[0.06]" onClick={()=> {
+                const ua = navigator.userAgent || ''
+                const isMobile = /Mobi|Android|iPhone|iPad/i.test(ua) || window.innerWidth < 768
+                if (isMobile) {
+                  navigate(`/community_feed_react/${c.id}`)
+                } else {
+                  window.location.href = `/community_feed/${c.id}`
+                }
+              }}>
                 <div className="font-medium">{c.name}</div>
                 <div className="text-xs text-[#9fb0b5]">{c.type || 'Community'}</div>
               </button>
