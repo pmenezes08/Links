@@ -5,12 +5,43 @@ type Reply = { id: number; username: string; content: string; timestamp: string;
 type Post = { id: number; username: string; content: string; image_path?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; replies: Reply[] }
 
 function formatTimestamp(input: string): string {
-  let d = new Date(input)
-  if (isNaN(d.getTime())){
-    const tryD = new Date(input.replace(' ', 'T'))
-    if (!isNaN(tryD.getTime())) d = tryD
+  function parseDate(str: string): Date | null {
+    if (/^\d{10,13}$/.test(str.trim())){
+      const n = Number(str)
+      const d = new Date(n > 1e12 ? n : n * 1000)
+      return isNaN(d.getTime()) ? null : d
+    }
+    let d = new Date(str)
+    if (!isNaN(d.getTime())) return d
+    d = new Date(str.replace(' ', 'T'))
+    if (!isNaN(d.getTime())) return d
+    const mdyDots = str.match(/^(\d{1,2})\.(\d{1,2})\.(\d{2}) (\d{1,2}):(\d{2})$/)
+    if (mdyDots){
+      const mm = Number(mdyDots[1]), dd = Number(mdyDots[2]), yy = Number(mdyDots[3])
+      const HH = Number(mdyDots[4]), MM = Number(mdyDots[5])
+      const dt = new Date(2000 + yy, mm - 1, dd, HH, MM)
+      return isNaN(dt.getTime()) ? null : dt
+    }
+    const mdySlashAm = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2}) (\d{1,2}):(\d{2}) (AM|PM)$/i)
+    if (mdySlashAm){
+      const mm = Number(mdySlashAm[1]), dd = Number(mdySlashAm[2]), yy = Number(mdySlashAm[3])
+      let hh = Number(mdySlashAm[4]); const MM = Number(mdySlashAm[5]); const ampm = mdySlashAm[6].toUpperCase()
+      if (ampm === 'PM' && hh < 12) hh += 12
+      if (ampm === 'AM' && hh === 12) hh = 0
+      const dt = new Date(2000 + yy, mm - 1, dd, hh, MM)
+      return isNaN(dt.getTime()) ? null : dt
+    }
+    const ymd = str.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/)
+    if (ymd){
+      const year = Number(ymd[1]), mm = Number(ymd[2]), dd = Number(ymd[3])
+      const HH = Number(ymd[4]), MM = Number(ymd[5]), SS = ymd[6] ? Number(ymd[6]) : 0
+      const dt = new Date(year, mm - 1, dd, HH, MM, SS)
+      return isNaN(dt.getTime()) ? null : dt
+    }
+    return null
   }
-  if (isNaN(d.getTime())) return input
+  const d = parseDate(input)
+  if (!d) return input
   const now = new Date()
   const diffMs = Math.max(0, now.getTime() - d.getTime())
   const minuteMs = 60*1000, hourMs = 60*minuteMs, dayMs = 24*hourMs
