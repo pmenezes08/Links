@@ -243,17 +243,16 @@ export default function CommunityFeed() {
       )}
 
       <div className="max-w-2xl mx-auto pt-16 pb-20 px-3">
-        {/* Top header image from legacy template */}
-        {data.community?.background_path ? (
-          <div className="community-header-image mb-3 overflow-hidden rounded-xl border border-white/10">
-            <img src={data.community.background_path.startsWith('http') ? data.community.background_path : `/static/community_backgrounds/${data.community.background_path.split('/').slice(-1)[0]}`}
-                 alt={data.community?.name + ' Header'} className="header-image transition-transform duration-300 hover:scale-[1.015]" />
-          </div>
-        ) : null}
-
-        {/* Top nav and composer removed as per new design */}
-
         <div className="space-y-3">
+          {/* Top header image from legacy template */}
+          {data.community?.background_path ? (
+            <div className="community-header-image overflow-hidden rounded-xl border border-white/10">
+              <img src={data.community.background_path.startsWith('http') ? data.community.background_path : `/static/community_backgrounds/${data.community.background_path.split('/').slice(-1)[0]}`}
+                   alt={data.community?.name + ' Header'} className="header-image transition-transform duration-300 hover:scale-[1.015]" />
+            </div>
+          ) : null}
+
+          {/* Feed items */}
           {timeline.map((item, i) => item.type === 'ad' ? (
             <AdsCard key={`ad-${i}`} communityId={String(community_id)} ad={ad} />
           ) : (
