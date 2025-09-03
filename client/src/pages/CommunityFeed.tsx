@@ -104,12 +104,15 @@ export default function CommunityFeed() {
   // Modal removed in favor of dedicated PostDetail route
 
   useEffect(() => {
-    // Inject legacy css to match compact desktop/brand styles
-    const link = document.createElement('link')
-    link.rel = 'stylesheet'
-    link.href = '/static/styles.css'
-    document.head.appendChild(link)
-    return () => { document.head.removeChild(link) }
+    // Ensure legacy css is attached once to avoid flashes between pages
+    let link = document.getElementById('legacy-styles') as HTMLLinkElement | null
+    if (!link){
+      link = document.createElement('link')
+      link.id = 'legacy-styles'
+      link.rel = 'stylesheet'
+      link.href = '/static/styles.css'
+      document.head.appendChild(link)
+    }
   }, [])
 
   // Remember last visited community for quick return from Communities tab

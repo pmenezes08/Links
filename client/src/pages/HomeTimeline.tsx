@@ -86,11 +86,14 @@ export default function HomeTimeline(){
   const [error, setError] = useState<string|null>(null)
 
   useEffect(() => {
-    const link = document.createElement('link')
-    link.rel = 'stylesheet'
-    link.href = '/static/styles.css'
-    document.head.appendChild(link)
-    return () => { document.head.removeChild(link) }
+    let link = document.getElementById('legacy-styles') as HTMLLinkElement | null
+    if (!link){
+      link = document.createElement('link')
+      link.id = 'legacy-styles'
+      link.rel = 'stylesheet'
+      link.href = '/static/styles.css'
+      document.head.appendChild(link)
+    }
   }, [])
 
   useEffect(() => {

@@ -12,12 +12,14 @@ export default function Communities(){
   const [error, setError] = useState<string|null>(null)
 
   useEffect(() => {
-    // Inject legacy styles for consistency
-    const link = document.createElement('link')
-    link.rel = 'stylesheet'
-    link.href = '/static/styles.css'
-    document.head.appendChild(link)
-    return () => { document.head.removeChild(link) }
+    const link = document.getElementById('legacy-styles') as HTMLLinkElement | null
+    if (!link){
+      const l = document.createElement('link')
+      l.id = 'legacy-styles'
+      l.rel = 'stylesheet'
+      l.href = '/static/styles.css'
+      document.head.appendChild(l)
+    }
   }, [])
 
   useEffect(() => {
