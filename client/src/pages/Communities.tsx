@@ -25,12 +25,11 @@ export default function Communities(){
     async function load(){
       setLoading(true)
       try{
-        // Reuse feed API to get current user meta (avatar/name). Pick any community meta if needed later.
-        // If fails, we still render basics.
+        // Fetch current user meta from home timeline endpoint
         try{
-          const r = await fetch(`/api/community_feed/0`, { credentials:'include' })
+          const r = await fetch(`/api/home_timeline`, { credentials:'include' })
           const j = await r.json()
-          if (mounted && j){
+          if (mounted && j?.success){
             setData({ username: j.username, current_user_profile_picture: j.current_user_profile_picture })
           }
         }catch{}
@@ -84,7 +83,7 @@ export default function Communities(){
             <div className="h-0.5 bg-transparent rounded-full w-16 mx-auto mt-1" />
           </button>
           <button className="flex-1 text-center text-sm font-medium text-white/95">
-            <div className="pt-2">Your Communities</div>
+            <div className="pt-2">Communities</div>
             <div className="h-0.5 bg-[#4db6ac] rounded-full w-16 mx-auto mt-1" />
           </button>
         </div>

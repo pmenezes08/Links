@@ -9009,14 +9009,64 @@ def api_home_timeline():
             placeholders = ",".join(["?"] * len(community_ids))
             params = list(community_ids)
 
-            # Fetch posts in last 48 hours across user's communities
+            # Fetch recent posts across user's communities, then filter last 48h in Python (timestamps may have varied formats)
             c.execute(f"""
                 SELECT * FROM posts
                 WHERE community_id IN ({placeholders})
-                  AND datetime(timestamp) >= datetime('now','-48 hours')
                 ORDER BY id DESC
+                LIMIT 600
             """, params)
-            posts = [dict(row) for row in c.fetchall()]
+            rows = [dict(row) for row in c.fetchall()]
+
+            # Robust timestamp parsing
+            from datetime import datetime, timedelta
+            now = datetime.utcnow()
+            forty_eight = timedelta(hours=48)
+
+            def parse_ts(s: str):
+                if not s:
+                    return None
+                try:
+                    # Try ISO / SQLite default
+                    return datetime.strptime(s[:19], '%Y-%m-%d %H:%M:%S')
+                except Exception:
+                    pass
+                try:
+                    # MM.DD.YY HH:MM
+                    return datetime.strptime(s, '%m.%d.%y %H:%M')
+                except Exception:
+                    pass
+                try:
+                    # MM/DD/YY HH:MM AM/PM
+                    return datetime.strptime(s, '%m/%d/%y %I:%M %p')
+                except Exception:
+                    pass
+                try:
+                    # Epoch seconds
+                    if s.isdigit():
+                        n = int(s)
+                        if n < 1e12:
+                            from datetime import timezone
+                            return datetime.fromtimestamp(n, tz=timezone.utc).replace(tzinfo=None)
+                        else:
+                            from datetime import timezone
+                            return datetime.fromtimestamp(n/1000, tz=timezone.utc).replace(tzinfo=None)
+                except Exception:
+                    pass
+                try:
+                    # Fallback to Python parser
+                    return datetime.fromisoformat(s.replace(' ', 'T')[:19])
+                except Exception:
+                    return None
+
+            posts = []
+            for r in rows:
+                dt = parse_ts(str(r.get('timestamp', '')))
+                if dt is None:
+                    # If cannot parse, include conservatively
+                    continue
+                if now - dt <= forty_eight:
+                    posts.append(r)
 
             # Enrich posts with author picture, reactions, user reaction, poll, replies_count, and community_name
             for post in posts:
