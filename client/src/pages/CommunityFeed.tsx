@@ -227,9 +227,9 @@ export default function CommunityFeed() {
           </div>
         ) : null}
 
-        {/* Action bar: wrapped, balanced spacing */}
+        {/* Action bar: swipable horizontal nav (keep larger pill size) */}
         <div className="my-4">
-          <div className="flex flex-wrap gap-2">
+          <div className="flex gap-2 pr-3 overflow-x-auto">
             <ActionPill icon="fa-users" label="Members" onClick={openMembers} />
             <ActionPill icon="fa-bullhorn" label="Announcements" onClick={openAnnouncements} />
             <ActionPill icon="fa-chart-pie" label="Polls" onClick={()=> window.location.href = `/community_feed/${community_id}`} />
@@ -237,7 +237,6 @@ export default function CommunityFeed() {
             <ActionPill icon="fa-bell" label="Notifications" onClick={()=> window.location.href = `/notifications`} />
             <ActionPill icon="fa-flag" label="Issues" onClick={()=> {}} />
             <ActionPill icon="fa-calendar" label="Calendar" onClick={()=> window.location.href = `/community/${community_id}/calendar`} />
-            <ActionPill icon="fa-ellipsis" label="More" onClick={()=> {}} />
           </div>
         </div>
 
