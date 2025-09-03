@@ -444,12 +444,17 @@ function PostCard({ post, currentUser, isAdmin, onOpen, onToggleReaction }: { po
 
 function ReactionFA({ icon, count, active, onClick }:{ icon: string, count: number, active: boolean, onClick: ()=>void }){
   // Border-only turquoise for active icon (stroke/outline vibe); neutral grey. No pill/border backgrounds.
+  const [popping, setPopping] = useState(false)
   const iconStyle: React.CSSProperties = active
     ? { color: '#4db6ac', WebkitTextStroke: '1px #4db6ac' }
     : { color: '#6c757d' }
+  const handleClick = () => {
+    setPopping(true)
+    try { onClick() } finally { setTimeout(() => setPopping(false), 140) }
+  }
   return (
-    <button className="px-2 py-1 rounded transition-colors" onClick={onClick}>
-      <i className={icon} style={iconStyle} />
+    <button className="px-2 py-1 rounded transition-colors" onClick={handleClick}>
+      <i className={`${icon} ${popping ? 'scale-125' : 'scale-100'} transition-transform duration-150`} style={iconStyle} />
       <span className="ml-1" style={{ color: active ? '#cfe9e7' : '#9fb0b5' }}>{count}</span>
     </button>
   )
