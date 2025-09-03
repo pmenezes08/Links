@@ -116,7 +116,7 @@ export default function Communities(){
         </div>
       )}
 
-      <div className="max-w-2xl mx-auto pt-24 pb-10 px-3">
+      <div className="max-w-2xl mx-auto pt-28 pb-10 px-3">
         {loading ? (
           <div className="text-[#9fb0b5]">Loading…</div>
         ) : error ? (
