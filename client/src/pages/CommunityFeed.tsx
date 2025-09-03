@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 
 type PollOption = { id: number; text: string; votes: number }
 type Poll = { id: number; question: string; is_active: number; options: PollOption[]; user_vote: number|null; total_votes: number }
@@ -90,15 +90,17 @@ function formatTimestamp(input: string): string {
 
 export default function CommunityFeed() {
   const { community_id } = useParams()
+  const navigate = useNavigate()
   const [data, setData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string| null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
   const [showMembers, setShowMembers] = useState(false)
   const [members, setMembers] = useState<Array<{username:string, profile_picture?:string|null}>>([])
-  const [showAnnouncements, setShowAnnouncements] = useState(false)
-  const [announcements, setAnnouncements] = useState<Array<{id:number, content:string, created_by:string, created_at:string}>>([])
+  const [showAnnouncements, _setShowAnnouncements] = useState(false)
+  const [_announcements, _setAnnouncements] = useState<Array<{id:number, content:string, created_by:string, created_at:string}>>([])
   const [ad, setAd] = useState<any>(null)
+  const scrollRef = useRef<HTMLDivElement|null>(null)
   // Modal removed in favor of dedicated PostDetail route
 
   useEffect(() => {
@@ -151,16 +153,8 @@ export default function CommunityFeed() {
     }catch{}
   }
 
-  async function openAnnouncements(){
-    try{
-      const r = await fetch(`/get_community_announcements?community_id=${community_id}`, { credentials: 'include' })
-      const j = await r.json()
-      if (j?.success){
-        setAnnouncements(j.announcements || [])
-        setShowAnnouncements(true)
-      }
-    }catch{}
-  }
+  // Announcements modal opener (currently unused in bottom nav)
+  // const openAnnouncements = async () => {}
 
   async function handleToggleReaction(postId: number, reaction: string){
     try{
@@ -195,18 +189,7 @@ export default function CommunityFeed() {
   if (!data) return null
 
   return (
-    <div className="h-screen overflow-y-auto no-scrollbar bg-black text-white">
-      {/* Header + burger (subtle translucency, compact) */}
-      <div className="fixed left-0 right-0 top-0 h-14 border-b border-[#262f30] bg-black/70 backdrop-blur flex items-center px-3 z-40">
-        <button className="mr-3 md:hidden" onClick={() => setMenuOpen(v=>!v)} aria-label="Menu">
-          <div className="w-8 h-8 rounded-full bg-white/10 overflow-hidden">
-            {data.current_user_profile_picture ? (
-              <img src={(data.current_user_profile_picture.startsWith('http') || data.current_user_profile_picture.startsWith('/static')) ? data.current_user_profile_picture : `/static/${data.current_user_profile_picture}`} alt="" className="w-full h-full object-cover" />
-            ) : (<i className="fa-solid fa-user" />)}
-          </div>
-        </button>
-        <div className="font-semibold truncate tracking-[-0.01em]">{data.community?.name || 'Community'}</div>
-      </div>
+    <div ref={scrollRef} className="h-screen overflow-y-auto no-scrollbar bg-black text-white">
 
       {/* Slide-out menu (90% width), remaining 10% translucent to close with header */}
       {menuOpen && (
@@ -239,7 +222,7 @@ export default function CommunityFeed() {
         </div>
       )}
 
-      <div className="max-w-2xl mx-auto pt-16 px-3">
+      <div className="max-w-2xl mx-auto pt-3 pb-20 px-3">
         {/* Top header image from legacy template */}
         {data.community?.background_path ? (
           <div className="community-header-image mb-0 overflow-hidden rounded-xl border border-white/10">
@@ -248,21 +231,7 @@ export default function CommunityFeed() {
           </div>
         ) : null}
 
-        {/* Action bar: swipable horizontal nav (keep larger pill size) */}
-        <div className="my-4">
-          <div className="flex gap-2 pr-3 overflow-x-auto no-scrollbar">
-            <ActionPill icon="fa-users" label="Members" onClick={openMembers} />
-            <ActionPill icon="fa-bullhorn" label="Announcements" onClick={openAnnouncements} />
-            <ActionPill icon="fa-chart-pie" label="Polls" onClick={()=> window.location.href = `/community_feed/${community_id}`} />
-            <ActionPill icon="fa-link" label="Links" onClick={()=> window.location.href = `/community/${community_id}/resources`} />
-            <ActionPill icon="fa-bell" label="Notifications" onClick={()=> window.location.href = `/notifications`} />
-            <ActionPill icon="fa-flag" label="Issues" onClick={()=> {}} />
-            <ActionPill icon="fa-calendar" label="Calendar" onClick={()=> window.location.href = `/community/${community_id}/calendar`} />
-          </div>
-        </div>
-
-        {/* Composer */}
-        <Composer communityId={String(community_id)} onPosted={() => location.reload()} />
+        {/* Top nav and composer removed as per new design */}
 
         <div className="space-y-3">
           {timeline.map((item, i) => item.type === 'ad' ? (
@@ -295,16 +264,16 @@ export default function CommunityFeed() {
 
       {/* Announcements modal */}
       {showAnnouncements && (
-        <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur flex items-center justify-center" onClick={(e)=> e.currentTarget===e.target && setShowAnnouncements(false)}>
+        <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur flex items-center justify-center" onClick={(e)=> e.currentTarget===e.target && _setShowAnnouncements(false)}>
           <div className="w-[92%] max-w-[560px] rounded-2xl border border-white/10 bg-black p-3">
             <div className="flex items-center justify-between mb-2">
               <div className="font-semibold">Announcements</div>
-              <button className="px-2 py-1 rounded-full border border-white/10" onClick={()=> setShowAnnouncements(false)}>✕</button>
+              <button className="px-2 py-1 rounded-full border border-white/10" onClick={()=> _setShowAnnouncements(false)}>✕</button>
             </div>
             <div className="space-y-3 max-h-[420px] overflow-y-auto">
-              {announcements.length === 0 ? (
+              {_announcements.length === 0 ? (
                 <div className="text-sm text-[#9fb0b5]">No announcements.</div>
-              ) : announcements.map(a=> (
+              ) : _announcements.map((a:any)=> (
                 <div key={a.id} className="rounded-xl border border-white/10 p-3 bg-white/[0.03]">
                   <div className="text-xs text-[#9fb0b5] mb-1">{a.created_by} • {a.created_at}</div>
                   <div className="whitespace-pre-wrap text-sm">{a.content}</div>
@@ -315,20 +284,31 @@ export default function CommunityFeed() {
         </div>
       )}
 
-      {/* Actions overlay removed per design update */}
-
-      {/* Post detail modal removed; navigation goes to /post/:post_id */}
+      {/* Bottom navigation bar */}
+      <div className="fixed left-0 right-0 bottom-0 h-14 border-t border-white/10 bg-black/80 backdrop-blur z-40">
+        <div className="max-w-2xl mx-auto h-full px-6 flex items-center justify-between text-[#cfd8dc]">
+          <button className="p-2 rounded-full hover:bg-white/5" aria-label="Home" onClick={()=> scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}>
+            <i className="fa-solid fa-house" />
+          </button>
+          <button className="p-2 rounded-full hover:bg-white/5" aria-label="Members" onClick={openMembers}>
+            <i className="fa-solid fa-users" />
+          </button>
+          <button className="p-3 rounded-full bg-[#4db6ac] text-black hover:brightness-110" aria-label="New Post" onClick={()=> navigate(`/compose?community_id=${community_id}`)}>
+            <i className="fa-solid fa-plus" />
+          </button>
+          <button className="p-2 rounded-full hover:bg-white/5" aria-label="Notifications" onClick={()=> window.location.href = `/notifications`}>
+            <i className="fa-regular fa-bell" />
+          </button>
+          <button className="p-2 rounded-full hover:bg-white/5" aria-label="More" onClick={()=> setMenuOpen(true)}>
+            <i className="fa-solid fa-ellipsis" />
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
 
-function ActionPill({ icon, label, onClick }:{ icon: string, label: string, onClick: ()=>void }){
-  return (
-    <button className="px-3.5 py-2 rounded-full text-[13px] text-[#cfd8dc] hover:bg-white/5" onClick={onClick}>
-      <i className={`fa-solid ${icon} mr-1.5`} style={{ color: '#4db6ac' }} />{label}
-    </button>
-  )
-}
+// ActionPill removed from UI in this layout
 
 function AdsCard({ communityId: _communityId, ad }:{ communityId: string, ad: any }){
   if (!ad) return null
@@ -441,33 +421,7 @@ function PollBlock({ poll, postId }: { poll: Poll, postId: number }) {
   )
 }
 
-function Composer({ communityId, onPosted }: { communityId: string, onPosted: ()=>void }){
-  const [content, setContent] = useState('')
-  const [imageFile, setImageFile] = useState<File | null>(null)
-  const fileRef = useRef<HTMLInputElement|null>(null)
-  async function submit(){
-    if (!content && !imageFile) return
-    const fd = new FormData()
-    fd.append('content', content)
-    fd.append('community_id', communityId)
-    if (imageFile) fd.append('image', imageFile)
-    await fetch('/post_status', { method: 'POST', credentials: 'include', body: fd })
-    onPosted()
-  }
-  return (
-    <div className="rounded-xl border border-white/10 bg-black p-3 mb-3">
-      <textarea className="w-full resize-none min-h-[60px] p-2 rounded bg-black border border-[#4db6ac] text-sm focus:outline-none focus:ring-1 focus:ring-[#4db6ac]"
-        placeholder="Write something…" value={content} onChange={(e)=> setContent(e.target.value)} />
-      <div className="mt-2 flex items-center gap-2">
-        <input ref={fileRef} type="file" accept="image/*" onChange={(e)=> setImageFile(e.target.files?.[0]||null)} style={{ display: 'none' }} />
-        <button className="px-2.5 py-1.5 rounded-full border border-white/10 text-xs text-[#9fb0b5] hover:border-[#2a3f41]" onClick={()=> fileRef.current?.click()} aria-label="Add image">
-          <i className="fa-regular fa-image" style={{ color: '#4db6ac' }} />
-        </button>
-        <button className="ml-auto px-3 py-2 rounded-full bg-[#4db6ac] text-white border border-[#4db6ac] hover:brightness-110" onClick={submit}>Post</button>
-      </div>
-    </div>
-  )
-}
+// Composer removed in this layout
 
 // ReplyComposerInline removed in favor of fixed-bottom composer on PostDetail
 
