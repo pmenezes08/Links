@@ -106,6 +106,10 @@ export default function CommunityFeed() {
   const scrollRef = useRef<HTMLDivElement|null>(null)
   // Modal removed in favor of dedicated PostDetail route
 
+  // Set header title consistently
+  const { setTitle } = useHeader()
+  useEffect(() => { if (data?.community?.name) setTitle(data.community.name) }, [setTitle, data?.community?.name])
+
   useEffect(() => {
     // Ensure legacy css is attached once to avoid flashes between pages
     let link = document.getElementById('legacy-styles') as HTMLLinkElement | null
@@ -258,9 +262,6 @@ export default function CommunityFeed() {
   if (loading) return <div className="p-4 text-[#9fb0b5]">Loading…</div>
   if (error) return <div className="p-4 text-red-400">{error || 'Failed to load feed.'}</div>
   if (!data) return <div className="p-4 text-[#9fb0b5]">No posts yet.</div>
-
-  const { setTitle } = useHeader()
-  useEffect(() => { if (data?.community?.name) setTitle(data.community.name); }, [setTitle, data?.community?.name])
 
   return (
     <div ref={scrollRef} className="min-h-screen overflow-y-auto no-scrollbar bg-black text-white">
