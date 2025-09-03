@@ -222,18 +222,18 @@ export default function CommunityFeed() {
             </div>
             {data.username === 'admin' ? (
               <>
-                <a className="block px-4 py-3 rounded-xl border border-white/10 hover:border-[#2a3f41]" href="/admin_profile">Admin Profile</a>
-                <a className="block px-4 py-3 rounded-xl border border-white/10 hover:border-[#2a3f41]" href="/admin">Admin Dashboard</a>
+                <a className="block px-4 py-3 rounded-xl hover:bg-white/5" href="/admin_profile">Admin Profile</a>
+                <a className="block px-4 py-3 rounded-xl hover:bg-white/5" href="/admin">Admin Dashboard</a>
               </>
             ) : null}
-            <a className="block px-4 py-3 rounded-xl border border-white/10 hover:border-[#2a3f41]" href="/dashboard">Dashboard</a>
-            <a className="block px-4 py-3 rounded-xl border border-white/10 hover:border-[#2a3f41]" href="/profile">Profile</a>
-            <a className="block px-4 py-3 rounded-xl border border-white/10 hover:border-[#2a3f41]" href="/user_chat">Messages</a>
-            <a className="block px-4 py-3 rounded-xl border border-white/10 hover:border-[#2a3f41]" href="/communities">Your Communities</a>
-            <a className="block px-4 py-3 rounded-xl border border-white/10 hover:border-[#2a3f41]" href="/your_sports">Your Sports</a>
-            <a className="block px-4 py-3 rounded-xl border border-white/10 hover:border-[#2a3f41]" href="/logout">Logout</a>
-            <a className="block px-4 py-3 rounded-xl border border-white/10 hover:border-[#2a3f41]" href="/account_settings">Settings</a>
-            <button className="mt-3 w-full px-4 py-3 rounded-full border border-white/10" onClick={()=> setMenuOpen(false)}>Close</button>
+            <a className="block px-4 py-3 rounded-xl hover:bg-white/5" href="/dashboard">Dashboard</a>
+            <a className="block px-4 py-3 rounded-xl hover:bg-white/5" href="/profile">Profile</a>
+            <a className="block px-4 py-3 rounded-xl hover:bg-white/5" href="/user_chat">Messages</a>
+            <a className="block px-4 py-3 rounded-xl hover:bg-white/5" href="/communities">Your Communities</a>
+            <a className="block px-4 py-3 rounded-xl hover:bg-white/5" href="/your_sports">Your Sports</a>
+            <a className="block px-4 py-3 rounded-xl hover:bg-white/5" href="/logout">Logout</a>
+            <a className="block px-4 py-3 rounded-xl hover:bg-white/5" href="/account_settings">Settings</a>
+            <button className="mt-3 w-full px-4 py-3 rounded-full hover:bg-white/5" onClick={()=> setMenuOpen(false)}>Close</button>
           </div>
           <div className="flex-1 h-full" />
         </div>
@@ -324,7 +324,7 @@ export default function CommunityFeed() {
 
 function ActionPill({ icon, label, onClick }:{ icon: string, label: string, onClick: ()=>void }){
   return (
-    <button className="px-3.5 py-2 rounded-full border border-white/10 text-[13px] text-[#cfd8dc] hover:border-[#2a3f41]" onClick={onClick}>
+    <button className="px-3.5 py-2 rounded-full text-[13px] text-[#cfd8dc] hover:bg-white/5" onClick={onClick}>
       <i className={`fa-solid ${icon} mr-1.5`} style={{ color: '#4db6ac' }} />{label}
     </button>
   )
