@@ -195,7 +195,7 @@ export default function CommunityFeed() {
   if (!data) return null
 
   return (
-    <div className="min-h-screen bg-black text-white">
+    <div className="h-screen overflow-y-auto no-scrollbar bg-black text-white">
       {/* Header + burger (subtle translucency, compact) */}
       <div className="fixed left-0 right-0 top-0 h-14 border-b border-[#262f30] bg-black/70 backdrop-blur flex items-center px-3 z-40">
         <button className="px-3 py-2 rounded border border-[#333] bg-[#1a1a1a] mr-3 md:hidden" onClick={() => setMenuOpen(v=>!v)} aria-label="Menu">
