@@ -26,7 +26,6 @@ export default function CreatePost(){
           <i className="fa-solid fa-arrow-left" />
         </button>
         <div className="ml-2 font-semibold">Create Post</div>
-        <button className="ml-auto px-3 py-1.5 rounded-full bg-[#4db6ac] text-black" onClick={submit}>Post</button>
       </div>
       <div className="max-w-2xl mx-auto pt-14 px-3">
         <textarea className="w-full min-h-[180px] p-3 rounded-xl bg-black border border-white/10 text-sm focus:outline-none focus:ring-1 focus:ring-[#4db6ac]" placeholder="What's happening?" value={content} onChange={(e)=> setContent(e.target.value)} />
