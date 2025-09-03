@@ -316,6 +316,9 @@ export default function CommunityFeed() {
       {/* Bottom navigation bar */}
       <div className="fixed left-0 right-0 bottom-0 h-14 border-t border-white/10 bg-black/80 backdrop-blur z-40">
         <div className="max-w-2xl mx-auto h-full px-6 flex items-center justify-between text-[#cfd8dc]">
+          <button className="p-2 rounded-full hover:bg-white/5" aria-label="More" onClick={()=> setMoreOpen(true)}>
+            <i className="fa-solid fa-ellipsis" />
+          </button>
           <button className="p-2 rounded-full hover:bg-white/5" aria-label="Home" onClick={()=> scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}>
             <i className="fa-solid fa-house" />
           </button>
@@ -327,9 +330,6 @@ export default function CommunityFeed() {
           </button>
           <button className="p-2 rounded-full hover:bg-white/5" aria-label="Announcements" onClick={()=> { fetchAnnouncements() }}>
             <i className="fa-solid fa-bullhorn" />
-          </button>
-          <button className="p-2 rounded-full hover:bg-white/5" aria-label="More" onClick={()=> setMoreOpen(true)}>
-            <i className="fa-solid fa-ellipsis" />
           </button>
         </div>
       </div>
