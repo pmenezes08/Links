@@ -271,11 +271,11 @@ export default function CommunityFeed() {
       {/* Slide-out menu (90% width), remaining 10% translucent to close with header */}
       {/* Menu is handled by HeaderBar to keep header consistent across pages */}
 
-      <div className="max-w-2xl mx-auto pt-8 pb-20 px-3">
+      <div className="max-w-2xl mx-auto pt-3 pb-20 px-3">
         <div className="space-y-3">
           {/* Top header image from legacy template */}
           {data.community?.background_path ? (
-            <div className="community-header-image overflow-hidden rounded-xl border border-white/10">
+            <div className="community-header-image overflow-hidden rounded-xl border border-white/10 mb-3">
               <img src={
                 data.community.background_path.startsWith('http')
                   ? data.community.background_path
