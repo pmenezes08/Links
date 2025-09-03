@@ -111,6 +111,31 @@ export default function PostDetail(){
     }
   }
 
+  async function submitInlineReply(parentId: number, text: string){
+    if (!post || !text) return
+    const fd = new FormData()
+    fd.append('post_id', String(post.id))
+    fd.append('content', text)
+    fd.append('parent_reply_id', String(parentId))
+    const r = await fetch('/post_reply', { method:'POST', credentials:'include', body: fd })
+    const j = await r.json().catch(()=>null)
+    if (j?.success && j.reply){
+      setPost(p => {
+        if (!p) return p
+        function attach(list: Reply[]): Reply[] {
+          return list.map(item => {
+            if (item.id === parentId){
+              const children = item.children ? [j.reply, ...item.children] : [j.reply]
+              return { ...item, children }
+            }
+            return { ...item, children: item.children ? attach(item.children) : item.children }
+          })
+        }
+        return { ...p, replies: attach(p.replies) }
+      })
+    }
+  }
+
   if (loading) return <div className="p-4 text-[#9fb0b5]">Loading…</div>
   if (error || !post) return <div className="p-4 text-red-400">{error||'Error'}</div>
 
@@ -145,7 +170,7 @@ export default function PostDetail(){
 
         <div className="mt-3 rounded-2xl border border-white/10">
           {post.replies.map(r => (
-            <ReplyNode key={r.id} reply={r} onToggle={(id, reaction)=> toggleReplyReaction(id, reaction)} onReply={(id)=> submitReply(id)} />
+            <ReplyNode key={r.id} reply={r} onToggle={(id, reaction)=> toggleReplyReaction(id, reaction)} onInlineReply={(id, text)=> submitInlineReply(id, text)} />
           ))}
         </div>
       </div>
@@ -188,7 +213,7 @@ function Reaction({ icon, count, active, onClick }:{ icon: string, count: number
   )
 }
 
-function ReplyNode({ reply, depth=0, onToggle, onReply }:{ reply: Reply, depth?: number, onToggle: (id:number, reaction:string)=>void, onReply: (id:number)=>void }){
+function ReplyNode({ reply, depth=0, onToggle, onInlineReply }:{ reply: Reply, depth?: number, onToggle: (id:number, reaction:string)=>void, onInlineReply: (id:number, text:string)=>void }){
   const [showComposer, setShowComposer] = useState(false)
   const [text, setText] = useState('')
   return (
@@ -206,14 +231,14 @@ function ReplyNode({ reply, depth=0, onToggle, onReply }:{ reply: Reply, depth?:
         {showComposer ? (
           <div className="mt-2 flex items-center gap-2">
             <input className="flex-1 px-3 py-1.5 rounded-full bg-black border border-[#4db6ac] text-sm focus:outline-none focus:ring-1 focus:ring-[#4db6ac]" value={text} onChange={(e)=> setText(e.target.value)} placeholder={`Reply to @${reply.username}`} />
-            <button className="px-2.5 py-1.5 rounded-full bg-[#4db6ac] text-white border border-[#4db6ac] hover:brightness-110" onClick={()=> { if (!text) return; const fd = new FormData(); fd.append('post_id',''+(reply as any).post_id||''); fd.append('content', text); fd.append('parent_reply_id',''+reply.id); fetch('/post_reply',{method:'POST',credentials:'include',body:fd}).then(r=>r.json()).then(j=>{ if(j?.success){ setText(''); setShowComposer(false); onReply(reply.id) } }); }} aria-label="Send reply">
+            <button className="px-2.5 py-1.5 rounded-full bg-[#4db6ac] text-white border border-[#4db6ac] hover:brightness-110" onClick={()=> { if (!text) return; onInlineReply(reply.id, text); setText(''); setShowComposer(false) }} aria-label="Send reply">
               <i className="fa-solid fa-paper-plane" />
             </button>
           </div>
         ) : null}
       </div>
       {reply.children && reply.children.length ? reply.children.map(ch => (
-        <ReplyNode key={ch.id} reply={ch} depth={Math.min(depth+1, 3)} onToggle={onToggle} onReply={onReply} />
+        <ReplyNode key={ch.id} reply={ch} depth={Math.min(depth+1, 3)} onToggle={onToggle} onInlineReply={onInlineReply} />
       )) : null}
     </div>
   )
