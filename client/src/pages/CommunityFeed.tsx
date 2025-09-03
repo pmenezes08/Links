@@ -280,7 +280,7 @@ export default function CommunityFeed() {
             <a className="block px-4 py-3 rounded-xl hover:bg-white/5" href="/dashboard">Dashboard</a>
             <a className="block px-4 py-3 rounded-xl hover:bg-white/5" href="/profile">Profile</a>
             <a className="block px-4 py-3 rounded-xl hover:bg-white/5" href="/user_chat">Messages</a>
-            <a className="block px-4 py-3 rounded-xl hover:bg-white/5" href="/communities">Your Communities</a>
+            <button className="block w-full text-left px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMenuOpen(false); navigate('/communities') }}>Your Communities</button>
             <a className="block px-4 py-3 rounded-xl hover:bg-white/5" href="/your_sports">Your Sports</a>
             <a className="block px-4 py-3 rounded-xl hover:bg-white/5" href="/logout">Logout</a>
             <a className="block px-4 py-3 rounded-xl hover:bg-white/5" href="/account_settings">Settings</a>
