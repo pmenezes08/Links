@@ -7,6 +7,7 @@ import CommunityFeed from './pages/CommunityFeed'
 import PostDetail from './pages/PostDetail'
 import CreatePost from './pages/CreatePost'
 import Members from './pages/Members'
+import Communities from './pages/Communities'
 
 const queryClient = new QueryClient()
 
@@ -21,6 +22,7 @@ export default function App() {
           <Route path="/crossfit" element={<CrossfitExact />} />
           <Route path="/crossfit_react" element={<CrossfitExact />} />
           <Route path="/gym" element={<Gym />} />
+          <Route path="/communities" element={<Communities />} />
           <Route path="/community_feed_react/:community_id" element={<CommunityFeed />} />
           <Route path="/community/:community_id/members" element={<Members />} />
           <Route path="/post/:post_id" element={<PostDetail />} />

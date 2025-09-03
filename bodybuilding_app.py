@@ -1264,9 +1264,6 @@ def admin_profile():
 def logout():
     session.clear()
     return redirect(url_for('index'))
-
-
-
 @app.route('/login_password', methods=['GET', 'POST'])
 # @csrf.exempt
 def login_password():
@@ -2058,7 +2055,6 @@ def profile():
     except Exception as e:
         logger.error(f"Error in profile for {username}: {str(e)}")
         abort(500)
-
 @app.route('/upload_logo', methods=['POST'])
 @login_required
 def upload_logo():
@@ -2844,7 +2840,6 @@ def delete_chat():
     except Exception as e:
         logger.error(f"Error deleting chat for {username}: {str(e)}")
         abort(500)
-
 @app.route('/get_messages', methods=['POST'])
 @login_required
 def get_messages():
@@ -3593,7 +3588,6 @@ def test_password_hash():
         <button type="submit">Test Login</button>
     </form>
     """
-
 @app.route('/test_specific_password', methods=['POST'])
 def test_specific_password():
     """Test a specific username/password combination"""
@@ -4323,8 +4317,6 @@ def feed():
     except Exception as e:
         logger.error(f"Error fetching feed: {str(e)}")
         abort(500)
-
-
 @app.route('/add_reaction', methods=['POST'])
 @login_required
 def add_reaction():
@@ -5123,7 +5115,6 @@ def get_poll_results(poll_id):
     except Exception as e:
         logger.error(f"Error getting poll results: {str(e)}")
         return jsonify({'success': False, 'error': 'Error retrieving poll results'})
-
 @app.route('/get_active_polls')
 @login_required
 def get_active_polls():
@@ -5907,7 +5898,6 @@ def create_resource_post(community_id):
     except Exception as e:
         logger.error(f"Error creating resource post: {e}")
         return jsonify({'success': False, 'message': str(e)}), 500
-
 @app.route('/resource/post/<int:post_id>/upvote', methods=['POST'])
 @login_required
 def upvote_resource_post(post_id):
@@ -6706,7 +6696,6 @@ def deactivate_community(community_id):
     except Exception as e:
         logger.error(f"Error deactivating community: {e}")
         return jsonify({'success': False, 'message': str(e)}), 500
-
 @app.route('/admin/user_statistics')
 @login_required
 def admin_user_statistics():
@@ -7452,7 +7441,6 @@ def test_color_detection():
     </body>
     </html>
     '''
-
 @app.route('/get_image_color')
 def get_image_color():
     """Extract background color from an image URL using simple border detection"""
@@ -7929,8 +7917,9 @@ def communities():
     """Main communities page"""
     username = session['username']
     try:
-        # Generate CSRF token directly here
-        return render_template('communities.html', csrf_token="disabled")
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        dist_dir = os.path.join(base_dir, 'client', 'dist')
+        return send_from_directory(dist_dir, 'index.html')
     except Exception as e:
         logger.error(f"Error in communities for {username}: {str(e)}")
         abort(500)
@@ -8217,7 +8206,6 @@ def edit_community():
     except Exception as e:
         logger.error(f"Error editing community: {str(e)}")
         return jsonify({'success': False, 'error': 'Failed to edit community'}), 500
-
 @app.route('/update_community', methods=['POST'])
 @login_required
 def update_community():
@@ -9009,7 +8997,6 @@ def react_members_page(community_id):
     except Exception as e:
         logger.error(f"Error serving React community members page: {str(e)}")
         abort(500)
-
 @app.route('/static/uploads/<path:filename>')
 def static_uploaded_file(filename):
     """Alternative route for static uploads"""
@@ -9791,7 +9778,6 @@ def compare_overview_in_community():
     except Exception as e:
         logger.error(f"Error in comparison overview endpoint: {e}")
         return jsonify({'success': False, 'error': 'Server error'})
-
 @app.route('/compare_attendance_in_community', methods=['GET'])
 @login_required
 def compare_attendance_in_community():
@@ -10532,7 +10518,6 @@ def get_workout_summary():
         
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
-
 @app.route('/share_progress', methods=['POST'])
 @login_required
 def share_progress():
@@ -11331,7 +11316,6 @@ def test_community_template():
 def simple_test():
     """Simple test route without any decorators"""
     return jsonify({'success': True, 'message': 'Simple test route works'})
-
 # Community Announcements Routes
 @app.route('/save_community_info', methods=['POST'])
 def save_community_info():
