@@ -251,41 +251,44 @@ function Reaction({ icon, count, active, onClick }:{ icon: string, count: number
 function ReplyNode({ reply, depth=0, onToggle, onInlineReply }:{ reply: Reply, depth?: number, onToggle: (id:number, reaction:string)=>void, onInlineReply: (id:number, text:string)=>void }){
   const [showComposer, setShowComposer] = useState(false)
   const [text, setText] = useState('')
+  const avatarSizePx = 28
   return (
-    <div className="border-b border-white/10" style={{ paddingLeft: depth ? Math.min(depth*20, 60) : 0 }}>
-      <div className="px-3 py-2 text-sm relative">
-        {depth > 0 ? (
-          <>
-            <div className="absolute left-6 top-0 bottom-0 w-px bg-white/15 rounded-full" />
-            <div className="absolute left-6 top-[0.875rem] w-2 h-px bg-white/15 rounded-full" />
-          </>
-        ) : null}
-        <div className="flex items-start gap-2 ml-8">
-          <div className="w-7 h-7 rounded-full bg-white/10 overflow-hidden">
+    <div className="border-b border-white/10 py-2">
+      <div className="relative flex items-start gap-2 px-3">
+        <div className="relative w-10 flex-shrink-0">
+          {depth > 0 ? (
+            <>
+              <div className="absolute" style={{ left: '50%', transform: 'translateX(-0.5px)', top: 0, height: `calc(50% - ${avatarSizePx/2}px)`, width: '1px', background: 'rgba(255,255,255,0.15)', borderRadius: '9999px' }} />
+              <div className="absolute" style={{ left: '50%', transform: 'translateX(-0.5px)', top: `calc(50% + ${avatarSizePx/2}px)`, bottom: 0, width: '1px', background: 'rgba(255,255,255,0.15)', borderRadius: '9999px' }} />
+            </>
+          ) : null}
+          <div className="w-7 h-7 rounded-full bg-white/10 overflow-hidden mx-auto">
             {reply.profile_picture ? (
               <img src={(reply.profile_picture?.startsWith('http') || reply.profile_picture?.startsWith('/static')) ? reply.profile_picture! : `/static/${reply.profile_picture}`} alt="" className="w-full h-full object-cover" />
             ) : null}
           </div>
-          <div className="flex-1 min-w-0">
+        </div>
+        <div className="flex-1 min-w-0 pr-2">
+          <div className="flex items-center gap-2">
             <div className="font-medium">{reply.username}</div>
-            <div className="text-[#dfe6e9] whitespace-pre-wrap">{reply.content}</div>
+            <div className="text-[11px] text-[#9fb0b5] ml-auto">{formatTimestamp(reply.timestamp)}</div>
           </div>
-        </div>
-        <div className="text-[11px] text-[#9fb0b5]">{formatTimestamp(reply.timestamp)}</div>
-        <div className="mt-1 flex items-center gap-2 text-[11px]">
-          <Reaction icon="fa-regular fa-heart" count={reply.reactions?.['heart']||0} active={reply.user_reaction==='heart'} onClick={()=> onToggle(reply.id, 'heart')} />
-          <Reaction icon="fa-regular fa-thumbs-up" count={reply.reactions?.['thumbs-up']||0} active={reply.user_reaction==='thumbs-up'} onClick={()=> onToggle(reply.id, 'thumbs-up')} />
-          <Reaction icon="fa-regular fa-thumbs-down" count={reply.reactions?.['thumbs-down']||0} active={reply.user_reaction==='thumbs-down'} onClick={()=> onToggle(reply.id, 'thumbs-down')} />
-          <button className="ml-2 px-2 py-1 rounded-full text-[#9fb0b5] hover:text-[#4db6ac]" onClick={()=> setShowComposer(v=>!v)}>Reply</button>
-        </div>
-        {showComposer ? (
-          <div className="mt-2 flex items-center gap-2">
-            <input className="flex-1 px-3 py-1.5 rounded-full bg-black border border-[#4db6ac] text-sm focus:outline-none focus:ring-1 focus:ring-[#4db6ac]" value={text} onChange={(e)=> setText(e.target.value)} placeholder={`Reply to @${reply.username}`} />
-            <button className="px-2.5 py-1.5 rounded-full bg-[#4db6ac] text-white border border-[#4db6ac] hover:brightness-110" onClick={()=> { if (!text) return; onInlineReply(reply.id, text); setText(''); setShowComposer(false) }} aria-label="Send reply">
-              <i className="fa-solid fa-paper-plane" />
-            </button>
+          <div className="text-[#dfe6e9] whitespace-pre-wrap mt-0.5">{reply.content}</div>
+          <div className="mt-1 flex items-center gap-2 text-[11px]">
+            <Reaction icon="fa-regular fa-heart" count={reply.reactions?.['heart']||0} active={reply.user_reaction==='heart'} onClick={()=> onToggle(reply.id, 'heart')} />
+            <Reaction icon="fa-regular fa-thumbs-up" count={reply.reactions?.['thumbs-up']||0} active={reply.user_reaction==='thumbs-up'} onClick={()=> onToggle(reply.id, 'thumbs-up')} />
+            <Reaction icon="fa-regular fa-thumbs-down" count={reply.reactions?.['thumbs-down']||0} active={reply.user_reaction==='thumbs-down'} onClick={()=> onToggle(reply.id, 'thumbs-down')} />
+            <button className="ml-2 px-2 py-1 rounded-full text-[#9fb0b5] hover:text-[#4db6ac]" onClick={()=> setShowComposer(v=>!v)}>Reply</button>
           </div>
-        ) : null}
+          {showComposer ? (
+            <div className="mt-2 flex items-center gap-2">
+              <input className="flex-1 px-3 py-1.5 rounded-full bg-black border border-[#4db6ac] text-sm focus:outline-none focus:ring-1 focus:ring-[#4db6ac]" value={text} onChange={(e)=> setText(e.target.value)} placeholder={`Reply to @${reply.username}`} />
+              <button className="px-2.5 py-1.5 rounded-full bg-[#4db6ac] text-white border border-[#4db6ac] hover:brightness-110" onClick={()=> { if (!text) return; onInlineReply(reply.id, text); setText(''); setShowComposer(false) }} aria-label="Send reply">
+                <i className="fa-solid fa-paper-plane" />
+              </button>
+            </div>
+          ) : null}
+        </div>
       </div>
       {reply.children && reply.children.length ? reply.children.map(ch => (
         <ReplyNode key={ch.id} reply={ch} depth={Math.min(depth+1, 3)} onToggle={onToggle} onInlineReply={onInlineReply} />
