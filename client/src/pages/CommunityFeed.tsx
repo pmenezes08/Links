@@ -216,9 +216,6 @@ export default function CommunityFeed() {
           <button className="p-2 rounded-full hover:bg-white/5" onClick={()=> window.location.href = `/notifications`} aria-label="Notifications">
             <i className="fa-regular fa-bell" />
           </button>
-          <button className="p-2 rounded-full hover:bg-white/5" onClick={()=> setMoreOpen(true)} aria-label="More">
-            <i className="fa-solid fa-ellipsis" />
-          </button>
         </div>
       </div>
 
@@ -316,9 +313,6 @@ export default function CommunityFeed() {
       {/* Bottom navigation bar */}
       <div className="fixed left-0 right-0 bottom-0 h-14 border-t border-white/10 bg-black/80 backdrop-blur z-40">
         <div className="max-w-2xl mx-auto h-full px-6 flex items-center justify-between text-[#cfd8dc]">
-          <button className="p-2 rounded-full hover:bg-white/5" aria-label="More" onClick={()=> setMoreOpen(true)}>
-            <i className="fa-solid fa-ellipsis" />
-          </button>
           <button className="p-2 rounded-full hover:bg-white/5" aria-label="Home" onClick={()=> scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}>
             <i className="fa-solid fa-house" />
           </button>
@@ -331,13 +325,16 @@ export default function CommunityFeed() {
           <button className="p-2 rounded-full hover:bg-white/5" aria-label="Announcements" onClick={()=> { fetchAnnouncements() }}>
             <i className="fa-solid fa-bullhorn" />
           </button>
+          <button className="p-2 rounded-full hover:bg-white/5" aria-label="More" onClick={()=> setMoreOpen(true)}>
+            <i className="fa-solid fa-ellipsis" />
+          </button>
         </div>
       </div>
 
       {/* Bottom sheet for More */}
       {moreOpen && (
-        <div className="fixed inset-0 z-[95] bg-black/30" onClick={(e)=> e.currentTarget===e.target && setMoreOpen(false)}>
-          <div className="absolute top-16 right-2 w-[75%] max-w-sm bg-black/80 backdrop-blur border border-white/10 rounded-2xl p-2 space-y-2">
+        <div className="fixed inset-0 z-[95] bg-black/30 flex items-end justify-end" onClick={(e)=> e.currentTarget===e.target && setMoreOpen(false)}>
+          <div className="w-[75%] max-w-sm mr-2 mb-2 bg-black/80 backdrop-blur border border-white/10 rounded-2xl p-2 space-y-2 transition-transform duration-200 ease-out translate-y-0">
             <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); window.location.href = `/community_feed/${community_id}` }}>Polls</button>
             <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); window.location.href = `/community/${community_id}/calendar` }}>Calendar</button>
             <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); window.location.href = `/community/${community_id}/resources` }}>Forum</button>
