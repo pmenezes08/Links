@@ -238,7 +238,7 @@ export default function CommunityFeed() {
             <a className="block px-4 py-3 rounded-xl hover:bg-white/5" href="/account_settings">Settings</a>
             <button className="mt-3 w-full px-4 py-3 rounded-full hover:bg-white/5" onClick={()=> setMenuOpen(false)}>Close</button>
           </div>
-          <div className="flex-1 h-full" />
+          <div className="flex-1 h-full" onClick={()=> setMenuOpen(false)} />
         </div>
       )}
 
@@ -327,16 +327,16 @@ export default function CommunityFeed() {
 
       {/* Bottom sheet for More */}
       {moreOpen && (
-        <div className="fixed inset-0 z-[95] bg-black/50 flex items-end" onClick={(e)=> e.currentTarget===e.target && setMoreOpen(false)}>
-          <div className="w-full max-w-2xl mx-auto bg-black/95 backdrop-blur border-t border-white/10 rounded-t-2xl p-3 space-y-2">
-            <button className="w-full text-left px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); fetchAnnouncements() }}>Announcements</button>
-            <button className="w-full text-left px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); window.location.href = `/community_feed/${community_id}` }}>Polls</button>
-            <button className="w-full text-left px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); window.location.href = `/community/${community_id}/calendar` }}>Calendar</button>
-            <button className="w-full text-left px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); window.location.href = `/community/${community_id}/resources` }}>Forum</button>
-            <button className="w-full text-left px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); window.location.href = `/community/${community_id}/resources` }}>Useful Links</button>
-            <button className="w-full text-left px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); window.location.href = `/issues` }}>Report Issue</button>
-            <button className="w-full text-left px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); window.location.href = `/anonymous_feedback` }}>Anonymous feedback</button>
-            <button className="w-full mt-1 px-4 py-3 rounded-full hover:bg-white/5" onClick={()=> setMoreOpen(false)}>Close</button>
+        <div className="fixed inset-0 z-[95] bg-black/50 flex items-end justify-end" onClick={(e)=> e.currentTarget===e.target && setMoreOpen(false)}>
+          <div className="w-[75%] max-w-sm mr-2 mb-2 bg-black/95 backdrop-blur border border-white/10 rounded-2xl p-2 space-y-2">
+            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); fetchAnnouncements() }}>Announcements</button>
+            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); window.location.href = `/community_feed/${community_id}` }}>Polls</button>
+            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); window.location.href = `/community/${community_id}/calendar` }}>Calendar</button>
+            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); window.location.href = `/community/${community_id}/resources` }}>Forum</button>
+            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); window.location.href = `/community/${community_id}/resources` }}>Useful Links</button>
+            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); window.location.href = `/issues` }}>Report Issue</button>
+            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); window.location.href = `/anonymous_feedback` }}>Anonymous feedback</button>
+            <button className="w-full mt-1 px-4 py-3 rounded-full hover:bg-white/5 text-right" onClick={()=> setMoreOpen(false)}>Close</button>
           </div>
         </div>
       )}
