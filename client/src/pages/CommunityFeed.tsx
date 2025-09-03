@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import HeaderBar from '../components/HeaderBar'
+import { useHeader } from '../contexts/HeaderContext'
 
 type PollOption = { id: number; text: string; votes: number }
 type Poll = { id: number; question: string; is_active: number; options: PollOption[]; user_vote: number|null; total_votes: number }
@@ -239,9 +239,12 @@ export default function CommunityFeed() {
   if (error) return <div className="p-4 text-red-400">{error}</div>
   if (!data) return null
 
+  const { setTitle } = useHeader()
+  useEffect(() => { setTitle(data.community?.name || 'Community') }, [setTitle, data?.community?.name])
+
   return (
     <div ref={scrollRef} className="h-screen overflow-y-auto no-scrollbar bg-black text-white">
-      <HeaderBar title={(data.community?.name || 'Community')} username={data?.username} avatarUrl={data?.current_user_profile_picture} />
+      {/* Global header used from App */}
 
 
       {/* Slide-out menu (90% width), remaining 10% translucent to close with header */}

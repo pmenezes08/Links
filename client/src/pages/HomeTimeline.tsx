@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import HeaderBar from '../components/HeaderBar'
+import { useHeader } from '../contexts/HeaderContext'
 
 type Post = { id:number; username:string; content:string; image_path?:string|null; timestamp:string; community_id?:number|null; community_name?:string; reactions:Record<string,number>; user_reaction:string|null; poll?:any|null; replies_count?:number; profile_picture?:string|null }
 
@@ -113,10 +113,13 @@ export default function HomeTimeline(){
   }, [])
 
   const posts: Post[] = useMemo(() => data?.posts || [], [data])
+  const { setTitle } = useHeader()
+
+  useEffect(() => { setTitle('Home') }, [setTitle])
 
   return (
     <div className="min-h-screen bg-black text-white">
-      <HeaderBar title="Home" username={data?.username} avatarUrl={data?.current_user_profile_picture} />
+      {/* Global header used from App */}
 
       {/* Secondary tabs */}
       <div className="fixed left-0 right-0 top-14 h-10 border-b border-[#262f30] bg-black/70 backdrop-blur z-40">

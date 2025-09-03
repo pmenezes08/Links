@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import HeaderBar from '../components/HeaderBar'
+import { useHeader } from '../contexts/HeaderContext'
 
 type Community = { id:number; name:string; type?:string; is_active?:boolean }
 
 export default function Communities(){
   const navigate = useNavigate()
-  const [data, setData] = useState<{ username:string; current_user_profile_picture?:string|null; community_name?:string }|null>(null)
+  const { setTitle } = useHeader()
+  const [_data, setData] = useState<{ username:string; current_user_profile_picture?:string|null; community_name?:string }|null>(null)
   const [communities, setCommunities] = useState<Community[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string|null>(null)
@@ -55,9 +56,11 @@ export default function Communities(){
     return () => { mounted = false }
   }, [])
 
+  useEffect(() => { setTitle('Your Communities') }, [setTitle])
+
   return (
     <div className="h-screen overflow-y-auto no-scrollbar bg-black text-white">
-      <HeaderBar title="Your Communities" username={data?.username} avatarUrl={data?.current_user_profile_picture} />
+      {/* Global header used from App */}
 
       {/* Secondary nav like X */}
       <div className="fixed left-0 right-0 top-14 h-10 border-b border-[#262f30] bg-black/70 backdrop-blur z-40">
