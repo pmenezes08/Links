@@ -263,7 +263,7 @@ export default function CommunityFeed() {
   useEffect(() => { if (data?.community?.name) setTitle(data.community.name); }, [setTitle, data?.community?.name])
 
   return (
-    <div ref={scrollRef} className="h-screen overflow-y-auto no-scrollbar bg-black text-white">
+    <div ref={scrollRef} className="min-h-screen overflow-y-auto no-scrollbar bg-black text-white">
       {/* Global header used from App */}
 
 
@@ -275,8 +275,14 @@ export default function CommunityFeed() {
           {/* Top header image from legacy template */}
           {data.community?.background_path ? (
             <div className="community-header-image overflow-hidden rounded-xl border border-white/10">
-              <img src={data.community.background_path.startsWith('http') ? data.community.background_path : `/static/community_backgrounds/${data.community.background_path.split('/').slice(-1)[0]}`}
-                   alt={data.community?.name + ' Header'} className="header-image transition-transform duration-300 hover:scale-[1.015]" />
+              <img src={
+                data.community.background_path.startsWith('http')
+                  ? data.community.background_path
+                  : (data.community.background_path.includes('community_backgrounds/')
+                      ? `/static/${data.community.background_path}`
+                      : `/static/community_backgrounds/${data.community.background_path.split('/').slice(-1)[0]}`)
+              }
+                   alt={data.community?.name + ' Header'} className="block w-full h-auto header-image transition-transform duration-300 hover:scale-[1.015]" onError={(e:any)=>{ e.currentTarget.style.display='none' }} />
             </div>
           ) : null}
 
@@ -411,7 +417,14 @@ function PostCard({ post, currentUser, isAdmin, onOpen, onToggleReaction }: { po
       <div className="px-3 py-2 space-y-2">
         <div className="whitespace-pre-wrap text-[14px] leading-relaxed tracking-[0]">{post.content}</div>
         {post.image_path ? (
-          <img src={post.image_path.startsWith('/uploads') || post.image_path.startsWith('/static') ? post.image_path : `/uploads/${post.image_path}`} alt="" className="block mx-auto max-w-full max-h-[360px] rounded border border-white/10" />
+          <img src={(() => {
+            const p = post.image_path
+            if (!p) return ''
+            if (p.startsWith('http')) return p
+            if (p.startsWith('/uploads') || p.startsWith('/static')) return p
+            // If stored as 'uploads/...' ensure leading slash
+            return p.startsWith('uploads') ? `/${p}` : `/uploads/${p}`
+          })()} alt="" className="block mx-auto max-w-full max-h-[360px] rounded border border-white/10" onError={(e:any)=>{ e.currentTarget.style.display='none' }} />
         ) : null}
         {post.poll ? <PollBlock poll={post.poll} postId={post.id} /> : null}
         <div className="flex items-center gap-2 text-xs" onClick={(e)=> e.stopPropagation()}>
