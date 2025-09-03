@@ -134,11 +134,11 @@ export default function HomeTimeline(){
       {/* Secondary tabs */}
       <div className="fixed left-0 right-0 top-14 h-10 border-b border-[#262f30] bg-black/70 backdrop-blur z-40">
         <div className="max-w-2xl mx-auto h-full flex">
-          <button className="flex-1 text-center text-sm font-medium text-white/95">
+          <button type="button" className="flex-1 text-center text-sm font-medium text-white/95">
             <div className="pt-2">Home timeline</div>
             <div className="h-0.5 bg-[#4db6ac] rounded-full w-16 mx-auto mt-1" />
           </button>
-          <button className="flex-1 text-center text-sm font-medium text-[#9fb0b5] hover:text-white/90" onClick={()=> navigate('/communities')}>
+          <button type="button" className="flex-1 text-center text-sm font-medium text-[#9fb0b5] hover:text-white/90" onClick={()=> navigate('/communities')}>
             <div className="pt-2">Communities</div>
             <div className="h-0.5 bg-transparent rounded-full w-16 mx-auto mt-1" />
           </button>
