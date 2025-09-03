@@ -225,11 +225,11 @@ function ReplyNode({ reply, depth=0, onToggle, onInlineReply }:{ reply: Reply, d
       <div className="px-3 py-2 text-sm relative">
         {depth > 0 ? (
           <>
-            <div className="absolute left-4 top-0 bottom-0 w-px bg-white/10 rounded-full" />
-            <div className="absolute left-4 top-4 w-4 h-px bg-white/10 rounded-full" />
+            <div className="absolute left-6 top-0 bottom-0 w-px bg-white/15 rounded-full" />
+            <div className="absolute left-6 top-[0.875rem] w-2 h-px bg-white/15 rounded-full" />
           </>
         ) : null}
-        <div className="flex items-start gap-2 pl-3">
+        <div className="flex items-start gap-2 ml-8">
           <div className="w-7 h-7 rounded-full bg-white/10 overflow-hidden">
             {reply.profile_picture ? (
               <img src={(reply.profile_picture?.startsWith('http') || reply.profile_picture?.startsWith('/static')) ? reply.profile_picture! : `/static/${reply.profile_picture}`} alt="" className="w-full h-full object-cover" />
