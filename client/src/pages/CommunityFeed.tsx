@@ -208,7 +208,18 @@ export default function CommunityFeed() {
             ) : (<i className="fa-solid fa-user" />)}
           </div>
         </button>
-        <div className="font-semibold truncate tracking-[-0.01em]">{data.community?.name || 'Community'}</div>
+        <div className="font-semibold truncate tracking-[-0.01em] flex-1">{data.community?.name || 'Community'}</div>
+        <div className="flex items-center gap-2">
+          <button className="p-2 rounded-full hover:bg-white/5" onClick={()=> window.location.href = `/user_chat`} aria-label="Messages">
+            <i className="fa-solid fa-cloud" />
+          </button>
+          <button className="p-2 rounded-full hover:bg-white/5" onClick={()=> window.location.href = `/notifications`} aria-label="Notifications">
+            <i className="fa-regular fa-bell" />
+          </button>
+          <button className="p-2 rounded-full hover:bg-white/5" onClick={()=> setMoreOpen(true)} aria-label="More">
+            <i className="fa-solid fa-ellipsis" />
+          </button>
+        </div>
       </div>
 
       {/* Slide-out menu (90% width), remaining 10% translucent to close with header */}
@@ -315,27 +326,23 @@ export default function CommunityFeed() {
           <button className="w-10 h-10 rounded-md bg-[#4db6ac] text-black hover:brightness-110 grid place-items-center" aria-label="New Post" onClick={()=> navigate(`/compose?community_id=${community_id}`)}>
             <i className="fa-solid fa-plus" />
           </button>
-          <button className="p-2 rounded-full hover:bg-white/5" aria-label="Notifications" onClick={()=> window.location.href = `/notifications`}>
-            <i className="fa-regular fa-bell" />
+          <button className="p-2 rounded-full hover:bg-white/5" aria-label="Announcements" onClick={()=> { fetchAnnouncements() }}>
+            <i className="fa-solid fa-bullhorn" />
           </button>
-          <button className="p-2 rounded-full hover:bg-white/5" aria-label="More" onClick={()=> setMoreOpen(true)}>
-            <i className="fa-solid fa-ellipsis" />
-          </button>
+          {/* More moved to header */}
         </div>
       </div>
 
       {/* Bottom sheet for More */}
       {moreOpen && (
-        <div className="fixed inset-0 z-[95] bg-black/50 flex items-end justify-end" onClick={(e)=> e.currentTarget===e.target && setMoreOpen(false)}>
-          <div className="w-[75%] max-w-sm mr-2 mb-2 bg-black/95 backdrop-blur border border-white/10 rounded-2xl p-2 space-y-2">
-            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); fetchAnnouncements() }}>Announcements</button>
+        <div className="fixed inset-0 z-[95] bg-black/30" onClick={(e)=> e.currentTarget===e.target && setMoreOpen(false)}>
+          <div className="absolute top-16 right-2 w-[75%] max-w-sm bg-black/80 backdrop-blur border border-white/10 rounded-2xl p-2 space-y-2">
             <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); window.location.href = `/community_feed/${community_id}` }}>Polls</button>
             <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); window.location.href = `/community/${community_id}/calendar` }}>Calendar</button>
             <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); window.location.href = `/community/${community_id}/resources` }}>Forum</button>
             <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); window.location.href = `/community/${community_id}/resources` }}>Useful Links</button>
             <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); window.location.href = `/issues` }}>Report Issue</button>
             <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); window.location.href = `/anonymous_feedback` }}>Anonymous feedback</button>
-            <button className="w-full mt-1 px-4 py-3 rounded-full hover:bg-white/5 text-right" onClick={()=> setMoreOpen(false)}>Close</button>
           </div>
         </div>
       )}
