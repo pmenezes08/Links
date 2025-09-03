@@ -100,6 +100,7 @@ export default function CommunityFeed() {
   const [showAnnouncements, _setShowAnnouncements] = useState(false)
   const [_announcements, _setAnnouncements] = useState<Array<{id:number, content:string, created_by:string, created_at:string}>>([])
   const [ad, setAd] = useState<any>(null)
+  const [moreOpen, setMoreOpen] = useState(false)
   const scrollRef = useRef<HTMLDivElement|null>(null)
   // Modal removed in favor of dedicated PostDetail route
 
@@ -153,8 +154,16 @@ export default function CommunityFeed() {
     }catch{}
   }
 
-  // Announcements modal opener (currently unused in bottom nav)
-  // const openAnnouncements = async () => {}
+  async function fetchAnnouncements(){
+    try{
+      const r = await fetch(`/get_community_announcements?community_id=${community_id}`, { credentials: 'include' })
+      const j = await r.json()
+      if (j?.success){
+        _setAnnouncements(j.announcements || [])
+        _setShowAnnouncements(true)
+      }
+    }catch{}
+  }
 
   async function handleToggleReaction(postId: number, reaction: string){
     try{
@@ -190,6 +199,17 @@ export default function CommunityFeed() {
 
   return (
     <div ref={scrollRef} className="h-screen overflow-y-auto no-scrollbar bg-black text-white">
+      {/* Header with avatar + community name */}
+      <div className="fixed left-0 right-0 top-0 h-14 border-b border-[#262f30] bg-black/70 backdrop-blur flex items-center px-3 z-40">
+        <button className="mr-3 md:hidden" onClick={() => setMenuOpen(v=>!v)} aria-label="Menu">
+          <div className="w-8 h-8 rounded-full bg-white/10 overflow-hidden">
+            {data.current_user_profile_picture ? (
+              <img src={(data.current_user_profile_picture.startsWith('http') || data.current_user_profile_picture.startsWith('/static')) ? data.current_user_profile_picture : `/static/${data.current_user_profile_picture}`} alt="" className="w-full h-full object-cover" />
+            ) : (<i className="fa-solid fa-user" />)}
+          </div>
+        </button>
+        <div className="font-semibold truncate tracking-[-0.01em]">{data.community?.name || 'Community'}</div>
+      </div>
 
       {/* Slide-out menu (90% width), remaining 10% translucent to close with header */}
       {menuOpen && (
@@ -222,10 +242,10 @@ export default function CommunityFeed() {
         </div>
       )}
 
-      <div className="max-w-2xl mx-auto pt-3 pb-20 px-3">
+      <div className="max-w-2xl mx-auto pt-16 pb-20 px-3">
         {/* Top header image from legacy template */}
         {data.community?.background_path ? (
-          <div className="community-header-image mb-0 overflow-hidden rounded-xl border border-white/10">
+          <div className="community-header-image mb-3 overflow-hidden rounded-xl border border-white/10">
             <img src={data.community.background_path.startsWith('http') ? data.community.background_path : `/static/community_backgrounds/${data.community.background_path.split('/').slice(-1)[0]}`}
                  alt={data.community?.name + ' Header'} className="header-image transition-transform duration-300 hover:scale-[1.015]" />
           </div>
@@ -293,17 +313,33 @@ export default function CommunityFeed() {
           <button className="p-2 rounded-full hover:bg-white/5" aria-label="Members" onClick={openMembers}>
             <i className="fa-solid fa-users" />
           </button>
-          <button className="p-3 rounded-full bg-[#4db6ac] text-black hover:brightness-110" aria-label="New Post" onClick={()=> navigate(`/compose?community_id=${community_id}`)}>
+          <button className="w-10 h-10 rounded-md bg-[#4db6ac] text-black hover:brightness-110 grid place-items-center" aria-label="New Post" onClick={()=> navigate(`/compose?community_id=${community_id}`)}>
             <i className="fa-solid fa-plus" />
           </button>
           <button className="p-2 rounded-full hover:bg-white/5" aria-label="Notifications" onClick={()=> window.location.href = `/notifications`}>
             <i className="fa-regular fa-bell" />
           </button>
-          <button className="p-2 rounded-full hover:bg-white/5" aria-label="More" onClick={()=> setMenuOpen(true)}>
+          <button className="p-2 rounded-full hover:bg-white/5" aria-label="More" onClick={()=> setMoreOpen(true)}>
             <i className="fa-solid fa-ellipsis" />
           </button>
         </div>
       </div>
+
+      {/* Bottom sheet for More */}
+      {moreOpen && (
+        <div className="fixed inset-0 z-[95] bg-black/50 flex items-end" onClick={(e)=> e.currentTarget===e.target && setMoreOpen(false)}>
+          <div className="w-full max-w-2xl mx-auto bg-black/95 backdrop-blur border-t border-white/10 rounded-t-2xl p-3 space-y-2">
+            <button className="w-full text-left px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); fetchAnnouncements() }}>Announcements</button>
+            <button className="w-full text-left px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); window.location.href = `/community_feed/${community_id}` }}>Polls</button>
+            <button className="w-full text-left px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); window.location.href = `/community/${community_id}/calendar` }}>Calendar</button>
+            <button className="w-full text-left px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); window.location.href = `/community/${community_id}/resources` }}>Forum</button>
+            <button className="w-full text-left px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); window.location.href = `/community/${community_id}/resources` }}>Useful Links</button>
+            <button className="w-full text-left px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); window.location.href = `/issues` }}>Report Issue</button>
+            <button className="w-full text-left px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); window.location.href = `/anonymous_feedback` }}>Anonymous feedback</button>
+            <button className="w-full mt-1 px-4 py-3 rounded-full hover:bg-white/5" onClick={()=> setMoreOpen(false)}>Close</button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
