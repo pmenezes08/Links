@@ -329,9 +329,9 @@ export default function CommunityFeed() {
         </div>
       )}
 
-      {/* Bottom navigation bar */}
-      <div className="fixed left-0 right-0 bottom-0 h-14 border-t border-white/10 bg-black/80 backdrop-blur z-40">
-        <div className="max-w-2xl mx-auto h-full px-6 flex items-center justify-between text-[#cfd8dc]">
+      {/* Bottom navigation bar - floating */}
+      <div className="fixed bottom-4 left-1/2 transform -translate-x-1/2 z-40 w-[94%] max-w-[1200px] rounded-2xl border border-white/10 bg-black/80 backdrop-blur shadow-lg">
+        <div className="h-14 px-6 flex items-center justify-between text-[#cfd8dc]">
           <button className="p-2 rounded-full hover:bg-white/5" aria-label="Home" onClick={()=> scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}>
             <i className="fa-solid fa-house" />
           </button>
