@@ -135,7 +135,7 @@ export default function HomeTimeline(){
         </div>
       </div>
 
-      <div className="max-w-2xl mx-auto pt-24 pb-24 px-3">
+      <div className="max-w-2xl mx-auto pt-12 pb-24 px-3">
         {loading ? (
           <div className="p-3 text-[#9fb0b5]">Loading…</div>
         ) : error ? (
