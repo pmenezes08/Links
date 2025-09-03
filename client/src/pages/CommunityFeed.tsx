@@ -208,18 +208,34 @@ export default function CommunityFeed() {
         <div className="font-semibold truncate tracking-[-0.01em]">{data.community?.name || 'Community'}</div>
       </div>
 
-      {/* Slide-out menu (80% width), remaining 20% transparent to close */}
+      {/* Slide-out menu (90% width), remaining 10% translucent to close with header */}
       {menuOpen && (
-        <div className="fixed inset-0 z-[90] flex" onClick={(e)=> e.currentTarget===e.target && setMenuOpen(false)}>
-          <div className="w-[80%] h-full bg-black/95 backdrop-blur border-r border-white/10 p-4 space-y-2">
+        <div className="fixed inset-0 z-[90] flex bg-black/50" onClick={(e)=> e.currentTarget===e.target && setMenuOpen(false)}>
+          <div className="w-[90%] h-full bg-black/95 backdrop-blur border-r border-white/10 p-4 space-y-3">
+            <div className="flex items-center gap-2 pb-2 border-b border-white/10">
+              <div className="w-10 h-10 rounded-full overflow-hidden bg-white/10">
+                {data.current_user_profile_picture ? (
+                  <img src={(data.current_user_profile_picture.startsWith('http') || data.current_user_profile_picture.startsWith('/static')) ? data.current_user_profile_picture : `/static/${data.current_user_profile_picture}`} alt="" className="w-full h-full object-cover" />
+                ) : (<i className="fa-solid fa-user" />)}
+              </div>
+              <div className="font-medium truncate">{data.current_user_display_name || data.username}</div>
+            </div>
+            {data.username === 'admin' ? (
+              <>
+                <a className="block px-4 py-3 rounded-xl border border-white/10 hover:border-[#2a3f41]" href="/admin_profile">Admin Profile</a>
+                <a className="block px-4 py-3 rounded-xl border border-white/10 hover:border-[#2a3f41]" href="/admin">Admin Dashboard</a>
+              </>
+            ) : null}
             <a className="block px-4 py-3 rounded-xl border border-white/10 hover:border-[#2a3f41]" href="/dashboard">Dashboard</a>
             <a className="block px-4 py-3 rounded-xl border border-white/10 hover:border-[#2a3f41]" href="/profile">Profile</a>
             <a className="block px-4 py-3 rounded-xl border border-white/10 hover:border-[#2a3f41]" href="/user_chat">Messages</a>
             <a className="block px-4 py-3 rounded-xl border border-white/10 hover:border-[#2a3f41]" href="/communities">Your Communities</a>
             <a className="block px-4 py-3 rounded-xl border border-white/10 hover:border-[#2a3f41]" href="/your_sports">Your Sports</a>
+            <a className="block px-4 py-3 rounded-xl border border-white/10 hover:border-[#2a3f41]" href="/logout">Logout</a>
+            <a className="block px-4 py-3 rounded-xl border border-white/10 hover:border-[#2a3f41]" href="/account_settings">Settings</a>
             <button className="mt-3 w-full px-4 py-3 rounded-full border border-white/10" onClick={()=> setMenuOpen(false)}>Close</button>
           </div>
-          <div className="flex-1 h-full bg-black/40" />
+          <div className="flex-1 h-full" />
         </div>
       )}
 

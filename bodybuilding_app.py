@@ -8864,11 +8864,13 @@ def api_community_feed(community_id):
 
             # Current user's profile picture
             try:
-                c.execute("SELECT profile_picture FROM user_profiles WHERE username = ?", (username,))
+                c.execute("SELECT display_name, profile_picture FROM user_profiles WHERE username = ?", (username,))
                 cupp = c.fetchone()
                 current_user_profile_picture = cupp['profile_picture'] if cupp and 'profile_picture' in cupp.keys() else None
+                current_user_display_name = cupp['display_name'] if cupp and 'display_name' in cupp.keys() and cupp['display_name'] else username
             except Exception:
                 current_user_profile_picture = None
+                current_user_display_name = username
 
             # Posts
             c.execute(
@@ -8968,6 +8970,7 @@ def api_community_feed(community_id):
                 'username': username,
                 'is_community_admin': is_community_admin(username, community_id),
                 'current_user_profile_picture': current_user_profile_picture,
+                'current_user_display_name': current_user_display_name,
                 'posts': posts,
             })
     except Exception as e:
