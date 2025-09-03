@@ -198,16 +198,20 @@ export default function CommunityFeed() {
     <div className="h-screen overflow-y-auto no-scrollbar bg-black text-white">
       {/* Header + burger (subtle translucency, compact) */}
       <div className="fixed left-0 right-0 top-0 h-14 border-b border-[#262f30] bg-black/70 backdrop-blur flex items-center px-3 z-40">
-        <button className="px-3 py-2 rounded border border-[#333] bg-[#1a1a1a] mr-3 md:hidden" onClick={() => setMenuOpen(v=>!v)} aria-label="Menu">
-          <i className="fa-solid fa-bars" />
+        <button className="mr-3 md:hidden" onClick={() => setMenuOpen(v=>!v)} aria-label="Menu">
+          <div className="w-8 h-8 rounded-full bg-white/10 overflow-hidden">
+            {data.current_user_profile_picture ? (
+              <img src={(data.current_user_profile_picture.startsWith('http') || data.current_user_profile_picture.startsWith('/static')) ? data.current_user_profile_picture : `/static/${data.current_user_profile_picture}`} alt="" className="w-full h-full object-cover" />
+            ) : (<i className="fa-solid fa-user" />)}
+          </div>
         </button>
         <div className="font-semibold truncate tracking-[-0.01em]">{data.community?.name || 'Community'}</div>
       </div>
 
-      {/* Full-screen burger menu */}
+      {/* Slide-out menu (80% width), remaining 20% transparent to close */}
       {menuOpen && (
-        <div className="fixed inset-0 z-[90] bg-black/90 backdrop-blur" onClick={(e)=> e.currentTarget===e.target && setMenuOpen(false)}>
-          <div className="max-w-sm mx-auto mt-16 p-4 space-y-2">
+        <div className="fixed inset-0 z-[90] flex" onClick={(e)=> e.currentTarget===e.target && setMenuOpen(false)}>
+          <div className="w-[80%] h-full bg-black/95 backdrop-blur border-r border-white/10 p-4 space-y-2">
             <a className="block px-4 py-3 rounded-xl border border-white/10 hover:border-[#2a3f41]" href="/dashboard">Dashboard</a>
             <a className="block px-4 py-3 rounded-xl border border-white/10 hover:border-[#2a3f41]" href="/profile">Profile</a>
             <a className="block px-4 py-3 rounded-xl border border-white/10 hover:border-[#2a3f41]" href="/user_chat">Messages</a>
@@ -215,6 +219,7 @@ export default function CommunityFeed() {
             <a className="block px-4 py-3 rounded-xl border border-white/10 hover:border-[#2a3f41]" href="/your_sports">Your Sports</a>
             <button className="mt-3 w-full px-4 py-3 rounded-full border border-white/10" onClick={()=> setMenuOpen(false)}>Close</button>
           </div>
+          <div className="flex-1 h-full bg-black/40" />
         </div>
       )}
 
