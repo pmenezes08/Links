@@ -77,7 +77,9 @@ export default function Members(){
         </button>
         <div className="ml-2 font-semibold truncate">{communityName}</div>
         {canManage ? (
-          <button className="ml-auto px-3 py-1.5 rounded-full bg-[#4db6ac] text-black" onClick={addMember}>Add</button>
+          <button className="ml-auto p-2 rounded-full hover:bg-white/5" onClick={addMember} aria-label="Add member">
+            <i className="fa-solid fa-user-plus" style={{ color:'#4db6ac' }} />
+          </button>
         ) : null}
       </div>
       <div className="max-w-2xl mx-auto pt-14 px-3 pb-6">
@@ -90,7 +92,7 @@ export default function Members(){
             {members.length === 0 ? (
               <div className="text-[#9fb0b5]">No members.</div>
             ) : members.map((m, i) => (
-              <div key={i} className="flex items-center gap-3 p-2 rounded-xl border border-white/10 bg-white/[0.03]">
+              <div key={i} className="flex items-center gap-3 p-2 rounded-xl bg-white/[0.03]">
                 <div className="w-9 h-9 rounded-full overflow-hidden bg-white/10">
                   {m.profile_picture ? (
                     <img src={(m.profile_picture.startsWith('http') || m.profile_picture.startsWith('/static')) ? m.profile_picture : `/static/${m.profile_picture}`} alt="" className="w-full h-full object-cover" />
