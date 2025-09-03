@@ -1,23 +1,10 @@
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
 
-type Community = { id: number; name: string; type: string }
-
-function fetchUserCommunities(): Promise<{ success: boolean; communities: Community[] }> {
-  return fetch('/get_user_communities', { credentials: 'include' }).then((r) => r.json())
-}
+// type Community = { id: number; name: string; type: string }
 
 export default function PremiumDashboard() {
-  const [modalOpen, setModalOpen] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['user-communities'],
-    queryFn: fetchUserCommunities,
-    enabled: modalOpen,
-  })
-
-  const communities = data?.communities ?? []
 
   return (
     <div className="min-h-screen bg-[#0b0f10] text-white">
@@ -81,7 +68,7 @@ export default function PremiumDashboard() {
             </button>
           </div>
           <div>
-            <button className="inline-flex items-center gap-2 px-6 py-3 rounded-lg border border-[#333] md:border-white/10 bg-[#1a1a1a] md:bg-white/5 md:hover:bg-white/10 transition" onClick={() => setModalOpen(true)}>
+            <button className="inline-flex items-center gap-2 px-6 py-3 rounded-lg border border-[#333] md:border-white/10 bg-[#1a1a1a] md:bg-white/5 md:hover:bg-white/10 transition" onClick={() => (window.location.href = '/communities')}>
               <i className="fa-solid fa-home" /> View Your Communities
             </button>
           </div>
@@ -99,43 +86,7 @@ export default function PremiumDashboard() {
         </div>
       </div>
 
-      {modalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur" onClick={(e) => e.currentTarget === e.target && setModalOpen(false)}>
-          <div className="w-[90%] max-w-[600px] rounded-xl bg-[#2d3839] shadow-2xl overflow-hidden">
-            <div className="flex items-center justify-between px-5 py-3 border-b border-teal-700/30 bg-black">
-              <h3 className="text-base font-semibold flex items-center gap-2"><i className="fa-solid fa-home text-teal-300" /> Your Communities</h3>
-              <button className="text-2xl text-[#9fb0b5] hover:text-white" onClick={() => setModalOpen(false)}>&times;</button>
-            </div>
-            <div className="p-4 max-h-[380px] overflow-y-auto">
-              {isLoading ? (
-                <div className="text-center text-[#9fb0b5]">Loading...</div>
-              ) : communities.length === 0 ? (
-                <div className="text-center text-[#9fb0b5]">
-                  <i className="fa-solid fa-users text-4xl mb-2 block" />
-                  <div className="text-sm text-white mb-1">No communities yet</div>
-                  <div className="text-xs">Join an existing community or create your own to get started</div>
-                </div>
-              ) : (
-                <div className="flex flex-col gap-2">
-                  {communities.map((c) => (
-                    <div key={c.id} className="rounded-md border border-white/10 bg-white/5 p-3">
-                      <div className="flex items-center justify-between">
-                        <div className="min-w-0 pr-3">
-                          <div className="text-sm text-white truncate">{c.name}</div>
-                          <div className="text-[11px] text-[#9fb0b5] mt-0.5"><i className="fa-solid fa-tag text-[10px]" /> {c.type}</div>
-                        </div>
-                        <button className="px-3 py-1.5 text-xs rounded border border-white/10 bg-white/5 hover:bg-white/10" onClick={() => (window.location.href = `/community_feed/${c.id}`)}>
-                          <i className="fa-solid fa-door-open text-[11px]" /> Enter
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Communities modal removed; button links to /communities */}
     </div>
   )
 }
