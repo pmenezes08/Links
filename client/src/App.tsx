@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
+import ErrorBoundary from './components/ErrorBoundary'
 import PremiumDashboard from './pages/PremiumDashboard'
 import HeaderBar from './components/HeaderBar'
 import { HeaderContext } from './contexts/HeaderContext'
@@ -39,7 +40,8 @@ export default function App() {
         <HeaderContext.Provider value={{ setTitle }}>
           <HeaderBar title={title} username={userMeta.username} avatarUrl={userMeta.avatarUrl} />
           <div style={{ paddingTop: '56px' }}>
-            <Routes>
+            <ErrorBoundary>
+              <Routes>
               <Route path="/" element={<PremiumDashboard />} />
               <Route path="/premium" element={<PremiumDashboard />} />
               <Route path="/premium_dashboard" element={<PremiumDashboard />} />
@@ -53,7 +55,8 @@ export default function App() {
               <Route path="/post/:post_id" element={<PostDetail />} />
               <Route path="/compose" element={<CreatePost />} />
               <Route path="*" element={<PremiumDashboard />} />
-            </Routes>
+              </Routes>
+            </ErrorBoundary>
           </div>
         </HeaderContext.Provider>
       </BrowserRouter>
