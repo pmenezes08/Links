@@ -400,7 +400,7 @@ function PostCard({ post, currentUser, isAdmin, onOpen, onToggleReaction }: { po
       <div className="px-3 py-2 space-y-2">
         <div className="whitespace-pre-wrap text-[14px] leading-relaxed tracking-[0]">{post.content}</div>
         {post.image_path ? (
-          <img src={post.image_path.startsWith('/uploads') || post.image_path.startsWith('/static') ? post.image_path : `/uploads/${post.image_path}`} alt="" className="max-h-[360px] rounded border border-white/10" />
+          <img src={post.image_path.startsWith('/uploads') || post.image_path.startsWith('/static') ? post.image_path : `/uploads/${post.image_path}`} alt="" className="block mx-auto max-w-full max-h-[360px] rounded border border-white/10" />
         ) : null}
         {post.poll ? <PollBlock poll={post.poll} postId={post.id} /> : null}
         <div className="flex items-center gap-2 text-xs" onClick={(e)=> e.stopPropagation()}>
