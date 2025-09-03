@@ -126,7 +126,7 @@ export default function CommunityFeed() {
     let isMounted = true
     setLoading(true)
     fetch(`/api/community_feed/${community_id}`, { credentials: 'include' })
-      .then(r => r.json())
+      .then(r => r.json().catch(() => ({ success: false, error: 'Invalid response' })))
       .then(json => { if (!isMounted) return; json?.success ? setData(json) : setError(json?.error || 'Error') })
       .catch(() => isMounted && setError('Error loading feed'))
       .finally(() => isMounted && setLoading(false))
@@ -236,11 +236,11 @@ export default function CommunityFeed() {
   }, [data])
 
   if (loading) return <div className="p-4 text-[#9fb0b5]">Loading…</div>
-  if (error) return <div className="p-4 text-red-400">{error}</div>
-  if (!data) return null
+  if (error) return <div className="p-4 text-red-400">{error || 'Failed to load feed.'}</div>
+  if (!data) return <div className="p-4 text-[#9fb0b5]">No posts yet.</div>
 
   const { setTitle } = useHeader()
-  useEffect(() => { setTitle(data.community?.name || 'Community') }, [setTitle, data?.community?.name])
+  useEffect(() => { if (data?.community?.name) setTitle(data.community.name); }, [setTitle, data?.community?.name])
 
   return (
     <div ref={scrollRef} className="h-screen overflow-y-auto no-scrollbar bg-black text-white">
