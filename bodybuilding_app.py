@@ -8965,6 +8965,125 @@ def api_community_feed(community_id):
         logger.error(f"Error in api_community_feed for {community_id}: {e}")
         return jsonify({'success': False, 'error': 'Server error'}), 500
 
+@app.route('/api/home_timeline')
+@login_required
+def api_home_timeline():
+    """Aggregate timeline across all communities the user belongs to for the last 48 hours."""
+    username = session.get('username')
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+
+            # Current user profile
+            try:
+                c.execute("SELECT display_name, profile_picture FROM user_profiles WHERE username = ?", (username,))
+                cupp = c.fetchone()
+                current_user_profile_picture = cupp['profile_picture'] if cupp and 'profile_picture' in cupp.keys() else None
+                current_user_display_name = cupp['display_name'] if cupp and 'display_name' in cupp.keys() and cupp['display_name'] else username
+            except Exception:
+                current_user_profile_picture = None
+                current_user_display_name = username
+
+            # Get community ids for the user
+            c.execute("""
+                SELECT c.id, c.name
+                FROM communities c
+                JOIN user_communities uc ON c.id = uc.community_id
+                JOIN users u ON uc.user_id = u.rowid
+                WHERE u.username = ?
+            """, (username,))
+            rows = c.fetchall()
+            community_ids = [row['id'] for row in rows]
+            id_to_name = {row['id']: row['name'] for row in rows}
+
+            if not community_ids:
+                return jsonify({
+                    'success': True,
+                    'username': username,
+                    'current_user_profile_picture': current_user_profile_picture,
+                    'current_user_display_name': current_user_display_name,
+                    'posts': []
+                })
+
+            # Build IN clause safely
+            placeholders = ",".join(["?"] * len(community_ids))
+            params = list(community_ids)
+
+            # Fetch posts in last 48 hours across user's communities
+            c.execute(f"""
+                SELECT * FROM posts
+                WHERE community_id IN ({placeholders})
+                  AND datetime(timestamp) >= datetime('now','-48 hours')
+                ORDER BY id DESC
+            """, params)
+            posts = [dict(row) for row in c.fetchall()]
+
+            # Enrich posts with author picture, reactions, user reaction, poll, replies_count, and community_name
+            for post in posts:
+                post_id = post['id']
+                comm_id = post.get('community_id')
+                post['community_name'] = id_to_name.get(comm_id)
+
+                # Profile picture
+                try:
+                    c.execute("SELECT profile_picture FROM user_profiles WHERE username = ?", (post['username'],))
+                    pp = c.fetchone()
+                    post['profile_picture'] = pp['profile_picture'] if pp and 'profile_picture' in pp.keys() else None
+                except Exception:
+                    post['profile_picture'] = None
+
+                # Reactions
+                c.execute("""
+                    SELECT reaction_type, COUNT(*) as count
+                    FROM reactions WHERE post_id = ? GROUP BY reaction_type
+                """, (post_id,))
+                post['reactions'] = {r['reaction_type']: r['count'] for r in c.fetchall()}
+                c.execute("SELECT reaction_type FROM reactions WHERE post_id = ? AND username = ?", (post_id, username))
+                ur = c.fetchone()
+                post['user_reaction'] = ur['reaction_type'] if ur else None
+
+                # Poll (if active)
+                c.execute("SELECT * FROM polls WHERE post_id = ? AND is_active = 1", (post_id,))
+                poll_raw = c.fetchone()
+                if poll_raw:
+                    poll = dict(poll_raw)
+                    c.execute("SELECT * FROM poll_options WHERE poll_id = ? ORDER BY id", (poll['id'],))
+                    options = [dict(o) for o in c.fetchall()]
+                    poll['options'] = options
+                    c.execute("SELECT option_id FROM poll_votes WHERE poll_id = ? AND username = ?", (poll['id'], username))
+                    uv = c.fetchone()
+                    poll['user_vote'] = uv['option_id'] if uv else None
+                    poll['total_votes'] = sum(opt.get('votes', 0) for opt in options)
+                    post['poll'] = poll
+                else:
+                    post['poll'] = None
+
+                # Replies count
+                c.execute("SELECT COUNT(*) as cnt FROM replies WHERE post_id = ?", (post_id,))
+                rc = c.fetchone()
+                post['replies_count'] = (rc['cnt'] if isinstance(rc, dict) else rc[0]) if rc is not None else 0
+
+            return jsonify({
+                'success': True,
+                'username': username,
+                'current_user_profile_picture': current_user_profile_picture,
+                'current_user_display_name': current_user_display_name,
+                'posts': posts
+            })
+    except Exception as e:
+        logger.error(f"Error in api_home_timeline: {e}")
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
+@app.route('/home')
+@login_required
+def react_home_timeline_page():
+    try:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        dist_dir = os.path.join(base_dir, 'client', 'dist')
+        return send_from_directory(dist_dir, 'index.html')
+    except Exception as e:
+        logger.error(f"Error serving React home timeline: {str(e)}")
+        abort(500)
 @app.route('/community_feed_react/<int:community_id>')
 @login_required
 def community_feed_react(community_id):
