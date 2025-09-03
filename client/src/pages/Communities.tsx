@@ -76,6 +76,23 @@ export default function Communities(){
         </div>
       </div>
 
+      {/* Secondary nav like X */}
+      <div className="fixed left-0 right-0 top-14 h-10 border-b border-[#262f30] bg-black/70 backdrop-blur z-40">
+        <div className="max-w-2xl mx-auto h-full flex">
+          <button className="flex-1 text-center text-sm font-medium text-[#9fb0b5] hover:text-white/90" onClick={()=> {
+            const last = localStorage.getItem('last_community_id');
+            if (last) navigate(`/community_feed_react/${last}`); else navigate('/premium_dashboard');
+          }}>
+            <div className="pt-2">Home timeline</div>
+            <div className="h-0.5 bg-transparent rounded-full w-16 mx-auto mt-1" />
+          </button>
+          <button className="flex-1 text-center text-sm font-medium text-white/95">
+            <div className="pt-2">Your Communities</div>
+            <div className="h-0.5 bg-[#4db6ac] rounded-full w-16 mx-auto mt-1" />
+          </button>
+        </div>
+      </div>
+
       {/* Slide-out menu (90% width) same as feed */}
       {menuOpen && (
         <div className="fixed inset-0 z-[90] flex bg-black/50" onClick={(e)=> e.currentTarget===e.target && setMenuOpen(false)}>
@@ -99,7 +116,7 @@ export default function Communities(){
         </div>
       )}
 
-      <div className="max-w-2xl mx-auto pt-16 pb-10 px-3">
+      <div className="max-w-2xl mx-auto pt-24 pb-10 px-3">
         {loading ? (
           <div className="text-[#9fb0b5]">Loading…</div>
         ) : error ? (
