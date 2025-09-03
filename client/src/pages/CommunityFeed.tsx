@@ -94,7 +94,6 @@ export default function CommunityFeed() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string| null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
-  const [actionsOpen, setActionsOpen] = useState(false)
   const [showMembers, setShowMembers] = useState(false)
   const [members, setMembers] = useState<Array<{username:string, profile_picture?:string|null}>>([])
   const [showAnnouncements, setShowAnnouncements] = useState(false)
@@ -222,26 +221,23 @@ export default function CommunityFeed() {
       <div className="max-w-2xl mx-auto pt-16 px-3">
         {/* Top header image from legacy template */}
         {data.community?.background_path ? (
-          <div className="community-header-image mb-3 overflow-hidden rounded-xl border border-white/10">
+          <div className="community-header-image mb-0 overflow-hidden rounded-xl border border-white/10">
             <img src={data.community.background_path.startsWith('http') ? data.community.background_path : `/static/community_backgrounds/${data.community.background_path.split('/').slice(-1)[0]}`}
                  alt={data.community?.name + ' Header'} className="header-image transition-transform duration-300 hover:scale-[1.015]" />
           </div>
         ) : null}
 
-        {/* Action bar: burger + swipable horizontal nav */}
-        <div className="mb-3 flex items-center gap-2">
-          <button className="px-3 py-2 rounded-full border border-white/10 hover:border-[#2a3f41]" onClick={()=> setActionsOpen(true)} aria-label="Community menu"><i className="fa-solid fa-bars" style={{ color: '#4db6ac' }} /></button>
-          <div className="flex-1 overflow-x-auto">
-            <div className="flex gap-2 pr-3">
-              <ActionPill icon="fa-users" label="Members" onClick={openMembers} />
-              <ActionPill icon="fa-bullhorn" label="Announcements" onClick={openAnnouncements} />
-              <ActionPill icon="fa-chart-pie" label="Polls" onClick={()=> window.location.href = `/community_feed/${community_id}`} />
-              <ActionPill icon="fa-link" label="Links" onClick={()=> window.location.href = `/community/${community_id}/resources`} />
-              <ActionPill icon="fa-bell" label="Notifications" onClick={()=> window.location.href = `/notifications`} />
-              <ActionPill icon="fa-flag" label="Issues" onClick={()=> {}} />
-              <ActionPill icon="fa-calendar" label="Calendar" onClick={()=> window.location.href = `/community/${community_id}/calendar`} />
-              <ActionPill icon="fa-ellipsis" label="More" onClick={()=> {}} />
-            </div>
+        {/* Action bar: wrapped, balanced spacing */}
+        <div className="my-4">
+          <div className="flex flex-wrap gap-2">
+            <ActionPill icon="fa-users" label="Members" onClick={openMembers} />
+            <ActionPill icon="fa-bullhorn" label="Announcements" onClick={openAnnouncements} />
+            <ActionPill icon="fa-chart-pie" label="Polls" onClick={()=> window.location.href = `/community_feed/${community_id}`} />
+            <ActionPill icon="fa-link" label="Links" onClick={()=> window.location.href = `/community/${community_id}/resources`} />
+            <ActionPill icon="fa-bell" label="Notifications" onClick={()=> window.location.href = `/notifications`} />
+            <ActionPill icon="fa-flag" label="Issues" onClick={()=> {}} />
+            <ActionPill icon="fa-calendar" label="Calendar" onClick={()=> window.location.href = `/community/${community_id}/calendar`} />
+            <ActionPill icon="fa-ellipsis" label="More" onClick={()=> {}} />
           </div>
         </div>
 
@@ -299,22 +295,7 @@ export default function CommunityFeed() {
         </div>
       )}
 
-      {/* Actions full-screen overlay */}
-      {actionsOpen && (
-        <div className="fixed inset-0 z-[95] bg-black/90 backdrop-blur" onClick={(e)=> e.currentTarget===e.target && setActionsOpen(false)}>
-          <div className="max-w-sm mx-auto mt-16 p-4 grid grid-cols-2 gap-2">
-            <ActionPill icon="fa-users" label="Members" onClick={openMembers} />
-            <ActionPill icon="fa-bullhorn" label="Announcements" onClick={openAnnouncements} />
-            <ActionPill icon="fa-chart-pie" label="Polls" onClick={()=> window.location.href = `/community_feed/${community_id}`} />
-            <ActionPill icon="fa-link" label="Links" onClick={()=> window.location.href = `/community/${community_id}/resources`} />
-            <ActionPill icon="fa-bell" label="Notifications" onClick={()=> window.location.href = `/notifications`} />
-            <ActionPill icon="fa-flag" label="Issues" onClick={()=> {}} />
-            <ActionPill icon="fa-calendar" label="Calendar" onClick={()=> window.location.href = `/community/${community_id}/calendar`} />
-            <ActionPill icon="fa-ellipsis" label="More" onClick={()=> {}} />
-            <button className="col-span-2 mt-2 px-4 py-3 rounded-full border border-white/10" onClick={()=> setActionsOpen(false)}>Close</button>
-          </div>
-        </div>
-      )}
+      {/* Actions overlay removed per design update */}
 
       {/* Post detail modal removed; navigation goes to /post/:post_id */}
     </div>
@@ -323,8 +304,8 @@ export default function CommunityFeed() {
 
 function ActionPill({ icon, label, onClick }:{ icon: string, label: string, onClick: ()=>void }){
   return (
-    <button className="shrink-0 px-3 py-1.5 rounded-full border border-white/10 text-xs text-[#cfd8dc] hover:border-[#2a3f41]" onClick={onClick}>
-      <i className={`fa-solid ${icon} mr-1`} style={{ color: '#4db6ac' }} />{label}
+    <button className="px-3.5 py-2 rounded-full border border-white/10 text-[13px] text-[#cfd8dc] hover:border-[#2a3f41]" onClick={onClick}>
+      <i className={`fa-solid ${icon} mr-1.5`} style={{ color: '#4db6ac' }} />{label}
     </button>
   )
 }
