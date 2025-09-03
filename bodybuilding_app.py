@@ -7852,6 +7852,13 @@ def get_post():
                 return jsonify({'success': False, 'error': 'Post not found'}), 404
             
             post = dict(post_raw)
+            # Attach profile picture for post author
+            try:
+                c.execute("SELECT profile_picture FROM user_profiles WHERE username = ?", (post['username'],))
+                pp = c.fetchone()
+                post['profile_picture'] = pp['profile_picture'] if pp and 'profile_picture' in pp.keys() else None
+            except Exception:
+                post['profile_picture'] = None
             
             # Fetch replies for the post (top-level first)
             c.execute("SELECT * FROM replies WHERE post_id = ? ORDER BY timestamp DESC", (post_id,))
@@ -7886,6 +7893,13 @@ def get_post():
             
             # Add reaction counts for each reply and user reaction
             def hydrate_reply_metrics(reply):
+                # Attach profile picture per reply
+                try:
+                    c.execute("SELECT profile_picture FROM user_profiles WHERE username = ?", (reply['username'],))
+                    pr = c.fetchone()
+                    reply['profile_picture'] = pr['profile_picture'] if pr and 'profile_picture' in pr.keys() else None
+                except Exception:
+                    reply['profile_picture'] = None
                 c.execute("""
                     SELECT reaction_type, COUNT(*) as count
                     FROM reply_reactions

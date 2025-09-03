@@ -151,7 +151,11 @@ export default function PostDetail(){
       <div className="max-w-2xl mx-auto pt-14 px-3">
         <div className="rounded-2xl border border-white/10 bg-white/[0.035] shadow-sm shadow-black/20">
           <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2">
-            <div className="w-8 h-8 rounded-full bg-white/10" />
+            <div className="w-8 h-8 rounded-full bg-white/10 overflow-hidden">
+              {(post as any).profile_picture ? (
+                <img src={((post as any).profile_picture.startsWith('http') || (post as any).profile_picture.startsWith('/static')) ? (post as any).profile_picture : `/static/${(post as any).profile_picture}`} alt="" className="w-full h-full object-cover" />
+              ) : null}
+            </div>
             <div className="font-medium">{post.username}</div>
             <div className="text-xs text-[#9fb0b5] ml-auto">{formatTimestamp(post.timestamp)}</div>
           </div>
@@ -217,10 +221,15 @@ function ReplyNode({ reply, depth=0, onToggle, onInlineReply }:{ reply: Reply, d
   const [showComposer, setShowComposer] = useState(false)
   const [text, setText] = useState('')
   return (
-    <div className="border-b border-white/10" style={{ paddingLeft: depth ? Math.min(depth*16, 48) : 0 }}>
+    <div className="border-b border-white/10" style={{ paddingLeft: depth ? Math.min(depth*20, 60) : 0 }}>
       <div className="px-3 py-2 text-sm relative">
-        {depth > 0 ? (<div className="absolute left-2 top-0 bottom-0 w-px bg-white/10" />) : null}
-        <div className="flex items-start gap-2">
+        {depth > 0 ? (
+          <>
+            <div className="absolute left-4 top-0 bottom-0 w-px bg-white/10 rounded-full" />
+            <div className="absolute left-4 top-4 w-4 h-px bg-white/10 rounded-full" />
+          </>
+        ) : null}
+        <div className="flex items-start gap-2 pl-3">
           <div className="w-7 h-7 rounded-full bg-white/10 overflow-hidden">
             {reply.profile_picture ? (
               <img src={(reply.profile_picture?.startsWith('http') || reply.profile_picture?.startsWith('/static')) ? reply.profile_picture! : `/static/${reply.profile_picture}`} alt="" className="w-full h-full object-cover" />
