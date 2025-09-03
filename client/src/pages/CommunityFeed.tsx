@@ -229,7 +229,7 @@ export default function CommunityFeed() {
 
         {/* Action bar: swipable horizontal nav (keep larger pill size) */}
         <div className="my-4">
-          <div className="flex gap-2 pr-3 overflow-x-auto">
+          <div className="flex gap-2 pr-3 overflow-x-auto no-scrollbar">
             <ActionPill icon="fa-users" label="Members" onClick={openMembers} />
             <ActionPill icon="fa-bullhorn" label="Announcements" onClick={openAnnouncements} />
             <ActionPill icon="fa-chart-pie" label="Polls" onClick={()=> window.location.href = `/community_feed/${community_id}`} />
