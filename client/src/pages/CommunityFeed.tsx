@@ -90,7 +90,10 @@ function formatTimestamp(input: string): string {
 }
 
 export default function CommunityFeed() {
-  const { community_id } = useParams()
+  let { community_id } = useParams()
+  if (!community_id){
+    try{ community_id = window.location.pathname.split('/').filter(Boolean).pop() as any }catch{}
+  }
   const navigate = useNavigate()
   const [data, setData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
@@ -127,8 +130,25 @@ export default function CommunityFeed() {
     setLoading(true)
     fetch(`/api/community_feed/${community_id}`, { credentials: 'include' })
       .then(r => r.json().catch(() => ({ success: false, error: 'Invalid response' })))
-      .then(json => { if (!isMounted) return; json?.success ? setData(json) : setError(json?.error || 'Error') })
-      .catch(() => isMounted && setError('Error loading feed'))
+      .then(json => { 
+        if (!isMounted) return; 
+        if (json?.success){ setData(json) }
+        else {
+          setError(json?.error || 'Error')
+          const ua = navigator.userAgent || ''
+          const isMobile = /Mobi|Android|iPhone|iPad/i.test(ua) || window.innerWidth < 768
+          if (isMobile && community_id){
+            // Fallback to HTML feed to avoid blank screen
+            window.location.href = `/community_feed/${community_id}`
+          }
+        }
+      })
+      .catch(() => { if (isMounted){
+        setError('Error loading feed')
+        const ua = navigator.userAgent || ''
+        const isMobile = /Mobi|Android|iPhone|iPad/i.test(ua) || window.innerWidth < 768
+        if (isMobile && community_id){ window.location.href = `/community_feed/${community_id}` }
+      }})
       .finally(() => isMounted && setLoading(false))
     return () => { isMounted = false }
   }, [community_id])
