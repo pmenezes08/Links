@@ -257,10 +257,10 @@ function ReplyNode({ reply, depth=0, onToggle, onInlineReply }:{ reply: Reply, d
       <div className="relative flex items-start gap-2 px-3">
         <div className="relative w-10 flex-shrink-0">
           {depth > 0 ? (
-            <>
-              <div className="absolute" style={{ left: '50%', transform: 'translateX(-0.5px)', top: 0, height: `calc(50% - ${avatarSizePx/2}px)`, width: '1px', background: 'rgba(255,255,255,0.15)', borderRadius: '9999px' }} />
-              <div className="absolute" style={{ left: '50%', transform: 'translateX(-0.5px)', top: `calc(50% + ${avatarSizePx/2}px)`, bottom: 0, width: '1px', background: 'rgba(255,255,255,0.15)', borderRadius: '9999px' }} />
-            </>
+            <div className="absolute" style={{ left: '50%', transform: 'translateX(-0.5px)', top: 0, height: `calc(50% - ${avatarSizePx/2}px)`, width: '1px', background: 'rgba(255,255,255,0.15)', borderRadius: '9999px' }} />
+          ) : null}
+          {reply.children && reply.children.length ? (
+            <div className="absolute" style={{ left: '50%', transform: 'translateX(-0.5px)', top: `calc(50% + ${avatarSizePx/2}px)`, bottom: 0, width: '1px', background: 'rgba(255,255,255,0.15)', borderRadius: '9999px' }} />
           ) : null}
           <div className="w-7 h-7 rounded-full bg-white/10 overflow-hidden mx-auto">
             {reply.profile_picture ? (
