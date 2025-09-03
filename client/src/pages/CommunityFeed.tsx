@@ -247,7 +247,6 @@ export default function CommunityFeed() {
             <a className="block px-4 py-3 rounded-xl hover:bg-white/5" href="/your_sports">Your Sports</a>
             <a className="block px-4 py-3 rounded-xl hover:bg-white/5" href="/logout">Logout</a>
             <a className="block px-4 py-3 rounded-xl hover:bg-white/5" href="/account_settings">Settings</a>
-            <button className="mt-3 w-full px-4 py-3 rounded-full hover:bg-white/5" onClick={()=> setMenuOpen(false)}>Close</button>
           </div>
           <div className="flex-1 h-full" onClick={()=> setMenuOpen(false)} />
         </div>
@@ -329,7 +328,9 @@ export default function CommunityFeed() {
           <button className="p-2 rounded-full hover:bg-white/5" aria-label="Announcements" onClick={()=> { fetchAnnouncements() }}>
             <i className="fa-solid fa-bullhorn" />
           </button>
-          {/* More moved to header */}
+          <button className="p-2 rounded-full hover:bg-white/5" aria-label="More" onClick={()=> setMoreOpen(true)}>
+            <i className="fa-solid fa-ellipsis" />
+          </button>
         </div>
       </div>
 
