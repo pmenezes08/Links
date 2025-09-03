@@ -303,7 +303,7 @@ export default function CommunityFeed() {
           {timeline.map((item, i) => item.type === 'ad' ? (
             <AdsCard key={`ad-${i}`} communityId={String(community_id)} ad={ad} />
           ) : (
-            <PostCard key={item.post!.id} post={item.post!} currentUser={data.username} isAdmin={!!data.is_community_admin} onOpen={() => { window.location.href = `/post/${item.post!.id}` }} onToggleReaction={handleToggleReaction} />
+            <PostCard key={item.post!.id} post={item.post!} currentUser={data.username} isAdmin={!!data.is_community_admin} onOpen={() => navigate(`/post/${item.post!.id}`)} onToggleReaction={handleToggleReaction} />
           ))}
         </div>
       </div>
@@ -360,7 +360,7 @@ export default function CommunityFeed() {
       {moreOpen && (
         <div className="fixed inset-0 z-[95] bg-black/30 flex items-end justify-end" onClick={(e)=> e.currentTarget===e.target && setMoreOpen(false)}>
           <div className="w-[75%] max-w-sm mr-2 mb-2 bg-black/80 backdrop-blur border border-white/10 rounded-2xl p-2 space-y-2 transition-transform duration-200 ease-out translate-y-0">
-            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); window.location.href = `/community_feed/${community_id}` }}>Polls</button>
+            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); navigate(`/community_feed_react/${community_id}`) }}>Polls</button>
             <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); window.location.href = `/community/${community_id}/calendar` }}>Calendar</button>
             <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); window.location.href = `/community/${community_id}/resources` }}>Forum</button>
             <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); window.location.href = `/community/${community_id}/resources` }}>Useful Links</button>

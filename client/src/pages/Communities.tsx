@@ -66,10 +66,10 @@ export default function Communities(){
         </button>
         <div className="font-semibold truncate tracking-[-0.01em] flex-1">Your Communities</div>
         <div className="flex items-center gap-2">
-          <button className="p-2 rounded-full hover:bg-white/5" onClick={()=> window.location.href = `/user_chat`} aria-label="Messages">
+          <button className="p-2 rounded-full hover:bg-white/5" onClick={()=> navigate('/user_chat')} aria-label="Messages">
             <i className="fa-solid fa-cloud" />
           </button>
-          <button className="p-2 rounded-full hover:bg-white/5" onClick={()=> window.location.href = `/notifications`} aria-label="Notifications">
+          <button className="p-2 rounded-full hover:bg-white/5" onClick={()=> navigate('/notifications')} aria-label="Notifications">
             <i className="fa-regular fa-bell" />
           </button>
         </div>

@@ -63,23 +63,23 @@ export default function PremiumDashboard() {
 
         <div className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-center space-y-4">
           <div>
-            <button className="inline-flex items-center gap-2 px-6 py-3 rounded-lg border border-[#333] md:border-white/10 bg-[#1a1a1a] md:bg-white/5 md:hover:bg-white/10 transition" onClick={() => (window.location.href = '/communities')}>
+            <button className="inline-flex items-center gap-2 px-6 py-3 rounded-lg border border-[#333] md:border-white/10 bg-[#1a1a1a] md:bg-white/5 md:hover:bg-white/10 transition" onClick={() => (location.assign('/communities'))}>
               <i className="fa-solid fa-plus-circle" /> Create/Join a Community
             </button>
           </div>
           <div>
-            <button className="inline-flex items-center gap-2 px-6 py-3 rounded-lg border border-[#333] md:border-white/10 bg-[#1a1a1a] md:bg-white/5 md:hover:bg-white/10 transition" onClick={() => (window.location.href = '/communities')}>
+            <button className="inline-flex items-center gap-2 px-6 py-3 rounded-lg border border-[#333] md:border-white/10 bg-[#1a1a1a] md:bg-white/5 md:hover:bg-white/10 transition" onClick={() => (location.assign('/communities'))}>
               <i className="fa-solid fa-home" /> View Your Communities
             </button>
           </div>
           <div>
-            <button className="inline-flex items-center gap-2 px-6 py-3 rounded-lg border border-[#333] md:border-white/10 bg-[#1a1a1a] md:bg-white/5 md:hover:bg-white/10 transition" onClick={() => (window.location.href = '/your_sports')}>
+            <button className="inline-flex items-center gap-2 px-6 py-3 rounded-lg border border-[#333] md:border-white/10 bg-[#1a1a1a] md:bg-white/5 md:hover:bg-white/10 transition" onClick={() => (location.assign('/your_sports'))}>
               <i className="fa-solid fa-water" /> View Your Sports
             </button>
           </div>
           {/* Optional: a small Edit Profile link on mobile */}
           <div className="md:hidden">
-            <button className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-[#333] bg-[#1a1a1a]" onClick={() => (window.location.href = '/profile')}>
+            <button className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-[#333] bg-[#1a1a1a]" onClick={() => (location.assign('/profile'))}>
               <i className="fa-solid fa-user" /> Edit profile
             </button>
           </div>
