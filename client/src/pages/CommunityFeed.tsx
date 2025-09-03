@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import HeaderBar from '../components/HeaderBar'
 
 type PollOption = { id: number; text: string; votes: number }
 type Poll = { id: number; question: string; is_active: number; options: PollOption[]; user_vote: number|null; total_votes: number }
@@ -94,7 +95,6 @@ export default function CommunityFeed() {
   const [data, setData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string| null>(null)
-  const [menuOpen, setMenuOpen] = useState(false)
   const [hasUnseenAnnouncements, setHasUnseenAnnouncements] = useState(false)
   const [showAnnouncements, _setShowAnnouncements] = useState(false)
   const [_announcements, _setAnnouncements] = useState<Array<{id:number, content:string, created_by:string, created_at:string}>>([])
@@ -241,56 +241,11 @@ export default function CommunityFeed() {
 
   return (
     <div ref={scrollRef} className="h-screen overflow-y-auto no-scrollbar bg-black text-white">
-      {/* Header with avatar + community name */}
-      <div className="fixed left-0 right-0 top-0 h-14 border-b border-[#262f30] bg-black/70 backdrop-blur flex items-center px-3 z-40">
-        <button className="mr-3 md:hidden" onClick={() => setMenuOpen(v=>!v)} aria-label="Menu">
-          <div className="w-8 h-8 rounded-full bg-white/10 overflow-hidden">
-            {data.current_user_profile_picture ? (
-              <img src={(data.current_user_profile_picture.startsWith('http') || data.current_user_profile_picture.startsWith('/static')) ? data.current_user_profile_picture : `/static/${data.current_user_profile_picture}`} alt="" className="w-full h-full object-cover" />
-            ) : (<i className="fa-solid fa-user" />)}
-          </div>
-        </button>
-        <div className="font-semibold truncate tracking-[-0.01em] flex-1">{data.community?.name || 'Community'}</div>
-        <div className="flex items-center gap-2">
-          <button className="p-2 rounded-full hover:bg-white/5" onClick={()=> navigate('/user_chat')} aria-label="Messages">
-            <i className="fa-solid fa-cloud" />
-          </button>
-          <button className="p-2 rounded-full hover:bg-white/5" onClick={()=> navigate('/notifications')} aria-label="Notifications">
-            <i className="fa-regular fa-bell" />
-          </button>
-        </div>
-      </div>
+      <HeaderBar title={(data.community?.name || 'Community')} username={data?.username} avatarUrl={data?.current_user_profile_picture} />
 
 
       {/* Slide-out menu (90% width), remaining 10% translucent to close with header */}
-      {menuOpen && (
-        <div className="fixed inset-0 z-[90] flex bg-black/50" onClick={(e)=> e.currentTarget===e.target && setMenuOpen(false)}>
-          <div className="w-[90%] h-full bg-black/95 backdrop-blur border-r border-white/10 p-4 space-y-3">
-            <div className="flex items-center gap-2 pb-2 border-b border-white/10">
-              <div className="w-10 h-10 rounded-full overflow-hidden bg-white/10">
-                {data.current_user_profile_picture ? (
-                  <img src={(data.current_user_profile_picture.startsWith('http') || data.current_user_profile_picture.startsWith('/static')) ? data.current_user_profile_picture : `/static/${data.current_user_profile_picture}`} alt="" className="w-full h-full object-cover" />
-                ) : (<i className="fa-solid fa-user" />)}
-              </div>
-              <div className="font-medium truncate">{data.current_user_display_name || data.username}</div>
-            </div>
-            {data.username === 'admin' ? (
-              <>
-                <a className="block px-4 py-3 rounded-xl hover:bg-white/5" href="/admin_profile">Admin Profile</a>
-                <a className="block px-4 py-3 rounded-xl hover:bg-white/5" href="/admin">Admin Dashboard</a>
-              </>
-            ) : null}
-            <a className="block px-4 py-3 rounded-xl hover:bg-white/5" href="/dashboard">Dashboard</a>
-            <a className="block px-4 py-3 rounded-xl hover:bg-white/5" href="/profile">Profile</a>
-            <a className="block px-4 py-3 rounded-xl hover:bg-white/5" href="/user_chat">Messages</a>
-            <button className="block w-full text-left px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMenuOpen(false); navigate('/communities') }}>Your Communities</button>
-            <a className="block px-4 py-3 rounded-xl hover:bg-white/5" href="/your_sports">Your Sports</a>
-            <a className="block px-4 py-3 rounded-xl hover:bg-white/5" href="/logout">Logout</a>
-            <a className="block px-4 py-3 rounded-xl hover:bg-white/5" href="/account_settings">Settings</a>
-          </div>
-          <div className="flex-1 h-full" onClick={()=> setMenuOpen(false)} />
-        </div>
-      )}
+      {/* Menu is handled by HeaderBar to keep header consistent across pages */}
 
       <div className="max-w-2xl mx-auto pt-16 pb-20 px-3">
         <div className="space-y-3">
