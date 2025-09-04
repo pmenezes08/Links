@@ -85,25 +85,58 @@ export default function Communities(){
         ) : error ? (
           <div className="text-red-400">{error}</div>
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-3">
+            {/* Join new community */}
+            <JoinCommunity onJoined={()=>{
+              // reload
+              window.location.reload()
+            }} />
             {communities.length === 0 ? (
               <div className="text-[#9fb0b5]">You are not a member of any communities.</div>
             ) : communities.map(c => (
-              <button key={c.id} type="button" className="w-full text-left px-3 py-2 rounded-2xl bg-white/[0.035] hover:bg-white/[0.06]" onClick={()=> {
-                const ua = navigator.userAgent || ''
-                const isMobile = /Mobi|Android|iPhone|iPad/i.test(ua) || window.innerWidth < 768
-                if (isMobile) {
-                  navigate(`/community_feed_react/${c.id}`)
-                } else {
-                  window.location.href = `/community_feed/${c.id}`
-                }
-              }}>
-                <div className="font-medium">{c.name}</div>
-                <div className="text-xs text-[#9fb0b5]">{c.type || 'Community'}</div>
-              </button>
+              <div key={c.id} className="w-full px-3 py-2 rounded-2xl bg-white/[0.035] hover:bg-white/[0.06] flex items-center justify-between">
+                <div>
+                  <div className="font-medium">{c.name}</div>
+                  <div className="text-xs text-[#9fb0b5]">{c.type || 'Community'}</div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button className="px-3 py-1.5 rounded-full border border-[#4db6ac] text-white hover:bg-[#0f1919]" onClick={()=>{
+                    const ua = navigator.userAgent || ''
+                    const isMobile = /Mobi|Android|iPhone|iPad/i.test(ua) || window.innerWidth < 768
+                    if (isMobile) navigate(`/community_feed_react/${c.id}`); else window.location.href = `/community_feed/${c.id}`
+                  }}>Enter</button>
+                  <button className="px-3 py-1.5 rounded-full border border-red-500 text-red-400 hover:bg-red-950/30" onClick={async()=>{
+                    const fd = new URLSearchParams({ community_id: String(c.id) })
+                    const r = await fetch('/leave_community', { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
+                    const j = await r.json().catch(()=>null)
+                    if (j?.success) window.location.reload()
+                    else alert(j?.error||'Error leaving community')
+                  }}>Leave</button>
+                </div>
+              </div>
             ))}
           </div>
         )}
+      </div>
+    </div>
+  )
+}
+
+function JoinCommunity({ onJoined }:{ onJoined: ()=>void }){
+  const [code, setCode] = useState('')
+  const submit = async()=>{
+    if (!code.trim()) return
+    const fd = new URLSearchParams({ community_code: code.trim() })
+    const r = await fetch('/join_community', { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
+    const j = await r.json().catch(()=>null)
+    if (j?.success) onJoined()
+    else alert(j?.error||'Invalid code')
+  }
+  return (
+    <div className="w-full flex items-center justify-center">
+      <div className="w-[80%] max-w-md flex items-center gap-2">
+        <input value={code} onChange={e=> setCode(e.target.value)} placeholder="Enter join code" className="flex-1 px-3 py-2 rounded-xl bg-black border border-[#666] text-white placeholder-[#888] focus:outline-none" />
+        <button className="px-4 py-2 rounded-full border border-[#4db6ac] text-white hover:bg-[#0f1919]" onClick={submit}>Join</button>
       </div>
     </div>
   )
