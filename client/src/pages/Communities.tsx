@@ -91,6 +91,7 @@ export default function Communities(){
               // reload
               window.location.reload()
             }} />
+            <div className="my-6 border-t border-[#444]" />
             {communities.length === 0 ? (
               <div className="text-[#9fb0b5]">You are not a member of any communities.</div>
             ) : communities.map(c => (
@@ -100,12 +101,12 @@ export default function Communities(){
                   <div className="text-xs text-[#9fb0b5]">{c.type || 'Community'}</div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <button className="px-3 py-1.5 rounded-full border border-[#4db6ac] text-white hover:bg-[#0f1919]" onClick={()=>{
+                  <button className="px-3 py-1.5 rounded-none bg-[#4db6ac] border border-[#4db6ac] text-white hover:brightness-110" onClick={()=>{
                     const ua = navigator.userAgent || ''
                     const isMobile = /Mobi|Android|iPhone|iPad/i.test(ua) || window.innerWidth < 768
                     if (isMobile) navigate(`/community_feed_react/${c.id}`); else window.location.href = `/community_feed/${c.id}`
                   }}>Enter</button>
-                  <button className="px-3 py-1.5 rounded-full border border-red-500 text-red-400 hover:bg-red-950/30" onClick={async()=>{
+                  <button className="px-3 py-1.5 rounded-none bg-[#e53935] border border-[#e53935] text-white hover:brightness-110" onClick={async()=>{
                     const fd = new URLSearchParams({ community_id: String(c.id) })
                     const r = await fetch('/leave_community', { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
                     const j = await r.json().catch(()=>null)
@@ -135,8 +136,8 @@ function JoinCommunity({ onJoined }:{ onJoined: ()=>void }){
   return (
     <div className="w-full flex items-center justify-center">
       <div className="w-[80%] max-w-md flex items-center gap-2">
-        <input value={code} onChange={e=> setCode(e.target.value)} placeholder="Enter join code" className="flex-1 px-3 py-2 rounded-xl bg-black border border-[#666] text-white placeholder-[#888] focus:outline-none" />
-        <button className="px-4 py-2 rounded-full border border-[#4db6ac] text-white hover:bg-[#0f1919]" onClick={submit}>Join</button>
+        <input value={code} onChange={e=> setCode(e.target.value)} placeholder="Enter join code" className="flex-1 px-3 py-2 bg-black border border-[#666] text-white placeholder-[#888] focus:outline-none rounded-none" />
+        <button className="px-4 py-2 bg-[#4db6ac] text-white hover:brightness-110 rounded-none" onClick={submit}>Join</button>
       </div>
     </div>
   )
