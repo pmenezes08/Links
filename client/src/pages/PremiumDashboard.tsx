@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useHeader } from '../contexts/HeaderContext'
+import { useNavigate } from 'react-router-dom'
 
 // type Community = { id: number; name: string; type: string }
 
@@ -7,6 +8,7 @@ export default function PremiumDashboard() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const { setTitle } = useHeader()
   useEffect(() => { setTitle('Dashboard') }, [setTitle])
+  const navigate = useNavigate()
 
 
   return (
@@ -53,39 +55,30 @@ export default function PremiumDashboard() {
           <div className="text-sm font-semibold truncate max-w-[10rem]">You</div>
         </div>
 
-        {/* Mobile-first full-height buttons */}
-        <div className="block md:hidden h-[calc(100vh-64px)] px-3">
-          <div className="flex flex-col gap-3 h-full">
-            <button className="flex-1 w-full rounded-2xl border border-[#4db6ac] text-white bg-black/40 flex items-center justify-center text-lg" onClick={() => (location.assign('/communities'))}>
-              <i className="fa-solid fa-plus-circle mr-2" /> Create/Join a Community
-            </button>
-            <button className="flex-1 w-full rounded-2xl border border-[#4db6ac] text-white bg-black/40 flex items-center justify-center text-lg" onClick={() => (location.assign('/home'))}>
-              <i className="fa-solid fa-home mr-2" /> View Your Communities
-            </button>
-            <button className="flex-1 w-full rounded-2xl border border-[#4db6ac] text-white bg-black/40 flex items-center justify-center text-lg" onClick={() => (location.assign('/your_sports'))}>
-              <i className="fa-solid fa-water mr-2" /> View Your Sports
-            </button>
-          </div>
-        </div>
-
-        {/* Fallback for larger screens: center but not full height */}
-        <div className="hidden md:flex items-center justify-center h-full">
-          <div className="w-[420px] max-w-[92%] space-y-3 text-center">
-            <button className="w-full rounded-2xl border border-[#4db6ac] text-white bg-black/40 px-6 py-3" onClick={() => (location.assign('/communities'))}>
-              <i className="fa-solid fa-plus-circle mr-2" /> Create/Join a Community
-            </button>
-            <button className="w-full rounded-2xl border border-[#4db6ac] text-white bg-black/40 px-6 py-3" onClick={() => (location.assign('/home'))}>
-              <i className="fa-solid fa-home mr-2" /> View Your Communities
-            </button>
-            <button className="w-full rounded-2xl border border-[#4db6ac] text-white bg-black/40 px-6 py-3" onClick={() => (location.assign('/your_sports'))}>
-              <i className="fa-solid fa-water mr-2" /> View Your Sports
-            </button>
+        {/* Cards grid */}
+        <div className="h-full flex items-center justify-center px-3">
+          <div className="w-full max-w-5xl grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <Card iconClass="fa-solid fa-plus" title="Create/Join a Community" onClick={() => navigate('/communities')} />
+            <Card iconClass="fa-solid fa-house" title="Your Communities" onClick={() => navigate('/home')} />
+            <Card iconClass="fa-solid fa-person-snowboarding" title="Your Sports" onClick={() => navigate('/your_sports')} />
           </div>
         </div>
       </div>
 
       {/* Communities modal removed; button links to /communities */}
     </div>
+  )
+}
+
+function Card({ iconClass, title, onClick }:{ iconClass:string; title:string; onClick:()=>void }){
+  return (
+    <button onClick={onClick} aria-label={title}
+      className="rounded-2xl bg-white/10 border border-white/20 hover:bg-white/14 shadow-[0_6px_30px_rgba(0,0,0,0.35)] transition-colors w-full h-44 flex flex-col items-center justify-center text-white">
+      <div className="w-14 h-14 rounded-full bg-white/20 flex items-center justify-center mb-3">
+        <i className={iconClass} style={{ fontSize: 22 }} />
+      </div>
+      <div className="font-medium tracking-tight">{title}</div>
+    </button>
   )
 }
 
