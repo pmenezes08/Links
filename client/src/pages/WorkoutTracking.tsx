@@ -376,18 +376,20 @@ export default function WorkoutTracking(){
 
         {/* Workouts */}
         {activeTab==='workouts' && (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="text-lg font-semibold">Your Workouts</div>
-              <button className="px-3 py-2 rounded-md bg-[#4db6ac] text-black hover:brightness-110"><i className="fa-solid fa-plus mr-2"/>Create Workout</button>
+          <div className="rounded-xl border border-white/10 bg-white/5 mt-2">
+            <div className="flex items-center justify-between p-3 border-b border-white/10">
+              <div className="font-semibold text-sm">Workouts</div>
+              <button className="w-8 h-8 p-0 rounded-md bg-[#4db6ac] text-black hover:brightness-110 flex items-center justify-center" title="Create Workout">
+                <i className="fa-solid fa-plus" />
+              </button>
             </div>
-            <div className="space-y-2">
+            <div className="divide-y divide-white/10">
               {workouts.length===0 ? (
-                <div className="text-[#9fb0b5] text-sm">No workouts found.</div>
+                <div className="px-3 py-3 text-[#9fb0b5] text-sm">No workouts found.</div>
               ) : workouts.map(w => (
-                <div key={w.id} className="rounded-xl border border-white/10 bg-white/5 p-3 flex items-center justify-between">
+                <div key={w.id} className="px-3 py-2 flex items-center justify-between">
                   <div>
-                    <div className="font-medium">{w.name}</div>
+                    <div className="font-medium leading-tight">{w.name}</div>
                     <div className="text-xs text-[#9fb0b5]">{formatDate(w.date)} • Exercises {w.exercise_count ?? 0}</div>
                   </div>
                   <button className="p-2 rounded-md hover:bg-white/10" title="Share"><i className="fa-solid fa-share-nodes"/></button>
@@ -399,32 +401,32 @@ export default function WorkoutTracking(){
 
         {/* Community Leaderboard */}
         {activeTab==='leaderboard' && (
-          <div className="space-y-4">
-            <div className="text-lg font-semibold">Community Leaderboard</div>
-            <div className="rounded-xl border border-white/10 bg-white/5 p-3">
-              <div className="flex flex-wrap gap-2 items-center">
-                <select value={lbCommunityId as any} onChange={e=> setLbCommunityId(e.target.value ? Number(e.target.value) : '')} className="bg-black border border-white/15 rounded-md px-2 py-1 text-sm">
-                  <option value="">Select Community</option>
-                  {communities.map(c=> <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
-                <select value={lbExerciseId as any} onChange={e=> setLbExerciseId(e.target.value ? Number(e.target.value) : '')} className="bg-black border border-white/15 rounded-md px-2 py-1 text-sm">
-                  <option value="">Select Exercise</option>
-                  {userExercises.map(ex=> <option key={ex.id} value={ex.id}>{ex.name} ({ex.muscle_group})</option>)}
-                </select>
-                <button className="ml-auto px-3 py-1.5 rounded-md bg-white/10 hover:bg-white/15" onClick={loadLeaderboard}>
-                  <i className="fa-solid fa-list-ol mr-2"/>Load Leaderboard
-                </button>
-              </div>
-              <div className="mt-3 space-y-2">
-                {leaderboardRows.length===0 ? (
-                  <div className="text-[#9fb0b5] text-sm">No entries yet.</div>
-                ) : leaderboardRows.map((r, idx) => (
-                  <div key={idx} className="flex items-center justify-between rounded-lg border border-white/10 bg-black/50 px-3 py-2">
-                    <div className="font-medium">#{idx+1} {r.username}</div>
-                    <div className="text-[#9fb0b5]">{r.max} kg</div>
-                  </div>
-                ))}
-              </div>
+          <div className="rounded-xl border border-white/10 bg-white/5 mt-2">
+            <div className="flex items-center justify-between p-3 border-b border-white/10">
+              <div className="font-semibold text-sm">Community Leaderboard</div>
+              <button className="w-8 h-8 p-0 rounded-md bg-white/10 hover:bg-white/15 flex items-center justify-center" onClick={loadLeaderboard} title="Load Leaderboard">
+                <i className="fa-solid fa-list-ol" />
+              </button>
+            </div>
+            <div className="p-3 flex flex-wrap items-center gap-2">
+              <select value={lbCommunityId as any} onChange={e=> setLbCommunityId(e.target.value ? Number(e.target.value) : '')} className="bg-black border border-white/15 rounded-md px-2 py-1 text-sm">
+                <option value="">Select Community</option>
+                {communities.map(c=> <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+              <select value={lbExerciseId as any} onChange={e=> setLbExerciseId(e.target.value ? Number(e.target.value) : '')} className="bg-black border border-white/15 rounded-md px-2 py-1 text-sm">
+                <option value="">Select Exercise</option>
+                {userExercises.map(ex=> <option key={ex.id} value={ex.id}>{ex.name} ({ex.muscle_group})</option>)}
+              </select>
+            </div>
+            <div className="divide-y divide-white/10">
+              {leaderboardRows.length===0 ? (
+                <div className="px-3 py-3 text-[#9fb0b5] text-sm">No entries yet.</div>
+              ) : leaderboardRows.map((r, idx) => (
+                <div key={idx} className="px-3 py-2 flex items-center justify-between">
+                  <div className="font-medium">#{idx+1} {r.username}</div>
+                  <div className="text-[#9fb0b5]">{r.max} kg</div>
+                </div>
+              ))}
             </div>
           </div>
         )}
