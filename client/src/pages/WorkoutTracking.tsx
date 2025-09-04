@@ -336,8 +336,8 @@ export default function WorkoutTracking(){
                               setLogsEntries(mapped)
                               setShowLogsModal(true)
                             }}
+                            aria-label={`View logs for ${ex.name}`}
                             title="View logs">
-                            <div className="text-xs text-[#cfd8dc]">{ex.name}</div>
                             <i className="fa-solid fa-clipboard-list text-xs text-[#9fb0b5]" />
                           </button>
                         ))}
