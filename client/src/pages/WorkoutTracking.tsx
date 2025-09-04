@@ -490,8 +490,9 @@ export default function WorkoutTracking(){
             </div>
             <div>
               {/* Add entry row */}
-              <div className="pb-2 flex flex-wrap items-center gap-2 justify-between">
-                <div>
+              <div className="pb-2 grid grid-cols-2 gap-3 items-start">
+                {/* Left column: Weight on top, Sets below */}
+                <div className="flex flex-col gap-2">
                   <label className="sr-only">Weight (kg)</label>
                   <input
                     type="number"
@@ -501,8 +502,6 @@ export default function WorkoutTracking(){
                     placeholder="Weight (kg)"
                     className="block w-36 h-9 px-3 rounded-md bg-black border border-white/15 text-base focus:outline-none focus:ring-2 focus:ring-[#4db6ac] focus:border-[#4db6ac] focus:bg-teal-900/20"
                   />
-                </div>
-                <div>
                   <label className="sr-only">Sets</label>
                   <input
                     type="number"
@@ -510,20 +509,23 @@ export default function WorkoutTracking(){
                     value={newLogSets}
                     onChange={e=> setNewLogSets(e.target.value)}
                     placeholder="Sets"
-                    className="block w-24 h-9 px-3 rounded-md bg-black border border-white/15 text-base focus:outline-none focus:ring-2 focus:ring-[#4db6ac] focus:border-[#4db6ac]"
+                    className="block w-28 h-8 px-3 rounded-md bg-black border border-white/15 text-sm focus:outline-none focus:ring-2 focus:ring-[#4db6ac] focus:border-[#4db6ac]"
                   />
                 </div>
-                <div>
-                  <label className="sr-only">Date</label>
-                  <input
-                    type="date"
-                    value={newLogDate}
-                    max={new Date().toISOString().slice(0,10)}
-                    onChange={e=> setNewLogDate(e.target.value)}
-                    className="block w-44 h-9 px-3 rounded-md bg-black border border-white/15 text-sm text-center [text-align-last:center]"
-                  />
-                </div>
-                <button className="w-8 h-8 p-0 rounded-md bg-[#4db6ac] text-black hover:brightness-110 flex items-center justify-center shrink-0" aria-label="Add entry" onClick={async()=>{
+                {/* Right column: Date (borderless) on top with calendar icon; + button below centered */}
+                <div className="flex flex-col items-center gap-2">
+                  <div className="flex items-center gap-2">
+                    <i className="fa-regular fa-calendar text-[#9fb0b5]" />
+                    <label className="sr-only">Date</label>
+                    <input
+                      type="date"
+                      value={newLogDate}
+                      max={new Date().toISOString().slice(0,10)}
+                      onChange={e=> setNewLogDate(e.target.value)}
+                      className="block w-40 h-9 px-0 bg-transparent border-0 outline-none focus:outline-none ring-0 text-sm text-center [text-align-last:center] appearance-none"
+                    />
+                  </div>
+                  <button className="w-8 h-8 p-0 rounded-md bg-[#4db6ac] text-black hover:brightness-110 flex items-center justify-center" aria-label="Add entry" onClick={async()=>{
                   if (!logsExerciseId || !newLogWeight || !newLogDate) return
                   const repsVal = newLogSets && Number(newLogSets) > 0 ? String(Number(newLogSets)) : '1'
                   const fd = new URLSearchParams({ exercise_id: String(logsExerciseId), weight: newLogWeight, reps: repsVal, date: newLogDate })
@@ -537,6 +539,7 @@ export default function WorkoutTracking(){
                     setNewLogDate(new Date().toISOString().slice(0,10))
                   } else alert(j?.error || 'Failed to add entry')
                 }}><i className="fa-solid fa-plus text-xs"/></button>
+                </div>
               </div>
               {logsEntries.length === 0 ? (
                 <div className="text-sm text-[#9fb0b5]">No logs yet.</div>
