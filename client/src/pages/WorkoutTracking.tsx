@@ -316,7 +316,7 @@ export default function WorkoutTracking(){
               ) : (
                 Object.entries(muscleGroupToExercises).map(([group, list]) => (
                   <div key={group} className="">
-                    <div className="px-3 py-2 font-semibold text-[#cfd8dc] text-xs uppercase tracking-wider">{group}</div>
+                    {/* Removed muscle group header label per request */}
                     {/* Group helicopter view: expand group to see exercises; exercises are single-row items */}
                     <button className="w-full px-3 py-2 flex items-center justify-between hover:bg-white/5 text-left"
                       onClick={()=> setExpandedGroups(prev=> ({...prev, [group]: !expandedGroups[group]}))}
@@ -338,6 +338,7 @@ export default function WorkoutTracking(){
                             }}
                             aria-label={`View logs for ${ex.name}`}
                             title="View logs">
+                            <div className="text-xs text-[#cfd8dc] truncate mr-2">{ex.name}</div>
                             <i className="fa-solid fa-clipboard-list text-xs text-[#9fb0b5]" />
                           </button>
                         ))}
