@@ -77,6 +77,7 @@ export default function Communities(){
   }, [])
 
   useEffect(() => { setTitle('Your Communities') }, [setTitle])
+  useEffect(() => { setTitle('Communities') }, [setTitle])
 
   return (
     <div className="h-screen overflow-hidden bg-black text-white">
@@ -86,7 +87,7 @@ export default function Communities(){
       <div className="fixed left-0 right-0 top-14 h-10 bg-black/70 backdrop-blur z-40">
         <div className="max-w-2xl mx-auto h-full flex">
           <button type="button" className="flex-1 text-center text-sm font-medium text-[#9fb0b5] hover:text-white/90" onClick={()=> navigate('/home')}>
-            <div className="pt-2">Home timeline</div>
+            <div className="pt-2">Home Timeline</div>
             <div className="h-0.5 bg-transparent rounded-full w-16 mx-auto mt-1" />
           </button>
           <button type="button" className="flex-1 text-center text-sm font-medium text-white/95">
@@ -99,7 +100,7 @@ export default function Communities(){
       {/* Slide-out menu (90% width) same as feed */}
       {/* Menu unified via HeaderBar */}
 
-      <div className="max-w-2xl mx-auto pt-[88px] h-[calc(100vh-88px)] pb-10 px-3 overflow-y-auto no-scrollbar">
+      <div className="max-w-2xl mx-auto pt-[70px] h-[calc(100vh-70px)] pb-6 px-3 overflow-y-auto no-scrollbar">
         {loading ? (
           <div className="text-[#9fb0b5]">Loading…</div>
         ) : error ? (
@@ -111,7 +112,7 @@ export default function Communities(){
               // reload
               window.location.reload()
             }} />
-            <div className="my-6 border-t border-[#444]" />
+            {/* Divider removed per request */}
             {communities.length === 0 ? (
               <div className="text-[#9fb0b5]">You are not a member of any communities.</div>
             ) : communities.map(c => (
@@ -137,7 +138,7 @@ export default function Communities(){
                     if (j?.success) window.location.reload()
                     else alert(j?.error||'Error leaving community')
                   }}>
-                    <i className="fa-solid fa-user-minus" style={{ color: '#a12421' }} />
+                    <i className="fa-solid fa-user-minus" style={{ color: '#e53935' }} />
                   </button>
                 </div>
               </div>
