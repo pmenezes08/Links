@@ -55,6 +55,7 @@ export default function WorkoutTracking(){
 
   const [leaderboardRows, setLeaderboardRows] = useState<Array<{ username:string; max:number }>>([])
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({})
+  const [expandedExerciseLogs, setExpandedExerciseLogs] = useState<Record<number, boolean>>({})
 
   // Load base data on mount
   useEffect(() => {
@@ -71,6 +72,13 @@ export default function WorkoutTracking(){
     fetch('/get_user_exercises', { credentials:'include' })
       .then(r=>r.json()).then(j=>{ if (j?.success && Array.isArray(j.exercises)) setUserExercises(j.exercises) }).catch(()=>{})
   }, [])
+
+  // Default: collapse exercise logs when entering Exercise tab
+  useEffect(() => {
+    if (activeTab === 'exercise') {
+      setExpandedExerciseLogs({})
+    }
+  }, [activeTab])
 
   function openAddExercise(){
     setNewName('')
@@ -286,9 +294,18 @@ export default function WorkoutTracking(){
             <div className="flex flex-wrap gap-2 items-center p-3 border-b border-white/10">
               <div className="font-semibold text-sm">Exercise Management</div>
               <div className="ml-auto flex items-center gap-2">
-                <button className="px-3 py-1.5 rounded-md bg-[#4db6ac] text-black hover:brightness-110" onClick={openAddExercise}><i className="fa-solid fa-plus mr-2"/>Add</button>
-                <button className="px-3 py-1.5 rounded-md bg-white/10 hover:bg-white/15"><i className="fa-solid fa-eye-slash mr-2"/>Toggle</button>
-                <button className="px-3 py-1.5 rounded-md bg-white/10 hover:bg-white/15"><i className="fa-solid fa-calendar mr-2"/>Group</button>
+                <button className="w-8 h-8 rounded-md bg-[#4db6ac] text-black hover:brightness-110 flex items-center justify-center" onClick={openAddExercise} title="Add Exercise"><i className="fa-solid fa-plus"/></button>
+                <button className="w-8 h-8 rounded-md bg-white/10 hover:bg-white/15 flex items-center justify-center" title="Toggle All" onClick={()=>{
+                  // Expand/collapse all logs
+                  const anyOpen = Object.values(expandedExerciseLogs).some(Boolean)
+                  if (anyOpen) setExpandedExerciseLogs({})
+                  else {
+                    const all: Record<number, boolean> = {}
+                    for (const ex of exercises) all[ex.id] = true
+                    setExpandedExerciseLogs(all)
+                  }
+                }}><i className="fa-solid fa-eye-slash"/></button>
+                <button className="w-8 h-8 rounded-md bg-white/10 hover:bg-white/15 flex items-center justify-center" title="Group"><i className="fa-solid fa-filter"/></button>
               </div>
             </div>
             <div className="divide-y divide-white/10 text-[13px]">
@@ -298,17 +315,40 @@ export default function WorkoutTracking(){
                 Object.entries(muscleGroupToExercises).map(([group, list]) => (
                   <div key={group} className="">
                     <div className="px-3 py-2 font-semibold text-[#cfd8dc] text-xs uppercase tracking-wider">{group}</div>
-                    {list.map(ex => (
-                      <button key={ex.id} className="w-full px-3 py-2 flex items-center justify-between hover:bg-white/5 text-left"
-                        onClick={()=> setSelectedExerciseId(ex.id)}
-                        title="Open exercise logs">
-                        <div>
-                          <div className="font-medium leading-tight">{ex.name}</div>
-                          <div className="text-xs text-[#9fb0b5]">{ex.muscle_group}</div>
+                    {list.map(ex => {
+                      const isOpen = !!expandedExerciseLogs[ex.id]
+                      const sets = (ex.sets_data || []).slice().sort((a,b)=> String(b.created_at||b.date||'').localeCompare(String(a.created_at||a.date||'')))
+                      return (
+                        <div key={ex.id} className="">
+                          <button className="w-full px-3 py-2 flex items-center justify-between hover:bg-white/5 text-left"
+                            onClick={()=> {
+                              setExpandedExerciseLogs(prev=> ({...prev, [ex.id]: !isOpen}))
+                              setSelectedExerciseId(ex.id)
+                            }}
+                            title="Toggle exercise logs">
+                            <div>
+                              <div className="font-medium leading-tight text-sm">{ex.name}</div>
+                              <div className="text-xs text-[#9fb0b5]">{ex.muscle_group}</div>
+                            </div>
+                            <i className={`fa-solid ${isOpen ? 'fa-chevron-down' : 'fa-chevron-right'} text-xs text-[#9fb0b5]`} />
+                          </button>
+                          {isOpen && (
+                            <div className="px-3 pb-2 space-y-1">
+                              {sets.length === 0 ? (
+                                <div className="text-xs text-[#9fb0b5]">No logs yet.</div>
+                              ) : (
+                                sets.slice(0,6).map((s, idx) => (
+                                  <div key={idx} className="text-xs text-[#cfd8dc] flex items-center justify-between">
+                                    <div>{formatMonthDay(String(s.created_at||s.date||''))}</div>
+                                    <div className="text-[#9fb0b5]">{s.weight} kg × {s.reps}</div>
+                                  </div>
+                                ))
+                              )}
+                            </div>
+                          )}
                         </div>
-                        <i className="fa-solid fa-chevron-right text-xs text-[#9fb0b5]" />
-                      </button>
-                    ))}
+                      )
+                    })}
                   </div>
                 ))
               )}
