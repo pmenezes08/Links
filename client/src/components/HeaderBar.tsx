@@ -17,7 +17,7 @@ export default function HeaderBar({ title, username, avatarUrl }: HeaderBarProps
 
   return (
     <>
-      <div className="fixed left-0 right-0 top-0 h-14 border-b border-[#262f30] bg-black/70 backdrop-blur flex items-center px-3 z-40 text-white">
+      <div className="fixed left-0 right-0 top-0 h-14 border-b border-[#262f30] bg-black flex items-center px-3 z-40 text-white">
         <button className="mr-3 md:hidden" onClick={() => setMenuOpen(v=>!v)} aria-label="Menu">
           <div className="w-8 h-8 rounded-full bg-white/10 overflow-hidden">
             {resolvedAvatar ? (
