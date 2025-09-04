@@ -12,7 +12,7 @@ export default function PremiumDashboard() {
 
 
   return (
-    <div className="min-h-screen bg-[#0b0f10] text-white">
+    <div className="bg-[#0b0f10] text-white overflow-hidden">
       {/* Desktop sidebar */}
       <div className="fixed left-0 top-0 h-screen w-52 border-r border-[#333] bg-[#1a1a1a] hidden md:flex flex-col z-50">
         <div className="flex items-center h-14 px-2 border-b border-[#333]">
@@ -46,7 +46,7 @@ export default function PremiumDashboard() {
         </div>
       )}
 
-      <div className="pt-16 h-screen overflow-hidden">
+      <div className="h-[calc(100vh-56px)] overflow-hidden">
         {/* Desktop profile summary (kept, but edit profile removed) */}
         <div className="hidden md:flex fixed right-5 top-20 w-44 h-44 rounded-lg border border-[#333] md:border-white/20 bg-[#1a1a1a] md:bg-white/5 flex-col items-center gap-2 p-3">
           <div className="w-20 h-20 rounded-full bg-white/5 border border-white/20 flex items-center justify-center">
