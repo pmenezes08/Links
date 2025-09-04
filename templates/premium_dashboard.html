@@ -4,170 +4,73 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Premium Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <style>
+      body { margin:0; background:#000; color:#fff; font-family: Helvetica, Arial, sans-serif; }
+      .header { position: fixed; top:0; left:0; right:0; height:56px; display:flex; align-items:center; padding:0 12px; background: rgba(0,0,0,0.7); backdrop-filter: blur(6px); border-bottom: 1px solid #262f30; z-index:1000; }
+      .header .avatar { width:36px; height:36px; border-radius:9999px; overflow:hidden; background: rgba(255,255,255,0.08); display:flex; align-items:center; justify-content:center; margin-right:10px; }
+      .header .title { font-weight:600; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+      .header .icon-btn { padding:8px; border-radius:9999px; }
+      .header .icon-btn:hover { background: rgba(255,255,255,0.06); }
+      .menu-overlay { position:fixed; inset:0; display:none; z-index:1100; background: rgba(0,0,0,0.5); }
+      .menu-panel { width:90%; height:100%; background:#000; border-right:1px solid rgba(255,255,255,0.1); padding:16px; overflow:auto; }
+      .menu-header { display:flex; align-items:center; gap:10px; padding-bottom:10px; border-bottom:1px solid rgba(255,255,255,0.1); }
+      .menu-link, .menu-button { display:block; padding:12px 16px; border-radius:12px; color:#fff; }
+      .menu-link:hover, .menu-button:hover { background: rgba(255,255,255,0.06); }
+      .center { padding-top:96px; min-height:100vh; display:flex; align-items:center; justify-content:center; }
+      .cta-stack { display:flex; flex-direction:column; gap:12px; width:92%; max-width:420px; }
+      .cta { display:inline-flex; align-items:center; gap:10px; justify-content:center; padding:12px 16px; border-radius:12px; border:1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.05); color:#fff; text-decoration:none; }
+      .cta:hover { background: rgba(255,255,255,0.08); }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
-    <script type="module" src="/assets/index.js"></script>
-  </body>
- </html>
-
-        <!-- Logo Section at Bottom -->
-        <div class="logo-section" style="position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); text-align: center; z-index: 100;">
-            <div class="logo-container" style="position: relative; display: inline-block;">
-                <img id="dashboardLogo" src="{{ url_for('static', filename='logo.png') }}" alt="Logo" 
-                     style="max-height: 100px; max-width: 333px; opacity: 0.8; transition: opacity 0.3s;"
-                     onerror="this.style.display='none'; document.getElementById('logoPlaceholder').style.display='block';">
-                <div id="logoPlaceholder" style="display: none; color: #9fb0b5; font-size: 16px;">
-                    <i class="fas fa-image" style="font-size: 50px; margin-bottom: 8px; display: block;"></i>
-                    Logo
-                </div>
-                {% if session['username'] == 'admin' %}
-                <button class="logo-update-btn" onclick="document.getElementById('logoUpload').click()"
-                        style="position: absolute; top: -10px; right: -10px; background: rgba(77, 182, 172, 0.2); 
-                               border: 1px solid rgba(77, 182, 172, 0.4); border-radius: 50%; width: 30px; height: 30px;
-                               display: flex; align-items: center; justify-content: center; cursor: pointer;
-                               opacity: 0; transition: opacity 0.3s;">
-                    <i class="fas fa-edit" style="color: #4db6ac; font-size: 12px;"></i>
-                </button>
-                <input type="file" id="logoUpload" accept="image/*" style="display: none;" onchange="uploadLogo(this)">
-                {% endif %}
-            </div>
-        </div>
-
-        <style>
-            .logo-container:hover .logo-update-btn {
-                opacity: 1 !important;
-            }
-            .logo-container:hover #dashboardLogo {
-                opacity: 1 !important;
-            }
-        </style>
-
-        <!-- Communities Modal -->
-        <div id="communitiesModal" class="modal-overlay" style="display: none;">
-            <div class="modal-content communities-modal">
-                <div class="modal-header">
-                    <h3><i class="fas fa-home"></i> Your Communities</h3>
-                    <span class="modal-close" id="closeCommunitiesModal">&times;</span>
-                </div>
-                <div class="modal-body">
-                    <div id="communitiesList" class="communities-list">
-                        <!-- Communities will be loaded here -->
-                    </div>
-                </div>
-            </div>
-        </div>
+    <div class="header">
+      <button class="avatar" id="burgerBtn" aria-label="Menu">
+        <i class="fa-solid fa-user"></i>
+      </button>
+      <div class="title">Dashboard</div>
+      <button class="icon-btn" onclick="location.href='/user_chat'" aria-label="Messages"><i class="fa-solid fa-cloud"></i></button>
+      <button class="icon-btn" onclick="location.href='/notifications'" aria-label="Notifications"><i class="fa-regular fa-bell"></i></button>
     </div>
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <script src="{{ url_for('static', filename='script.js') }}"></script>
-    <!-- Using shared menu behavior from static/script.js -->
+
+    <div class="menu-overlay" id="menuOverlay">
+      <div class="menu-panel">
+        <div class="menu-header">
+          <div class="avatar" style="width:40px;height:40px;">
+            <i class="fa-solid fa-user"></i>
+          </div>
+          <div class="title" style="font-size:14px;">{{ session['username'] }}</div>
+        </div>
+        {% if session['username'] == 'admin' %}
+          <a class="menu-link" href="/admin_profile">Admin Profile</a>
+          <a class="menu-link" href="/admin">Admin Dashboard</a>
+        {% endif %}
+        <a class="menu-link" href="/dashboard">Dashboard</a>
+        <a class="menu-link" href="/profile">Profile</a>
+        <a class="menu-link" href="/user_chat">Messages</a>
+        <a class="menu-link" href="/communities">Your Communities</a>
+        <a class="menu-link" href="/your_sports">Your Sports</a>
+        <a class="menu-link" href="/logout">Logout</a>
+        <a class="menu-link" href="/account_settings">Settings</a>
+      </div>
+      <div style="flex:1" onclick="hideMenu()"></div>
+    </div>
+
+    <main class="center">
+      <div class="cta-stack">
+        <a class="cta" href="/communities"><i class="fa-solid fa-plus-circle"></i> Create/Join a Community</a>
+        <a class="cta" href="/home"><i class="fa-solid fa-home"></i> View Your Communities</a>
+        <a class="cta" href="/your_sports"><i class="fa-solid fa-water"></i> View Your Sports</a>
+      </div>
+    </main>
+
     <script>
-        $(document).ready(function() {
-            // Load user's communities when modal opens
-            $('#viewCommunitiesBtn').on('click', function() {
-                loadUserCommunities();
-                $('#communitiesModal').show();
-            });
-
-            // Close communities modal
-            $('#closeCommunitiesModal').on('click', function() {
-                $('#communitiesModal').hide();
-            });
-
-            // Close modal when clicking outside
-            $('#communitiesModal').on('click', function(e) {
-                if (e.target === this) {
-                    $(this).hide();
-                }
-            });
-        });
-
-        function loadUserCommunities() {
-            $.ajax({
-                url: '/get_user_communities',
-                method: 'GET',
-                success: function(response) {
-                    if (response.success) {
-                        displayCommunities(response.communities);
-                    } else {
-                        $('#communitiesList').html('<div class="no-communities"><i class="fas fa-exclamation-circle"></i><h4>Error loading communities</h4></div>');
-                    }
-                },
-                error: function() {
-                    $('#communitiesList').html('<div class="no-communities"><i class="fas fa-exclamation-circle"></i><h4>Error loading communities</h4></div>');
-                }
-            });
-        }
-
-        function displayCommunities(communities) {
-            const container = $('#communitiesList');
-            
-            if (!communities || communities.length === 0) {
-                container.html(`
-                    <div class="no-communities">
-                        <i class="fas fa-users"></i>
-                        <h4>No communities yet</h4>
-                        <p>Join an existing community or create your own to get started</p>
-                    </div>
-                `);
-                container.removeClass('has-scroll');
-                return;
-            }
-
-            const communitiesHtml = communities.map(community => `
-                <div class="community-card">
-                    <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
-                        <div class="community-info" style="flex-grow: 1; min-width: 0; margin-right: 12px;">
-                            <h4 style="color: #ffffff; margin: 0; font-size: 14px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${community.name}</h4>
-                            <div class="community-meta" style="color: #9fb0b5; font-size: 11px; margin-top: 2px;">
-                                <span><i class="fas fa-tag" style="font-size: 10px;"></i> ${community.type}</span>
-                            </div>
-                        </div>
-                        <button class="sleek-btn compact" style="padding: 4px 12px !important; font-size: 12px !important; flex-shrink: 0; width: auto !important; max-width: none !important;" onclick="location.href='/community_feed/${community.id}'">
-                            <i class="fas fa-door-open" style="font-size: 11px;"></i> Enter
-                        </button>
-                    </div>
-                </div>
-            `).join('');
-
-            container.html(communitiesHtml);
-            
-            // Add scroll class only if more than 5 communities
-            if (communities.length > 5) {
-                container.addClass('has-scroll');
-            } else {
-                container.removeClass('has-scroll');
-            }
-        }
-
-        // Logo upload function for admin
-        function uploadLogo(input) {
-            if (input.files && input.files[0]) {
-                const formData = new FormData();
-                formData.append('logo', input.files[0]);
-                
-                $.ajax({
-                    url: '/upload_logo',
-                    type: 'POST',
-                    data: formData,
-                    processData: false,
-                    contentType: false,
-                    success: function(response) {
-                        if (response.success) {
-                            // Update logo display
-                            $('#dashboardLogo').attr('src', response.logo_url + '?t=' + new Date().getTime());
-                            $('#dashboardLogo').show();
-                            $('#logoPlaceholder').hide();
-                        } else {
-                            alert('Error uploading logo: ' + (response.error || 'Unknown error'));
-                        }
-                    },
-                    error: function() {
-                        alert('Error uploading logo');
-                    }
-                });
-            }
-        }
+      const overlay = document.getElementById('menuOverlay');
+      const burgerBtn = document.getElementById('burgerBtn');
+      function showMenu(){ overlay.style.display = 'flex' }
+      function hideMenu(){ overlay.style.display = 'none' }
+      burgerBtn.addEventListener('click', showMenu)
     </script>
-</body>
+  </body>
 </html>
