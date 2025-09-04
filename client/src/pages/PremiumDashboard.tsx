@@ -75,26 +75,21 @@ function Card({ iconClass, title, onClick }:{ iconClass:string; title:string; on
     <button
       onClick={onClick}
       aria-label={title}
-      className="group relative w-full h-40 rounded-2xl overflow-hidden text-black transition-all duration-300
-                 bg-[#f3f4f6] border border-white/10 hover:border-white/20
+      className="group relative w-full h-40 rounded-2xl overflow-hidden text-white transition-all duration-300
+                 bg-black border border-white/10 hover:border-teal-400/30
                  shadow-[0_10px_30px_rgba(0,0,0,0.4)] hover:shadow-[0_16px_40px_rgba(0,0,0,0.55)] hover:-translate-y-0.5"
     >
       {/* subtle glow on hover */}
       <div className="pointer-events-none absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
-           style={{ background: 'radial-gradient(600px circle at var(--x,50%) var(--y,50%), rgba(0,0,0,0.06), transparent 40%)' }} />
+           style={{ background: 'radial-gradient(600px circle at var(--x,50%) var(--y,50%), rgba(77,182,172,0.10), transparent 40%)' }} />
 
-      <div className="absolute inset-0 flex flex-col items-center justify-center px-4">
-        <div
-          className="w-16 h-16 mb-3 rounded-full flex items-center justify-center
-                     bg-white border border-black/10 group-hover:border-black/20 transition-colors"
-        >
-          <i className={iconClass} style={{ fontSize: 22, color: '#0f766e' }} />
-        </div>
-        <div className="text-[15px] font-semibold tracking-tight text-black/80">{title}</div>
+      <div className="absolute inset-0 flex flex-row items-center justify-center gap-3 px-6">
+        <i className={iconClass} style={{ fontSize: 24, color: '#4db6ac' }} />
+        <div className="text-[15px] font-semibold tracking-tight text-white/90">{title}</div>
       </div>
 
       {/* top accent line */}
-      <div className="absolute inset-x-0 top-0 h-[1px] bg-gradient-to-r from-transparent via-black/20 to-transparent opacity-60" />
+      <div className="absolute inset-x-0 top-0 h-[1px] bg-gradient-to-r from-transparent via-teal-400/40 to-transparent opacity-60" />
     </button>
   )
 }
