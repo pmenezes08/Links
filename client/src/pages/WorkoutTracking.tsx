@@ -55,6 +55,9 @@ export default function WorkoutTracking(){
 
   const [leaderboardRows, setLeaderboardRows] = useState<Array<{ username:string; max:number }>>([])
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({})
+  const [showLogsModal, setShowLogsModal] = useState(false)
+  const [logsExerciseName, setLogsExerciseName] = useState<string>('')
+  const [logsEntries, setLogsEntries] = useState<Array<{ date:string; weight:number; reps:number }>>([])
 
   // Load base data on mount
   useEffect(() => {
@@ -304,7 +307,7 @@ export default function WorkoutTracking(){
                     setExpandedGroups(all)
                   }
                 }}><i className="fa-solid fa-eye-slash"/></button>
-                <button className="w-8 h-8 rounded-md bg-white/10 hover:bg-white/15 flex items-center justify-center" title="Group"><i className="fa-solid fa-filter"/></button>
+                {/* Group button removed */}
               </div>
             </div>
             <div className="divide-y divide-white/10 text-[13px]">
@@ -325,10 +328,17 @@ export default function WorkoutTracking(){
                       <div className="pb-1">
                         {list.map(ex => (
                           <button key={ex.id} className="w-full pl-6 pr-3 py-1.5 flex items-center justify-between hover:bg-white/5 text-left"
-                            onClick={()=> setSelectedExerciseId(ex.id)}
-                            title="Select for progress graph">
+                            onClick={()=> {
+                              setSelectedExerciseId(ex.id)
+                              setLogsExerciseName(ex.name)
+                              const sets = (ex.sets_data || []).slice().sort((a,b)=> String(b.created_at||b.date||'').localeCompare(String(a.created_at||a.date||'')))
+                              const mapped = sets.map(s=> ({ date: String(s.created_at||s.date||''), weight: Number(s.weight||0), reps: Number(s.reps||0) }))
+                              setLogsEntries(mapped)
+                              setShowLogsModal(true)
+                            }}
+                            title="View logs">
                             <div className="text-xs text-[#cfd8dc]">{ex.name}</div>
-                            <i className="fa-solid fa-arrow-trend-up text-xs text-[#9fb0b5]" />
+                            <i className="fa-solid fa-clipboard-list text-xs text-[#9fb0b5]" />
                           </button>
                         ))}
                       </div>
@@ -442,6 +452,27 @@ export default function WorkoutTracking(){
                 <button className="px-3 py-2 rounded-md bg-white/10 hover:bg-white/15" onClick={()=> setShowAddModal(false)}>Cancel</button>
                 <button className="px-3 py-2 rounded-md bg-[#4db6ac] text-black hover:brightness-110" onClick={submitNewExercise}><i className="fa-solid fa-plus mr-2"/>Add Exercise</button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Exercise Logs Modal */}
+      {showLogsModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="w-[92%] max-w-md rounded-xl border border-white/10 bg-black p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="font-semibold">{logsExerciseName} Logs</div>
+              <button className="p-2 rounded-md hover:bg-white/5" onClick={()=> setShowLogsModal(false)} aria-label="Close"><i className="fa-solid fa-xmark"/></button>
+            </div>
+            <div className="max-h-[60vh] overflow-y-auto no-scrollbar divide-y divide-white/10">
+              {logsEntries.length === 0 ? (
+                <div className="text-sm text-[#9fb0b5]">No logs yet.</div>
+              ) : logsEntries.map((e, idx) => (
+                <div key={idx} className="py-2 flex items-center justify-between text-sm">
+                  <div>{formatMonthDay(e.date)}</div>
+                  <div className="text-[#9fb0b5]">{e.weight} kg × {e.reps}</div>
+                </div>
+              ))}
             </div>
           </div>
         </div>
