@@ -480,18 +480,42 @@ export default function WorkoutTracking(){
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
           <div className="w-[92%] max-w-md rounded-xl border border-white/10 bg-black p-4">
             <div className="flex items-center justify-between mb-3">
-              <div className="font-semibold">{logsExerciseName} Logs</div>
+              <div className="font-semibold">{logsExerciseName}</div>
               <button className="p-2 rounded-md hover:bg-white/5" onClick={()=> setShowLogsModal(false)} aria-label="Close"><i className="fa-solid fa-xmark"/></button>
             </div>
-            <div className="max-h-[60vh] overflow-y-auto no-scrollbar divide-y divide-white/10">
+            <div className="max-h-[70vh] overflow-y-auto no-scrollbar">
               {logsEntries.length === 0 ? (
                 <div className="text-sm text-[#9fb0b5]">No logs yet.</div>
-              ) : logsEntries.map((e, idx) => (
-                <div key={idx} className="py-2 flex items-center justify-between text-sm">
-                  <div>{formatMonthDay(e.date)}</div>
-                  <div className="text-[#9fb0b5]">{e.weight} kg × {e.reps}</div>
-                </div>
-              ))}
+              ) : (
+                (() => {
+                  const monthMap: Record<string, Array<{ date:string; weight:number; reps:number }>> = {}
+                  for (const e of logsEntries){
+                    const key = (e.date||'').slice(0,7)
+                    if (!monthMap[key]) monthMap[key] = []
+                    monthMap[key].push(e)
+                  }
+                  const keys = Object.keys(monthMap).sort().reverse()
+                  return (
+                    <div className="divide-y divide-white/10">
+                      {keys.map(k => (
+                        <div key={k}>
+                          <div className="py-2 px-1 flex items-center justify-between text-sm">
+                            <div className="font-medium">{formatMonthYear(k)}</div>
+                          </div>
+                          <div className="py-1">
+                            {monthMap[k].map((e, idx) => (
+                              <div key={idx} className="py-1 flex items-center justify-between text-sm">
+                                <div>{formatMonthDay(e.date)}</div>
+                                <div className="text-[#9fb0b5]">{e.weight} kg × {e.reps}</div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )
+                })()
+              )}
             </div>
           </div>
         </div>
@@ -522,6 +546,15 @@ function formatMonthDay(s?:string){
     const d = new Date(s)
     const month = d.toLocaleString('en-US', { month: 'short' })
     return `${month} ${d.getDate()}`
+  }catch{ return s }
+}
+
+function formatMonthYear(s?:string){
+  if (!s) return ''
+  try{
+    const [y, m] = s.split('-').map(Number)
+    const d = new Date(y, (m||1)-1, 1)
+    return d.toLocaleString('en-US', { month: 'short', year: 'numeric' })
   }catch{ return s }
 }
 
