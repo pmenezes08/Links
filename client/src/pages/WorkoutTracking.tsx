@@ -487,7 +487,7 @@ export default function WorkoutTracking(){
               <div className="font-semibold text-sm">{logsExerciseName}</div>
               <button className="p-1.5 rounded-md hover:bg-white/5" onClick={()=> setShowLogsModal(false)} aria-label="Close"><i className="fa-solid fa-xmark"/></button>
             </div>
-            <div className="max-h-[70vh] overflow-y-auto no-scrollbar">
+            <div>
               {/* Add entry row */}
               <div className="pb-2 flex items-center gap-2">
                 <div>
@@ -498,7 +498,7 @@ export default function WorkoutTracking(){
                   <label className="sr-only">Date</label>
                   <input type="date" value={newLogDate} max={new Date().toISOString().slice(0,10)} onChange={e=> setNewLogDate(e.target.value)} className="block w-48 h-9 px-3 rounded-md bg-black border border-white/15 text-sm" />
                 </div>
-                <button className="h-9 px-3 rounded-md bg-[#4db6ac] text-black hover:brightness-110 text-sm" onClick={async()=>{
+                <button className="h-9 px-3 rounded-md bg-[#4db6ac] text-black hover:brightness-110 text-sm" aria-label="Add entry" onClick={async()=>{
                   if (!logsExerciseId || !newLogWeight || !newLogDate) return
                   const fd = new URLSearchParams({ exercise_id: String(logsExerciseId), weight: newLogWeight, reps: '1', date: newLogDate })
                   const r = await fetch('/log_weight_set', { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
@@ -509,7 +509,7 @@ export default function WorkoutTracking(){
                     setNewLogWeight('')
                     setNewLogDate(new Date().toISOString().slice(0,10))
                   } else alert(j?.error || 'Failed to add entry')
-                }}>Add</button>
+                }}><i className="fa-solid fa-plus"/></button>
               </div>
               {logsEntries.length === 0 ? (
                 <div className="text-sm text-[#9fb0b5]">No logs yet.</div>
