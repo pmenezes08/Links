@@ -12,20 +12,20 @@ export default function PremiumDashboard() {
 
 
   return (
-    <div className="fixed inset-x-0 top-14 bottom-0 bg-[#f3f4f6] text-white overflow-hidden z-0">
+    <div className="fixed inset-x-0 top-14 bottom-0 bg-[#0b0f10] text-white overflow-hidden z-0">
       {/* Desktop sidebar */}
-      <div className="fixed left-0 top-0 h-screen w-52 border-r border-[#e5e7eb] bg-white hidden md:flex flex-col z-50 text-black">
+      <div className="fixed left-0 top-0 h-screen w-52 border-r border-[#333] bg-[#1a1a1a] hidden md:flex flex-col z-50">
         <div className="flex items-center h-14 px-2 border-b border-[#333]">
-          <div className="text-black font-semibold text-base truncate pl-2">Dashboard</div>
+          <div className="text-white font-semibold text-base truncate pl-2">Dashboard</div>
         </div>
         <nav className="flex-1 overflow-y-auto py-2">
-          <a className="block px-5 py-3 text-sm hover:bg-black/5 hover:text-teal-700 text-black" href="/dashboard">Dashboard</a>
-          <a className="block px-5 py-3 text-sm hover:bg-black/5 hover:text-teal-700 text-black" href="/profile">Profile</a>
-          <a className="block px-5 py-3 text-sm hover:bg-black/5 hover:text-teal-700 text-black" href="/user_chat">Messages</a>
-          <a className="block px-5 py-3 text-sm hover:bg-black/5 hover:text-teal-700 text-black" href="/communities">Your Communities</a>
-          <a className="block px-5 py-3 text-sm hover:bg-black/5 hover:text-teal-700 text-black" href="/your_sports">Your Sports</a>
-          <a className="block px-5 py-3 text-sm hover:bg-black/5 hover:text-teal-700 text-black" href="/logout">Logout</a>
-          <a className="block px-5 py-3 text-sm hover:bg-black/5 hover:text-teal-700 text-black" href="/account_settings"><i className="fa-solid fa-cog mr-2" />Settings</a>
+          <a className="block px-5 py-3 text-sm hover:bg-teal-700/20 hover:text-teal-300" href="/dashboard">Dashboard</a>
+          <a className="block px-5 py-3 text-sm hover:bg-teal-700/20 hover:text-teal-300" href="/profile">Profile</a>
+          <a className="block px-5 py-3 text-sm hover:bg-teal-700/20 hover:text-teal-300" href="/user_chat">Messages</a>
+          <a className="block px-5 py-3 text-sm hover:bg-teal-700/20 hover:text-teal-300" href="/communities">Your Communities</a>
+          <a className="block px-5 py-3 text-sm hover:bg-teal-700/20 hover:text-teal-300" href="/your_sports">Your Sports</a>
+          <a className="block px-5 py-3 text-sm hover:bg-teal-700/20 hover:text-teal-300" href="/logout">Logout</a>
+          <a className="block px-5 py-3 text-sm hover:bg-teal-700/20 hover:text-teal-300" href="/account_settings"><i className="fa-solid fa-cog mr-2" />Settings</a>
         </nav>
       </div>
 
@@ -46,11 +46,11 @@ export default function PremiumDashboard() {
         </div>
       )}
 
-      <div className="h-full overflow-hidden text-black">
+      <div className="h-full overflow-hidden">
         {/* Desktop profile summary (kept, but edit profile removed) */}
-        <div className="hidden md:flex fixed right-5 top-20 w-44 h-44 rounded-lg border border-[#e5e7eb] bg-white flex-col items-center gap-2 p-3">
-          <div className="w-20 h-20 rounded-full bg-black/5 border border-black/10 flex items-center justify-center">
-            <i className="fa-solid fa-user text-2xl text-[#6b7280]" />
+        <div className="hidden md:flex fixed right-5 top-20 w-44 h-44 rounded-lg border border-[#333] md:border-white/20 bg-[#1a1a1a] md:bg-white/5 flex-col items-center gap-2 p-3">
+          <div className="w-20 h-20 rounded-full bg-white/5 border border-white/20 flex items-center justify-center">
+            <i className="fa-solid fa-user text-2xl text-[#9fb0b5]" />
           </div>
           <div className="text-sm font-semibold truncate max-w-[10rem]">You</div>
         </div>
@@ -75,26 +75,26 @@ function Card({ iconClass, title, onClick }:{ iconClass:string; title:string; on
     <button
       onClick={onClick}
       aria-label={title}
-      className="group relative w-full h-40 rounded-2xl overflow-hidden text-white transition-all duration-300
-                 bg-gradient-to-b from-[#101619] to-[#0b0f10] border border-white/10 hover:border-teal-400/30
+      className="group relative w-full h-40 rounded-2xl overflow-hidden text-black transition-all duration-300
+                 bg-[#f3f4f6] border border-white/10 hover:border-white/20
                  shadow-[0_10px_30px_rgba(0,0,0,0.4)] hover:shadow-[0_16px_40px_rgba(0,0,0,0.55)] hover:-translate-y-0.5"
     >
       {/* subtle glow on hover */}
       <div className="pointer-events-none absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
-           style={{ background: 'radial-gradient(600px circle at var(--x,50%) var(--y,50%), rgba(77,182,172,0.10), transparent 40%)' }} />
+           style={{ background: 'radial-gradient(600px circle at var(--x,50%) var(--y,50%), rgba(0,0,0,0.06), transparent 40%)' }} />
 
       <div className="absolute inset-0 flex flex-col items-center justify-center px-4">
         <div
           className="w-16 h-16 mb-3 rounded-full flex items-center justify-center
-                     bg-black/60 border border-white/10 group-hover:border-teal-500/40 transition-colors"
+                     bg-white border border-black/10 group-hover:border-black/20 transition-colors"
         >
-          <i className={iconClass} style={{ fontSize: 22, color: '#4db6ac' }} />
+          <i className={iconClass} style={{ fontSize: 22, color: '#0f766e' }} />
         </div>
-        <div className="text-[15px] font-semibold tracking-tight text-white/90">{title}</div>
+        <div className="text-[15px] font-semibold tracking-tight text-black/80">{title}</div>
       </div>
 
       {/* top accent line */}
-      <div className="absolute inset-x-0 top-0 h-[1px] bg-gradient-to-r from-transparent via-teal-400/40 to-transparent opacity-60" />
+      <div className="absolute inset-x-0 top-0 h-[1px] bg-gradient-to-r from-transparent via-black/20 to-transparent opacity-60" />
     </button>
   )
 }
