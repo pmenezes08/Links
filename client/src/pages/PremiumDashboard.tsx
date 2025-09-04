@@ -58,7 +58,7 @@ export default function PremiumDashboard() {
         {/* Cards grid */}
         <div className="h-full flex items-center justify-center px-3 md:ml-52">
           <div className="w-full max-w-5xl grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <Card iconClass="fa-solid fa-plus" title="Create/Join a Community" onClick={() => navigate('/communities')} />
+            <Card iconClass="fa-solid fa-plus" title="Create/Join a Community" onClick={() => (location.assign('/communities'))} />
             <Card iconClass="fa-solid fa-house" title="Your Communities" onClick={() => navigate('/home')} />
             <Card iconClass="fa-solid fa-person-snowboarding" title="Your Sports" onClick={() => navigate('/your_sports')} />
           </div>
@@ -73,7 +73,7 @@ export default function PremiumDashboard() {
 function Card({ iconClass, title, onClick }:{ iconClass:string; title:string; onClick:()=>void }){
   return (
     <button onClick={onClick} aria-label={title}
-      className="rounded-2xl bg-black border border-[#4db6ac] hover:bg-black/90 shadow-[0_6px_30px_rgba(0,0,0,0.35)] transition-colors w-full h-44 flex flex-col items-center justify-center text-white">
+      className="rounded-2xl bg-black border border-[#4db6ac] hover:bg-black/90 shadow-[0_6px_30px_rgba(0,0,0,0.35)] transition-colors w-full h-36 flex flex-col items-center justify-center text-white">
       <div className="w-14 h-14 rounded-full bg-black flex items-center justify-center mb-3">
         <i className={iconClass} style={{ fontSize: 22, color: '#4db6ac' }} />
       </div>
