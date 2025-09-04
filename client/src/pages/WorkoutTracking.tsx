@@ -1,17 +1,283 @@
-import { useEffect } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useHeader } from '../contexts/HeaderContext'
+import { Bar } from 'react-chartjs-2'
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  Tooltip,
+  Legend,
+  PointElement,
+  LineElement
+} from 'chart.js'
+
+ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend, PointElement, LineElement)
+
+type Exercise = {
+  id: number
+  name: string
+  muscle_group: string
+  sets_data?: Array<{ weight: number; reps: number; created_at?: string; date?: string }>
+}
+
+type Workout = {
+  id: number
+  name: string
+  date?: string
+  exercise_count?: number
+}
+
+type Community = { id: number; name: string; type?: string }
 
 export default function WorkoutTracking(){
   const { setTitle } = useHeader()
   useEffect(() => { setTitle('Workout Tracking') }, [setTitle])
 
+  const [activeTab, setActiveTab] = useState<'performance' | 'exercise' | 'workouts' | 'leaderboard'>('performance')
+
+  // Data stores
+  const [exercises, setExercises] = useState<Exercise[]>([])
+  const [workouts, setWorkouts] = useState<Workout[]>([])
+  const [communities, setCommunities] = useState<Community[]>([])
+  const [userExercises, setUserExercises] = useState<Exercise[]>([])
+
+  // Selections
+  const [selectedExerciseId, setSelectedExerciseId] = useState<number|''>('')
+  const [timeRange, setTimeRange] = useState<'30'|'90'|'180'|'365'|'all'>('30')
+  const [lbCommunityId, setLbCommunityId] = useState<number|''>('')
+  const [lbExerciseId, setLbExerciseId] = useState<number|''>('')
+
+  const [leaderboardRows, setLeaderboardRows] = useState<Array<{ username:string; max:number }>>([])
+
+  // Load base data on mount
+  useEffect(() => {
+    // Exercises with sets
+    fetch('/get_workout_exercises', { credentials:'include' })
+      .then(r=>r.json()).then(j=>{ if (j?.success && Array.isArray(j.exercises)) setExercises(j.exercises) }).catch(()=>{})
+    // Workouts list
+    fetch('/get_workouts', { credentials:'include' })
+      .then(r=>r.json()).then(j=>{ if (j?.success && Array.isArray(j.workouts)) setWorkouts(j.workouts) }).catch(()=>{})
+    // Communities for leaderboard
+    fetch('/get_user_communities', { credentials:'include' })
+      .then(r=>r.json()).then(j=>{ if (j?.success && Array.isArray(j.communities)) setCommunities(j.communities) }).catch(()=>{})
+    // User exercises for leaderboard select
+    fetch('/get_user_exercises', { credentials:'include' })
+      .then(r=>r.json()).then(j=>{ if (j?.success && Array.isArray(j.exercises)) setUserExercises(j.exercises) }).catch(()=>{})
+  }, [])
+
+  // Performance: derive groups and placeholder chart data
+  const muscleGroupToExercises = useMemo(() => {
+    const map: Record<string, Exercise[]> = {}
+    for (const ex of exercises){
+      const key = ex.muscle_group || 'Other'
+      if (!map[key]) map[key] = []
+      map[key].push(ex)
+    }
+    return map
+  }, [exercises])
+
+  const chartData = useMemo(() => {
+    if (!selectedExerciseId || !exercises.length){
+      return { labels: [], datasets: [] as any[] }
+    }
+    const ex = exercises.find(e => e.id === selectedExerciseId)
+    const sets = (ex?.sets_data || []).slice(-15) // last 15
+    const labels = sets.map(s => (s.created_at || s.date || '').slice(0, 10))
+    const weights = sets.map(s => s.weight)
+    return {
+      labels,
+      datasets: [
+        { label: 'Weight (kg)', data: weights, backgroundColor: 'rgba(77,182,172,0.5)', borderColor: '#4db6ac', borderWidth: 1 }
+      ]
+    }
+  }, [selectedExerciseId, exercises])
+
+  const chartOptions = useMemo(() => ({
+    responsive: true,
+    maintainAspectRatio: false,
+    scales: { y: { beginAtZero: true } },
+    plugins: { legend: { position: 'bottom' as const } }
+  }), [])
+
+  function loadLeaderboard(){
+    if (!lbCommunityId || !lbExerciseId) return
+    const params = new URLSearchParams({ community_id: String(lbCommunityId), exercise_id: String(lbExerciseId) })
+    fetch(`/leaderboard_exercise_in_community?${params.toString()}`, { credentials:'include' })
+      .then(r=>r.json()).then(j=>{
+        if (j?.success && Array.isArray(j.entries)){
+          setLeaderboardRows(j.entries.map((e:any)=>({ username: e.username, max: e.max })))
+        } else {
+          setLeaderboardRows([])
+        }
+      }).catch(()=> setLeaderboardRows([]))
+  }
+
   return (
     <div className="min-h-screen bg-black text-white pt-14">
       <div className="max-w-3xl mx-auto p-4">
-        <div className="text-lg font-semibold mb-3">Workout Tracking</div>
-        <div className="text-[#9fb0b5] text-sm">Mobile-friendly tracker coming here.</div>
+        {/* Tabs */}
+        <div className="flex gap-2 border-b border-white/10 mb-4 overflow-x-auto">
+          <TabButton active={activeTab==='performance'} onClick={()=> setActiveTab('performance')} icon="fa-chart-line" label="Performance Tracking" />
+          <TabButton active={activeTab==='exercise'} onClick={()=> setActiveTab('exercise')} icon="fa-dumbbell" label="Exercise Management" />
+          <TabButton active={activeTab==='workouts'} onClick={()=> setActiveTab('workouts')} icon="fa-calendar-alt" label="Workouts" />
+          <TabButton active={activeTab==='leaderboard'} onClick={()=> setActiveTab('leaderboard')} icon="fa-trophy" label="Community Leaderboard" />
+        </div>
+
+        {/* Performance Tracking */}
+        {activeTab==='performance' && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="text-lg font-semibold">Your Performance Overview</div>
+              <button className="px-3 py-2 rounded-md bg-[#4db6ac] text-black hover:brightness-110"><i className="fa-solid fa-plus mr-2"/>Add Exercise</button>
+            </div>
+
+            {/* Analytics */}
+            <div className="rounded-xl border border-white/10 bg-white/5">
+              <div className="flex flex-wrap gap-2 items-center p-3 border-b border-white/10">
+                <div className="font-semibold text-sm">Progress Analytics</div>
+                <select value={selectedExerciseId as any} onChange={e=> setSelectedExerciseId(e.target.value ? Number(e.target.value) : '')} className="bg-black border border-white/15 rounded-md px-2 py-1 text-sm">
+                  <option value="">Select Exercise</option>
+                  {exercises.map(ex => (
+                    <option key={ex.id} value={ex.id}>{ex.name} ({ex.muscle_group})</option>
+                  ))}
+                </select>
+                <select value={timeRange} onChange={e=> setTimeRange(e.target.value as any)} className="bg-black border border-white/15 rounded-md px-2 py-1 text-sm">
+                  <option value="30">Last 30 days</option>
+                  <option value="90">Last 90 days</option>
+                  <option value="180">Last 6 months</option>
+                  <option value="365">Last year</option>
+                  <option value="all">All time</option>
+                </select>
+                <button className="ml-auto p-2 rounded-md hover:bg-white/5" title="Share Progress"><i className="fa-solid fa-share-nodes"/></button>
+              </div>
+              <div className="h-64 p-3">
+                {chartData.labels.length ? (
+                  <Bar data={chartData as any} options={chartOptions}/>
+                ) : (
+                  <div className="h-full flex items-center justify-center text-[#9fb0b5] text-sm">Select an exercise to see progress</div>
+                )}
+              </div>
+            </div>
+
+            {/* Muscle groups */}
+            <div className="space-y-2">
+              {Object.keys(muscleGroupToExercises).length === 0 ? (
+                <div className="text-[#9fb0b5] text-sm text-center py-4">No exercises found. Add exercises to see your 1RM data here.</div>
+              ) : (
+                Object.entries(muscleGroupToExercises).map(([group, list]) => {
+                  const maxWeight = Math.max(...list.map(ex => (ex.sets_data||[]).reduce((m,s)=> Math.max(m, s.weight||0), 0)))
+                  return (
+                    <div key={group} className="rounded-xl border border-white/10 bg-white/5 p-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="font-semibold">{group}</div>
+                        <div className="text-xs text-[#9fb0b5]">{list.length} exercises</div>
+                      </div>
+                      <div className="text-sm text-[#cfd8dc]">Max Weight: <span className="text-white/90">{maxWeight>0? `${maxWeight} kg` : 'No data'}</span></div>
+                    </div>
+                  )
+                })
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Exercise Management */}
+        {activeTab==='exercise' && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="text-lg font-semibold">Exercise Management</div>
+              <div className="flex items-center gap-2">
+                <button className="px-3 py-2 rounded-md bg-[#4db6ac] text-black hover:brightness-110"><i className="fa-solid fa-plus mr-2"/>Add Exercise</button>
+                <button className="px-3 py-2 rounded-md bg-white/5 hover:bg-white/10"><i className="fa-solid fa-eye-slash mr-2"/>Toggle</button>
+                <button className="px-3 py-2 rounded-md bg-white/5 hover:bg-white/10"><i className="fa-solid fa-calendar mr-2"/>Group by Date</button>
+              </div>
+            </div>
+            <div className="space-y-2">
+              {exercises.length===0 ? (
+                <div className="text-[#9fb0b5] text-sm">No exercises found.</div>
+              ) : exercises.map(ex => (
+                <div key={ex.id} className="rounded-xl border border-white/10 bg-white/5 p-3">
+                  <div className="font-medium">{ex.name}</div>
+                  <div className="text-xs text-[#9fb0b5]">{ex.muscle_group}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Workouts */}
+        {activeTab==='workouts' && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="text-lg font-semibold">Your Workouts</div>
+              <button className="px-3 py-2 rounded-md bg-[#4db6ac] text-black hover:brightness-110"><i className="fa-solid fa-plus mr-2"/>Create Workout</button>
+            </div>
+            <div className="space-y-2">
+              {workouts.length===0 ? (
+                <div className="text-[#9fb0b5] text-sm">No workouts found.</div>
+              ) : workouts.map(w => (
+                <div key={w.id} className="rounded-xl border border-white/10 bg-white/5 p-3 flex items-center justify-between">
+                  <div>
+                    <div className="font-medium">{w.name}</div>
+                    <div className="text-xs text-[#9fb0b5]">{formatDate(w.date)} • Exercises {w.exercise_count ?? 0}</div>
+                  </div>
+                  <button className="p-2 rounded-md hover:bg-white/10" title="Share"><i className="fa-solid fa-share-nodes"/></button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Community Leaderboard */}
+        {activeTab==='leaderboard' && (
+          <div className="space-y-4">
+            <div className="text-lg font-semibold">Community Leaderboard</div>
+            <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+              <div className="flex flex-wrap gap-2 items-center">
+                <select value={lbCommunityId as any} onChange={e=> setLbCommunityId(e.target.value ? Number(e.target.value) : '')} className="bg-black border border-white/15 rounded-md px-2 py-1 text-sm">
+                  <option value="">Select Community</option>
+                  {communities.map(c=> <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+                <select value={lbExerciseId as any} onChange={e=> setLbExerciseId(e.target.value ? Number(e.target.value) : '')} className="bg-black border border-white/15 rounded-md px-2 py-1 text-sm">
+                  <option value="">Select Exercise</option>
+                  {userExercises.map(ex=> <option key={ex.id} value={ex.id}>{ex.name} ({ex.muscle_group})</option>)}
+                </select>
+                <button className="ml-auto px-3 py-1.5 rounded-md bg-white/10 hover:bg-white/15" onClick={loadLeaderboard}>
+                  <i className="fa-solid fa-list-ol mr-2"/>Load Leaderboard
+                </button>
+              </div>
+              <div className="mt-3 space-y-2">
+                {leaderboardRows.length===0 ? (
+                  <div className="text-[#9fb0b5] text-sm">No entries yet.</div>
+                ) : leaderboardRows.map((r, idx) => (
+                  <div key={idx} className="flex items-center justify-between rounded-lg border border-white/10 bg-black/50 px-3 py-2">
+                    <div className="font-medium">#{idx+1} {r.username}</div>
+                    <div className="text-[#9fb0b5]">{r.max} kg</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
+}
+
+function TabButton({ active, onClick, icon, label }:{ active:boolean; onClick:()=>void; icon:string; label:string }){
+  return (
+    <button onClick={onClick} className={`px-3 py-2 rounded-t-md text-sm ${active ? 'text-white border-b-2 border-[#4db6ac]' : 'text-[#9fb0b5] hover:text-white/90'}`}>
+      <i className={`fa-solid ${icon} mr-2`} />{label}
+    </button>
+  )
+}
+
+function formatDate(s?:string){
+  if (!s) return ''
+  try{
+    const d = new Date(s)
+    return d.toLocaleDateString('en-US', { month:'short', day:'numeric' })
+  }catch{ return s }
 }
 
