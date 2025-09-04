@@ -150,7 +150,7 @@ export default function WorkoutTracking(){
     <div className="min-h-screen bg-black text-white pt-14">
       <div className="max-w-3xl mx-auto px-3 pt-1 pb-4">
         {/* Tabs */}
-        <div className="flex gap-1 border-b border-white/10 mb-2 overflow-x-hidden flex-wrap">
+        <div className="flex gap-1 border-b border-white/10 mb-2 overflow-x-auto no-scrollbar flex-nowrap">
           <TabButton active={activeTab==='performance'} onClick={()=> setActiveTab('performance')} icon="fa-chart-line" label="Performance Tracking" />
           <TabButton active={activeTab==='exercise'} onClick={()=> setActiveTab('exercise')} icon="fa-dumbbell" label="Exercise Management" />
           <TabButton active={activeTab==='workouts'} onClick={()=> setActiveTab('workouts')} icon="fa-calendar-alt" label="Workouts" />
@@ -301,7 +301,7 @@ export default function WorkoutTracking(){
 
 function TabButton({ active, onClick, icon, label }:{ active:boolean; onClick:()=>void; icon:string; label:string }){
   return (
-    <button onClick={onClick} className={`px-2.5 py-1.5 rounded-t-md text-[13px] ${active ? 'text-white border-b-2 border-[#4db6ac] bg-white/5' : 'text-[#9fb0b5] hover:text-white/90'}`}>
+    <button onClick={onClick} className={`px-2.5 py-1.5 rounded-t-md text-[13px] whitespace-nowrap ${active ? 'text-white border-b-2 border-[#4db6ac] bg-white/5' : 'text-[#9fb0b5] hover:text-white/90'}`}>
       <i className={`fa-solid ${icon} mr-2`} />{label}
     </button>
   )
