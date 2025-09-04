@@ -291,18 +291,27 @@ export default function WorkoutTracking(){
                 <button className="px-3 py-1.5 rounded-md bg-white/10 hover:bg-white/15"><i className="fa-solid fa-calendar mr-2"/>Group</button>
               </div>
             </div>
-            <div className="divide-y divide-white/10">
-              {exercises.length===0 ? (
+            <div className="divide-y divide-white/10 text-[13px]">
+              {Object.keys(muscleGroupToExercises).length === 0 ? (
                 <div className="text-[#9fb0b5] text-sm px-3 py-3">No exercises found.</div>
-              ) : exercises.map(ex => (
-                <div key={ex.id} className="px-3 py-2 flex items-center justify-between">
-                  <div>
-                    <div className="font-medium leading-tight">{ex.name}</div>
-                    <div className="text-xs text-[#9fb0b5]">{ex.muscle_group}</div>
+              ) : (
+                Object.entries(muscleGroupToExercises).map(([group, list]) => (
+                  <div key={group} className="">
+                    <div className="px-3 py-2 font-semibold text-[#cfd8dc] text-xs uppercase tracking-wider">{group}</div>
+                    {list.map(ex => (
+                      <button key={ex.id} className="w-full px-3 py-2 flex items-center justify-between hover:bg-white/5 text-left"
+                        onClick={()=> setSelectedExerciseId(ex.id)}
+                        title="Open exercise logs">
+                        <div>
+                          <div className="font-medium leading-tight">{ex.name}</div>
+                          <div className="text-xs text-[#9fb0b5]">{ex.muscle_group}</div>
+                        </div>
+                        <i className="fa-solid fa-chevron-right text-xs text-[#9fb0b5]" />
+                      </button>
+                    ))}
                   </div>
-                  <button className="p-2 rounded-md hover:bg-white/10" title="Edit"><i className="fa-solid fa-pen"/></button>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </div>
         )}
