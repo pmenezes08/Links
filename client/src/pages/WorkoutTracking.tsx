@@ -492,13 +492,26 @@ export default function WorkoutTracking(){
               <div className="pb-2 flex flex-wrap items-center gap-2 justify-between">
                 <div>
                   <label className="sr-only">Weight (kg)</label>
-                  <input type="number" step="0.1" value={newLogWeight} onChange={e=> setNewLogWeight(e.target.value)} placeholder="Weight (kg)" className="block w-32 h-8 px-3 rounded-md bg-black border border-white/15 text-sm" />
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={newLogWeight}
+                    onChange={e=> setNewLogWeight(e.target.value)}
+                    placeholder="Weight (kg)"
+                    className="block w-36 h-9 px-3 rounded-md bg-black border border-white/15 text-base focus:outline-none focus:ring-2 focus:ring-[#4db6ac] focus:border-[#4db6ac] focus:bg-teal-900/20"
+                  />
                 </div>
                 <div>
                   <label className="sr-only">Date</label>
-                  <input type="date" value={newLogDate} max={new Date().toISOString().slice(0,10)} onChange={e=> setNewLogDate(e.target.value)} className="block w-44 h-8 px-3 rounded-md bg-black border border-white/15 text-sm" />
+                  <input
+                    type="date"
+                    value={newLogDate}
+                    max={new Date().toISOString().slice(0,10)}
+                    onChange={e=> setNewLogDate(e.target.value)}
+                    className="block w-40 h-8 px-3 rounded-md bg-black border border-white/15 text-xs text-center"
+                  />
                 </div>
-                <button className="w-8 h-8 p-0 rounded-md bg-[#4db6ac] text-black hover:brightness-110 flex items-center justify-center" aria-label="Add entry" onClick={async()=>{
+                <button className="w-8 h-8 p-0 rounded-md bg-[#4db6ac] text-black hover:brightness-110 flex items-center justify-center shrink-0" aria-label="Add entry" onClick={async()=>{
                   if (!logsExerciseId || !newLogWeight || !newLogDate) return
                   const fd = new URLSearchParams({ exercise_id: String(logsExerciseId), weight: newLogWeight, reps: '1', date: newLogDate })
                   const r = await fetch('/log_weight_set', { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
