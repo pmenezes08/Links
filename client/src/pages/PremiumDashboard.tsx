@@ -1,9 +1,12 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useHeader } from '../contexts/HeaderContext'
 
 // type Community = { id: number; name: string; type: string }
 
 export default function PremiumDashboard() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const { setTitle } = useHeader()
+  useEffect(() => { setTitle('Dashboard') }, [setTitle])
 
 
   return (
@@ -24,17 +27,7 @@ export default function PremiumDashboard() {
         </nav>
       </div>
 
-      {/* Header with mobile menu button */}
-      <header className="fixed left-0 md:left-52 right-0 top-0 h-14 border-b border-[#333] z-40 bg-black md:bg-transparent flex items-center justify-between px-4">
-        <div className="md:hidden font-semibold">Dashboard</div>
-        <button
-          className="md:hidden px-3 py-2 rounded border border-[#333] bg-[#1a1a1a]"
-          aria-label="Menu"
-          onClick={() => setMobileMenuOpen((v) => !v)}
-        >
-          <i className="fa-solid fa-bars" />
-        </button>
-      </header>
+      {/* Header handled globally (HeaderBar) */}
 
       {/* Mobile dropdown menu */}
       {mobileMenuOpen && (
@@ -51,7 +44,7 @@ export default function PremiumDashboard() {
         </div>
       )}
 
-      <div className="pt-20 h-screen overflow-hidden">
+      <div className="pt-16 h-screen overflow-hidden">
         {/* Profile summary: hidden on mobile, visible on desktop with translucent styling */}
         <div className="hidden md:flex fixed right-5 top-20 w-44 h-44 rounded-lg border border-[#333] md:border-white/20 bg-[#1a1a1a] md:bg-white/5 flex-col items-center gap-2 p-3">
           <div className="w-20 h-20 rounded-full bg-white/5 border border-white/20 flex items-center justify-center">
