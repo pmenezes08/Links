@@ -62,6 +62,9 @@ export default function WorkoutTracking(){
   const [newLogWeight, setNewLogWeight] = useState('')
   const [newLogSets, setNewLogSets] = useState('')
   const [newLogDate, setNewLogDate] = useState<string>(() => new Date().toISOString().slice(0,10))
+  const [showCreateWorkoutModal, setShowCreateWorkoutModal] = useState(false)
+  const [newWorkoutName, setNewWorkoutName] = useState('')
+  const [newWorkoutDate, setNewWorkoutDate] = useState<string>(() => new Date().toISOString().slice(0,10))
 
   // Load base data on mount
   useEffect(() => {
@@ -379,7 +382,7 @@ export default function WorkoutTracking(){
           <div className="rounded-xl border border-white/10 bg-white/5 mt-2">
             <div className="flex items-center justify-between p-3 border-b border-white/10">
               <div className="font-semibold text-sm">Workouts</div>
-              <button className="w-8 h-8 p-0 rounded-md bg-[#4db6ac] text-black hover:brightness-110 flex items-center justify-center" title="Create Workout">
+              <button className="w-8 h-8 p-0 rounded-md bg-[#4db6ac] text-black hover:brightness-110 flex items-center justify-center" title="Create Workout" onClick={()=> { setNewWorkoutName(''); setNewWorkoutDate(new Date().toISOString().slice(0,10)); setShowCreateWorkoutModal(true) }}>
                 <i className="fa-solid fa-plus" />
               </button>
             </div>
@@ -597,6 +600,42 @@ export default function WorkoutTracking(){
                   )
                 })()
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Create Workout Modal */}
+      {showCreateWorkoutModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="w-[92%] max-w-md rounded-xl border border-white/10 bg-black p-3">
+            <div className="flex items-center justify-between mb-2">
+              <div className="font-semibold text-sm">Create New Workout</div>
+              <button className="p-1.5 rounded-md hover:bg-white/5" onClick={()=> setShowCreateWorkoutModal(false)} aria-label="Close"><i className="fa-solid fa-xmark"/></button>
+            </div>
+            <div className="flex flex-col gap-3">
+              <div>
+                <label className="text-xs text-[#9fb0b5]">Workout Name</label>
+                <input value={newWorkoutName} onChange={e=> setNewWorkoutName(e.target.value)} placeholder="e.g., Push Day" className="mt-1 w-full h-9 px-3 rounded-md bg-black border border-white/15 text-sm" />
+              </div>
+              <div>
+                <label className="text-xs text-[#9fb0b5]">Date</label>
+                <input type="date" value={newWorkoutDate} max={new Date().toISOString().slice(0,10)} onChange={e=> setNewWorkoutDate(e.target.value)} className="mt-1 w-48 h-9 px-3 rounded-md bg-black border border-white/15 text-sm text-center [text-align-last:center]" />
+              </div>
+              <div className="flex items-center justify-end gap-2">
+                <button className="px-3 py-2 rounded-md bg-white/10 hover:bg-white/15" onClick={()=> setShowCreateWorkoutModal(false)}>Cancel</button>
+                <button className="px-3 py-2 rounded-md bg-[#4db6ac] text-black hover:brightness-110" onClick={async()=>{
+                  if (!newWorkoutName || !newWorkoutDate) return
+                  const fd = new URLSearchParams({ name: newWorkoutName, date: newWorkoutDate })
+                  const r = await fetch('/create_workout', { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
+                  const j = await r.json().catch(()=>null)
+                  if (j?.success){
+                    setShowCreateWorkoutModal(false)
+                    // refresh workouts
+                    fetch('/get_workouts', { credentials:'include' }).then(r=> r.json()).then(j=> { if (j?.success) setWorkouts(j.workouts||[]) }).catch(()=>{})
+                  } else alert(j?.error||'Failed to create workout')
+                }}>Create</button>
+              </div>
             </div>
           </div>
         </div>
