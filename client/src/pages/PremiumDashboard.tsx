@@ -60,7 +60,7 @@ export default function PremiumDashboard() {
           <div className="w-full max-w-5xl grid grid-cols-1 sm:grid-cols-3 gap-4">
             <Card iconClass="fa-solid fa-plus" title="Create/Join a Community" onClick={() => (location.assign('/communities'))} />
             <Card iconClass="fa-solid fa-house" title="Your Communities" onClick={() => navigate('/home')} />
-            <Card iconClass="fa-solid fa-person-snowboarding" title="Your Sports" onClick={() => navigate('/your_sports')} />
+            <Card iconClass="fa-solid fa-person-snowboarding" title="Your Sports" onClick={() => (location.assign('/your_sports'))} />
           </div>
         </div>
       </div>
