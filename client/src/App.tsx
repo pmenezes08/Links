@@ -13,6 +13,7 @@ import CreatePost from './pages/CreatePost'
 import Members from './pages/Members'
 import Communities from './pages/Communities'
 import HomeTimeline from './pages/HomeTimeline'
+import WorkoutTracking from './pages/WorkoutTracking'
 
 const queryClient = new QueryClient()
 
@@ -51,6 +52,7 @@ export default function App() {
               <Route path="/gym" element={<Gym />} />
               <Route path="/communities" element={<Communities />} />
               <Route path="/home" element={<HomeTimeline />} />
+              <Route path="/workout_tracking" element={<WorkoutTracking />} />
               <Route path="/community_feed_react/:community_id" element={<CommunityFeed />} />
               <Route path="/community/:community_id/members" element={<Members />} />
               <Route path="/post/:post_id" element={<PostDetail />} />
