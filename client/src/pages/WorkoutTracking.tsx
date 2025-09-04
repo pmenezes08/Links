@@ -326,22 +326,40 @@ export default function WorkoutTracking(){
                     </button>
                     {expandedGroups[group] && (
                       <div className="pb-1">
-                        {list.map(ex => (
-                          <button key={ex.id} className="w-full pl-6 pr-3 py-1.5 flex items-center justify-between hover:bg-white/5 text-left"
-                            onClick={()=> {
-                              setSelectedExerciseId(ex.id)
-                              setLogsExerciseName(ex.name)
-                              const sets = (ex.sets_data || []).slice().sort((a,b)=> String(b.created_at||b.date||'').localeCompare(String(a.created_at||a.date||'')))
-                              const mapped = sets.map(s=> ({ date: String(s.created_at||s.date||''), weight: Number(s.weight||0), reps: Number(s.reps||0) }))
-                              setLogsEntries(mapped)
-                              setShowLogsModal(true)
-                            }}
-                            aria-label={`View logs for ${ex.name}`}
-                            title="View logs">
-                            <div className="text-xs text-[#cfd8dc] truncate mr-2">{ex.name}</div>
-                            <i className="fa-solid fa-clipboard-list text-xs text-[#9fb0b5]" />
-                          </button>
-                        ))}
+                        {list.map(ex => {
+                          // Compute simple trend: max per day, compare earliest vs latest of last up to 5 points
+                          const byDate: Record<string, number> = {}
+                          for (const s of (ex.sets_data || [])){
+                            const key = String(s.created_at || s.date || '').slice(0,10)
+                            if (!key) continue
+                            const w = Number(s.weight || 0)
+                            if (!(key in byDate) || w > byDate[key]) byDate[key] = w
+                          }
+                          const ordered = Object.keys(byDate).sort()
+                          const windowKeys = ordered.slice(-5)
+                          let trendUp = true
+                          if (windowKeys.length >= 2){
+                            const first = byDate[windowKeys[0]]
+                            const last = byDate[windowKeys[windowKeys.length-1]]
+                            trendUp = last >= first
+                          }
+                          return (
+                            <button key={ex.id} className="w-full pl-6 pr-3 py-1.5 flex items-center justify-between hover:bg-white/5 text-left"
+                              onClick={()=> {
+                                setSelectedExerciseId(ex.id)
+                                setLogsExerciseName(ex.name)
+                                const sets = (ex.sets_data || []).slice().sort((a,b)=> String(b.created_at||b.date||'').localeCompare(String(a.created_at||a.date||'')))
+                                const mapped = sets.map(s=> ({ date: String(s.created_at||s.date||''), weight: Number(s.weight||0), reps: Number(s.reps||0) }))
+                                setLogsEntries(mapped)
+                                setShowLogsModal(true)
+                              }}
+                              aria-label={`View logs for ${ex.name}`}
+                              title="View logs">
+                              <div className="text-xs text-[#cfd8dc] truncate mr-2">{ex.name}</div>
+                              <i className={`fa-solid ${trendUp ? 'fa-arrow-trend-up' : 'fa-arrow-trend-down'} text-xs`} style={{ color: trendUp ? '#4db6ac' : '#e53935' }} />
+                            </button>
+                          )
+                        })}
                       </div>
                     )}
                   </div>
