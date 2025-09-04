@@ -45,35 +45,40 @@ export default function PremiumDashboard() {
       )}
 
       <div className="pt-16 h-screen overflow-hidden">
-        {/* Profile summary: hidden on mobile, visible on desktop with translucent styling */}
+        {/* Desktop profile summary (kept, but edit profile removed) */}
         <div className="hidden md:flex fixed right-5 top-20 w-44 h-44 rounded-lg border border-[#333] md:border-white/20 bg-[#1a1a1a] md:bg-white/5 flex-col items-center gap-2 p-3">
           <div className="w-20 h-20 rounded-full bg-white/5 border border-white/20 flex items-center justify-center">
             <i className="fa-solid fa-user text-2xl text-[#9fb0b5]" />
           </div>
           <div className="text-sm font-semibold truncate max-w-[10rem]">You</div>
-          <button className="px-3 py-1.5 text-xs rounded bg-teal-700/20 text-teal-300 border border-teal-500/40 hover:bg-teal-700/30" onClick={() => (window.location.href = '/profile')}>Edit profile</button>
         </div>
 
-        <div className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-center space-y-4">
-          <div>
-            <button className="inline-flex items-center gap-2 px-6 py-3 rounded-lg border border-[#333] md:border-white/10 bg-[#1a1a1a] md:bg-white/5 md:hover:bg-white/10 transition" onClick={() => (location.assign('/communities'))}>
-              <i className="fa-solid fa-plus-circle" /> Create/Join a Community
+        {/* Mobile-first full-height buttons */}
+        <div className="block md:hidden h-[calc(100vh-64px)] px-3">
+          <div className="flex flex-col gap-3 h-full">
+            <button className="flex-1 w-full rounded-2xl border border-[#4db6ac] text-white bg-black/40 flex items-center justify-center text-lg" onClick={() => (location.assign('/communities'))}>
+              <i className="fa-solid fa-plus-circle mr-2" /> Create/Join a Community
+            </button>
+            <button className="flex-1 w-full rounded-2xl border border-[#4db6ac] text-white bg-black/40 flex items-center justify-center text-lg" onClick={() => (location.assign('/home'))}>
+              <i className="fa-solid fa-home mr-2" /> View Your Communities
+            </button>
+            <button className="flex-1 w-full rounded-2xl border border-[#4db6ac] text-white bg-black/40 flex items-center justify-center text-lg" onClick={() => (location.assign('/your_sports'))}>
+              <i className="fa-solid fa-water mr-2" /> View Your Sports
             </button>
           </div>
-          <div>
-            <button className="inline-flex items-center gap-2 px-6 py-3 rounded-lg border border-[#333] md:border-white/10 bg-[#1a1a1a] md:bg-white/5 md:hover:bg-white/10 transition" onClick={() => (location.assign('/home'))}>
-              <i className="fa-solid fa-home" /> View Your Communities
+        </div>
+
+        {/* Fallback for larger screens: center but not full height */}
+        <div className="hidden md:flex items-center justify-center h-full">
+          <div className="w-[420px] max-w-[92%] space-y-3 text-center">
+            <button className="w-full rounded-2xl border border-[#4db6ac] text-white bg-black/40 px-6 py-3" onClick={() => (location.assign('/communities'))}>
+              <i className="fa-solid fa-plus-circle mr-2" /> Create/Join a Community
             </button>
-          </div>
-          <div>
-            <button className="inline-flex items-center gap-2 px-6 py-3 rounded-lg border border-[#333] md:border-white/10 bg-[#1a1a1a] md:bg-white/5 md:hover:bg-white/10 transition" onClick={() => (location.assign('/your_sports'))}>
-              <i className="fa-solid fa-water" /> View Your Sports
+            <button className="w-full rounded-2xl border border-[#4db6ac] text-white bg-black/40 px-6 py-3" onClick={() => (location.assign('/home'))}>
+              <i className="fa-solid fa-home mr-2" /> View Your Communities
             </button>
-          </div>
-          {/* Optional: a small Edit Profile link on mobile */}
-          <div className="md:hidden">
-            <button className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-[#333] bg-[#1a1a1a]" onClick={() => (location.assign('/profile'))}>
-              <i className="fa-solid fa-user" /> Edit profile
+            <button className="w-full rounded-2xl border border-[#4db6ac] text-white bg-black/40 px-6 py-3" onClick={() => (location.assign('/your_sports'))}>
+              <i className="fa-solid fa-water mr-2" /> View Your Sports
             </button>
           </div>
         </div>
