@@ -55,7 +55,6 @@ export default function WorkoutTracking(){
 
   const [leaderboardRows, setLeaderboardRows] = useState<Array<{ username:string; max:number }>>([])
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({})
-  const [expandedExerciseLogs, setExpandedExerciseLogs] = useState<Record<number, boolean>>({})
 
   // Load base data on mount
   useEffect(() => {
@@ -73,10 +72,10 @@ export default function WorkoutTracking(){
       .then(r=>r.json()).then(j=>{ if (j?.success && Array.isArray(j.exercises)) setUserExercises(j.exercises) }).catch(()=>{})
   }, [])
 
-  // Default: collapse exercise logs when entering Exercise tab
+  // Default: start in helicopter view (groups only, collapsed) when entering Exercise tab
   useEffect(() => {
     if (activeTab === 'exercise') {
-      setExpandedExerciseLogs({})
+      setExpandedGroups({})
     }
   }, [activeTab])
 
@@ -295,14 +294,14 @@ export default function WorkoutTracking(){
               <div className="font-semibold text-sm">Exercise Management</div>
               <div className="ml-auto flex items-center gap-2">
                 <button className="w-8 h-8 rounded-md bg-[#4db6ac] text-black hover:brightness-110 flex items-center justify-center" onClick={openAddExercise} title="Add Exercise"><i className="fa-solid fa-plus"/></button>
-                <button className="w-8 h-8 rounded-md bg-white/10 hover:bg-white/15 flex items-center justify-center" title="Toggle All" onClick={()=>{
-                  // Expand/collapse all logs
-                  const anyOpen = Object.values(expandedExerciseLogs).some(Boolean)
-                  if (anyOpen) setExpandedExerciseLogs({})
+                <button className="w-8 h-8 rounded-md bg-white/10 hover:bg-white/15 flex items-center justify-center" title="Toggle All Groups" onClick={()=>{
+                  const groupKeys = Object.keys(muscleGroupToExercises)
+                  const anyOpen = groupKeys.some(g => expandedGroups[g])
+                  if (anyOpen) setExpandedGroups({})
                   else {
-                    const all: Record<number, boolean> = {}
-                    for (const ex of exercises) all[ex.id] = true
-                    setExpandedExerciseLogs(all)
+                    const all: Record<string, boolean> = {}
+                    for (const g of groupKeys) all[g] = true
+                    setExpandedGroups(all)
                   }
                 }}><i className="fa-solid fa-eye-slash"/></button>
                 <button className="w-8 h-8 rounded-md bg-white/10 hover:bg-white/15 flex items-center justify-center" title="Group"><i className="fa-solid fa-filter"/></button>
@@ -315,40 +314,25 @@ export default function WorkoutTracking(){
                 Object.entries(muscleGroupToExercises).map(([group, list]) => (
                   <div key={group} className="">
                     <div className="px-3 py-2 font-semibold text-[#cfd8dc] text-xs uppercase tracking-wider">{group}</div>
-                    {list.map(ex => {
-                      const isOpen = !!expandedExerciseLogs[ex.id]
-                      const sets = (ex.sets_data || []).slice().sort((a,b)=> String(b.created_at||b.date||'').localeCompare(String(a.created_at||a.date||'')))
-                      return (
-                        <div key={ex.id} className="">
-                          <button className="w-full px-3 py-2 flex items-center justify-between hover:bg-white/5 text-left"
-                            onClick={()=> {
-                              setExpandedExerciseLogs(prev=> ({...prev, [ex.id]: !isOpen}))
-                              setSelectedExerciseId(ex.id)
-                            }}
-                            title="Toggle exercise logs">
-                            <div>
-                              <div className="font-medium leading-tight text-sm">{ex.name}</div>
-                              <div className="text-xs text-[#9fb0b5]">{ex.muscle_group}</div>
-                            </div>
-                            <i className={`fa-solid ${isOpen ? 'fa-chevron-down' : 'fa-chevron-right'} text-xs text-[#9fb0b5]`} />
+                    {/* Group helicopter view: expand group to see exercises; exercises are single-row items */}
+                    <button className="w-full px-3 py-2 flex items-center justify-between hover:bg-white/5 text-left"
+                      onClick={()=> setExpandedGroups(prev=> ({...prev, [group]: !expandedGroups[group]}))}
+                      title="Toggle group">
+                      <div className="font-medium text-sm">{group}</div>
+                      <i className={`fa-solid ${expandedGroups[group] ? 'fa-chevron-down' : 'fa-chevron-right'} text-xs text-[#9fb0b5]`} />
+                    </button>
+                    {expandedGroups[group] && (
+                      <div className="pb-1">
+                        {list.map(ex => (
+                          <button key={ex.id} className="w-full pl-6 pr-3 py-1.5 flex items-center justify-between hover:bg-white/5 text-left"
+                            onClick={()=> setSelectedExerciseId(ex.id)}
+                            title="Select for progress graph">
+                            <div className="text-xs text-[#cfd8dc]">{ex.name}</div>
+                            <i className="fa-solid fa-arrow-trend-up text-xs text-[#9fb0b5]" />
                           </button>
-                          {isOpen && (
-                            <div className="px-3 pb-2 space-y-1">
-                              {sets.length === 0 ? (
-                                <div className="text-xs text-[#9fb0b5]">No logs yet.</div>
-                              ) : (
-                                sets.slice(0,6).map((s, idx) => (
-                                  <div key={idx} className="text-xs text-[#cfd8dc] flex items-center justify-between">
-                                    <div>{formatMonthDay(String(s.created_at||s.date||''))}</div>
-                                    <div className="text-[#9fb0b5]">{s.weight} kg × {s.reps}</div>
-                                  </div>
-                                ))
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      )
-                    })}
+                        ))}
+                      </div>
+                    )}
                   </div>
                 ))
               )}
