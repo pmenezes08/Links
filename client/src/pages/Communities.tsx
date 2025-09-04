@@ -126,13 +126,17 @@ export default function Communities(){
                     const isMobile = /Mobi|Android|iPhone|iPad/i.test(ua) || window.innerWidth < 768
                     if (isMobile) navigate(`/community_feed_react/${c.id}`); else window.location.href = `/community_feed/${c.id}`
                   }}>Enter</button>
-                  <button className="px-3 py-1.5 rounded-md bg-[#7a1412] border border-[#7a1412] text-white hover:bg-[#a12421]" onClick={async()=>{
+                  <button aria-label="Leave community" title="Leave"
+                    className="w-9 h-9 inline-flex items-center justify-center rounded-md bg-[#7a1412] border border-[#7a1412] text-white hover:bg-[#a12421]"
+                    onClick={async()=>{
                     const fd = new URLSearchParams({ community_id: String(c.id) })
                     const r = await fetch('/leave_community', { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
                     const j = await r.json().catch(()=>null)
                     if (j?.success) window.location.reload()
                     else alert(j?.error||'Error leaving community')
-                  }}>Leave</button>
+                  }}>
+                    <i className="fa-solid fa-user-minus" />
+                  </button>
                 </div>
               </div>
             ))}
@@ -165,7 +169,10 @@ function JoinCommunity({ onJoined }:{ onJoined: ()=>void }){
     <div className="w-full flex items-center justify-center">
       <div className="w-[80%] max-w-md flex items-center gap-2">
         <input value={code} onChange={e=> setCode(e.target.value)} placeholder="Enter join code" className="flex-1 px-3 py-2 bg-black border border-[#666] text-white placeholder-[#888] focus:outline-none rounded-md" />
-        <button className="px-4 py-2 bg-[#4db6ac] text-black hover:brightness-110 rounded-md border border-[#4db6ac]" onClick={submit}>Join</button>
+        <button aria-label="Join" title="Join" onClick={submit}
+          className="w-10 h-10 rounded-full bg-[#22d3c7] hover:bg-[#2ee3d7] text-white border border-[#22d3c7] flex items-center justify-center">
+          <i className="fa-solid fa-user-plus" />
+        </button>
       </div>
     </div>
   )
