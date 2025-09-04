@@ -200,7 +200,7 @@ export default function WorkoutTracking(){
     <div className="min-h-screen bg-black text-white pt-14">
       <div className="max-w-3xl mx-auto px-3 pt-0 pb-4">
         {/* Tabs */}
-        <div className="flex gap-1 border-b border-white/10 mt-1 mb-1 overflow-x-auto no-scrollbar flex-nowrap">
+        <div className="flex gap-1 border-b border-white/10 mt-0 mb-2 overflow-x-auto no-scrollbar flex-nowrap">
           <TabButton active={activeTab==='performance'} onClick={()=> setActiveTab('performance')} icon="fa-chart-line" label="Performance Tracking" />
           <TabButton active={activeTab==='exercise'} onClick={()=> setActiveTab('exercise')} icon="fa-dumbbell" label="Exercise Management" />
           <TabButton active={activeTab==='workouts'} onClick={()=> setActiveTab('workouts')} icon="fa-calendar-alt" label="Workouts" />
