@@ -12,20 +12,20 @@ export default function PremiumDashboard() {
 
 
   return (
-    <div className="fixed inset-x-0 top-14 bottom-0 bg-[#0b0f10] text-white overflow-hidden z-0">
+    <div className="fixed inset-x-0 top-14 bottom-0 bg-[#f3f4f6] text-white overflow-hidden z-0">
       {/* Desktop sidebar */}
-      <div className="fixed left-0 top-0 h-screen w-52 border-r border-[#333] bg-[#1a1a1a] hidden md:flex flex-col z-50">
+      <div className="fixed left-0 top-0 h-screen w-52 border-r border-[#e5e7eb] bg-white hidden md:flex flex-col z-50 text-black">
         <div className="flex items-center h-14 px-2 border-b border-[#333]">
-          <div className="text-white font-semibold text-base truncate pl-2">Dashboard</div>
+          <div className="text-black font-semibold text-base truncate pl-2">Dashboard</div>
         </div>
         <nav className="flex-1 overflow-y-auto py-2">
-          <a className="block px-5 py-3 text-sm hover:bg-teal-700/20 hover:text-teal-300" href="/dashboard">Dashboard</a>
-          <a className="block px-5 py-3 text-sm hover:bg-teal-700/20 hover:text-teal-300" href="/profile">Profile</a>
-          <a className="block px-5 py-3 text-sm hover:bg-teal-700/20 hover:text-teal-300" href="/user_chat">Messages</a>
-          <a className="block px-5 py-3 text-sm hover:bg-teal-700/20 hover:text-teal-300" href="/communities">Your Communities</a>
-          <a className="block px-5 py-3 text-sm hover:bg-teal-700/20 hover:text-teal-300" href="/your_sports">Your Sports</a>
-          <a className="block px-5 py-3 text-sm hover:bg-teal-700/20 hover:text-teal-300" href="/logout">Logout</a>
-          <a className="block px-5 py-3 text-sm hover:bg-teal-700/20 hover:text-teal-300" href="/account_settings"><i className="fa-solid fa-cog mr-2" />Settings</a>
+          <a className="block px-5 py-3 text-sm hover:bg-black/5 hover:text-teal-700 text-black" href="/dashboard">Dashboard</a>
+          <a className="block px-5 py-3 text-sm hover:bg-black/5 hover:text-teal-700 text-black" href="/profile">Profile</a>
+          <a className="block px-5 py-3 text-sm hover:bg-black/5 hover:text-teal-700 text-black" href="/user_chat">Messages</a>
+          <a className="block px-5 py-3 text-sm hover:bg-black/5 hover:text-teal-700 text-black" href="/communities">Your Communities</a>
+          <a className="block px-5 py-3 text-sm hover:bg-black/5 hover:text-teal-700 text-black" href="/your_sports">Your Sports</a>
+          <a className="block px-5 py-3 text-sm hover:bg-black/5 hover:text-teal-700 text-black" href="/logout">Logout</a>
+          <a className="block px-5 py-3 text-sm hover:bg-black/5 hover:text-teal-700 text-black" href="/account_settings"><i className="fa-solid fa-cog mr-2" />Settings</a>
         </nav>
       </div>
 
@@ -46,11 +46,11 @@ export default function PremiumDashboard() {
         </div>
       )}
 
-      <div className="h-full overflow-hidden">
+      <div className="h-full overflow-hidden text-black">
         {/* Desktop profile summary (kept, but edit profile removed) */}
-        <div className="hidden md:flex fixed right-5 top-20 w-44 h-44 rounded-lg border border-[#333] md:border-white/20 bg-[#1a1a1a] md:bg-white/5 flex-col items-center gap-2 p-3">
-          <div className="w-20 h-20 rounded-full bg-white/5 border border-white/20 flex items-center justify-center">
-            <i className="fa-solid fa-user text-2xl text-[#9fb0b5]" />
+        <div className="hidden md:flex fixed right-5 top-20 w-44 h-44 rounded-lg border border-[#e5e7eb] bg-white flex-col items-center gap-2 p-3">
+          <div className="w-20 h-20 rounded-full bg-black/5 border border-black/10 flex items-center justify-center">
+            <i className="fa-solid fa-user text-2xl text-[#6b7280]" />
           </div>
           <div className="text-sm font-semibold truncate max-w-[10rem]">You</div>
         </div>
