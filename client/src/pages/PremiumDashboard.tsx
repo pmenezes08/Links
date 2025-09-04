@@ -68,7 +68,7 @@ export default function PremiumDashboard() {
             </button>
           </div>
           <div>
-            <button className="inline-flex items-center gap-2 px-6 py-3 rounded-lg border border-[#333] md:border-white/10 bg-[#1a1a1a] md:bg-white/5 md:hover:bg-white/10 transition" onClick={() => (location.assign('/communities'))}>
+            <button className="inline-flex items-center gap-2 px-6 py-3 rounded-lg border border-[#333] md:border-white/10 bg-[#1a1a1a] md:bg-white/5 md:hover:bg-white/10 transition" onClick={() => (location.assign('/home'))}>
               <i className="fa-solid fa-home" /> View Your Communities
             </button>
           </div>

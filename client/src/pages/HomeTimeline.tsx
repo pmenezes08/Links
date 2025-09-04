@@ -122,7 +122,7 @@ export default function HomeTimeline(){
       {/* Global header used from App */}
 
       {/* Secondary tabs */}
-      <div className="fixed left-0 right-0 top-14 h-10 border-b border-[#262f30] bg-black/70 backdrop-blur z-40">
+      <div className="fixed left-0 right-0 top-14 h-10 bg-black/70 backdrop-blur z-40">
         <div className="max-w-2xl mx-auto h-full flex">
           <button type="button" className="flex-1 text-center text-sm font-medium text-white/95">
             <div className="pt-2">Home timeline</div>
