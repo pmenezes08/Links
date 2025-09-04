@@ -500,7 +500,7 @@ export default function WorkoutTracking(){
                     value={newLogWeight}
                     onChange={e=> setNewLogWeight(e.target.value)}
                     placeholder="Weight (kg)"
-                    className="block w-36 h-9 px-3 rounded-md bg-black border border-white/15 text-sm focus:outline-none focus:ring-2 focus:ring-[#4db6ac] focus:border-[#4db6ac] focus:bg-teal-900/20"
+                    className="block w-36 h-9 px-3 rounded-md bg-black border border-white/15 text-base focus:outline-none focus:ring-2 focus:ring-[#4db6ac] focus:border-[#4db6ac] focus:bg-teal-900/20"
                   />
                   <label className="sr-only">Sets</label>
                   <input
@@ -509,7 +509,7 @@ export default function WorkoutTracking(){
                     value={newLogSets}
                     onChange={e=> setNewLogSets(e.target.value)}
                     placeholder="Sets"
-                    className="block w-36 h-9 px-3 rounded-md bg-black border border-white/15 text-sm focus:outline-none focus:ring-2 focus:ring-[#4db6ac] focus:border-[#4db6ac]"
+                    className="block w-36 h-9 px-3 rounded-md bg-black border border-white/15 text-base focus:outline-none focus:ring-2 focus:ring-[#4db6ac] focus:border-[#4db6ac]"
                   />
                 </div>
                 {/* Right column: Date (borderless) on top with calendar icon; + button below centered */}
