@@ -282,22 +282,25 @@ export default function WorkoutTracking(){
 
         {/* Exercise Management */}
         {activeTab==='exercise' && (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="text-lg font-semibold">Exercise Management</div>
-              <div className="flex items-center gap-2">
-                <button className="px-3 py-2 rounded-md bg-[#4db6ac] text-black hover:brightness-110" onClick={openAddExercise}><i className="fa-solid fa-plus mr-2"/>Add Exercise</button>
-                <button className="px-3 py-2 rounded-md bg-white/5 hover:bg-white/10"><i className="fa-solid fa-eye-slash mr-2"/>Toggle</button>
-                <button className="px-3 py-2 rounded-md bg-white/5 hover:bg-white/10"><i className="fa-solid fa-calendar mr-2"/>Group by Date</button>
+          <div className="rounded-xl border border-white/10 bg-white/5 mt-2">
+            <div className="flex flex-wrap gap-2 items-center p-3 border-b border-white/10">
+              <div className="font-semibold text-sm">Exercise Management</div>
+              <div className="ml-auto flex items-center gap-2">
+                <button className="px-3 py-1.5 rounded-md bg-[#4db6ac] text-black hover:brightness-110" onClick={openAddExercise}><i className="fa-solid fa-plus mr-2"/>Add</button>
+                <button className="px-3 py-1.5 rounded-md bg-white/10 hover:bg-white/15"><i className="fa-solid fa-eye-slash mr-2"/>Toggle</button>
+                <button className="px-3 py-1.5 rounded-md bg-white/10 hover:bg-white/15"><i className="fa-solid fa-calendar mr-2"/>Group</button>
               </div>
             </div>
-            <div className="space-y-2">
+            <div className="divide-y divide-white/10">
               {exercises.length===0 ? (
-                <div className="text-[#9fb0b5] text-sm">No exercises found.</div>
+                <div className="text-[#9fb0b5] text-sm px-3 py-3">No exercises found.</div>
               ) : exercises.map(ex => (
-                <div key={ex.id} className="rounded-xl border border-white/10 bg-white/5 p-3">
-                  <div className="font-medium">{ex.name}</div>
-                  <div className="text-xs text-[#9fb0b5]">{ex.muscle_group}</div>
+                <div key={ex.id} className="px-3 py-2 flex items-center justify-between">
+                  <div>
+                    <div className="font-medium leading-tight">{ex.name}</div>
+                    <div className="text-xs text-[#9fb0b5]">{ex.muscle_group}</div>
+                  </div>
+                  <button className="p-2 rounded-md hover:bg-white/10" title="Edit"><i className="fa-solid fa-pen"/></button>
                 </div>
               ))}
             </div>
