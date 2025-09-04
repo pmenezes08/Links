@@ -45,6 +45,7 @@ export default function App() {
               <Route path="/" element={<PremiumDashboard />} />
               <Route path="/premium" element={<PremiumDashboard />} />
               <Route path="/premium_dashboard" element={<PremiumDashboard />} />
+              <Route path="/premium_dashboard_react" element={<PremiumDashboard />} />
               <Route path="/crossfit" element={<CrossfitExact />} />
               <Route path="/crossfit_react" element={<CrossfitExact />} />
               <Route path="/gym" element={<Gym />} />

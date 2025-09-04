@@ -1428,6 +1428,17 @@ def vite_svg():
         logger.error(f"Error serving vite.svg: {str(e)}")
         abort(404)
 
+@app.route('/premium_dashboard_react')
+@login_required
+def premium_dashboard_react():
+    try:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        dist_dir = os.path.join(base_dir, 'client', 'dist')
+        return send_from_directory(dist_dir, 'index.html')
+    except Exception as e:
+        logger.error(f"Error serving React premium dashboard: {str(e)}")
+        abort(500)
+
 @app.route('/saved_workouts')
 @login_required
 def saved_workouts():
