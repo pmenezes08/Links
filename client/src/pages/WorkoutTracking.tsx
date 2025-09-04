@@ -60,6 +60,7 @@ export default function WorkoutTracking(){
   const [logsExerciseId, setLogsExerciseId] = useState<number|''>('')
   const [logsEntries, setLogsEntries] = useState<Array<{ date:string; weight:number; reps:number }>>([])
   const [newLogWeight, setNewLogWeight] = useState('')
+  const [newLogSets, setNewLogSets] = useState('')
   const [newLogDate, setNewLogDate] = useState<string>(() => new Date().toISOString().slice(0,10))
 
   // Load base data on mount
@@ -502,24 +503,37 @@ export default function WorkoutTracking(){
                   />
                 </div>
                 <div>
+                  <label className="sr-only">Sets</label>
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    value={newLogSets}
+                    onChange={e=> setNewLogSets(e.target.value)}
+                    placeholder="Sets"
+                    className="block w-24 h-9 px-3 rounded-md bg-black border border-white/15 text-base focus:outline-none focus:ring-2 focus:ring-[#4db6ac] focus:border-[#4db6ac]"
+                  />
+                </div>
+                <div>
                   <label className="sr-only">Date</label>
                   <input
                     type="date"
                     value={newLogDate}
                     max={new Date().toISOString().slice(0,10)}
                     onChange={e=> setNewLogDate(e.target.value)}
-                    className="block w-40 h-8 px-3 rounded-md bg-black border border-white/15 text-xs text-center"
+                    className="block w-44 h-9 px-3 rounded-md bg-black border border-white/15 text-sm text-center [text-align-last:center]"
                   />
                 </div>
                 <button className="w-8 h-8 p-0 rounded-md bg-[#4db6ac] text-black hover:brightness-110 flex items-center justify-center shrink-0" aria-label="Add entry" onClick={async()=>{
                   if (!logsExerciseId || !newLogWeight || !newLogDate) return
-                  const fd = new URLSearchParams({ exercise_id: String(logsExerciseId), weight: newLogWeight, reps: '1', date: newLogDate })
+                  const repsVal = newLogSets && Number(newLogSets) > 0 ? String(Number(newLogSets)) : '1'
+                  const fd = new URLSearchParams({ exercise_id: String(logsExerciseId), weight: newLogWeight, reps: repsVal, date: newLogDate })
                   const r = await fetch('/log_weight_set', { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
                   const j = await r.json().catch(()=>null)
                   if (j?.success){
-                    const updated = [{ date: newLogDate, weight: Number(newLogWeight), reps: 1 }, ...logsEntries]
+                    const updated = [{ date: newLogDate, weight: Number(newLogWeight), reps: Number(repsVal) }, ...logsEntries]
                     setLogsEntries(updated)
                     setNewLogWeight('')
+                    setNewLogSets('')
                     setNewLogDate(new Date().toISOString().slice(0,10))
                   } else alert(j?.error || 'Failed to add entry')
                 }}><i className="fa-solid fa-plus text-xs"/></button>
