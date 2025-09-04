@@ -81,9 +81,20 @@ export default function WorkoutTracking(){
       return { labels: [], datasets: [] as any[] }
     }
     const ex = exercises.find(e => e.id === selectedExerciseId)
-    const sets = (ex?.sets_data || []).slice(-15) // last 15
-    const labels = sets.map(s => (s.created_at || s.date || '').slice(0, 10))
-    const weights = sets.map(s => s.weight)
+    const rawSets = (ex?.sets_data || [])
+    // Group by date (YYYY-MM-DD) and take max weight per day
+    const byDate: Record<string, number> = {}
+    for (const s of rawSets){
+      const key = String(s.created_at || s.date || '').slice(0,10)
+      if (!key) continue
+      const w = Number(s.weight || 0)
+      if (!(key in byDate) || w > byDate[key]) byDate[key] = w
+    }
+    // Sort dates and take most recent 15
+    const allDates = Object.keys(byDate).sort()
+    const lastDates = allDates.slice(-15)
+    const labels = lastDates.map(d => formatMonthDay(d))
+    const weights = lastDates.map(d => byDate[d])
     return {
       labels,
       datasets: [
@@ -108,7 +119,18 @@ export default function WorkoutTracking(){
       y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.08)' } },
       x: { grid: { display: false } }
     },
-    plugins: { legend: { position: 'bottom' as const } }
+    plugins: {
+      legend: {
+        position: 'bottom' as const,
+        labels: {
+          usePointStyle: false,
+          // Prefer line sample instead of box
+          useLineStyle: true as any,
+          boxWidth: 30,
+          boxHeight: 2
+        }
+      }
+    }
   }), [])
 
   function loadLeaderboard(){
@@ -126,9 +148,9 @@ export default function WorkoutTracking(){
 
   return (
     <div className="min-h-screen bg-black text-white pt-14">
-      <div className="max-w-3xl mx-auto px-3 pt-2 pb-4">
+      <div className="max-w-3xl mx-auto px-3 pt-1 pb-4">
         {/* Tabs */}
-        <div className="flex gap-1 border-b border-white/10 mb-2 overflow-x-auto">
+        <div className="flex gap-1 border-b border-white/10 mb-2 overflow-x-hidden flex-wrap">
           <TabButton active={activeTab==='performance'} onClick={()=> setActiveTab('performance')} icon="fa-chart-line" label="Performance Tracking" />
           <TabButton active={activeTab==='exercise'} onClick={()=> setActiveTab('exercise')} icon="fa-dumbbell" label="Exercise Management" />
           <TabButton active={activeTab==='workouts'} onClick={()=> setActiveTab('workouts')} icon="fa-calendar-alt" label="Workouts" />
@@ -290,6 +312,15 @@ function formatDate(s?:string){
   try{
     const d = new Date(s)
     return d.toLocaleDateString('en-US', { month:'short', day:'numeric' })
+  }catch{ return s }
+}
+
+function formatMonthDay(s?:string){
+  if (!s) return ''
+  try{
+    const d = new Date(s)
+    const month = d.toLocaleString('en-US', { month: 'short' })
+    return `${month} ${d.getDate()}`
   }catch{ return s }
 }
 
