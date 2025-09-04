@@ -1,18 +1,17 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useHeader } from '../contexts/HeaderContext'
-import { Bar } from 'react-chartjs-2'
+import { Line } from 'react-chartjs-2'
 import {
   Chart as ChartJS,
   CategoryScale,
   LinearScale,
-  BarElement,
   Tooltip,
   Legend,
   PointElement,
   LineElement
 } from 'chart.js'
 
-ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend, PointElement, LineElement)
+ChartJS.register(CategoryScale, LinearScale, Tooltip, Legend, PointElement, LineElement)
 
 type Exercise = {
   id: number
@@ -88,7 +87,16 @@ export default function WorkoutTracking(){
     return {
       labels,
       datasets: [
-        { label: 'Weight (kg)', data: weights, backgroundColor: 'rgba(77,182,172,0.5)', borderColor: '#4db6ac', borderWidth: 1 }
+        {
+          label: 'Weight (kg)',
+          data: weights,
+          borderColor: '#4db6ac',
+          backgroundColor: 'rgba(77,182,172,0.15)',
+          pointRadius: 3,
+          pointHoverRadius: 4,
+          tension: 0.35,
+          fill: true
+        }
       ]
     }
   }, [selectedExerciseId, exercises])
@@ -96,7 +104,10 @@ export default function WorkoutTracking(){
   const chartOptions = useMemo(() => ({
     responsive: true,
     maintainAspectRatio: false,
-    scales: { y: { beginAtZero: true } },
+    scales: {
+      y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.08)' } },
+      x: { grid: { display: false } }
+    },
     plugins: { legend: { position: 'bottom' as const } }
   }), [])
 
@@ -115,9 +126,9 @@ export default function WorkoutTracking(){
 
   return (
     <div className="min-h-screen bg-black text-white pt-14">
-      <div className="max-w-3xl mx-auto p-4">
+      <div className="max-w-3xl mx-auto px-3 pt-2 pb-4">
         {/* Tabs */}
-        <div className="flex gap-2 border-b border-white/10 mb-4 overflow-x-auto">
+        <div className="flex gap-1 border-b border-white/10 mb-2 overflow-x-auto">
           <TabButton active={activeTab==='performance'} onClick={()=> setActiveTab('performance')} icon="fa-chart-line" label="Performance Tracking" />
           <TabButton active={activeTab==='exercise'} onClick={()=> setActiveTab('exercise')} icon="fa-dumbbell" label="Exercise Management" />
           <TabButton active={activeTab==='workouts'} onClick={()=> setActiveTab('workouts')} icon="fa-calendar-alt" label="Workouts" />
@@ -127,9 +138,10 @@ export default function WorkoutTracking(){
         {/* Performance Tracking */}
         {activeTab==='performance' && (
           <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="text-lg font-semibold">Your Performance Overview</div>
-              <button className="px-3 py-2 rounded-md bg-[#4db6ac] text-black hover:brightness-110"><i className="fa-solid fa-plus mr-2"/>Add Exercise</button>
+            <div className="flex items-center justify-end">
+              <button className="w-8 h-8 rounded-full bg-[#22d3c7] hover:bg-[#2ee3d7] text-black flex items-center justify-center" title="Add Exercise">
+                <i className="fa-solid fa-plus" />
+              </button>
             </div>
 
             {/* Analytics */}
@@ -153,7 +165,7 @@ export default function WorkoutTracking(){
               </div>
               <div className="h-64 p-3">
                 {chartData.labels.length ? (
-                  <Bar data={chartData as any} options={chartOptions}/>
+                  <Line data={chartData as any} options={chartOptions}/>
                 ) : (
                   <div className="h-full flex items-center justify-center text-[#9fb0b5] text-sm">Select an exercise to see progress</div>
                 )}
@@ -267,7 +279,7 @@ export default function WorkoutTracking(){
 
 function TabButton({ active, onClick, icon, label }:{ active:boolean; onClick:()=>void; icon:string; label:string }){
   return (
-    <button onClick={onClick} className={`px-3 py-2 rounded-t-md text-sm ${active ? 'text-white border-b-2 border-[#4db6ac]' : 'text-[#9fb0b5] hover:text-white/90'}`}>
+    <button onClick={onClick} className={`px-2.5 py-1.5 rounded-t-md text-[13px] ${active ? 'text-white border-b-2 border-[#4db6ac] bg-white/5' : 'text-[#9fb0b5] hover:text-white/90'}`}>
       <i className={`fa-solid ${icon} mr-2`} />{label}
     </button>
   )
