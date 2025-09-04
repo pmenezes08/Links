@@ -59,7 +59,7 @@ export default function Communities(){
   useEffect(() => { setTitle('Your Communities') }, [setTitle])
 
   return (
-    <div className="min-h-screen overflow-y-auto no-scrollbar bg-black text-white">
+    <div className="h-screen overflow-hidden bg-black text-white">
       {/* Global header used from App */}
 
       {/* Secondary nav like X */}
@@ -79,7 +79,7 @@ export default function Communities(){
       {/* Slide-out menu (90% width) same as feed */}
       {/* Menu unified via HeaderBar */}
 
-      <div className="max-w-2xl mx-auto pt-12 pb-10 px-3">
+      <div className="max-w-2xl mx-auto pt-[96px] h-[calc(100vh-96px)] pb-10 px-3 overflow-y-auto no-scrollbar">
         {loading ? (
           <div className="text-[#9fb0b5]">Loading…</div>
         ) : error ? (
