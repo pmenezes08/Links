@@ -482,23 +482,23 @@ export default function WorkoutTracking(){
       {/* Exercise Logs Modal */}
       {showLogsModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-          <div className="w-[92%] max-w-md rounded-xl border border-white/10 bg-black p-4">
-            <div className="flex items-center justify-between mb-3">
-              <div className="font-semibold">{logsExerciseName}</div>
-              <button className="p-2 rounded-md hover:bg-white/5" onClick={()=> setShowLogsModal(false)} aria-label="Close"><i className="fa-solid fa-xmark"/></button>
+          <div className="w-[92%] max-w-md rounded-xl border border-white/10 bg-black p-3">
+            <div className="flex items-center justify-between mb-2">
+              <div className="font-semibold text-sm">{logsExerciseName}</div>
+              <button className="p-1.5 rounded-md hover:bg-white/5" onClick={()=> setShowLogsModal(false)} aria-label="Close"><i className="fa-solid fa-xmark"/></button>
             </div>
             <div className="max-h-[70vh] overflow-y-auto no-scrollbar">
               {/* Add entry row */}
-              <div className="pb-2 flex items-end gap-2">
+              <div className="pb-2 flex items-center gap-1">
                 <div>
-                  <label className="text-xs text-[#9fb0b5]">Weight (kg)</label>
-                  <input type="number" step="0.1" value={newLogWeight} onChange={e=> setNewLogWeight(e.target.value)} placeholder="e.g. 80" className="block w-28 mt-1 px-2 py-1 rounded-md bg-black border border-white/15 text-sm" />
+                  <label className="sr-only">Weight (kg)</label>
+                  <input type="number" step="0.1" value={newLogWeight} onChange={e=> setNewLogWeight(e.target.value)} placeholder="Weight (kg)" className="block w-24 px-2 py-1 rounded-md bg-black border border-white/15 text-xs" />
                 </div>
                 <div>
-                  <label className="text-xs text-[#9fb0b5]">Date</label>
-                  <input type="date" value={newLogDate} max={new Date().toISOString().slice(0,10)} onChange={e=> setNewLogDate(e.target.value)} className="block w-40 mt-1 px-2 py-1 rounded-md bg-black border border-white/15 text-sm" />
+                  <label className="sr-only">Date</label>
+                  <input type="date" value={newLogDate} max={new Date().toISOString().slice(0,10)} onChange={e=> setNewLogDate(e.target.value)} className="block w-32 px-2 py-1 rounded-md bg-black border border-white/15 text-xs" />
                 </div>
-                <button className="h-8 px-3 rounded-md bg-[#4db6ac] text-black hover:brightness-110 text-sm" onClick={async()=>{
+                <button className="h-7 px-2 rounded-md bg-[#4db6ac] text-black hover:brightness-110 text-xs" onClick={async()=>{
                   if (!logsExerciseId || !newLogWeight || !newLogDate) return
                   const fd = new URLSearchParams({ exercise_id: String(logsExerciseId), weight: newLogWeight, reps: '1', date: newLogDate })
                   const r = await fetch('/log_weight_set', { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
@@ -526,16 +526,16 @@ export default function WorkoutTracking(){
                     <div className="divide-y divide-white/10">
                       {keys.map(k => (
                         <div key={k}>
-                          <div className="py-2 px-1 flex items-center justify-between text-sm">
+                          <div className="py-1.5 px-1 flex items-center justify-between text-xs">
                             <div className="font-medium">{formatMonthYear(k)}</div>
                           </div>
-                          <div className="py-1">
+                          <div className="py-0.5">
                             {monthMap[k].map((e, idx) => (
-                              <div key={idx} className="py-1 flex items-center justify-between text-sm">
+                              <div key={idx} className="py-0.5 flex items-center justify-between text-xs">
                                 <div>{formatMonthDay(e.date)}</div>
                                 <div className="flex items-center gap-2">
                                   <div className="text-[#9fb0b5]">{e.weight} kg × {e.reps}</div>
-                                  <button className="p-1 rounded hover:bg-white/5" title="Edit" onClick={async()=>{
+                                  <button className="p-0.5 rounded hover:bg-white/5" title="Edit" onClick={async()=>{
                                     const newW = prompt('New weight (kg):', String(e.weight))
                                     if (!newW || !logsExerciseId) return
                                     const fd = new URLSearchParams({ exercise_id: String(logsExerciseId), set_id: '', weight: newW })
@@ -548,7 +548,7 @@ export default function WorkoutTracking(){
                                       setLogsEntries(updated)
                                     } else alert(j?.error||'Failed to edit entry')
                                   }}><i className="fa-solid fa-pen"/></button>
-                                  <button className="p-1 rounded hover:bg-white/5" title="Delete" onClick={async()=>{
+                                  <button className="p-0.5 rounded hover:bg-white/5" title="Delete" onClick={async()=>{
                                     if (!confirm('Delete this entry?')) return
                                     if (!logsExerciseId) return
                                     const fd = new URLSearchParams({ exercise_id: String(logsExerciseId), date: e.date, weight: String(e.weight), reps: String(e.reps) })
