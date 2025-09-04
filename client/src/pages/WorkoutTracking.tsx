@@ -382,7 +382,7 @@ export default function WorkoutTracking(){
           <div className="rounded-xl border border-white/10 bg-white/5 mt-2">
             <div className="flex items-center justify-between p-3 border-b border-white/10">
               <div className="font-semibold text-sm">Workouts</div>
-              <button className="w-8 h-8 p-0 rounded-md bg-[#4db6ac] text-black hover:brightness-110 flex items-center justify-center" title="Create Workout" onClick={()=> { setNewWorkoutName(''); setNewWorkoutDate(new Date().toISOString().slice(0,10)); setShowCreateWorkoutModal(true) }}>
+              <button type="button" className="w-8 h-8 p-0 rounded-md bg-[#4db6ac] text-black hover:brightness-110 flex items-center justify-center" title="Create Workout" onClick={(e)=> { e.preventDefault(); e.stopPropagation(); setNewWorkoutName(''); setNewWorkoutDate(new Date().toISOString().slice(0,10)); setShowCreateWorkoutModal(true) }}>
                 <i className="fa-solid fa-plus" />
               </button>
             </div>
@@ -607,7 +607,7 @@ export default function WorkoutTracking(){
 
       {/* Create Workout Modal */}
       {showCreateWorkoutModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/60">
           <div className="w-[92%] max-w-md rounded-xl border border-white/10 bg-black p-3">
             <div className="flex items-center justify-between mb-2">
               <div className="font-semibold text-sm">Create New Workout</div>
