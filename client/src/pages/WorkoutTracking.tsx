@@ -34,6 +34,12 @@ export default function WorkoutTracking(){
   useEffect(() => { setTitle('Workout Tracking') }, [setTitle])
 
   const [activeTab, setActiveTab] = useState<'performance' | 'exercise' | 'workouts' | 'leaderboard'>('performance')
+  const [showAddModal, setShowAddModal] = useState(false)
+  const [newName, setNewName] = useState('')
+  const [newGroup, setNewGroup] = useState('')
+  const [newWeight, setNewWeight] = useState('')
+  const [newReps, setNewReps] = useState('')
+  const [newDate, setNewDate] = useState<string>(() => new Date().toISOString().slice(0,10))
 
   // Data stores
   const [exercises, setExercises] = useState<Exercise[]>([])
@@ -48,6 +54,7 @@ export default function WorkoutTracking(){
   const [lbExerciseId, setLbExerciseId] = useState<number|''>('')
 
   const [leaderboardRows, setLeaderboardRows] = useState<Array<{ username:string; max:number }>>([])
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({})
 
   // Load base data on mount
   useEffect(() => {
@@ -64,6 +71,49 @@ export default function WorkoutTracking(){
     fetch('/get_user_exercises', { credentials:'include' })
       .then(r=>r.json()).then(j=>{ if (j?.success && Array.isArray(j.exercises)) setUserExercises(j.exercises) }).catch(()=>{})
   }, [])
+
+  function openAddExercise(){
+    setNewName('')
+    setNewGroup('')
+    setNewWeight('')
+    setNewReps('')
+    setNewDate(new Date().toISOString().slice(0,10))
+    setShowAddModal(true)
+  }
+
+  async function submitNewExercise(){
+    if (!newName || !newGroup || !newWeight || !newReps || !newDate){
+      alert('Please fill in all fields')
+      return
+    }
+    // Prevent future dates
+    try{
+      const d = new Date(newDate)
+      const today = new Date()
+      today.setHours(23,59,59,999)
+      if (d > today){
+        alert('Cannot log exercises for future dates.')
+        return
+      }
+    }catch{}
+    const fd = new URLSearchParams({
+      name: newName,
+      muscle_group: newGroup,
+      weight: newWeight,
+      reps: newReps,
+      date: newDate,
+    })
+    const r = await fetch('/add_exercise', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
+    const j = await r.json().catch(()=>null)
+    if (j?.success){
+      setShowAddModal(false)
+      // reload exercises
+      fetch('/get_workout_exercises', { credentials:'include' })
+        .then(r=>r.json()).then(j=>{ if (j?.success && Array.isArray(j.exercises)) setExercises(j.exercises) }).catch(()=>{})
+    } else {
+      alert(j?.error || 'Error adding exercise')
+    }
+  }
 
   // Performance: derive groups and placeholder chart data
   const muscleGroupToExercises = useMemo(() => {
@@ -148,9 +198,9 @@ export default function WorkoutTracking(){
 
   return (
     <div className="min-h-screen bg-black text-white pt-14">
-      <div className="max-w-3xl mx-auto px-3 pt-1 pb-4">
+      <div className="max-w-3xl mx-auto px-3 pt-0 pb-4">
         {/* Tabs */}
-        <div className="flex gap-1 border-b border-white/10 mb-2 overflow-x-auto no-scrollbar flex-nowrap">
+        <div className="flex gap-1 border-b border-white/10 mb-1 overflow-x-auto no-scrollbar flex-nowrap">
           <TabButton active={activeTab==='performance'} onClick={()=> setActiveTab('performance')} icon="fa-chart-line" label="Performance Tracking" />
           <TabButton active={activeTab==='exercise'} onClick={()=> setActiveTab('exercise')} icon="fa-dumbbell" label="Exercise Management" />
           <TabButton active={activeTab==='workouts'} onClick={()=> setActiveTab('workouts')} icon="fa-calendar-alt" label="Workouts" />
@@ -160,11 +210,6 @@ export default function WorkoutTracking(){
         {/* Performance Tracking */}
         {activeTab==='performance' && (
           <div className="space-y-4">
-            <div className="flex items-center justify-end">
-              <button className="w-8 h-8 rounded-full bg-[#22d3c7] hover:bg-[#2ee3d7] text-black flex items-center justify-center" title="Add Exercise">
-                <i className="fa-solid fa-plus" />
-              </button>
-            </div>
 
             {/* Analytics */}
             <div className="rounded-xl border border-white/10 bg-white/5">
@@ -201,13 +246,32 @@ export default function WorkoutTracking(){
               ) : (
                 Object.entries(muscleGroupToExercises).map(([group, list]) => {
                   const maxWeight = Math.max(...list.map(ex => (ex.sets_data||[]).reduce((m,s)=> Math.max(m, s.weight||0), 0)))
+                  const isOpen = !!expandedGroups[group]
                   return (
-                    <div key={group} className="rounded-xl border border-white/10 bg-white/5 p-3">
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="font-semibold">{group}</div>
-                        <div className="text-xs text-[#9fb0b5]">{list.length} exercises</div>
-                      </div>
-                      <div className="text-sm text-[#cfd8dc]">Max Weight: <span className="text-white/90">{maxWeight>0? `${maxWeight} kg` : 'No data'}</span></div>
+                    <div key={group} className="rounded-xl border border-white/10 bg-white/5">
+                      <button className="w-full p-3 flex items-center justify-between" onClick={()=> setExpandedGroups(prev=> ({...prev, [group]: !isOpen}))}>
+                        <div className="font-semibold text-left">{group}</div>
+                        <div className="text-xs text-[#9fb0b5]">{list.length} exercises • Max {maxWeight>0? `${maxWeight} kg` : 'No data'}</div>
+                      </button>
+                      {isOpen && (
+                        <div className="px-3 pb-3 space-y-2">
+                          {list.map(ex => {
+                            const sets = ex.sets_data || []
+                            let max = 0
+                            let maxDate: string | undefined = undefined
+                            for (const s of sets){
+                              const w = Number(s.weight || 0)
+                              if (w >= max){ max = w; maxDate = String(s.created_at || s.date || '') }
+                            }
+                            return (
+                              <div key={ex.id} className="flex items-center justify-between rounded-lg border border-white/10 bg-black/40 px-3 py-2">
+                                <div className="font-medium">{ex.name}</div>
+                                <div className="text-xs text-[#9fb0b5]">{max>0? `${max} kg` : 'No data'}{maxDate ? ` • ${formatMonthDay(maxDate)}` : ''}</div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
                     </div>
                   )
                 })
@@ -222,7 +286,7 @@ export default function WorkoutTracking(){
             <div className="flex items-center justify-between">
               <div className="text-lg font-semibold">Exercise Management</div>
               <div className="flex items-center gap-2">
-                <button className="px-3 py-2 rounded-md bg-[#4db6ac] text-black hover:brightness-110"><i className="fa-solid fa-plus mr-2"/>Add Exercise</button>
+                <button className="px-3 py-2 rounded-md bg-[#4db6ac] text-black hover:brightness-110" onClick={openAddExercise}><i className="fa-solid fa-plus mr-2"/>Add Exercise</button>
                 <button className="px-3 py-2 rounded-md bg-white/5 hover:bg-white/10"><i className="fa-solid fa-eye-slash mr-2"/>Toggle</button>
                 <button className="px-3 py-2 rounded-md bg-white/5 hover:bg-white/10"><i className="fa-solid fa-calendar mr-2"/>Group by Date</button>
               </div>
@@ -295,6 +359,57 @@ export default function WorkoutTracking(){
           </div>
         )}
       </div>
+
+      {/* Add Exercise Modal */}
+      {showAddModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="w-[90%] max-w-md rounded-xl border border-white/10 bg-black p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="font-semibold">Add New Exercise</div>
+              <button className="p-2 rounded-md hover:bg-white/5" onClick={()=> setShowAddModal(false)} aria-label="Close"><i className="fa-solid fa-xmark"/></button>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className="text-sm text-[#9fb0b5]">Exercise Name</label>
+                <input value={newName} onChange={e=> setNewName(e.target.value)} placeholder="e.g., Bench Press" className="mt-1 w-full px-3 py-2 rounded-md bg-black border border-white/15" />
+              </div>
+              <div>
+                <label className="text-sm text-[#9fb0b5]">Muscle Group</label>
+                <select value={newGroup} onChange={e=> setNewGroup(e.target.value)} className="mt-1 w-full px-3 py-2 rounded-md bg-black border border-white/15">
+                  <option value="">Select muscle group</option>
+                  <option value="Chest">Chest</option>
+                  <option value="Back">Back</option>
+                  <option value="Shoulders">Shoulders</option>
+                  <option value="Biceps">Biceps</option>
+                  <option value="Triceps">Triceps</option>
+                  <option value="Legs">Legs</option>
+                  <option value="Core">Core</option>
+                  <option value="Glutes">Glutes</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-sm text-[#9fb0b5]">Weight (kg)</label>
+                  <input type="number" step="0.1" value={newWeight} onChange={e=> setNewWeight(e.target.value)} placeholder="e.g., 80" className="mt-1 w-full px-3 py-2 rounded-md bg-black border border-white/15" />
+                </div>
+                <div>
+                  <label className="text-sm text-[#9fb0b5]">Reps</label>
+                  <input type="number" value={newReps} onChange={e=> setNewReps(e.target.value)} placeholder="e.g., 8" className="mt-1 w-full px-3 py-2 rounded-md bg-black border border-white/15" />
+                </div>
+              </div>
+              <div>
+                <label className="text-sm text-[#9fb0b5]">Date</label>
+                <input type="date" max={new Date().toISOString().slice(0,10)} value={newDate} onChange={e=> setNewDate(e.target.value)} className="mt-1 w-full px-3 py-2 rounded-md bg-black border border-white/15" />
+              </div>
+              <div className="flex items-center justify-end gap-2 pt-1">
+                <button className="px-3 py-2 rounded-md bg-white/10 hover:bg-white/15" onClick={()=> setShowAddModal(false)}>Cancel</button>
+                <button className="px-3 py-2 rounded-md bg-[#4db6ac] text-black hover:brightness-110" onClick={submitNewExercise}><i className="fa-solid fa-plus mr-2"/>Add Exercise</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
