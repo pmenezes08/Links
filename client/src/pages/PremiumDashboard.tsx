@@ -83,7 +83,7 @@ function Card({ iconClass, title, onClick }:{ iconClass:string; title:string; on
       <div className="pointer-events-none absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
            style={{ background: 'radial-gradient(600px circle at var(--x,50%) var(--y,50%), rgba(77,182,172,0.10), transparent 40%)' }} />
 
-      <div className="absolute inset-0 flex flex-row items-center justify-center gap-3 px-6">
+      <div className="absolute inset-0 flex flex-row items-center justify-start gap-3 px-6">
         <i className={iconClass} style={{ fontSize: 24, color: '#4db6ac' }} />
         <div className="text-[15px] font-semibold tracking-tight text-white/90">{title}</div>
       </div>
