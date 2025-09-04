@@ -57,7 +57,10 @@ export default function WorkoutTracking(){
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({})
   const [showLogsModal, setShowLogsModal] = useState(false)
   const [logsExerciseName, setLogsExerciseName] = useState<string>('')
+  const [logsExerciseId, setLogsExerciseId] = useState<number|''>('')
   const [logsEntries, setLogsEntries] = useState<Array<{ date:string; weight:number; reps:number }>>([])
+  const [newLogWeight, setNewLogWeight] = useState('')
+  const [newLogDate, setNewLogDate] = useState<string>(() => new Date().toISOString().slice(0,10))
 
   // Load base data on mount
   useEffect(() => {
@@ -348,6 +351,7 @@ export default function WorkoutTracking(){
                               onClick={()=> {
                                 setSelectedExerciseId(ex.id)
                                 setLogsExerciseName(ex.name)
+                                setLogsExerciseId(ex.id)
                                 const sets = (ex.sets_data || []).slice().sort((a,b)=> String(b.created_at||b.date||'').localeCompare(String(a.created_at||a.date||'')))
                                 const mapped = sets.map(s=> ({ date: String(s.created_at||s.date||''), weight: Number(s.weight||0), reps: Number(s.reps||0) }))
                                 setLogsEntries(mapped)
@@ -484,6 +488,29 @@ export default function WorkoutTracking(){
               <button className="p-2 rounded-md hover:bg-white/5" onClick={()=> setShowLogsModal(false)} aria-label="Close"><i className="fa-solid fa-xmark"/></button>
             </div>
             <div className="max-h-[70vh] overflow-y-auto no-scrollbar">
+              {/* Add entry row */}
+              <div className="pb-2 flex items-end gap-2">
+                <div>
+                  <label className="text-xs text-[#9fb0b5]">Weight (kg)</label>
+                  <input type="number" step="0.1" value={newLogWeight} onChange={e=> setNewLogWeight(e.target.value)} placeholder="e.g. 80" className="block w-28 mt-1 px-2 py-1 rounded-md bg-black border border-white/15 text-sm" />
+                </div>
+                <div>
+                  <label className="text-xs text-[#9fb0b5]">Date</label>
+                  <input type="date" value={newLogDate} max={new Date().toISOString().slice(0,10)} onChange={e=> setNewLogDate(e.target.value)} className="block w-40 mt-1 px-2 py-1 rounded-md bg-black border border-white/15 text-sm" />
+                </div>
+                <button className="h-8 px-3 rounded-md bg-[#4db6ac] text-black hover:brightness-110 text-sm" onClick={async()=>{
+                  if (!logsExerciseId || !newLogWeight || !newLogDate) return
+                  const fd = new URLSearchParams({ exercise_id: String(logsExerciseId), weight: newLogWeight, reps: '1', date: newLogDate })
+                  const r = await fetch('/log_weight_set', { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
+                  const j = await r.json().catch(()=>null)
+                  if (j?.success){
+                    const updated = [{ date: newLogDate, weight: Number(newLogWeight), reps: 1 }, ...logsEntries]
+                    setLogsEntries(updated)
+                    setNewLogWeight('')
+                    setNewLogDate(new Date().toISOString().slice(0,10))
+                  } else alert(j?.error || 'Failed to add entry')
+                }}>Add</button>
+              </div>
               {logsEntries.length === 0 ? (
                 <div className="text-sm text-[#9fb0b5]">No logs yet.</div>
               ) : (
@@ -506,7 +533,32 @@ export default function WorkoutTracking(){
                             {monthMap[k].map((e, idx) => (
                               <div key={idx} className="py-1 flex items-center justify-between text-sm">
                                 <div>{formatMonthDay(e.date)}</div>
-                                <div className="text-[#9fb0b5]">{e.weight} kg × {e.reps}</div>
+                                <div className="flex items-center gap-2">
+                                  <div className="text-[#9fb0b5]">{e.weight} kg × {e.reps}</div>
+                                  <button className="p-1 rounded hover:bg-white/5" title="Edit" onClick={async()=>{
+                                    const newW = prompt('New weight (kg):', String(e.weight))
+                                    if (!newW || !logsExerciseId) return
+                                    const fd = new URLSearchParams({ exercise_id: String(logsExerciseId), set_id: '', weight: newW })
+                                    const r = await fetch('/edit_set', { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
+                                    const j = await r.json().catch(()=>null)
+                                    if (j?.success){
+                                      // Update client view (best-effort)
+                                      const updated = logsEntries.slice()
+                                      updated[idx] = { ...e, weight: Number(newW) }
+                                      setLogsEntries(updated)
+                                    } else alert(j?.error||'Failed to edit entry')
+                                  }}><i className="fa-solid fa-pen"/></button>
+                                  <button className="p-1 rounded hover:bg-white/5" title="Delete" onClick={async()=>{
+                                    if (!confirm('Delete this entry?')) return
+                                    if (!logsExerciseId) return
+                                    const fd = new URLSearchParams({ exercise_id: String(logsExerciseId), date: e.date, weight: String(e.weight), reps: String(e.reps) })
+                                    const r = await fetch('/delete_weight_entry', { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
+                                    const j = await r.json().catch(()=>null)
+                                    if (j?.success){
+                                      setLogsEntries(logsEntries.filter((x, i)=> !(i===idx && x.date===e.date && x.weight===e.weight && x.reps===e.reps)))
+                                    } else alert(j?.error||'Failed to delete entry')
+                                  }}><i className="fa-solid fa-trash"/></button>
+                                </div>
                               </div>
                             ))}
                           </div>
