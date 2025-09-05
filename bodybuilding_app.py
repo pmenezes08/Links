@@ -9215,7 +9215,16 @@ def community_background_file(filename):
 @login_required
 def your_sports():
     username = session.get('username')
-    return render_template('your_sports.html', username=username)
+    try:
+        ua = request.headers.get('User-Agent', '')
+        is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
+        if is_mobile:
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            dist_dir = os.path.join(base_dir, 'client', 'dist')
+            return send_from_directory(dist_dir, 'index.html')
+        return render_template('your_sports.html', username=username)
+    except Exception:
+        return render_template('your_sports.html', username=username)
 
 @app.route('/gym')
 @login_required
