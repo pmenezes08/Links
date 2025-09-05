@@ -2996,6 +2996,20 @@ def user_chat():
         logger.error(f"Error in user_chat for {username}: {str(e)}")
         abort(500)
 
+@app.route('/user_chat/<path:subpath>')
+@login_required
+def user_chat_subpath(subpath):
+    try:
+        ua = request.headers.get('User-Agent', '')
+        is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
+        if is_mobile:
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            dist_dir = os.path.join(base_dir, 'client', 'dist')
+            return send_from_directory(dist_dir, 'index.html')
+        return redirect(url_for('user_chat'))
+    except Exception:
+        return redirect(url_for('user_chat'))
+
 @app.route('/delete_message', methods=['POST'])
 @login_required
 def delete_message():
@@ -5908,8 +5922,6 @@ def create_resource_post(community_id):
     except Exception as e:
         logger.error(f"Error creating resource post: {e}")
         return jsonify({'success': False, 'message': str(e)}), 500
-@app.route('/resource/post/<int:post_id>/upvote', methods=['POST'])
-@login_required
 def upvote_resource_post(post_id):
     """Toggle upvote on a resource post"""
     username = session.get('username')

@@ -43,9 +43,9 @@ export default function NewMessage(){
   }
 
   return (
-    <div className="fixed inset-x-0 top-14 bottom-0 bg-[#0b0f10] text-white overflow-y-auto">
+    <div className="fixed inset-x-0 top-14 bottom-0 bg-black text-white overflow-y-auto">
       <div className="max-w-3xl mx-auto px-3 py-3">
-        <div className="rounded-xl border border-white/10 bg-white/5">
+        <div className="rounded-xl border border-white/10 bg-black">
           <div className="p-3 border-b border-white/10 font-semibold">Select a Community</div>
           <div className="divide-y divide-white/10">
             {communities.map(c => (
@@ -57,7 +57,7 @@ export default function NewMessage(){
                 {expanded[c.id] && (
                   <div className="px-3 py-2 space-y-1">
                     {(membersByCommunity[c.id]||[]).map((m, idx) => (
-                      <a key={idx} className="block px-3 py-2 rounded-md hover:bg-white/5 flex items-center gap-2" href={`/user_chat?u=${encodeURIComponent(m.username)}`}>
+                      <a key={idx} className="block px-3 py-2 rounded-md hover:bg-white/5 flex items-center gap-2" href={`/user_chat/chat/${encodeURIComponent(m.username)}`}>
                         <div className="w-8 h-8 rounded-full overflow-hidden bg-white/10 flex items-center justify-center">
                           {resolveAvatar(m.profile_picture) ? (
                             <img src={resolveAvatar(m.profile_picture)!} alt="" className="w-full h-full object-cover" />
