@@ -50,6 +50,7 @@ export default function App() {
               <Route path="/crossfit" element={<CrossfitExact />} />
               <Route path="/crossfit_react" element={<CrossfitExact />} />
               <Route path="/gym" element={<Gym />} />
+              <Route path="/gym_react" element={<Gym />} />
               <Route path="/communities" element={<Communities />} />
               <Route path="/home" element={<HomeTimeline />} />
               <Route path="/workout_tracking" element={<WorkoutTracking />} />

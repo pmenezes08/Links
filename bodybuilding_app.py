@@ -5118,8 +5118,16 @@ def get_poll_results(poll_id):
     except Exception as e:
         logger.error(f"Error getting poll results: {str(e)}")
         return jsonify({'success': False, 'error': 'Error retrieving poll results'})
-@app.route('/get_active_polls')
+@app.route('/gym_react')
 @login_required
+def gym_react():
+    try:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        dist_dir = os.path.join(base_dir, 'client', 'dist')
+        return send_from_directory(dist_dir, 'index.html')
+    except Exception as e:
+        logger.error(f"Error serving React gym: {str(e)}")
+        abort(500)
 def get_active_polls():
     """Get all active polls for a specific community"""
     try:
@@ -8967,7 +8975,6 @@ def api_community_feed(community_id):
     except Exception as e:
         logger.error(f"Error in api_community_feed for {community_id}: {e}")
         return jsonify({'success': False, 'error': 'Server error'}), 500
-
 @app.route('/api/home_timeline')
 @login_required
 def api_home_timeline():
@@ -10543,7 +10550,6 @@ def check_exercise_in_workout():
         
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
-
 @app.route('/update_exercise_in_workout', methods=['POST'])
 @login_required
 def update_exercise_in_workout():
@@ -11330,7 +11336,6 @@ def get_user_exercises():
 @app.route('/test_version')
 def test_version():
     return jsonify({'version': '1755799276', 'message': 'Updated version loaded with format fix'})
-
 @app.route('/test_database')
 def test_database():
     try:
@@ -12023,7 +12028,6 @@ def cleanup_missing_images():
     except Exception as e:
         logger.error(f"Error cleaning missing images: {str(e)}")
         return jsonify({'success': False, 'error': str(e)})
-
 @app.route('/seed_dummy_data', methods=['POST'])
 @login_required
 def seed_dummy_data():
