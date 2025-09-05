@@ -33,7 +33,7 @@ export default function WorkoutTracking(){
   const { setTitle } = useHeader()
   useEffect(() => { setTitle('Workout Tracking') }, [setTitle])
 
-  const [activeTab, setActiveTab] = useState<'performance' | 'exercise' | 'workouts' | 'leaderboard'>('performance')
+  const [activeTab, setActiveTab] = useState<'performance' | 'exercise' | 'workouts' | 'leaderboard' | 'generator'>('performance')
   const [showAddModal, setShowAddModal] = useState(false)
   const [newName, setNewName] = useState('')
   const [newGroup, setNewGroup] = useState('')
@@ -222,6 +222,7 @@ export default function WorkoutTracking(){
           <TabButton active={activeTab==='exercise'} onClick={()=> setActiveTab('exercise')} icon="fa-dumbbell" label="Exercise Management" />
           <TabButton active={activeTab==='workouts'} onClick={()=> setActiveTab('workouts')} icon="fa-calendar-alt" label="Workouts" />
           <TabButton active={activeTab==='leaderboard'} onClick={()=> setActiveTab('leaderboard')} icon="fa-trophy" label="Community Leaderboard" />
+          <TabButton active={activeTab==='generator'} onClick={()=> setActiveTab('generator')} icon="fa-magic" label="Workout Generator" />
         </div>
 
         {/* Performance Tracking */}
@@ -431,6 +432,19 @@ export default function WorkoutTracking(){
                 </div>
               ))}
             </div>
+          </div>
+        )}
+
+        {/* Workout Generator */}
+        {activeTab==='generator' && (
+          <div className="rounded-xl border border-white/10 bg-white/5 mt-2 p-3">
+            <div className="flex items-center justify-between">
+              <div className="font-semibold text-sm">Workout Generator</div>
+              <button className="px-3 py-2 rounded-md bg-[#4db6ac] text-black hover:brightness-110" onClick={()=> (window.location.href = '/workout_generator')}>
+                Open Generator
+              </button>
+            </div>
+            <div className="text-[#9fb0b5] text-sm mt-2">Create personalized workout plans based on your goals.</div>
           </div>
         )}
       </div>

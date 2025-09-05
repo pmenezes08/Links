@@ -6,7 +6,6 @@ import PremiumDashboard from './pages/PremiumDashboard'
 import HeaderBar from './components/HeaderBar'
 import { HeaderContext } from './contexts/HeaderContext'
 import CrossfitExact from './pages/CrossfitExact'
-import Gym from './pages/Gym'
 import CommunityFeed from './pages/CommunityFeed'
 import PostDetail from './pages/PostDetail'
 import CreatePost from './pages/CreatePost'
@@ -50,8 +49,6 @@ export default function App() {
               <Route path="/premium_dashboard_react" element={<PremiumDashboard />} />
               <Route path="/crossfit" element={<CrossfitExact />} />
               <Route path="/crossfit_react" element={<CrossfitExact />} />
-              <Route path="/gym" element={<Gym />} />
-              <Route path="/gym_react" element={<Gym />} />
               <Route path="/communities" element={<Communities />} />
               <Route path="/your_sports" element={<YourSports />} />
               <Route path="/home" element={<HomeTimeline />} />

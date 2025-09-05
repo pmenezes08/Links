@@ -5070,11 +5070,12 @@ def vote_poll():
             c.execute("""
                 SELECT po.id, po.option_text, po.votes, 
                        (SELECT COUNT(*) FROM poll_votes WHERE poll_id = ?) as total_votes,
+                       (SELECT option_id FROM poll_votes WHERE poll_id = ? AND username = ?) as user_vote,
                        (SELECT COUNT(*) FROM poll_votes WHERE poll_id = ? AND username = ? AND option_id = po.id) as user_voted
                 FROM poll_options po 
                 WHERE po.poll_id = ?
                 ORDER BY po.id
-            """, (poll_id, poll_id, username, poll_id))
+            """, (poll_id, poll_id, username, poll_id, username, poll_id))
             poll_results = c.fetchall()
             
             return jsonify({
@@ -5118,8 +5119,15 @@ def get_poll_results(poll_id):
     except Exception as e:
         logger.error(f"Error getting poll results: {str(e)}")
         return jsonify({'success': False, 'error': 'Error retrieving poll results'})
+@app.route('/gym')
+@login_required
+def gym():
+    return redirect(url_for('workout_tracking'))
+
 @app.route('/gym_react')
 @login_required
+def gym_react():
+    return redirect(url_for('workout_tracking'))
 def gym_react():
     try:
         base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -6707,8 +6715,15 @@ def deactivate_community(community_id):
     except Exception as e:
         logger.error(f"Error deactivating community: {e}")
         return jsonify({'success': False, 'message': str(e)}), 500
-@app.route('/admin/user_statistics')
+@app.route('/gym')
 @login_required
+def gym():
+    return redirect(url_for('workout_tracking'))
+
+@app.route('/gym_react')
+@login_required
+def gym_react():
+    return redirect(url_for('workout_tracking'))
 def admin_user_statistics():
     """Admin endpoint to view user activity statistics"""
     username = session.get('username')
@@ -9229,8 +9244,12 @@ def your_sports():
 @app.route('/gym')
 @login_required
 def gym():
-    username = session.get('username')
-    return render_template('gym.html', username=username)
+    return redirect(url_for('workout_tracking'))
+
+@app.route('/gym_react')
+@login_required
+def gym_react():
+    return redirect(url_for('workout_tracking'))
 
 @app.route('/crossfit')
 @login_required

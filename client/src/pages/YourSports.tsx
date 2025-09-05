@@ -9,7 +9,7 @@ export default function YourSports(){
     <div className="fixed inset-x-0 top-14 bottom-0 bg-[#0b0f10] text-white overflow-auto">
       <div className="h-full flex items-center justify-center px-3">
         <div className="grid grid-cols-2 gap-3 w-full max-w-3xl">
-          <Card icon="fa-dumbbell" title="Gym" subtitle="Workout generator and tracking" onClick={() => (location.assign('/gym'))} />
+          <Card icon="fa-dumbbell" title="Gym" subtitle="Workout generator and tracking" onClick={() => (location.assign('/workout_tracking'))} />
           <Card icon="fa-bolt" title="Crossfit" subtitle="WODs and lifts tracking" onClick={() => (location.assign('/crossfit'))} />
           <Card icon="fa-running" title="Running" subtitle="Coming soon" disabled />
           <Card icon="fa-golf-ball" title="Golf" subtitle="Coming soon" disabled />
