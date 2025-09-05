@@ -3045,9 +3045,10 @@ def get_community_members():
             
             # Get all members of the community with their roles
             c.execute("""
-                SELECT u.username, uc.joined_at
+                SELECT u.username, uc.joined_at, up.profile_picture
                 FROM user_communities uc
                 INNER JOIN users u ON uc.user_id = u.rowid
+                LEFT JOIN user_profiles up ON up.username = u.username
                 WHERE uc.community_id = ?
                 ORDER BY u.username
             """, (community_id,))
@@ -3056,6 +3057,7 @@ def get_community_members():
             for row in c.fetchall():
                 member_username = row['username']
                 joined_date = row['joined_at'] if row['joined_at'] else 'Unknown'
+                profile_picture = row['profile_picture'] if 'profile_picture' in row.keys() else None
                 
                 # Determine role
                 role = 'member'
@@ -3073,7 +3075,8 @@ def get_community_members():
                     'joined_date': joined_date,
                     'role': role,
                     'is_owner': member_username == creator_username,
-                    'is_admin': role == 'admin'
+                    'is_admin': role == 'admin',
+                    'profile_picture': profile_picture
                 })
             
             # Check current user's role
