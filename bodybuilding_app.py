@@ -2946,7 +2946,15 @@ def user_chat():
             if not user or user['subscription'] != 'premium':
                 return render_template('index.html', error="Premium subscription required!")
             
-            # Get user's communities
+            # Smart UA: mobile -> SPA, desktop -> HTML
+            ua = request.headers.get('User-Agent', '')
+            is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
+            if is_mobile:
+                base_dir = os.path.dirname(os.path.abspath(__file__))
+                dist_dir = os.path.join(base_dir, 'client', 'dist')
+                return send_from_directory(dist_dir, 'index.html')
+            
+            # Desktop: render HTML with context
             c.execute("""
                 SELECT c.id, c.name, c.type, c.creator_username
                 FROM communities c
@@ -2957,7 +2965,6 @@ def user_chat():
             """, (username,))
             communities = c.fetchall()
             
-            # Get all users in the same communities
             community_members = {}
             for community in communities:
                 c.execute("""
@@ -2970,7 +2977,6 @@ def user_chat():
                 members = [row[0] for row in c.fetchall()]
                 community_members[community[0]] = members
             
-            # Get all community members for messaging (only users in same communities)
             all_community_members = set()
             for community in communities:
                 c.execute("""
@@ -2983,7 +2989,6 @@ def user_chat():
                 members = [row[0] for row in c.fetchall()]
                 all_community_members.update(members)
             
-            # Convert to sorted list
             all_users = sorted(list(all_community_members))
             
         return render_template('user_chat.html', name=username, users=all_users, communities=communities, community_members=community_members, subscription=user['subscription'])
@@ -8968,8 +8973,6 @@ def api_community_feed(community_id):
     except Exception as e:
         logger.error(f"Error in api_community_feed for {community_id}: {e}")
         return jsonify({'success': False, 'error': 'Server error'}), 500
-@app.route('/api/home_timeline')
-@login_required
 def api_home_timeline():
     """Aggregate timeline across all communities the user belongs to for the last 48 hours."""
     username = session.get('username')
@@ -12155,6 +12158,24 @@ def seed_dummy_data():
         return jsonify({'success': True, 'users_created': len(users), 'dates': len(dates)})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/get_user_id_by_username', methods=['POST'])
+@login_required
+def api_get_user_id_by_username():
+    try:
+        username = request.form.get('username','').strip()
+        if not username:
+            return jsonify({ 'success': False, 'error': 'username required' }), 400
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT rowid FROM users WHERE username=?", (username,))
+            row = c.fetchone()
+            if not row:
+                return jsonify({ 'success': False, 'error': 'user not found' }), 404
+            return jsonify({ 'success': True, 'user_id': row['rowid'] })
+    except Exception as e:
+        logger.error(f"Error resolving user id: {e}")
+        return jsonify({ 'success': False, 'error': 'server error' }), 500
 
 if __name__ == '__main__':
     app.run(debug=False, host='0.0.0.0', port=8080)
