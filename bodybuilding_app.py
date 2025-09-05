@@ -9214,16 +9214,7 @@ def your_sports():
 @login_required
 def gym():
     username = session.get('username')
-    try:
-        ua = request.headers.get('User-Agent', '')
-        is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
-        if is_mobile:
-            base_dir = os.path.dirname(os.path.abspath(__file__))
-            dist_dir = os.path.join(base_dir, 'client', 'dist')
-            return send_from_directory(dist_dir, 'index.html')
-        return render_template('gym.html', username=username)
-    except Exception:
-        return render_template('gym.html', username=username)
+    return render_template('gym.html', username=username)
 
 @app.route('/crossfit')
 @login_required
