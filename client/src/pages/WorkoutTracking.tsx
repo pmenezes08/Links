@@ -31,7 +31,7 @@ type Community = { id: number; name: string; type?: string }
 
 export default function WorkoutTracking(){
   const { setTitle } = useHeader()
-  useEffect(() => { setTitle('Workout Tracking') }, [setTitle])
+  useEffect(() => { setTitle('Your Workouts') }, [setTitle])
 
   const [activeTab, setActiveTab] = useState<'performance' | 'exercise' | 'workouts' | 'leaderboard' | 'generator'>('performance')
   const [showAddModal, setShowAddModal] = useState(false)
