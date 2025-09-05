@@ -9133,6 +9133,11 @@ def api_home_timeline():
         logger.error(f"Error in api_home_timeline: {e}")
         return jsonify({'success': False, 'error': 'Server error'}), 500
 
+@app.route('/api/home_timeline')
+@login_required
+def api_home_timeline_route():
+    return api_home_timeline()
+
 @app.route('/home')
 @login_required
 def react_home_timeline_page():
@@ -12178,6 +12183,61 @@ def api_get_user_id_by_username():
             return jsonify({ 'success': True, 'user_id': row['rowid'] })
     except Exception as e:
         logger.error(f"Error resolving user id: {e}")
+        return jsonify({ 'success': False, 'error': 'server error' }), 500
+
+@app.route('/get_active_chat_counts')
+@login_required
+def get_active_chat_counts():
+    """Return number of distinct chat partners per community for the current user."""
+    username = session.get('username')
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            # Map usernames to rowid for joins
+            c.execute("SELECT rowid FROM users WHERE username=?", (username,))
+            me = c.fetchone()
+            if not me:
+                return jsonify({ 'success': False, 'error': 'user not found' }), 404
+            # Communities the user belongs to
+            c.execute("""
+                SELECT c.id, c.name
+                FROM communities c
+                JOIN user_communities uc ON c.id = uc.community_id
+                JOIN users u ON uc.user_id = u.rowid
+                WHERE u.username = ?
+            """, (username,))
+            comms = [dict(row) for row in c.fetchall()]
+            results = []
+            for comm in comms:
+                # Distinct partners in this community: any user who shares this community and has message with me
+                c.execute("""
+                    SELECT DISTINCT m.sender as user
+                    FROM messages m
+                    WHERE m.receiver = ?
+                    UNION
+                    SELECT DISTINCT m.receiver as user
+                    FROM messages m
+                    WHERE m.sender = ?
+                """, (username, username))
+                partners = {row['user'] for row in c.fetchall()}
+                if not partners:
+                    results.append({ 'community_id': comm['id'], 'community_name': comm['name'], 'active_chats': 0 })
+                    continue
+                placeholders = ",".join(["?"]*len(partners))
+                params = list(partners)
+                # Intersect with community members
+                c.execute(f"""
+                    SELECT COUNT(DISTINCT u.username) as cnt
+                    FROM users u
+                    JOIN user_communities uc ON u.rowid = uc.user_id
+                    WHERE uc.community_id = ? AND u.username IN ({placeholders}) AND u.username != ?
+                """, [comm['id'], *params, username])
+                row = c.fetchone()
+                cnt = row['cnt'] if isinstance(row, dict) else (row[0] if row else 0)
+                results.append({ 'community_id': comm['id'], 'community_name': comm['name'], 'active_chats': cnt or 0 })
+            return jsonify({ 'success': True, 'counts': results })
+    except Exception as e:
+        logger.error(f"Error in get_active_chat_counts: {e}")
         return jsonify({ 'success': False, 'error': 'server error' }), 500
 
 if __name__ == '__main__':

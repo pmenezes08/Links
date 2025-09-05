@@ -27,6 +27,9 @@ export default function HeaderBar({ title, username, avatarUrl }: HeaderBarProps
         </button>
         <div className="font-semibold truncate tracking-[-0.01em] flex-1">{title}</div>
         <div className="flex items-center gap-2">
+          <button className="p-2 rounded-full hover:bg-white/5" onClick={()=> navigate('/user_chat/new')} aria-label="New Message">
+            <i className="fa-solid fa-plus" />
+          </button>
           <button className="p-2 rounded-full hover:bg-white/5" onClick={()=> navigate('/user_chat')} aria-label="Messages">
             <i className="fa-solid fa-cloud" />
           </button>
