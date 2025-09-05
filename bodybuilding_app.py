@@ -5119,23 +5119,6 @@ def get_poll_results(poll_id):
     except Exception as e:
         logger.error(f"Error getting poll results: {str(e)}")
         return jsonify({'success': False, 'error': 'Error retrieving poll results'})
-@app.route('/gym')
-@login_required
-def gym():
-    return redirect(url_for('workout_tracking'))
-
-@app.route('/gym_react')
-@login_required
-def gym_react():
-    return redirect(url_for('workout_tracking'))
-def gym_react():
-    try:
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        dist_dir = os.path.join(base_dir, 'client', 'dist')
-        return send_from_directory(dist_dir, 'index.html')
-    except Exception as e:
-        logger.error(f"Error serving React gym: {str(e)}")
-        abort(500)
 def get_active_polls():
     """Get all active polls for a specific community"""
     try:
@@ -6718,11 +6701,6 @@ def deactivate_community(community_id):
 @app.route('/gym')
 @login_required
 def gym():
-    return redirect(url_for('workout_tracking'))
-
-@app.route('/gym_react')
-@login_required
-def gym_react():
     return redirect(url_for('workout_tracking'))
 def admin_user_statistics():
     """Admin endpoint to view user activity statistics"""
@@ -9240,11 +9218,6 @@ def your_sports():
         return render_template('your_sports.html', username=username)
     except Exception:
         return render_template('your_sports.html', username=username)
-
-@app.route('/gym')
-@login_required
-def gym():
-    return redirect(url_for('workout_tracking'))
 
 @app.route('/gym_react')
 @login_required
