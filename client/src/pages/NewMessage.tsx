@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useHeader } from '../contexts/HeaderContext'
+import Avatar from '../components/Avatar'
 
 export default function NewMessage(){
   const { setTitle } = useHeader()
@@ -58,13 +59,7 @@ export default function NewMessage(){
                   <div className="px-3 py-2 space-y-1">
                     {(membersByCommunity[c.id]||[]).map((m, idx) => (
                       <a key={idx} className="block px-3 py-2 rounded-md hover:bg-white/5 flex items-center gap-2" href={`/user_chat/chat/${encodeURIComponent(m.username)}`}>
-                        <div className="w-8 h-8 rounded-full overflow-hidden bg-white/10 flex items-center justify-center">
-                          {resolveAvatar(m.profile_picture) ? (
-                            <img src={resolveAvatar(m.profile_picture)!} alt="" className="w-full h-full object-cover" />
-                          ) : (
-                            <span className="text-xs opacity-80">{m.username.slice(0,2).toUpperCase()}</span>
-                          )}
-                        </div>
+                        <Avatar username={m.username} url={resolveAvatar(m.profile_picture)} size={32} />
                         <span className="truncate">{m.username}</span>
                       </a>
                     ))}

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import Avatar from './Avatar'
 
 type HeaderBarProps = {
   title: string
@@ -19,11 +20,7 @@ export default function HeaderBar({ title, username, avatarUrl }: HeaderBarProps
     <>
       <div className="fixed left-0 right-0 top-0 h-14 border-b border-[#262f30] bg-black flex items-center px-3 z-[100] text-white will-change-transform">
         <button className="mr-3 md:hidden" onClick={() => setMenuOpen(v=>!v)} aria-label="Menu">
-          <div className="w-8 h-8 rounded-full bg-white/10 overflow-hidden">
-            {resolvedAvatar ? (
-              <img src={resolvedAvatar} alt="" className="w-full h-full object-cover" />
-            ) : (<i className="fa-solid fa-user" />)}
-          </div>
+          <Avatar username={username || ''} url={resolvedAvatar} size={32} />
         </button>
         <div className="font-semibold truncate tracking-[-0.01em] flex-1">{title}</div>
         <div className="flex items-center gap-2">
@@ -43,11 +40,7 @@ export default function HeaderBar({ title, username, avatarUrl }: HeaderBarProps
         <div className="fixed inset-0 z-[90] flex bg-black/50" onClick={(e)=> e.currentTarget===e.target && setMenuOpen(false)}>
           <div className="w-[90%] h-full bg-black/95 backdrop-blur border-r border-white/10 p-4 space-y-3 text-white">
             <div className="flex items-center gap-2 pb-2 border-b border-white/10">
-              <div className="w-10 h-10 rounded-full overflow-hidden bg-white/10">
-                {resolvedAvatar ? (
-                  <img src={resolvedAvatar} alt="" className="w-full h-full object-cover" />
-                ) : (<i className="fa-solid fa-user" />)}
-              </div>
+              <Avatar username={username || ''} url={resolvedAvatar} size={40} />
               <div className="font-medium truncate">{username || ''}</div>
             </div>
             {username === 'admin' ? (

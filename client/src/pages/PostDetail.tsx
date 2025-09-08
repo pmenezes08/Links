@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import Avatar from '../components/Avatar'
 
 type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null, parent_reply_id?: number|null, children?: Reply[], profile_picture?: string|null }
 type Post = { id: number; username: string; content: string; image_path?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; replies: Reply[] }
@@ -192,11 +193,7 @@ export default function PostDetail(){
       <div className="max-w-2xl mx-auto pt-14 px-3">
         <div className="rounded-2xl border border-white/10 bg-white/[0.035] shadow-sm shadow-black/20">
           <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2">
-            <div className="w-8 h-8 rounded-full bg-white/10 overflow-hidden">
-              {(post as any).profile_picture ? (
-                <img src={((post as any).profile_picture.startsWith('http') || (post as any).profile_picture.startsWith('/static')) ? (post as any).profile_picture : `/static/${(post as any).profile_picture}`} alt="" className="w-full h-full object-cover" />
-              ) : null}
-            </div>
+            <Avatar username={post.username} url={(post as any).profile_picture || undefined} size={32} />
             <div className="font-medium">{post.username}</div>
             <div className="text-xs text-[#9fb0b5] ml-auto">{formatTimestamp(post.timestamp)}</div>
           </div>
@@ -280,11 +277,7 @@ function ReplyNode({ reply, depth=0, onToggle, onInlineReply }:{ reply: Reply, d
           {reply.children && reply.children.length ? (
             <div className="absolute" style={{ left: '50%', transform: 'translateX(-0.5px)', top: `calc(50% + ${avatarSizePx/2}px)`, bottom: 0, width: '1px', background: 'rgba(255,255,255,0.15)', borderRadius: '9999px' }} />
           ) : null}
-          <div className="w-7 h-7 rounded-full bg-white/10 overflow-hidden mx-auto">
-            {reply.profile_picture ? (
-              <img src={(reply.profile_picture?.startsWith('http') || reply.profile_picture?.startsWith('/static')) ? reply.profile_picture! : `/static/${reply.profile_picture}`} alt="" className="w-full h-full object-cover" />
-            ) : null}
-          </div>
+          <Avatar username={reply.username} url={reply.profile_picture || undefined} size={28} />
         </div>
         <div className="flex-1 min-w-0 pr-2">
           <div className="flex items-center gap-2">

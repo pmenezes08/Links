@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
+import Avatar from '../components/Avatar'
 
 type Post = { id:number; username:string; content:string; image_path?:string|null; timestamp:string; community_id?:number|null; community_name?:string; reactions:Record<string,number>; user_reaction:string|null; poll?:any|null; replies_count?:number; profile_picture?:string|null }
 
@@ -147,11 +148,7 @@ export default function HomeTimeline(){
             {posts.map(p => (
               <div key={p.id} className="rounded-2xl border border-white/10 bg-white/[0.035] shadow-sm shadow-black/20">
                 <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-full bg-white/10 overflow-hidden">
-                    {p.profile_picture ? (
-                      <img src={(p.profile_picture.startsWith('http') || p.profile_picture.startsWith('/static')) ? p.profile_picture : `/static/${p.profile_picture}`} alt="" className="w-full h-full object-cover" />
-                    ) : null}
-                  </div>
+                  <Avatar username={p.username} url={p.profile_picture || undefined} size={32} />
                   <div className="font-medium tracking-[-0.01em] truncate">{p.username}</div>
                   <div className="text-xs text-[#9fb0b5] ml-auto tabular-nums">{formatTimestamp(p.timestamp)}</div>
                 </div>

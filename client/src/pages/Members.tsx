@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import Avatar from '../components/Avatar'
 
 type Member = { username: string; profile_picture?: string | null }
 
@@ -93,13 +94,7 @@ export default function Members(){
               <div className="text-[#9fb0b5]">No members.</div>
             ) : members.map((m, i) => (
               <div key={i} className="flex items-center gap-3 p-2 rounded-xl bg-white/[0.03]">
-                <div className="w-9 h-9 rounded-full overflow-hidden bg-white/10">
-                  {m.profile_picture ? (
-                    <img src={(m.profile_picture.startsWith('http') || m.profile_picture.startsWith('/static')) ? m.profile_picture : `/static/${m.profile_picture}`} alt="" className="w-full h-full object-cover" />
-                  ) : (
-                    <div className="w-full h-full grid place-items-center text-[#6c757d]"><i className="fa-solid fa-user" /></div>
-                  )}
-                </div>
+                <Avatar username={m.username} url={m.profile_picture || undefined} size={36} />
                 <div className="font-medium">{m.username}</div>
               </div>
             ))}

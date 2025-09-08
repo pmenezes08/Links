@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useHeader } from '../contexts/HeaderContext'
 import { useNavigate } from 'react-router-dom'
+import Avatar from '../components/Avatar'
 
 type Thread = {
   other_username: string
@@ -42,13 +43,7 @@ export default function Messages(){
                 onClick={() => navigate(`/user_chat/chat/${encodeURIComponent(t.other_username)}`)}
                 className="w-full px-3 py-2 hover:bg-white/5 flex items-center gap-3"
               >
-                <div className="w-12 h-12 rounded-full bg-white/10 border border-white/10 overflow-hidden flex items-center justify-center">
-                  {t.profile_picture_url ? (
-                    <img src={t.profile_picture_url} alt="" className="w-full h-full object-cover" />
-                  ) : (
-                    <i className="fa-solid fa-user text-[#9fb0b5]" />
-                  )}
-                </div>
+                <Avatar username={t.other_username} url={t.profile_picture_url || undefined} size={48} />
                 <div className="flex-1 min-w-0 text-left">
                   <div className="flex items-center justify-between">
                     <div className="font-medium truncate">{t.display_name}</div>
