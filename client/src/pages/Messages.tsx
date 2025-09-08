@@ -30,7 +30,7 @@ export default function Messages(){
   return (
     <div className="fixed inset-x-0 top-14 bottom-0 bg-black text-white">
       <div className="h-full max-w-3xl mx-auto px-1 sm:px-3 py-2">
-        <div className="h-full overflow-y-auto rounded-xl border border-white/10 bg-black divide-y divide-white/10">
+        <div className="h-full overflow-y-auto overscroll-contain rounded-xl border border-white/10 bg-black divide-y divide-white/10">
           {loading ? (
             <div className="px-4 py-4 text-sm text-[#9fb0b5]">Loading chats...</div>
           ) : threads.length === 0 ? (

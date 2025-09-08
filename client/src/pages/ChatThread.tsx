@@ -38,6 +38,18 @@ export default function ChatThread(){
     return () => clearTimeout(t)
   }, [messages])
 
+  // Lock body scroll so only chat area scrolls; keeps fixed header visible
+  useEffect(() => {
+    const prevHtmlOverflow = document.documentElement.style.overflow
+    const prevBodyOverflow = document.body.style.overflow
+    document.documentElement.style.overflow = 'hidden'
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.documentElement.style.overflow = prevHtmlOverflow
+      document.body.style.overflow = prevBodyOverflow
+    }
+  }, [])
+
   // Auto-size composer textarea
   function adjustTextareaHeight(){
     const ta = textareaRef.current
@@ -66,7 +78,7 @@ export default function ChatThread(){
     <div className="fixed inset-x-0 top-14 bottom-0 bg-black text-white">
       <div className="h-full max-w-3xl mx-auto flex flex-col">
         {/* Messages list (WhatsApp style bubbles) */}
-        <div ref={listRef} className="flex-1 overflow-y-auto px-2 sm:px-3 py-3 space-y-1">
+        <div ref={listRef} className="flex-1 overflow-y-auto overscroll-contain px-2 sm:px-3 py-3 space-y-1">
           {messages.map(m => (
             <div key={m.id} className={`flex ${m.sent ? 'justify-end' : 'justify-start'}`}>
               <div
