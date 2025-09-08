@@ -209,6 +209,16 @@ def add_missing_tables():
                 else:
                     logger.warning(f"Could not add column parent_reply_id: {e}")
 
+            # Ensure messages table has is_read column
+            try:
+                c.execute("PRAGMA table_info(messages)")
+                msg_cols = [row[1] for row in c.fetchall()]
+                if 'is_read' not in msg_cols:
+                    c.execute("ALTER TABLE messages ADD COLUMN is_read INTEGER DEFAULT 0")
+                    logger.info("Added is_read column to messages table")
+            except Exception as e:
+                logger.warning(f"Could not ensure is_read column on messages: {e}")
+
             # Ensure helpful indexes
             try:
                 c.execute("CREATE INDEX IF NOT EXISTS idx_replies_post ON replies(post_id)")

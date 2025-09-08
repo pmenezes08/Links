@@ -21,12 +21,20 @@ export default function Messages(){
   const [threads, setThreads] = useState<Thread[]>([])
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
+  function load(){
+    setLoading(true)
     fetch('/api/chat_threads', { credentials:'include' })
       .then(r=>r.json()).then(j=>{
         if (j?.success && Array.isArray(j.threads)) setThreads(j.threads)
       }).catch(()=>{})
       .finally(()=> setLoading(false))
+  }
+
+  useEffect(() => {
+    load()
+    const onVis = () => { if (!document.hidden) load() }
+    document.addEventListener('visibilitychange', onVis)
+    return () => document.removeEventListener('visibilitychange', onVis)
   }, [])
 
   return (
