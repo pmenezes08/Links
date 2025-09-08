@@ -11,6 +11,7 @@ export default function ChatThread(){
   const [messages, setMessages] = useState<Array<{ id:number; text:string; sent:boolean; time:string }>>([])
   const [draft, setDraft] = useState('')
   const listRef = useRef<HTMLDivElement|null>(null)
+  const textareaRef = useRef<HTMLTextAreaElement|null>(null)
 
   useEffect(() => {
     if (!username) return
@@ -36,6 +37,17 @@ export default function ChatThread(){
     const t = setTimeout(() => { el.scrollTop = el.scrollHeight }, 0)
     return () => clearTimeout(t)
   }, [messages])
+
+  // Auto-size composer textarea
+  function adjustTextareaHeight(){
+    const ta = textareaRef.current
+    if (!ta) return
+    ta.style.height = 'auto'
+    const maxPx = 160 // ~10rem
+    ta.style.height = Math.min(ta.scrollHeight, maxPx) + 'px'
+  }
+  useEffect(() => { adjustTextareaHeight() }, [])
+  useEffect(() => { adjustTextareaHeight() }, [draft])
 
   function send(){
     if (!otherUserId || !draft.trim()) return
@@ -72,8 +84,10 @@ export default function ChatThread(){
           <button className="hidden sm:inline-flex w-9 h-9 flex-shrink-0 items-center justify-center rounded-full bg-white/5 border border-white/10">
             <i className="fa-solid fa-paperclip text-white/70 text-sm" />
           </button>
-          <input
-            className="flex-1 rounded-full bg-[#0b0f10] border border-white/15 px-4 py-2 text-[15px] outline-none focus:border-[#4db6ac]"
+          <textarea
+            ref={textareaRef}
+            rows={1}
+            className="flex-1 rounded-2xl bg-[#0b0f10] border border-white/15 px-4 py-2 text-[16px] leading-snug outline-none focus:border-[#4db6ac] resize-none max-h-40 min-h-[42px]"
             placeholder="Type a message"
             value={draft}
             onChange={e=> setDraft(e.target.value)}
