@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import ErrorBoundary from './components/ErrorBoundary'
@@ -21,12 +21,13 @@ import ChatThread from './pages/ChatThread'
 
 const queryClient = new QueryClient()
 
-export default function App() {
+function AppRoutes(){
   const [title, setTitle] = useState('')
   const [userMeta, setUserMeta] = useState<{ username?:string; avatarUrl?:string|null }>({})
+  const location = useLocation()
+  const isFirstPage = location.pathname === '/'
 
   useEffect(() => {
-    // Preload user meta once for persistent avatar
     async function load(){
       try{
         const r = await fetch('/api/home_timeline', { credentials:'include' })
@@ -40,35 +41,43 @@ export default function App() {
   }, [])
 
   return (
+    <HeaderContext.Provider value={{ setTitle }}>
+      {!isFirstPage && (
+        <HeaderBar title={title} username={userMeta.username} avatarUrl={userMeta.avatarUrl} />
+      )}
+      <div style={{ paddingTop: isFirstPage ? 0 : '56px' }}>
+        <ErrorBoundary>
+          <Routes>
+          <Route path="/" element={<MobileLogin />} />
+          <Route path="/premium" element={<PremiumDashboard />} />
+          <Route path="/premium_dashboard" element={<PremiumDashboard />} />
+          <Route path="/premium_dashboard_react" element={<PremiumDashboard />} />
+          <Route path="/crossfit" element={<CrossfitExact />} />
+          <Route path="/crossfit_react" element={<CrossfitExact />} />
+          <Route path="/communities" element={<Communities />} />
+          <Route path="/your_sports" element={<YourSports />} />
+          <Route path="/user_chat" element={<Messages />} />
+          <Route path="/user_chat/new" element={<NewMessage />} />
+          <Route path="/user_chat/chat/:username" element={<ChatThread />} />
+          <Route path="/home" element={<HomeTimeline />} />
+          <Route path="/workout_tracking" element={<WorkoutTracking />} />
+          <Route path="/community_feed_react/:community_id" element={<CommunityFeed />} />
+          <Route path="/community/:community_id/members" element={<Members />} />
+          <Route path="/post/:post_id" element={<PostDetail />} />
+          <Route path="/compose" element={<CreatePost />} />
+          <Route path="*" element={<PremiumDashboard />} />
+          </Routes>
+        </ErrorBoundary>
+      </div>
+    </HeaderContext.Provider>
+  )
+}
+
+export default function App() {
+  return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
-        <HeaderContext.Provider value={{ setTitle }}>
-          <HeaderBar title={title} username={userMeta.username} avatarUrl={userMeta.avatarUrl} />
-          <div style={{ paddingTop: '56px' }}>
-            <ErrorBoundary>
-              <Routes>
-              <Route path="/" element={<MobileLogin />} />
-              <Route path="/premium" element={<PremiumDashboard />} />
-              <Route path="/premium_dashboard" element={<PremiumDashboard />} />
-              <Route path="/premium_dashboard_react" element={<PremiumDashboard />} />
-              <Route path="/crossfit" element={<CrossfitExact />} />
-              <Route path="/crossfit_react" element={<CrossfitExact />} />
-              <Route path="/communities" element={<Communities />} />
-              <Route path="/your_sports" element={<YourSports />} />
-              <Route path="/user_chat" element={<Messages />} />
-              <Route path="/user_chat/new" element={<NewMessage />} />
-              <Route path="/user_chat/chat/:username" element={<ChatThread />} />
-              <Route path="/home" element={<HomeTimeline />} />
-              <Route path="/workout_tracking" element={<WorkoutTracking />} />
-              <Route path="/community_feed_react/:community_id" element={<CommunityFeed />} />
-              <Route path="/community/:community_id/members" element={<Members />} />
-              <Route path="/post/:post_id" element={<PostDetail />} />
-              <Route path="/compose" element={<CreatePost />} />
-              <Route path="*" element={<PremiumDashboard />} />
-              </Routes>
-            </ErrorBoundary>
-          </div>
-        </HeaderContext.Provider>
+        <AppRoutes />
       </BrowserRouter>
     </QueryClientProvider>
   )
