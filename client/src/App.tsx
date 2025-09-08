@@ -60,6 +60,7 @@ function AppRoutes(){
           <Route path="/user_chat" element={<Messages />} />
           <Route path="/user_chat/new" element={<NewMessage />} />
           <Route path="/user_chat/chat/:username" element={<ChatThread />} />
+          <Route path="/profile" element={<Profile />} />
           <Route path="/profile_react" element={<Profile />} />
           <Route path="/home" element={<HomeTimeline />} />
           <Route path="/workout_tracking" element={<WorkoutTracking />} />
