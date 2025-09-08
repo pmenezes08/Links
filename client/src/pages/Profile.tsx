@@ -19,6 +19,11 @@ export default function Profile(){
   const [data, setData] = useState<Profile|null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string|null>(null)
+  const [form, setForm] = useState({
+    display_name: '', bio: '', location: '', website: '', instagram: '', twitter: '', is_public: true,
+    role: '', company: '', industry: '', degree: '', school: '', skills: '', linkedin: '', experience: '',
+    age: '', gender: '', country: '', city: ''
+  })
 
   useEffect(() => {
     let mounted = true
@@ -28,7 +33,18 @@ export default function Profile(){
         const r = await fetch('/api/profile_me', { credentials:'include' })
         const j = await r.json()
         if (!mounted) return
-        if (j?.success) setData(j.profile)
+        if (j?.success){
+          setData(j.profile)
+          setForm(f => ({
+            ...f,
+            display_name: j.profile.display_name || '',
+            bio: j.profile.bio || '',
+            location: j.profile.location || '',
+            website: j.profile.website || '',
+            instagram: j.profile.instagram || '',
+            twitter: j.profile.twitter || ''
+          }))
+        }
         else setError(j?.error || 'Error')
       }catch{
         if (mounted) setError('Error')
@@ -57,6 +73,110 @@ export default function Profile(){
           </div>
         </div>
         {data.bio ? (<div className="text-sm whitespace-pre-wrap text-white/90">{data.bio}</div>) : null}
+        {/* Public Profile form */}
+        <div className="rounded-xl border border-white/10 p-3">
+          <div className="font-semibold mb-2">Public Profile</div>
+          <form onSubmit={async (e)=>{
+            e.preventDefault()
+            const fd = new FormData()
+            fd.append('display_name', form.display_name)
+            fd.append('bio', form.bio)
+            fd.append('location', form.location)
+            fd.append('website', form.website)
+            fd.append('instagram', form.instagram)
+            fd.append('twitter', form.twitter)
+            fd.append('is_public', form.is_public ? 'on' : '')
+            const r = await fetch('/update_public_profile', { method:'POST', credentials:'include', body: fd })
+            const j = await r.json().catch(()=>null)
+            if (!j?.success) alert(j?.error || 'Error updating')
+          }}>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <label className="text-sm">Display Name
+                <input className="mt-1 w-full rounded-md bg-white/5 border border-white/10 px-2 py-1.5" value={form.display_name} onChange={e=> setForm(f=>({...f, display_name: e.target.value}))} />
+              </label>
+              <label className="text-sm">Location
+                <input className="mt-1 w-full rounded-md bg白/5 border border-white/10 px-2 py-1.5" value={form.location} onChange={e=> setForm(f=>({...f, location: e.target.value}))} />
+              </label>
+              <label className="text-sm">Website
+                <input className="mt-1 w-full rounded-md bg-white/5 border border-white/10 px-2 py-1.5" value={form.website} onChange={e=> setForm(f=>({...f, website: e.target.value}))} />
+              </label>
+              <label className="text-sm">Instagram
+                <input className="mt-1 w-full rounded-md bg-white/5 border border-white/10 px-2 py-1.5" value={form.instagram} onChange={e=> setForm(f=>({...f, instagram: e.target.value}))} />
+              </label>
+              <label className="text-sm">Twitter
+                <input className="mt-1 w-full rounded-md bg-white/5 border border-white/10 px-2 py-1.5" value={form.twitter} onChange={e=> setForm(f=>({...f, twitter: e.target.value}))} />
+              </label>
+            </div>
+            <label className="block text-sm mt-3">Bio
+              <textarea className="mt-1 w-full rounded-md bg-white/5 border border-white/10 px-2 py-1.5" rows={3} value={form.bio} onChange={e=> setForm(f=>({...f, bio: e.target.value}))} />
+            </label>
+            <label className="inline-flex items-center gap-2 mt-2 text-sm">
+              <input type="checkbox" checked={form.is_public} onChange={e=> setForm(f=>({...f, is_public: e.target.checked}))} /> Public
+            </label>
+            <div className="mt-3">
+              <button className="px-3 py-1.5 rounded-md bg-[#4db6ac] text-black">Update Public Profile</button>
+              <a className="ml-3 text-sm text-[#9fb0b5] underline" href={`/profile/${data.username}`}>
+                View Public Profile
+              </a>
+            </div>
+          </form>
+        </div>
+
+        {/* Professional Information */}
+        <div className="rounded-xl border border-white/10 p-3">
+          <div className="font-semibold mb-2">Professional Information</div>
+          <form onSubmit={async (e)=>{
+            e.preventDefault()
+            const fd = new FormData()
+            fd.append('role', form.role)
+            fd.append('company', form.company)
+            fd.append('industry', form.industry)
+            fd.append('degree', form.degree)
+            fd.append('school', form.school)
+            fd.append('skills', form.skills)
+            fd.append('linkedin', form.linkedin)
+            fd.append('experience', form.experience)
+            const r = await fetch('/update_professional', { method:'POST', credentials:'include', body: fd })
+            const j = await r.json().catch(()=>null)
+            if (!j?.success) alert(j?.error || 'Error updating')
+          }}>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <input className="rounded-md bg-white/5 border border-white/10 px-2 py-1.5" placeholder="Role" value={form.role} onChange={e=> setForm(f=>({...f, role: e.target.value}))} />
+              <input className="rounded-md bg-white/5 border border-white/10 px-2 py-1.5" placeholder="Company" value={form.company} onChange={e=> setForm(f=>({...f, company: e.target.value}))} />
+              <input className="rounded-md bg-white/5 border border-white/10 px-2 py-1.5" placeholder="Industry" value={form.industry} onChange={e=> setForm(f=>({...f, industry: e.target.value}))} />
+              <input className="rounded-md bg-white/5 border border-white/10 px-2 py-1.5" placeholder="Degree" value={form.degree} onChange={e=> setForm(f=>({...f, degree: e.target.value}))} />
+              <input className="rounded-md bg-white/5 border border-white/10 px-2 py-1.5" placeholder="School" value={form.school} onChange={e=> setForm(f=>({...f, school: e.target.value}))} />
+              <input className="rounded-md bg-white/5 border border-white/10 px-2 py-1.5" placeholder="Skills" value={form.skills} onChange={e=> setForm(f=>({...f, skills: e.target.value}))} />
+              <input className="rounded-md bg-white/5 border border-white/10 px-2 py-1.5" placeholder="LinkedIn" value={form.linkedin} onChange={e=> setForm(f=>({...f, linkedin: e.target.value}))} />
+              <input className="rounded-md bg-white/5 border border-white/10 px-2 py-1.5" placeholder="Experience" value={form.experience} onChange={e=> setForm(f=>({...f, experience: e.target.value}))} />
+            </div>
+            <button className="mt-3 px-3 py-1.5 rounded-md bg-[#4db6ac] text-black">Save Professional Info</button>
+          </form>
+        </div>
+
+        {/* Personal Information */}
+        <div className="rounded-xl border border-white/10 p-3">
+          <div className="font-semibold mb-2">Personal Details</div>
+          <form onSubmit={async (e)=>{
+            e.preventDefault()
+            const fd = new FormData()
+            fd.append('age', form.age)
+            fd.append('gender', form.gender)
+            fd.append('country', form.country)
+            fd.append('city', form.city)
+            const r = await fetch('/update_personal_info', { method:'POST', credentials:'include', body: fd })
+            const j = await r.json().catch(()=>null)
+            if (!j?.success) alert(j?.error || 'Error updating')
+          }}>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <input className="rounded-md bg-white/5 border border-white/10 px-2 py-1.5" placeholder="Age" value={form.age} onChange={e=> setForm(f=>({...f, age: e.target.value}))} />
+              <input className="rounded-md bg-white/5 border border-white/10 px-2 py-1.5" placeholder="Gender" value={form.gender} onChange={e=> setForm(f=>({...f, gender: e.target.value}))} />
+              <input className="rounded-md bg-white/5 border border-white/10 px-2 py-1.5" placeholder="Country" value={form.country} onChange={e=> setForm(f=>({...f, country: e.target.value}))} />
+              <input className="rounded-md bg-white/5 border border-white/10 px-2 py-1.5" placeholder="City" value={form.city} onChange={e=> setForm(f=>({...f, city: e.target.value}))} />
+            </div>
+            <button className="mt-3 px-3 py-1.5 rounded-md bg-[#4db6ac] text-black">Save Personal Details</button>
+          </form>
+        </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
           {data.location ? (<div className="text-[#9fb0b5]"><i className="fa-solid fa-location-dot mr-2" />{data.location}</div>) : null}
           {data.website ? (<a className="text-[#9fb0b5] hover:text-teal-300" href={data.website} target="_blank" rel="noreferrer"><i className="fa-solid fa-link mr-2" />{data.website}</a>) : null}
