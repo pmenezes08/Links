@@ -52,12 +52,30 @@ INFO:__main__:Added is_active column to users table
 INFO:__main__:Added link column to notifications table
 INFO:__main__:Added is_active column to communities table
 INFO:__main__:Checking calendar_events table...
-ERROR:__main__:Error initializing database: no such table: calendar_events
-Traceback (most recent call last):
-  File "/workspace/bodybuilding_app.py", line 904, in <module>
-    init_db()
-    ~~~~~~~^^
-  File "/workspace/bodybuilding_app.py", line 791, in init_db
-    c.execute("ALTER TABLE calendar_events ADD COLUMN community_id INTEGER")
-    ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-sqlite3.OperationalError: no such table: calendar_events
+INFO:__main__:Added community_id column to calendar_events table
+INFO:__main__:Creating event RSVPs table...
+INFO:__main__:Creating event invitations table...
+INFO:__main__:Database initialization completed successfully
+INFO:__main__:Database indexes ensured
+INFO:__main__:Database path: /workspace/users.db
+INFO:__main__:Users table exists. Checking for missing tables and columns...
+INFO:__main__:Column description already exists in communities table
+INFO:__main__:Column location already exists in communities table
+INFO:__main__:Column background_path already exists in communities table
+INFO:__main__:Column template already exists in communities table
+INFO:__main__:Column background_color already exists in communities table
+INFO:__main__:Column text_color already exists in communities table
+INFO:__main__:Column accent_color already exists in communities table
+INFO:__main__:Column card_color already exists in communities table
+INFO:__main__:Column parent_community_id already exists in communities table
+INFO:__main__:Added column parent_reply_id to replies table
+INFO:__main__:Missing tables and columns added successfully
+INFO:__main__:Database check completed successfully
+INFO:__main__:Database initialized successfully on startup
+ * Serving Flask app 'bodybuilding_app'
+ * Debug mode: off
+INFO:werkzeug:[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8080
+ * Running on http://172.30.0.2:8080
+INFO:werkzeug:[33mPress CTRL+C to quit[0m

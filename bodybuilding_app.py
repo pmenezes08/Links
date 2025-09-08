@@ -796,6 +796,17 @@ def init_db():
             
             # Add community_id to calendar_events if it doesn't exist
             logger.info("Checking calendar_events table...")
+            # Ensure calendar_events table exists before altering
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS calendar_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    title TEXT,
+                    description TEXT,
+                    start_time TEXT,
+                    end_time TEXT,
+                    location TEXT
+                )
+            """)
             c.execute("PRAGMA table_info(calendar_events)")
             calendar_columns = [col[1] for col in c.fetchall()]
             if 'community_id' not in calendar_columns:
@@ -1481,6 +1492,16 @@ def vite_svg():
         return send_from_directory(dist_dir, 'vite.svg')
     except Exception as e:
         logger.error(f"Error serving vite.svg: {str(e)}")
+        abort(404)
+
+@app.route('/sw.js')
+def service_worker():
+    try:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        dist_dir = os.path.join(base_dir, 'client', 'dist')
+        return send_from_directory(dist_dir, 'sw.js')
+    except Exception as e:
+        logger.error(f"Error serving sw.js: {str(e)}")
         abort(404)
 
 @app.route('/premium_dashboard_react')
