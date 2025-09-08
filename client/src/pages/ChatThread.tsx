@@ -38,15 +38,25 @@ export default function ChatThread(){
     return () => clearTimeout(t)
   }, [messages])
 
-  // Lock body scroll so only chat area scrolls; keeps fixed header visible
+  // Freeze body scroll (iOS-safe) so only chat pane scrolls; preserves fixed header visibility
   useEffect(() => {
+    const scrollY = window.scrollY || window.pageYOffset
+    const prevBodyPosition = document.body.style.position
+    const prevBodyTop = document.body.style.top
+    const prevBodyWidth = document.body.style.width
     const prevHtmlOverflow = document.documentElement.style.overflow
-    const prevBodyOverflow = document.body.style.overflow
+
     document.documentElement.style.overflow = 'hidden'
-    document.body.style.overflow = 'hidden'
+    document.body.style.position = 'fixed'
+    document.body.style.top = `-${scrollY}px`
+    document.body.style.width = '100%'
+
     return () => {
       document.documentElement.style.overflow = prevHtmlOverflow
-      document.body.style.overflow = prevBodyOverflow
+      document.body.style.position = prevBodyPosition
+      document.body.style.top = prevBodyTop
+      document.body.style.width = prevBodyWidth
+      window.scrollTo(0, scrollY)
     }
   }, [])
 
@@ -78,7 +88,7 @@ export default function ChatThread(){
     <div className="fixed inset-x-0 top-14 bottom-0 bg-black text-white">
       <div className="h-full max-w-3xl mx-auto flex flex-col">
         {/* Messages list (WhatsApp style bubbles) */}
-        <div ref={listRef} className="flex-1 overflow-y-auto overscroll-contain px-2 sm:px-3 py-3 space-y-1">
+        <div ref={listRef} className="flex-1 overflow-y-auto overscroll-contain px-2 sm:px-3 py-3 space-y-1" style={{ WebkitOverflowScrolling: 'touch' as any }}>
           {messages.map(m => (
             <div key={m.id} className={`flex ${m.sent ? 'justify-end' : 'justify-start'}`}>
               <div
