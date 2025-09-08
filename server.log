@@ -8,17 +8,17 @@ INFO:__main__:Column age already exists
 INFO:__main__:Column fitness_level already exists
 INFO:__main__:Column primary_goal already exists
 INFO:__main__:Column created_at already exists
-INFO:__main__:Added column country
-INFO:__main__:Added column city
-INFO:__main__:Added column industry
-INFO:__main__:Added column role
-INFO:__main__:Added column company
-INFO:__main__:Added column degree
-INFO:__main__:Added column school
-INFO:__main__:Added column skills
-INFO:__main__:Added column linkedin
-INFO:__main__:Added column experience
-INFO:__main__:Added column mobile
+INFO:__main__:Column country already exists
+INFO:__main__:Column city already exists
+INFO:__main__:Column industry already exists
+INFO:__main__:Column role already exists
+INFO:__main__:Column company already exists
+INFO:__main__:Column degree already exists
+INFO:__main__:Column school already exists
+INFO:__main__:Column skills already exists
+INFO:__main__:Column linkedin already exists
+INFO:__main__:Column experience already exists
+INFO:__main__:Column mobile already exists
 INFO:__main__:Inserting admin user...
 INFO:__main__:Creating posts table...
 INFO:__main__:Creating crossfit entries table...
