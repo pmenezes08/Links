@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
 
@@ -10,6 +10,7 @@ export default function ChatThread(){
   const [otherUserId, setOtherUserId] = useState<number|''>('')
   const [messages, setMessages] = useState<Array<{ id:number; text:string; sent:boolean; time:string }>>([])
   const [draft, setDraft] = useState('')
+  const listRef = useRef<HTMLDivElement|null>(null)
 
   useEffect(() => {
     if (!username) return
@@ -27,6 +28,15 @@ export default function ChatThread(){
       }).catch(()=>{})
   }, [username])
 
+  // Scroll to bottom whenever messages change
+  useEffect(() => {
+    const el = listRef.current
+    if (!el) return
+    // slight delay to ensure DOM paints
+    const t = setTimeout(() => { el.scrollTop = el.scrollHeight }, 0)
+    return () => clearTimeout(t)
+  }, [messages])
+
   function send(){
     if (!otherUserId || !draft.trim()) return
     const fd = new URLSearchParams({ recipient_id: String(otherUserId), message: draft.trim() })
@@ -43,17 +53,44 @@ export default function ChatThread(){
   return (
     <div className="fixed inset-x-0 top-14 bottom-0 bg-black text-white">
       <div className="h-full max-w-3xl mx-auto flex flex-col">
-        <div className="flex-1 overflow-y-auto p-3 space-y-2">
+        {/* Messages list (WhatsApp style bubbles) */}
+        <div ref={listRef} className="flex-1 overflow-y-auto px-2 sm:px-3 py-3 space-y-1">
           {messages.map(m => (
-            <div key={m.id} className={`max-w-[85%] px-3 py-2 rounded-lg break-words ${m.sent ? 'ml-auto bg-[#4db6ac] text-black' : 'bg-white/10'}`}>
-              <div className="text-sm whitespace-pre-wrap break-words">{m.text}</div>
-              <div className="text-[10px] opacity-70 mt-1 text-right">{m.time}</div>
+            <div key={m.id} className={`flex ${m.sent ? 'justify-end' : 'justify-start'}`}>
+              <div
+                className={`max-w-[82%] md:max-w-[70%] px-3 py-2 rounded-2xl text-[14px] leading-snug whitespace-pre-wrap break-words shadow-sm border ${m.sent ? 'bg-[#075E54] text-white border-[#075E54]' : 'bg-[#1a1a1a] text-white border-white/10'} ${m.sent ? 'rounded-br-md' : 'rounded-bl-md'}`}
+              >
+                <div>{m.text}</div>
+                <div className={`text-[10px] mt-1 ${m.sent ? 'text-white/70' : 'text-white/50'} text-right`}>{new Date(m.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+              </div>
             </div>
           ))}
         </div>
-        <div className="p-3 border-t border-white/10 flex gap-2">
-          <input className="flex-1 rounded-md bg-black border border-white/15 px-3 py-2" placeholder="Type a message" value={draft} onChange={e=> setDraft(e.target.value)} />
-          <button className="px-4 py-2 rounded-md bg-[#4db6ac] text-black hover:brightness-110" onClick={send}>Send</button>
+
+        {/* Composer (sticky bottom) */}
+        <div className="p-2 sm:p-3 border-t border-white/10 flex items-end gap-2 bg-black">
+          <button className="hidden sm:inline-flex w-9 h-9 flex-shrink-0 items-center justify-center rounded-full bg-white/5 border border-white/10">
+            <i className="fa-solid fa-paperclip text-white/70 text-sm" />
+          </button>
+          <input
+            className="flex-1 rounded-full bg-[#0b0f10] border border-white/15 px-4 py-2 text-[15px] outline-none focus:border-[#4db6ac]"
+            placeholder="Type a message"
+            value={draft}
+            onChange={e=> setDraft(e.target.value)}
+            onKeyDown={e=> {
+              if (e.key === 'Enter' && !e.shiftKey){
+                e.preventDefault()
+                send()
+              }
+            }}
+          />
+          <button
+            className="px-4 py-2 rounded-full bg-[#4db6ac] text-black font-medium hover:brightness-110"
+            onClick={send}
+            aria-label="Send"
+          >
+            <i className="fa-solid fa-paper-plane" />
+          </button>
         </div>
       </div>
     </div>
