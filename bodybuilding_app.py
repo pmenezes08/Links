@@ -2097,11 +2097,59 @@ def profile():
             user = c.fetchone()
             
         if user:
+            # Mobile -> React, Desktop -> HTML
+            ua = request.headers.get('User-Agent', '')
+            is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
+            if is_mobile:
+                base_dir = os.path.dirname(os.path.abspath(__file__))
+                dist_dir = os.path.join(base_dir, 'client', 'dist')
+                return send_from_directory(dist_dir, 'index.html')
             return render_template('profile.html', username=username, user=user)
         return render_template('index.html', error="User profile not found!")
     except Exception as e:
         logger.error(f"Error in profile for {username}: {str(e)}")
         abort(500)
+
+@app.route('/api/profile_me')
+@login_required
+def api_profile_me():
+    username = session['username']
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("""
+                SELECT u.username, u.email, u.subscription,
+                       p.display_name, p.bio, p.location, p.website,
+                       p.instagram, p.twitter, p.profile_picture, p.cover_photo
+                FROM users u
+                LEFT JOIN user_profiles p ON u.username = p.username
+                WHERE u.username = ?
+            """, (username,))
+            row = c.fetchone()
+            if not row:
+                return jsonify({ 'success': False, 'error': 'not found' }), 404
+            def get_val(key_or_idx):
+                try:
+                    return row[key_or_idx] if hasattr(row, 'keys') and (isinstance(key_or_idx, str) and key_or_idx in row.keys()) else row[key_or_idx]
+                except Exception:
+                    return None
+            profile = {
+                'username': username,
+                'email': get_val('email') if isinstance(row, dict) or hasattr(row, 'keys') else row[1],
+                'subscription': get_val('subscription') if isinstance(row, dict) or hasattr(row, 'keys') else row[2],
+                'display_name': get_val('display_name') if isinstance(row, dict) or hasattr(row, 'keys') else row[3],
+                'bio': get_val('bio') if isinstance(row, dict) or hasattr(row, 'keys') else row[4],
+                'location': get_val('location') if isinstance(row, dict) or hasattr(row, 'keys') else row[5],
+                'website': get_val('website') if isinstance(row, dict) or hasattr(row, 'keys') else row[6],
+                'instagram': get_val('instagram') if isinstance(row, dict) or hasattr(row, 'keys') else row[7],
+                'twitter': get_val('twitter') if isinstance(row, dict) or hasattr(row, 'keys') else row[8],
+                'profile_picture': get_val('profile_picture') if isinstance(row, dict) or hasattr(row, 'keys') else row[9],
+                'cover_photo': get_val('cover_photo') if isinstance(row, dict) or hasattr(row, 'keys') else row[10],
+            }
+            return jsonify({ 'success': True, 'profile': profile })
+    except Exception as e:
+        logger.error(f"Error in api_profile_me: {e}")
+        return jsonify({ 'success': False, 'error': 'server error' }), 500
 @app.route('/upload_logo', methods=['POST'])
 @login_required
 def upload_logo():
