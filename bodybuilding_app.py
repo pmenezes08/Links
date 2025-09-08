@@ -1074,8 +1074,24 @@ def index():
         print("Username missing or empty")
         logger.warning("Username missing or empty")
         return render_template('index.html', error="Please enter a username!")
-    print("Rendering index.html for GET request")
-    return render_template('index.html')
+    # GET request: Desktop -> HTML template, Mobile -> React (if available)
+    try:
+        ua = request.headers.get('User-Agent', '')
+        is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
+        if is_mobile:
+            try:
+                base_dir = os.path.dirname(os.path.abspath(__file__))
+                dist_dir = os.path.join(base_dir, 'client', 'dist')
+                index_path = os.path.join(dist_dir, 'index.html')
+                if os.path.exists(index_path):
+                    return send_from_directory(dist_dir, 'index.html')
+            except Exception as e:
+                logger.warning(f"React mobile index not available: {e}")
+        print("Rendering index.html for GET request (desktop or React missing)")
+        return render_template('index.html')
+    except Exception as e:
+        logger.error(f"Error in / route: {str(e)}")
+        return ("Internal Server Error", 500)
 
 @app.route('/login_x')
 def login_x():
