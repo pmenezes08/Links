@@ -1,50 +1,70 @@
 import { useEffect, useState } from 'react'
 import { useHeader } from '../contexts/HeaderContext'
+import { useNavigate } from 'react-router-dom'
+
+type Thread = {
+  other_username: string
+  display_name: string
+  profile_picture_url: string | null
+  last_sent_text: string | null
+  last_sent_time: string | null
+  last_activity_time: string | null
+}
 
 export default function Messages(){
   const { setTitle } = useHeader()
+  const navigate = useNavigate()
   useEffect(() => { setTitle('Messages') }, [setTitle])
 
-  const [counts, setCounts] = useState<Array<{ community_id:number; community_name:string; active_chats:number }>>([])
-  const [expanded, setExpanded] = useState<Record<number, boolean>>({})
+  const [threads, setThreads] = useState<Thread[]>([])
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    fetch('/get_active_chat_counts', { credentials:'include' })
+    fetch('/api/chat_threads', { credentials:'include' })
       .then(r=>r.json()).then(j=>{
-        if (j?.success && Array.isArray(j.counts)) setCounts(j.counts)
+        if (j?.success && Array.isArray(j.threads)) setThreads(j.threads)
       }).catch(()=>{})
+      .finally(()=> setLoading(false))
   }, [])
 
   return (
     <div className="fixed inset-x-0 top-14 bottom-0 bg-black text-white">
-      <div className="h-full max-w-3xl mx-auto px-3 py-3">
-        <div className="rounded-xl border border-white/10 bg-black">
-          <button className="w-full p-3 border-b border-white/10 font-semibold text-left flex items-center justify-between" onClick={()=>{
-            const allOpen = Object.values(expanded).some(v=>v)
-            if (allOpen){ setExpanded({}) } else {
-              const map: Record<number,boolean> = {}
-              for (const c of counts) map[c.community_id] = true
-              setExpanded(map)
-            }
-          }}>
-            <span>Active Chats</span>
-            <i className="fa-solid fa-chevron-down text-xs text-[#9fb0b5]" />
-          </button>
-          <div className="divide-y divide-white/10">
-            {counts.length===0 ? (
-              <div className="px-3 py-3 text-[#9fb0b5] text-sm">No active chats yet.</div>
-            ) : counts.map(c => (
-              <div key={c.community_id}>
-                <button className="w-full px-3 py-2 text-left hover:bg-white/5 flex items-center justify-between" onClick={()=> setExpanded(prev=> ({...prev, [c.community_id]: !prev[c.community_id]}))}>
-                  <span className="font-medium">{c.community_name}</span>
-                  <span className="text-sm text-[#9fb0b5]">{c.active_chats} chats</span>
-                </button>
-                {expanded[c.community_id] && (
-                  <div className="px-3 py-2 text-sm text-[#9fb0b5]">Tap + to start a new chat or open an existing thread.</div>
-                )}
-              </div>
-            ))}
-          </div>
+      <div className="h-full max-w-3xl mx-auto px-1 sm:px-3 py-2">
+        <div className="h-full overflow-y-auto rounded-xl border border-white/10 bg-black divide-y divide-white/10">
+          {loading ? (
+            <div className="px-4 py-4 text-sm text-[#9fb0b5]">Loading chats...</div>
+          ) : threads.length === 0 ? (
+            <div className="px-4 py-4 text-sm text-[#9fb0b5]">No chats yet.</div>
+          ) : (
+            threads.map((t) => (
+              <button
+                key={t.other_username}
+                onClick={() => navigate(`/user_chat/chat/${encodeURIComponent(t.other_username)}`)}
+                className="w-full px-3 py-2 hover:bg-white/5 flex items-center gap-3"
+              >
+                <div className="w-12 h-12 rounded-full bg-white/10 border border-white/10 overflow-hidden flex items-center justify-center">
+                  {t.profile_picture_url ? (
+                    <img src={t.profile_picture_url} alt="" className="w-full h-full object-cover" />
+                  ) : (
+                    <i className="fa-solid fa-user text-[#9fb0b5]" />
+                  )}
+                </div>
+                <div className="flex-1 min-w-0 text-left">
+                  <div className="flex items-center justify-between">
+                    <div className="font-medium truncate">{t.display_name}</div>
+                    {t.last_activity_time && (
+                      <div className="ml-3 flex-shrink-0 text-[11px] text-[#9fb0b5]">
+                        {new Date(t.last_activity_time).toLocaleDateString()}
+                      </div>
+                    )}
+                  </div>
+                  <div className="text-[13px] text-[#9fb0b5] truncate">
+                    {t.last_sent_text ? t.last_sent_text : 'Say hello'}
+                  </div>
+                </div>
+              </button>
+            ))
+          )}
         </div>
       </div>
     </div>

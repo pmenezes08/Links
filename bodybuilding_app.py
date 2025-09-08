@@ -2978,6 +2978,113 @@ def send_message():
         logger.error(f"Error sending message: {str(e)}")
         return jsonify({'success': False, 'error': 'Failed to send message'})
 
+@app.route('/api/chat_threads')
+@login_required
+def api_chat_threads():
+    """Return list of chat threads for the current user with avatar and last message sent by the user.
+    Shape: { success, threads: [ { other_username, display_name, profile_picture_url, last_sent_text, last_sent_time, last_activity_time } ] }
+    """
+    username = session.get('username')
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+
+            # Gather all counterpart usernames the user has messages with (either direction)
+            c.execute(
+                """
+                SELECT DISTINCT receiver AS other_username
+                FROM messages
+                WHERE sender = ?
+                UNION
+                SELECT DISTINCT sender AS other_username
+                FROM messages
+                WHERE receiver = ?
+                ORDER BY other_username
+                """,
+                (username, username),
+            )
+            counterpart_rows = c.fetchall()
+
+            threads = []
+            for row in counterpart_rows:
+                try:
+                    other_username = row['other_username'] if isinstance(row, dict) or hasattr(row, 'keys') else row[0]
+
+                    # Last message SENT by the current user to this counterpart
+                    c.execute(
+                        """
+                        SELECT message, timestamp
+                        FROM messages
+                        WHERE sender = ? AND receiver = ?
+                        ORDER BY timestamp DESC
+                        LIMIT 1
+                        """,
+                        (username, other_username),
+                    )
+                    sent_row = c.fetchone()
+                    last_sent_text = (sent_row['message'] if sent_row and ('message' in sent_row.keys() if hasattr(sent_row, 'keys') else False) else (sent_row[0] if sent_row else None))
+                    last_sent_time = (sent_row['timestamp'] if sent_row and ('timestamp' in sent_row.keys() if hasattr(sent_row, 'keys') else False) else (sent_row[1] if sent_row else None))
+
+                    # Last activity in the conversation (either direction) for sorting
+                    c.execute(
+                        """
+                        SELECT timestamp
+                        FROM messages
+                        WHERE (sender = ? AND receiver = ?) OR (sender = ? AND receiver = ?)
+                        ORDER BY timestamp DESC
+                        LIMIT 1
+                        """,
+                        (username, other_username, other_username, username),
+                    )
+                    la_row = c.fetchone()
+                    last_activity_time = (la_row['timestamp'] if la_row and ('timestamp' in la_row.keys() if hasattr(la_row, 'keys') else False) else (la_row[0] if la_row else None))
+
+                    # Profile info (avatar)
+                    c.execute(
+                        "SELECT display_name, profile_picture FROM user_profiles WHERE username = ?",
+                        (other_username,),
+                    )
+                    profile = c.fetchone()
+                    display_name = None
+                    profile_picture_rel = None
+                    if profile:
+                        if hasattr(profile, 'keys') and 'display_name' in profile.keys():
+                            display_name = profile['display_name']
+                        else:
+                            try:
+                                display_name = profile[0]
+                            except Exception:
+                                display_name = None
+                        if hasattr(profile, 'keys') and 'profile_picture' in profile.keys():
+                            profile_picture_rel = profile['profile_picture']
+                        else:
+                            try:
+                                profile_picture_rel = profile[1]
+                            except Exception:
+                                profile_picture_rel = None
+                    display_name = display_name or other_username
+
+                    profile_picture_url = url_for('static', filename=profile_picture_rel) if profile_picture_rel else None
+
+                    threads.append({
+                        'other_username': other_username,
+                        'display_name': display_name,
+                        'profile_picture_url': profile_picture_url,
+                        'last_sent_text': last_sent_text,
+                        'last_sent_time': last_sent_time,
+                        'last_activity_time': last_activity_time,
+                    })
+                except Exception as inner_e:
+                    logger.warning(f"Failed to build thread for counterpart: {inner_e}")
+                    continue
+
+        # Sort threads by most recent activity
+        threads.sort(key=lambda t: t.get('last_activity_time') or '', reverse=True)
+        return jsonify({'success': True, 'threads': threads})
+    except Exception as e:
+        logger.error(f"Error building chat threads for {username}: {e}")
+        return jsonify({'success': False, 'error': 'Failed to load chats'}), 500
+
 @app.route('/user_chat')
 @login_required
 def user_chat():
