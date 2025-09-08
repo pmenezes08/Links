@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, useNavigate } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
 
 export default function ChatThread(){
   const { setTitle } = useHeader()
   const { username } = useParams()
+  const navigate = useNavigate()
   useEffect(() => { setTitle(username ? `Chat: ${username}` : 'Chat') }, [setTitle, username])
 
   const [otherUserId, setOtherUserId] = useState<number|''>('')
@@ -87,6 +88,13 @@ export default function ChatThread(){
   return (
     <div className="fixed inset-x-0 top-14 bottom-0 bg-black text-white">
       <div className="h-full max-w-3xl mx-auto flex flex-col">
+        {/* Chat subheader with back button (WhatsApp-style) */}
+        <div className="h-12 border-b border-white/10 flex items-center gap-2 px-3 bg-black/70 backdrop-blur z-30">
+          <button className="p-2 rounded-full hover:bg-white/5" onClick={()=> navigate('/user_chat')} aria-label="Back">
+            <i className="fa-solid fa-arrow-left" />
+          </button>
+          <div className="font-medium truncate">{username}</div>
+        </div>
         {/* Messages list (WhatsApp style bubbles) */}
         <div ref={listRef} className="flex-1 overflow-y-auto overscroll-contain px-2 sm:px-3 py-3 space-y-1" style={{ WebkitOverflowScrolling: 'touch' as any }}>
           {messages.map(m => (
