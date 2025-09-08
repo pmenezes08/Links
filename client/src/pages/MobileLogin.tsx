@@ -14,17 +14,7 @@ export default function MobileLogin() {
     setError(e)
   }, [])
 
-  // Lock viewport to prevent vertical movement
-  useEffect(() => {
-    const originalOverflow = document.body.style.overflow
-    const originalHeight = document.documentElement.style.height
-    document.body.style.overflow = 'hidden'
-    document.documentElement.style.height = '100%'
-    return () => {
-      document.body.style.overflow = originalOverflow
-      document.documentElement.style.height = originalHeight
-    }
-  }, [])
+  // Allow natural page scroll (no viewport locking)
 
   async function submitReset(e: React.FormEvent) {
     e.preventDefault()
@@ -59,7 +49,7 @@ export default function MobileLogin() {
               name="username"
               placeholder="Username"
               required
-              className="w-full rounded-md border border-white/10 bg-white/10 px-3 py-2 text-sm outline-none focus:border-teal-400/70"
+              className="w-full rounded-md border border-white/10 bg-white/10 px-3 py-3 text-base outline-none focus:border-teal-400/70"
             />
           </div>
           <button type="submit" className="w-full rounded-lg bg-teal-400 text-white py-2 text-sm font-medium active:opacity-90">Sign In</button>
