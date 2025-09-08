@@ -11,6 +11,33 @@ type HeaderBarProps = {
 export default function HeaderBar({ title, username, avatarUrl }: HeaderBarProps){
   const navigate = useNavigate()
   const [menuOpen, setMenuOpen] = useState(false)
+  const [unreadMsgs, setUnreadMsgs] = useState<number>(0)
+  const [unreadNotifs, setUnreadNotifs] = useState<number>(0)
+
+  // Light polling for unread counts
+  // Using window.setInterval to avoid importing useEffect here per minimal diff constraints
+  if (typeof window !== 'undefined' && !(window as any).__header_poll){
+    ;(window as any).__header_poll = true
+    const poll = async () => {
+      try{
+        // Unread messages
+        const m = await fetch('/check_unread_messages', { credentials:'include' })
+        const mj = await m.json().catch(()=>null)
+        if (mj && typeof mj.unread_count === 'number') setUnreadMsgs(mj.unread_count)
+      }catch{}
+      try{
+        // Unread notifications
+        const n = await fetch('/api/notifications', { credentials:'include' })
+        const nj = await n.json().catch(()=>null)
+        if (nj?.success && Array.isArray(nj.notifications)){
+          const cnt = nj.notifications.filter((x:any)=> x && x.is_read === false).length
+          setUnreadNotifs(cnt)
+        }
+      }catch{}
+    }
+    poll()
+    setInterval(poll, 10000)
+  }
 
   const resolvedAvatar = avatarUrl
     ? ((avatarUrl.startsWith('http') || avatarUrl.startsWith('/static')) ? avatarUrl : `/static/${avatarUrl}`)
@@ -27,11 +54,13 @@ export default function HeaderBar({ title, username, avatarUrl }: HeaderBarProps
           <button className="p-2 rounded-full hover:bg-white/5" onClick={()=> navigate('/user_chat/new')} aria-label="New Message">
             <i className="fa-solid fa-plus" />
           </button>
-          <button className="p-2 rounded-full hover:bg-white/5" onClick={()=> navigate('/user_chat')} aria-label="Messages">
+          <button className="relative p-2 rounded-full hover:bg-white/5" onClick={()=> navigate('/user_chat')} aria-label="Messages">
             <i className="fa-solid fa-cloud" />
+            {unreadMsgs > 0 ? (<span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-[#4db6ac] text-black text-[10px] flex items-center justify-center">{unreadMsgs > 99 ? '99+' : unreadMsgs}</span>) : null}
           </button>
-          <button className="p-2 rounded-full hover:bg-white/5" onClick={()=> navigate('/notifications')} aria-label="Notifications">
+          <button className="relative p-2 rounded-full hover:bg-white/5" onClick={()=> navigate('/notifications')} aria-label="Notifications">
             <i className="fa-regular fa-bell" />
+            {unreadNotifs > 0 ? (<span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-[#4db6ac] text-black text-[10px] flex items-center justify-center">{unreadNotifs > 99 ? '99+' : unreadNotifs}</span>) : null}
           </button>
         </div>
       </div>
