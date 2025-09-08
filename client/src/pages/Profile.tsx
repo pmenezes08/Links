@@ -95,7 +95,7 @@ export default function Profile(){
                 <input className="mt-1 w-full rounded-md bg-white/5 border border-white/10 px-2 py-1.5" value={form.display_name} onChange={e=> setForm(f=>({...f, display_name: e.target.value}))} />
               </label>
               <label className="text-sm">Location
-                <input className="mt-1 w-full rounded-md bg白/5 border border-white/10 px-2 py-1.5" value={form.location} onChange={e=> setForm(f=>({...f, location: e.target.value}))} />
+                <input className="mt-1 w-full rounded-md bg-black text-white border border-white/10 px-2 py-1.5" value={form.location} onChange={e=> setForm(f=>({...f, location: e.target.value}))} />
               </label>
               <label className="text-sm">Website
                 <input className="mt-1 w-full rounded-md bg-white/5 border border-white/10 px-2 py-1.5" value={form.website} onChange={e=> setForm(f=>({...f, website: e.target.value}))} />
