@@ -92,23 +92,23 @@ export default function Profile(){
           }}>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <label className="text-sm">Display Name
-                <input className="mt-1 w-full rounded-md bg-white/5 border border-white/10 px-2 py-1.5" value={form.display_name} onChange={e=> setForm(f=>({...f, display_name: e.target.value}))} />
+                <input className="mt-1 w-full rounded-md bg-black text-white border border-white/10 px-2 py-1.5 text-[16px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]" value={form.display_name} onChange={e=> setForm(f=>({...f, display_name: e.target.value}))} />
               </label>
               <label className="text-sm">Location
-                <input className="mt-1 w-full rounded-md bg-black text-white border border-white/10 px-2 py-1.5" value={form.location} onChange={e=> setForm(f=>({...f, location: e.target.value}))} />
+                <input className="mt-1 w-full rounded-md bg-black text-white border border-white/10 px-2 py-1.5 text-[16px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]" value={form.location} onChange={e=> setForm(f=>({...f, location: e.target.value}))} />
               </label>
               <label className="text-sm">Website
-                <input className="mt-1 w-full rounded-md bg-white/5 border border-white/10 px-2 py-1.5" value={form.website} onChange={e=> setForm(f=>({...f, website: e.target.value}))} />
+                <input className="mt-1 w-full rounded-md bg-black text-white border border-white/10 px-2 py-1.5 text-[16px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]" value={form.website} onChange={e=> setForm(f=>({...f, website: e.target.value}))} />
               </label>
               <label className="text-sm">Instagram
-                <input className="mt-1 w-full rounded-md bg-white/5 border border-white/10 px-2 py-1.5" value={form.instagram} onChange={e=> setForm(f=>({...f, instagram: e.target.value}))} />
+                <input className="mt-1 w-full rounded-md bg-black text-white border border-white/10 px-2 py-1.5 text-[16px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]" value={form.instagram} onChange={e=> setForm(f=>({...f, instagram: e.target.value}))} />
               </label>
               <label className="text-sm">Twitter
-                <input className="mt-1 w-full rounded-md bg-white/5 border border-white/10 px-2 py-1.5" value={form.twitter} onChange={e=> setForm(f=>({...f, twitter: e.target.value}))} />
+                <input className="mt-1 w-full rounded-md bg-black text-white border border-white/10 px-2 py-1.5 text-[16px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]" value={form.twitter} onChange={e=> setForm(f=>({...f, twitter: e.target.value}))} />
               </label>
             </div>
             <label className="block text-sm mt-3">Bio
-              <textarea className="mt-1 w-full rounded-md bg-white/5 border border-white/10 px-2 py-1.5" rows={3} value={form.bio} onChange={e=> setForm(f=>({...f, bio: e.target.value}))} />
+              <textarea className="mt-1 w-full rounded-md bg-black text-white border border-white/10 px-2 py-1.5 text-[16px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]" rows={3} value={form.bio} onChange={e=> setForm(f=>({...f, bio: e.target.value}))} />
             </label>
             <label className="inline-flex items-center gap-2 mt-2 text-sm">
               <input type="checkbox" checked={form.is_public} onChange={e=> setForm(f=>({...f, is_public: e.target.checked}))} /> Public
@@ -141,14 +141,14 @@ export default function Profile(){
             if (!j?.success) alert(j?.error || 'Error updating')
           }}>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <input className="rounded-md bg-white/5 border border-white/10 px-2 py-1.5" placeholder="Role" value={form.role} onChange={e=> setForm(f=>({...f, role: e.target.value}))} />
-              <input className="rounded-md bg-white/5 border border-white/10 px-2 py-1.5" placeholder="Company" value={form.company} onChange={e=> setForm(f=>({...f, company: e.target.value}))} />
-              <input className="rounded-md bg-white/5 border border-white/10 px-2 py-1.5" placeholder="Industry" value={form.industry} onChange={e=> setForm(f=>({...f, industry: e.target.value}))} />
-              <input className="rounded-md bg-white/5 border border-white/10 px-2 py-1.5" placeholder="Degree" value={form.degree} onChange={e=> setForm(f=>({...f, degree: e.target.value}))} />
-              <input className="rounded-md bg-white/5 border border-white/10 px-2 py-1.5" placeholder="School" value={form.school} onChange={e=> setForm(f=>({...f, school: e.target.value}))} />
-              <input className="rounded-md bg-white/5 border border-white/10 px-2 py-1.5" placeholder="Skills" value={form.skills} onChange={e=> setForm(f=>({...f, skills: e.target.value}))} />
-              <input className="rounded-md bg-white/5 border border-white/10 px-2 py-1.5" placeholder="LinkedIn" value={form.linkedin} onChange={e=> setForm(f=>({...f, linkedin: e.target.value}))} />
-              <input className="rounded-md bg-white/5 border border-white/10 px-2 py-1.5" placeholder="Experience" value={form.experience} onChange={e=> setForm(f=>({...f, experience: e.target.value}))} />
+              <input className="rounded-md bg-black text-white border border-white/10 px-2 py-1.5 text-[16px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]" placeholder="Role" value={form.role} onChange={e=> setForm(f=>({...f, role: e.target.value}))} />
+              <input className="rounded-md bg-black text-white border border-white/10 px-2 py-1.5 text-[16px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]" placeholder="Company" value={form.company} onChange={e=> setForm(f=>({...f, company: e.target.value}))} />
+              <input className="rounded-md bg-black text-white border border-white/10 px-2 py-1.5 text-[16px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]" placeholder="Industry" value={form.industry} onChange={e=> setForm(f=>({...f, industry: e.target.value}))} />
+              <input className="rounded-md bg-black text-white border border-white/10 px-2 py-1.5 text-[16px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]" placeholder="Degree" value={form.degree} onChange={e=> setForm(f=>({...f, degree: e.target.value}))} />
+              <input className="rounded-md bg-black text-white border border-white/10 px-2 py-1.5 text-[16px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]" placeholder="School" value={form.school} onChange={e=> setForm(f=>({...f, school: e.target.value}))} />
+              <input className="rounded-md bg-black text-white border border-white/10 px-2 py-1.5 text-[16px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]" placeholder="Skills" value={form.skills} onChange={e=> setForm(f=>({...f, skills: e.target.value}))} />
+              <input className="rounded-md bg-black text-white border border-white/10 px-2 py-1.5 text-[16px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]" placeholder="LinkedIn" value={form.linkedin} onChange={e=> setForm(f=>({...f, linkedin: e.target.value}))} />
+              <input className="rounded-md bg-black text-white border border-white/10 px-2 py-1.5 text-[16px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]" placeholder="Experience" value={form.experience} onChange={e=> setForm(f=>({...f, experience: e.target.value}))} />
             </div>
             <button className="mt-3 px-3 py-1.5 rounded-md bg-[#4db6ac] text-black">Save Professional Info</button>
           </form>
@@ -169,10 +169,10 @@ export default function Profile(){
             if (!j?.success) alert(j?.error || 'Error updating')
           }}>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <input className="rounded-md bg-white/5 border border-white/10 px-2 py-1.5" placeholder="Age" value={form.age} onChange={e=> setForm(f=>({...f, age: e.target.value}))} />
-              <input className="rounded-md bg-white/5 border border-white/10 px-2 py-1.5" placeholder="Gender" value={form.gender} onChange={e=> setForm(f=>({...f, gender: e.target.value}))} />
-              <input className="rounded-md bg-white/5 border border-white/10 px-2 py-1.5" placeholder="Country" value={form.country} onChange={e=> setForm(f=>({...f, country: e.target.value}))} />
-              <input className="rounded-md bg-white/5 border border-white/10 px-2 py-1.5" placeholder="City" value={form.city} onChange={e=> setForm(f=>({...f, city: e.target.value}))} />
+              <input className="rounded-md bg-black text-white border border-white/10 px-2 py-1.5 text-[16px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]" placeholder="Age" value={form.age} onChange={e=> setForm(f=>({...f, age: e.target.value}))} />
+              <input className="rounded-md bg-black text-white border border-white/10 px-2 py-1.5 text-[16px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]" placeholder="Gender" value={form.gender} onChange={e=> setForm(f=>({...f, gender: e.target.value}))} />
+              <input className="rounded-md bg-black text-white border border-white/10 px-2 py-1.5 text-[16px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]" placeholder="Country" value={form.country} onChange={e=> setForm(f=>({...f, country: e.target.value}))} />
+              <input className="rounded-md bg-black text-white border border-white/10 px-2 py-1.5 text-[16px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]" placeholder="City" value={form.city} onChange={e=> setForm(f=>({...f, city: e.target.value}))} />
             </div>
             <button className="mt-3 px-3 py-1.5 rounded-md bg-[#4db6ac] text-black">Save Personal Details</button>
           </form>
