@@ -91,12 +91,7 @@ export default function ChatThread(){
             placeholder="Type a message"
             value={draft}
             onChange={e=> setDraft(e.target.value)}
-            onKeyDown={e=> {
-              if (e.key === 'Enter' && !e.shiftKey){
-                e.preventDefault()
-                send()
-              }
-            }}
+            // Enter inserts newline by default; no auto-send on Enter
           />
           <button
             className="px-4 py-2 rounded-full bg-[#4db6ac] text-black font-medium hover:brightness-110"
