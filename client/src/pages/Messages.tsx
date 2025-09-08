@@ -44,7 +44,7 @@ export default function Messages(){
           {loading ? (
             <div className="px-4 py-4 text-sm text-[#9fb0b5]">Loading chats...</div>
           ) : threads.length === 0 ? (
-            <div className="px-4 py-4 text-sm text-[#9fb0b5]">No chats yet.</div>
+            <div className="px-4 py-4 text-sm text-[#9fb0b5]">No chats yet. Start a new one from the + button.</div>
           ) : (
             threads.map((t) => (
               <button

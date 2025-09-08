@@ -3140,11 +3140,8 @@ def api_chat_threads():
 
                     # Unread count for this thread (messages sent by other -> me)
                     c.execute("SELECT COUNT(*) FROM messages WHERE sender=? AND receiver=? AND is_read=0", (other_username, username))
-                    unread_count = c.fetchone()
-                    if hasattr(unread_count, 'keys'):
-                        unread_count = list(unread_count.values())[0] if unread_count else 0
-                    else:
-                        unread_count = unread_count[0] if unread_count else 0
+                    unread_row = c.fetchone()
+                    unread_count = unread_row[0] if unread_row is not None else 0
 
                     # Profile info (avatar)
                     c.execute(
@@ -3186,8 +3183,9 @@ def api_chat_threads():
                     logger.warning(f"Failed to build thread for counterpart: {inner_e}")
                     continue
 
-        # Sort threads by most recent activity
-        threads.sort(key=lambda t: t.get('last_activity_time') or '', reverse=True)
+        # Sort threads by most recent activity; filter out any without counterpart
+        threads = [t for t in threads if t.get('other_username')]
+        threads.sort(key=lambda t: (t.get('last_activity_time') or ''), reverse=True)
         return jsonify({'success': True, 'threads': threads})
     except Exception as e:
         logger.error(f"Error building chat threads for {username}: {e}")
