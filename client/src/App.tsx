@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import ErrorBoundary from './components/ErrorBoundary'
+import MobileLogin from './pages/MobileLogin'
 import PremiumDashboard from './pages/PremiumDashboard'
 import HeaderBar from './components/HeaderBar'
 import { HeaderContext } from './contexts/HeaderContext'
@@ -46,7 +47,7 @@ export default function App() {
           <div style={{ paddingTop: '56px' }}>
             <ErrorBoundary>
               <Routes>
-              <Route path="/" element={<PremiumDashboard />} />
+              <Route path="/" element={<MobileLogin />} />
               <Route path="/premium" element={<PremiumDashboard />} />
               <Route path="/premium_dashboard" element={<PremiumDashboard />} />
               <Route path="/premium_dashboard_react" element={<PremiumDashboard />} />
