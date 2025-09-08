@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
+import Avatar from '../components/Avatar'
 
 export default function ChatThread(){
   const { setTitle } = useHeader()
@@ -13,6 +14,7 @@ export default function ChatThread(){
   const [draft, setDraft] = useState('')
   const listRef = useRef<HTMLDivElement|null>(null)
   const textareaRef = useRef<HTMLTextAreaElement|null>(null)
+  const [otherProfile, setOtherProfile] = useState<{ display_name:string; profile_picture?:string|null }|null>(null)
 
   useEffect(() => {
     if (!username) return
@@ -25,6 +27,11 @@ export default function ChatThread(){
           fetch('/get_messages', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
             .then(r=>r.json()).then(j=>{
               if (j?.success && Array.isArray(j.messages)) setMessages(j.messages)
+            }).catch(()=>{})
+          // Load brief profile for header avatar
+          fetch(`/api/get_user_profile_brief?username=${encodeURIComponent(username)}`, { credentials:'include' })
+            .then(r=>r.json()).then(j=>{
+              if (j?.success){ setOtherProfile({ display_name: j.display_name, profile_picture: j.profile_picture||null }) }
             }).catch(()=>{})
         }
       }).catch(()=>{})
@@ -93,7 +100,8 @@ export default function ChatThread(){
           <button className="p-2 rounded-full hover:bg-white/5" onClick={()=> navigate('/user_chat')} aria-label="Back">
             <i className="fa-solid fa-arrow-left" />
           </button>
-          <div className="font-medium truncate">{username}</div>
+          <Avatar username={username || ''} url={otherProfile?.profile_picture || undefined} size={28} />
+          <div className="font-medium truncate">{otherProfile?.display_name || username}</div>
         </div>
         {/* Messages list (WhatsApp style bubbles) */}
         <div ref={listRef} className="flex-1 overflow-y-auto overscroll-contain px-2 sm:px-3 py-3 space-y-1" style={{ WebkitOverflowScrolling: 'touch' as any }}>

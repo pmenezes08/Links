@@ -12348,6 +12348,31 @@ def api_get_user_id_by_username():
         logger.error(f"Error resolving user id: {e}")
         return jsonify({ 'success': False, 'error': 'server error' }), 500
 
+@app.route('/api/get_user_profile_brief', methods=['GET'])
+@login_required
+def api_get_user_profile_brief():
+    """Return brief profile info for a given username: display_name and profile_picture (relative path)"""
+    try:
+        username = request.args.get('username','').strip()
+        if not username:
+            return jsonify({ 'success': False, 'error': 'username required' }), 400
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT display_name, profile_picture FROM user_profiles WHERE username=?", (username,))
+            row = c.fetchone()
+            display_name = None
+            profile_picture = None
+            if row:
+                try:
+                    display_name = row['display_name'] if hasattr(row, 'keys') and 'display_name' in row.keys() else row[0]
+                    profile_picture = row['profile_picture'] if hasattr(row, 'keys') and 'profile_picture' in row.keys() else row[1]
+                except Exception:
+                    pass
+        return jsonify({ 'success': True, 'username': username, 'display_name': display_name or username, 'profile_picture': profile_picture })
+    except Exception as e:
+        logger.error(f"Error in api_get_user_profile_brief: {e}")
+        return jsonify({ 'success': False, 'error': 'server error' }), 500
+
 @app.route('/get_active_chat_counts')
 @login_required
 def get_active_chat_counts():
