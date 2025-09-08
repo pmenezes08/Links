@@ -39,7 +39,7 @@
 			left: 200px; 
 			right: 0; 
 			height: 60px; 
-			background: transparent; 
+			background: #000; 
 			border-bottom: 1px solid #333333; 
 			z-index: 900;
 			box-sizing: border-box;
@@ -49,9 +49,10 @@
 		.messages-main-content {
 			display: flex;
 			gap: 20px;
-			height: calc(100vh - 100px);
-			min-height: calc(100vh - 100px);
+			height: calc(100vh - 80px);
+			min-height: calc(100vh - 80px);
 			padding: 0;
+			overflow: hidden;
 		}
 		
 		/* Communities List Panel */
@@ -345,6 +346,9 @@
 			padding: 8px 10px;
 			background: rgba(0, 0, 0, 0.3);
 			border-top: 1px solid rgba(255, 255, 255, 0.1);
+			position: sticky;
+			bottom: 0;
+			z-index: 5;
 		}
 		
 		.message-input-form {
@@ -361,7 +365,7 @@
 			border-radius: 4px;
 			color: #ffffff;
 			font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-			font-size: 13px;
+			font-size: 16px;
 			line-height: 1.3;
 			height: 28px;
 			min-height: 28px;
