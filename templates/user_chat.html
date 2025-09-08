@@ -243,7 +243,7 @@
 			align-items: center;
 		}
 		
-		#chatContent:has(.chat-header) {
+		#chatContent.has-chat {
 			justify-content: flex-start;
 			align-items: stretch;
 		}
@@ -280,6 +280,10 @@
 			display: flex;
 			flex-direction: column;
 			min-height: 0;
+			-webkit-overflow-scrolling: touch;
+			overflow-x: hidden;
+			overflow-anchor: auto;
+			overscroll-behavior: contain;
 		}
 		
 		.message {
@@ -689,7 +693,7 @@
 				</div>
 			`;
 			
-			$('#chatContent').html(chatHtml);
+			$('#chatContent').html(chatHtml).addClass('has-chat');
 			loadMessages(userId, userName);
 		}
 		
@@ -771,6 +775,10 @@
 							`;
 							messagesArea.append(messageHtml);
 						});
+						// Scroll to bottom after DOM updates
+						setTimeout(function(){
+							messagesArea.scrollTop(messagesArea[0].scrollHeight);
+						}, 0);
 					} else {
 						messagesArea.html(`
 							<div class="empty-state">
@@ -780,9 +788,6 @@
 							</div>
 						`);
 					}
-					
-					// Scroll to bottom
-					messagesArea.scrollTop(messagesArea[0].scrollHeight);
 				},
 				error: function() {
 					$('#messagesArea').html(`
