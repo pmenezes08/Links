@@ -4673,9 +4673,18 @@ def create_notification(user_id, from_user, notification_type, post_id=None, com
 @app.route('/notifications')
 @login_required
 def notifications_page():
-    """Display notifications page"""
+    """Display notifications page: Mobile -> React SPA, Desktop -> HTML template"""
     username = session.get('username')
     logger.info(f"Notifications page accessed by {username}")
+    try:
+        ua = request.headers.get('User-Agent', '')
+        is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
+        if is_mobile:
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            dist_dir = os.path.join(base_dir, 'client', 'dist')
+            return send_from_directory(dist_dir, 'index.html')
+    except Exception as e:
+        logger.warning(f"React notifications fallback: {e}")
     return render_template('notifications.html', username=username)
 
 
