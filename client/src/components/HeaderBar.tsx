@@ -36,7 +36,7 @@ export default function HeaderBar({ title, username, avatarUrl }: HeaderBarProps
       }catch{}
     }
     poll()
-    setInterval(poll, 10000)
+    setInterval(poll, 5000)
   }
 
   const resolvedAvatar = avatarUrl

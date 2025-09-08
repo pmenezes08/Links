@@ -7,9 +7,10 @@ type Thread = {
   other_username: string
   display_name: string
   profile_picture_url: string | null
-  last_sent_text: string | null
-  last_sent_time: string | null
+  last_message_text: string | null
   last_activity_time: string | null
+  last_sender?: string | null
+  unread_count?: number
 }
 
 export default function Messages(){
@@ -54,9 +55,14 @@ export default function Messages(){
                     )}
                   </div>
                   <div className="text-[13px] text-[#9fb0b5] truncate">
-                    {t.last_sent_text ? t.last_sent_text : 'Say hello'}
+                    {t.last_message_text ? t.last_message_text : 'Say hello'}
                   </div>
                 </div>
+                {t.unread_count && t.unread_count > 0 ? (
+                  <div className="ml-2 px-2 h-5 rounded-full bg-[#4db6ac] text-black text-[11px] flex items-center justify-center">
+                    {t.unread_count > 99 ? '99+' : t.unread_count}
+                  </div>
+                ) : null}
               </button>
             ))
           )}

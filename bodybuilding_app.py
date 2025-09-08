@@ -3015,6 +3015,9 @@ def get_messages():
                     'time': msg['timestamp']
                 })
             
+            # Mark messages from other user as read
+            c.execute("UPDATE messages SET is_read=1 WHERE sender=? AND receiver=? AND is_read=0", (other_username, username))
+            conn.commit()
             return jsonify({'success': True, 'messages': messages})
             
     except Exception as e:
@@ -3100,25 +3103,10 @@ def api_chat_threads():
                 try:
                     other_username = row['other_username'] if isinstance(row, dict) or hasattr(row, 'keys') else row[0]
 
-                    # Last message SENT by the current user to this counterpart
+                    # Last message in either direction (preview)
                     c.execute(
                         """
-                        SELECT message, timestamp
-                        FROM messages
-                        WHERE sender = ? AND receiver = ?
-                        ORDER BY timestamp DESC
-                        LIMIT 1
-                        """,
-                        (username, other_username),
-                    )
-                    sent_row = c.fetchone()
-                    last_sent_text = (sent_row['message'] if sent_row and ('message' in sent_row.keys() if hasattr(sent_row, 'keys') else False) else (sent_row[0] if sent_row else None))
-                    last_sent_time = (sent_row['timestamp'] if sent_row and ('timestamp' in sent_row.keys() if hasattr(sent_row, 'keys') else False) else (sent_row[1] if sent_row else None))
-
-                    # Last activity in the conversation (either direction) for sorting
-                    c.execute(
-                        """
-                        SELECT timestamp
+                        SELECT message, timestamp, sender
                         FROM messages
                         WHERE (sender = ? AND receiver = ?) OR (sender = ? AND receiver = ?)
                         ORDER BY timestamp DESC
@@ -3126,8 +3114,27 @@ def api_chat_threads():
                         """,
                         (username, other_username, other_username, username),
                     )
-                    la_row = c.fetchone()
-                    last_activity_time = (la_row['timestamp'] if la_row and ('timestamp' in la_row.keys() if hasattr(la_row, 'keys') else False) else (la_row[0] if la_row else None))
+                    last_row = c.fetchone()
+                    last_message_text = None
+                    last_activity_time = None
+                    last_sender = None
+                    if last_row:
+                        if hasattr(last_row, 'keys'):
+                            last_message_text = last_row['message']
+                            last_activity_time = last_row['timestamp']
+                            last_sender = last_row['sender']
+                        else:
+                            last_message_text = last_row[0]
+                            last_activity_time = last_row[1]
+                            last_sender = last_row[2]
+
+                    # Unread count for this thread (messages sent by other -> me)
+                    c.execute("SELECT COUNT(*) FROM messages WHERE sender=? AND receiver=? AND is_read=0", (other_username, username))
+                    unread_count = c.fetchone()
+                    if hasattr(unread_count, 'keys'):
+                        unread_count = list(unread_count.values())[0] if unread_count else 0
+                    else:
+                        unread_count = unread_count[0] if unread_count else 0
 
                     # Profile info (avatar)
                     c.execute(
@@ -3160,9 +3167,10 @@ def api_chat_threads():
                         'other_username': other_username,
                         'display_name': display_name,
                         'profile_picture_url': profile_picture_url,
-                        'last_sent_text': last_sent_text,
-                        'last_sent_time': last_sent_time,
+                        'last_message_text': last_message_text,
                         'last_activity_time': last_activity_time,
+                        'last_sender': last_sender,
+                        'unread_count': int(unread_count or 0),
                     })
                 except Exception as inner_e:
                     logger.warning(f"Failed to build thread for counterpart: {inner_e}")
