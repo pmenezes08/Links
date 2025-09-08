@@ -15,6 +15,7 @@ from markupsafe import escape
 import secrets
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
+from pywebpush import webpush, WebPushException
 
 # Initialize Flask app
 app = Flask(__name__, template_folder='templates')
@@ -47,6 +48,8 @@ STRIPE_API_KEY = os.getenv('STRIPE_API_KEY', 'sk_test_your_stripe_key')
 XAI_API_KEY = os.getenv('XAI_API_KEY', 'xai-hFCxhRKITxZXsIQy5rRpRus49rxcgUPw4NECAunCgHU0BnWnbPE9Y594Nk5jba03t5FYl2wJkjcwyxRh')
 X_CONSUMER_KEY = os.getenv('X_CONSUMER_KEY', 'cjB0MmRPRFRnOG9jcTA0UGRZV006MTpjaQ')
 X_CONSUMER_SECRET = os.getenv('X_CONSUMER_SECRET', 'Wxo9qnpOaDIJ-9Aw_Bl_MDkor4uY24ephq9ZJFq6HwdH7o4-kB')
+VAPID_PUBLIC_KEY = os.getenv('VAPID_PUBLIC_KEY', '')
+VAPID_PRIVATE_KEY = os.getenv('VAPID_PRIVATE_KEY', '')
 
 
 
@@ -164,6 +167,14 @@ def add_missing_tables():
             # Create saved_data table if it doesn't exist
             c.execute('''CREATE TABLE IF NOT EXISTS saved_data
                          (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT, type TEXT, data TEXT, timestamp TEXT)''')
+            # Store web push subscriptions
+            c.execute('''CREATE TABLE IF NOT EXISTS push_subscriptions
+                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                          username TEXT NOT NULL,
+                          endpoint TEXT NOT NULL UNIQUE,
+                          p256dh TEXT,
+                          auth TEXT,
+                          created_at TEXT DEFAULT CURRENT_TIMESTAMP)''')
             
             # Add missing columns to communities table
             columns_to_add = [
@@ -3020,6 +3031,16 @@ def send_message():
             
             conn.commit()
             
+            # Push notification to recipient (if subscribed)
+            try:
+                send_push_to_user(recipient_username, {
+                    'title': f'New message from {username}',
+                    'body': message[:120],
+                    'url': f'/user_chat/chat/{username}',
+                })
+            except Exception as _e:
+                logger.warning(f"push send_message warn: {_e}")
+
             return jsonify({'success': True, 'message': 'Message sent successfully'})
             
     except Exception as e:
@@ -4954,6 +4975,24 @@ def post_status():
             logger.info(f"Total posts in community {community_id}: {len(community_posts)}")
             for post in community_posts:
                 logger.info(f"  Post {post['id']}: {post['username']} - {post['content'][:50]}... (community_id: {post['community_id']})")
+
+            # Notify community members (excluding creator)
+            try:
+                c.execute("""
+                    SELECT DISTINCT u.username
+                    FROM users u
+                    JOIN user_communities uc ON u.rowid = uc.user_id
+                    WHERE uc.community_id = ? AND u.username != ?
+                """, (community_id, username))
+                members = [row['username'] if hasattr(row, 'keys') else row[0] for row in c.fetchall()]
+                for member in members:
+                    send_push_to_user(member, {
+                        'title': 'New community post',
+                        'body': f"{username}: {content[:100]}",
+                        'url': f"/community_feed_react/{community_id}",
+                    })
+            except Exception as _e:
+                logger.warning(f"push notify community warn: {_e}")
         
         # Check if this is an AJAX request
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
@@ -12420,6 +12459,67 @@ def api_get_user_profile_brief():
     except Exception as e:
         logger.error(f"Error in api_get_user_profile_brief: {e}")
         return jsonify({ 'success': False, 'error': 'server error' }), 500
+
+# Web Push: expose public VAPID key
+@app.route('/api/push/public_key')
+@login_required
+def api_push_public_key():
+    if not VAPID_PUBLIC_KEY:
+        return jsonify({ 'publicKey': '' })
+    return jsonify({ 'publicKey': VAPID_PUBLIC_KEY })
+
+# Save a browser subscription
+@app.route('/api/push/subscribe', methods=['POST'])
+@login_required
+def api_push_subscribe():
+    try:
+        sub = request.get_json(force=True, silent=True) or {}
+        endpoint = sub.get('endpoint')
+        keys = sub.get('keys') or {}
+        p256dh = keys.get('p256dh')
+        authk = keys.get('auth')
+        if not endpoint:
+            return jsonify({ 'success': False, 'error': 'invalid subscription' }), 400
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("INSERT OR REPLACE INTO push_subscriptions (username, endpoint, p256dh, auth) VALUES (?,?,?,?)",
+                      (session['username'], endpoint, p256dh, authk))
+            conn.commit()
+        return jsonify({ 'success': True })
+    except Exception as e:
+        logger.error(f"push subscribe error: {e}")
+        return jsonify({ 'success': False }), 500
+
+def send_push_to_user(target_username: str, payload: dict):
+    if not VAPID_PUBLIC_KEY or not VAPID_PRIVATE_KEY:
+        logger.warning("VAPID keys missing; push disabled")
+        return
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT endpoint, p256dh, auth FROM push_subscriptions WHERE username=?", (target_username,))
+            subs = c.fetchall()
+        for s in subs:
+            try:
+                subscription_info = {
+                    'endpoint': s['endpoint'] if hasattr(s, 'keys') else s[0],
+                    'keys': {
+                        'p256dh': s['p256dh'] if hasattr(s, 'keys') else s[1],
+                        'auth': s['auth'] if hasattr(s, 'keys') else s[2],
+                    }
+                }
+                webpush(
+                    subscription_info=subscription_info,
+                    data=json.dumps(payload),
+                    vapid_private_key=VAPID_PRIVATE_KEY,
+                    vapid_claims={ 'sub': 'mailto:admin@example.com' }
+                )
+            except WebPushException as wpe:
+                logger.warning(f"webpush failed: {wpe}")
+            except Exception as e:
+                logger.warning(f"push error: {e}")
+    except Exception as e:
+        logger.error(f"send_push_to_user error: {e}")
 
 @app.route('/get_active_chat_counts')
 @login_required

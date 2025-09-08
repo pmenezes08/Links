@@ -6,6 +6,7 @@ import MobileLogin from './pages/MobileLogin'
 import PremiumDashboard from './pages/PremiumDashboard'
 import HeaderBar from './components/HeaderBar'
 import { HeaderContext } from './contexts/HeaderContext'
+import PushInit from './components/PushInit'
 import CrossfitExact from './pages/CrossfitExact'
 import CommunityFeed from './pages/CommunityFeed'
 import PostDetail from './pages/PostDetail'
@@ -80,6 +81,7 @@ export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
+        <PushInit />
         <AppRoutes />
       </BrowserRouter>
     </QueryClientProvider>
