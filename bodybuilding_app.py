@@ -1063,17 +1063,45 @@ def index():
     print("Entering index route")
     logger.info(f"Request method: {request.method}")
     if request.method == 'POST':
-        username = request.form.get('username')
+        username = (request.form.get('username') or '').strip()
         print(f"Received username: {username}")
         logger.info(f"Received username: {username}")
-        if username:
-            session['username'] = username
-            print(f"Session username set to: {session['username']}")
-            logger.info(f"Session username set to: {session['username']}")
-            return redirect(url_for('login_password'))
-        print("Username missing or empty")
-        logger.warning("Username missing or empty")
-        return render_template('index.html', error="Please enter a username!")
+
+        # Determine if request is from a mobile device
+        ua = request.headers.get('User-Agent', '')
+        is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
+
+        if not username:
+            print("Username missing or empty")
+            logger.warning("Username missing or empty")
+            if is_mobile:
+                # Redirect to React mobile page with error message
+                return redirect(url_for('index', error='Please enter a username!'))
+            return render_template('index.html', error="Please enter a username!")
+
+        # Validate username exists in database
+        try:
+            with get_db_connection() as conn:
+                c = conn.cursor()
+                c.execute("SELECT 1 FROM users WHERE username=? LIMIT 1", (username,))
+                exists = c.fetchone() is not None
+        except Exception as e:
+            logger.error(f"Database error validating username '{username}': {e}")
+            if is_mobile:
+                return redirect(url_for('index', error='Server error. Please try again.'))
+            return render_template('index.html', error="Server error. Please try again.")
+
+        if not exists:
+            print("Username does not exist")
+            logger.warning(f"Username not found: {username}")
+            if is_mobile:
+                return redirect(url_for('index', error='Username does not exist'))
+            return render_template('index.html', error="Username does not exist")
+
+        session['username'] = username
+        print(f"Session username set to: {session['username']}")
+        logger.info(f"Session username set to: {session['username']}")
+        return redirect(url_for('login_password'))
     # GET request: Desktop -> HTML template, Mobile -> React (if available)
     try:
         ua = request.headers.get('User-Agent', '')

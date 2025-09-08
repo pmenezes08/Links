@@ -1,10 +1,30 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 export default function MobileLogin() {
   const [showForgot, setShowForgot] = useState(false)
   const [resetUsername, setResetUsername] = useState('')
   const [resetEmail, setResetEmail] = useState('')
   const [resetSent, setResetSent] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  // Read error from query string (e.g., /?error=...)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const e = params.get('error')
+    setError(e)
+  }, [])
+
+  // Lock viewport to prevent vertical movement
+  useEffect(() => {
+    const originalOverflow = document.body.style.overflow
+    const originalHeight = document.documentElement.style.height
+    document.body.style.overflow = 'hidden'
+    document.documentElement.style.height = '100%'
+    return () => {
+      document.body.style.overflow = originalOverflow
+      document.documentElement.style.height = originalHeight
+    }
+  }, [])
 
   async function submitReset(e: React.FormEvent) {
     e.preventDefault()
@@ -25,6 +45,12 @@ export default function MobileLogin() {
           <h1 className="text-lg font-semibold">C.Point</h1>
           <p className="text-xs text-white/60 mt-1">Sign in to your account</p>
         </div>
+
+        {error && (
+          <div className="mb-4 rounded-md border border-red-500 text-red-400 bg-red-500/10 px-3 py-2 text-sm text-center">
+            {error}
+          </div>
+        )}
 
         <form method="POST" action="/" className="space-y-3">
           <div>
