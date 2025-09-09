@@ -133,27 +133,20 @@ export default function ChatThread(){
         {/* Messages list (WhatsApp style bubbles) */}
         <div ref={listRef} className="flex-1 overflow-y-auto overscroll-contain px-2 sm:px-3 py-3 space-y-1" style={{ WebkitOverflowScrolling: 'touch' as any }}>
           {messages.map(m => (
-            <div key={m.id} className={`flex ${m.sent ? 'justify-end' : 'justify-start'}`}>
-              <button
-                onClick={() => {
-                  if (!confirm('Delete this message?')) return
-                  const fd = new URLSearchParams({ message_id: String(m.id) })
-                  fetch('/delete_message', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
-                    .then(r=>r.json()).then(j=>{
-                      if (j?.success){ setMessages(prev => prev.filter(x => x.id !== m.id)) }
-                    }).catch(()=>{})
-                }}
-                className={`${m.sent ? 'text-white' : 'text-white'} text-left`}
-                style={{ background: 'transparent' }}
-              >
+            <LongPressDeletable key={m.id} onDelete={() => {
+              const fd = new URLSearchParams({ message_id: String(m.id) })
+              fetch('/delete_message', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
+                .then(r=>r.json()).then(j=>{ if (j?.success){ setMessages(prev => prev.filter(x => x.id !== m.id)) } }).catch(()=>{})
+            }}>
+              <div className={`flex ${m.sent ? 'justify-end' : 'justify-start'}`}>
                 <div
-                  className={`max-w-[82%] md:max-w-[70%] px-3 py-2 rounded-2xl text-[14px] leading-snug whitespace-pre-wrap break-words shadow-sm border ${m.sent ? 'bg-[#075E54] text-white border-[#075E54]' : 'bg-[#1a1a1a] text-white border-white/10'} ${m.sent ? 'rounded-br-md' : 'rounded-bl-md'}`}
+                  className={`max-w-[70%] md:max-w-[70%] px-3 py-2 rounded-2xl text-[14px] leading-snug whitespace-pre-wrap break-words shadow-sm border ${m.sent ? 'bg-[#075E54] text-white border-[#075E54]' : 'bg-[#1a1a1a] text-white border-white/10'} ${m.sent ? 'rounded-br-md' : 'rounded-bl-md'}`}
                 >
                   <div>{m.text}</div>
                   <div className={`text-[10px] mt-1 ${m.sent ? 'text-white/70' : 'text-white/50'} text-right`}>{new Date(m.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
                 </div>
-              </button>
-            </div>
+              </div>
+            </LongPressDeletable>
           ))}
         </div>
 
@@ -198,6 +191,41 @@ export default function ChatThread(){
           </button>
         </div>
       </div>
+    </div>
+  )
+}
+
+function LongPressDeletable({ children, onDelete }: { children: React.ReactNode; onDelete: () => void }){
+  const [showMenu, setShowMenu] = useState(false)
+  const timerRef = useRef<any>(null)
+  function handleStart(){
+    if (timerRef.current) clearTimeout(timerRef.current)
+    timerRef.current = setTimeout(() => setShowMenu(true), 3000)
+  }
+  function handleEnd(){
+    if (timerRef.current) clearTimeout(timerRef.current)
+  }
+  return (
+    <div className="relative">
+      <div
+        onMouseDown={handleStart}
+        onMouseUp={handleEnd}
+        onMouseLeave={handleEnd}
+        onTouchStart={handleStart}
+        onTouchEnd={handleEnd}
+      >
+        {children}
+      </div>
+      {showMenu && (
+        <div className="absolute z-40 -top-8 right-2 bg-black border border-white/15 rounded-md shadow-lg px-3 py-1">
+          <button
+            className="text-red-400 text-sm"
+            onClick={() => { setShowMenu(false); onDelete() }}
+          >
+            Delete
+          </button>
+        </div>
+      )}
     </div>
   )
 }
