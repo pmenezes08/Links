@@ -9495,6 +9495,22 @@ def community_feed_react(community_id):
         logger.error(f"Error serving React community feed: {str(e)}")
         abort(500)
 
+@app.route('/community/<int:community_id>/calendar_react')
+@login_required
+def community_calendar_react(community_id):
+    try:
+        ua = request.headers.get('User-Agent', '')
+        is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
+        if is_mobile:
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            dist_dir = os.path.join(base_dir, 'client', 'dist')
+            return send_from_directory(dist_dir, 'index.html')
+        # Desktop: fall back to existing HTML calendar if available
+        return redirect(f"/community/{community_id}/calendar")
+    except Exception as e:
+        logger.error(f"Error serving React community calendar: {str(e)}")
+        abort(500)
+
 @app.route('/post/<int:post_id>')
 @login_required
 def react_post_detail(post_id):

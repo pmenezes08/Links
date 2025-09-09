@@ -21,6 +21,9 @@ export default function CommunityCalendar(){
   const [events, setEvents] = useState<EventItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string| null>(null)
+  const [members, setMembers] = useState<Array<{ username:string; profile_picture?:string|null }>>([])
+  const [inviteAll, setInviteAll] = useState(false)
+  const [selected, setSelected] = useState<Record<string, boolean>>({})
 
   useEffect(() => { setTitle('Calendar') }, [setTitle])
 
@@ -46,6 +49,17 @@ export default function CommunityCalendar(){
       } finally { mounted && setLoading(false) }
     }
     load()
+    // Load members list for invitation picker
+    ;(async () => {
+      try{
+        const r = await fetch(`/community/${community_id}/members/list`, { credentials:'include' })
+        const j = await r.json()
+        if (j?.success && Array.isArray(j.members)){
+          if (!mounted) return
+          setMembers(j.members)
+        }
+      }catch{}
+    })()
     return () => { mounted = false }
   }, [community_id])
 
@@ -66,8 +80,11 @@ export default function CommunityCalendar(){
       if (v) params.append(k, v)
     })
     if (community_id) params.append('community_id', String(community_id))
-    // Invite all in the community by default (mirrors HTML behavior)
-    params.append('invite_all', 'true')
+    params.append('invite_all', inviteAll ? 'true' : 'false')
+    if (!inviteAll){
+      // Append selected members
+      Object.keys(selected).filter(u => selected[u]).forEach(u => params.append('invited_members[]', u))
+    }
     const r = await fetch('/add_calendar_event', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: params })
     const j = await r.json().catch(()=>null)
     if (j?.success){
@@ -106,6 +123,24 @@ export default function CommunityCalendar(){
             <input name="end_time" type="time" className="rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none" />
             <input name="description" placeholder="Description" className="col-span-2 rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none" />
           </div>
+          <div className="mt-3">
+            <label className="inline-flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={inviteAll} onChange={(e)=> setInviteAll(e.target.checked)} />
+              Invite all members
+            </label>
+          </div>
+          {!inviteAll && (
+            <div className="mt-2 max-h-48 overflow-y-auto border border-white/10 rounded-md p-2">
+              {members.length === 0 ? (
+                <div className="text-sm text-[#9fb0b5]">No members</div>
+              ) : members.map(m => (
+                <label key={m.username} className="flex items-center gap-2 py-1">
+                  <input type="checkbox" checked={!!selected[m.username]} onChange={(e)=> setSelected(s => ({ ...s, [m.username]: e.target.checked }))} />
+                  <span className="text-sm">{m.username}</span>
+                </label>
+              ))}
+            </div>
+          )}
           <div className="mt-2 flex justify-end">
             <button className="px-4 py-2 rounded-md bg-[#4db6ac] text-black hover:brightness-110">Add</button>
           </div>
