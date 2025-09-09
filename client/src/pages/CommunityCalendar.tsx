@@ -198,13 +198,13 @@ export default function CommunityCalendar(){
             </div>
 
             {!inviteAll && inviteOpen && (
-              <div className="max-h-48 overflow-y-auto border border-white/10 rounded-md p-2">
+              <div className="max-h-48 overflow-y-auto border border-white/10 rounded-md p-2 space-y-1">
                 {members.length === 0 ? (
                   <div className="text-sm text-[#9fb0b5]">No members</div>
                 ) : members.map(m => (
-                  <label key={m.username} className="flex items-center gap-2 py-1">
-                    <input type="checkbox" className="accent-[#4db6ac]" checked={!!selected[m.username]} onChange={(e)=> setSelected(s => ({ ...s, [m.username]: e.target.checked }))} />
+                  <label key={m.username} className="flex items-center justify-between gap-2 py-1 px-2 rounded hover:bg-white/5">
                     <span className="text-sm">{m.username}</span>
+                    <input type="checkbox" className="accent-[#4db6ac] w-4 h-4" checked={!!selected[m.username]} onChange={(e)=> setSelected(s => ({ ...s, [m.username]: e.target.checked }))} />
                   </label>
                 ))}
               </div>
@@ -232,13 +232,13 @@ export default function CommunityCalendar(){
                           <div className="text-xs text-[#9fb0b5]">{[ev.start_time, ev.end_time].filter(Boolean).join(' - ')}</div>
                         </div>
                         {ev.description ? (<div className="text-sm text-[#cfd8dc] mt-1">{ev.description}</div>) : null}
-                        <div className="text-xs text-[#9fb0b5] mt-2 flex items-center gap-2">
+                        <div className="text-xs text-[#9fb0b5] mt-2 flex items-center gap-2 flex-wrap">
                           <span>RSVP:</span>
-                          <button className={`px-2 py-1 rounded ${ev.user_rsvp==='going'?'bg-teal-700/20 text-teal-300':'bg-white/5'}`} onClick={()=> rsvp(ev.id, 'going')}>Going {ev.rsvp_counts?.going||0}</button>
-                          <button className={`px-2 py-1 rounded ${ev.user_rsvp==='maybe'?'bg-teal-700/20 text-teal-300':'bg-white/5'}`} onClick={()=> rsvp(ev.id, 'maybe')}>Maybe {ev.rsvp_counts?.maybe||0}</button>
-                          <button className={`px-2 py-1 rounded ${ev.user_rsvp==='not_going'?'bg-teal-700/20 text-teal-300':'bg-white/5'}`} onClick={()=> rsvp(ev.id, 'not_going')}>Not going {ev.rsvp_counts?.not_going||0}</button>
+                          <button className={`px-2 py-1 rounded-full border ${ev.user_rsvp==='going'?'border-teal-500 text-teal-300 bg-teal-700/15':'border-white/10'}`} onClick={()=> rsvp(ev.id, 'going')}>Going {ev.rsvp_counts?.going||0}</button>
+                          <button className={`px-2 py-1 rounded-full border ${ev.user_rsvp==='maybe'?'border-teal-500 text-teal-300 bg-teal-700/15':'border-white/10'}`} onClick={()=> rsvp(ev.id, 'maybe')}>Maybe {ev.rsvp_counts?.maybe||0}</button>
+                          <button className={`px-2 py-1 rounded-full border ${ev.user_rsvp==='not_going'?'border-teal-500 text-teal-300 bg-teal-700/15':'border-white/10'}`} onClick={()=> rsvp(ev.id, 'not_going')}>Not going {ev.rsvp_counts?.not_going||0}</button>
                           {typeof ev.rsvp_counts?.no_response === 'number' && (
-                            <span className="ml-auto">No response {ev.rsvp_counts.no_response}</span>
+                            <span className="px-2 py-1 rounded-full border border-white/10">No response {ev.rsvp_counts.no_response}</span>
                           )}
                           <button className="ml-auto px-2 py-1 rounded-md border border-white/10 hover:bg-white/5" onClick={()=> openInviteDetails(ev)}>Invite details</button>
                           <button className="px-2 py-1 rounded-md border border-red-400 text-red-300 hover:bg-red-500/10" onClick={()=> deleteEvent(ev)}>
@@ -256,10 +256,18 @@ export default function CommunityCalendar(){
       </div>
 
       {modalEvent && (
-        <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur flex items-end justify_center" onClick={(e)=> e.currentTarget===e.target && setModalEvent(null)}>
+        <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur flex items-end justify-center" onClick={(e)=> e.currentTarget===e.target && setModalEvent(null)}>
           <div className="w-[96%] max-w-[560px] mb-4 rounded-2xl border border-white/10 bg-black p-3">
+            <div className="mb-2">
+              <div className="font-semibold text-white">{modalEvent.title}</div>
+              <div className="text-xs text-[#9fb0b5]">
+                {modalEvent.date}{modalEvent.end_date ? ` → ${modalEvent.end_date}` : ''}
+                {modalEvent.start_time ? ` • ${modalEvent.start_time}` : ''}{modalEvent.end_time ? ` - ${modalEvent.end_time}` : ''}
+              </div>
+              {modalEvent.description ? (<div className="text-sm text-[#cfd8dc] mt-1">{modalEvent.description}</div>) : null}
+            </div>
             <div className="flex items-center justify-between mb-2">
-              <div className="font-semibold">{modalEvent.title}</div>
+              <div className="text-sm text-[#9fb0b5]">Invite details</div>
               <button className="px-2 py-1 rounded-full border border-white/10" onClick={()=> setModalEvent(null)}>✕</button>
             </div>
             {!modalDetails ? (

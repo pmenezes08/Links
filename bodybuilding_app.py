@@ -7296,6 +7296,21 @@ def get_calendar_events():
                 rsvp_counts = {'going': 0, 'maybe': 0, 'not_going': 0}
                 for row in c.fetchall():
                     rsvp_counts[row['response']] = row['count']
+                # Derive no_response based on community size if possible
+                no_response = 0
+                community_id_val = event['community_id'] if hasattr(event, 'keys') else None
+                if community_id_val:
+                    try:
+                        c.execute("SELECT COUNT(DISTINCT u.username) FROM user_communities uc JOIN users u ON uc.user_id=u.rowid WHERE uc.community_id=?", (community_id_val,))
+                        total_members_row = c.fetchone()
+                        total_members = total_members_row[0] if total_members_row is not None else 0
+                        c.execute("SELECT COUNT(DISTINCT username) FROM event_rsvps WHERE event_id=?", (event_id,))
+                        responded_row = c.fetchone()
+                        responded = responded_row[0] if responded_row is not None else 0
+                        no_response = max(0, (total_members or 0) - (responded or 0))
+                    except Exception:
+                        no_response = 0
+                rsvp_counts['no_response'] = no_response
                 
                 # Get current user's RSVP if logged in
                 username = session.get('username')
