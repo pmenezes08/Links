@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import Avatar from './Avatar'
 
 type HeaderBarProps = {
@@ -10,6 +10,7 @@ type HeaderBarProps = {
 
 export default function HeaderBar({ title, username, avatarUrl }: HeaderBarProps){
   const navigate = useNavigate()
+  const location = useLocation()
   const [menuOpen, setMenuOpen] = useState(false)
   const [unreadMsgs, setUnreadMsgs] = useState<number>(0)
   const [unreadNotifs, setUnreadNotifs] = useState<number>(0)
@@ -51,11 +52,13 @@ export default function HeaderBar({ title, username, avatarUrl }: HeaderBarProps
         </button>
         <div className="font-semibold truncate tracking-[-0.01em] flex-1">{title}</div>
         <div className="flex items-center gap-2">
-          <button className="p-2 rounded-full hover:bg-white/5" onClick={()=> navigate('/user_chat/new')} aria-label="New Message">
-            <i className="fa-solid fa-plus" />
-          </button>
+          {location.pathname === '/user_chat' && (
+            <button className="p-2 rounded-full hover:bg-white/5" onClick={()=> navigate('/user_chat/new')} aria-label="New Message">
+              <i className="fa-solid fa-plus" />
+            </button>
+          )}
           <button className="relative p-2 rounded-full hover:bg-white/5" onClick={()=> navigate('/user_chat')} aria-label="Messages">
-            <i className="fa-solid fa-cloud" />
+            <i className="fa-solid fa-comments" />
             {unreadMsgs > 0 ? (<span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-[#4db6ac] text-black text-[10px] flex items-center justify-center">{unreadMsgs > 99 ? '99+' : unreadMsgs}</span>) : null}
           </button>
           <button className="relative p-2 rounded-full hover:bg-white/5" onClick={()=> navigate('/notifications')} aria-label="Notifications">
