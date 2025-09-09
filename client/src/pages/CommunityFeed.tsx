@@ -422,11 +422,10 @@ function PostCard({ post, currentUser, isAdmin, onOpen, onToggleReaction }: { po
             if (!p) return ''
             if (p.startsWith('http')) return p
             if (p.startsWith('/uploads') || p.startsWith('/static')) return p
-            // If stored as 'uploads/...' ensure leading slash
             return p.startsWith('uploads') ? `/${p}` : `/uploads/${p}`
           })()} alt="" className="block mx-auto max-w-full max-h-[360px] rounded border border-white/10" onError={(e:any)=>{ e.currentTarget.style.display='none' }} />
         ) : null}
-        {post.poll ? <PollBlock poll={post.poll} postId={post.id} /> : null}
+        {/* Polls are not displayed on the timeline in React */}
         <div className="flex items-center gap-2 text-xs" onClick={(e)=> e.stopPropagation()}>
           <ReactionFA icon="fa-regular fa-heart" count={post.reactions?.['heart']||0} active={post.user_reaction==='heart'} onClick={()=> onToggleReaction(post.id, 'heart')} />
           <ReactionFA icon="fa-regular fa-thumbs-up" count={post.reactions?.['thumbs-up']||0} active={post.user_reaction==='thumbs-up'} onClick={()=> onToggleReaction(post.id, 'thumbs-up')} />
@@ -459,29 +458,4 @@ function ReactionFA({ icon, count, active, onClick }:{ icon: string, count: numb
     </button>
   )
 }
-
-function PollBlock({ poll, postId }: { poll: Poll, postId: number }) {
-  async function vote(optionId: number) {
-    await fetch('/vote_poll', { method: 'POST', credentials: 'include', headers: { 'Content-Type':'application/json' }, body: JSON.stringify({ poll_id: poll.id, option_id: optionId, post_id: postId }) })
-    location.reload()
-  }
-  return (
-    <div className="rounded border border-white/10 p-2">
-      <div className="font-medium mb-1 text-[14px]">{poll.question}</div>
-      <div className="space-y-2">
-        {poll.options.map(opt => (
-          <button key={opt.id} className={`w-full text-left px-3 py-2 rounded border ${poll.user_vote===opt.id?'border-teal-500/50 bg-teal-700/10':'border-white/10 bg-white/5'}`} onClick={() => vote(opt.id)}>
-            {opt.text}
-            <span className="float-right text-xs text-[#9fb0b5]">{opt.votes}</span>
-          </button>
-        ))}
-      </div>
-      <div className="text-xs text-[#9fb0b5] mt-1">Total votes: {poll.total_votes}</div>
-    </div>
-  )
-}
-
-// Composer removed in this layout
-
-// ReplyComposerInline removed in favor of fixed-bottom composer on PostDetail
 

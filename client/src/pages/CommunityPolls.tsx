@@ -137,11 +137,11 @@ export default function CommunityPolls(){
               </div>
             </div>
             <div className="flex items-center gap-3">
-              <button type="button" className={`px-2 py-1 rounded-md border text-xs hover:bg-white/5 ${singleVote ? 'border-teal-500 text-teal-300 bg-teal-700/15' : 'border-white/10'}`} onClick={()=> setSingleVote(v=>!v)}>
+              <button type="button" className={`px-2 py-1 rounded-md border text-sm whitespace-nowrap hover:bg-white/5 ${singleVote ? 'border-teal-500 text-teal-300 bg-teal-700/15' : 'border-white/10'}`} onClick={()=> setSingleVote(v=>!v)}>
                 Single vote only
               </button>
-              <label className="text-xs text-[#9fb0b5]">Expiry date
-                <input type="datetime-local" value={expiresAt} onChange={e=> setExpiresAt(e.target.value)} className="mt-1 w-52 rounded-md bg-black border border-white/10 px-3 py-2 text-xs focus:border-teal-400/70 outline-none" />
+              <label className="text-sm text-[#9fb0b5] whitespace-nowrap">Expiry date
+                <input type="datetime-local" value={expiresAt} onChange={e=> setExpiresAt(e.target.value)} className="mt-1 w-60 rounded-md bg-black border border-white/10 px-3 py-2 text-sm focus:border-teal-400/70 outline-none" />
               </label>
             </div>
             <div className="flex justify-end">
