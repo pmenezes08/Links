@@ -34,7 +34,8 @@ export default function Messages(){
     load()
     const onVis = () => { if (!document.hidden) load() }
     document.addEventListener('visibilitychange', onVis)
-    return () => document.removeEventListener('visibilitychange', onVis)
+    const t = setInterval(load, 3000)
+    return () => { document.removeEventListener('visibilitychange', onVis); clearInterval(t) }
   }, [])
 
   return (
@@ -49,7 +50,11 @@ export default function Messages(){
             threads.map((t) => (
               <button
                 key={t.other_username}
-                onClick={() => navigate(`/user_chat/chat/${encodeURIComponent(t.other_username)}`)}
+                onClick={() => {
+                  setThreads(prev => prev.map(x => x.other_username===t.other_username ? { ...x, unread_count: 0 } : x))
+                  try{ (window as any).__header_do_poll && (window as any).__header_do_poll() }catch{}
+                  navigate(`/user_chat/chat/${encodeURIComponent(t.other_username)}`)
+                }}
                 className="w-full px-3 py-2 hover:bg-white/5 flex items-center gap-3"
               >
                 <Avatar username={t.other_username} url={t.profile_picture_url || undefined} size={48} />

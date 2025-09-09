@@ -36,6 +36,7 @@ export default function HeaderBar({ title, username, avatarUrl }: HeaderBarProps
         }
       }catch{}
     }
+    ;(window as any).__header_do_poll = poll
     poll()
     setInterval(poll, 5000)
   }
