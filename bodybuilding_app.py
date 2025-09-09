@@ -5465,6 +5465,8 @@ def get_poll_results(poll_id):
     except Exception as e:
         logger.error(f"Error getting poll results: {str(e)}")
         return jsonify({'success': False, 'error': 'Error retrieving poll results'})
+@app.route('/get_active_polls')
+@login_required
 def get_active_polls():
     """Get all active polls for a specific community"""
     try:
