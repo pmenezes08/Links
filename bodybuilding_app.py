@@ -3327,9 +3327,6 @@ def delete_chat_thread():
     except Exception as e:
         logger.error(f"delete_chat_thread error for {username} with {other_username}: {e}")
         return jsonify({'success': False, 'error': 'Failed to delete chat'}), 500
-    except Exception as e:
-        logger.error(f"Error deleting message for {username}: {str(e)}")
-        abort(500)
 @app.route('/get_community_members', methods=['POST'])
 @login_required
 def get_community_members():
