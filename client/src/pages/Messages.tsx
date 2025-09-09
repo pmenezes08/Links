@@ -87,6 +87,25 @@ export default function Messages(){
                     {t.unread_count > 99 ? '99+' : t.unread_count}
                   </div>
                 ) : null}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    if (!confirm(`Delete chat with ${t.display_name || t.other_username}? This cannot be undone.`)) return
+                    const fd = new URLSearchParams({ other_username: t.other_username })
+                    fetch('/delete_chat_thread', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
+                      .then(r=>r.json()).then(j=>{
+                        if (j?.success){
+                          setThreads(prev => prev.filter(x => x.other_username !== t.other_username))
+                          try{ (window as any).__header_do_poll && (window as any).__header_do_poll() }catch{}
+                        }
+                      }).catch(()=>{})
+                  }}
+                  className="ml-2 px-2 py-1 rounded-md text-[11px] bg-red-500/20 text-red-300 hover:bg-red-500/30"
+                  aria-label="Delete chat"
+                >
+                  Delete
+                </button>
               </button>
             ))
           )}

@@ -3297,6 +3297,36 @@ def delete_message():
                 return jsonify({'success': False, 'error': 'Message not found or not yours'})
             conn.commit()
         return jsonify({'success': True})
+
+@app.route('/delete_chat_thread', methods=['POST'])
+@login_required
+def delete_chat_thread():
+    """Delete all messages between the current user and the specified other user"""
+    username = session['username']
+    other_username = request.form.get('other_username')
+    if not other_username:
+        return jsonify({'success': False, 'error': 'Other username required'})
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            # Optional: restrict to premium similar to delete_message
+            c.execute("SELECT subscription FROM users WHERE username=?", (username,))
+            user = c.fetchone()
+            if not user or (hasattr(user, 'keys') and user['subscription'] != 'premium') or (not hasattr(user, 'keys') and user[0] != 'premium'):
+                return jsonify({'success': False, 'error': 'Premium subscription required!'})
+
+            c.execute(
+                """
+                DELETE FROM messages
+                WHERE (sender=? AND receiver=?) OR (sender=? AND receiver=?)
+                """,
+                (username, other_username, other_username, username),
+            )
+            conn.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"delete_chat_thread error for {username} with {other_username}: {e}")
+        return jsonify({'success': False, 'error': 'Failed to delete chat'}), 500
     except Exception as e:
         logger.error(f"Error deleting message for {username}: {str(e)}")
         abort(500)
