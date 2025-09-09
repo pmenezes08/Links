@@ -15,6 +15,9 @@ export default function ChatThread(){
   const listRef = useRef<HTMLDivElement|null>(null)
   const textareaRef = useRef<HTMLTextAreaElement|null>(null)
   const [otherProfile, setOtherProfile] = useState<{ display_name:string; profile_picture?:string|null }|null>(null)
+  const [typing, setTyping] = useState(false)
+  const typingTimer = useRef<any>(null)
+  const pollTimer = useRef<any>(null)
 
   useEffect(() => {
     if (!username) return
@@ -45,6 +48,28 @@ export default function ChatThread(){
     const t = setTimeout(() => { el.scrollTop = el.scrollHeight }, 0)
     return () => clearTimeout(t)
   }, [messages])
+
+  // Poll for new messages and typing status
+  useEffect(() => {
+    if (!username || !otherUserId) return
+    async function poll(){
+      try{
+        // Refresh messages (backend marks read)
+        const fd = new URLSearchParams({ other_user_id: String(otherUserId) })
+        const r = await fetch('/get_messages', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
+        const j = await r.json()
+        if (j?.success && Array.isArray(j.messages)) setMessages(j.messages)
+      }catch{}
+      try{
+        const t = await fetch(`/api/typing?peer=${encodeURIComponent(username!)}`, { credentials:'include' })
+        const tj = await t.json().catch(()=>null)
+        setTyping(!!tj?.is_typing)
+      }catch{}
+    }
+    poll()
+    pollTimer.current = setInterval(poll, 2000)
+    return () => { if (pollTimer.current) clearInterval(pollTimer.current) }
+  }, [username, otherUserId])
 
   // Freeze body scroll (iOS-safe) so only chat pane scrolls; preserves fixed header visibility
   useEffect(() => {
@@ -88,6 +113,8 @@ export default function ChatThread(){
           setDraft('')
           const now = new Date().toISOString().slice(0,19).replace('T',' ')
           setMessages(prev => [...prev, { id: Math.random(), text: fd.get('message') || '', sent:true, time: now }])
+          // stop typing state
+          fetch('/api/typing', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ peer: username, is_typing: false }) }).catch(()=>{})
         }
       }).catch(()=>{})
   }
@@ -105,6 +132,9 @@ export default function ChatThread(){
         </div>
         {/* Messages list (WhatsApp style bubbles) */}
         <div ref={listRef} className="flex-1 overflow-y-auto overscroll-contain px-2 sm:px-3 py-3 space-y-1" style={{ WebkitOverflowScrolling: 'touch' as any }}>
+          {typing && (
+            <div className="text-[12px] text-[#9fb0b5] mb-1">typing…</div>
+          )}
           {messages.map(m => (
             <div key={m.id} className={`flex ${m.sent ? 'justify-end' : 'justify-start'}`}>
               <div
@@ -128,7 +158,15 @@ export default function ChatThread(){
             className="flex-1 rounded-2xl bg-[#0b0f10] border border-white/15 px-4 py-2 text-[16px] leading-snug outline-none focus:border-[#4db6ac] resize-none max-h-40 min-h-[42px]"
             placeholder="Type a message"
             value={draft}
-            onChange={e=> setDraft(e.target.value)}
+            onChange={e=> {
+              setDraft(e.target.value)
+              // typing start (debounced stop)
+              fetch('/api/typing', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ peer: username, is_typing: true }) }).catch(()=>{})
+              if (typingTimer.current) clearTimeout(typingTimer.current)
+              typingTimer.current = setTimeout(() => {
+                fetch('/api/typing', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ peer: username, is_typing: false }) }).catch(()=>{})
+              }, 1200)
+            }}
             // Enter inserts newline by default; no auto-send on Enter
           />
           <button

@@ -50,6 +50,7 @@ X_CONSUMER_KEY = os.getenv('X_CONSUMER_KEY', 'cjB0MmRPRFRnOG9jcTA0UGRZV006MTpjaQ
 X_CONSUMER_SECRET = os.getenv('X_CONSUMER_SECRET', 'Wxo9qnpOaDIJ-9Aw_Bl_MDkor4uY24ephq9ZJFq6HwdH7o4-kB')
 VAPID_PUBLIC_KEY = os.getenv('VAPID_PUBLIC_KEY', '')
 VAPID_PRIVATE_KEY = os.getenv('VAPID_PRIVATE_KEY', '')
+TYPING_TTL_SECONDS = 5
 
 
 
@@ -218,6 +219,15 @@ def add_missing_tables():
                     logger.info("Added is_read column to messages table")
             except Exception as e:
                 logger.warning(f"Could not ensure is_read column on messages: {e}")
+
+            # Typing status table for realtime UX
+            c.execute('''CREATE TABLE IF NOT EXISTS typing_status (
+                             id INTEGER PRIMARY KEY AUTOINCREMENT,
+                             user TEXT NOT NULL,
+                             peer TEXT NOT NULL,
+                             is_typing INTEGER DEFAULT 0,
+                             updated_at TEXT NOT NULL,
+                             UNIQUE(user, peer))''')
 
             # Ensure helpful indexes
             try:
@@ -12505,6 +12515,56 @@ def api_get_user_profile_brief():
     except Exception as e:
         logger.error(f"Error in api_get_user_profile_brief: {e}")
         return jsonify({ 'success': False, 'error': 'server error' }), 500
+
+# --- Typing status APIs ---
+@app.route('/api/typing', methods=['POST'])
+@login_required
+def api_set_typing():
+    try:
+        me = session['username']
+        data = request.get_json(force=True, silent=True) or {}
+        peer = (data.get('peer') or '').strip()
+        is_typing = 1 if data.get('is_typing') else 0
+        if not peer:
+            return jsonify({ 'success': False, 'error': 'peer required' }), 400
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("""
+                INSERT INTO typing_status (user, peer, is_typing, updated_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(user, peer) DO UPDATE SET is_typing=excluded.is_typing, updated_at=excluded.updated_at
+            """, (me, peer, is_typing, now))
+            conn.commit()
+        return jsonify({ 'success': True })
+    except Exception as e:
+        logger.error(f"typing set error: {e}")
+        return jsonify({ 'success': False }), 500
+
+@app.route('/api/typing', methods=['GET'])
+@login_required
+def api_get_typing():
+    try:
+        me = session['username']
+        peer = (request.args.get('peer') or '').strip()
+        if not peer:
+            return jsonify({ 'success': False, 'error': 'peer required' }), 400
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT is_typing, updated_at FROM typing_status WHERE user=? AND peer=?", (peer, me))
+            row = c.fetchone()
+        if not row:
+            return jsonify({ 'success': True, 'is_typing': False })
+        is_typing, updated_at = (row['is_typing'], row['updated_at']) if hasattr(row, 'keys') else (row[0], row[1])
+        try:
+            last = datetime.fromisoformat(updated_at) if 'T' in updated_at else datetime.strptime(updated_at, '%Y-%m-%d %H:%M:%S')
+            fresh = (datetime.now() - last).total_seconds() <= TYPING_TTL_SECONDS
+        except Exception:
+            fresh = False
+        return jsonify({ 'success': True, 'is_typing': bool(is_typing) and fresh })
+    except Exception as e:
+        logger.error(f"typing get error: {e}")
+        return jsonify({ 'success': False, 'is_typing': False }), 500
 
 # Web Push: expose public VAPID key
 @app.route('/api/push/public_key')
