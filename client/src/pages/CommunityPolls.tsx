@@ -15,6 +15,7 @@ export default function CommunityPolls(){
   const [question, setQuestion] = useState('')
   const [options, setOptions] = useState<string[]>(['',''])
   const [singleVote, setSingleVote] = useState(true)
+  const [expiresAt, setExpiresAt] = useState('')
   const formRef = useRef<HTMLFormElement|null>(null)
 
   useEffect(() => { setTitle('Polls') }, [setTitle])
@@ -37,6 +38,7 @@ export default function CommunityPolls(){
     options.filter(x=> x.trim()).forEach(o => fd.append('options[]', o.trim()))
     if (community_id) fd.append('community_id', String(community_id))
     fd.append('single_vote', String(singleVote))
+    if (expiresAt) fd.append('expires_at', expiresAt)
     const r = await fetch('/create_poll', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
     const j = await r.json().catch(()=>null)
     if (j?.success){
@@ -44,6 +46,7 @@ export default function CommunityPolls(){
       setQuestion('')
       setOptions(['',''])
       setSingleVote(true)
+      setExpiresAt('')
       setActiveTab('active')
       setTimeout(()=> setSuccessMsg(null), 2000)
       load()
@@ -99,9 +102,14 @@ export default function CommunityPolls(){
                 <button type="button" className="px-2 py-1 rounded-md border border-white/10 text-xs hover:bg-white/5" onClick={()=> setOptions(prev => prev.length>2? prev.slice(0,-1): prev)}>Remove option</button>
               </div>
             </div>
-            <label className="inline-flex items-center gap-2 text-xs">
-              <input type="checkbox" className="accent-[#4db6ac]" checked={singleVote} onChange={e=> setSingleVote(e.target.checked)} /> Single vote only
-            </label>
+            <div className="flex items-center gap-3">
+              <button type="button" className={`px-2 py-1 rounded-md border text-xs hover:bg-white/5 ${singleVote ? 'border-teal-500 text-teal-300 bg-teal-700/15' : 'border-white/10'}`} onClick={()=> setSingleVote(v=>!v)}>
+                Single vote only
+              </button>
+              <label className="text-xs text-[#9fb0b5]">Expiry
+                <input type="datetime-local" value={expiresAt} onChange={e=> setExpiresAt(e.target.value)} className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none" />
+              </label>
+            </div>
             <div className="flex justify-end">
               <button className="px-3 py-1.5 rounded-md bg-[#4db6ac] text-black text-sm hover:brightness-110">Create</button>
             </div>

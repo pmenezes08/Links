@@ -5220,6 +5220,18 @@ def create_poll():
         return jsonify({'success': False, 'error': 'Maximum 6 options allowed!'})
     
     timestamp = datetime.now().strftime('%m.%d.%y %H:%M')
+    expires_at_raw = request.form.get('expires_at', '').strip()
+    expires_at_sql = None
+    if expires_at_raw:
+        try:
+            # Accept both 'YYYY-MM-DDTHH:MM' and 'YYYY-MM-DD'
+            if 'T' in expires_at_raw:
+                dt = datetime.strptime(expires_at_raw, '%Y-%m-%dT%H:%M')
+            else:
+                dt = datetime.strptime(expires_at_raw, '%Y-%m-%d')
+            expires_at_sql = dt.strftime('%Y-%m-%d %H:%M:%S')
+        except Exception:
+            expires_at_sql = None
     
     try:
         with get_db_connection() as conn:
@@ -5251,8 +5263,13 @@ def create_poll():
             logger.info(f"Creating poll - all form data: {dict(request.form)}")
             
             # Create the poll
-            c.execute("INSERT INTO polls (post_id, question, created_by, created_at, single_vote) VALUES (?, ?, ?, ?, ?)",
-                      (post_id, question, username, timestamp, single_vote))
+            # Insert with optional expiry if column exists
+            try:
+                c.execute("INSERT INTO polls (post_id, question, created_by, created_at, single_vote, expires_at) VALUES (?, ?, ?, ?, ?, ?)",
+                          (post_id, question, username, timestamp, single_vote, expires_at_sql))
+            except Exception:
+                c.execute("INSERT INTO polls (post_id, question, created_by, created_at, single_vote) VALUES (?, ?, ?, ?, ?)",
+                          (post_id, question, username, timestamp, single_vote))
             poll_id = c.lastrowid
             
             # Create poll options
@@ -5482,7 +5499,7 @@ def get_active_polls():
                     SELECT p.*, po.timestamp as created_at, po.username
                     FROM polls p 
                     JOIN posts po ON p.post_id = po.id 
-                    WHERE p.is_active = 1 AND po.community_id = ?
+                    WHERE p.is_active = 1 AND (p.expires_at IS NULL OR p.expires_at >= datetime('now')) AND po.community_id = ?
                     ORDER BY po.timestamp DESC
                 """, (community_id,))
             else:
@@ -5491,7 +5508,7 @@ def get_active_polls():
                     SELECT p.*, po.timestamp as created_at, po.username
                     FROM polls p 
                     JOIN posts po ON p.post_id = po.id 
-                    WHERE p.is_active = 1 
+                    WHERE p.is_active = 1 AND (p.expires_at IS NULL OR p.expires_at >= datetime('now'))
                     ORDER BY po.timestamp DESC
                 """)
             polls_raw = c.fetchall()
