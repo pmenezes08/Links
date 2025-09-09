@@ -120,7 +120,12 @@ export default function CommunityCalendar(){
         </div>
       </div>
 
-      <div className="max-w-2xl mx-auto pt-[70px] h-[calc(100vh-70px)] pb-6 px-3 overflow-y-auto no-scrollbar">
+      <div className="max-w-2xl mx-auto pt-[70px] h:[calc(100vh-70px)] pb-6 px-3 overflow-y-auto no-scrollbar">
+        <div className="mb-3">
+          <button className="px-3 py-1.5 rounded-md border border-white/10 text-sm hover:bg-white/5" onClick={()=> window.location.href = `/community_feed_react/${community_id}`}>
+            ← Back to community
+          </button>
+        </div>
         {successMsg && (
           <div className="mb-3 text-sm px-3 py-2 rounded-md bg-teal-700/15 text-teal-300 border border-teal-700/30">{successMsg}</div>
         )}
@@ -150,11 +155,9 @@ export default function CommunityCalendar(){
             </div>
 
             <div className="flex items-center gap-2">
-              <label className="inline-flex items-center gap-1.5 text-xs">
-                <input type="checkbox" checked={inviteAll} onChange={(e)=> setInviteAll(e.target.checked)} />
+              <button type="button" className={`px-2 py-1 rounded-md border text-xs hover:bg-white/5 ${inviteAll ? 'border-teal-500 text-teal-300 bg-teal-700/15' : 'border-white/10'}`} onClick={()=> { setInviteAll(v=> !v); if (!inviteAll) setInviteOpen(false) }}>
                 Invite all members
-              </label>
-              <button type="button" className="px-2 py-1 rounded-md border border-white/10 text-xs hover:bg-white/5" onClick={()=> setInviteAll(true)}>Invite all</button>
+              </button>
               <button type="button" className="px-2 py-1 rounded-md border border-white/10 text-xs hover:bg-white/5" onClick={()=> setInviteOpen(o=>!o)}>
                 Select members
               </button>
@@ -174,7 +177,7 @@ export default function CommunityCalendar(){
             )}
 
             <div className="flex justify-end">
-              <button className="px-4 py-2 rounded-md bg-[#4db6ac] text-black hover:brightness-110">Add</button>
+              <button className="px-3 py-1.5 rounded-md bg-[#4db6ac] text-black text-sm hover:brightness-110">Add</button>
             </div>
           </form>
         ) : (

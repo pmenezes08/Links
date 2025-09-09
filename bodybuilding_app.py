@@ -7275,7 +7275,7 @@ def get_calendar_events():
                        COALESCE(end_date, date) as end_date,
                        COALESCE(start_time, time) as start_time,
                        end_time,
-                       time, description, created_at
+                       time, description, created_at, community_id
                 FROM calendar_events
                 ORDER BY date ASC, COALESCE(start_time, time) ASC
             """)
@@ -7328,6 +7328,7 @@ def get_calendar_events():
                     'end_time': event['end_time'],
                     'description': event['description'],
                     'created_at': event['created_at'],
+                    'community_id': event['community_id'],
                     'rsvp_counts': rsvp_counts,
                     'user_rsvp': user_rsvp,
                     'total_rsvps': sum(rsvp_counts.values()),
