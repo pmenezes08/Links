@@ -11,7 +11,14 @@ type EventItem = {
   end_time?: string|null
   description?: string|null
   user_rsvp?: string|null
-  rsvp_counts?: { going: number; maybe: number; not_going: number }
+  rsvp_counts?: { going: number; maybe: number; not_going: number; no_response?: number }
+}
+
+type RSVPDetails = {
+  going: { username: string }[]
+  maybe: { username: string }[]
+  not_going: { username: string }[]
+  no_response: { username: string }[]
 }
 
 export default function CommunityCalendar(){
@@ -19,43 +26,38 @@ export default function CommunityCalendar(){
   const { setTitle } = useHeader()
   const [events, setEvents] = useState<EventItem[]>([])
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string| null>(null)
   const [members, setMembers] = useState<Array<{ username:string; profile_picture?:string|null }>>([])
   const [inviteAll, setInviteAll] = useState(false)
   const [selected, setSelected] = useState<Record<string, boolean>>({})
   const [activeTab, setActiveTab] = useState<'calendar'|'create'>('calendar')
   const [inviteOpen, setInviteOpen] = useState(false)
   const [successMsg, setSuccessMsg] = useState<string| null>(null)
+  const [modalEvent, setModalEvent] = useState<EventItem| null>(null)
+  const [modalDetails, setModalDetails] = useState<RSVPDetails| null>(null)
   const formRef = useRef<HTMLFormElement|null>(null)
 
   useEffect(() => { setTitle('Calendar') }, [setTitle])
 
+  async function reloadEvents(){
+    try{
+      const r = await fetch('/get_calendar_events', { credentials:'include' })
+      const j = await r.json()
+      if (j?.success && Array.isArray(j.events)){
+        const filtered = (j.events as any[]).filter(e => `${e.community_id||''}` === `${community_id}`)
+        setEvents(filtered as any)
+      }
+    }catch{}
+  }
+
   useEffect(() => {
     let mounted = true
-    async function load(){
-      setLoading(true)
-      try{
-        const r = await fetch('/get_calendar_events', { credentials:'include' })
-        const j = await r.json()
-        if (!mounted) return
-        if (j?.success && Array.isArray(j.events)){
-          const filtered = (j.events as any[]).filter(e => !community_id || `${e.community_id||''}` === `${community_id}`)
-          setEvents(filtered as any)
-        } else {
-          setError('Failed to load events')
-        }
-      }catch{
-        if (!mounted) return
-        setError('Failed to load events')
-      } finally { mounted && setLoading(false) }
-    }
-    load()
+    setLoading(true)
+    reloadEvents().finally(()=> mounted && setLoading(false))
     ;(async () => {
       try{
         const r = await fetch(`/community/${community_id}/members/list`, { credentials:'include' })
         const j = await r.json()
         if (j?.success && Array.isArray(j.members)){
-          if (!mounted) return
           setMembers(j.members)
         }
       }catch{}
@@ -87,7 +89,7 @@ export default function CommunityCalendar(){
     const r = await fetch('/add_calendar_event', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: params })
     const j = await r.json().catch(()=>null)
     if (j?.success){
-      try{ const rr = await fetch('/get_calendar_events', { credentials:'include' }); const jj = await rr.json(); if (jj?.success) setEvents((jj.events||[]).filter((e:any)=> !community_id || `${e.community_id||''}`===`${community_id}`)) }catch{}
+      await reloadEvents()
       setSuccessMsg('Event created')
       setActiveTab('calendar')
       try { formRef.current?.reset(); setInviteAll(false); setSelected({}); setInviteOpen(false) } catch {}
@@ -99,14 +101,46 @@ export default function CommunityCalendar(){
 
   async function rsvp(eventId:number, response:'going'|'maybe'|'not_going'){
     try{
-      await fetch(`/community/${community_id}/event/${eventId}/rsvp`, { credentials:'include' })
-      setEvents(prev => prev.map(ev => ev.id===eventId ? ({ ...ev, user_rsvp: response, rsvp_counts: { ...(ev.rsvp_counts||{going:0,maybe:0,not_going:0}), [response]: ((ev.rsvp_counts?.[response]||0) + 1) } }) : ev))
+      const body = new URLSearchParams({ response })
+      const r = await fetch(`/event/${eventId}/rsvp`, { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body })
+      const j = await r.json().catch(()=>null)
+      if (j?.success){
+        await reloadEvents()
+      }
+    }catch{}
+  }
+
+  async function openInviteDetails(ev: EventItem){
+    setModalEvent(ev)
+    setModalDetails(null)
+    try{
+      const q = new URLSearchParams({ event_id: String(ev.id) })
+      const r = await fetch(`/get_event_rsvp_details?${q.toString()}`, { credentials:'include' })
+      const j = await r.json()
+      if (j?.success){
+        setModalDetails(j.attendees as RSVPDetails)
+      }
+    }catch{}
+  }
+
+  async function deleteEvent(ev: EventItem){
+    if (!confirm('Delete this event?')) return
+    try{
+      const body = new URLSearchParams({ event_id: String(ev.id) })
+      const r = await fetch('/delete_calendar_event', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body })
+      const j = await r.json().catch(()=>null)
+      if (j?.success){
+        await reloadEvents()
+        setModalEvent(null)
+        setModalDetails(null)
+      } else {
+        alert(j?.message || 'Could not delete')
+      }
     }catch{}
   }
 
   return (
     <div className="h-screen overflow-hidden bg-black text-white">
-      {/* Secondary nav like Communities */}
       <div className="fixed left-0 right-0 top-14 h-10 bg-black/70 backdrop-blur z-40">
         <div className="max-w-2xl mx-auto h-full flex">
           <button type="button" className={`flex-1 text-center text-sm font-medium ${activeTab==='calendar' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`} onClick={()=> setActiveTab('calendar')}>
@@ -120,7 +154,7 @@ export default function CommunityCalendar(){
         </div>
       </div>
 
-      <div className="max-w-2xl mx-auto pt-[70px] h:[calc(100vh-70px)] pb-6 px-3 overflow-y-auto no-scrollbar">
+      <div className="max-w-2xl mx-auto pt-[70px] h-[calc(100vh-70px)] pb-6 px-3 overflow-y-auto no-scrollbar">
         <div className="mb-3">
           <button className="px-3 py-1.5 rounded-md border border-white/10 text-sm hover:bg-white/5" onClick={()=> window.location.href = `/community_feed_react/${community_id}`}>
             ← Back to community
@@ -169,7 +203,7 @@ export default function CommunityCalendar(){
                   <div className="text-sm text-[#9fb0b5]">No members</div>
                 ) : members.map(m => (
                   <label key={m.username} className="flex items-center gap-2 py-1">
-                    <input type="checkbox" checked={!!selected[m.username]} onChange={(e)=> setSelected(s => ({ ...s, [m.username]: e.target.checked }))} />
+                    <input type="checkbox" className="accent-[#4db6ac]" checked={!!selected[m.username]} onChange={(e)=> setSelected(s => ({ ...s, [m.username]: e.target.checked }))} />
                     <span className="text-sm">{m.username}</span>
                   </label>
                 ))}
@@ -184,8 +218,6 @@ export default function CommunityCalendar(){
           <div className="space-y-3">
             {loading ? (
               <div className="text-[#9fb0b5]">Loading events…</div>
-            ) : error ? (
-              <div className="text-red-400">{error}</div>
             ) : grouped.length === 0 ? (
               <div className="text-[#9fb0b5]">No events yet.</div>
             ) : (
@@ -202,12 +234,16 @@ export default function CommunityCalendar(){
                         {ev.description ? (<div className="text-sm text-[#cfd8dc] mt-1">{ev.description}</div>) : null}
                         <div className="text-xs text-[#9fb0b5] mt-2 flex items-center gap-2">
                           <span>RSVP:</span>
-                          <button className={`px-2 py-1 rounded ${ev.user_rsvp==='going'?'bg-teal-700/20 text-teal-300':'bg-white/5'}`} onClick={()=> rsvp(ev.id, 'going')}>Going</button>
-                          <button className={`px-2 py-1 rounded ${ev.user_rsvp==='maybe'?'bg-teal-700/20 text-teal-300':'bg-white/5'}`} onClick={()=> rsvp(ev.id, 'maybe')}>Maybe</button>
-                          <button className={`px-2 py-1 rounded ${ev.user_rsvp==='not_going'?'bg-teal-700/20 text-teal-300':'bg-white/5'}`} onClick={()=> rsvp(ev.id, 'not_going')}>Not going</button>
-                          {!!ev.rsvp_counts && (
-                            <span className="ml-auto text-[#9fb0b5]">{ev.rsvp_counts.going||0} going</span>
+                          <button className={`px-2 py-1 rounded ${ev.user_rsvp==='going'?'bg-teal-700/20 text-teal-300':'bg-white/5'}`} onClick={()=> rsvp(ev.id, 'going')}>Going {ev.rsvp_counts?.going||0}</button>
+                          <button className={`px-2 py-1 rounded ${ev.user_rsvp==='maybe'?'bg-teal-700/20 text-teal-300':'bg-white/5'}`} onClick={()=> rsvp(ev.id, 'maybe')}>Maybe {ev.rsvp_counts?.maybe||0}</button>
+                          <button className={`px-2 py-1 rounded ${ev.user_rsvp==='not_going'?'bg-teal-700/20 text-teal-300':'bg-white/5'}`} onClick={()=> rsvp(ev.id, 'not_going')}>Not going {ev.rsvp_counts?.not_going||0}</button>
+                          {typeof ev.rsvp_counts?.no_response === 'number' && (
+                            <span className="ml-auto">No response {ev.rsvp_counts.no_response}</span>
                           )}
+                          <button className="ml-auto px-2 py-1 rounded-md border border-white/10 hover:bg-white/5" onClick={()=> openInviteDetails(ev)}>Invite details</button>
+                          <button className="px-2 py-1 rounded-md border border-red-400 text-red-300 hover:bg-red-500/10" onClick={()=> deleteEvent(ev)}>
+                            Delete
+                          </button>
                         </div>
                       </div>
                     ))}
@@ -218,6 +254,47 @@ export default function CommunityCalendar(){
           </div>
         )}
       </div>
+
+      {modalEvent && (
+        <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur flex items-end justify_center" onClick={(e)=> e.currentTarget===e.target && setModalEvent(null)}>
+          <div className="w-[96%] max-w-[560px] mb-4 rounded-2xl border border-white/10 bg-black p-3">
+            <div className="flex items-center justify-between mb-2">
+              <div className="font-semibold">{modalEvent.title}</div>
+              <button className="px-2 py-1 rounded-full border border-white/10" onClick={()=> setModalEvent(null)}>✕</button>
+            </div>
+            {!modalDetails ? (
+              <div className="text-[#9fb0b5] text-sm">Loading…</div>
+            ) : (
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div>
+                  <div className="font-medium text-teal-300 mb-1">Going ({modalDetails.going.length})</div>
+                  <ul className="space-y-1">
+                    {modalDetails.going.map((u,idx)=> (<li key={`g-${idx}`}>{u.username}</li>))}
+                  </ul>
+                </div>
+                <div>
+                  <div className="font-medium text-[#cfd8dc] mb-1">Maybe ({modalDetails.maybe.length})</div>
+                  <ul className="space-y-1">
+                    {modalDetails.maybe.map((u,idx)=> (<li key={`m-${idx}`}>{u.username}</li>))}
+                  </ul>
+                </div>
+                <div>
+                  <div className="font-medium text-red-300 mb-1">Not going ({modalDetails.not_going.length})</div>
+                  <ul className="space-y-1">
+                    {modalDetails.not_going.map((u,idx)=> (<li key={`n-${idx}`}>{u.username}</li>))}
+                  </ul>
+                </div>
+                <div>
+                  <div className="font-medium text-[#9fb0b5] mb-1">No response ({modalDetails.no_response.length})</div>
+                  <ul className="space-y-1">
+                    {modalDetails.no_response.map((u,idx)=> (<li key={`r-${idx}`}>{u.username}</li>))}
+                  </ul>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
