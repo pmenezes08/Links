@@ -132,9 +132,6 @@ export default function ChatThread(){
         </div>
         {/* Messages list (WhatsApp style bubbles) */}
         <div ref={listRef} className="flex-1 overflow-y-auto overscroll-contain px-2 sm:px-3 py-3 space-y-1" style={{ WebkitOverflowScrolling: 'touch' as any }}>
-          {typing && (
-            <div className="text-[12px] text-[#9fb0b5] mb-1">typing…</div>
-          )}
           {messages.map(m => (
             <div key={m.id} className={`flex ${m.sent ? 'justify-end' : 'justify-start'}`}>
               <div
@@ -145,6 +142,16 @@ export default function ChatThread(){
               </div>
             </div>
           ))}
+        </div>
+
+        {/* Typing indicator row (fixed height to avoid layout shift) */}
+        <div className="h-8 px-3 flex items-center gap-2 text-[#9fb0b5] flex-shrink-0">
+          {typing ? (
+            <>
+              <Avatar username={username || ''} url={otherProfile?.profile_picture || undefined} size={18} />
+              <span className="text-[12px]">typing...</span>
+            </>
+          ) : null}
         </div>
 
         {/* Composer (sticky bottom) */}
