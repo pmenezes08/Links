@@ -66,10 +66,11 @@ export default function Messages(){
               const isDragging = draggingIdRef.current === t.other_username
               const tx = isDragging ? Math.min(0, dragX) : (swipeId === t.other_username ? -72 : 0)
               const transition = isDragging ? 'none' : 'transform 150ms ease-out'
+              const showActions = isDragging ? (dragX < -10) : (swipeId === t.other_username)
               return (
                 <div key={t.other_username} className="relative w-full overflow-hidden">
                   {/* Actions (revealed on swipe) */}
-                  <div className="absolute inset-y-0 right-0 flex items-stretch pr-2">
+                  <div className="absolute inset-y-0 right-0 flex items-stretch pr-2" style={{ opacity: showActions ? 1 : 0, pointerEvents: showActions ? 'auto' : 'none', transition: 'opacity 150ms ease-out' }}>
                     <button
                       type="button"
                       onClick={() => {

@@ -217,14 +217,17 @@ function LongPressDeletable({ children, onDelete }: { children: React.ReactNode;
         {children}
       </div>
       {showMenu && (
-        <div className="absolute z-40 -top-8 right-2 bg-black border border-white/15 rounded-md shadow-lg px-3 py-1">
-          <button
-            className="text-red-400 text-sm"
-            onClick={() => { setShowMenu(false); onDelete() }}
-          >
-            Delete
-          </button>
-        </div>
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setShowMenu(false)} />
+          <div className="absolute z-50 -top-10 right-2 bg-[#111] border border-white/15 rounded-lg shadow-xl px-3 py-2">
+            <button
+              className="text-red-400 text-sm"
+              onClick={() => { setShowMenu(false); onDelete() }}
+            >
+              Delete
+            </button>
+          </div>
+        </>
       )}
     </div>
   )
