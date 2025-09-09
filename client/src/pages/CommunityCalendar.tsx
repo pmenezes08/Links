@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
 
 type EventItem = {
@@ -16,7 +16,6 @@ type EventItem = {
 
 export default function CommunityCalendar(){
   const { community_id } = useParams()
-  const navigate = useNavigate()
   const { setTitle } = useHeader()
   const [events, setEvents] = useState<EventItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -36,7 +35,6 @@ export default function CommunityCalendar(){
     async function load(){
       setLoading(true)
       try{
-        // Reuse existing API that returns calendar events with RSVP info
         const r = await fetch('/get_calendar_events', { credentials:'include' })
         const j = await r.json()
         if (!mounted) return
@@ -107,26 +105,28 @@ export default function CommunityCalendar(){
   }
 
   return (
-    <div className="min-h-screen bg-black text-white">
-      <div className="sticky top-0 z-30 h-12 border-b border-white/10 bg-black/80 backdrop-blur flex items-center px-3 gap-2">
-        <button className="p-2 rounded-full hover:bg-white/5" onClick={()=> navigate(`/community_feed_react/${community_id}`)} aria-label="Back">
-          <i className="fa-solid fa-arrow-left" />
-        </button>
-        <div className="font-medium">Calendar</div>
+    <div className="h-screen overflow-hidden bg-black text-white">
+      {/* Secondary nav like Communities */}
+      <div className="fixed left-0 right-0 top-14 h-10 bg-black/70 backdrop-blur z-40">
+        <div className="max-w-2xl mx-auto h-full flex">
+          <button type="button" className={`flex-1 text-center text-sm font-medium ${activeTab==='calendar' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`} onClick={()=> setActiveTab('calendar')}>
+            <div className="pt-2">Calendar</div>
+            <div className={`h-0.5 rounded-full w-16 mx-auto mt-1 ${activeTab==='calendar' ? 'bg-[#4db6ac]' : 'bg-transparent'}`} />
+          </button>
+          <button type="button" className={`flex-1 text-center text-sm font-medium ${activeTab==='create' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`} onClick={()=> setActiveTab('create')}>
+            <div className="pt-2">Create Event</div>
+            <div className={`h-0.5 rounded-full w-16 mx-auto mt-1 ${activeTab==='create' ? 'bg-[#4db6ac]' : 'bg-transparent'}`} />
+          </button>
+        </div>
       </div>
 
-      <div className="max-w-2xl mx-auto p-3">
-        <div className="mb-3 inline-flex border border-white/10 rounded-xl overflow-hidden">
-          <button className={`px-4 py-2 text-sm ${activeTab==='calendar'?'bg-white/10 text-white':'text-[#9fb0b5]'}`} onClick={()=> setActiveTab('calendar')}>Calendar</button>
-          <button className={`px-4 py-2 text-sm ${activeTab==='create'?'bg-white/10 text-white':'text-[#9fb0b5]'}`} onClick={()=> setActiveTab('create')}>Create</button>
-        </div>
-
+      <div className="max-w-2xl mx-auto pt-[70px] h-[calc(100vh-70px)] pb-6 px-3 overflow-y-auto no-scrollbar">
         {successMsg && (
           <div className="mb-3 text-sm px-3 py-2 rounded-md bg-teal-700/15 text-teal-300 border border-teal-700/30">{successMsg}</div>
         )}
 
         {activeTab === 'create' ? (
-          <form ref={formRef} className="rounded-xl border border-white/10 p-3 bg-white/5 space-y-3" onSubmit={(e)=> { e.preventDefault(); createEvent(new FormData(e.currentTarget)) }}>
+          <form ref={formRef} className="rounded-2xl border border-white/10 p-3 bg-white/[0.035] space-y-3" onSubmit={(e)=> { e.preventDefault(); createEvent(new FormData(e.currentTarget)) }}>
             <div className="text-sm font-medium">Create Event</div>
             <div className="grid grid-cols-2 gap-2">
               <label className="col-span-2 text-xs text-[#9fb0b5]">Title
@@ -149,14 +149,14 @@ export default function CommunityCalendar(){
               </label>
             </div>
 
-            <div className="flex items-center gap-3">
-              <label className="inline-flex items-center gap-2 text-sm">
+            <div className="flex items-center gap-2">
+              <label className="inline-flex items-center gap-1.5 text-xs">
                 <input type="checkbox" checked={inviteAll} onChange={(e)=> setInviteAll(e.target.checked)} />
                 Invite all members
               </label>
-              <button type="button" className="px-3 py-1.5 rounded-md border border-white/10 text-sm hover:bg-white/5" onClick={()=> setInviteAll(true)}>Invite all</button>
-              <button type="button" className="px-3 py-1.5 rounded-md border border-white/10 text-sm hover:bg-white/5" onClick={()=> setInviteOpen(o=>!o)}>
-                Select members to invite
+              <button type="button" className="px-2 py-1 rounded-md border border-white/10 text-xs hover:bg-white/5" onClick={()=> setInviteAll(true)}>Invite all</button>
+              <button type="button" className="px-2 py-1 rounded-md border border-white/10 text-xs hover:bg-white/5" onClick={()=> setInviteOpen(o=>!o)}>
+                Select members
               </button>
             </div>
 
@@ -178,7 +178,7 @@ export default function CommunityCalendar(){
             </div>
           </form>
         ) : (
-          <div className="space-y-4">
+          <div className="space-y-3">
             {loading ? (
               <div className="text-[#9fb0b5]">Loading events…</div>
             ) : error ? (
@@ -187,7 +187,7 @@ export default function CommunityCalendar(){
               <div className="text-[#9fb0b5]">No events yet.</div>
             ) : (
               grouped.map(([date, items]) => (
-                <div key={date} className="rounded-xl border border-white/10 overflow-hidden">
+                <div key={date} className="rounded-2xl border border-white/10 bg-white/[0.035] overflow-hidden">
                   <div className="px-3 py-2 bg-white/5 text-xs text-[#9fb0b5]">{date}</div>
                   <div className="divide-y divide-white/10">
                     {items.map(ev => (
