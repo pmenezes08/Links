@@ -9,6 +9,7 @@ import { HeaderContext } from './contexts/HeaderContext'
 import PushInit from './components/PushInit'
 import CrossfitExact from './pages/CrossfitExact'
 import CommunityFeed from './pages/CommunityFeed'
+import CommunityCalendar from './pages/CommunityCalendar'
 import PostDetail from './pages/PostDetail'
 import CreatePost from './pages/CreatePost'
 import Members from './pages/Members'
@@ -68,6 +69,7 @@ function AppRoutes(){
           <Route path="/home" element={<HomeTimeline />} />
           <Route path="/workout_tracking" element={<WorkoutTracking />} />
           <Route path="/community_feed_react/:community_id" element={<CommunityFeed />} />
+          <Route path="/community/:community_id/calendar_react" element={<CommunityCalendar />} />
           <Route path="/community/:community_id/members" element={<Members />} />
           <Route path="/post/:post_id" element={<PostDetail />} />
           <Route path="/compose" element={<CreatePost />} />

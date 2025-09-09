@@ -339,6 +339,9 @@ export default function CommunityFeed() {
               {hasUnseenAnnouncements ? (<span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-[#4db6ac] rounded-full" />) : null}
             </span>
           </button>
+          <button className="p-2 rounded-full hover:bg-white/5" aria-label="Calendar" onClick={()=> navigate(`/community/${community_id}/calendar_react`)}>
+            <i className="fa-regular fa-calendar" />
+          </button>
           <button className="p-2 rounded-full hover:bg-white/5" aria-label="More" onClick={()=> setMoreOpen(true)}>
             <i className="fa-solid fa-ellipsis" />
           </button>
