@@ -21,20 +21,31 @@ export default function Messages(){
   const [threads, setThreads] = useState<Thread[]>([])
   const [loading, setLoading] = useState(true)
 
-  function load(){
-    setLoading(true)
+  function load(silent:boolean=false){
+    if (!silent) setLoading(true)
     fetch('/api/chat_threads', { credentials:'include' })
       .then(r=>r.json()).then(j=>{
-        if (j?.success && Array.isArray(j.threads)) setThreads(j.threads)
+        if (j?.success && Array.isArray(j.threads)){
+          setThreads(prev => {
+            const a = prev
+            const b = j.threads as Thread[]
+            if (a.length !== b.length) return b
+            const changed = a.some((x, idx) => {
+              const y = b[idx]
+              return !y || x.other_username !== y.other_username || x.last_message_text !== y.last_message_text || x.last_activity_time !== y.last_activity_time || (x.unread_count||0) !== (y.unread_count||0)
+            })
+            return changed ? b : a
+          })
+        }
       }).catch(()=>{})
-      .finally(()=> setLoading(false))
+      .finally(()=> { if (!silent) setLoading(false) })
   }
 
   useEffect(() => {
-    load()
-    const onVis = () => { if (!document.hidden) load() }
+    load(false)
+    const onVis = () => { if (!document.hidden) load(true) }
     document.addEventListener('visibilitychange', onVis)
-    const t = setInterval(load, 3000)
+    const t = setInterval(() => load(true), 5000)
     return () => { document.removeEventListener('visibilitychange', onVis); clearInterval(t) }
   }, [])
 
