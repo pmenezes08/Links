@@ -3297,6 +3297,9 @@ def delete_message():
                 return jsonify({'success': False, 'error': 'Message not found or not yours'})
             conn.commit()
         return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"Error deleting message for {username}: {str(e)}")
+        return jsonify({'success': False, 'error': 'Failed to delete message'}), 500
 
 @app.route('/delete_chat_thread', methods=['POST'])
 @login_required
