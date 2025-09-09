@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
 
 type PollOption = { id: number; option_text: string; votes: number }
-type ActivePoll = { id:number; question:string; options: PollOption[]; single_vote?: boolean; total_votes?: number }
+type ActivePoll = { id:number; question:string; options: PollOption[]; single_vote?: boolean; total_votes?: number; user_vote?: number|null }
 
 export default function CommunityPolls(){
   const { community_id } = useParams()
@@ -26,7 +26,7 @@ export default function CommunityPolls(){
       const r = await fetch(`/get_active_polls?community_id=${community_id}`, { credentials:'include' })
       const j = await r.json()
       if (j?.success){
-        setPolls(j.polls || [])
+        setPolls((j.polls || []).map((p:any) => ({ id:p.id, question:p.question, options:p.options||[], single_vote:p.single_vote, total_votes:p.total_votes, user_vote:p.user_vote })))
       }
     }finally{ setLoading(false) }
   }
@@ -55,14 +55,48 @@ export default function CommunityPolls(){
     }
   }
 
-  async function closePoll(pollId:number){
-    const r = await fetch('/close_poll', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: new URLSearchParams({ poll_id: String(pollId) }) })
-    const j = await r.json().catch(()=>null)
-    if (j?.success) load()
+  function optimisticVote(pollId:number, optionId:number, toggle:boolean){
+    setPolls(prev => prev.map(p => {
+      if (p.id !== pollId) return p
+      const next = { ...p, options: p.options.map(o => ({ ...o })) }
+      if (p.single_vote){
+        const prevOptId = p.user_vote || null
+        if (prevOptId && prevOptId !== optionId){
+          const prevOpt = next.options.find(o => o.id === prevOptId)
+          if (prevOpt && prevOpt.votes > 0) prevOpt.votes -= 1
+        }
+        const cur = next.options.find(o => o.id === optionId)
+        if (cur) cur.votes += 1
+        next.user_vote = optionId
+      } else {
+        // Multiple vote mode: toggle off if same option clicked and toggle is true
+        const cur = next.options.find(o => o.id === optionId)
+        if (cur){
+          if (toggle){
+            if (cur.votes > 0) cur.votes -= 1
+          } else {
+            cur.votes += 1
+          }
+        }
+      }
+      return next
+    }))
   }
 
   async function vote(pollId:number, optionId:number){
-    const r = await fetch('/vote_poll', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ poll_id: pollId, option_id: optionId, toggle_vote: false }) })
+    const poll = polls.find(p => p.id === pollId)
+    const isToggle = poll && !poll.single_vote && !!poll.options.find(o => o.id===optionId) // allow toggle for multi-vote
+    optimisticVote(pollId, optionId, !!isToggle)
+    const res = await fetch('/vote_poll', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ poll_id: pollId, option_id: optionId, toggle_vote: !poll?.single_vote && poll?.options?.some(o=> o.id===optionId) ? true : false }) })
+    const j = await res.json().catch(()=>null)
+    if (!j?.success){
+      // Reload to reconcile on error
+      load()
+    }
+  }
+
+  async function closePoll(pollId:number){
+    const r = await fetch('/close_poll', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: new URLSearchParams({ poll_id: String(pollId) }) })
     const j = await r.json().catch(()=>null)
     if (j?.success) load()
   }
@@ -106,8 +140,8 @@ export default function CommunityPolls(){
               <button type="button" className={`px-2 py-1 rounded-md border text-xs hover:bg-white/5 ${singleVote ? 'border-teal-500 text-teal-300 bg-teal-700/15' : 'border-white/10'}`} onClick={()=> setSingleVote(v=>!v)}>
                 Single vote only
               </button>
-              <label className="text-xs text-[#9fb0b5]">Expiry
-                <input type="datetime-local" value={expiresAt} onChange={e=> setExpiresAt(e.target.value)} className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none" />
+              <label className="text-xs text-[#9fb0b5]">Expiry date
+                <input type="datetime-local" value={expiresAt} onChange={e=> setExpiresAt(e.target.value)} className="mt-1 w-52 rounded-md bg-black border border-white/10 px-3 py-2 text-xs focus:border-teal-400/70 outline-none" />
               </label>
             </div>
             <div className="flex justify-end">

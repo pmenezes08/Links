@@ -342,9 +342,6 @@ export default function CommunityFeed() {
           <button className="p-2 rounded-full hover:bg-white/5" aria-label="Calendar" onClick={()=> navigate(`/community/${community_id}/calendar_react`)}>
             <i className="fa-regular fa-calendar" />
           </button>
-          <button className="p-2 rounded-full hover:bg-white/5" aria-label="Polls" onClick={()=> navigate(`/community/${community_id}/polls_react`)}>
-            <i className="fa-solid fa-square-poll-vertical" />
-          </button>
           <button className="p-2 rounded-full hover:bg-white/5" aria-label="More" onClick={()=> setMoreOpen(true)}>
             <i className="fa-solid fa-ellipsis" />
           </button>
@@ -355,6 +352,7 @@ export default function CommunityFeed() {
       {moreOpen && (
         <div className="fixed inset-0 z-[95] bg-black/30 flex items-end justify-end" onClick={(e)=> e.currentTarget===e.target && setMoreOpen(false)}>
           <div className="w-[75%] max-w-sm mr-2 mb-2 bg-black/80 backdrop-blur border border-white/10 rounded-2xl p-2 space-y-2 transition-transform duration-200 ease-out translate-y-0">
+            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); navigate(`/community/${community_id}/polls_react`) }}>Polls</button>
             <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); window.location.href = `/community/${community_id}/calendar` }}>Calendar</button>
             <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); window.location.href = `/community/${community_id}/resources` }}>Forum</button>
             <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); window.location.href = `/community/${community_id}/resources` }}>Useful Links</button>
