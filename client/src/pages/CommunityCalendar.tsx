@@ -101,8 +101,7 @@ export default function CommunityCalendar(){
 
   async function rsvp(eventId:number, response:'going'|'maybe'|'not_going'){
     try{
-      const body = new URLSearchParams({ response })
-      const r = await fetch(`/event/${eventId}/rsvp`, { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body })
+      const r = await fetch(`/event/${eventId}/rsvp`, { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ response }) })
       const j = await r.json().catch(()=>null)
       if (j?.success){
         await reloadEvents()
@@ -240,9 +239,11 @@ export default function CommunityCalendar(){
                           {typeof ev.rsvp_counts?.no_response === 'number' && (
                             <span className="px-2 py-1 rounded-full border border-white/10">No response {ev.rsvp_counts.no_response}</span>
                           )}
-                          <button className="ml-auto px-2 py-1 rounded-md border border-white/10 hover:bg-white/5" onClick={()=> openInviteDetails(ev)}>Invite details</button>
-                          <button className="px-2 py-1 rounded-md border border-red-400 text-red-300 hover:bg-red-500/10" onClick={()=> deleteEvent(ev)}>
-                            Delete
+                          <button title="Invite details" className="ml-auto px-2 py-1 rounded-md border border-white/10 hover:bg-white/5" onClick={()=> openInviteDetails(ev)}>
+                            <i className="fa-regular fa-circle-question" />
+                          </button>
+                          <button title="Delete event" className="px-2 py-1 rounded-md border border-red-400 text-red-300 hover:bg-red-500/10" onClick={()=> deleteEvent(ev)}>
+                            <i className="fa-regular fa-trash-can" />
                           </button>
                         </div>
                       </div>

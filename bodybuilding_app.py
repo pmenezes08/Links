@@ -6784,57 +6784,49 @@ def event_rsvp_page(community_id, event_id):
 @app.route('/event/<int:event_id>/rsvp', methods=['POST'])
 @login_required
 def rsvp_event(event_id):
-    """RSVP to a calendar event"""
+    """RSVP to a calendar event (accepts JSON or form), returns updated counts including no_response and user_rsvp"""
     username = session.get('username')
-    
     try:
-        data = request.get_json()
-        response = data.get('response')  # 'going', 'maybe', 'not_going'
-        note = data.get('note', '')
-        
-        if response not in ['going', 'maybe', 'not_going']:
+        data = request.get_json(silent=True) or {}
+        response = (request.form.get('response') or data.get('response') or '').strip()
+        note = (request.form.get('note') or data.get('note') or '').strip()
+        if response not in ('going','maybe','not_going'):
             return jsonify({'success': False, 'message': 'Invalid response'}), 400
-        
         with get_db_connection() as conn:
             c = conn.cursor()
-            
-            # Check if event exists
-            c.execute("SELECT 1 FROM calendar_events WHERE id = ?", (event_id,))
-            if not c.fetchone():
+            # Ensure event exists and get community_id
+            c.execute("SELECT community_id FROM calendar_events WHERE id = ?", (event_id,))
+            row = c.fetchone()
+            if not row:
                 return jsonify({'success': False, 'message': 'Event not found'}), 404
-            
-            # Insert or update RSVP
+            community_id_val = row['community_id'] if hasattr(row, 'keys') else row[0]
+            # Upsert RSVP
             c.execute("""
                 INSERT INTO event_rsvps (event_id, username, response, note, responded_at)
                 VALUES (?, ?, ?, ?, ?)
-                ON CONFLICT(event_id, username) 
-                DO UPDATE SET response = ?, note = ?, responded_at = ?
-            """, (event_id, username, response, note, datetime.now().isoformat(),
-                  response, note, datetime.now().isoformat()))
-            
-            conn.commit()
-            
-            # Get updated RSVP counts
-            c.execute("""
-                SELECT response, COUNT(*) as count
-                FROM event_rsvps
-                WHERE event_id = ?
-                GROUP BY response
-            """, (event_id,))
-            
+                ON CONFLICT(event_id, username) DO UPDATE SET response=excluded.response, note=excluded.note, responded_at=excluded.responded_at
+            """, (event_id, username, response, note, datetime.now().isoformat()))
+            # Counts
+            c.execute("SELECT response, COUNT(*) as count FROM event_rsvps WHERE event_id=? GROUP BY response", (event_id,))
             counts = {'going': 0, 'maybe': 0, 'not_going': 0}
-            for row in c.fetchall():
-                counts[row['response']] = row['count']
-            
-            return jsonify({
-                'success': True,
-                'message': 'RSVP updated successfully',
-                'counts': counts
-            })
-            
+            for r in c.fetchall():
+                counts[r['response']] = r['count']
+            no_response = 0
+            if community_id_val:
+                try:
+                    c.execute("SELECT COUNT(DISTINCT u.username) FROM user_communities uc JOIN users u ON uc.user_id=u.rowid WHERE uc.community_id=?", (community_id_val,))
+                    total_members = (c.fetchone() or [0])[0]
+                    c.execute("SELECT COUNT(DISTINCT username) FROM event_rsvps WHERE event_id=?", (event_id,))
+                    responded = (c.fetchone() or [0])[0]
+                    no_response = max(0, (total_members or 0) - (responded or 0))
+                except Exception:
+                    no_response = 0
+            counts['no_response'] = no_response
+            conn.commit()
+        return jsonify({'success': True, 'counts': counts, 'user_rsvp': response})
     except Exception as e:
         logger.error(f"Error updating RSVP: {e}")
-        return jsonify({'success': False, 'message': str(e)}), 500
+        return jsonify({'success': False, 'message': 'Server error'}), 500
 
 @app.route('/event/<int:event_id>/rsvps')
 @login_required
