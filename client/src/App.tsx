@@ -11,6 +11,8 @@ import CrossfitExact from './pages/CrossfitExact'
 import CommunityFeed from './pages/CommunityFeed'
 import CommunityCalendar from './pages/CommunityCalendar'
 import CommunityPolls from './pages/CommunityPolls'
+import CommunityResources from './pages/CommunityResources'
+import UsefulLinks from './pages/UsefulLinks'
 import PostDetail from './pages/PostDetail'
 import CreatePost from './pages/CreatePost'
 import Members from './pages/Members'
@@ -73,6 +75,8 @@ function AppRoutes(){
           <Route path="/community_feed_react/:community_id" element={<CommunityFeed />} />
           <Route path="/community/:community_id/calendar_react" element={<CommunityCalendar />} />
           <Route path="/community/:community_id/polls_react" element={<CommunityPolls />} />
+          <Route path="/community/:community_id/resources_react" element={<CommunityResources />} />
+          <Route path="/community/:community_id/useful_links_react" element={<UsefulLinks />} />
           <Route path="/community/:community_id/members" element={<Members />} />
           <Route path="/post/:post_id" element={<PostDetail />} />
           <Route path="/compose" element={<CreatePost />} />

@@ -6297,9 +6297,21 @@ def delete_ad(ad_id):
 @app.route('/community/<int:community_id>/resources')
 @login_required
 def community_resources(community_id):
-    """Community resource sharing forum"""
+    """Community resource sharing forum - mobile -> React, desktop -> HTML"""
     username = session.get('username')
-    
+    # UA-based routing
+    try:
+        ua = request.headers.get('User-Agent', '')
+        is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
+        if is_mobile:
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            dist_dir = os.path.join(base_dir, 'client', 'dist')
+            index_path = os.path.join(dist_dir, 'index.html')
+            if os.path.exists(index_path):
+                return send_from_directory(dist_dir, 'index.html')
+    except Exception as _e:
+        logger.warning(f"React resources not available: {_e}")
+
     try:
         with get_db_connection() as conn:
             c = conn.cursor()

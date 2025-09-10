@@ -1,0 +1,91 @@
+import { useEffect, useRef, useState } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
+import { useHeader } from '../contexts/HeaderContext'
+
+type LinkItem = { id:number; username:string; url:string; description:string; created_at:string; can_delete?:boolean }
+
+export default function UsefulLinks(){
+  const { community_id } = useParams()
+  const { setTitle } = useHeader()
+  const navigate = useNavigate()
+  const [links, setLinks] = useState<LinkItem[]>([])
+  const [loading, setLoading] = useState(true)
+  const urlRef = useRef<HTMLInputElement|null>(null)
+  const descRef = useRef<HTMLInputElement|null>(null)
+
+  useEffect(() => { setTitle('Useful Links') }, [setTitle])
+
+  async function load(){
+    setLoading(true)
+    try{
+      const qs = community_id ? `?community_id=${community_id}` : ''
+      const r = await fetch(`/get_links${qs}`, { credentials:'include' })
+      const j = await r.json()
+      if (j?.success){ setLinks(j.links || []) }
+    }finally{ setLoading(false) }
+  }
+  useEffect(()=>{ load() }, [community_id])
+
+  async function addLink(){
+    const u = urlRef.current?.value.trim() || ''
+    const d = descRef.current?.value.trim() || ''
+    if (!u || !d) { alert('URL and description are required'); return }
+    const body = new URLSearchParams({ url:u, description:d })
+    if (community_id) body.append('community_id', String(community_id))
+    const r = await fetch('/add_link', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body })
+    const j = await r.json().catch(()=>null)
+    if (j?.success){ if (urlRef.current) urlRef.current.value=''; if (descRef.current) descRef.current.value=''; load() }
+    else alert(j?.error || j?.message || 'Failed to add link')
+  }
+
+  async function remove(id:number){
+    const body = new URLSearchParams({ link_id: String(id) })
+    const r = await fetch('/delete_link', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body })
+    const j = await r.json().catch(()=>null)
+    if (j?.success){ setLinks(prev => prev.filter(x => x.id !== id)) }
+    else alert(j?.error || j?.message || 'Failed to delete')
+  }
+
+  return (
+    <div className="h-screen overflow-hidden bg-black text-white">
+      <div className="fixed left-0 right-0 top-14 h-10 bg-black/70 backdrop-blur z-40">
+        <div className="max-w-2xl mx-auto h-full flex items-center gap-2 px-2">
+          <button className="p-2 rounded-full hover:bg-white/5" onClick={()=> navigate(`/community_feed_react/${community_id||''}`)} aria-label="Back">
+            <i className="fa-solid fa-arrow-left" />
+          </button>
+          <div className="flex-1 font-medium">Useful Links</div>
+        </div>
+      </div>
+
+      <div className="max-w-2xl mx-auto pt-[70px] h-[calc(100vh-70px)] pb-20 px-3 overflow-y-auto no-scrollbar">
+        <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-3">
+          <div className="text-sm font-semibold mb-2">Add a Link</div>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <input ref={urlRef} className="flex-1 rounded-md bg-black border border-white/10 px-3 py-2 text-sm focus:border-teal-400/70 outline-none" placeholder="https://..." />
+            <input ref={descRef} className="flex-1 rounded-md bg-black border border-white/10 px-3 py-2 text-sm focus:border-teal-400/70 outline-none" placeholder="Description" />
+            <button className="px-3 py-2 rounded-md bg-[#4db6ac] text-black text-sm hover:brightness-110" onClick={addLink}>Add</button>
+          </div>
+        </div>
+
+        <div className="mt-3 space-y-2">
+          {loading ? (
+            <div className="text-[#9fb0b5]">Loading…</div>
+          ) : links.length === 0 ? (
+            <div className="text-[#9fb0b5]">No links yet.</div>
+          ) : (
+            links.map(l => (
+              <div key={l.id} className="rounded-2xl border border-white/10 bg-white/[0.035] p-3 flex items-center gap-2">
+                <a className="text-teal-300 hover:underline truncate" href={l.url} target="_blank" rel="noreferrer">{l.url}</a>
+                <div className="flex-1 truncate text-sm text-[#cfd8dc]">{l.description}</div>
+                {l.can_delete ? (
+                  <button className="px-2 py-1 rounded-md border border-white/10 hover:bg-white/5 text-xs" onClick={()=> remove(l.id)}>Delete</button>
+                ) : null}
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
