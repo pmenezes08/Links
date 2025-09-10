@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, useNavigate } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
 
 type EventItem = {
@@ -23,6 +23,7 @@ type RSVPDetails = {
 
 export default function CommunityCalendar(){
   const { community_id } = useParams()
+  const navigate = useNavigate()
   const { setTitle } = useHeader()
   const [events, setEvents] = useState<EventItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -35,6 +36,8 @@ export default function CommunityCalendar(){
   const [modalEvent, setModalEvent] = useState<EventItem| null>(null)
   const [modalDetails, setModalDetails] = useState<RSVPDetails| null>(null)
   const formRef = useRef<HTMLFormElement|null>(null)
+  const scrollRef = useRef<HTMLDivElement|null>(null)
+  const [moreOpen, setMoreOpen] = useState(false)
 
   useEffect(() => { setTitle('Calendar') }, [setTitle])
 
@@ -141,24 +144,24 @@ export default function CommunityCalendar(){
   return (
     <div className="h-screen overflow-hidden bg-black text-white">
       <div className="fixed left-0 right-0 top-14 h-10 bg-black/70 backdrop-blur z-40">
-        <div className="max-w-2xl mx-auto h-full flex">
-          <button type="button" className={`flex-1 text-center text-sm font-medium ${activeTab==='calendar' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`} onClick={()=> setActiveTab('calendar')}>
-            <div className="pt-2">Calendar</div>
-            <div className={`h-0.5 rounded-full w-16 mx-auto mt-1 ${activeTab==='calendar' ? 'bg-[#4db6ac]' : 'bg-transparent'}`} />
+        <div className="max-w-2xl mx-auto h-full flex items-center gap-2 px-2">
+          <button className="p-2 rounded-full hover:bg-white/5" onClick={()=> navigate(`/community_feed_react/${community_id}`)} aria-label="Back">
+            <i className="fa-solid fa-arrow-left" />
           </button>
-          <button type="button" className={`flex-1 text-center text-sm font-medium ${activeTab==='create' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`} onClick={()=> setActiveTab('create')}>
-            <div className="pt-2">Create Event</div>
-            <div className={`h-0.5 rounded-full w-16 mx-auto mt-1 ${activeTab==='create' ? 'bg-[#4db6ac]' : 'bg-transparent'}`} />
-          </button>
+          <div className="flex-1 h-full flex">
+            <button type="button" className={`flex-1 text-center text-sm font-medium ${activeTab==='calendar' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`} onClick={()=> setActiveTab('calendar')}>
+              <div className="pt-2">Calendar</div>
+              <div className={`h-0.5 rounded-full w-16 mx-auto mt-1 ${activeTab==='calendar' ? 'bg-[#4db6ac]' : 'bg-transparent'}`} />
+            </button>
+            <button type="button" className={`flex-1 text-center text-sm font-medium ${activeTab==='create' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`} onClick={()=> setActiveTab('create')}>
+              <div className="pt-2">Create Event</div>
+              <div className={`h-0.5 rounded-full w-16 mx-auto mt-1 ${activeTab==='create' ? 'bg-[#4db6ac]' : 'bg-transparent'}`} />
+            </button>
+          </div>
         </div>
       </div>
 
-      <div className="max-w-2xl mx-auto pt-[70px] h-[calc(100vh-70px)] pb-6 px-3 overflow-y-auto no-scrollbar">
-        <div className="mb-3">
-          <button className="px-3 py-1.5 rounded-md border border-white/10 text-sm hover:bg-white/5" onClick={()=> window.location.href = `/community_feed_react/${community_id}`}>
-            ← Back to community
-          </button>
-        </div>
+      <div ref={scrollRef} className="max-w-2xl mx-auto pt-[70px] h-[calc(100vh-70px)] pb-20 px-3 overflow-y-auto no-scrollbar">
         {successMsg && (
           <div className="mb-3 text-sm px-3 py-2 rounded-md bg-teal-700/15 text-teal-300 border border-teal-700/30">{successMsg}</div>
         )}
@@ -255,6 +258,40 @@ export default function CommunityCalendar(){
           </div>
         )}
       </div>
+
+      {/* Bottom navigation bar - floating (same as community) */}
+      <div className="fixed bottom-4 left-1/2 transform -translate-x-1/2 z-40 w-[94%] max-w-[1200px] rounded-2xl border border-white/10 bg-black/80 backdrop-blur shadow-lg">
+        <div className="h-14 px-6 flex items-center justify-between text-[#cfd8dc]">
+          <button className="p-2 rounded-full hover:bg-white/5" aria-label="Home" onClick={()=> scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}>
+            <i className="fa-solid fa-house" />
+          </button>
+          <button className="p-2 rounded-full hover:bg-white/5" aria-label="Members" onClick={()=> navigate(`/community/${community_id}/members`)}>
+            <i className="fa-solid fa-users" />
+          </button>
+          <button className="w-10 h-10 rounded-md bg-[#4db6ac] text-black hover:brightness-110 grid place-items-center" aria-label="New Post" onClick={()=> navigate(`/compose?community_id=${community_id}`)}>
+            <i className="fa-solid fa-plus" />
+          </button>
+          <button className="p-2 rounded-full hover:bg:white/5" aria-label="Calendar" onClick={()=> navigate(`/community/${community_id}/calendar_react`)}>
+            <i className="fa-regular fa-calendar" />
+          </button>
+          <button className="p-2 rounded-full hover:bg-white/5" aria-label="More" onClick={()=> setMoreOpen(true)}>
+            <i className="fa-solid fa-ellipsis" />
+          </button>
+        </div>
+      </div>
+
+      {moreOpen && (
+        <div className="fixed inset-0 z-[95] bg-black/30 flex items-end justify-end" onClick={(e)=> e.currentTarget===e.target && setMoreOpen(false)}>
+          <div className="w-[75%] max-w-sm mr-2 mb-2 bg-black/80 backdrop-blur border border-white/10 rounded-2xl p-2 space-y-2 transition-transform duration-200 ease-out translate-y-0">
+            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); navigate(`/community/${community_id}/polls_react`) }}>Polls</button>
+            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); window.location.href = `/community/${community_id}/calendar` }}>Calendar</button>
+            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg:white/5" onClick={()=> { setMoreOpen(false); window.location.href = `/community/${community_id}/resources` }}>Forum</button>
+            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg:white/5" onClick={()=> { setMoreOpen(false); window.location.href = `/community/${community_id}/resources` }}>Useful Links</button>
+            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg:white/5" onClick={()=> { setMoreOpen(false); window.location.href = `/issues` }}>Report Issue</button>
+            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg:white/5" onClick={()=> { setMoreOpen(false); window.location.href = `/anonymous_feedback` }}>Anonymous feedback</button>
+          </div>
+        </div>
+      )}
 
       {modalEvent && (
         <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur flex items-end justify-center" onClick={(e)=> e.currentTarget===e.target && setModalEvent(null)}>
