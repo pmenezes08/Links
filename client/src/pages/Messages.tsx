@@ -54,9 +54,28 @@ export default function Messages(){
   }, [])
 
   return (
-    <div className="fixed inset-x-0 top-14 bottom-0 bg-black text-white">
-      <div className="h-full max-w-3xl mx-auto px-1 sm:px-3 py-2">
-        <div className="h-full overflow-y-auto overscroll-contain rounded-xl border border-white/10 bg-black divide-y divide-white/10" style={{ WebkitOverflowScrolling: 'touch' as any }}>
+    <div className="h-screen overflow-hidden bg-black text-white">
+      {/* Secondary header (match Polls) */}
+      <div className="fixed left-0 right-0 top-14 h-10 bg-black/70 backdrop-blur z-40">
+        <div className="max-w-3xl mx-auto h-full flex items-center gap-2 px-2">
+          <button className="p-2 rounded-full hover:bg-white/5" onClick={()=> navigate(-1)} aria-label="Back">
+            <i className="fa-solid fa-arrow-left" />
+          </button>
+          <div className="flex-1 h-full flex">
+            <button type="button" className={`flex-1 text-center text-sm font-medium text-white/95`} onClick={()=> { /* already here */ }}>
+              <div className="pt-2">Chats</div>
+              <div className={`h-0.5 rounded-full w-16 mx-auto mt-1 bg-[#4db6ac]`} />
+            </button>
+            <button type="button" className={`flex-1 text-center text-sm font-medium text-[#9fb0b5] hover:text-white/90`} onClick={()=> navigate('/user_chat/new')}>
+              <div className="pt-2">New Message</div>
+              <div className={`h-0.5 rounded-full w-16 mx-auto mt-1 bg-transparent`} />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="max-w-3xl mx-auto pt-[70px] h-[calc(100vh-70px)] px-1 sm:px-3 pb-2 overflow-y-auto overscroll-contain" style={{ WebkitOverflowScrolling: 'touch' as any }}>
+        <div className="rounded-xl border border-white/10 bg-black divide-y divide-white/10">
           {loading ? (
             <div className="px-4 py-4 text-sm text-[#9fb0b5]">Loading chats...</div>
           ) : threads.length === 0 ? (
