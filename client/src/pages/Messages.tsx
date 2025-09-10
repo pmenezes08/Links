@@ -16,7 +16,21 @@ type Thread = {
 export default function Messages(){
   const { setTitle } = useHeader()
   const navigate = useNavigate()
-  useEffect(() => { setTitle('Messages') }, [setTitle])
+  // Show current user's name in the top header
+  useEffect(() => {
+    let mounted = true
+    ;(async () => {
+      try{
+        const r = await fetch('/api/profile_me', { credentials:'include' })
+        if (!mounted) return
+        if (r.ok){
+          const j = await r.json()
+          if (j && j.username){ setTitle(j.username) }
+        }
+      }catch{}
+    })()
+    return () => { mounted = false }
+  }, [setTitle])
 
   const [threads, setThreads] = useState<Thread[]>([])
   const [loading, setLoading] = useState(true)
@@ -59,6 +73,9 @@ export default function Messages(){
       {/* Secondary header (match Polls) */}
       <div className="fixed left-0 right-0 top-14 h-10 bg-black/70 backdrop-blur z-40">
         <div className="max-w-3xl mx-auto h-full flex items-center gap-2 px-2">
+          <button className="p-2 rounded-full hover:bg-white/5" onClick={()=> { if (window.history.length > 1) navigate(-1); else navigate('/home') }} aria-label="Back">
+            <i className="fa-solid fa-arrow-left" />
+          </button>
           <div className="flex-1 h-full flex">
             <button type="button" className={`flex-1 text-center text-sm font-medium ${activeTab==='chats' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`} onClick={()=> setActiveTab('chats')}>
               <div className="pt-2">Chats</div>
