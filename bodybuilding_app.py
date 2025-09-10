@@ -55,6 +55,7 @@ X_CONSUMER_KEY = os.getenv('X_CONSUMER_KEY', 'cjB0MmRPRFRnOG9jcTA0UGRZV006MTpjaQ
 X_CONSUMER_SECRET = os.getenv('X_CONSUMER_SECRET', 'Wxo9qnpOaDIJ-9Aw_Bl_MDkor4uY24ephq9ZJFq6HwdH7o4-kB')
 VAPID_PUBLIC_KEY = os.getenv('VAPID_PUBLIC_KEY', '')
 VAPID_PRIVATE_KEY = os.getenv('VAPID_PRIVATE_KEY', '')
+VAPID_SUBJECT = os.getenv('VAPID_SUBJECT', 'https://www.c-point.co')
 TYPING_TTL_SECONDS = 5
 
 
@@ -12703,7 +12704,7 @@ def send_push_to_user(target_username: str, payload: dict):
                     subscription_info=subscription_info,
                     data=json.dumps(payload),
                     vapid_private_key=VAPID_PRIVATE_KEY,
-                    vapid_claims={ 'sub': 'mailto:admin@example.com' }
+                    vapid_claims={ 'sub': VAPID_SUBJECT }
                 )
             except WebPushException as wpe:
                 logger.warning(f"webpush failed: {wpe}")
