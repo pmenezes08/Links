@@ -12707,10 +12707,43 @@ def send_push_to_user(target_username: str, payload: dict):
                 )
             except WebPushException as wpe:
                 logger.warning(f"webpush failed: {wpe}")
+                # Clean up stale subscriptions (HTTP 404/410)
+                try:
+                    status_code = getattr(getattr(wpe, 'response', None), 'status_code', None)
+                except Exception:
+                    status_code = None
+                if status_code in (404, 410):
+                    try:
+                        endpoint_to_delete = s['endpoint'] if hasattr(s, 'keys') else s[0]
+                        with get_db_connection() as conn_del:
+                            cdel = conn_del.cursor()
+                            cdel.execute("DELETE FROM push_subscriptions WHERE endpoint=?", (endpoint_to_delete,))
+                            conn_del.commit()
+                        logger.info(f"Deleted stale push subscription for endpoint {endpoint_to_delete}")
+                    except Exception as de:
+                        logger.warning(f"failed to delete stale subscription: {de}")
             except Exception as e:
                 logger.warning(f"push error: {e}")
     except Exception as e:
         logger.error(f"send_push_to_user error: {e}")
+
+@app.route('/api/push/test', methods=['POST'])
+@login_required
+def api_push_test():
+    """Send a test push notification to the current user."""
+    try:
+        if not VAPID_PUBLIC_KEY or not VAPID_PRIVATE_KEY:
+            return jsonify({ 'success': False, 'error': 'VAPID keys not configured on server' }), 400
+        username = session.get('username')
+        data = request.get_json(silent=True) or {}
+        title = data.get('title') or 'Test notification'
+        body = data.get('body') or 'If you see this, push works.'
+        url = data.get('url') or '/'
+        send_push_to_user(username, { 'title': title, 'body': body, 'url': url })
+        return jsonify({ 'success': True })
+    except Exception as e:
+        logger.error(f"push test error: {e}")
+        return jsonify({ 'success': False, 'error': 'failed to send' }), 500
 
 @app.route('/get_active_chat_counts')
 @login_required

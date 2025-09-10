@@ -14,7 +14,9 @@ self.addEventListener('push', (event) => {
     body: data.body || '',
     icon: data.icon || '/vite.svg',
     badge: data.badge || '/vite.svg',
-    data: { url: data.url || '/' }
+    data: { url: data.url || '/' },
+    tag: data.tag || undefined,
+    requireInteraction: !!data.requireInteraction
   }
   event.waitUntil(self.registration.showNotification(title, options))
 })

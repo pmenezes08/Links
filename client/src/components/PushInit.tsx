@@ -16,12 +16,28 @@ export default function PushInit(){
       if (!('serviceWorker' in navigator) || !('PushManager' in window)) return
       try{
         const reg = await navigator.serviceWorker.register('/sw.js')
+        // Ensure service worker is active before subscribing
+        await navigator.serviceWorker.ready
         const perm = await Notification.requestPermission()
         if (perm !== 'granted') return
         const vapidRes = await fetch('/api/push/public_key', { credentials:'include' })
         const { publicKey } = await vapidRes.json()
-        const subscription = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(publicKey) })
-        await fetch('/api/push/subscribe', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(subscription) })
+        if (!publicKey){
+          // Server not configured; do not attempt subscription
+          return
+        }
+        // Attempt to get an existing subscription first
+        let subscription = await reg.pushManager.getSubscription()
+        if (!subscription){
+          subscription = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(publicKey) })
+        }
+        const resp = await fetch('/api/push/subscribe', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(subscription) })
+        if (!resp.ok){
+          // If server rejected, try re-subscribe once
+          try{ await subscription.unsubscribe() }catch{}
+          const fresh = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(publicKey) })
+          await fetch('/api/push/subscribe', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(fresh) })
+        }
         setReady(true)
       }catch{
         // ignore
