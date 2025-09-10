@@ -39,6 +39,11 @@ UPLOAD_FOLDER = 'static/uploads'
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
+# Session configuration: persist login for 30 days
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)
+
 # Create uploads directory if it doesn't exist
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
@@ -1140,6 +1145,8 @@ def index():
                 return redirect(url_for('index', error='Username does not exist'))
             return render_template('index.html', error="Username does not exist")
 
+        # Set long-lived session on initial username step
+        session.permanent = True
         session['username'] = username
         print(f"Session username set to: {session['username']}")
         logger.info(f"Session username set to: {session['username']}")
@@ -1283,7 +1290,8 @@ def signup():
             
             conn.commit()
             
-            # Log the user in automatically
+            # Log the user in automatically and persist session
+            session.permanent = True
             session['username'] = username
             session['user_id'] = c.lastrowid
             # Show community join prompt on first dashboard visit after signup
@@ -1348,7 +1356,9 @@ def admin_profile():
 
 @app.route('/logout')
 def logout():
+    # Explicitly clear and mark session non-permanent
     session.clear()
+    session.permanent = False
     return redirect(url_for('index'))
 @app.route('/login_password', methods=['GET', 'POST'])
 # @csrf.exempt
@@ -1413,6 +1423,8 @@ def login_password():
                     except Exception as e:
                         logger.error(f"Error tracking login: {e}")
                     
+                    # Ensure session persists for 30 days after successful login
+                    session.permanent = True
                     if subscription == 'premium':
                         print("Redirecting to premium_dashboard")
                         return redirect(url_for('premium_dashboard'))
