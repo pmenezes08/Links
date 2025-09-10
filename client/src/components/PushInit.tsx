@@ -18,8 +18,19 @@ export default function PushInit(){
         const reg = await navigator.serviceWorker.register('/sw.js')
         // Ensure service worker is active before subscribing
         await navigator.serviceWorker.ready
-        const perm = await Notification.requestPermission()
-        if (perm !== 'granted') return
+        let perm: NotificationPermission = Notification.permission
+        if (perm === 'default'){
+          // Defer permission request until a user gesture in iOS; attach a one-time handler
+          const clickOnce = () => {
+            document.removeEventListener('click', clickOnce)
+            Notification.requestPermission().then((p) => {
+              perm = p
+            }).catch(()=>{})
+          }
+          document.addEventListener('click', clickOnce, { once: true })
+        } else if (perm !== 'granted') {
+          return
+        }
         const vapidRes = await fetch('/api/push/public_key', { credentials:'include' })
         const { publicKey } = await vapidRes.json()
         if (!publicKey){

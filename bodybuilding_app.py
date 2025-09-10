@@ -12777,6 +12777,22 @@ def api_push_subscribe():
         logger.error(f"push subscribe error: {e}")
         return jsonify({ 'success': False }), 500
 
+@app.route('/api/push/status')
+@login_required
+def api_push_status():
+    """Return whether the current user has an active push subscription stored."""
+    try:
+        username = session.get('username')
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT COUNT(1) FROM push_subscriptions WHERE username=?", (username,))
+            row = c.fetchone()
+            count = row[0] if row and not hasattr(row, 'keys') else (row['COUNT(1)'] if row else 0)
+        return jsonify({ 'success': True, 'hasSubscription': (count or 0) > 0 })
+    except Exception as e:
+        logger.error(f"push status error: {e}")
+        return jsonify({ 'success': False, 'hasSubscription': False }), 500
+
 def send_push_to_user(target_username: str, payload: dict):
     if not VAPID_PUBLIC_KEY or not VAPID_PRIVATE_KEY:
         logger.warning("VAPID keys missing; push disabled")
