@@ -45,12 +45,23 @@ export default function HeaderBar({ title, username, avatarUrl }: HeaderBarProps
     ? ((avatarUrl.startsWith('http') || avatarUrl.startsWith('/static')) ? avatarUrl : `/static/${avatarUrl}`)
     : null
 
+  const showBack = location.pathname === '/user_chat' || location.pathname === '/notifications'
+  const goBack = () => {
+    if (window.history.length > 1) { navigate(-1) } else { navigate('/home') }
+  }
+
   return (
     <>
       <div className="fixed left-0 right-0 top-0 h-14 border-b border-[#262f30] bg-black flex items-center px-3 z-[100] text-white will-change-transform">
-        <button className="mr-3 md:hidden" onClick={() => setMenuOpen(v=>!v)} aria-label="Menu">
-          <Avatar username={username || ''} url={resolvedAvatar} size={32} />
-        </button>
+        {showBack ? (
+          <button className="mr-2 p-2 rounded-full hover:bg-white/5" onClick={goBack} aria-label="Back">
+            <i className="fa-solid fa-arrow-left" />
+          </button>
+        ) : (
+          <button className="mr-3 md:hidden" onClick={() => setMenuOpen(v=>!v)} aria-label="Menu">
+            <Avatar username={username || ''} url={resolvedAvatar} size={32} />
+          </button>
+        )}
         <div className="font-semibold truncate tracking-[-0.01em] flex-1">{title}</div>
         <div className="flex items-center gap-2">
           {location.pathname === '/user_chat' && (
@@ -78,17 +89,17 @@ export default function HeaderBar({ title, username, avatarUrl }: HeaderBarProps
             </div>
             {username === 'admin' ? (
               <>
-                <a className="block px-4 py-3 rounded-xl hover:bg-white/5 text-white" href="/admin_profile">Admin Profile</a>
-                <a className="block px-4 py-3 rounded-xl hover:bg-white/5 text-white" href="/admin">Admin Dashboard</a>
+                <a className="block px-4 py-3 rounded-xl hover:bg:white/5 text-white" href="/admin_profile">Admin Profile</a>
+                <a className="block px-4 py-3 rounded-xl hover:bg:white/5 text-white" href="/admin">Admin Dashboard</a>
               </>
             ) : null}
-            <a className="block px-4 py-3 rounded-xl hover:bg-white/5 text-white" href="/dashboard">Dashboard</a>
-            <a className="block px-4 py-3 rounded-xl hover:bg-white/5 text-white" href="/profile">Profile</a>
-            <a className="block px-4 py-3 rounded-xl hover:bg-white/5 text-white" href="/user_chat">Messages</a>
-            <button className="block w-full text-left px-4 py-3 rounded-xl hover:bg-white/5 text-white" onClick={()=> { setMenuOpen(false); navigate('/communities') }}>Your Communities</button>
-            <a className="block px-4 py-3 rounded-xl hover:bg-white/5 text-white" href="/your_sports">Your Sports</a>
-            <a className="block px-4 py-3 rounded-xl hover:bg-white/5 text-white" href="/logout">Logout</a>
-            <a className="block px-4 py-3 rounded-xl hover:bg-white/5 text-white" href="/account_settings">Settings</a>
+            <a className="block px-4 py-3 rounded-xl hover:bg:white/5 text-white" href="/dashboard">Dashboard</a>
+            <a className="block px-4 py-3 rounded-xl hover:bg:white/5 text-white" href="/profile">Profile</a>
+            <a className="block px-4 py-3 rounded-xl hover:bg:white/5 text:white" href="/user_chat">Messages</a>
+            <button className="block w-full text-left px-4 py-3 rounded-xl hover:bg:white/5 text-white" onClick={()=> { setMenuOpen(false); navigate('/communities') }}>Your Communities</button>
+            <a className="block px-4 py-3 rounded-xl hover:bg:white/5 text-white" href="/your_sports">Your Sports</a>
+            <a className="block px-4 py-3 rounded-xl hover:bg:white/5 text-white" href="/logout">Logout</a>
+            <a className="block px-4 py-3 rounded-xl hover:bg:white/5 text-white" href="/account_settings">Settings</a>
           </div>
           <div className="flex-1 h-full" onClick={()=> setMenuOpen(false)} />
         </div>
