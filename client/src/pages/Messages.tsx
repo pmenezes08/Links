@@ -20,6 +20,7 @@ export default function Messages(){
 
   const [threads, setThreads] = useState<Thread[]>([])
   const [loading, setLoading] = useState(true)
+  const [activeTab, setActiveTab] = useState<'chats'|'new'>('chats')
   const [swipeId, setSwipeId] = useState<string|null>(null)
   const [dragX, setDragX] = useState(0)
   const startXRef = useRef(0)
@@ -58,30 +59,28 @@ export default function Messages(){
       {/* Secondary header (match Polls) */}
       <div className="fixed left-0 right-0 top-14 h-10 bg-black/70 backdrop-blur z-40">
         <div className="max-w-3xl mx-auto h-full flex items-center gap-2 px-2">
-          <button className="p-2 rounded-full hover:bg-white/5" onClick={()=> navigate(-1)} aria-label="Back">
-            <i className="fa-solid fa-arrow-left" />
-          </button>
           <div className="flex-1 h-full flex">
-            <button type="button" className={`flex-1 text-center text-sm font-medium text-white/95`} onClick={()=> { /* already here */ }}>
+            <button type="button" className={`flex-1 text-center text-sm font-medium ${activeTab==='chats' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`} onClick={()=> setActiveTab('chats')}>
               <div className="pt-2">Chats</div>
-              <div className={`h-0.5 rounded-full w-16 mx-auto mt-1 bg-[#4db6ac]`} />
+              <div className={`h-0.5 rounded-full w-16 mx-auto mt-1 ${activeTab==='chats' ? 'bg-[#4db6ac]' : 'bg-transparent'}`} />
             </button>
-            <button type="button" className={`flex-1 text-center text-sm font-medium text-[#9fb0b5] hover:text-white/90`} onClick={()=> navigate('/user_chat/new')}>
+            <button type="button" className={`flex-1 text-center text-sm font-medium ${activeTab==='new' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`} onClick={()=> setActiveTab('new')}>
               <div className="pt-2">New Message</div>
-              <div className={`h-0.5 rounded-full w-16 mx-auto mt-1 bg-transparent`} />
+              <div className={`h-0.5 rounded-full w-16 mx-auto mt-1 ${activeTab==='new' ? 'bg-[#4db6ac]' : 'bg-transparent'}`} />
             </button>
           </div>
         </div>
       </div>
 
       <div className="max-w-3xl mx-auto pt-[70px] h-[calc(100vh-70px)] px-1 sm:px-3 pb-2 overflow-y-auto overscroll-contain" style={{ WebkitOverflowScrolling: 'touch' as any }}>
-        <div className="rounded-xl border border-white/10 bg-black divide-y divide-white/10">
-          {loading ? (
-            <div className="px-4 py-4 text-sm text-[#9fb0b5]">Loading chats...</div>
-          ) : threads.length === 0 ? (
-            <div className="px-4 py-4 text-sm text-[#9fb0b5]">No chats yet. Start a new one from the + button.</div>
-          ) : (
-            threads.map((t) => {
+        {activeTab === 'chats' ? (
+          <div className="rounded-xl border border-white/10 bg-black divide-y divide-white/10">
+            {loading ? (
+              <div className="px-4 py-4 text-sm text-[#9fb0b5]">Loading chats...</div>
+            ) : threads.length === 0 ? (
+              <div className="px-4 py-4 text-sm text-[#9fb0b5]">No chats yet. Start a new one from the New Message tab.</div>
+            ) : (
+              threads.map((t) => {
               const isDragging = draggingIdRef.current === t.other_username
               const tx = isDragging ? Math.min(0, dragX) : (swipeId === t.other_username ? -72 : 0)
               const transition = isDragging ? 'none' : 'transform 150ms ease-out'
@@ -164,10 +163,76 @@ export default function Messages(){
                     ) : null}
                   </button>
                 </div>
-              )
-            })
-          )}
-        </div>
+                )
+              })
+            )}
+          </div>
+        ) : (
+          <NewMessageInline />
+        )}
+      </div>
+    </div>
+  )
+}
+
+function NewMessageInline(){
+  type Community = { id:number; name:string }
+  type Member = { username:string; profile_picture?:string|null }
+  const [communities, setCommunities] = useState<Community[]>([])
+  const [expanded, setExpanded] = useState<Record<number, boolean>>({})
+  const [membersByCommunity, setMembersByCommunity] = useState<Record<number, Member[]>>({})
+
+  useEffect(() => {
+    fetch('/get_user_communities', { credentials:'include' })
+      .then(r=>r.json()).then(j=>{
+        if (j?.success && Array.isArray(j.communities)){
+          setCommunities(j.communities.map((c:any)=>({ id:c.id, name:c.name })) as Community[])
+        }
+      }).catch(()=>{})
+  }, [])
+
+  function resolveAvatar(url?:string|null){
+    if (!url) return null
+    if (url.startsWith('http') || url.startsWith('/static')) return url
+    return `/static/${url}`
+  }
+
+  function toggleCommunity(comm:Community){
+    setExpanded(prev => ({ ...prev, [comm.id]: !prev[comm.id] }))
+    if (!membersByCommunity[comm.id]){
+      const fd = new URLSearchParams({ community_id: String(comm.id) })
+      fetch('/get_community_members', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
+        .then(r=>r.json()).then(j=>{
+          if (j?.success && Array.isArray(j.members)){
+            const list = j.members.map((m:any)=> ({ username: m.username, profile_picture: m.profile_picture ?? null })) as Member[]
+            setMembersByCommunity(prev => ({ ...prev, [comm.id]: list }))
+          }
+        }).catch(()=>{})
+    }
+  }
+
+  return (
+    <div className="rounded-xl border border-white/10 bg-black">
+      <div className="p-3 border-b border-white/10 font-semibold text-[15px]">Start a New Message</div>
+      <div className="divide-y divide-white/10">
+        {communities.map(c => (
+          <div key={c.id}>
+            <button className="w-full px-3 py-2 text-left hover:bg-white/5 flex items-center justify-between text-[14px]" onClick={()=> toggleCommunity(c)}>
+              <span className="font-medium">{c.name}</span>
+              <i className={`fa-solid ${expanded[c.id] ? 'fa-chevron-down' : 'fa-chevron-right'} text-xs text-[#9fb0b5]`} />
+            </button>
+            {expanded[c.id] && (
+              <div className="px-3 py-2 space-y-1">
+                {(membersByCommunity[c.id]||[]).map((m, idx) => (
+                  <a key={idx} className="block px-3 py-2 rounded-md hover:bg-white/5 flex items-center gap-2 text-[14px]" href={`/user_chat/chat/${encodeURIComponent(m.username)}`}>
+                    <Avatar username={m.username} url={resolveAvatar(m.profile_picture) || undefined} size={32} />
+                    <span className="truncate">{m.username}</span>
+                  </a>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
       </div>
     </div>
   )

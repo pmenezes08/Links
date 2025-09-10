@@ -60,7 +60,7 @@ export default function HeaderBar({ title, username, avatarUrl }: HeaderBarProps
     ? ((avatarUrl.startsWith('http') || avatarUrl.startsWith('/static')) ? avatarUrl : `/static/${avatarUrl}`)
     : null
 
-  const showBack = location.pathname === '/user_chat' || location.pathname === '/notifications'
+  const showBack = location.pathname === '/notifications'
   const goBack = () => {
     if (window.history.length > 1) { navigate(-1) } else { navigate('/home') }
   }
