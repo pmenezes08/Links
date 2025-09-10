@@ -17,7 +17,7 @@ export default function CommunityResources(){
   const categoryRef = useRef<HTMLSelectElement|null>(null)
   const attachRef = useRef<HTMLInputElement|null>(null)
 
-  useEffect(() => { setTitle('Resources') }, [setTitle])
+  useEffect(() => { setTitle('Forum') }, [setTitle])
 
   useEffect(() => {
     let mounted = true
@@ -89,7 +89,7 @@ export default function CommunityResources(){
           <button className="p-2 rounded-full hover:bg-white/5" onClick={()=> navigate(`/community_feed_react/${community_id}`)} aria-label="Back">
             <i className="fa-solid fa-arrow-left" />
           </button>
-          <div className="flex-1 font-medium">Resources</div>
+          <div className="flex-1 font-medium">Forum</div>
         </div>
       </div>
 
