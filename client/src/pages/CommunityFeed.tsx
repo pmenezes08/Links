@@ -265,14 +265,9 @@ export default function CommunityFeed() {
   if (!data) return <div className="p-4 text-[#9fb0b5]">No posts yet.</div>
 
   return (
-    <div ref={scrollRef} className="min-h-screen overflow-y-auto no-scrollbar bg-black text-white">
-      {/* Global header used from App */}
-
-
-      {/* Slide-out menu (90% width), remaining 10% translucent to close with header */}
-      {/* Menu is handled by HeaderBar to keep header consistent across pages */}
-
-      <div className="max-w-2xl mx-auto pt-3 pb-20 px-3">
+    <div className="fixed inset-x-0 top-14 bottom-0 bg-black text-white">
+      {/* Scrollable content area below fixed global header */}
+      <div ref={scrollRef} className="h-full max-w-2xl mx-auto overflow-y-auto no-scrollbar pt-3 pb-20 px-3" style={{ WebkitOverflowScrolling: 'touch' as any }}>
         <div className="space-y-3">
           {/* Top header image from legacy template */}
           {data.community?.background_path ? (
