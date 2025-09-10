@@ -16,40 +16,41 @@ export default function PushInit(){
       if (!('serviceWorker' in navigator) || !('PushManager' in window)) return
       try{
         const reg = await navigator.serviceWorker.register('/sw.js')
-        // Ensure service worker is active before subscribing
         await navigator.serviceWorker.ready
-        let perm: NotificationPermission = Notification.permission
-        if (perm === 'default'){
-          // Defer permission request until a user gesture in iOS; attach a one-time handler
-          const clickOnce = () => {
-            document.removeEventListener('click', clickOnce)
-            Notification.requestPermission().then((p) => {
-              perm = p
-            }).catch(()=>{})
-          }
-          document.addEventListener('click', clickOnce, { once: true })
-        } else if (perm !== 'granted') {
+
+        async function subscribeAndRegister(){
+          try{
+            const vapidRes = await fetch('/api/push/public_key', { credentials:'include' })
+            const { publicKey } = await vapidRes.json()
+            if (!publicKey) return
+            let subscription = await reg.pushManager.getSubscription()
+            if (!subscription){
+              subscription = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(publicKey) })
+            }
+            const resp = await fetch('/api/push/subscribe', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(subscription) })
+            if (!resp.ok){
+              try{ await subscription.unsubscribe() }catch{}
+              const fresh = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(publicKey) })
+              await fetch('/api/push/subscribe', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(fresh) })
+            }
+            setReady(true)
+          }catch{ /* ignore */ }
+        }
+
+        const perm: NotificationPermission = Notification.permission
+        if (perm === 'granted'){
+          await subscribeAndRegister()
           return
         }
-        const vapidRes = await fetch('/api/push/public_key', { credentials:'include' })
-        const { publicKey } = await vapidRes.json()
-        if (!publicKey){
-          // Server not configured; do not attempt subscription
-          return
+        if (perm === 'denied') return
+        // perm === 'default' → request on first user gesture, then subscribe
+        const clickOnce = () => {
+          document.removeEventListener('click', clickOnce)
+          Notification.requestPermission().then((p) => {
+            if (p === 'granted') subscribeAndRegister()
+          }).catch(()=>{})
         }
-        // Attempt to get an existing subscription first
-        let subscription = await reg.pushManager.getSubscription()
-        if (!subscription){
-          subscription = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(publicKey) })
-        }
-        const resp = await fetch('/api/push/subscribe', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(subscription) })
-        if (!resp.ok){
-          // If server rejected, try re-subscribe once
-          try{ await subscription.unsubscribe() }catch{}
-          const fresh = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(publicKey) })
-          await fetch('/api/push/subscribe', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(fresh) })
-        }
-        setReady(true)
+        document.addEventListener('click', clickOnce, { once: true })
       }catch{
         // ignore
       }
