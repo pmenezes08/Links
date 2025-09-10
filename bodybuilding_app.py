@@ -1537,6 +1537,16 @@ def service_worker():
         logger.error(f"Error serving sw.js: {str(e)}")
         abort(404)
 
+@app.route('/manifest.webmanifest')
+def pwa_manifest():
+    try:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        public_dir = os.path.join(base_dir, 'client', 'public')
+        return send_from_directory(public_dir, 'manifest.webmanifest')
+    except Exception as e:
+        logger.error(f"Error serving manifest: {str(e)}")
+        abort(404)
+
 @app.route('/premium_dashboard_react')
 @login_required
 def premium_dashboard_react():
