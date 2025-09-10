@@ -43,6 +43,28 @@ app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)
+app.config['SESSION_COOKIE_SECURE'] = True
+app.config['SESSION_COOKIE_DOMAIN'] = os.getenv('SESSION_COOKIE_DOMAIN') or None
+app.config['PREFERRED_URL_SCHEME'] = 'https'
+
+# Optional: enforce canonical host (e.g., www.c-point.co) to prevent cookie splits
+CANONICAL_HOST = os.getenv('CANONICAL_HOST')  # e.g., 'www.c-point.co'
+CANONICAL_SCHEME = os.getenv('CANONICAL_SCHEME', 'https')
+
+@app.before_request
+def enforce_canonical_host():
+    try:
+        if CANONICAL_HOST:
+            # Avoid redirect loops and only redirect when host differs
+            req_host = request.host.split(':')[0]
+            if req_host != CANONICAL_HOST:
+                target = f"{CANONICAL_SCHEME}://{CANONICAL_HOST}{request.full_path}"
+                if target.endswith('?'):
+                    target = target[:-1]
+                return redirect(target, code=301)
+    except Exception:
+        # Never block request on redirect failure
+        return None
 
 # Create uploads directory if it doesn't exist
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
