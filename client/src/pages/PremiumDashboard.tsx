@@ -29,7 +29,8 @@ export default function PremiumDashboard() {
         </nav>
       </div>
 
-      {/* Header handled globally (HeaderBar) */}
+      {/* Ensure underlying page area under the fixed header is black */}
+      <div className="fixed left-0 right-0 top-0 h-14 bg-black z-0" />
 
       {/* Mobile dropdown menu */}
       {mobileMenuOpen && (
