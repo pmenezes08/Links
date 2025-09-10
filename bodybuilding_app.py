@@ -16,6 +16,7 @@ import secrets
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
 from pywebpush import webpush, WebPushException
+from hashlib import sha256
 
 # Initialize Flask app
 app = Flask(__name__, template_folder='templates')
@@ -65,6 +66,56 @@ def enforce_canonical_host():
     except Exception:
         # Never block request on redirect failure
         return None
+
+def _issue_remember_token(response, username: str):
+    try:
+        # random 32-byte token -> hash stored; raw token in cookie
+        raw = secrets.token_urlsafe(48)
+        token_hash = sha256(raw.encode()).hexdigest()
+        now = datetime.utcnow()
+        expires = now + timedelta(days=30)
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("INSERT INTO remember_tokens (username, token_hash, created_at, expires_at) VALUES (?,?,?,?)",
+                      (username, token_hash, now.isoformat(), expires.isoformat()))
+            conn.commit()
+        # Set cookie
+        response.set_cookie(
+            'remember_token', raw,
+            max_age=30*24*60*60,
+            secure=True,
+            httponly=True,
+            samesite='Lax',
+            domain=os.getenv('SESSION_COOKIE_DOMAIN') or None,
+            path='/'
+        )
+    except Exception as e:
+        logger.warning(f"Failed to issue remember token: {e}")
+
+@app.before_request
+def auto_login_from_remember_token():
+    try:
+        if 'username' in session:
+            return
+        raw = request.cookies.get('remember_token')
+        if not raw:
+            return
+        token_hash = sha256(raw.encode()).hexdigest()
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT username, expires_at FROM remember_tokens WHERE token_hash=? ORDER BY id DESC LIMIT 1", (token_hash,))
+            row = c.fetchone()
+        if not row:
+            return
+        username = row['username'] if hasattr(row, 'keys') else row[0]
+        expires_at = row['expires_at'] if hasattr(row, 'keys') else row[1]
+        if datetime.fromisoformat(expires_at) < datetime.utcnow():
+            return
+        # restore session
+        session.permanent = True
+        session['username'] = username
+    except Exception as e:
+        logger.warning(f"auto_login_from_remember_token failed: {e}")
 
 # Create uploads directory if it doesn't exist
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -204,6 +255,14 @@ def add_missing_tables():
                           p256dh TEXT,
                           auth TEXT,
                           created_at TEXT DEFAULT CURRENT_TIMESTAMP)''')
+
+            # Remember-me tokens for persistent login
+            c.execute('''CREATE TABLE IF NOT EXISTS remember_tokens
+                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                          username TEXT NOT NULL,
+                          token_hash TEXT NOT NULL,
+                          created_at TEXT NOT NULL,
+                          expires_at TEXT NOT NULL)''')
             
             # Add missing columns to communities table
             columns_to_add = [
@@ -1382,7 +1441,11 @@ def logout():
     # Explicitly clear and mark session non-permanent
     session.clear()
     session.permanent = False
-    return redirect(url_for('index'))
+    # Clear remember token cookie
+    from flask import make_response
+    resp = make_response(redirect(url_for('index')))
+    resp.set_cookie('remember_token', '', max_age=0, path='/', domain=os.getenv('SESSION_COOKIE_DOMAIN') or None)
+    return resp
 @app.route('/login_password', methods=['GET', 'POST'])
 # @csrf.exempt
 def login_password():
@@ -1448,12 +1511,12 @@ def login_password():
                     
                     # Ensure session persists for 30 days after successful login
                     session.permanent = True
-                    if subscription == 'premium':
-                        print("Redirecting to premium_dashboard")
-                        return redirect(url_for('premium_dashboard'))
-                    else:
-                        print("Redirecting to dashboard")
-                        return redirect(url_for('dashboard'))
+                    # Issue remember-me token
+                    from flask import make_response
+                    resp = make_response(redirect(url_for('premium_dashboard' if subscription == 'premium' else 'dashboard')))
+                    _issue_remember_token(resp, username)
+                    return resp
+                    
                 else:
                     print("Password mismatch")
                     return render_template('login.html', username=username, error="Incorrect password. Please try again.")
