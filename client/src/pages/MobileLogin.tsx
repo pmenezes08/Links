@@ -1,11 +1,30 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 
 export default function MobileLogin() {
+  const navigate = useNavigate()
   const [showForgot, setShowForgot] = useState(false)
   const [resetUsername, setResetUsername] = useState('')
   const [resetEmail, setResetEmail] = useState('')
   const [resetSent, setResetSent] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // If already authenticated, skip login
+  useEffect(() => {
+    async function check(){
+      try{
+        const r = await fetch('/api/profile_me', { credentials:'include' })
+        if (r.ok){
+          const j = await r.json()
+          if (j && j.username){
+            navigate('/premium_dashboard', { replace: true })
+            return
+          }
+        }
+      }catch{}
+    }
+    check()
+  }, [navigate])
 
   // Read error from query string (e.g., /?error=...)
   useEffect(() => {

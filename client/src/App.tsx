@@ -54,6 +54,7 @@ function AppRoutes(){
         <ErrorBoundary>
           <Routes>
           <Route path="/" element={<MobileLogin />} />
+          <Route path="/login" element={<MobileLogin />} />
           <Route path="/premium" element={<PremiumDashboard />} />
           <Route path="/premium_dashboard" element={<PremiumDashboard />} />
           <Route path="/premium_dashboard_react" element={<PremiumDashboard />} />

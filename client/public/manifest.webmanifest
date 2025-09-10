@@ -1,7 +1,7 @@
 {
   "name": "C-Point",
   "short_name": "C-Point",
-  "start_url": "/",
+  "start_url": "/premium_dashboard",
   "scope": "/",
   "display": "standalone",
   "background_color": "#000000",
