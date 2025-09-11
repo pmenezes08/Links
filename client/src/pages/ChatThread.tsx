@@ -41,13 +41,16 @@ export default function ChatThread(){
       }).catch(()=>{})
   }, [username])
 
-  // Scroll to bottom whenever messages change
+  // Scroll to bottom only when new message arrives at bottom
+  const lastCountRef = useRef(0)
   useEffect(() => {
     const el = listRef.current
     if (!el) return
-    // slight delay to ensure DOM paints
-    const t = setTimeout(() => { el.scrollTop = el.scrollHeight }, 0)
-    return () => clearTimeout(t)
+    if (messages.length > lastCountRef.current){
+      const near = (el.scrollHeight - el.scrollTop - el.clientHeight) < 120
+      if (near) el.scrollTop = el.scrollHeight
+    }
+    lastCountRef.current = messages.length
   }, [messages])
 
   // Poll for new messages and typing status
