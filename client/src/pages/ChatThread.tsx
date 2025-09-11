@@ -126,7 +126,7 @@ export default function ChatThread(){
     <div className="fixed inset-x-0 top-14 bottom-0 bg-black text-white">
       <div className="h-full max-w-3xl mx-auto flex flex-col">
         {/* Chat subheader with back button (WhatsApp-style) */}
-        <div className="sticky top-0 h-12 border-b border-white/10 flex items-center gap-2 px-3 bg-black/70 backdrop-blur z-30">
+        <div className="sticky top-0 h-12 border-b border-white/10 flex items-center gap-2 px-3 bg-black/70 backdrop-blur z-50">
           <button className="p-2 rounded-full hover:bg-white/5" onClick={()=> navigate('/user_chat')} aria-label="Back">
             <i className="fa-solid fa-arrow-left" />
           </button>
@@ -144,7 +144,6 @@ export default function ChatThread(){
               setMessages(msgs => msgs.map(x => x.id===m.id ? { ...x, reaction: emoji } : x))
             }} onReply={() => {
               setReplyTo({ text: m.text })
-              setDraft('')
               textareaRef.current?.focus()
             }} onCopy={() => {
               try{ navigator.clipboard && navigator.clipboard.writeText(m.text) }catch{}
@@ -162,7 +161,9 @@ export default function ChatThread(){
                   <div>{m.text}</div>
                   <div className={`text-[10px] mt-1 ${m.sent ? 'text-white/70' : 'text-white/50'} text-right`}>{new Date(m.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
                   {m.reaction ? (
-                    <span className="absolute -bottom-2 right-2 text-base select-none">{m.reaction}</span>
+                    <span className="absolute -bottom-2 right-2 text-base select-none bg-black/70 border border-white/10 rounded-full px-1.5 leading-none">
+                      {m.reaction}
+                    </span>
                   ) : null}
                 </div>
               </div>
@@ -202,7 +203,6 @@ export default function ChatThread(){
             className="flex-1 rounded-2xl bg-[#0b0f10] border border-white/15 px-4 py-2 text-[16px] leading-snug outline-none focus:border-[#4db6ac] resize-none max-h-40 min-h-[42px]"
             placeholder="Type a message"
             value={draft}
-            onFocus={()=> { try{ window.scrollTo({ top: 0 }) }catch{} }}
             onChange={e=> {
               setDraft(e.target.value)
               // typing start (debounced stop)
