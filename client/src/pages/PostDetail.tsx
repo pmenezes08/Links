@@ -67,7 +67,7 @@ function renderRichText(input: string){
     }
     const label = match[1]
     const url = match[2]
-    nodes.push(<a key={`md-${match.index}`} href={url} target="_blank" rel="noopener noreferrer" className="text-[#4db6ac] underline-offset-2 hover:underline">{label}</a>)
+    nodes.push(<a key={`md-${match.index}`} href={url} target="_blank" rel="noopener noreferrer" className="text-[#4db6ac] underline-offset-2 hover:underline break-words break-all">{label}</a>)
     lastIndex = markdownRe.lastIndex
   }
   const rest = input.slice(lastIndex)
@@ -81,7 +81,7 @@ function renderRichText(input: string){
     }
     const urlText = m[0]
     const href = urlText.startsWith('http') ? urlText : `https://${urlText}`
-    nodes.push(<a key={`u-${lastIndex + m.index}`} href={href} target="_blank" rel="noopener noreferrer" className="text-[#4db6ac] underline-offset-2 hover:underline">{urlText}</a>)
+    nodes.push(<a key={`u-${lastIndex + m.index}`} href={href} target="_blank" rel="noopener noreferrer" className="text-[#4db6ac] underline-offset-2 hover:underline break-words break-all">{urlText}</a>)
     urlLast = urlRe.lastIndex
   }
   if (urlLast < rest.length){
@@ -244,7 +244,7 @@ export default function PostDetail(){
             <div className="text-xs text-[#9fb0b5] ml-auto">{formatTimestamp(post.timestamp)}</div>
           </div>
           <div className="px-3 py-2 space-y-2">
-            <div className="whitespace-pre-wrap text-[14px]">{renderRichText(post.content)}</div>
+            <div className="whitespace-pre-wrap text-[14px] break-words break-all">{renderRichText(post.content)}</div>
             {post.image_path ? (
               <img src={post.image_path.startsWith('/uploads') || post.image_path.startsWith('/static') ? post.image_path : `/uploads/${post.image_path}`} alt="" className="block mx-auto max-w-full max-h-[360px] rounded border border-white/10" />
             ) : null}
@@ -275,13 +275,13 @@ export default function PostDetail(){
             onBlur={()=> { if (!content && !file) setComposerActive(false) }}
           />
           {(composerActive || !!content || !!file) ? (
-            <div className="flex items-center justify-end gap-2">
+            <div className="flex items-center justify-end gap-2 flex-wrap">
               <label className="px-2.5 py-1.5 rounded-full border border-white/10 text-xs text-[#9fb0b5] hover:border-[#2a3f41] cursor-pointer">
                 <i className="fa-regular fa-image" style={{ color: '#4db6ac' }} />
                 <input type="file" accept="image/*" onChange={(e)=> setFile(e.target.files?.[0]||null)} style={{ display: 'none' }} />
               </label>
               {/(https?:\/\/[^\s]+|www\.[^\s]+)/.test(content) ? (
-                <button className="px-2.5 py-1.5 rounded-full border border-white/10 text-xs text-[#9fb0b5] hover:border-[#2a3f41]" onClick={()=> {
+                <button className="px-2.5 py-1.5 rounded-full border border-white/10 text-xs text-[#9fb0b5] hover:border-[#2a3f41] break-words" onClick={()=> {
                   const m = content.match(/(https?:\/\/[^\s]+|www\.[^\s]+)/)
                   if (!m) return
                   const urlText = m[0]
@@ -342,7 +342,7 @@ function ReplyNode({ reply, depth=0, onToggle, onInlineReply }:{ reply: Reply, d
             <div className="font-medium">{reply.username}</div>
             <div className="text-[11px] text-[#9fb0b5] ml-auto">{formatTimestamp(reply.timestamp)}</div>
           </div>
-          <div className="text-[#dfe6e9] whitespace-pre-wrap mt-0.5">{renderRichText(reply.content)}</div>
+          <div className="text-[#dfe6e9] whitespace-pre-wrap mt-0.5 break-words break-all">{renderRichText(reply.content)}</div>
           <div className="mt-1 flex items-center gap-2 text-[11px]">
             <Reaction icon="fa-regular fa-heart" count={reply.reactions?.['heart']||0} active={reply.user_reaction==='heart'} onClick={()=> onToggle(reply.id, 'heart')} />
             <Reaction icon="fa-regular fa-thumbs-up" count={reply.reactions?.['thumbs-up']||0} active={reply.user_reaction==='thumbs-up'} onClick={()=> onToggle(reply.id, 'thumbs-up')} />
