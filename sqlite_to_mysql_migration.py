@@ -252,11 +252,22 @@ def migrate_community_data(sqlite_conn, mysql_conn, community_id):
                         mysql_post = mysql_cursor.fetchone()
                         
                         if mysql_post:
-                            mysql_cursor.execute("""
-                                INSERT INTO replies (post_id, username, content, image_path, timestamp, community_id)
-                                VALUES (%s, %s, %s, %s, %s, %s)
-                            """, (mysql_post['id'], reply['username'], reply['content'], 
-                                 safe_get(reply, 'image_path'), reply['timestamp'], mysql_community_id))
+                            # Check if replies table has community_id column
+                            mysql_cursor.execute("SHOW COLUMNS FROM replies LIKE 'community_id'")
+                            has_community_id = mysql_cursor.fetchone() is not None
+                            
+                            if has_community_id:
+                                mysql_cursor.execute("""
+                                    INSERT INTO replies (post_id, username, content, image_path, timestamp, community_id)
+                                    VALUES (%s, %s, %s, %s, %s, %s)
+                                """, (mysql_post['id'], reply['username'], reply['content'], 
+                                     safe_get(reply, 'image_path'), reply['timestamp'], mysql_community_id))
+                            else:
+                                mysql_cursor.execute("""
+                                    INSERT INTO replies (post_id, username, content, image_path, timestamp)
+                                    VALUES (%s, %s, %s, %s, %s)
+                                """, (mysql_post['id'], reply['username'], reply['content'], 
+                                     safe_get(reply, 'image_path'), reply['timestamp']))
                             migrated_replies += 1
                 except Exception as e:
                     print(f"     Warning: Could not migrate reply: {e}")
