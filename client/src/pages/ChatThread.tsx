@@ -72,27 +72,7 @@ export default function ChatThread(){
     return () => { if (pollTimer.current) clearInterval(pollTimer.current) }
   }, [username, otherUserId])
 
-  // Freeze body scroll (iOS-safe) so only chat pane scrolls; preserves fixed header visibility
-  useEffect(() => {
-    const scrollY = window.scrollY || window.pageYOffset
-    const prevBodyPosition = document.body.style.position
-    const prevBodyTop = document.body.style.top
-    const prevBodyWidth = document.body.style.width
-    const prevHtmlOverflow = document.documentElement.style.overflow
-
-    document.documentElement.style.overflow = 'hidden'
-    document.body.style.position = 'fixed'
-    document.body.style.top = `-${scrollY}px`
-    document.body.style.width = '100%'
-
-    return () => {
-      document.documentElement.style.overflow = prevHtmlOverflow
-      document.body.style.position = prevBodyPosition
-      document.body.style.top = prevBodyTop
-      document.body.style.width = prevBodyWidth
-      window.scrollTo(0, scrollY)
-    }
-  }, [])
+  // Removed body scroll lock to avoid header disappearing on iOS when focusing the composer
 
   // Auto-size composer textarea
   function adjustTextareaHeight(){
@@ -134,7 +114,7 @@ export default function ChatThread(){
           <div className="font-medium truncate">{otherProfile?.display_name || username}</div>
         </div>
         {/* Messages list (WhatsApp style bubbles) */}
-        <div ref={listRef} className="flex-1 overflow-y-auto overscroll-contain px-2 sm:px-3 py-3 space-y-1" style={{ WebkitOverflowScrolling: 'touch' as any }}>
+        <div ref={listRef} className="flex-1 overflow-y-auto overscroll-contain px-2 sm:px-3 py-3 space-y-1 pb-24" style={{ WebkitOverflowScrolling: 'touch' as any }}>
           {messages.map(m => (
             <LongPressActionable key={m.id} onDelete={() => {
               const fd = new URLSearchParams({ message_id: String(m.id) })
@@ -161,7 +141,7 @@ export default function ChatThread(){
                   <div>{m.text}</div>
                   <div className={`text-[10px] mt-1 ${m.sent ? 'text-white/70' : 'text-white/50'} text-right`}>{new Date(m.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
                   {m.reaction ? (
-                    <span className="absolute -bottom-2 right-2 text-base select-none bg-black/70 border border-white/10 rounded-full px-1.5 leading-none">
+                    <span className="absolute -bottom-2 right-2 translate-y-1 text-base select-none bg-black/80 border border-white/10 rounded-full px-1.5 leading-none shadow">
                       {m.reaction}
                     </span>
                   ) : null}
