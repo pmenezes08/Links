@@ -52,7 +52,7 @@ def test_user_chat_queries():
                     SELECT c.id, c.name, c.type, c.creator_username
                     FROM communities c
                     INNER JOIN user_communities uc ON c.id = uc.community_id
-                    INNER JOIN users u ON uc.user_id = u.rowid
+                    INNER JOIN users u ON uc.user_id = u.id
                     WHERE u.username = ?
                     ORDER BY c.name
                 """, ('admin',))
@@ -67,7 +67,7 @@ def test_user_chat_queries():
                         cursor.execute("""
                             SELECT DISTINCT u.username
                             FROM user_communities uc
-                            INNER JOIN users u ON uc.user_id = u.rowid
+                            INNER JOIN users u ON uc.user_id = u.id
                             WHERE uc.community_id = ? AND u.username != ?
                             ORDER BY u.username
                         """, (community['id'], 'admin'))

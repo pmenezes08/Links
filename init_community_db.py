@@ -21,7 +21,7 @@ def init_community_database():
         
         # Create communities table
         c.execute('''CREATE TABLE IF NOT EXISTS communities
-                     (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                     (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                       name TEXT NOT NULL,
                       type TEXT NOT NULL,
                       creator_username TEXT NOT NULL,
@@ -31,7 +31,7 @@ def init_community_database():
         
         # Create user_communities table
         c.execute('''CREATE TABLE IF NOT EXISTS user_communities
-                     (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                     (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                       user_id INTEGER NOT NULL,
                       community_id INTEGER NOT NULL,
                       joined_at TEXT NOT NULL,
@@ -41,7 +41,7 @@ def init_community_database():
         # Create posts table if it doesn't exist
         if 'posts' not in existing_tables:
             c.execute('''CREATE TABLE IF NOT EXISTS posts
-                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                         (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                           username TEXT NOT NULL,
                           content TEXT NOT NULL,
                           image_path TEXT,
@@ -59,7 +59,7 @@ def init_community_database():
         # Create replies table if it doesn't exist
         if 'replies' not in existing_tables:
             c.execute('''CREATE TABLE IF NOT EXISTS replies
-                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                         (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                           post_id INTEGER NOT NULL,
                           username TEXT NOT NULL,
                           content TEXT NOT NULL,
@@ -80,7 +80,7 @@ def init_community_database():
         # Create reactions table if it doesn't exist
         if 'reactions' not in existing_tables:
             c.execute('''CREATE TABLE IF NOT EXISTS reactions
-                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                         (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                           post_id INTEGER NOT NULL,
                           username TEXT NOT NULL,
                           reaction_type TEXT NOT NULL,
@@ -92,7 +92,7 @@ def init_community_database():
         # Create reply_reactions table if it doesn't exist
         if 'reply_reactions' not in existing_tables:
             c.execute('''CREATE TABLE IF NOT EXISTS reply_reactions
-                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                         (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                           reply_id INTEGER NOT NULL,
                           username TEXT NOT NULL,
                           reaction_type TEXT NOT NULL,

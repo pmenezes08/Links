@@ -209,8 +209,8 @@ def get_db_connection():
                 def _adapt_sql(sql: str) -> str:
                     s = sql
                     # Common cross-db adaptations
-                    s = s.replace('INSERT OR IGNORE', 'INSERT IGNORE')
-                    s = s.replace("datetime('now')", 'NOW()')
+                    s = s.replace('INSERT IGNORE', 'INSERT IGNORE')
+                    s = s.replace("NOW()", 'NOW()')
                     return s
 
                 class _ProxyCursor:
@@ -295,7 +295,7 @@ def add_missing_tables():
             
             # Create messages table
             c.execute('''CREATE TABLE IF NOT EXISTS messages
-                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                         (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                           sender TEXT NOT NULL,
                           receiver TEXT NOT NULL,
                           message TEXT NOT NULL,
@@ -311,10 +311,10 @@ def add_missing_tables():
             
             # Create saved_data table if it doesn't exist
             c.execute('''CREATE TABLE IF NOT EXISTS saved_data
-                         (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT, type TEXT, data TEXT, timestamp TEXT)''')
+                         (id INTEGER PRIMARY KEY AUTO_INCREMENT, username TEXT, type TEXT, data TEXT, timestamp TEXT)''')
             # Store web push subscriptions
             c.execute('''CREATE TABLE IF NOT EXISTS push_subscriptions
-                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                         (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                           username TEXT NOT NULL,
                           endpoint TEXT NOT NULL UNIQUE,
                           p256dh TEXT,
@@ -323,7 +323,7 @@ def add_missing_tables():
 
             # Remember-me tokens for persistent login
             c.execute('''CREATE TABLE IF NOT EXISTS remember_tokens
-                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                         (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                           username TEXT NOT NULL,
                           token_hash TEXT NOT NULL,
                           created_at TEXT NOT NULL,
@@ -364,9 +364,8 @@ def add_missing_tables():
 
             # Ensure messages table has is_read column
             try:
-                c.execute("PRAGMA table_info(messages)")
-                msg_cols = [row[1] for row in c.fetchall()]
-                if 'is_read' not in msg_cols:
+                c.execute("SHOW COLUMNS FROM messages LIKE 'is_read'")
+                if not c.fetchone():
                     c.execute("ALTER TABLE messages ADD COLUMN is_read INTEGER DEFAULT 0")
                     logger.info("Added is_read column to messages table")
             except Exception as e:
@@ -374,7 +373,7 @@ def add_missing_tables():
 
             # Typing status table for realtime UX
             c.execute('''CREATE TABLE IF NOT EXISTS typing_status (
-                             id INTEGER PRIMARY KEY AUTOINCREMENT,
+                             id INTEGER PRIMARY KEY AUTO_INCREMENT,
                              user TEXT NOT NULL,
                              peer TEXT NOT NULL,
                              is_typing INTEGER DEFAULT 0,
@@ -406,11 +405,20 @@ def init_db():
             # Create users table
             logger.info("Creating users table...")
             c.execute('''CREATE TABLE IF NOT EXISTS users
-                         (username TEXT PRIMARY KEY, email TEXT UNIQUE, subscription TEXT DEFAULT 'free', 
+                         (id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                          username TEXT UNIQUE NOT NULL, email TEXT UNIQUE, subscription TEXT DEFAULT 'free', 
                           password TEXT, first_name TEXT, last_name TEXT, age INTEGER, gender TEXT, 
                           fitness_level TEXT, primary_goal TEXT, weight REAL, height REAL, blood_type TEXT, 
                           muscle_mass REAL, bmi REAL, nutrition_goal TEXT, nutrition_restrictions TEXT, 
                           created_at TEXT)''')
+            
+            # Add id column for MySQL compatibility if it doesn't exist
+            try:
+                c.execute("SELECT id FROM users LIMIT 1")
+            except:
+                logger.info("Adding id column to users table for MySQL compatibility...")
+                c.execute("ALTER TABLE users ADD COLUMN id INTEGER PRIMARY KEY AUTO_INCREMENT FIRST")
+                conn.commit()
             
             # Add missing columns to existing users table if they don't exist
             logger.info("Checking for missing columns...")
@@ -447,7 +455,7 @@ def init_db():
             
             # Insert admin user
             logger.info("Inserting admin user...")
-            c.execute("INSERT OR IGNORE INTO users (username, email, subscription, password, first_name, last_name, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            c.execute("INSERT IGNORE INTO users (username, email, subscription, password, first_name, last_name, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
                       ('admin', 'admin@cpoint.com', 'premium', '12345', 'Admin', 'User', datetime.now().strftime('%m.%d.%y %H:%M')))
             
             # Create posts table
@@ -455,7 +463,7 @@ def init_db():
             # Create crossfit entries table (for lifts and WODs)
             logger.info("Creating crossfit entries table...")
             c.execute('''CREATE TABLE IF NOT EXISTS crossfit_entries (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id INTEGER PRIMARY KEY AUTO_INCREMENT,
                 username TEXT NOT NULL,
                 type TEXT NOT NULL,
                 name TEXT NOT NULL,
@@ -466,7 +474,7 @@ def init_db():
                 created_at TEXT NOT NULL
             )''')
             c.execute('''CREATE TABLE IF NOT EXISTS posts
-                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                         (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                           username TEXT NOT NULL,
                           content TEXT NOT NULL,
                           image_path TEXT,
@@ -477,7 +485,7 @@ def init_db():
             # Create replies table
             logger.info("Creating replies table...")
             c.execute('''CREATE TABLE IF NOT EXISTS replies
-                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                         (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                           post_id INTEGER NOT NULL,
                           username TEXT NOT NULL,
                           content TEXT NOT NULL,
@@ -490,7 +498,7 @@ def init_db():
             # Create reactions table
             logger.info("Creating reactions table...")
             c.execute('''CREATE TABLE IF NOT EXISTS reactions
-                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                         (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                           post_id INTEGER NOT NULL,
                           username TEXT NOT NULL,
                           reaction_type TEXT NOT NULL,
@@ -501,7 +509,7 @@ def init_db():
             # Create reply_reactions table
             logger.info("Creating reply_reactions table...")
             c.execute('''CREATE TABLE IF NOT EXISTS reply_reactions
-                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                         (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                           reply_id INTEGER NOT NULL,
                           username TEXT NOT NULL,
                           reaction_type TEXT NOT NULL,
@@ -512,7 +520,7 @@ def init_db():
             # Create communities table
             logger.info("Creating communities table...")
             c.execute('''CREATE TABLE IF NOT EXISTS communities
-                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                         (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                           name TEXT NOT NULL,
                           type TEXT NOT NULL,
                           creator_username TEXT NOT NULL,
@@ -535,7 +543,7 @@ def init_db():
             # Create user_communities table
             logger.info("Creating user_communities table...")
             c.execute('''CREATE TABLE IF NOT EXISTS user_communities
-                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                         (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                           user_id INTEGER NOT NULL,
                           community_id INTEGER NOT NULL,
                           joined_at TEXT NOT NULL,
@@ -546,7 +554,7 @@ def init_db():
             # Create community_files table
             logger.info("Creating community_files table...")
             c.execute('''CREATE TABLE IF NOT EXISTS community_files
-                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                         (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                           community_id INTEGER NOT NULL,
                           filename TEXT NOT NULL,
                           uploaded_by TEXT NOT NULL,
@@ -558,7 +566,7 @@ def init_db():
             # Create notifications table
             logger.info("Creating notifications table...")
             c.execute('''CREATE TABLE IF NOT EXISTS notifications
-                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                         (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                           user_id TEXT NOT NULL,
                           from_user TEXT,
                           type TEXT NOT NULL,
@@ -573,7 +581,7 @@ def init_db():
             # Create community_announcements table
             logger.info("Creating community_announcements table...")
             c.execute('''CREATE TABLE IF NOT EXISTS community_announcements
-                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                         (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                           community_id INTEGER NOT NULL,
                           content TEXT NOT NULL,
                           created_by TEXT NOT NULL,
@@ -590,12 +598,12 @@ def init_db():
             # Create saved_data table
             logger.info("Creating saved_data table...")
             c.execute('''CREATE TABLE IF NOT EXISTS saved_data
-                         (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT, type TEXT, data TEXT, timestamp TEXT)''')
+                         (id INTEGER PRIMARY KEY AUTO_INCREMENT, username TEXT, type TEXT, data TEXT, timestamp TEXT)''')
             
             # Create messages table
             logger.info("Creating messages table...")
             c.execute('''CREATE TABLE IF NOT EXISTS messages
-                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                         (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                           sender TEXT NOT NULL,
                           receiver TEXT NOT NULL,
                           message TEXT NOT NULL,
@@ -607,14 +615,14 @@ def init_db():
             # Create workout-related tables
             logger.info("Creating workout tables...")
             c.execute('''CREATE TABLE IF NOT EXISTS exercises
-                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                         (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                           username TEXT NOT NULL,
                           name TEXT NOT NULL,
                           muscle_group TEXT NOT NULL,
                           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
             
             c.execute('''CREATE TABLE IF NOT EXISTS exercise_sets
-                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                         (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                           exercise_id INTEGER NOT NULL,
                           weight REAL NOT NULL,
                           reps INTEGER NOT NULL,
@@ -623,14 +631,14 @@ def init_db():
                          )''')
             
             c.execute('''CREATE TABLE IF NOT EXISTS workouts
-                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                         (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                           username TEXT NOT NULL,
                           name TEXT NOT NULL,
                           date TEXT NOT NULL,
                           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
             
             c.execute('''CREATE TABLE IF NOT EXISTS workout_exercises
-                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                         (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                           workout_id INTEGER NOT NULL,
                           exercise_id INTEGER NOT NULL,
                           sets INTEGER DEFAULT 0,
@@ -664,14 +672,14 @@ def init_db():
                         # Create polls table
             logger.info("Creating polls table...")
             c.execute('''        CREATE TABLE IF NOT EXISTS polls
-         (id INTEGER PRIMARY KEY AUTOINCREMENT,
+         (id INTEGER PRIMARY KEY AUTO_INCREMENT,
           post_id INTEGER NOT NULL,
           question TEXT NOT NULL,
           created_by TEXT NOT NULL,
           created_at TEXT NOT NULL,
           expires_at TEXT,
-          is_active BOOLEAN DEFAULT 1,
-          single_vote BOOLEAN DEFAULT 1,
+          is_active TINYINT(1) DEFAULT 1,
+          single_vote TINYINT(1) DEFAULT 1,
           FOREIGN KEY (post_id) REFERENCES posts (id) ON DELETE CASCADE)''')
             
             # Add single_vote column if it doesn't exist
@@ -679,12 +687,12 @@ def init_db():
                 c.execute("SELECT single_vote FROM polls LIMIT 1")
             except:
                 logger.info("Adding single_vote column to polls table...")
-                c.execute("ALTER TABLE polls ADD COLUMN single_vote BOOLEAN DEFAULT 1")
+                c.execute("ALTER TABLE polls ADD COLUMN single_vote TINYINT(1) DEFAULT 1")
             
             # Create poll_options table
             logger.info("Creating poll_options table...")
             c.execute('''CREATE TABLE IF NOT EXISTS poll_options
-                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                         (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                           poll_id INTEGER NOT NULL,
                           option_text TEXT NOT NULL,
                           votes INTEGER DEFAULT 0,
@@ -693,7 +701,7 @@ def init_db():
             # Create poll_votes table
             logger.info("Creating poll_votes table...")
             c.execute('''CREATE TABLE IF NOT EXISTS poll_votes
-                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                         (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                           poll_id INTEGER NOT NULL,
                           option_id INTEGER NOT NULL,
                           username TEXT NOT NULL,
@@ -703,13 +711,14 @@ def init_db():
                           UNIQUE(poll_id, username))''')
             # Migrate poll_votes unique constraint to allow multiple votes per user per poll option
             try:
-                c.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='poll_votes'")
+                # Check if poll_votes table needs migration by checking constraint
+                c.execute("SHOW CREATE TABLE poll_votes")
                 row = c.fetchone()
-                if row and row['sql'] and 'UNIQUE(poll_id, username)' in row['sql'] and 'option_id' not in row['sql'].split('UNIQUE')[-1]:
+                if row and row['Create Table'] and 'UNIQUE(poll_id, username)' in row['Create Table'] and 'option_id' not in row['Create Table'].split('UNIQUE')[-1]:
                     logger.info('Migrating poll_votes unique constraint to (poll_id, username, option_id)')
-                    c.execute('PRAGMA foreign_keys=OFF')
+                    c.execute('SET foreign_key_checks = 0')
                     c.execute('''CREATE TABLE IF NOT EXISTS poll_votes_new (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        id INTEGER PRIMARY KEY AUTO_INCREMENT,
                         poll_id INTEGER NOT NULL,
                         option_id INTEGER NOT NULL,
                         username TEXT NOT NULL,
@@ -718,10 +727,10 @@ def init_db():
                         FOREIGN KEY (option_id) REFERENCES poll_options (id) ON DELETE CASCADE,
                         UNIQUE(poll_id, username, option_id)
                     )''')
-                    c.execute('INSERT OR IGNORE INTO poll_votes_new (poll_id, option_id, username, voted_at) SELECT poll_id, option_id, username, voted_at FROM poll_votes')
+                    c.execute('INSERT IGNORE INTO poll_votes_new (poll_id, option_id, username, voted_at) SELECT poll_id, option_id, username, voted_at FROM poll_votes')
                     c.execute('DROP TABLE poll_votes')
                     c.execute('ALTER TABLE poll_votes_new RENAME TO poll_votes')
-                    c.execute('PRAGMA foreign_keys=ON')
+                    c.execute('SET foreign_key_checks = 1')
                     logger.info('poll_votes migration completed')
             except Exception as e:
                 logger.warning(f'poll_votes migration skipped or failed: {e}')
@@ -729,7 +738,7 @@ def init_db():
             # Create community_issues table
             logger.info("Creating community_issues table...")
             c.execute('''CREATE TABLE IF NOT EXISTS community_issues
-                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                         (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                           community_id INTEGER NOT NULL,
                           title TEXT NOT NULL,
                           location TEXT NOT NULL,
@@ -737,7 +746,7 @@ def init_db():
                           description TEXT NOT NULL,
                           reported_by TEXT NOT NULL,
                           reported_at TEXT NOT NULL,
-                          resolved BOOLEAN DEFAULT 0,
+                          resolved TINYINT(1) DEFAULT 0,
                           resolved_by TEXT,
                           resolved_at TEXT,
                           upvotes INTEGER DEFAULT 0,
@@ -747,7 +756,7 @@ def init_db():
             # Create issue_upvotes table
             logger.info("Creating issue_upvotes table...")
             c.execute('''CREATE TABLE IF NOT EXISTS issue_upvotes
-                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                         (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                           issue_id INTEGER NOT NULL,
                           username TEXT NOT NULL,
                           upvoted_at TEXT NOT NULL,
@@ -758,25 +767,25 @@ def init_db():
             # Create password_reset_tokens table
             logger.info("Creating password_reset_tokens table...")
             c.execute('''CREATE TABLE IF NOT EXISTS password_reset_tokens
-                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                         (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                           username TEXT NOT NULL,
                           email TEXT NOT NULL,
                           token TEXT NOT NULL UNIQUE,
                           created_at TEXT NOT NULL,
-                          used BOOLEAN DEFAULT 0,
+                          used TINYINT(1) DEFAULT 0,
                           FOREIGN KEY (username) REFERENCES users (username))''')
             
             # Create university_ads table
             logger.info("Creating university_ads table...")
             c.execute('''CREATE TABLE IF NOT EXISTS university_ads
-                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                         (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                           community_id INTEGER NOT NULL,
                           title TEXT NOT NULL,
                           description TEXT,
                           price TEXT NOT NULL,
                           image_url TEXT NOT NULL,
                           link_url TEXT,
-                          is_active BOOLEAN DEFAULT 1,
+                          is_active TINYINT(1) DEFAULT 1,
                           display_order INTEGER DEFAULT 0,
                           created_at TEXT NOT NULL,
                           created_by TEXT NOT NULL,
@@ -797,7 +806,7 @@ def init_db():
             
             # Login history table
             c.execute('''CREATE TABLE IF NOT EXISTS user_login_history
-                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                         (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                           username TEXT NOT NULL,
                           login_time TEXT NOT NULL,
                           ip_address TEXT,
@@ -806,7 +815,7 @@ def init_db():
             
             # Community visit history table
             c.execute('''CREATE TABLE IF NOT EXISTS community_visit_history
-                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                         (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                           username TEXT NOT NULL,
                           community_id INTEGER NOT NULL,
                           visit_time TEXT NOT NULL,
@@ -825,7 +834,7 @@ def init_db():
             
             # Resource posts table
             c.execute('''CREATE TABLE IF NOT EXISTS resource_posts
-                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                         (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                           community_id INTEGER NOT NULL,
                           username TEXT NOT NULL,
                           title TEXT NOT NULL,
@@ -836,13 +845,13 @@ def init_db():
                           updated_at TEXT,
                           upvotes INTEGER DEFAULT 0,
                           views INTEGER DEFAULT 0,
-                          is_pinned BOOLEAN DEFAULT 0,
+                          is_pinned TINYINT(1) DEFAULT 0,
                           FOREIGN KEY (community_id) REFERENCES communities (id) ON DELETE CASCADE,
                           FOREIGN KEY (username) REFERENCES users (username))''')
             
             # Resource comments table
             c.execute('''CREATE TABLE IF NOT EXISTS resource_comments
-                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                         (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                           post_id INTEGER NOT NULL,
                           username TEXT NOT NULL,
                           content TEXT NOT NULL,
@@ -853,7 +862,7 @@ def init_db():
             
             # Resource upvotes table (to track who upvoted what)
             c.execute('''CREATE TABLE IF NOT EXISTS resource_upvotes
-                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                         (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                           post_id INTEGER,
                           comment_id INTEGER,
                           username TEXT NOT NULL,
@@ -876,7 +885,7 @@ def init_db():
             
             # Clubs table
             c.execute('''CREATE TABLE IF NOT EXISTS clubs
-                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                         (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                           community_id INTEGER NOT NULL,
                           name TEXT NOT NULL,
                           description TEXT,
@@ -887,7 +896,7 @@ def init_db():
                           location TEXT,
                           website_url TEXT,
                           logo_url TEXT,
-                          is_active BOOLEAN DEFAULT 1,
+                          is_active TINYINT(1) DEFAULT 1,
                           member_count INTEGER DEFAULT 0,
                           created_by TEXT NOT NULL,
                           created_at TEXT NOT NULL,
@@ -896,7 +905,7 @@ def init_db():
             
             # Club members table
             c.execute('''CREATE TABLE IF NOT EXISTS club_members
-                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                         (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                           club_id INTEGER NOT NULL,
                           username TEXT NOT NULL,
                           role TEXT DEFAULT 'member',
@@ -907,7 +916,7 @@ def init_db():
             
             # Anonymous feedback table
             c.execute('''CREATE TABLE IF NOT EXISTS anonymous_feedback
-                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                         (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                           community_id INTEGER NOT NULL,
                           feedback_text TEXT NOT NULL,
                           category TEXT,
@@ -928,7 +937,7 @@ def init_db():
             # Create community admins table
             logger.info("Creating community admins table...")
             c.execute('''CREATE TABLE IF NOT EXISTS community_admins
-                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                         (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                           community_id INTEGER NOT NULL,
                           username TEXT NOT NULL,
                           appointed_by TEXT NOT NULL,
@@ -942,24 +951,21 @@ def init_db():
             logger.info("Adding is_active columns...")
             
             # Check and add is_active to users table
-            c.execute("PRAGMA table_info(users)")
-            user_columns = [col[1] for col in c.fetchall()]
-            if 'is_active' not in user_columns:
-                c.execute("ALTER TABLE users ADD COLUMN is_active BOOLEAN DEFAULT 1")
+            c.execute("SHOW COLUMNS FROM users LIKE 'is_active'")
+            if not c.fetchone():
+                c.execute("ALTER TABLE users ADD COLUMN is_active TINYINT(1) DEFAULT 1")
                 logger.info("Added is_active column to users table")
             
             # Add link column to notifications table if it doesn't exist
-            c.execute("PRAGMA table_info(notifications)")
-            notification_columns = [col[1] for col in c.fetchall()]
-            if 'link' not in notification_columns:
+            c.execute("SHOW COLUMNS FROM notifications LIKE 'link'")
+            if not c.fetchone():
                 c.execute("ALTER TABLE notifications ADD COLUMN link TEXT")
                 logger.info("Added link column to notifications table")
             
             # Check and add is_active to communities table  
-            c.execute("PRAGMA table_info(communities)")
-            community_columns = [col[1] for col in c.fetchall()]
-            if 'is_active' not in community_columns:
-                c.execute("ALTER TABLE communities ADD COLUMN is_active BOOLEAN DEFAULT 1")
+            c.execute("SHOW COLUMNS FROM communities LIKE 'is_active'")
+            if not c.fetchone():
+                c.execute("ALTER TABLE communities ADD COLUMN is_active TINYINT(1) DEFAULT 1")
                 logger.info("Added is_active column to communities table")
             
             # Create index for community admins
@@ -971,7 +977,7 @@ def init_db():
             # Ensure calendar_events table exists before altering
             c.execute("""
                 CREATE TABLE IF NOT EXISTS calendar_events (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    id INTEGER PRIMARY KEY AUTO_INCREMENT,
                     title TEXT,
                     description TEXT,
                     start_time TEXT,
@@ -979,16 +985,15 @@ def init_db():
                     location TEXT
                 )
             """)
-            c.execute("PRAGMA table_info(calendar_events)")
-            calendar_columns = [col[1] for col in c.fetchall()]
-            if 'community_id' not in calendar_columns:
+            c.execute("SHOW COLUMNS FROM calendar_events LIKE 'community_id'")
+            if not c.fetchone():
                 c.execute("ALTER TABLE calendar_events ADD COLUMN community_id INTEGER")
                 logger.info("Added community_id column to calendar_events table")
             
             # Create event RSVPs table
             logger.info("Creating event RSVPs table...")
             c.execute('''CREATE TABLE IF NOT EXISTS event_rsvps
-                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                         (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                           event_id INTEGER NOT NULL,
                           username TEXT NOT NULL,
                           response TEXT NOT NULL CHECK(response IN ('going', 'maybe', 'not_going')),
@@ -1006,12 +1011,12 @@ def init_db():
             # Create event invitations table
             logger.info("Creating event invitations table...")
             c.execute('''CREATE TABLE IF NOT EXISTS event_invitations
-                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                         (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                           event_id INTEGER NOT NULL,
                           invited_username TEXT NOT NULL,
                           invited_by TEXT NOT NULL,
                           invited_at TEXT NOT NULL,
-                          viewed BOOLEAN DEFAULT 0,
+                          viewed TINYINT(1) DEFAULT 0,
                           FOREIGN KEY (event_id) REFERENCES calendar_events (id) ON DELETE CASCADE,
                           FOREIGN KEY (invited_username) REFERENCES users (username),
                           FOREIGN KEY (invited_by) REFERENCES users (username),
@@ -1618,7 +1623,7 @@ def dashboard():
                 SELECT c.id, c.name, c.type
                 FROM communities c
                 JOIN user_communities uc ON c.id = uc.community_id
-                JOIN users u ON uc.user_id = u.rowid
+                JOIN users u ON uc.user_id = u.id
                 WHERE u.username = ?
                 ORDER BY c.name
             """, (username,))
@@ -2260,7 +2265,7 @@ def public_profile(username):
                     SELECT c.id, c.name, c.description, c.accent_color
                     FROM communities c
                     JOIN user_communities uc ON c.id = uc.community_id
-                    JOIN users u ON uc.user_id = u.rowid
+                    JOIN users u ON uc.user_id = u.id
                     WHERE u.username = ?
                     ORDER BY c.name
                 """, (username,))
@@ -3251,7 +3256,7 @@ def send_message():
             # Insert message
             c.execute("""
                 INSERT INTO messages (sender, receiver, message, timestamp)
-                VALUES (?, ?, ?, datetime('now'))
+                VALUES (?, ?, ?, NOW())
             """, (username, recipient_username, message))
             
             conn.commit()
@@ -3407,7 +3412,7 @@ def user_chat():
                 SELECT c.id, c.name, c.type, c.creator_username
                 FROM communities c
                 INNER JOIN user_communities uc ON c.id = uc.community_id
-                INNER JOIN users u ON uc.user_id = u.rowid
+                INNER JOIN users u ON uc.user_id = u.id
                 WHERE u.username = ?
                 ORDER BY c.name
             """, (username,))
@@ -3418,7 +3423,7 @@ def user_chat():
                 c.execute("""
                     SELECT DISTINCT u.username
                     FROM user_communities uc
-                    INNER JOIN users u ON uc.user_id = u.rowid
+                    INNER JOIN users u ON uc.user_id = u.id
                     WHERE uc.community_id = ? AND u.username != ?
                     ORDER BY u.username
                 """, (community[0], username))
@@ -3430,7 +3435,7 @@ def user_chat():
                 c.execute("""
                     SELECT DISTINCT u.username
                     FROM user_communities uc
-                    INNER JOIN users u ON uc.user_id = u.rowid
+                    INNER JOIN users u ON uc.user_id = u.id
                     WHERE uc.community_id = ? AND u.username != ?
                     ORDER BY u.username
                 """, (community[0], username))
@@ -3524,7 +3529,7 @@ def get_community_members():
             # Check if user is a member of this community - ALL members can see member list
             c.execute("""
                 SELECT 1 FROM user_communities uc
-                INNER JOIN users u ON uc.user_id = u.rowid
+                INNER JOIN users u ON uc.user_id = u.id
                 WHERE uc.community_id = ? AND u.username = ?
             """, (community_id, username))
             if not c.fetchone():
@@ -3539,7 +3544,7 @@ def get_community_members():
             c.execute("""
                 SELECT u.username, uc.joined_at, up.profile_picture
                 FROM user_communities uc
-                INNER JOIN users u ON uc.user_id = u.rowid
+                INNER JOIN users u ON uc.user_id = u.id
                 LEFT JOIN user_profiles up ON up.username = u.username
                 WHERE uc.community_id = ?
                 ORDER BY u.username
@@ -3622,7 +3627,7 @@ def add_community_member():
             # Check if already a member
             c.execute("""
                 SELECT 1 FROM user_communities uc
-                INNER JOIN users u ON uc.user_id = u.rowid
+                INNER JOIN users u ON uc.user_id = u.id
                 WHERE uc.community_id = ? AND u.username = ?
             """, (community_id, new_member_username))
             if c.fetchone():
@@ -3686,7 +3691,7 @@ def update_member_role():
                 
                 # Make old owner an admin (unless they're the app admin)
                 if current_owner != 'admin' and current_owner != target_username:
-                    c.execute("""INSERT OR IGNORE INTO community_admins 
+                    c.execute("""INSERT IGNORE INTO community_admins 
                                (community_id, username, appointed_by, appointed_at)
                                VALUES (?, ?, ?, ?)""",
                              (community_id, current_owner, username, datetime.now().isoformat()))
@@ -3701,7 +3706,7 @@ def update_member_role():
                     return jsonify({'success': False, 'error': 'Owner cannot be made an admin'})
                 
                 # Add as admin
-                c.execute("""INSERT OR IGNORE INTO community_admins 
+                c.execute("""INSERT IGNORE INTO community_admins 
                            (community_id, username, appointed_by, appointed_at)
                            VALUES (?, ?, ?, ?)""",
                          (community_id, target_username, username, datetime.now().isoformat()))
@@ -5041,7 +5046,7 @@ def get_notifications():
                 DELETE FROM notifications
                 WHERE user_id = ? 
                 AND is_read = 1 
-                AND datetime(created_at) < datetime('now', '-7 days')
+                AND created_at < DATE_SUB(NOW(), INTERVAL 7 DAY)
             """, (username,))
             conn.commit()
             
@@ -5212,7 +5217,7 @@ def post_status():
             if community_id and username != 'admin':
                 c.execute("""
                     SELECT 1 FROM user_communities uc
-                    JOIN users u ON uc.user_id = u.rowid
+                    JOIN users u ON uc.user_id = u.id
                     WHERE u.username = ? AND uc.community_id = ?
                 """, (username, community_id))
                 
@@ -5248,7 +5253,7 @@ def post_status():
                 c.execute("""
                     SELECT DISTINCT u.username
                     FROM users u
-                    JOIN user_communities uc ON u.rowid = uc.user_id
+                    JOIN user_communities uc ON u.id = uc.user_id
                     WHERE uc.community_id = ? AND u.username != ?
                 """, (community_id, username))
                 members = [row['username'] if hasattr(row, 'keys') else row[0] for row in c.fetchall()]
@@ -5422,7 +5427,7 @@ def create_poll():
             if community_id and username != 'admin':
                 c.execute("""
                     SELECT 1 FROM user_communities uc
-                    JOIN users u ON uc.user_id = u.rowid
+                    JOIN users u ON uc.user_id = u.id
                     WHERE u.username = ? AND uc.community_id = ?
                 """, (username, community_id))
                 
@@ -5680,7 +5685,7 @@ def get_active_polls():
                     SELECT p.*, po.timestamp as created_at, po.username
                     FROM polls p 
                     JOIN posts po ON p.post_id = po.id 
-                    WHERE p.is_active = 1 AND (p.expires_at IS NULL OR p.expires_at >= datetime('now')) AND po.community_id = ?
+                    WHERE p.is_active = 1 AND (p.expires_at IS NULL OR p.expires_at >= NOW()) AND po.community_id = ?
                     ORDER BY po.timestamp DESC
                 """, (community_id,))
             else:
@@ -5689,7 +5694,7 @@ def get_active_polls():
                     SELECT p.*, po.timestamp as created_at, po.username
                     FROM polls p 
                     JOIN posts po ON p.post_id = po.id 
-                    WHERE p.is_active = 1 AND (p.expires_at IS NULL OR p.expires_at >= datetime('now'))
+                    WHERE p.is_active = 1 AND (p.expires_at IS NULL OR p.expires_at >= NOW())
                     ORDER BY po.timestamp DESC
                 """)
             polls_raw = c.fetchall()
@@ -5827,7 +5832,7 @@ def get_historical_polls():
                     SELECT p.*, po.timestamp as created_at, po.username
                     FROM polls p 
                     JOIN posts po ON p.post_id = po.id 
-                    WHERE (p.is_active = 0 OR (p.expires_at IS NOT NULL AND p.expires_at < datetime('now')))
+                    WHERE (p.is_active = 0 OR (p.expires_at IS NOT NULL AND p.expires_at < NOW()))
                     AND po.community_id = ?
                     ORDER BY po.timestamp DESC
                 """, (community_id,))
@@ -5837,7 +5842,7 @@ def get_historical_polls():
                     SELECT p.*, po.timestamp as created_at, po.username
                     FROM polls p 
                     JOIN posts po ON p.post_id = po.id 
-                    WHERE p.is_active = 0 OR (p.expires_at IS NOT NULL AND p.expires_at < datetime('now'))
+                    WHERE p.is_active = 0 OR (p.expires_at IS NOT NULL AND p.expires_at < NOW())
                     ORDER BY po.timestamp DESC
                 """)
             polls_raw = c.fetchall()
@@ -6891,7 +6896,7 @@ def get_community_members_list(community_id):
             c.execute("""
                 SELECT DISTINCT u.username, up.profile_picture
                 FROM user_communities uc
-                JOIN users u ON uc.user_id = u.rowid
+                JOIN users u ON uc.user_id = u.id
                 LEFT JOIN user_profiles up ON u.username = up.username
                 WHERE uc.community_id = ?
                 ORDER BY u.username
@@ -7032,7 +7037,7 @@ def rsvp_event(event_id):
             no_response = 0
             if community_id_val:
                 try:
-                    c.execute("SELECT COUNT(DISTINCT u.username) FROM user_communities uc JOIN users u ON uc.user_id=u.rowid WHERE uc.community_id=?", (community_id_val,))
+                    c.execute("SELECT COUNT(DISTINCT u.username) FROM user_communities uc JOIN users u ON uc.user_id=u.id WHERE uc.community_id=?", (community_id_val,))
                     total_members = (c.fetchone() or [0])[0]
                     c.execute("SELECT COUNT(DISTINCT username) FROM event_rsvps WHERE event_id=?", (event_id,))
                     responded = (c.fetchone() or [0])[0]
@@ -7511,7 +7516,7 @@ def get_calendar_events():
                 community_id_val = event['community_id'] if hasattr(event, 'keys') else None
                 if community_id_val:
                     try:
-                        c.execute("SELECT COUNT(DISTINCT u.username) FROM user_communities uc JOIN users u ON uc.user_id=u.rowid WHERE uc.community_id=?", (community_id_val,))
+                        c.execute("SELECT COUNT(DISTINCT u.username) FROM user_communities uc JOIN users u ON uc.user_id=u.id WHERE uc.community_id=?", (community_id_val,))
                         total_members_row = c.fetchone()
                         total_members = total_members_row[0] if total_members_row is not None else 0
                         c.execute("SELECT COUNT(DISTINCT username) FROM event_rsvps WHERE event_id=?", (event_id,))
@@ -7630,7 +7635,7 @@ def add_calendar_event():
             # Insert the event (keeping 'time' field for backward compatibility)
             c.execute("""
                 INSERT INTO calendar_events (username, title, date, end_date, time, start_time, end_time, description, created_at, community_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?)
             """, (username, title, date, end_date if end_date else None, 
                   start_time if start_time else None,  # Keep time field for compatibility
                   start_time if start_time else None,  # start_time
@@ -7649,7 +7654,7 @@ def add_calendar_event():
                     c.execute("""
                         SELECT DISTINCT u.username 
                         FROM user_communities uc
-                        JOIN users u ON uc.user_id = u.rowid
+                        JOIN users u ON uc.user_id = u.id
                         WHERE uc.community_id = ? AND u.username != ?
                     """, (community_id, username))
                     invited_users = [row['username'] for row in c.fetchall()]
@@ -8183,7 +8188,7 @@ def get_event_rsvp_details():
                     c.execute("""
                         SELECT u.username
                         FROM user_communities uc
-                        JOIN users u ON uc.user_id = u.rowid
+                        JOIN users u ON uc.user_id = u.id
                         WHERE uc.community_id = ?
                         AND u.username NOT IN (
                             SELECT username FROM event_rsvps WHERE event_id = ?
@@ -8625,7 +8630,7 @@ def get_available_parent_communities():
                     SELECT DISTINCT c.id, c.name, c.type, c.parent_community_id
                     FROM communities c
                     LEFT JOIN user_communities uc ON c.id = uc.community_id
-                    LEFT JOIN users u ON uc.user_id = u.rowid
+                    LEFT JOIN users u ON uc.user_id = u.id
                     WHERE (u.username = ? OR c.creator_username = ? OR ? = 'admin')
                     AND c.id != ?
                     AND (c.parent_community_id IS NULL OR c.parent_community_id != ?)
@@ -8636,7 +8641,7 @@ def get_available_parent_communities():
                     SELECT DISTINCT c.id, c.name, c.type, c.parent_community_id
                     FROM communities c
                     LEFT JOIN user_communities uc ON c.id = uc.community_id
-                    LEFT JOIN users u ON uc.user_id = u.rowid
+                    LEFT JOIN users u ON uc.user_id = u.id
                     WHERE u.username = ? OR c.creator_username = ? OR ? = 'admin'
                     ORDER BY c.name
                 """, (username, username, username))
@@ -8694,9 +8699,9 @@ def get_user_communities_with_members():
                 try:
                     # Get members of each community with profile pictures
                     c.execute("""
-                        SELECT u.rowid as id, u.username, p.profile_picture
+                        SELECT u.id as id, u.username, p.profile_picture
                         FROM users u
-                        JOIN user_communities uc ON u.rowid = uc.user_id
+                        JOIN user_communities uc ON u.id = uc.user_id
                         LEFT JOIN user_profiles p ON u.username = p.username
                         WHERE uc.community_id = ? AND u.username != ?
                         ORDER BY u.username
@@ -8749,7 +8754,7 @@ def get_user_communities():
                 SELECT c.id, c.name, c.type, c.join_code, c.created_at, c.creator_username, c.is_active
                 FROM communities c
                 JOIN user_communities uc ON c.id = uc.community_id
-                JOIN users u ON uc.user_id = u.rowid
+                JOIN users u ON uc.user_id = u.id
                 WHERE u.username = ?
                 ORDER BY c.created_at DESC
             """, (username,))
@@ -8974,11 +8979,11 @@ def debug_posts():
             c = conn.cursor()
             
             # Check posts table structure
-            c.execute("PRAGMA table_info(posts)")
+            c.execute("SHOW COLUMNS FROM posts")
             columns = c.fetchall()
             logger.info("Posts table structure:")
             for col in columns:
-                logger.info(f"  {col['name']}: {col['type']}")
+                logger.info(f"  {col['Field']}: {col['Type']}")
             
             # Get all posts
             c.execute("SELECT id, username, content, community_id FROM posts ORDER BY id DESC LIMIT 10")
@@ -9052,7 +9057,7 @@ def join_community():
             # Add user to community as a member
             c.execute("""
                 INSERT INTO user_communities (user_id, community_id, joined_at)
-                VALUES (?, ?, datetime('now'))
+                VALUES (?, ?, NOW())
             """, (user_id, community_id))
 
             # If the community has a parent, auto-add membership to the parent community as well
@@ -9066,7 +9071,7 @@ def join_community():
                     if not c.fetchone():
                         c.execute("""
                             INSERT INTO user_communities (user_id, community_id, joined_at)
-                            VALUES (?, ?, datetime('now'))
+                            VALUES (?, ?, NOW())
                         """, (user_id, parent_id))
 
                         # Notify user about parent membership
@@ -9586,7 +9591,7 @@ def api_home_timeline():
                 SELECT c.id, c.name
                 FROM communities c
                 JOIN user_communities uc ON c.id = uc.community_id
-                JOIN users u ON uc.user_id = u.rowid
+                JOIN users u ON uc.user_id = u.id
                 WHERE u.username = ?
             """, (username,))
             rows = c.fetchall()
@@ -9886,7 +9891,7 @@ def cf_add_entry():
 
             c.execute('''
                 CREATE TABLE IF NOT EXISTS crossfit_entries (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    id INTEGER PRIMARY KEY AUTO_INCREMENT,
                     username TEXT NOT NULL,
                     type TEXT NOT NULL,
                     name TEXT NOT NULL,
@@ -9952,7 +9957,7 @@ def sync_gym_to_crossfit():
             rows = c.fetchall()
 
             c.execute('''CREATE TABLE IF NOT EXISTS crossfit_entries (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id INTEGER PRIMARY KEY AUTO_INCREMENT,
                 username TEXT NOT NULL,
                 type TEXT NOT NULL,
                 name TEXT NOT NULL,
@@ -9992,7 +9997,7 @@ def cf_compare_item_in_box():
                 '''
                 SELECT u.username
                 FROM user_communities uc
-                JOIN users u ON uc.user_id = u.rowid
+                JOIN users u ON uc.user_id = u.id
                 WHERE uc.community_id = ?
                 ''',
                 (community_id,)
@@ -10161,7 +10166,7 @@ def add_exercise():
         # Create tables if they don't exist
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS exercises (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id INTEGER PRIMARY KEY AUTO_INCREMENT,
                 username TEXT NOT NULL,
                 name TEXT NOT NULL,
                 muscle_group TEXT NOT NULL DEFAULT "Other"
@@ -10170,7 +10175,7 @@ def add_exercise():
         
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS exercise_sets (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id INTEGER PRIMARY KEY AUTO_INCREMENT,
                 exercise_id INTEGER NOT NULL,
                 weight REAL NOT NULL,
                 reps INTEGER NOT NULL,
@@ -10181,7 +10186,7 @@ def add_exercise():
         
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS workouts (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id INTEGER PRIMARY KEY AUTO_INCREMENT,
                 username TEXT NOT NULL,
                 name TEXT NOT NULL,
                 date TEXT NOT NULL,
@@ -10191,7 +10196,7 @@ def add_exercise():
         
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS workout_exercises (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id INTEGER PRIMARY KEY AUTO_INCREMENT,
                 workout_id INTEGER NOT NULL,
                 exercise_id INTEGER NOT NULL,
                 sets INTEGER DEFAULT 0,
@@ -10226,7 +10231,7 @@ def add_exercise():
             if name in overlapping:
                 cursor.execute('''
                     CREATE TABLE IF NOT EXISTS crossfit_entries (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        id INTEGER PRIMARY KEY AUTO_INCREMENT,
                         username TEXT NOT NULL,
                         type TEXT NOT NULL,
                         name TEXT NOT NULL,
@@ -10396,7 +10401,7 @@ def compare_exercise_in_community():
             c.execute("""
                 SELECT u.username
                 FROM user_communities uc
-                JOIN users u ON uc.user_id = u.rowid
+                JOIN users u ON uc.user_id = u.id
                 WHERE uc.community_id = ?
             """, (community_id,))
             users = [row['username'] for row in c.fetchall()]
@@ -10471,7 +10476,7 @@ def leaderboard_exercise_in_community():
             c.execute("""
                 SELECT u.username
                 FROM user_communities uc
-                JOIN users u ON uc.user_id = u.rowid
+                JOIN users u ON uc.user_id = u.id
                 WHERE uc.community_id = ?
             """, (community_id,))
             users = [row['username'] for row in c.fetchall()]
@@ -10523,7 +10528,7 @@ def compare_overview_in_community():
                 """
                 SELECT u.username
                 FROM user_communities uc
-                JOIN users u ON uc.user_id = u.rowid
+                JOIN users u ON uc.user_id = u.id
                 WHERE uc.community_id = ?
                 """,
                 (community_id,)
@@ -10602,7 +10607,7 @@ def compare_attendance_in_community():
                 """
                 SELECT u.username
                 FROM user_communities uc
-                JOIN users u ON uc.user_id = u.rowid
+                JOIN users u ON uc.user_id = u.id
                 WHERE uc.community_id = ?
                 """,
                 (community_id,)
@@ -10676,7 +10681,7 @@ def compare_improvement_in_community():
                 """
                 SELECT u.username
                 FROM user_communities uc
-                JOIN users u ON uc.user_id = u.rowid
+                JOIN users u ON uc.user_id = u.id
                 WHERE uc.community_id = ?
                 """,
                 (community_id,)
@@ -10821,7 +10826,7 @@ def log_weight_set():
                 if ex_name in overlapping:
                     cursor.execute('''
                         CREATE TABLE IF NOT EXISTS crossfit_entries (
-                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            id INTEGER PRIMARY KEY AUTO_INCREMENT,
                             username TEXT NOT NULL,
                             type TEXT NOT NULL,
                             name TEXT NOT NULL,
@@ -11409,7 +11414,7 @@ def share_progress():
         for community_id in communities:
             cursor.execute('''
                 INSERT INTO posts (username, community_id, content, image_path, timestamp)
-                VALUES (?, ?, ?, ?, datetime('now'))
+                VALUES (?, ?, ?, ?, NOW())
             ''', (username, community_id, post_content, image_path))
         
         conn.commit()
@@ -11467,7 +11472,7 @@ def share_workouts():
         for community_id in communities:
             cursor.execute('''
                 INSERT INTO posts (username, community_id, content, timestamp)
-                VALUES (?, ?, ?, datetime('now'))
+                VALUES (?, ?, ?, NOW())
             ''', (username, community_id, post_content))
         
         conn.commit()
@@ -11611,7 +11616,7 @@ def share_individual_workout():
         for community_id in communities:
             cursor.execute('''
                 INSERT INTO posts (username, community_id, content, timestamp)
-                VALUES (?, ?, ?, datetime('now'))
+                VALUES (?, ?, ?, NOW())
             ''', (username, community_id, content))
         
         conn.commit()
@@ -11649,7 +11654,7 @@ def create_workout():
         # Create workouts table if it doesn't exist
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS workouts (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id INTEGER PRIMARY KEY AUTO_INCREMENT,
                 username TEXT NOT NULL,
                 name TEXT NOT NULL,
                 date TEXT NOT NULL,
@@ -11975,11 +11980,11 @@ def test_database():
         sets_count = cursor.fetchone()[0]
         
         # Check communities table structure
-        cursor.execute("PRAGMA table_info(communities)")
+        cursor.execute("SHOW COLUMNS FROM communities")
         community_columns = cursor.fetchall()
         
         # Check if required columns exist
-        column_names = [col[1] for col in community_columns]
+        column_names = [col['Field'] for col in community_columns]
         missing_columns = []
         if 'info' not in column_names:
             missing_columns.append('info')
@@ -12026,8 +12031,8 @@ def fix_communities_table():
         cursor = conn.cursor()
         
         # Check if info column exists
-        cursor.execute("PRAGMA table_info(communities)")
-        columns = [col[1] for col in cursor.fetchall()]
+        cursor.execute("SHOW COLUMNS FROM communities")
+        columns = [col['Field'] for col in cursor.fetchall()]
         
         changes_made = []
         
@@ -12348,7 +12353,7 @@ def save_community_announcement():
         # Create tables if they don't exist
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS community_announcements (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id INTEGER PRIMARY KEY AUTO_INCREMENT,
                 community_id INTEGER NOT NULL,
                 content TEXT NOT NULL,
                 created_by TEXT NOT NULL,
@@ -12360,7 +12365,7 @@ def save_community_announcement():
         cursor.execute("DROP TABLE IF EXISTS community_files")
         cursor.execute('''
             CREATE TABLE community_files (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id INTEGER PRIMARY KEY AUTO_INCREMENT,
                 announcement_id INTEGER NOT NULL,
                 community_id INTEGER NOT NULL,
                 filename TEXT NOT NULL,
@@ -12593,7 +12598,7 @@ def debug_table_structure():
         cursor = conn.cursor()
         
         # Check community_files table structure
-        cursor.execute("PRAGMA table_info(community_files)")
+        cursor.execute("SHOW COLUMNS FROM community_files")
         columns = cursor.fetchall()
         
         conn.close()
@@ -12661,7 +12666,7 @@ def seed_dummy_data():
 
             # Ensure crossfit_entries table exists
             c.execute('''CREATE TABLE IF NOT EXISTS crossfit_entries (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id INTEGER PRIMARY KEY AUTO_INCREMENT,
                 username TEXT NOT NULL,
                 type TEXT NOT NULL,
                 name TEXT NOT NULL,
@@ -12886,7 +12891,7 @@ def api_push_subscribe():
             return jsonify({ 'success': False, 'error': 'invalid subscription' }), 400
         with get_db_connection() as conn:
             c = conn.cursor()
-            c.execute("INSERT OR REPLACE INTO push_subscriptions (username, endpoint, p256dh, auth) VALUES (?,?,?,?)",
+            c.execute("REPLACE INTO push_subscriptions (username, endpoint, p256dh, auth) VALUES (?,?,?,?)",
                       (session['username'], endpoint, p256dh, authk))
             conn.commit()
         return jsonify({ 'success': True })
@@ -12992,7 +12997,7 @@ def get_active_chat_counts():
                 SELECT c.id, c.name
                 FROM communities c
                 JOIN user_communities uc ON c.id = uc.community_id
-                JOIN users u ON uc.user_id = u.rowid
+                JOIN users u ON uc.user_id = u.id
                 WHERE u.username = ?
             """, (username,))
             comms = [dict(row) for row in c.fetchall()]
@@ -13018,7 +13023,7 @@ def get_active_chat_counts():
                 c.execute(f"""
                     SELECT COUNT(DISTINCT u.username) as cnt
                     FROM users u
-                    JOIN user_communities uc ON u.rowid = uc.user_id
+                    JOIN user_communities uc ON u.id = uc.user_id
                     WHERE uc.community_id = ? AND u.username IN ({placeholders}) AND u.username != ?
                 """, [comm['id'], *params, username])
                 row = c.fetchone()

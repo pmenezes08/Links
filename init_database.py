@@ -24,19 +24,20 @@ def init_database():
         # Create users table
         print("Creating users table...")
         c.execute('''CREATE TABLE IF NOT EXISTS users
-                     (username TEXT PRIMARY KEY, subscription TEXT, password TEXT,
+                     (id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                      username TEXT UNIQUE NOT NULL, subscription TEXT, password TEXT,
                       gender TEXT, weight REAL, height REAL, blood_type TEXT, muscle_mass REAL, bmi REAL,
                       nutrition_goal TEXT, nutrition_restrictions TEXT)''')
         
         # Insert admin user
         print("Inserting admin user...")
-        c.execute("INSERT OR IGNORE INTO users (username, subscription, password) VALUES (?, ?, ?)",
+        c.execute("INSERT IGNORE INTO users (username, subscription, password) VALUES (?, ?, ?)",
                   ('admin', 'premium', '12345'))
         
         # Create posts table
         print("Creating posts table...")
         c.execute('''CREATE TABLE IF NOT EXISTS posts
-                     (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                     (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                       username TEXT NOT NULL,
                       content TEXT NOT NULL,
                       image_path TEXT,
@@ -47,7 +48,7 @@ def init_database():
         # Create replies table
         print("Creating replies table...")
         c.execute('''CREATE TABLE IF NOT EXISTS replies
-                     (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                     (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                       post_id INTEGER NOT NULL,
                       username TEXT NOT NULL,
                       content TEXT NOT NULL,
@@ -60,7 +61,7 @@ def init_database():
         # Create reactions table
         print("Creating reactions table...")
         c.execute('''CREATE TABLE IF NOT EXISTS reactions
-                     (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                     (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                       post_id INTEGER NOT NULL,
                       username TEXT NOT NULL,
                       reaction_type TEXT NOT NULL,
@@ -71,7 +72,7 @@ def init_database():
         # Create reply_reactions table
         print("Creating reply_reactions table...")
         c.execute('''CREATE TABLE IF NOT EXISTS reply_reactions
-                     (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                     (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                       reply_id INTEGER NOT NULL,
                       username TEXT NOT NULL,
                       reaction_type TEXT NOT NULL,
@@ -82,7 +83,7 @@ def init_database():
         # Create communities table
         print("Creating communities table...")
         c.execute('''CREATE TABLE IF NOT EXISTS communities
-                     (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                     (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                       name TEXT NOT NULL,
                       type TEXT NOT NULL,
                       creator_username TEXT NOT NULL,
@@ -93,7 +94,7 @@ def init_database():
         # Create user_communities table
         print("Creating user_communities table...")
         c.execute('''CREATE TABLE IF NOT EXISTS user_communities
-                     (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                     (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                       user_id INTEGER NOT NULL,
                       community_id INTEGER NOT NULL,
                       joined_at TEXT NOT NULL,
@@ -110,12 +111,12 @@ def init_database():
         # Create saved_data table
         print("Creating saved_data table...")
         c.execute('''CREATE TABLE IF NOT EXISTS saved_data
-                     (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT, type TEXT, data TEXT, timestamp TEXT)''')
+                     (id INTEGER PRIMARY KEY AUTO_INCREMENT, username TEXT, type TEXT, data TEXT, timestamp TEXT)''')
         
         # Create messages table
         print("Creating messages table...")
         c.execute('''CREATE TABLE IF NOT EXISTS messages
-                     (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                     (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                       sender TEXT NOT NULL,
                       receiver TEXT NOT NULL,
                       message TEXT NOT NULL,
@@ -127,7 +128,7 @@ def init_database():
         # Create calendar_events table
         print("Creating calendar_events table...")
         c.execute('''CREATE TABLE IF NOT EXISTS calendar_events
-                     (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                     (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                       username TEXT NOT NULL,
                       title TEXT NOT NULL,
                       date TEXT NOT NULL,
@@ -146,7 +147,7 @@ def init_database():
         # Create useful_links table
         print("Creating useful_links table...")
         c.execute('''CREATE TABLE IF NOT EXISTS useful_links
-                     (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                     (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                       community_id INTEGER,
                       username TEXT NOT NULL,
                       url TEXT NOT NULL,
