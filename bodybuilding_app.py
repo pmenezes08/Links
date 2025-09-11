@@ -181,6 +181,7 @@ def get_db_connection():
         try:
             try:
                 import pymysql
+                from pymysql.cursors import DictCursor
             except Exception as imp_err:
                 logger.error(f"PyMySQL not installed or failed to import: {imp_err}")
                 raise
@@ -199,6 +200,7 @@ def get_db_connection():
                 database=database,
                 charset='utf8mb4',
                 autocommit=True,
+                cursorclass=DictCursor,
             )
             # Wrap cursor to adapt SQLite-style SQL to MySQL at runtime
             try:
@@ -1528,14 +1530,21 @@ def login_password():
         try:
             conn = get_db_connection()
             c = conn.cursor()
-            c.execute("SELECT password, subscription, is_active FROM users WHERE username=?", (username,))
-            user = c.fetchone()
+            try:
+                c.execute("SELECT password, subscription, is_active FROM users WHERE username=?", (username,))
+                row = c.fetchone()
+            except Exception:
+                # Fallback if is_active column does not exist in MySQL
+                c.execute("SELECT password, subscription FROM users WHERE username=?", (username,))
+                r2 = c.fetchone()
+                row = (r2[0], r2[1], 1) if r2 else None
+            user = row
             conn.close()
             print(f"DB query result: user found = {user is not None}")
             if user:
-                stored_password = user[0]
-                subscription = user[1]
-                is_active = user[2] if len(user) > 2 else True
+                stored_password = user[0] if isinstance(user, (list, tuple)) else user['password']
+                subscription = user[1] if isinstance(user, (list, tuple)) else user.get('subscription')
+                is_active = (user[2] if isinstance(user, (list, tuple)) else user.get('is_active', 1)) or 1
                 
                 # Check if user is deactivated
                 if not is_active:
