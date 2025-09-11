@@ -118,6 +118,19 @@ export default function ChatThread(){
   }, [username, otherUserId])
 
   // Removed body scroll lock to avoid header disappearing on iOS when focusing the composer
+  // Additionally, reduce body bounce so the sticky/fixed header stays visible when focusing the composer on iOS
+  useEffect(() => {
+    const bodyStyle: any = document.body.style as any
+    const docStyle: any = document.documentElement.style as any
+    const prevBody = bodyStyle.overscrollBehaviorY
+    const prevDoc = docStyle.overscrollBehaviorY
+    bodyStyle.overscrollBehaviorY = 'contain'
+    docStyle.overscrollBehaviorY = 'contain'
+    return () => {
+      bodyStyle.overscrollBehaviorY = prevBody || ''
+      docStyle.overscrollBehaviorY = prevDoc || ''
+    }
+  }, [])
 
   // Auto-size composer textarea
   function adjustTextareaHeight(){
@@ -157,7 +170,7 @@ export default function ChatThread(){
     <div className="fixed inset-x-0 top-14 bottom-0 bg-black text-white">
       <div className="h-full max-w-3xl mx-auto flex flex-col">
         {/* Chat subheader with back button (WhatsApp-style) */}
-        <div className="sticky top-0 h-12 border-b border-white/10 flex items-center gap-2 px-3 bg-black/70 backdrop-blur z-50">
+        <div className="fixed left-0 right-0 top-14 h-12 border-b border-white/10 flex items-center gap-2 px-3 bg-black z-50">
           <button className="p-2 rounded-full hover:bg-white/5" onClick={()=> navigate('/user_chat')} aria-label="Back">
             <i className="fa-solid fa-arrow-left" />
           </button>
@@ -167,7 +180,7 @@ export default function ChatThread(){
         {/* Messages list (WhatsApp style bubbles) */}
         <div
           ref={listRef}
-          className="flex-1 overflow-y-auto overscroll-contain px-2 sm:px-3 py-3 space-y-1 pb-24"
+          className="flex-1 overflow-y-auto overscroll-contain px-2 sm:px-3 pt-16 py-3 space-y-1 pb-24"
           style={{ WebkitOverflowScrolling: 'touch' as any, overscrollBehavior: 'contain' as any }}
           onScroll={(e)=> {
             const el = e.currentTarget
@@ -245,7 +258,7 @@ export default function ChatThread(){
         ) : null}
 
         {/* Composer (sticky bottom) */}
-        <div className="p-2 sm:p-3 border-t border-white/10 flex items-end gap-2 bg-black">
+        <div className="p-2 sm:p-3 border-t border-white/10 flex items-end gap-2 bg-black flex-shrink-0">
           <button className="hidden sm:inline-flex w-9 h-9 flex-shrink-0 items-center justify-center rounded-full bg-white/5 border border-white/10">
             <i className="fa-solid fa-paperclip text-white/70 text-sm" />
           </button>
@@ -264,6 +277,7 @@ export default function ChatThread(){
                 fetch('/api/typing', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ peer: username, is_typing: false }) }).catch(()=>{})
               }, 1200)
             }}
+            onFocus={() => { try { window.scrollTo({ top: 0, behavior: 'auto' }) } catch {} }}
             // Enter inserts newline by default; no auto-send on Enter
           />
           <button
