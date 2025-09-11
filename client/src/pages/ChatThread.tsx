@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
 import Avatar from '../components/Avatar'
@@ -15,7 +15,8 @@ export default function ChatThread(){
   const [replyTo, setReplyTo] = useState<{ text:string }|null>(null)
   const listRef = useRef<HTMLDivElement|null>(null)
   const textareaRef = useRef<HTMLTextAreaElement|null>(null)
-  const replySnippetsRef = useRef<Record<string, string>>({})
+  const storageKey = useMemo(() => `chat_meta_${username || ''}`, [username])
+  const metaRef = useRef<Record<string, { reaction?: string; replySnippet?: string }>>({})
   const [otherProfile, setOtherProfile] = useState<{ display_name:string; profile_picture?:string|null }|null>(null)
   const [typing, setTyping] = useState(false)
   const typingTimer = useRef<any>(null)
@@ -31,7 +32,13 @@ export default function ChatThread(){
           const fd = new URLSearchParams({ other_user_id: String(j.user_id) })
           fetch('/get_messages', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
             .then(r=>r.json()).then(j=>{
-              if (j?.success && Array.isArray(j.messages)) setMessages(j.messages)
+              if (j?.success && Array.isArray(j.messages)) {
+                setMessages(j.messages.map((m:any) => {
+                  const k = `${m.time}|${m.text}|${m.sent ? 'me' : 'other'}`
+                  const meta = metaRef.current[k] || {}
+                  return { ...m, reaction: meta.reaction, replySnippet: meta.replySnippet }
+                }))
+              }
             }).catch(()=>{})
           // Load brief profile for header avatar
           fetch(`/api/get_user_profile_brief?username=${encodeURIComponent(username)}`, { credentials:'include' })
@@ -54,6 +61,11 @@ export default function ChatThread(){
     lastCountRef.current = messages.length
   }, [messages])
 
+  // Load persisted meta
+  useEffect(() => {
+    try{ const raw = localStorage.getItem(storageKey); if (raw) metaRef.current = JSON.parse(raw) || {} }catch{}
+  }, [storageKey])
+
   // Poll for new messages and typing status
   useEffect(() => {
     if (!username || !otherUserId) return
@@ -66,9 +78,11 @@ export default function ChatThread(){
         if (j?.success && Array.isArray(j.messages)){
           setMessages(prev => j.messages.map((m:any) => {
             const existing = prev.find(x => x.id === m.id)
-            const key = `${m.time}|${m.text}`
-            const replySnippet = existing?.replySnippet || replySnippetsRef.current[key]
-            return existing ? { ...m, reaction: existing.reaction, replySnippet } : { ...m, replySnippet }
+            const k = `${m.time}|${m.text}|${m.sent ? 'me' : 'other'}`
+            const meta = metaRef.current[k] || {}
+            return existing
+              ? { ...m, reaction: existing.reaction ?? meta.reaction, replySnippet: existing.replySnippet ?? meta.replySnippet }
+              : { ...m, reaction: meta.reaction, replySnippet: meta.replySnippet }
           }))
         }
       }catch{}
@@ -107,7 +121,9 @@ export default function ChatThread(){
           const replySnippet = replyTo ? (replyTo.text.length > 90 ? replyTo.text.slice(0,90) + '…' : replyTo.text) : undefined
           const text = fd.get('message') || ''
           if (replySnippet){
-            replySnippetsRef.current[`${now}|${text}`] = replySnippet
+            const k = `${now}|${text}|me`
+            metaRef.current[k] = { ...(metaRef.current[k]||{}), replySnippet }
+            try{ localStorage.setItem(storageKey, JSON.stringify(metaRef.current)) }catch{}
           }
           setMessages(prev => [...prev, { id: Math.random(), text, sent:true, time: now, replySnippet }])
           setReplyTo(null)
@@ -137,6 +153,9 @@ export default function ChatThread(){
                 .then(r=>r.json()).then(j=>{ if (j?.success){ setMessages(prev => prev.filter(x => x.id !== m.id)) } }).catch(()=>{})
             }} onReact={(emoji)=> {
               setMessages(msgs => msgs.map(x => x.id===m.id ? { ...x, reaction: emoji } : x))
+              const k = `${m.time}|${m.text}|${m.sent ? 'me' : 'other'}`
+              metaRef.current[k] = { ...(metaRef.current[k]||{}), reaction: emoji }
+              try{ localStorage.setItem(storageKey, JSON.stringify(metaRef.current)) }catch{}
             }} onReply={() => {
               setReplyTo({ text: m.text })
               textareaRef.current?.focus()
