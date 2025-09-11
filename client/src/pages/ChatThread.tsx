@@ -143,6 +143,8 @@ export default function ChatThread(){
               const quoted = m.text.split('\n').map(l => `> ${l}`).join('\n')
               setDraft(`${quoted}\n\n`)
               textareaRef.current?.focus()
+            }} onCopy={() => {
+              try{ navigator.clipboard && navigator.clipboard.writeText(m.text) }catch{}
             }}>
               <div className={`flex ${m.sent ? 'justify-end' : 'justify-start'}`}>
                 <div
@@ -201,18 +203,19 @@ export default function ChatThread(){
   )
 }
 
-function LongPressActionable({ children, onDelete, onReact, onReply }: { children: React.ReactNode; onDelete: () => void; onReact: (emoji:string)=>void; onReply: ()=>void }){
+function LongPressActionable({ children, onDelete, onReact, onReply, onCopy }: { children: React.ReactNode; onDelete: () => void; onReact: (emoji:string)=>void; onReply: ()=>void; onCopy: ()=>void }){
   const [showMenu, setShowMenu] = useState(false)
   const timerRef = useRef<any>(null)
-  function handleStart(){
+  function handleStart(e?: any){
+    try{ e && e.preventDefault && e.preventDefault() }catch{}
     if (timerRef.current) clearTimeout(timerRef.current)
-    timerRef.current = setTimeout(() => setShowMenu(true), 3000)
+    timerRef.current = setTimeout(() => setShowMenu(true), 1000)
   }
   function handleEnd(){
     if (timerRef.current) clearTimeout(timerRef.current)
   }
   return (
-    <div className="relative">
+    <div className="relative select-none" style={{ userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none' as any }}>
       <div
         onMouseDown={handleStart}
         onMouseUp={handleEnd}
@@ -233,6 +236,7 @@ function LongPressActionable({ children, onDelete, onReact, onReply }: { childre
             </div>
             <div className="pt-2 flex flex-col">
               <button className="text-left px-2 py-1 text-sm hover:bg-white/5" onClick={()=> { setShowMenu(false); onReply() }}>Reply</button>
+              <button className="text-left px-2 py-1 text-sm hover:bg-white/5" onClick={()=> { setShowMenu(false); onCopy() }}>Copy</button>
               <button className="text-left px-2 py-1 text-sm text-red-400 hover:bg-white/5" onClick={()=> { setShowMenu(false); onDelete() }}>Delete</button>
             </div>
           </div>
