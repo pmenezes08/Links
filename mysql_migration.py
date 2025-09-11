@@ -2,32 +2,43 @@
 """
 MySQL Migration Script for PythonAnywhere
 This script migrates the database from SQLite to MySQL compatibility
+Uses the same database connection as the Flask app
 """
 
-import mysql.connector
 import os
 import sys
 from datetime import datetime
 
 def get_db_connection():
-    """Get database connection using environment variables or defaults"""
+    """Get database connection using the same method as Flask app"""
     try:
-        # Try to get connection details from environment or use defaults
-        host = os.getenv('DB_HOST', 'localhost')
-        user = os.getenv('DB_USER', 'root')
-        password = os.getenv('DB_PASSWORD', '')
-        database = os.getenv('DB_NAME', 'bodybuilding_app')
+        import pymysql
+        from pymysql.cursors import DictCursor
         
-        conn = mysql.connector.connect(
+        # Use PythonAnywhere MySQL settings
+        host = os.environ.get('MYSQL_HOST', 'puntz08.mysql.pythonanywhere-services.com')
+        user = os.environ.get('MYSQL_USER', 'puntz08')
+        password = os.environ.get('MYSQL_PASSWORD', '')
+        database = os.environ.get('MYSQL_DATABASE', 'puntz08$C-Point')
+        
+        if not password:
+            print("Please set MYSQL_PASSWORD environment variable")
+            return None
+            
+        conn = pymysql.connect(
             host=host,
             user=user,
             password=password,
             database=database,
             charset='utf8mb4',
-            collation='utf8mb4_unicode_ci',
+            cursorclass=DictCursor,
             autocommit=False
         )
         return conn
+    except ImportError as e:
+        print(f"PyMySQL not installed: {e}")
+        print("Please install with: pip install PyMySQL")
+        return None
     except Exception as e:
         print(f"Error connecting to database: {e}")
         return None
@@ -156,10 +167,13 @@ if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "--help":
         print("Usage: python mysql_migration.py")
         print("\nEnvironment variables:")
-        print("  DB_HOST     - Database host (default: localhost)")
-        print("  DB_USER     - Database user (default: root)")
-        print("  DB_PASSWORD - Database password (default: empty)")
-        print("  DB_NAME     - Database name (default: bodybuilding_app)")
+        print("  MYSQL_HOST     - Database host (default: puntz08.mysql.pythonanywhere-services.com)")
+        print("  MYSQL_USER     - Database user (default: puntz08)")
+        print("  MYSQL_PASSWORD - Database password (REQUIRED)")
+        print("  MYSQL_DATABASE - Database name (default: puntz08$C-Point)")
+        print("\nExample:")
+        print("  export MYSQL_PASSWORD='your_password'")
+        print("  python mysql_migration.py")
         sys.exit(0)
     
     success = run_migration()
