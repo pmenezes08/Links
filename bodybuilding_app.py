@@ -202,6 +202,39 @@ def get_db_connection():
                 autocommit=True,
                 cursorclass=DictCursor,
             )
+            # Wrap cursor to adapt SQLite-style SQL to MySQL at runtime
+            try:
+                orig_cursor = conn.cursor
+
+                def _adapt_sql(sql: str) -> str:
+                    s = sql
+                    # Common cross-db adaptations
+                    s = s.replace('INSERT OR IGNORE', 'INSERT IGNORE')
+                    s = s.replace("datetime('now')", 'NOW()')
+                    return s
+
+                class _ProxyCursor:
+                    def __init__(self, real):
+                        self._real = real
+                    def execute(self, query, params=None):
+                        q = _adapt_sql(query)
+                        if params is not None:
+                            # Convert SQLite qmark '?' to MySQL '%s'
+                            q = q.replace('?', '%s')
+                            return self._real.execute(q, params)
+                        return self._real.execute(q)
+                    def executemany(self, query, param_seq):
+                        q = _adapt_sql(query).replace('?', '%s')
+                        return self._real.executemany(q, param_seq)
+                    def __getattr__(self, name):
+                        return getattr(self._real, name)
+
+                def _patched_cursor(*args, **kwargs):
+                    return _ProxyCursor(orig_cursor(*args, **kwargs))
+
+                conn.cursor = _patched_cursor  # type: ignore[attr-defined]
+            except Exception as _wrap_err:
+                logger.warning(f"Could not wrap MySQL cursor for SQL adaptation: {_wrap_err}")
             return conn
         except Exception as e:
             logger.error(f"Failed to connect to MySQL: {e}")
