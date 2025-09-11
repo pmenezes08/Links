@@ -10,8 +10,9 @@ export default function ChatThread(){
   useEffect(() => { setTitle(username ? `Chat: ${username}` : 'Chat') }, [setTitle, username])
 
   const [otherUserId, setOtherUserId] = useState<number|''>('')
-  const [messages, setMessages] = useState<Array<{ id:number; text:string; sent:boolean; time:string }>>([])
+  const [messages, setMessages] = useState<Array<{ id:number; text:string; sent:boolean; time:string; reaction?:string; replySnippet?:string }>>([])
   const [draft, setDraft] = useState('')
+  const [replyTo, setReplyTo] = useState<{ text:string }|null>(null)
   const listRef = useRef<HTMLDivElement|null>(null)
   const textareaRef = useRef<HTMLTextAreaElement|null>(null)
   const [otherProfile, setOtherProfile] = useState<{ display_name:string; profile_picture?:string|null }|null>(null)
@@ -112,7 +113,9 @@ export default function ChatThread(){
         if (j?.success){
           setDraft('')
           const now = new Date().toISOString().slice(0,19).replace('T',' ')
-          setMessages(prev => [...prev, { id: Math.random(), text: fd.get('message') || '', sent:true, time: now }])
+          const replySnippet = replyTo ? (replyTo.text.length > 90 ? replyTo.text.slice(0,90) + '…' : replyTo.text) : undefined
+          setMessages(prev => [...prev, { id: Math.random(), text: fd.get('message') || '', sent:true, time: now, replySnippet }])
+          setReplyTo(null)
           // stop typing state
           fetch('/api/typing', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ peer: username, is_typing: false }) }).catch(()=>{})
         }
@@ -123,7 +126,7 @@ export default function ChatThread(){
     <div className="fixed inset-x-0 top-14 bottom-0 bg-black text-white">
       <div className="h-full max-w-3xl mx-auto flex flex-col">
         {/* Chat subheader with back button (WhatsApp-style) */}
-        <div className="h-12 border-b border-white/10 flex items-center gap-2 px-3 bg-black/70 backdrop-blur z-30">
+        <div className="sticky top-0 h-12 border-b border-white/10 flex items-center gap-2 px-3 bg-black/70 backdrop-blur z-30">
           <button className="p-2 rounded-full hover:bg-white/5" onClick={()=> navigate('/user_chat')} aria-label="Back">
             <i className="fa-solid fa-arrow-left" />
           </button>
@@ -138,10 +141,10 @@ export default function ChatThread(){
               fetch('/delete_message', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
                 .then(r=>r.json()).then(j=>{ if (j?.success){ setMessages(prev => prev.filter(x => x.id !== m.id)) } }).catch(()=>{})
             }} onReact={(emoji)=> {
-              setMessages(msgs => msgs.map(x => x.id===m.id ? { ...x, text: x.text + ' ' + emoji } : x))
+              setMessages(msgs => msgs.map(x => x.id===m.id ? { ...x, reaction: emoji } : x))
             }} onReply={() => {
-              const quoted = m.text.split('\n').map(l => `> ${l}`).join('\n')
-              setDraft(`${quoted}\n\n`)
+              setReplyTo({ text: m.text })
+              setDraft('')
               textareaRef.current?.focus()
             }} onCopy={() => {
               try{ navigator.clipboard && navigator.clipboard.writeText(m.text) }catch{}
@@ -149,9 +152,18 @@ export default function ChatThread(){
               <div className={`flex ${m.sent ? 'justify-end' : 'justify-start'}`}>
                 <div
                   className={`max-w-[70%] md:max-w-[70%] px-3 py-2 rounded-2xl text-[14px] leading-snug whitespace-pre-wrap break-words shadow-sm border ${m.sent ? 'bg-[#075E54] text-white border-[#075E54]' : 'bg-[#1a1a1a] text-white border-white/10'} ${m.sent ? 'rounded-br-md' : 'rounded-bl-md'}`}
+                  style={{ position: 'relative' as any }}
                 >
+                  {m.replySnippet ? (
+                    <div className="mb-1 px-2 py-1 rounded bg-white/10 text-[12px] text-[#cfe9e7] border border-white/10">
+                      {m.replySnippet}
+                    </div>
+                  ) : null}
                   <div>{m.text}</div>
                   <div className={`text-[10px] mt-1 ${m.sent ? 'text-white/70' : 'text-white/50'} text-right`}>{new Date(m.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+                  {m.reaction ? (
+                    <span className="absolute -bottom-2 right-2 text-base select-none">{m.reaction}</span>
+                  ) : null}
                 </div>
               </div>
             </LongPressActionable>
@@ -168,6 +180,17 @@ export default function ChatThread(){
           ) : null}
         </div>
 
+        {/* Reply preview */}
+        {replyTo ? (
+          <div className="px-3 py-2 border-t border-white/10 bg-black/80 text-[12px] text-[#cfe9e7]">
+            <div className="flex items-start gap-2">
+              <div className="w-1.5 h-6 bg-[#4db6ac] rounded" />
+              <div className="flex-1 truncate">{replyTo.text.length > 90 ? replyTo.text.slice(0, 90) + '…' : replyTo.text}</div>
+              <button className="ml-2 text-[#9fb0b5] text-xs" onClick={()=> setReplyTo(null)}>✕</button>
+            </div>
+          </div>
+        ) : null}
+
         {/* Composer (sticky bottom) */}
         <div className="p-2 sm:p-3 border-t border-white/10 flex items-end gap-2 bg-black">
           <button className="hidden sm:inline-flex w-9 h-9 flex-shrink-0 items-center justify-center rounded-full bg-white/5 border border-white/10">
@@ -179,6 +202,7 @@ export default function ChatThread(){
             className="flex-1 rounded-2xl bg-[#0b0f10] border border-white/15 px-4 py-2 text-[16px] leading-snug outline-none focus:border-[#4db6ac] resize-none max-h-40 min-h-[42px]"
             placeholder="Type a message"
             value={draft}
+            onFocus={()=> { try{ window.scrollTo({ top: 0 }) }catch{} }}
             onChange={e=> {
               setDraft(e.target.value)
               // typing start (debounced stop)
