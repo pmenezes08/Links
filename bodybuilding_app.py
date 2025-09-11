@@ -173,25 +173,57 @@ except ImportError as e:
 XAI_API_URL = 'https://api.x.ai/v1/chat/completions'
 DAILY_API_LIMIT = 10
 
-# Database connection pooling with absolute path
+USE_MYSQL = (os.getenv('DB_BACKEND', 'sqlite').lower() == 'mysql')
+
+# Database connection helper: MySQL in production (if configured), SQLite locally
 def get_db_connection():
-    # Get the absolute path to the database file
-    db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'users.db')
-    try:
-        conn = sqlite3.connect(db_path)
-        conn.row_factory = sqlite3.Row
-        return conn
-    except Exception as e:
-        logger.error(f"Failed to connect to database at {db_path}: {e}")
-        # Try to ensure database exists and retry
+    if USE_MYSQL:
         try:
-            ensure_database_exists()
+            try:
+                import pymysql
+                from pymysql.cursors import DictCursor  # type: ignore
+            except Exception as imp_err:
+                logger.error(f"PyMySQL not installed or failed to import: {imp_err}")
+                raise
+
+            host = os.environ.get('MYSQL_HOST')
+            user = os.environ.get('MYSQL_USER')
+            password = os.environ.get('MYSQL_PASSWORD')
+            database = os.environ.get('MYSQL_DB')
+            if not all([host, user, password, database]):
+                raise RuntimeError('Missing MySQL env vars: MYSQL_HOST, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DB')
+
+            conn = pymysql.connect(
+                host=host,
+                user=user,
+                password=password,
+                database=database,
+                charset='utf8mb4',
+                autocommit=True,
+                cursorclass=DictCursor,
+            )
+            return conn
+        except Exception as e:
+            logger.error(f"Failed to connect to MySQL: {e}")
+            raise
+    else:
+        # SQLite (default for local dev)
+        db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'users.db')
+        try:
             conn = sqlite3.connect(db_path)
             conn.row_factory = sqlite3.Row
             return conn
-        except Exception as e2:
-            logger.error(f"Failed to create database and connect: {e2}")
-            raise
+        except Exception as e:
+            logger.error(f"Failed to connect to database at {db_path}: {e}")
+            # Try to ensure database exists and retry
+            try:
+                ensure_database_exists()
+                conn = sqlite3.connect(db_path)
+                conn.row_factory = sqlite3.Row
+                return conn
+            except Exception as e2:
+                logger.error(f"Failed to create database and connect: {e2}")
+                raise
 
 def ensure_database_exists():
     """Ensure the database and all tables exist."""
