@@ -52,18 +52,31 @@ export default function ChatThread(){
   // Auto-scroll on first open, then only when already near bottom
   const lastCountRef = useRef(0)
   const didInitialAutoScrollRef = useRef(false)
+  const [showScrollDown, setShowScrollDown] = useState(false)
+  function scrollToBottom(){
+    const el = listRef.current
+    if (!el) return
+    requestAnimationFrame(() => requestAnimationFrame(() => { el.scrollTop = el.scrollHeight }))
+  }
   useEffect(() => {
     const el = listRef.current
     if (!el) return
     if (!didInitialAutoScrollRef.current) {
-      el.scrollTop = el.scrollHeight
-      didInitialAutoScrollRef.current = true
-      lastCountRef.current = messages.length
-      return
+      if (messages.length > 0){
+        scrollToBottom()
+        didInitialAutoScrollRef.current = true
+        lastCountRef.current = messages.length
+        return
+      }
     }
     if (messages.length > lastCountRef.current){
       const near = (el.scrollHeight - el.scrollTop - el.clientHeight) < 120
-      if (near) el.scrollTop = el.scrollHeight
+      if (near){
+        scrollToBottom()
+        setShowScrollDown(false)
+      } else {
+        setShowScrollDown(true)
+      }
     }
     lastCountRef.current = messages.length
   }, [messages])
@@ -152,7 +165,16 @@ export default function ChatThread(){
           <div className="font-medium truncate">{otherProfile?.display_name || username}</div>
         </div>
         {/* Messages list (WhatsApp style bubbles) */}
-        <div ref={listRef} className="flex-1 overflow-y-auto overscroll-contain px-2 sm:px-3 py-3 space-y-1 pb-24" style={{ WebkitOverflowScrolling: 'touch' as any }}>
+        <div
+          ref={listRef}
+          className="flex-1 overflow-y-auto overscroll-contain px-2 sm:px-3 py-3 space-y-1 pb-24"
+          style={{ WebkitOverflowScrolling: 'touch' as any }}
+          onScroll={(e)=> {
+            const el = e.currentTarget
+            const near = (el.scrollHeight - el.scrollTop - el.clientHeight) < 120
+            if (near) setShowScrollDown(false)
+          }}
+        >
           {messages.map(m => (
             <LongPressActionable key={m.id} onDelete={() => {
               const fd = new URLSearchParams({ message_id: String(m.id) })
@@ -191,6 +213,15 @@ export default function ChatThread(){
             </LongPressActionable>
           ))}
         </div>
+        {showScrollDown && (
+          <button
+            className="fixed bottom-24 right-4 z-50 w-10 h-10 rounded-full bg-[#4db6ac] text-black shadow-lg border border-[#4db6ac] hover:brightness-110 flex items-center justify-center"
+            onClick={() => { scrollToBottom(); setShowScrollDown(false) }}
+            aria-label="Scroll to latest"
+          >
+            <i className="fa-solid fa-arrow-down" />
+          </button>
+        )}
 
         {/* Typing indicator row (fixed height to avoid layout shift) */}
         <div className="h-8 px-3 flex items-center gap-2 text-[#9fb0b5] flex-shrink-0">
