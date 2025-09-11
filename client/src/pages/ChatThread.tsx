@@ -62,7 +62,12 @@ export default function ChatThread(){
         const fd = new URLSearchParams({ other_user_id: String(otherUserId) })
         const r = await fetch('/get_messages', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
         const j = await r.json()
-        if (j?.success && Array.isArray(j.messages)) setMessages(j.messages)
+        if (j?.success && Array.isArray(j.messages)){
+          setMessages(prev => j.messages.map((m:any) => {
+            const existing = prev.find(x => x.id === m.id)
+            return existing ? { ...m, reaction: existing.reaction, replySnippet: existing.replySnippet } : m
+          }))
+        }
       }catch{}
       try{
         const t = await fetch(`/api/typing?peer=${encodeURIComponent(username!)}`, { credentials:'include' })
@@ -144,7 +149,7 @@ export default function ChatThread(){
                   <div>{m.text}</div>
                   <div className={`text-[10px] mt-1 ${m.sent ? 'text-white/70' : 'text-white/50'} text-right`}>{new Date(m.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
                   {m.reaction ? (
-                    <span className="absolute -bottom-2 right-2 translate-y-1 text-base select-none bg-black/80 border border-white/10 rounded-full px-1.5 leading-none shadow">
+                    <span className="absolute bottom-1 right-1 text-xl leading-none select-none z-10">
                       {m.reaction}
                     </span>
                   ) : null}
