@@ -221,7 +221,7 @@ export default function PostDetail(){
       <div className="fixed left-0 right-0 bottom-0 z-50 bg-black/85 border-t border-white/10 backdrop-blur">
         <div className="px-3 py-2 flex flex-col gap-1.5">
           <textarea
-            className="w-full resize-none max-h-36 min-h-[30px] px-3 py-1.5 rounded-2xl bg-black border border-[#4db6ac] text-sm focus:outline-none focus:ring-1 focus:ring-[#4db6ac]"
+            className="w-full resize-none max-h-36 min-h-[30px] px-3 py-1.5 rounded-2xl bg-black border border-[#4db6ac] text-[16px] focus:outline-none focus:ring-1 focus:ring-[#4db6ac]"
             placeholder="Write a reply…"
             value={content}
             onChange={(e)=> setContent(e.target.value)}
@@ -293,7 +293,7 @@ function ReplyNode({ reply, depth=0, onToggle, onInlineReply }:{ reply: Reply, d
           </div>
           {showComposer ? (
             <div className="mt-2 flex items-center gap-2">
-              <input className="flex-1 px-3 py-1.5 rounded-full bg-black border border-[#4db6ac] text-sm focus:outline-none focus:ring-1 focus:ring-[#4db6ac]" value={text} onChange={(e)=> setText(e.target.value)} placeholder={`Reply to @${reply.username}`} />
+              <input className="flex-1 px-3 py-1.5 rounded-full bg-black border border-[#4db6ac] text-[16px] focus:outline-none focus:ring-1 focus:ring-[#4db6ac]" value={text} onChange={(e)=> setText(e.target.value)} placeholder={`Reply to @${reply.username}`} />
               <button className="px-2.5 py-1.5 rounded-full bg-[#4db6ac] text-white border border-[#4db6ac] hover:brightness-110" onClick={()=> { if (!text) return; onInlineReply(reply.id, text); setText(''); setShowComposer(false) }} aria-label="Send reply">
                 <i className="fa-solid fa-paper-plane" />
               </button>
