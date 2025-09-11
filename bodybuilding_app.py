@@ -420,31 +420,40 @@ def init_db():
                 c.execute("ALTER TABLE users ADD COLUMN id INTEGER PRIMARY KEY AUTO_INCREMENT FIRST")
                 conn.commit()
             
-            # Ensure user_communities table has user_id column
+            # Ensure user_communities table exists and has correct schema
             try:
-                c.execute("SHOW COLUMNS FROM user_communities LIKE 'user_id'")
+                # Check if table exists
+                c.execute("SHOW TABLES LIKE 'user_communities'")
                 if not c.fetchone():
-                    logger.info("Adding user_id column to user_communities table...")
-                    c.execute("ALTER TABLE user_communities ADD COLUMN user_id INTEGER NOT NULL")
-                    conn.commit()
-            except Exception as e:
-                logger.warning(f"Could not ensure user_id column in user_communities: {e}")
-                # If the column doesn't exist, the table might need to be recreated
-                try:
-                    logger.info("Attempting to recreate user_communities table with correct schema...")
-                    c.execute("DROP TABLE IF EXISTS user_communities")
+                    logger.info("Creating user_communities table...")
                     c.execute('''CREATE TABLE user_communities
                                  (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                                   user_id INTEGER NOT NULL,
                                   community_id INTEGER NOT NULL,
-                                  joined_at TEXT NOT NULL,
+                                  joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                                   FOREIGN KEY (user_id) REFERENCES users(id),
                                   FOREIGN KEY (community_id) REFERENCES communities(id),
                                   UNIQUE(user_id, community_id))''')
                     conn.commit()
-                    logger.info("Successfully recreated user_communities table")
-                except Exception as e2:
-                    logger.error(f"Failed to recreate user_communities table: {e2}")
+                    logger.info("Created user_communities table")
+                else:
+                    # Table exists, check if it has user_id column
+                    c.execute("SHOW COLUMNS FROM user_communities LIKE 'user_id'")
+                    if not c.fetchone():
+                        logger.info("user_id column missing, recreating user_communities table...")
+                        c.execute("DROP TABLE user_communities")
+                        c.execute('''CREATE TABLE user_communities
+                                     (id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                                      user_id INTEGER NOT NULL,
+                                      community_id INTEGER NOT NULL,
+                                      joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                                      FOREIGN KEY (user_id) REFERENCES users(id),
+                                      FOREIGN KEY (community_id) REFERENCES communities(id),
+                                      UNIQUE(user_id, community_id))''')
+                        conn.commit()
+                        logger.info("Recreated user_communities table with correct schema")
+            except Exception as e:
+                logger.error(f"Failed to ensure user_communities table: {e}")
             
             # Add missing columns to existing users table if they don't exist
             logger.info("Checking for missing columns...")
@@ -833,9 +842,9 @@ def init_db():
             # Login history table
             c.execute('''CREATE TABLE IF NOT EXISTS user_login_history
                          (id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                          username TEXT NOT NULL,
-                          login_time TEXT NOT NULL,
-                          ip_address TEXT,
+                          username VARCHAR(255) NOT NULL,
+                          login_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                          ip_address VARCHAR(45),
                           user_agent TEXT,
                           FOREIGN KEY (username) REFERENCES users (username))''')
             
@@ -982,11 +991,21 @@ def init_db():
                 c.execute("ALTER TABLE users ADD COLUMN is_active TINYINT(1) DEFAULT 1")
                 logger.info("Added is_active column to users table")
             
-            # Add link column to notifications table if it doesn't exist
-            c.execute("SHOW COLUMNS FROM notifications LIKE 'link'")
-            if not c.fetchone():
-                c.execute("ALTER TABLE notifications ADD COLUMN link TEXT")
-                logger.info("Added link column to notifications table")
+            # Ensure notifications table has required columns
+            try:
+                # Check if created_at column exists
+                c.execute("SHOW COLUMNS FROM notifications LIKE 'created_at'")
+                if not c.fetchone():
+                    c.execute("ALTER TABLE notifications ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+                    logger.info("Added created_at column to notifications table")
+                
+                # Check if link column exists
+                c.execute("SHOW COLUMNS FROM notifications LIKE 'link'")
+                if not c.fetchone():
+                    c.execute("ALTER TABLE notifications ADD COLUMN link TEXT")
+                    logger.info("Added link column to notifications table")
+            except Exception as e:
+                logger.error(f"Failed to update notifications table: {e}")
             
             # Check and add is_active to communities table  
             c.execute("SHOW COLUMNS FROM communities LIKE 'is_active'")
