@@ -49,11 +49,18 @@ export default function ChatThread(){
       }).catch(()=>{})
   }, [username])
 
-  // Scroll to bottom only when new message arrives at bottom
+  // Auto-scroll on first open, then only when already near bottom
   const lastCountRef = useRef(0)
+  const didInitialAutoScrollRef = useRef(false)
   useEffect(() => {
     const el = listRef.current
     if (!el) return
+    if (!didInitialAutoScrollRef.current) {
+      el.scrollTop = el.scrollHeight
+      didInitialAutoScrollRef.current = true
+      lastCountRef.current = messages.length
+      return
+    }
     if (messages.length > lastCountRef.current){
       const near = (el.scrollHeight - el.scrollTop - el.clientHeight) < 120
       if (near) el.scrollTop = el.scrollHeight
