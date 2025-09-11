@@ -149,13 +149,17 @@ export default function HomeTimeline(){
               <div key={p.id} className="rounded-2xl border border-white/10 bg-white/[0.035] shadow-sm shadow-black/20 cursor-pointer" onClick={() => navigate(`/post/${p.id}`)}>
                 <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2" onClick={(e)=> e.stopPropagation()}>
                   <Avatar username={p.username} url={p.profile_picture || undefined} size={32} />
-                  <div className="font-medium tracking-[-0.01em] truncate">{p.username}</div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-baseline gap-2 min-w-0">
+                      <div className="font-medium tracking-[-0.01em] truncate">{p.username}</div>
+                      {p.community_name ? (
+                        <div className="text-xs text-[#9fb0b5] truncate">in {p.community_name}</div>
+                      ) : null}
+                    </div>
+                  </div>
                   <div className="text-xs text-[#9fb0b5] ml-auto tabular-nums">{formatTimestamp(p.timestamp)}</div>
                 </div>
                 <div className="px-3 py-2 space-y-2">
-                  {p.community_name ? (
-                    <div className="text-xs text-[#9fb0b5]">in {p.community_name}</div>
-                  ) : null}
                   <div className="whitespace-pre-wrap text-[14px] leading-relaxed">{p.content}</div>
                   {p.image_path ? (
                     <img src={p.image_path.startsWith('/uploads') || p.image_path.startsWith('/static') ? p.image_path : `/uploads/${p.image_path}`} alt="" className="block mx-auto max-w-full max-h-[360px] rounded border border-white/10" />
