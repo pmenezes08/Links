@@ -90,6 +90,14 @@ def find_kw28_community(sqlite_conn):
 
 def migrate_community_data(sqlite_conn, mysql_conn, community_id):
     """Migrate a specific community and its related data"""
+    
+    # Helper function to safely get values from SQLite Row
+    def safe_get(row, key, default=''):
+        try:
+            return row[key] if row[key] is not None else default
+        except (IndexError, KeyError):
+            return default
+    
     try:
         sqlite_cursor = sqlite_conn.cursor()
         mysql_cursor = mysql_conn.cursor()
@@ -120,21 +128,21 @@ def migrate_community_data(sqlite_conn, mysql_conn, community_id):
             # Insert community into MySQL
             community_data = {
                 'name': community['name'],
-                'type': community.get('type', 'general'),
+                'type': safe_get(community, 'type', 'general'),
                 'creator_username': community['creator_username'],
                 'join_code': community['join_code'],
-                'created_at': community.get('created_at', datetime.now().isoformat()),
-                'description': community.get('description', ''),
-                'location': community.get('location', ''),
-                'background_path': community.get('background_path', ''),
-                'info': community.get('info', ''),
-                'info_updated_at': community.get('info_updated_at', ''),
-                'template': community.get('template', 'default'),
-                'background_color': community.get('background_color', '#2d3839'),
-                'text_color': community.get('text_color', '#ffffff'),
-                'accent_color': community.get('accent_color', '#4db6ac'),
-                'card_color': community.get('card_color', '#1a2526'),
-                'is_active': community.get('is_active', 1)
+                'created_at': safe_get(community, 'created_at', datetime.now().isoformat()),
+                'description': safe_get(community, 'description', ''),
+                'location': safe_get(community, 'location', ''),
+                'background_path': safe_get(community, 'background_path', ''),
+                'info': safe_get(community, 'info', ''),
+                'info_updated_at': safe_get(community, 'info_updated_at', ''),
+                'template': safe_get(community, 'template', 'default'),
+                'background_color': safe_get(community, 'background_color', '#2d3839'),
+                'text_color': safe_get(community, 'text_color', '#ffffff'),
+                'accent_color': safe_get(community, 'accent_color', '#4db6ac'),
+                'card_color': safe_get(community, 'card_color', '#1a2526'),
+                'is_active': safe_get(community, 'is_active', 1)
             }
             
             mysql_cursor.execute("""
@@ -169,7 +177,7 @@ def migrate_community_data(sqlite_conn, mysql_conn, community_id):
                 mysql_cursor.execute("""
                     INSERT INTO posts (username, content, image_path, timestamp, community_id)
                     VALUES (%s, %s, %s, %s, %s)
-                """, (post['username'], post['content'], post.get('image_path'), 
+                """, (post['username'], post['content'], safe_get(post, 'image_path'), 
                      post['timestamp'], mysql_community_id))
                 migrated_posts += 1
             except Exception as e:
@@ -187,7 +195,8 @@ def migrate_community_data(sqlite_conn, mysql_conn, community_id):
         for membership in memberships:
             try:
                 # Get user ID from username (since SQLite might use different structure)
-                mysql_cursor.execute("SELECT id FROM users WHERE username = %s", (membership.get('username') or membership.get('user_id'),))
+                username = safe_get(membership, 'username') or safe_get(membership, 'user_id')
+                mysql_cursor.execute("SELECT id FROM users WHERE username = %s", (username,))
                 user_result = mysql_cursor.fetchone()
                 
                 if not user_result:
@@ -204,7 +213,7 @@ def migrate_community_data(sqlite_conn, mysql_conn, community_id):
                 mysql_cursor.execute("""
                     INSERT INTO user_communities (user_id, community_id, joined_at)
                     VALUES (%s, %s, %s)
-                """, (user_id, mysql_community_id, membership.get('joined_at', datetime.now().isoformat())))
+                """, (user_id, mysql_community_id, safe_get(membership, 'joined_at', datetime.now().isoformat())))
                 migrated_memberships += 1
             except Exception as e:
                 print(f"     Warning: Could not migrate membership: {e}")
@@ -247,7 +256,7 @@ def migrate_community_data(sqlite_conn, mysql_conn, community_id):
                                 INSERT INTO replies (post_id, username, content, image_path, timestamp, community_id)
                                 VALUES (%s, %s, %s, %s, %s, %s)
                             """, (mysql_post['id'], reply['username'], reply['content'], 
-                                 reply.get('image_path'), reply['timestamp'], mysql_community_id))
+                                 safe_get(reply, 'image_path'), reply['timestamp'], mysql_community_id))
                             migrated_replies += 1
                 except Exception as e:
                     print(f"     Warning: Could not migrate reply: {e}")
