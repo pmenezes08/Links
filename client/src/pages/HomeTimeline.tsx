@@ -119,8 +119,8 @@ export default function HomeTimeline(){
   useEffect(() => { setTitle('Home') }, [setTitle])
 
   return (
-    <div className="min-h-screen bg-black text-white">
-      {/* Global header used from App */}
+    <div className="fixed inset-x-0 top-14 bottom-0 bg-black text-white">
+      {/* Secondary header below global header */}
 
       {/* Secondary tabs */}
       <div className="fixed left-0 right-0 top-14 h-10 bg-black/70 backdrop-blur z-40">
@@ -136,7 +136,7 @@ export default function HomeTimeline(){
         </div>
       </div>
 
-      <div className="max-w-2xl mx-auto pt-12 pb-24 px-3">
+      <div className="h-full max-w-2xl mx-auto overflow-y-auto px-3 pb-24" style={{ WebkitOverflowScrolling: 'touch' as any, paddingTop: '40px' }}>
         {loading ? (
           <div className="p-3 text-[#9fb0b5]">Loading…</div>
         ) : error ? (
@@ -146,8 +146,8 @@ export default function HomeTimeline(){
         ) : (
           <div className="space-y-3">
             {posts.map(p => (
-              <div key={p.id} className="rounded-2xl border border-white/10 bg-white/[0.035] shadow-sm shadow-black/20">
-                <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2">
+              <div key={p.id} className="rounded-2xl border border-white/10 bg-white/[0.035] shadow-sm shadow-black/20 cursor-pointer" onClick={() => navigate(`/post/${p.id}`)}>
+                <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2" onClick={(e)=> e.stopPropagation()}>
                   <Avatar username={p.username} url={p.profile_picture || undefined} size={32} />
                   <div className="font-medium tracking-[-0.01em] truncate">{p.username}</div>
                   <div className="text-xs text-[#9fb0b5] ml-auto tabular-nums">{formatTimestamp(p.timestamp)}</div>
@@ -161,7 +161,7 @@ export default function HomeTimeline(){
                     <img src={p.image_path.startsWith('/uploads') || p.image_path.startsWith('/static') ? p.image_path : `/uploads/${p.image_path}`} alt="" className="block mx-auto max-w-full max-h-[360px] rounded border border-white/10" />
                   ) : null}
                   <div className="flex items-center gap-3 text-xs">
-                    <button className="ml-auto px-2.5 py-1 rounded-full text-[#cfd8dc]" onClick={()=> navigate(`/post/${p.id}`)}>
+                    <button className="ml-auto px-2.5 py-1 rounded-full text-[#cfd8dc]" onClick={(e)=> { e.stopPropagation(); navigate(`/post/${p.id}`) }}>
                       <i className="fa-regular fa-comment" />
                       <span className="ml-1">{p.replies_count||0}</span>
                     </button>
