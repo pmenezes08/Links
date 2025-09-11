@@ -12,6 +12,7 @@ export default function Members(){
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [canManage, setCanManage] = useState(false)
+  const [ownerUsername, setOwnerUsername] = useState<string>('')
 
   useEffect(() => {
     let mounted = true
@@ -23,10 +24,10 @@ export default function Members(){
           const fd = new URLSearchParams({ community_id: String(community_id) })
           const perm = await fetch('/get_community_members', { method:'POST', credentials:'include', body: fd })
           const pj = await perm.json()
-          if (mounted && pj?.success !== false){
-            const role = pj.current_user_role
-            const isAdminUser = pj.username === 'admin' || pj.is_app_admin
-            const can = isAdminUser || role === 'admin' || role === 'owner'
+          if (mounted && pj){
+            const role = pj.current_user_role || 'member'
+            setOwnerUsername(pj.creator_username || '')
+            const can = role === 'app_admin' || role === 'owner' || role === 'admin'
             setCanManage(!!can)
           }
         }catch{}
@@ -70,6 +71,23 @@ export default function Members(){
     }
   }
 
+  async function removeMember(usernameToRemove: string){
+    const ok = confirm(`Remove @${usernameToRemove} from this community?`)
+    if (!ok) return
+    const fd = new URLSearchParams({ community_id: String(community_id), username: usernameToRemove })
+    const r = await fetch('/remove_community_member', { method:'POST', credentials:'include', body: fd })
+    const j = await r.json().catch(()=>null)
+    if (j?.success){
+      try{
+        const rr = await fetch(`/community/${community_id}/members/list`, { credentials: 'include' })
+        const jj = await rr.json()
+        if (jj?.success) setMembers(jj.members || [])
+      }catch{}
+    } else {
+      alert(j?.error || 'Unable to remove member')
+    }
+  }
+
   return (
     <div className="min-h-screen bg-black text-white">
       <div className="fixed left-0 right-0 top-0 h-12 border-b border-white/10 bg-black/70 backdrop-blur flex items-center px-3 z-40">
@@ -96,6 +114,11 @@ export default function Members(){
               <div key={i} className="flex items-center gap-3 p-2 rounded-xl bg-white/[0.03]">
                 <Avatar username={m.username} url={m.profile_picture || undefined} size={36} />
                 <div className="font-medium">{m.username}</div>
+                {canManage && m.username !== ownerUsername ? (
+                  <button className="ml-auto p-2 rounded-full hover:bg-white/5" title="Remove member" onClick={()=> removeMember(m.username)}>
+                    <i className="fa-regular fa-trash-can" style={{ color:'#d9534f' }} />
+                  </button>
+                ) : null}
               </div>
             ))}
           </div>

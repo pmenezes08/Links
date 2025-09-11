@@ -16,6 +16,7 @@ import UsefulLinks from './pages/UsefulLinks'
 import PostDetail from './pages/PostDetail'
 import CreatePost from './pages/CreatePost'
 import Members from './pages/Members'
+import EditCommunity from './pages/EditCommunity'
 import Communities from './pages/Communities'
 import HomeTimeline from './pages/HomeTimeline'
 import WorkoutTracking from './pages/WorkoutTracking'
@@ -78,6 +79,7 @@ function AppRoutes(){
           <Route path="/community/:community_id/resources_react" element={<CommunityResources />} />
           <Route path="/community/:community_id/useful_links_react" element={<UsefulLinks />} />
           <Route path="/community/:community_id/members" element={<Members />} />
+          <Route path="/community/:community_id/edit" element={<EditCommunity />} />
           <Route path="/post/:post_id" element={<PostDetail />} />
           <Route path="/compose" element={<CreatePost />} />
           <Route path="*" element={<PremiumDashboard />} />

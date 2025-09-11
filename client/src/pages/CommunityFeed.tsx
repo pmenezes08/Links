@@ -348,6 +348,8 @@ export default function CommunityFeed() {
             <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); navigate(`/community/${community_id}/calendar_react`) }}>Calendar</button>
             <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); navigate(`/community/${community_id}/resources_react`) }}>Forum</button>
             <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); navigate(`/community/${community_id}/useful_links_react`) }}>Useful Links</button>
+            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); navigate(`/community/${community_id}/members`) }}>Members</button>
+            <EditCommunityButton communityId={String(community_id)} onClose={()=> setMoreOpen(false)} />
             <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); window.location.href = `/issues` }}>Report Issue</button>
             <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); window.location.href = `/anonymous_feedback` }}>Anonymous feedback</button>
           </div>
@@ -472,6 +474,33 @@ function ReactionFA({ icon, count, active, onClick }:{ icon: string, count: numb
     <button className="px-2 py-1 rounded transition-colors" onClick={handleClick}>
       <i className={`${icon} ${popping ? 'scale-125' : 'scale-100'} transition-transform duration-150`} style={iconStyle} />
       <span className="ml-1" style={{ color: active ? '#cfe9e7' : '#9fb0b5' }}>{count}</span>
+    </button>
+  )
+}
+
+function EditCommunityButton({ communityId, onClose }:{ communityId: string, onClose: ()=>void }){
+  const navigate = useNavigate()
+  const [allowed, setAllowed] = useState<boolean>(false)
+  useEffect(() => {
+    let mounted = true
+    async function check(){
+      try{
+        const fd = new URLSearchParams({ community_id: String(communityId) })
+        const r = await fetch('/get_community_members', { method:'POST', credentials:'include', body: fd })
+        const j = await r.json()
+        if (!mounted) return
+        const role = j?.current_user_role
+        const can = role === 'app_admin' || role === 'owner'
+        setAllowed(!!can)
+      }catch{ setAllowed(false) }
+    }
+    check()
+    return () => { mounted = false }
+  }, [communityId])
+  if (!allowed) return null
+  return (
+    <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { onClose(); navigate(`/community/${communityId}/edit`) }}>
+      Edit community
     </button>
   )
 }
