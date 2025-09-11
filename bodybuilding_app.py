@@ -6923,11 +6923,11 @@ def get_community_members_list(community_id):
                 return jsonify({'success': False, 'message': 'Community not found'}), 404
 
             # Ensure the requester is a member of the community
-            c.execute("SELECT rowid FROM users WHERE username = ?", (username,))
+            c.execute("SELECT id FROM users WHERE username = ?", (username,))
             user_row = c.fetchone()
             if not user_row:
                 return jsonify({'success': False, 'message': 'User not found'}), 404
-            requester_user_id = user_row['rowid']
+            requester_user_id = user_row['id'] if hasattr(user_row, 'keys') else user_row[0]
             c.execute("""
                 SELECT 1 FROM user_communities 
                 WHERE user_id = ? AND community_id = ?
@@ -8624,17 +8624,17 @@ def create_community():
             community_id = c.lastrowid
             
             # Get user's ID and add creator as member
-            c.execute("SELECT rowid FROM users WHERE username = ?", (username,))
+            c.execute("SELECT id FROM users WHERE username = ?", (username,))
             user_row = c.fetchone()
             if user_row:
-                user_id = user_row[0]
+                user_id = user_row[0] if not hasattr(user_row, 'keys') else user_row['id']
                 c.execute("""
                     INSERT INTO user_communities (user_id, community_id, joined_at)
                     VALUES (?, ?, ?)
                 """, (user_id, community_id, datetime.now().strftime('%m.%d.%y %H:%M')))
             
             # Ensure admin is also a member of every community
-            c.execute("SELECT rowid FROM users WHERE username = 'admin'")
+            c.execute("SELECT id FROM users WHERE username = 'admin'")
             admin_row = c.fetchone()
             if admin_row:
                 admin_id = admin_row[0]

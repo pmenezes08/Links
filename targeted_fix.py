@@ -95,7 +95,7 @@ def run_targeted_fix():
             column_names = [col['Field'] for col in columns]
             
             missing_columns = []
-            expected_columns = ['website', 'instagram', 'twitter', 'location']
+            expected_columns = ['website', 'instagram', 'twitter', 'location', 'cover_photo']
             
             for col in expected_columns:
                 if col not in column_names:
