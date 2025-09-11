@@ -15,6 +15,7 @@ export default function ChatThread(){
   const [replyTo, setReplyTo] = useState<{ text:string }|null>(null)
   const listRef = useRef<HTMLDivElement|null>(null)
   const textareaRef = useRef<HTMLTextAreaElement|null>(null)
+  const replySnippetsRef = useRef<Record<string, string>>({})
   const [otherProfile, setOtherProfile] = useState<{ display_name:string; profile_picture?:string|null }|null>(null)
   const [typing, setTyping] = useState(false)
   const typingTimer = useRef<any>(null)
@@ -65,7 +66,9 @@ export default function ChatThread(){
         if (j?.success && Array.isArray(j.messages)){
           setMessages(prev => j.messages.map((m:any) => {
             const existing = prev.find(x => x.id === m.id)
-            return existing ? { ...m, reaction: existing.reaction, replySnippet: existing.replySnippet } : m
+            const key = `${m.time}|${m.text}`
+            const replySnippet = existing?.replySnippet || replySnippetsRef.current[key]
+            return existing ? { ...m, reaction: existing.reaction, replySnippet } : { ...m, replySnippet }
           }))
         }
       }catch{}
@@ -102,7 +105,11 @@ export default function ChatThread(){
           setDraft('')
           const now = new Date().toISOString().slice(0,19).replace('T',' ')
           const replySnippet = replyTo ? (replyTo.text.length > 90 ? replyTo.text.slice(0,90) + '…' : replyTo.text) : undefined
-          setMessages(prev => [...prev, { id: Math.random(), text: fd.get('message') || '', sent:true, time: now, replySnippet }])
+          const text = fd.get('message') || ''
+          if (replySnippet){
+            replySnippetsRef.current[`${now}|${text}`] = replySnippet
+          }
+          setMessages(prev => [...prev, { id: Math.random(), text, sent:true, time: now, replySnippet }])
           setReplyTo(null)
           // stop typing state
           fetch('/api/typing', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ peer: username, is_typing: false }) }).catch(()=>{})
