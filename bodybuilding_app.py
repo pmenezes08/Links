@@ -181,7 +181,6 @@ def get_db_connection():
         try:
             try:
                 import pymysql
-                from pymysql.cursors import DictCursor  # type: ignore
             except Exception as imp_err:
                 logger.error(f"PyMySQL not installed or failed to import: {imp_err}")
                 raise
@@ -200,7 +199,6 @@ def get_db_connection():
                 database=database,
                 charset='utf8mb4',
                 autocommit=True,
-                cursorclass=DictCursor,
             )
             # Wrap cursor to adapt SQLite-style SQL to MySQL at runtime
             try:
