@@ -76,7 +76,7 @@ export default function Members(){
 
   return (
     <div className="min-h-screen bg-black text-white">
-      <div className="fixed left-0 right-0 top-0 h-12 border-b border-white/10 bg-black/70 backdrop-blur flex items-center px-3 z-40">
+      <div className="fixed left-0 right-0 top-14 h-12 border-b border-white/10 bg-black/70 backdrop-blur flex items-center px-3 z-40">
         <button className="px-3 py-2 rounded-full text-[#cfd8dc] hover:text-[#4db6ac]" onClick={()=> navigate(`/community_feed_react/${community_id}`)} aria-label="Back">
           <i className="fa-solid fa-arrow-left" />
         </button>
@@ -85,7 +85,7 @@ export default function Members(){
           {communityCode ? (<span>Code: <span className="font-mono text-white">{communityCode}</span></span>) : null}
         </div>
       </div>
-      <div className="max-w-2xl mx-auto pt-14 px-3 pb-6">
+      <div className="max-w-2xl mx-auto pt-28 px-3 pb-6">
         {loading ? (
           <div className="text-[#9fb0b5]">Loading…</div>
         ) : error ? (
