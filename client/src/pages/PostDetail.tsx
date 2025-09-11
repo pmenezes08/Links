@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import type React from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import Avatar from '../components/Avatar'
 
@@ -52,6 +53,51 @@ function formatTimestamp(input: string): string {
   if (days < 10) return `${days}d`
   const mm = String(d.getMonth()+1).padStart(2,'0'), dd = String(d.getDate()).padStart(2,'0'), yy = String(d.getFullYear()%100).padStart(2,'0')
   return `${mm}/${dd}/${yy}`
+}
+
+function renderRichText(input: string){
+  const nodes: Array<React.ReactNode> = []
+  const markdownRe = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g
+  let lastIndex = 0
+  let match: RegExpExecArray | null
+  // First, process markdown links
+  while ((match = markdownRe.exec(input))){
+    if (match.index > lastIndex){
+      nodes.push(...preserveNewlines(input.slice(lastIndex, match.index)))
+    }
+    const label = match[1]
+    const url = match[2]
+    nodes.push(<a key={`md-${match.index}`} href={url} target="_blank" rel="noopener noreferrer" className="text-[#4db6ac] underline-offset-2 hover:underline">{label}</a>)
+    lastIndex = markdownRe.lastIndex
+  }
+  const rest = input.slice(lastIndex)
+  // Then, linkify plain URLs in the rest
+  const urlRe = /(https?:\/\/[^\s]+|www\.[^\s]+)/g
+  let urlLast = 0
+  let m: RegExpExecArray | null
+  while ((m = urlRe.exec(rest))){
+    if (m.index > urlLast){
+      nodes.push(...preserveNewlines(rest.slice(urlLast, m.index)))
+    }
+    const urlText = m[0]
+    const href = urlText.startsWith('http') ? urlText : `https://${urlText}`
+    nodes.push(<a key={`u-${lastIndex + m.index}`} href={href} target="_blank" rel="noopener noreferrer" className="text-[#4db6ac] underline-offset-2 hover:underline">{urlText}</a>)
+    urlLast = urlRe.lastIndex
+  }
+  if (urlLast < rest.length){
+    nodes.push(...preserveNewlines(rest.slice(urlLast)))
+  }
+  return <>{nodes}</>
+}
+
+function preserveNewlines(text: string){
+  const parts = text.split(/\n/)
+  const out: Array<React.ReactNode> = []
+  parts.forEach((p, i) => {
+    if (i > 0) out.push(<br key={`br-${i}-${p.length}-${Math.random()}`} />)
+    if (p) out.push(p)
+  })
+  return out
 }
 
 export default function PostDetail(){
@@ -198,7 +244,7 @@ export default function PostDetail(){
             <div className="text-xs text-[#9fb0b5] ml-auto">{formatTimestamp(post.timestamp)}</div>
           </div>
           <div className="px-3 py-2 space-y-2">
-            <div className="whitespace-pre-wrap text-[14px]">{post.content}</div>
+            <div className="whitespace-pre-wrap text-[14px]">{renderRichText(post.content)}</div>
             {post.image_path ? (
               <img src={post.image_path.startsWith('/uploads') || post.image_path.startsWith('/static') ? post.image_path : `/uploads/${post.image_path}`} alt="" className="block mx-auto max-w-full max-h-[360px] rounded border border-white/10" />
             ) : null}
@@ -234,6 +280,18 @@ export default function PostDetail(){
                 <i className="fa-regular fa-image" style={{ color: '#4db6ac' }} />
                 <input type="file" accept="image/*" onChange={(e)=> setFile(e.target.files?.[0]||null)} style={{ display: 'none' }} />
               </label>
+              {/(https?:\/\/[^\s]+|www\.[^\s]+)/.test(content) ? (
+                <button className="px-2.5 py-1.5 rounded-full border border-white/10 text-xs text-[#9fb0b5] hover:border-[#2a3f41]" onClick={()=> {
+                  const m = content.match(/(https?:\/\/[^\s]+|www\.[^\s]+)/)
+                  if (!m) return
+                  const urlText = m[0]
+                  // eslint-disable-next-line no-alert
+                  const label = window.prompt('Link text', urlText) || urlText
+                  const href = urlText
+                  const replacement = `[${label}](${href})`
+                  setContent(content.replace(urlText, replacement))
+                }}>Link name</button>
+              ) : null}
               <button className="px-2.5 py-1.5 rounded-full bg-[#4db6ac] text-white border border-[#4db6ac] hover:brightness-110" onClick={()=> submitReply()} aria-label="Send reply">
                 <i className="fa-solid fa-paper-plane" />
               </button>
@@ -284,7 +342,7 @@ function ReplyNode({ reply, depth=0, onToggle, onInlineReply }:{ reply: Reply, d
             <div className="font-medium">{reply.username}</div>
             <div className="text-[11px] text-[#9fb0b5] ml-auto">{formatTimestamp(reply.timestamp)}</div>
           </div>
-          <div className="text-[#dfe6e9] whitespace-pre-wrap mt-0.5">{reply.content}</div>
+          <div className="text-[#dfe6e9] whitespace-pre-wrap mt-0.5">{renderRichText(reply.content)}</div>
           <div className="mt-1 flex items-center gap-2 text-[11px]">
             <Reaction icon="fa-regular fa-heart" count={reply.reactions?.['heart']||0} active={reply.user_reaction==='heart'} onClick={()=> onToggle(reply.id, 'heart')} />
             <Reaction icon="fa-regular fa-thumbs-up" count={reply.reactions?.['thumbs-up']||0} active={reply.user_reaction==='thumbs-up'} onClick={()=> onToggle(reply.id, 'thumbs-up')} />
