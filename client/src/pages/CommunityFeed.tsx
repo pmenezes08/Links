@@ -393,6 +393,15 @@ function AdsCard({ communityId: _communityId, ad }:{ communityId: string, ad: an
 
 function PostCard({ post, currentUser, isAdmin, onOpen, onToggleReaction }: { post: Post, currentUser: string, isAdmin: boolean, onOpen: ()=>void, onToggleReaction: (postId:number, reaction:string)=>void }) {
   const cardRef = useRef<HTMLDivElement|null>(null)
+  const [isEditing, setIsEditing] = useState(false)
+  const [editText, setEditText] = useState(post.content)
+  async function saveEdit(){
+    const fd = new URLSearchParams({ post_id: String(post.id), content: editText })
+    const r = await fetch('/edit_post', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
+    const j = await r.json().catch(()=>null)
+    if (j?.success){ setIsEditing(false); try{ (window as any).location.reload() }catch{} }
+    else alert(j?.error || 'Failed to update post')
+  }
   return (
     <div ref={cardRef} className="rounded-2xl border border-white/10 bg-white/[0.035] shadow-sm shadow-black/20" onClick={onOpen}>
       <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2">
@@ -405,9 +414,25 @@ function PostCard({ post, currentUser, isAdmin, onOpen, onToggleReaction }: { po
             <i className="fa-regular fa-trash-can" style={{ color: 'inherit' }} />
           </button>
         )}
+        {(post.username === currentUser || isAdmin || currentUser === 'admin') && (
+          <button className="ml-2 px-2 py-1 rounded-full text-[#6c757d] hover:text-[#4db6ac]" title="Edit"
+            onClick={(e)=> { e.stopPropagation(); setIsEditing(true) }}>
+            <i className="fa-regular fa-pen-to-square" />
+          </button>
+        )}
       </div>
       <div className="px-3 py-2 space-y-2">
-        <div className="whitespace-pre-wrap text-[14px] leading-relaxed tracking-[0]">{post.content}</div>
+        {!isEditing ? (
+          <div className="whitespace-pre-wrap text-[14px] leading-relaxed tracking-[0]">{post.content}</div>
+        ) : (
+          <div className="space-y-2" onClick={(e)=> e.stopPropagation()}>
+            <textarea className="w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none min-h-[100px]" value={editText} onChange={(e)=> setEditText(e.target.value)} />
+            <div className="flex gap-2 justify-end">
+              <button className="px-3 py-1.5 rounded-md border border-white/10 hover:bg-white/5 text-sm" onClick={()=> { setEditText(post.content); setIsEditing(false) }}>Cancel</button>
+              <button className="px-3 py-1.5 rounded-md bg-[#4db6ac] text-black text-sm hover:brightness-110" onClick={saveEdit}>Save</button>
+            </div>
+          </div>
+        )}
         {post.image_path ? (
           <img src={(() => {
             const p = post.image_path

@@ -133,10 +133,16 @@ export default function ChatThread(){
         {/* Messages list (WhatsApp style bubbles) */}
         <div ref={listRef} className="flex-1 overflow-y-auto overscroll-contain px-2 sm:px-3 py-3 space-y-1" style={{ WebkitOverflowScrolling: 'touch' as any }}>
           {messages.map(m => (
-            <LongPressDeletable key={m.id} onDelete={() => {
+            <LongPressActionable key={m.id} onDelete={() => {
               const fd = new URLSearchParams({ message_id: String(m.id) })
               fetch('/delete_message', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
                 .then(r=>r.json()).then(j=>{ if (j?.success){ setMessages(prev => prev.filter(x => x.id !== m.id)) } }).catch(()=>{})
+            }} onReact={(emoji)=> {
+              setMessages(msgs => msgs.map(x => x.id===m.id ? { ...x, text: x.text + ' ' + emoji } : x))
+            }} onReply={() => {
+              const quoted = m.text.split('\n').map(l => `> ${l}`).join('\n')
+              setDraft(`${quoted}\n\n`)
+              textareaRef.current?.focus()
             }}>
               <div className={`flex ${m.sent ? 'justify-end' : 'justify-start'}`}>
                 <div
@@ -146,7 +152,7 @@ export default function ChatThread(){
                   <div className={`text-[10px] mt-1 ${m.sent ? 'text-white/70' : 'text-white/50'} text-right`}>{new Date(m.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
                 </div>
               </div>
-            </LongPressDeletable>
+            </LongPressActionable>
           ))}
         </div>
 
@@ -195,7 +201,7 @@ export default function ChatThread(){
   )
 }
 
-function LongPressDeletable({ children, onDelete }: { children: React.ReactNode; onDelete: () => void }){
+function LongPressActionable({ children, onDelete, onReact, onReply }: { children: React.ReactNode; onDelete: () => void; onReact: (emoji:string)=>void; onReply: ()=>void }){
   const [showMenu, setShowMenu] = useState(false)
   const timerRef = useRef<any>(null)
   function handleStart(){
@@ -219,13 +225,16 @@ function LongPressDeletable({ children, onDelete }: { children: React.ReactNode;
       {showMenu && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setShowMenu(false)} />
-          <div className="absolute z-50 -top-10 right-2 bg-[#111] border border-white/15 rounded-lg shadow-xl px-3 py-2">
-            <button
-              className="text-red-400 text-sm"
-              onClick={() => { setShowMenu(false); onDelete() }}
-            >
-              Delete
-            </button>
+          <div className="absolute z-50 -top-12 right-2 bg-[#111] border border-white/15 rounded-lg shadow-xl px-2 py-2 min-w-[160px]">
+            <div className="flex items-center gap-2 px-2 pb-2 border-b border-white/10">
+              {["👍","❤️","😂","🔥","👏"].map(e => (
+                <button key={e} className="text-lg" onClick={()=> { setShowMenu(false); onReact(e) }}>{e}</button>
+              ))}
+            </div>
+            <div className="pt-2 flex flex-col">
+              <button className="text-left px-2 py-1 text-sm hover:bg-white/5" onClick={()=> { setShowMenu(false); onReply() }}>Reply</button>
+              <button className="text-left px-2 py-1 text-sm text-red-400 hover:bg-white/5" onClick={()=> { setShowMenu(false); onDelete() }}>Delete</button>
+            </div>
           </div>
         </>
       )}

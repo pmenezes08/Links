@@ -8236,6 +8236,32 @@ def delete_post():
         logger.error(f"Error deleting post {post_id} for {username}: {str(e)}", exc_info=True)
         return jsonify({'success': False, 'error': f'Unexpected error: {str(e)}'}), 500
 
+@app.route('/edit_post', methods=['POST'])
+@login_required
+def edit_post():
+    """Edit a post's content (owner or admin)."""
+    username = session['username']
+    post_id = request.form.get('post_id', type=int)
+    new_content = (request.form.get('content') or '').strip()
+    if not post_id or not new_content:
+        return jsonify({'success': False, 'error': 'Post ID and content are required!'}), 400
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT username FROM posts WHERE id = ?", (post_id,))
+            row = c.fetchone()
+            if not row:
+                return jsonify({'success': False, 'error': 'Post not found!'}), 404
+            owner = row['username'] if hasattr(row, 'keys') else row[0]
+            if owner != username and username != 'admin':
+                return jsonify({'success': False, 'error': 'Unauthorized!'}), 403
+            c.execute("UPDATE posts SET content = ?, timestamp = ? WHERE id = ?", (new_content, datetime.now().strftime('%Y-%m-%d %H:%M:%S'), post_id))
+            conn.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"Error editing post {post_id} by {username}: {e}")
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
 @app.route('/delete_reply', methods=['POST'])
 @login_required
 def delete_reply():
