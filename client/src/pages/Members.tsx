@@ -8,7 +8,6 @@ export default function Members(){
   const { community_id } = useParams()
   const navigate = useNavigate()
   const [members, setMembers] = useState<Member[]>([])
-  const [communityName, setCommunityName] = useState<string>('Members')
   const [communityCode, setCommunityCode] = useState<string>('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -39,7 +38,6 @@ export default function Members(){
         if (!mounted) return
         if (j?.success){
           setMembers(j.members || [])
-          setCommunityName(j.community_name || 'Members')
           if (j.community_code) setCommunityCode(j.community_code)
           setError(null)
         } else {
@@ -80,9 +78,8 @@ export default function Members(){
         <button className="px-3 py-2 rounded-full text-[#cfd8dc] hover:text-[#4db6ac]" onClick={()=> navigate(`/community_feed_react/${community_id}`)} aria-label="Back">
           <i className="fa-solid fa-arrow-left" />
         </button>
-        <div className="ml-2 font-semibold truncate">{communityName}</div>
         <div className="ml-auto text-xs text-[#9fb0b5]">
-          {communityCode ? (<span>Code: <span className="font-mono text-white">{communityCode}</span></span>) : null}
+          {communityCode ? (<span>Community Code: <span className="font-mono text-white">{communityCode}</span></span>) : null}
         </div>
       </div>
       <div className="max-w-2xl mx-auto pt-28 px-3 pb-6">
