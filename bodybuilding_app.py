@@ -319,7 +319,7 @@ def add_missing_tables():
                           endpoint TEXT NOT NULL UNIQUE,
                           p256dh TEXT,
                           auth TEXT,
-                          created_at TEXT DEFAULT CURRENT_TIMESTAMP)''')
+                          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
 
             # Remember-me tokens for persistent login
             c.execute('''CREATE TABLE IF NOT EXISTS remember_tokens
@@ -419,6 +419,32 @@ def init_db():
                 logger.info("Adding id column to users table for MySQL compatibility...")
                 c.execute("ALTER TABLE users ADD COLUMN id INTEGER PRIMARY KEY AUTO_INCREMENT FIRST")
                 conn.commit()
+            
+            # Ensure user_communities table has user_id column
+            try:
+                c.execute("SHOW COLUMNS FROM user_communities LIKE 'user_id'")
+                if not c.fetchone():
+                    logger.info("Adding user_id column to user_communities table...")
+                    c.execute("ALTER TABLE user_communities ADD COLUMN user_id INTEGER NOT NULL")
+                    conn.commit()
+            except Exception as e:
+                logger.warning(f"Could not ensure user_id column in user_communities: {e}")
+                # If the column doesn't exist, the table might need to be recreated
+                try:
+                    logger.info("Attempting to recreate user_communities table with correct schema...")
+                    c.execute("DROP TABLE IF EXISTS user_communities")
+                    c.execute('''CREATE TABLE user_communities
+                                 (id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                                  user_id INTEGER NOT NULL,
+                                  community_id INTEGER NOT NULL,
+                                  joined_at TEXT NOT NULL,
+                                  FOREIGN KEY (user_id) REFERENCES users(id),
+                                  FOREIGN KEY (community_id) REFERENCES communities(id),
+                                  UNIQUE(user_id, community_id))''')
+                    conn.commit()
+                    logger.info("Successfully recreated user_communities table")
+                except Exception as e2:
+                    logger.error(f"Failed to recreate user_communities table: {e2}")
             
             # Add missing columns to existing users table if they don't exist
             logger.info("Checking for missing columns...")
@@ -1109,7 +1135,7 @@ def ensure_admin_member_of_all():
         with get_db_connection() as conn:
             c = conn.cursor()
             # Get admin id
-            c.execute("SELECT rowid FROM users WHERE username='admin'")
+            c.execute("SELECT id FROM users WHERE username='admin'")
             row = c.fetchone()
             if not row:
                 return
@@ -5000,7 +5026,7 @@ def check_new_notifications():
             c.execute("""
                 SELECT id, from_user, type, post_id, community_id, message, is_read, created_at
                 FROM notifications
-                WHERE user_id = ? AND is_read = 0 AND datetime(created_at) > ?
+                WHERE user_id = ? AND is_read = 0 AND created_at > ?
                 ORDER BY created_at DESC
                 LIMIT 10
             """, (username, last_check))
@@ -10624,9 +10650,9 @@ def compare_attendance_in_community():
                     """
                     SELECT COUNT(*) as cnt
                     FROM workouts
-                    WHERE username = ? AND date >= date('now', ?)
+                    WHERE username = ? AND date >= DATE_SUB(NOW(), INTERVAL ? DAY)
                     """,
-                    (user, f'-{period_days} days')
+                    (user, period_days)
                 )
                 cnt_row = c.fetchone()
                 cnt = cnt_row['cnt'] if cnt_row and cnt_row['cnt'] is not None else 0
@@ -10701,10 +10727,10 @@ def compare_improvement_in_community():
                         """
                         SELECT weight, reps, created_at
                         FROM exercise_sets
-                        WHERE exercise_id = ? AND created_at >= date('now', ?)
+                        WHERE exercise_id = ? AND created_at >= DATE_SUB(NOW(), INTERVAL ? MONTH)
                         ORDER BY created_at ASC
                         """,
-                        (ex_id, f'-{months} months')
+                        (ex_id, months)
                     )
                     sets = c.fetchall()
                     if not sets or len(sets) < 2:
@@ -10995,7 +11021,7 @@ def get_exercise_progress():
         # Build date filter
         date_filter = ""
         if time_range != 'all':
-            date_filter = f"AND es.created_at >= date('now', '-{time_range} days')"
+            date_filter = f"AND es.created_at >= DATE_SUB(NOW(), INTERVAL {time_range} DAY)"
         
         # Get weight entries for the exercise
         cursor.execute(f'''
@@ -11117,7 +11143,7 @@ def update_exercise_one_rm():
         # Add the new weight entry to exercise_sets
         cursor.execute('''
             INSERT INTO exercise_sets (exercise_id, weight, reps, created_at)
-            VALUES (?, ?, ?, date('now'))
+            VALUES (?, ?, ?, NOW())
         ''', (exercise_id, weight, reps))
         
         conn.commit()
@@ -11238,7 +11264,7 @@ def get_progress_summary():
         # Build date filter
         date_filter = ""
         if time_range != 'all':
-            date_filter = f"AND created_at >= date('now', '-{time_range} days')"
+            date_filter = f"AND created_at >= DATE_SUB(NOW(), INTERVAL {time_range} DAY)"
         
         # Get all weight entries for the exercise
         cursor.execute(f'''
@@ -11302,7 +11328,7 @@ def get_workout_summary():
         # Get workouts this week
         cursor.execute('''
             SELECT COUNT(*) FROM workouts 
-            WHERE username = ? AND date >= date('now', '-7 days')
+            WHERE username = ? AND date >= DATE_SUB(NOW(), INTERVAL 7 DAY)
         ''', (username,))
         workouts_this_week = cursor.fetchone()[0]
         
@@ -11353,7 +11379,7 @@ def share_progress():
         # Get progress data
         date_filter = ""
         if time_range != 'all':
-            date_filter = f"AND created_at >= date('now', '-{time_range} days')"
+            date_filter = f"AND created_at >= DATE_SUB(NOW(), INTERVAL {time_range} DAY)"
         
         cursor.execute(f'''
             SELECT weight, reps, created_at
@@ -11444,7 +11470,7 @@ def share_workouts():
         
         cursor.execute('''
             SELECT COUNT(*) FROM workouts 
-            WHERE username = ? AND date >= date('now', '-7 days')
+            WHERE username = ? AND date >= DATE_SUB(NOW(), INTERVAL 7 DAY)
         ''', (username,))
         workouts_this_week = cursor.fetchone()[0]
         
