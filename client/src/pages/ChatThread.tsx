@@ -139,7 +139,7 @@ export default function ChatThread(){
               <div className={`flex ${m.sent ? 'justify-end' : 'justify-start'}`}>
                 <div
                   className={`max-w-[70%] md:max-w-[70%] px-3 py-2 rounded-2xl text-[14px] leading-snug whitespace-pre-wrap break-words shadow-sm border ${m.sent ? 'bg-[#075E54] text-white border-[#075E54]' : 'bg-[#1a1a1a] text-white border-white/10'} ${m.sent ? 'rounded-br-md' : 'rounded-bl-md'}`}
-                  style={{ position: 'relative' as any }}
+                  style={{ position: 'relative', ...(m.reaction ? { paddingRight: '1.75rem', paddingBottom: '1.25rem' } : {}) } as any}
                 >
                   {m.replySnippet ? (
                     <div className="mb-1 px-2 py-1 rounded bg-white/10 text-[12px] text-[#cfe9e7] border border-white/10">
@@ -149,7 +149,7 @@ export default function ChatThread(){
                   <div>{m.text}</div>
                   <div className={`text-[10px] mt-1 ${m.sent ? 'text-white/70' : 'text-white/50'} text-right`}>{new Date(m.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
                   {m.reaction ? (
-                    <span className="absolute bottom-1 right-1 text-xl leading-none select-none z-10">
+                    <span className="absolute bottom-0.5 right-1 text-base leading-none select-none z-10">
                       {m.reaction}
                     </span>
                   ) : null}
