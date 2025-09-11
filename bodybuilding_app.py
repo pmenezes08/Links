@@ -1062,8 +1062,9 @@ def has_post_delete_permission(username, post_username, community_id):
             is_community_owner(username, community_id) or 
             is_community_admin(username, community_id))
 
-init_db()
-ensure_indexes()
+if not USE_MYSQL:
+    init_db()
+    ensure_indexes()
 
 def ensure_admin_member_of_all():
     try:
