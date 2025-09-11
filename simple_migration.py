@@ -13,6 +13,22 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 def run_migration():
     """Run database migration using Flask app's connection"""
     try:
+        # Set environment variables to force MySQL usage
+        os.environ['DB_BACKEND'] = 'mysql'
+        
+        # Set MySQL connection details for PythonAnywhere if not already set
+        if not os.environ.get('MYSQL_HOST'):
+            os.environ['MYSQL_HOST'] = 'puntz08.mysql.pythonanywhere-services.com'
+        if not os.environ.get('MYSQL_USER'):
+            os.environ['MYSQL_USER'] = 'puntz08'
+        if not os.environ.get('MYSQL_DATABASE'):
+            os.environ['MYSQL_DATABASE'] = 'puntz08$C-Point'
+        
+        if not os.environ.get('MYSQL_PASSWORD'):
+            print("❌ Error: MYSQL_PASSWORD environment variable is required!")
+            print("Set it with: export MYSQL_PASSWORD='your_password'")
+            return False
+        
         # Import the database connection from the Flask app
         from bodybuilding_app import get_db_connection
         
