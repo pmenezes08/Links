@@ -9,6 +9,7 @@ export default function Members(){
   const navigate = useNavigate()
   const [members, setMembers] = useState<Member[]>([])
   const [communityName, setCommunityName] = useState<string>('Members')
+  const [communityCode, setCommunityCode] = useState<string>('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [canManage, setCanManage] = useState(false)
@@ -39,6 +40,7 @@ export default function Members(){
         if (j?.success){
           setMembers(j.members || [])
           setCommunityName(j.community_name || 'Members')
+          if (j.community_code) setCommunityCode(j.community_code)
           setError(null)
         } else {
           setError(j?.message || j?.error || 'Error loading members')
@@ -53,23 +55,7 @@ export default function Members(){
     return () => { mounted = false }
   }, [community_id])
 
-  async function addMember(){
-    const username = prompt('Enter username to add')?.trim()
-    if (!username) return
-    const fd = new URLSearchParams({ community_id: String(community_id), username })
-    const r = await fetch('/add_community_member', { method:'POST', credentials:'include', body: fd })
-    const j = await r.json().catch(()=>null)
-    if (j?.success){
-      // reload list
-      try{
-        const rr = await fetch(`/community/${community_id}/members/list`, { credentials: 'include' })
-        const jj = await rr.json()
-        if (jj?.success) setMembers(jj.members || [])
-      }catch{}
-    } else {
-      alert(j?.error || 'Unable to add member')
-    }
-  }
+  // Add member removed per new requirements; community code is displayed instead
 
   async function removeMember(usernameToRemove: string){
     const ok = confirm(`Remove @${usernameToRemove} from this community?`)
@@ -91,15 +77,13 @@ export default function Members(){
   return (
     <div className="min-h-screen bg-black text-white">
       <div className="fixed left-0 right-0 top-0 h-12 border-b border-white/10 bg-black/70 backdrop-blur flex items-center px-3 z-40">
-        <button className="px-3 py-2 rounded-full text-[#cfd8dc] hover:text-[#4db6ac]" onClick={()=> navigate(-1)} aria-label="Back">
+        <button className="px-3 py-2 rounded-full text-[#cfd8dc] hover:text-[#4db6ac]" onClick={()=> navigate(`/community_feed_react/${community_id}`)} aria-label="Back">
           <i className="fa-solid fa-arrow-left" />
         </button>
         <div className="ml-2 font-semibold truncate">{communityName}</div>
-        {canManage ? (
-          <button className="ml-auto p-2 rounded-full hover:bg-white/5" onClick={addMember} aria-label="Add member">
-            <i className="fa-solid fa-user-plus" style={{ color:'#4db6ac' }} />
-          </button>
-        ) : null}
+        <div className="ml-auto text-xs text-[#9fb0b5]">
+          {communityCode ? (<span>Code: <span className="font-mono text-white">{communityCode}</span></span>) : null}
+        </div>
       </div>
       <div className="max-w-2xl mx-auto pt-14 px-3 pb-6">
         {loading ? (

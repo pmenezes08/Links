@@ -6835,11 +6835,17 @@ def get_community_members_list(community_id):
                     'is_current_user': row['username'] == username
                 })
             
+            # Fetch community join code
+            c.execute("SELECT join_code FROM communities WHERE id = ?", (community_id,))
+            code_row = c.fetchone()
+            join_code = code_row['join_code'] if code_row and 'join_code' in code_row.keys() else None
+
             return jsonify({
                 'success': True,
                 'members': members,
                 'total': len(members),
-                'community_name': community['name']
+                'community_name': community['name'],
+                'community_code': join_code
             })
             
     except Exception as e:
