@@ -168,7 +168,7 @@ export default function ChatThread(){
         <div
           ref={listRef}
           className="flex-1 overflow-y-auto overscroll-contain px-2 sm:px-3 py-3 space-y-1 pb-24"
-          style={{ WebkitOverflowScrolling: 'touch' as any }}
+          style={{ WebkitOverflowScrolling: 'touch' as any, overscrollBehavior: 'contain' as any }}
           onScroll={(e)=> {
             const el = e.currentTarget
             const near = (el.scrollHeight - el.scrollTop - el.clientHeight) < 120
