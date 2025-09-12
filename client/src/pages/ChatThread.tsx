@@ -170,6 +170,7 @@ export default function ChatThread(){
       style={{
         height: '100vh',
         maxHeight: '100vh',
+        minHeight: '100vh',
         display: 'grid',
         gridTemplateRows: '3.5rem 3.5rem 1fr 4rem',
         gridTemplateAreas: '"main-header" "chat-header" "messages" "composer"',
@@ -178,7 +179,8 @@ export default function ChatThread(){
         left: 0,
         right: 0,
         bottom: 0,
-        zIndex: 10
+        zIndex: 10,
+        overflow: 'hidden'
       }}
     >
       {/* Spacer for main header */}
@@ -191,7 +193,11 @@ export default function ChatThread(){
           gridArea: 'chat-header',
           backgroundColor: 'rgb(0, 0, 0)',
           borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
-          zIndex: 1000
+          zIndex: 1000,
+          position: 'sticky',
+          top: '3.5rem',
+          transform: 'translateZ(0)', // Force hardware acceleration
+          WebkitTransform: 'translateZ(0)'
         }}
       >
         <div className="max-w-3xl mx-auto w-full flex items-center gap-3">
@@ -333,6 +339,26 @@ export default function ChatThread(){
                 typingTimer.current = setTimeout(() => {
                   fetch('/api/typing', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ peer: username, is_typing: false }) }).catch(()=>{})
                 }, 1200)
+              }}
+              onFocus={() => {
+                // Ensure header stays visible when keyboard appears
+                try {
+                  const header = document.querySelector('[style*="chat-header"]') as HTMLElement
+                  if (header) {
+                    header.style.position = 'sticky';
+                    header.style.top = '3.5rem';
+                    header.style.zIndex = '1001';
+                    header.style.transform = 'translateZ(0)';
+                    header.style.webkitTransform = 'translateZ(0)';
+                  }
+                  
+                  // Also ensure the grid container is stable
+                  const container = document.querySelector('[style*="grid-template-areas"]') as HTMLElement
+                  if (container) {
+                    container.style.position = 'fixed';
+                    container.style.height = '100vh';
+                  }
+                } catch {}
               }}
               style={{
                 lineHeight: '1.4',
