@@ -25,6 +25,7 @@ import Messages from './pages/Messages'
 import NewMessage from './pages/NewMessage'
 import ChatThread from './pages/ChatThread'
 import Profile from './pages/Profile'
+import AccountSettings from './pages/AccountSettings'
 import Notifications from './pages/Notifications'
 
 const queryClient = new QueryClient()
@@ -70,6 +71,8 @@ function AppRoutes(){
           <Route path="/user_chat/chat/:username" element={<ChatThread />} />
           <Route path="/profile" element={<Profile />} />
           <Route path="/profile_react" element={<Profile />} />
+          <Route path="/account_settings" element={<AccountSettings />} />
+          <Route path="/account_settings_react" element={<AccountSettings />} />
           <Route path="/notifications" element={<Notifications />} />
           <Route path="/home" element={<HomeTimeline />} />
           <Route path="/workout_tracking" element={<WorkoutTracking />} />

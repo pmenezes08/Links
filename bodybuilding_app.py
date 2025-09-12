@@ -2443,6 +2443,27 @@ def api_profile_me():
     except Exception as e:
         logger.error(f"Error in api_profile_me: {e}")
         return jsonify({ 'success': False, 'error': 'server error' }), 500
+
+@app.route('/account_settings')
+@login_required
+def account_settings():
+    """Account settings page - serves React app for mobile, HTML for desktop"""
+    try:
+        # Smart UA: mobile -> SPA, desktop -> HTML
+        ua = request.headers.get('User-Agent', '')
+        is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
+        if is_mobile:
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            dist_dir = os.path.join(base_dir, 'client', 'dist')
+            return send_from_directory(dist_dir, 'index.html')
+        else:
+            # For now, redirect desktop to existing account settings or serve React
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            dist_dir = os.path.join(base_dir, 'client', 'dist')
+            return send_from_directory(dist_dir, 'index.html')
+    except Exception as e:
+        logger.error(f"Error serving account settings: {e}")
+        return "Error loading account settings", 500
 @app.route('/upload_logo', methods=['POST'])
 @login_required
 def upload_logo():
