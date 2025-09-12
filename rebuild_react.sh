@@ -16,10 +16,37 @@ fi
 cd client
 
 echo "📦 Installing/updating dependencies..."
-npm install
+# Try different npm paths for PythonAnywhere compatibility
+if command -v npm >/dev/null 2>&1; then
+    npm install
+elif [ -f "/home/ubuntu/.nvm/versions/node/v22.16.0/bin/npm" ]; then
+    /home/ubuntu/.nvm/versions/node/v22.16.0/bin/npm install
+else
+    echo "⚠️  npm not found in PATH, trying alternative approaches..."
+    # Try to source nvm
+    if [ -f "$HOME/.nvm/nvm.sh" ]; then
+        source "$HOME/.nvm/nvm.sh"
+        npm install
+    else
+        echo "❌ Could not find npm. Please install Node.js/npm."
+        exit 1
+    fi
+fi
 
 echo "🏗️  Building React app..."
-npm run build
+if command -v npm >/dev/null 2>&1; then
+    npm run build
+elif [ -f "/home/ubuntu/.nvm/versions/node/v22.16.0/bin/npm" ]; then
+    /home/ubuntu/.nvm/versions/node/v22.16.0/bin/npm run build
+else
+    if [ -f "$HOME/.nvm/nvm.sh" ]; then
+        source "$HOME/.nvm/nvm.sh"
+        npm run build
+    else
+        echo "❌ Could not find npm for build."
+        exit 1
+    fi
+fi
 
 # Check if build was successful
 if [ $? -eq 0 ]; then
