@@ -186,7 +186,7 @@ export default function ChatThread(){
         height: '100vh',
         maxHeight: '100vh',
         display: 'grid',
-        gridTemplateRows: '3.5rem 3.5rem 1fr auto',
+        gridTemplateRows: '3.5rem 3.5rem 1fr 4rem',
         gridTemplateAreas: '"main-header" "chat-header" "messages" "composer"',
         position: 'fixed',
         top: 0,
@@ -243,12 +243,13 @@ export default function ChatThread(){
       {/* Messages list (WhatsApp style bubbles) */}
       <div
         ref={listRef}
-        className="overflow-y-auto overscroll-contain px-2 sm:px-3 py-3 space-y-1"
+        className="overflow-y-auto overscroll-contain px-3 py-2 space-y-1"
         style={{ 
           gridArea: 'messages',
           WebkitOverflowScrolling: 'touch' as any, 
           overscrollBehavior: 'contain' as any,
-          maxHeight: '100%'
+          maxHeight: '100%',
+          paddingBottom: '0.5rem'
         }}
           onScroll={(e)=> {
             const el = e.currentTarget
@@ -325,9 +326,9 @@ export default function ChatThread(){
           </div>
         ) : null}
 
-        {/* Composer (always at bottom) */}
+        {/* Composer (WhatsApp-style) */}
         <div 
-          className="border-t border-white/10 flex items-end gap-2 bg-black p-2 sm:p-3"
+          className="bg-black px-3 py-2 border-t border-white/10"
           style={{
             gridArea: 'composer',
             backgroundColor: 'rgb(0, 0, 0)',
@@ -335,52 +336,64 @@ export default function ChatThread(){
             zIndex: 1000
           }}
         >
-          <button className="hidden sm:inline-flex w-9 h-9 flex-shrink-0 items-center justify-center rounded-full bg-white/5 border border-white/10">
-            <i className="fa-solid fa-paperclip text-white/70 text-sm" />
-          </button>
-          <textarea
-            ref={textareaRef}
-            rows={1}
-            className="flex-1 rounded-2xl bg-[#0b0f10] border border-white/15 px-4 py-2 text-[16px] leading-snug outline-none focus:border-[#4db6ac] resize-none max-h-40 min-h-[42px]"
-            placeholder="Type a message"
-            value={draft}
-            onChange={e=> {
-              setDraft(e.target.value)
-              // typing start (debounced stop)
-              fetch('/api/typing', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ peer: username, is_typing: true }) }).catch(()=>{})
-              if (typingTimer.current) clearTimeout(typingTimer.current)
-              typingTimer.current = setTimeout(() => {
-                fetch('/api/typing', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ peer: username, is_typing: false }) }).catch(()=>{})
-              }, 1200)
-            }}
-            onFocus={() => { 
-              // Ensure header stays visible on iOS
-              try { 
-                const chatContainer = document.querySelector('[style*="grid-template-areas"]')
-                if (chatContainer) {
-                  (chatContainer as HTMLElement).style.position = 'fixed'
-                  (chatContainer as HTMLElement).style.height = '100vh'
-                }
-              } catch {} 
-            }}
-            // Enter inserts newline by default; no auto-send on Enter
-          />
-          <button
-            className={`px-4 py-2 rounded-full font-medium transition-all ${
-              sending 
-                ? 'bg-gray-600 text-gray-300 cursor-not-allowed' 
-                : 'bg-[#4db6ac] text-black hover:brightness-110'
-            }`}
-            onClick={send}
-            disabled={sending}
-            aria-label="Send"
-          >
-            {sending ? (
-              <i className="fa-solid fa-spinner fa-spin" />
-            ) : (
-              <i className="fa-solid fa-paper-plane" />
+          <div className="max-w-3xl mx-auto flex items-end gap-2">
+            {/* Attachment button (left side) */}
+            <button className="w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-full hover:bg-white/10 transition-colors">
+              <i className="fa-solid fa-plus text-white/70 text-lg" />
+            </button>
+            
+            {/* Message input container */}
+            <div className="flex-1 flex items-end bg-[#1a1a1a] rounded-3xl border border-white/20 overflow-hidden">
+              <textarea
+                ref={textareaRef}
+                rows={1}
+                className="flex-1 bg-transparent px-4 py-3 text-[16px] text-white placeholder-white/50 outline-none resize-none max-h-32 min-h-[44px]"
+                placeholder="Message"
+                value={draft}
+                onChange={e=> {
+                  setDraft(e.target.value)
+                  // typing start (debounced stop)
+                  fetch('/api/typing', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ peer: username, is_typing: true }) }).catch(()=>{})
+                  if (typingTimer.current) clearTimeout(typingTimer.current)
+                  typingTimer.current = setTimeout(() => {
+                    fetch('/api/typing', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ peer: username, is_typing: false }) }).catch(()=>{})
+                  }, 1200)
+                }}
+                style={{
+                  lineHeight: '1.4',
+                  scrollbarWidth: 'none',
+                  msOverflowStyle: 'none'
+                }}
+              />
+              
+              {/* Send button (inside input container, right side) */}
+              {draft.trim() && (
+                <button
+                  className={`w-10 h-10 m-1 rounded-full flex items-center justify-center transition-all ${
+                    sending 
+                      ? 'bg-gray-600 text-gray-300 cursor-not-allowed' 
+                      : 'bg-[#4db6ac] text-black hover:bg-[#45a99c] active:scale-95'
+                  }`}
+                  onClick={send}
+                  disabled={sending}
+                  aria-label="Send"
+                >
+                  {sending ? (
+                    <i className="fa-solid fa-spinner fa-spin text-sm" />
+                  ) : (
+                    <i className="fa-solid fa-paper-plane text-sm" />
+                  )}
+                </button>
+              )}
+            </div>
+            
+            {/* Voice message button (when no text) */}
+            {!draft.trim() && (
+              <button className="w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-full bg-[#4db6ac] text-black hover:bg-[#45a99c] active:scale-95 transition-all">
+                <i className="fa-solid fa-microphone text-lg" />
+              </button>
             )}
-          </button>
+          </div>
         </div>
     </div>
   )
