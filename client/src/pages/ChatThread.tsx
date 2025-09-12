@@ -25,6 +25,9 @@ export default function ChatThread(){
   const [currentDateLabel, setCurrentDateLabel] = useState<string>('')
   const [showDateFloat, setShowDateFloat] = useState(false)
   const dateFloatTimer = useRef<any>(null)
+  const [showAttachMenu, setShowAttachMenu] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement|null>(null)
+  const cameraInputRef = useRef<HTMLInputElement|null>(null)
 
   // Date formatting functions
   function formatDateLabel(dateStr: string): string {
@@ -187,6 +190,27 @@ export default function ChatThread(){
         }
       }).catch(()=>{})
       .finally(() => setSending(false))
+  }
+
+  function handlePhotoSelect() {
+    setShowAttachMenu(false)
+    fileInputRef.current?.click()
+  }
+
+  function handleCameraOpen() {
+    setShowAttachMenu(false)
+    cameraInputRef.current?.click()
+  }
+
+  function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    if (!file) return
+    
+    // TODO: Implement photo sending logic
+    console.log('Selected file:', file.name)
+    
+    // Reset input
+    event.target.value = ''
   }
 
   return (
@@ -383,11 +407,69 @@ export default function ChatThread(){
           </div>
         )}
 
-        <div className="flex items-end gap-2">
+        <div className="flex items-end gap-2 relative">
           {/* Attachment button */}
-          <button className="w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-full hover:bg-white/10 transition-colors">
-            <i className="fa-solid fa-plus text-white/70 text-base" />
+          <button 
+            className="w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-full hover:bg-white/10 transition-colors"
+            onClick={() => setShowAttachMenu(!showAttachMenu)}
+          >
+            <i className={`fa-solid text-white/70 text-base transition-transform duration-200 ${
+              showAttachMenu ? 'fa-times rotate-90' : 'fa-plus'
+            }`} />
           </button>
+
+          {/* Attachment menu */}
+          {showAttachMenu && (
+            <>
+              <div 
+                className="fixed inset-0 z-40" 
+                onClick={() => setShowAttachMenu(false)} 
+              />
+              <div className="absolute bottom-10 left-0 z-50 bg-[#1a1a1a] border border-white/20 rounded-2xl shadow-xl overflow-hidden">
+                <button
+                  className="w-full px-4 py-3 flex items-center gap-3 hover:bg-white/5 transition-colors text-left"
+                  onClick={handlePhotoSelect}
+                >
+                  <div className="w-10 h-10 rounded-full bg-[#4db6ac]/20 flex items-center justify-center">
+                    <i className="fa-solid fa-image text-[#4db6ac]" />
+                  </div>
+                  <div>
+                    <div className="text-white font-medium">Photos</div>
+                    <div className="text-white/60 text-xs">Send from gallery</div>
+                  </div>
+                </button>
+                <button
+                  className="w-full px-4 py-3 flex items-center gap-3 hover:bg-white/5 transition-colors text-left"
+                  onClick={handleCameraOpen}
+                >
+                  <div className="w-10 h-10 rounded-full bg-[#4db6ac]/20 flex items-center justify-center">
+                    <i className="fa-solid fa-camera text-[#4db6ac]" />
+                  </div>
+                  <div>
+                    <div className="text-white font-medium">Camera</div>
+                    <div className="text-white/60 text-xs">Take a photo</div>
+                  </div>
+                </button>
+              </div>
+            </>
+          )}
+
+          {/* Hidden file inputs */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            onChange={handleFileChange}
+            className="hidden"
+          />
+          <input
+            ref={cameraInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            onChange={handleFileChange}
+            className="hidden"
+          />
           
           {/* Message input container */}
           <div className="flex-1 flex items-center bg-[#1a1a1a] rounded-3xl border border-white/20 overflow-hidden relative">
