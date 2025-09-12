@@ -13,6 +13,7 @@ export default function ChatThread(){
   const [messages, setMessages] = useState<Array<{ id:number; text:string; sent:boolean; time:string; reaction?:string; replySnippet?:string }>>([])
   const [draft, setDraft] = useState('')
   const [replyTo, setReplyTo] = useState<{ text:string }|null>(null)
+  const [sending, setSending] = useState(false)
   const listRef = useRef<HTMLDivElement|null>(null)
   const textareaRef = useRef<HTMLTextAreaElement|null>(null)
   const storageKey = useMemo(() => `chat_meta_${username || ''}`, [username])
@@ -144,26 +145,38 @@ export default function ChatThread(){
   useEffect(() => { adjustTextareaHeight() }, [draft])
 
   function send(){
-    if (!otherUserId || !draft.trim()) return
-    const fd = new URLSearchParams({ recipient_id: String(otherUserId), message: draft.trim() })
+    if (!otherUserId || !draft.trim() || sending) return
+    
+    setSending(true)
+    const messageText = draft.trim()
+    const fd = new URLSearchParams({ recipient_id: String(otherUserId), message: messageText })
+    
     fetch('/send_message', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
       .then(r=>r.json()).then(j=>{
         if (j?.success){
           setDraft('')
           const now = new Date().toISOString().slice(0,19).replace('T',' ')
           const replySnippet = replyTo ? (replyTo.text.length > 90 ? replyTo.text.slice(0,90) + '…' : replyTo.text) : undefined
-          const text = fd.get('message') || ''
+          
           if (replySnippet){
-            const k = `${now}|${text}|me`
+            const k = `${now}|${messageText}|me`
             metaRef.current[k] = { ...(metaRef.current[k]||{}), replySnippet }
             try{ localStorage.setItem(storageKey, JSON.stringify(metaRef.current)) }catch{}
           }
-          setMessages(prev => [...prev, { id: Math.random(), text, sent:true, time: now, replySnippet }])
+          
+          // Only add message if it's not already in the list (prevent duplicates)
+          setMessages(prev => {
+            const exists = prev.some(m => m.text === messageText && m.sent && Math.abs(new Date(m.time).getTime() - new Date(now).getTime()) < 5000)
+            if (exists) return prev
+            return [...prev, { id: Math.random(), text: messageText, sent:true, time: now, replySnippet }]
+          })
+          
           setReplyTo(null)
           // stop typing state
           fetch('/api/typing', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ peer: username, is_typing: false }) }).catch(()=>{})
         }
       }).catch(()=>{})
+      .finally(() => setSending(false))
   }
 
   return (
@@ -281,11 +294,20 @@ export default function ChatThread(){
             // Enter inserts newline by default; no auto-send on Enter
           />
           <button
-            className="px-4 py-2 rounded-full bg-[#4db6ac] text-black font-medium hover:brightness-110"
+            className={`px-4 py-2 rounded-full font-medium transition-all ${
+              sending 
+                ? 'bg-gray-600 text-gray-300 cursor-not-allowed' 
+                : 'bg-[#4db6ac] text-black hover:brightness-110'
+            }`}
             onClick={send}
+            disabled={sending}
             aria-label="Send"
           >
-            <i className="fa-solid fa-paper-plane" />
+            {sending ? (
+              <i className="fa-solid fa-spinner fa-spin" />
+            ) : (
+              <i className="fa-solid fa-paper-plane" />
+            )}
           </button>
         </div>
       </div>
