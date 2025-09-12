@@ -649,10 +649,10 @@ export default function ChatThread(){
           {/* Bottom back button */}
           <div className="h-16 flex items-center justify-center px-4 flex-shrink-0">
             <button 
-              className="px-6 py-3 bg-[#4db6ac] text-black rounded-lg hover:bg-[#45a99c] transition-colors font-medium flex items-center gap-2"
+              className="px-4 py-2 border border-white/30 text-white rounded-lg hover:border-white/50 hover:bg-white/5 transition-colors text-sm flex items-center gap-2"
               onClick={() => setPreviewImage(null)}
             >
-              <i className="fa-solid fa-arrow-left" />
+              <i className="fa-solid fa-arrow-left text-sm" />
               Back to Chat
             </button>
           </div>
