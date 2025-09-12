@@ -7225,7 +7225,7 @@ def rsvp_event(event_id):
             c.execute("""
                 INSERT INTO event_rsvps (event_id, username, response, note, responded_at)
                 VALUES (?, ?, ?, ?, ?)
-                ON CONFLICT(event_id, username) DO UPDATE SET response=excluded.response, note=excluded.note, responded_at=excluded.responded_at
+                ON DUPLICATE KEY UPDATE response=VALUES(response), note=VALUES(note), responded_at=VALUES(responded_at)
             """, (event_id, username, response, note, datetime.now().isoformat()))
             # Counts
             c.execute("SELECT response, COUNT(*) as count FROM event_rsvps WHERE event_id=? GROUP BY response", (event_id,))
@@ -13035,7 +13035,7 @@ def api_set_typing():
             c.execute("""
                 INSERT INTO typing_status (user, peer, is_typing, updated_at)
                 VALUES (?, ?, ?, ?)
-                ON CONFLICT(user, peer) DO UPDATE SET is_typing=excluded.is_typing, updated_at=excluded.updated_at
+                ON DUPLICATE KEY UPDATE is_typing=VALUES(is_typing), updated_at=VALUES(updated_at)
             """, (me, peer, is_typing, now))
             conn.commit()
         return jsonify({ 'success': True })
