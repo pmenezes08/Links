@@ -10,7 +10,7 @@ export default function ChatThread(){
   useEffect(() => { setTitle(username ? `Chat: ${username}` : 'Chat') }, [setTitle, username])
 
   const [otherUserId, setOtherUserId] = useState<number|''>('')
-  const [messages, setMessages] = useState<Array<{ id:number; text:string; sent:boolean; time:string; reaction?:string; replySnippet?:string }>>([])
+  const [messages, setMessages] = useState<Array<{ id:number; text:string; image_path?:string; sent:boolean; time:string; reaction?:string; replySnippet?:string }>>([])
   const [draft, setDraft] = useState('')
   const [replyTo, setReplyTo] = useState<{ text:string }|null>(null)
   const [sending, setSending] = useState(false)
@@ -204,10 +204,53 @@ export default function ChatThread(){
 
   function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
-    if (!file) return
+    if (!file || !otherUserId) return
     
-    // TODO: Implement photo sending logic
-    console.log('Selected file:', file.name)
+    setSending(true)
+    
+    // Create FormData for photo upload
+    const formData = new FormData()
+    formData.append('photo', file)
+    formData.append('recipient_id', String(otherUserId))
+    formData.append('message', '') // Optional text with photo
+    
+    fetch('/send_photo_message', { 
+      method: 'POST', 
+      credentials: 'include', 
+      body: formData 
+    })
+    .then(r => r.json())
+    .then(j => {
+      if (j?.success) {
+        const now = new Date().toISOString().slice(0,19).replace('T',' ')
+        
+        // Add photo message to UI
+        setMessages(prev => {
+          const photoMessage = {
+            id: Math.random(),
+            text: '📷 Photo',
+            image_path: j.image_path,
+            sent: true,
+            time: now
+          }
+          return [...prev, photoMessage]
+        })
+        
+        // Stop typing state
+        fetch('/api/typing', { 
+          method:'POST', 
+          credentials:'include', 
+          headers:{ 'Content-Type':'application/json' }, 
+          body: JSON.stringify({ peer: username, is_typing: false }) 
+        }).catch(()=>{})
+      } else {
+        alert('Failed to send photo: ' + (j.error || 'Unknown error'))
+      }
+    })
+    .catch(() => {
+      alert('Error sending photo. Please try again.')
+    })
+    .finally(() => setSending(false))
     
     // Reset input
     event.target.value = ''
@@ -369,7 +412,24 @@ export default function ChatThread(){
                           {m.replySnippet}
                         </div>
                       ) : null}
-                      <div>{m.text}</div>
+                      
+                      {/* Image display */}
+                      {m.image_path ? (
+                        <div className="mb-2">
+                          <img 
+                            src={`/static/${m.image_path}`}
+                            alt="Shared photo"
+                            className="max-w-full max-h-64 rounded-lg object-cover cursor-pointer"
+                            onClick={() => {
+                              // Open image in new tab for full view
+                              window.open(`/static/${m.image_path}`, '_blank')
+                            }}
+                          />
+                        </div>
+                      ) : null}
+                      
+                      {/* Text content */}
+                      {m.text && <div>{m.text}</div>}
                       <div className={`text-[10px] mt-1 ${m.sent ? 'text-white/70' : 'text-white/50'} text-right`}>{new Date(m.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
                       {m.reaction ? (
                         <span className="absolute bottom-0.5 right-1 text-base leading-none select-none z-10">

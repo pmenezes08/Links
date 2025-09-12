@@ -370,6 +370,16 @@ def add_missing_tables():
                     logger.info("Added is_read column to messages table")
             except Exception as e:
                 logger.warning(f"Could not ensure is_read column on messages: {e}")
+            
+            # Ensure messages table has image_path column for photo messages
+            try:
+                c.execute("SHOW COLUMNS FROM messages LIKE 'image_path'")
+                if not c.fetchone():
+                    c.execute("ALTER TABLE messages ADD COLUMN image_path TEXT")
+                    conn.commit()
+                    logger.info("Added image_path column to messages table")
+            except Exception as e:
+                logger.warning(f"Could not ensure image_path column on messages: {e}")
 
             # Typing status table for realtime UX
             c.execute('''CREATE TABLE IF NOT EXISTS typing_status (
@@ -3250,7 +3260,7 @@ def get_messages():
             
             # Get messages between users
             c.execute("""
-                SELECT id, sender, receiver, message, timestamp
+                SELECT id, sender, receiver, message, image_path, timestamp
                 FROM messages
                 WHERE (sender = ? AND receiver = ?) 
                    OR (sender = ? AND receiver = ?)
@@ -3262,6 +3272,7 @@ def get_messages():
                 messages.append({
                     'id': msg['id'],
                     'text': msg['message'],
+                    'image_path': msg.get('image_path') if hasattr(msg, 'get') else msg[4],
                     'sent': msg['sender'] == username,
                     'time': msg['timestamp']
                 })
@@ -3352,6 +3363,116 @@ def send_message():
     except Exception as e:
         logger.error(f"Error sending message: {str(e)}")
         return jsonify({'success': False, 'error': 'Failed to send message'})
+
+@app.route('/send_photo_message', methods=['POST'])
+@login_required
+def send_photo_message():
+    """Send a photo message to another user"""
+    username = session.get('username')
+    recipient_id = request.form.get('recipient_id')
+    message = request.form.get('message', '')  # Optional text with photo
+    
+    if not recipient_id:
+        return jsonify({'success': False, 'error': 'Recipient required'})
+    
+    # Check if photo was uploaded
+    if 'photo' not in request.files:
+        return jsonify({'success': False, 'error': 'No photo uploaded'})
+    
+    photo = request.files['photo']
+    if photo.filename == '':
+        return jsonify({'success': False, 'error': 'No photo selected'})
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Get recipient username
+            c.execute("SELECT username FROM users WHERE id = ?", (recipient_id,))
+            recipient = c.fetchone()
+            if not recipient:
+                return jsonify({'success': False, 'error': 'Recipient not found'})
+            
+            recipient_username = recipient['username'] if hasattr(recipient, 'keys') else recipient[0]
+            
+            # Save the photo
+            import uuid
+            from werkzeug.utils import secure_filename
+            
+            # Generate unique filename
+            file_extension = photo.filename.rsplit('.', 1)[1].lower() if '.' in photo.filename else 'jpg'
+            unique_filename = f"message_{uuid.uuid4().hex[:12]}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.{file_extension}"
+            
+            # Ensure uploads directory exists
+            uploads_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads', 'message_photos')
+            os.makedirs(uploads_dir, exist_ok=True)
+            
+            # Save file
+            file_path = os.path.join(uploads_dir, unique_filename)
+            photo.save(file_path)
+            
+            # Store relative path for database
+            relative_path = f"message_photos/{unique_filename}"
+            
+            # Check for duplicate message in last 5 seconds
+            c.execute("""
+                SELECT id FROM messages 
+                WHERE sender = ? AND receiver = ? AND image_path = ?
+                AND timestamp > DATE_SUB(NOW(), INTERVAL 5 SECOND)
+                LIMIT 1
+            """, (username, recipient_username, relative_path))
+            
+            if c.fetchone():
+                # Duplicate photo message detected
+                return jsonify({'success': True, 'message': 'Photo already sent'})
+            
+            # Insert photo message
+            c.execute("""
+                INSERT INTO messages (sender, receiver, message, image_path, timestamp)
+                VALUES (?, ?, ?, ?, NOW())
+            """, (username, recipient_username, message, relative_path))
+            
+            conn.commit()
+            
+            # Create notification for the recipient
+            try:
+                c.execute("""
+                    SELECT id FROM notifications 
+                    WHERE user_id = ? AND from_user = ? AND type = 'message'
+                    AND created_at > DATE_SUB(NOW(), INTERVAL 10 SECOND)
+                    LIMIT 1
+                """, (recipient_username, username))
+                
+                if not c.fetchone():
+                    notification_text = f"📷 {username} sent a photo" + (f": {message}" if message else "")
+                    c.execute("""
+                        INSERT INTO notifications (user_id, from_user, type, message, created_at)
+                        VALUES (?, ?, 'message', ?, NOW())
+                    """, (recipient_username, username, notification_text))
+                    conn.commit()
+            except Exception as notif_e:
+                logger.warning(f"Could not create photo message notification: {notif_e}")
+            
+            # Push notification
+            try:
+                notification_body = f"📷 Photo" + (f": {message}" if message else "")
+                send_push_to_user(recipient_username, {
+                    'title': f'New message from {username}',
+                    'body': notification_body,
+                    'url': f'/user_chat/chat/{username}',
+                })
+            except Exception as _e:
+                logger.warning(f"push send_photo_message warn: {_e}")
+
+            return jsonify({
+                'success': True, 
+                'message': 'Photo sent successfully',
+                'image_path': relative_path
+            })
+            
+    except Exception as e:
+        logger.error(f"Error sending photo message: {str(e)}")
+        return jsonify({'success': False, 'error': 'Failed to send photo'})
 
 @app.route('/api/chat_threads')
 @login_required
