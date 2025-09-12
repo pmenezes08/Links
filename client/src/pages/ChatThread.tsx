@@ -23,6 +23,8 @@ export default function ChatThread(){
   const typingTimer = useRef<any>(null)
   const pollTimer = useRef<any>(null)
   const [currentDateLabel, setCurrentDateLabel] = useState<string>('')
+  const [showDateFloat, setShowDateFloat] = useState(false)
+  const dateFloatTimer = useRef<any>(null)
 
   // Date formatting functions (WhatsApp style)
   function formatDateLabel(dateStr: string): string {
@@ -250,13 +252,18 @@ export default function ChatThread(){
         </div>
       </div>
       
-      {/* Sticky date indicator (WhatsApp style) */}
-      {currentDateLabel && (
+      {/* Floating date indicator (WhatsApp style) */}
+      {currentDateLabel && showDateFloat && (
         <div 
-          className="sticky top-14 z-50 flex justify-center py-1"
-          style={{ top: '7rem' }}
+          className="fixed top-20 left-1/2 transform -translate-x-1/2 z-50 pointer-events-none transition-all duration-300"
+          style={{ 
+            top: '7rem',
+            opacity: showDateFloat ? 1 : 0,
+            transform: `translateX(-50%) translateY(${showDateFloat ? '0' : '-10px'})`,
+            transition: 'all 0.3s ease-in-out'
+          }}
         >
-          <div className="bg-black/80 backdrop-blur-sm px-3 py-1 rounded-full border border-white/20 text-xs text-white/80">
+          <div className="bg-black/90 backdrop-blur-md px-4 py-2 rounded-full border border-white/20 text-sm text-white shadow-lg">
             {currentDateLabel}
           </div>
         </div>
@@ -276,6 +283,9 @@ export default function ChatThread(){
           const near = (el.scrollHeight - el.scrollTop - el.clientHeight) < 120
           if (near) setShowScrollDown(false)
           
+          // Show floating date when scrolling starts
+          setShowDateFloat(true)
+          
           // Update current date label based on visible messages (WhatsApp style)
           const messageElements = el.querySelectorAll('[data-message-date]')
           let visibleDate = ''
@@ -291,9 +301,15 @@ export default function ChatThread(){
             }
           }
           
-          if (visibleDate && visibleDate !== currentDateLabel) {
+          if (visibleDate) {
             setCurrentDateLabel(formatDateLabel(visibleDate))
           }
+          
+          // Auto-hide the floating date after scrolling stops (1.5 seconds)
+          if (dateFloatTimer.current) clearTimeout(dateFloatTimer.current)
+          dateFloatTimer.current = setTimeout(() => {
+            setShowDateFloat(false)
+          }, 1500)
         }}
       >
         {messages.map((m, index) => {
