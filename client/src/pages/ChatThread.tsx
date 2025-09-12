@@ -162,18 +162,31 @@ export default function ChatThread(){
   }
 
   return (
-    <div className="fixed inset-0 bg-black text-white flex flex-col" style={{ paddingTop: '3.5rem' }}>
+    <div 
+      className="bg-black text-white flex flex-col" 
+      style={{ 
+        height: '100vh',
+        minHeight: '100vh',
+        maxHeight: '100vh',
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        paddingTop: '3.5rem'
+      }}
+    >
       {/* Chat header - always visible */}
       <div 
         className="h-14 border-b border-white/10 flex items-center gap-3 px-4 flex-shrink-0"
         style={{
-          backgroundColor: 'rgb(26, 26, 26)', // Slightly lighter to make it visible
-          borderBottom: '2px solid rgba(77, 182, 172, 0.3)', // More visible border
+          backgroundColor: 'rgb(0, 0, 0)', // Black background as requested
+          borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
           zIndex: 9999,
-          position: 'relative',
+          position: 'sticky',
+          top: 0,
           minHeight: '3.5rem',
-          maxHeight: '3.5rem',
-          boxShadow: '0 2px 4px rgba(0,0,0,0.5)' // Add shadow for visibility
+          maxHeight: '3.5rem'
         }}
       >
         <div className="max-w-3xl mx-auto w-full flex items-center gap-3">
@@ -304,6 +317,32 @@ export default function ChatThread(){
                 typingTimer.current = setTimeout(() => {
                   fetch('/api/typing', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ peer: username, is_typing: false }) }).catch(()=>{})
                 }, 1200)
+              }}
+              onFocus={() => {
+                // Force header to stay visible when keyboard appears
+                setTimeout(() => {
+                  const header = document.querySelector('.h-14.border-b') as HTMLElement
+                  if (header) {
+                    header.style.position = 'fixed'
+                    header.style.top = '3.5rem'
+                    header.style.left = '0'
+                    header.style.right = '0'
+                    header.style.zIndex = '10000'
+                    header.style.backgroundColor = 'rgb(0, 0, 0)'
+                  }
+                }, 100)
+              }}
+              onBlur={() => {
+                // Restore normal positioning when keyboard closes
+                setTimeout(() => {
+                  const header = document.querySelector('.h-14.border-b') as HTMLElement
+                  if (header) {
+                    header.style.position = 'sticky'
+                    header.style.top = '0'
+                    header.style.left = ''
+                    header.style.right = ''
+                  }
+                }, 100)
               }}
               style={{
                 lineHeight: '1.4',
