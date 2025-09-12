@@ -271,7 +271,7 @@ export default function ChatThread(){
         style={{ 
           WebkitOverflowScrolling: 'touch' as any, 
           overscrollBehavior: 'contain' as any,
-          paddingBottom: '6rem'
+          paddingBottom: '1rem'
         }}
         onScroll={(e)=> {
           const el = e.currentTarget
@@ -372,7 +372,7 @@ export default function ChatThread(){
       </div>
 
       {/* Composer */}
-      <div className="bg-black px-3 py-2 border-t border-white/10 flex-shrink-0">
+      <div className="bg-black px-3 py-2 border-t border-white/10 flex-shrink-0 mb-4">
         {replyTo && (
           <div className="mb-2 px-3 py-2 bg-black/80 text-[12px] text-[#cfe9e7] rounded-lg border border-white/10">
             <div className="flex items-start gap-2">
