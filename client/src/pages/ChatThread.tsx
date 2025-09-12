@@ -28,6 +28,7 @@ export default function ChatThread(){
   const [showAttachMenu, setShowAttachMenu] = useState(false)
   const fileInputRef = useRef<HTMLInputElement|null>(null)
   const cameraInputRef = useRef<HTMLInputElement|null>(null)
+  const [previewImage, setPreviewImage] = useState<string|null>(null)
 
   // Date formatting functions
   function formatDateLabel(dateStr: string): string {
@@ -419,10 +420,9 @@ export default function ChatThread(){
                           <img 
                             src={`/uploads/${m.image_path}`}
                             alt="Shared photo"
-                            className="max-w-full max-h-64 rounded-lg object-cover cursor-pointer"
+                            className="max-w-full max-h-64 rounded-md object-cover cursor-pointer border border-white/10"
                             onClick={() => {
-                              // Open image in new tab for full view
-                              window.open(`/uploads/${m.image_path}`, '_blank')
+                              setPreviewImage(`/uploads/${m.image_path}`)
                             }}
                             onError={(e) => {
                               // Fallback if image fails to load
@@ -611,6 +611,53 @@ export default function ChatThread(){
           </div>
         </div>
       </div>
+
+      {/* Photo preview modal */}
+      {previewImage && (
+        <div 
+          className="fixed inset-0 bg-black z-[9999] flex flex-col"
+          onClick={() => setPreviewImage(null)}
+        >
+          {/* Header with back button */}
+          <div className="h-14 flex items-center px-4 flex-shrink-0">
+            <button 
+              className="p-2 rounded-full hover:bg-white/10 transition-colors"
+              onClick={() => setPreviewImage(null)}
+              aria-label="Back to chat"
+            >
+              <i className="fa-solid fa-arrow-left text-white text-lg" />
+            </button>
+            <div className="flex-1 text-center">
+              <div className="text-white font-medium">Photo</div>
+            </div>
+            <div className="w-10"></div> {/* Spacer for centering */}
+          </div>
+
+          {/* Image container */}
+          <div 
+            className="flex-1 flex items-center justify-center p-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <img 
+              src={previewImage}
+              alt="Photo preview"
+              className="max-w-full max-h-full object-contain"
+              style={{ maxHeight: 'calc(100vh - 8rem)' }}
+            />
+          </div>
+
+          {/* Bottom actions */}
+          <div className="h-16 flex items-center justify-center px-4 flex-shrink-0">
+            <button 
+              className="px-4 py-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-colors"
+              onClick={() => window.open(previewImage, '_blank')}
+            >
+              <i className="fa-solid fa-external-link mr-2" />
+              Open in new tab
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
