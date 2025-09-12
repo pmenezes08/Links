@@ -444,7 +444,7 @@ export default function ChatThread(){
                     ? 'bg-gray-600 text-gray-300 cursor-not-allowed' 
                     : draft.trim()
                       ? 'bg-[#4db6ac] text-black hover:bg-[#45a99c] hover:scale-105 active:scale-95'
-                      : 'bg-white/10 text-white/50 cursor-not-allowed'
+                      : 'bg-white/20 text-white/70 cursor-not-allowed'
                 }`}
                 onClick={draft.trim() ? send : undefined}
                 disabled={sending || !draft.trim()}
