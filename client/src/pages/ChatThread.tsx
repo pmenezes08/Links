@@ -165,11 +165,15 @@ export default function ChatThread(){
     <div className="fixed inset-0 bg-black text-white flex flex-col" style={{ paddingTop: '3.5rem' }}>
       {/* Chat header - always visible */}
       <div 
-        className="h-14 border-b border-white/10 flex items-center gap-3 px-4 bg-black flex-shrink-0"
+        className="h-14 border-b border-white/10 flex items-center gap-3 px-4 flex-shrink-0"
         style={{
-          backgroundColor: 'rgb(0, 0, 0)',
-          borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
-          zIndex: 1000
+          backgroundColor: 'rgb(26, 26, 26)', // Slightly lighter to make it visible
+          borderBottom: '2px solid rgba(77, 182, 172, 0.3)', // More visible border
+          zIndex: 9999,
+          position: 'relative',
+          minHeight: '3.5rem',
+          maxHeight: '3.5rem',
+          boxShadow: '0 2px 4px rgba(0,0,0,0.5)' // Add shadow for visibility
         }}
       >
         <div className="max-w-3xl mx-auto w-full flex items-center gap-3">
@@ -186,10 +190,10 @@ export default function ChatThread(){
             size={36} 
           />
           <div className="flex-1 min-w-0">
-            <div className="font-semibold truncate text-white">
-              {otherProfile?.display_name || username}
+            <div className="font-semibold truncate text-white text-lg">
+              {otherProfile?.display_name || username || 'Chat'}
             </div>
-            <div className="text-xs text-white/60">
+            <div className="text-sm text-[#4db6ac] font-medium">
               {typing ? 'typing...' : 'Online'}
             </div>
           </div>
