@@ -22,6 +22,37 @@ export default function ChatThread(){
   const [typing, setTyping] = useState(false)
   const typingTimer = useRef<any>(null)
   const pollTimer = useRef<any>(null)
+  const [currentDateLabel, setCurrentDateLabel] = useState<string>('')
+
+  // Date formatting functions (WhatsApp style)
+  function formatDateLabel(dateStr: string): string {
+    const messageDate = new Date(dateStr)
+    const today = new Date()
+    const yesterday = new Date(today)
+    yesterday.setDate(yesterday.getDate() - 1)
+    
+    const msgDateOnly = new Date(messageDate.getFullYear(), messageDate.getMonth(), messageDate.getDate())
+    const todayOnly = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+    const yesterdayOnly = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate())
+    
+    if (msgDateOnly.getTime() === todayOnly.getTime()) {
+      return 'Today'
+    } else if (msgDateOnly.getTime() === yesterdayOnly.getTime()) {
+      return 'Yesterday'
+    } else {
+      const daysDiff = Math.floor((todayOnly.getTime() - msgDateOnly.getTime()) / (1000 * 60 * 60 * 24))
+      if (daysDiff <= 6) {
+        const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+        return days[messageDate.getDay()]
+      } else {
+        return messageDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+      }
+    }
+  }
+
+  function getDateKey(dateStr: string): string {
+    return new Date(dateStr).toDateString()
+  }
 
   useEffect(() => {
     if (!username) return
@@ -219,6 +250,18 @@ export default function ChatThread(){
         </div>
       </div>
       
+      {/* Sticky date indicator (WhatsApp style) */}
+      {currentDateLabel && (
+        <div 
+          className="sticky top-14 z-50 flex justify-center py-1"
+          style={{ top: '7rem' }}
+        >
+          <div className="bg-black/80 backdrop-blur-sm px-3 py-1 rounded-full border border-white/20 text-xs text-white/80">
+            {currentDateLabel}
+          </div>
+        </div>
+      )}
+      
       {/* Messages list */}
       <div
         ref={listRef}
@@ -232,10 +275,46 @@ export default function ChatThread(){
           const el = e.currentTarget
           const near = (el.scrollHeight - el.scrollTop - el.clientHeight) < 120
           if (near) setShowScrollDown(false)
+          
+          // Update current date label based on visible messages (WhatsApp style)
+          const messageElements = el.querySelectorAll('[data-message-date]')
+          let visibleDate = ''
+          
+          for (let i = 0; i < messageElements.length; i++) {
+            const msgEl = messageElements[i] as HTMLElement
+            const rect = msgEl.getBoundingClientRect()
+            const headerHeight = 112 // 3.5rem + 3.5rem
+            
+            if (rect.top >= headerHeight && rect.top <= headerHeight + 100) {
+              visibleDate = msgEl.getAttribute('data-message-date') || ''
+              break
+            }
+          }
+          
+          if (visibleDate && visibleDate !== currentDateLabel) {
+            setCurrentDateLabel(formatDateLabel(visibleDate))
+          }
         }}
       >
-        {messages.map(m => (
-          <LongPressActionable key={m.id} onDelete={() => {
+        {messages.map((m, index) => {
+          const messageDate = getDateKey(m.time)
+          const prevMessageDate = index > 0 ? getDateKey(messages[index - 1].time) : null
+          const showDateSeparator = messageDate !== prevMessageDate
+          
+          return (
+            <div key={m.id}>
+              {/* Date separator (WhatsApp style) */}
+              {showDateSeparator && (
+                <div className="flex justify-center my-4">
+                  <div className="bg-black/60 backdrop-blur-sm px-3 py-1 rounded-lg text-xs text-white/70 border border-white/10">
+                    {formatDateLabel(m.time)}
+                  </div>
+                </div>
+              )}
+              
+              {/* Message */}
+              <div data-message-date={m.time}>
+                <LongPressActionable onDelete={() => {
             const fd = new URLSearchParams({ message_id: String(m.id) })
             fetch('/delete_message', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
               .then(r=>r.json()).then(j=>{ if (j?.success){ setMessages(prev => prev.filter(x => x.id !== m.id)) } }).catch(()=>{})
@@ -267,10 +346,13 @@ export default function ChatThread(){
                     {m.reaction}
                   </span>
                 ) : null}
+                </div>
+              </div>
+                </LongPressActionable>
               </div>
             </div>
-          </LongPressActionable>
-        ))}
+          )
+        })}
         
         {showScrollDown && (
           <button
