@@ -174,7 +174,7 @@ def migrate_kw28_members():
         # Show members found
         member_usernames = []
         for member in sqlite_memberships:
-            username = member.get('username') or 'Unknown'
+            username = safe_get(member, 'username', 'Unknown')
             joined_at = safe_get(member, 'joined_at', 'Unknown')
             print(f"     - {username} (joined: {joined_at})")
             if username != 'Unknown':
@@ -214,8 +214,8 @@ def migrate_kw28_members():
             # Add membership
             try:
                 # Get original join date if available
-                original_member = next((m for m in sqlite_memberships if m.get('username') == username), None)
-                joined_at = safe_get(original_member, 'joined_at', datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+                original_member = next((m for m in sqlite_memberships if safe_get(m, 'username') == username), None)
+                joined_at = safe_get(original_member, 'joined_at', datetime.now().strftime('%Y-%m-%d %H:%M:%S')) if original_member else datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                 
                 mysql_cursor.execute("""
                     INSERT INTO user_communities (user_id, community_id, joined_at)
