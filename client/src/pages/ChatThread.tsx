@@ -436,34 +436,31 @@ export default function ChatThread(){
               }}
             />
             
-            {/* Sleeker button transition container - centered vertically */}
-            <div className="absolute right-1 top-1/2 transform -translate-y-1/2 w-8 h-8 flex items-center justify-center">
-              <button
-                className={`w-7 h-7 rounded-full flex items-center justify-center transition-all duration-300 ease-out ${
-                  sending 
-                    ? 'bg-gray-600 text-gray-300 cursor-not-allowed' 
-                    : 'bg-[#4db6ac] text-black hover:bg-[#45a99c]'
-                }`}
-                onClick={draft.trim() ? send : undefined}
-                disabled={sending}
-                aria-label={draft.trim() ? "Send" : "Voice message"}
-                style={{
-                  transform: draft.trim() 
-                    ? 'scale(1) rotate(0deg)' 
-                    : 'scale(1) rotate(0deg)',
-                  opacity: 1,
-                  transition: 'all 0.15s cubic-bezier(0.4, 0, 0.2, 1)'
-                }}
-              >
-                {sending ? (
-                  <i className="fa-solid fa-spinner fa-spin text-xs" />
-                ) : draft.trim() ? (
-                  <i className="fa-solid fa-paper-plane text-xs" />
-                ) : (
-                  <i className="fa-solid fa-microphone text-xs" />
-                )}
-              </button>
-            </div>
+            {/* Send button - only appears when typing */}
+            {draft.trim() && (
+              <div className="absolute right-1 top-1/2 transform -translate-y-1/2 w-8 h-8 flex items-center justify-center">
+                <button
+                  className={`w-7 h-7 rounded-full flex items-center justify-center transition-all duration-200 ease-out ${
+                    sending 
+                      ? 'bg-gray-600 text-gray-300 cursor-not-allowed' 
+                      : 'bg-[#4db6ac] text-black hover:bg-[#45a99c] hover:scale-105 active:scale-95'
+                  }`}
+                  onClick={send}
+                  disabled={sending}
+                  aria-label="Send"
+                  style={{
+                    transform: 'scale(1)',
+                    transition: 'all 0.15s cubic-bezier(0.4, 0, 0.2, 1)'
+                  }}
+                >
+                  {sending ? (
+                    <i className="fa-solid fa-spinner fa-spin text-xs" />
+                  ) : (
+                    <i className="fa-solid fa-paper-plane text-xs" />
+                  )}
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>
