@@ -23,6 +23,8 @@ export default function Signup(){
     e.preventDefault()
     setError('')
 
+    console.log('Signup form submitted with data:', formData)
+
     // Validation
     if (!formData.first_name.trim()) {
       setError('First name is required')
@@ -58,23 +60,55 @@ export default function Signup(){
     submitData.append('email', formData.email)
     submitData.append('mobile', formData.mobile)
     submitData.append('password', formData.password)
+    submitData.append('confirm_password', formData.confirm_password)
+
+    console.log('Sending signup request to /signup')
+    console.log('FormData contents:', Array.from(submitData.entries()))
 
     fetch('/signup', {
       method: 'POST',
       credentials: 'include',
       body: submitData
     })
-    .then(r => r.json())
-    .then(j => {
-      if (j?.success) {
-        // Success - redirect to dashboard
-        navigate(j.redirect || '/premium_dashboard')
+    .then(async r => {
+      console.log('Signup response status:', r.status)
+      console.log('Signup response headers:', r.headers)
+      
+      if (r.ok) {
+        // Try to parse as JSON first
+        try {
+          const j = await r.json()
+          console.log('Signup JSON response:', j)
+          
+          if (j?.success) {
+            // Success - redirect to dashboard
+            navigate(j.redirect || '/premium_dashboard')
+          } else {
+            setError(j?.error || 'Registration failed')
+          }
+        } catch (jsonError) {
+          // Not JSON, might be HTML redirect
+          console.log('Not JSON response, checking for redirect...')
+          if (r.redirected || r.status === 302) {
+            // Successful redirect
+            navigate('/premium_dashboard')
+          } else {
+            setError('Unexpected response format')
+          }
+        }
       } else {
-        setError(j?.error || 'Registration failed')
+        // Error response
+        try {
+          const j = await r.json()
+          setError(j?.error || `Server error (${r.status})`)
+        } catch {
+          setError(`Server error (${r.status})`)
+        }
       }
     })
-    .catch(() => {
-      setError('Network error. Please try again.')
+    .catch((error) => {
+      console.error('Signup fetch error:', error)
+      setError(`Network error: ${error.message}`)
     })
     .finally(() => setLoading(false))
   }
