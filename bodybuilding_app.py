@@ -2350,17 +2350,27 @@ def public_profile(username):
 @app.route('/account_settings')
 @login_required
 def account_settings():
-    """Account settings page for managing account info and password"""
+    """Account settings page - serves React app for mobile, HTML for desktop"""
     username = session['username']
     try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            c.execute("SELECT username, email, subscription FROM users WHERE username=?", (username,))
-            user = c.fetchone()
-            
-        if user:
-            return render_template('account_settings.html', username=username, user=user)
-        return render_template('index.html', error="User not found!")
+        # Smart UA: mobile -> SPA, desktop -> HTML template
+        ua = request.headers.get('User-Agent', '')
+        is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
+        
+        if is_mobile:
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            dist_dir = os.path.join(base_dir, 'client', 'dist')
+            return send_from_directory(dist_dir, 'index.html')
+        else:
+            # Desktop: serve HTML template
+            with get_db_connection() as conn:
+                c = conn.cursor()
+                c.execute("SELECT username, email, subscription FROM users WHERE username=?", (username,))
+                user = c.fetchone()
+                
+            if user:
+                return render_template('account_settings.html', username=username, user=user)
+            return render_template('index.html', error="User not found!")
     except Exception as e:
         logger.error(f"Error in account settings for {username}: {str(e)}")
         abort(500)
@@ -2444,26 +2454,6 @@ def api_profile_me():
         logger.error(f"Error in api_profile_me: {e}")
         return jsonify({ 'success': False, 'error': 'server error' }), 500
 
-@app.route('/account_settings')
-@login_required
-def account_settings():
-    """Account settings page - serves React app for mobile, HTML for desktop"""
-    try:
-        # Smart UA: mobile -> SPA, desktop -> HTML
-        ua = request.headers.get('User-Agent', '')
-        is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
-        if is_mobile:
-            base_dir = os.path.dirname(os.path.abspath(__file__))
-            dist_dir = os.path.join(base_dir, 'client', 'dist')
-            return send_from_directory(dist_dir, 'index.html')
-        else:
-            # For now, redirect desktop to existing account settings or serve React
-            base_dir = os.path.dirname(os.path.abspath(__file__))
-            dist_dir = os.path.join(base_dir, 'client', 'dist')
-            return send_from_directory(dist_dir, 'index.html')
-    except Exception as e:
-        logger.error(f"Error serving account settings: {e}")
-        return "Error loading account settings", 500
 @app.route('/upload_logo', methods=['POST'])
 @login_required
 def upload_logo():
