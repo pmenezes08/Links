@@ -50,7 +50,7 @@ export default function ChatThread(){
       }).catch(()=>{})
   }, [username])
 
-  // Auto-scroll on first open, then only when already near bottom
+  // Auto-scroll logic
   const lastCountRef = useRef(0)
   const didInitialAutoScrollRef = useRef(false)
   const [showScrollDown, setShowScrollDown] = useState(false)
@@ -92,7 +92,6 @@ export default function ChatThread(){
     if (!username || !otherUserId) return
     async function poll(){
       try{
-        // Refresh messages (backend marks read)
         const fd = new URLSearchParams({ other_user_id: String(otherUserId) })
         const r = await fetch('/get_messages', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
         const j = await r.json()
@@ -123,7 +122,7 @@ export default function ChatThread(){
     const ta = textareaRef.current
     if (!ta) return
     ta.style.height = 'auto'
-    const maxPx = 160 // ~10rem
+    const maxPx = 160
     ta.style.height = Math.min(ta.scrollHeight, maxPx) + 'px'
   }
   useEffect(() => { adjustTextareaHeight() }, [])
@@ -149,7 +148,6 @@ export default function ChatThread(){
             try{ localStorage.setItem(storageKey, JSON.stringify(metaRef.current)) }catch{}
           }
           
-          // Only add message if it's not already in the list (prevent duplicates)
           setMessages(prev => {
             const exists = prev.some(m => m.text === messageText && m.sent && Math.abs(new Date(m.time).getTime() - new Date(now).getTime()) < 5000)
             if (exists) return prev
@@ -157,7 +155,6 @@ export default function ChatThread(){
           })
           
           setReplyTo(null)
-          // stop typing state
           fetch('/api/typing', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ peer: username, is_typing: false }) }).catch(()=>{})
         }
       }).catch(()=>{})
@@ -165,39 +162,14 @@ export default function ChatThread(){
   }
 
   return (
-    <div 
-      className="bg-black text-white"
-      style={{
-        height: '100vh',
-        maxHeight: '100vh',
-        minHeight: '100vh',
-        display: 'grid',
-        gridTemplateRows: '3.5rem 3.5rem 1fr 4rem',
-        gridTemplateAreas: '"main-header" "chat-header" "messages" "composer"',
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        zIndex: 10,
-        overflow: 'hidden'
-      }}
-    >
-      {/* Spacer for main header */}
-      <div style={{ gridArea: 'main-header' }} />
-      
+    <div className="fixed inset-0 bg-black text-white flex flex-col" style={{ paddingTop: '3.5rem' }}>
       {/* Chat header - always visible */}
       <div 
-        className="border-b border-white/10 flex items-center gap-3 px-4 bg-black"
+        className="h-14 border-b border-white/10 flex items-center gap-3 px-4 bg-black flex-shrink-0"
         style={{
-          gridArea: 'chat-header',
           backgroundColor: 'rgb(0, 0, 0)',
           borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
-          zIndex: 1000,
-          position: 'sticky',
-          top: '3.5rem',
-          transform: 'translateZ(0)', // Force hardware acceleration
-          WebkitTransform: 'translateZ(0)'
+          zIndex: 1000
         }}
       >
         <div className="max-w-3xl mx-auto w-full flex items-center gap-3">
@@ -233,13 +205,11 @@ export default function ChatThread(){
       {/* Messages list */}
       <div
         ref={listRef}
-        className="overflow-y-auto overscroll-contain px-3 py-2 space-y-1"
+        className="flex-1 overflow-y-auto overscroll-contain px-3 py-2 space-y-1"
         style={{ 
-          gridArea: 'messages',
           WebkitOverflowScrolling: 'touch' as any, 
           overscrollBehavior: 'contain' as any,
-          maxHeight: '100%',
-          paddingBottom: '0.5rem'
+          paddingBottom: '6rem'
         }}
         onScroll={(e)=> {
           const el = e.currentTarget
@@ -297,15 +267,7 @@ export default function ChatThread(){
       </div>
 
       {/* Composer (WhatsApp-style) */}
-      <div 
-        className="bg-black px-3 py-2 border-t border-white/10"
-        style={{
-          gridArea: 'composer',
-          backgroundColor: 'rgb(0, 0, 0)',
-          borderTop: '1px solid rgba(255, 255, 255, 0.1)',
-          zIndex: 1000
-        }}
-      >
+      <div className="bg-black px-3 py-3 border-t border-white/10 flex-shrink-0">
         {/* Reply preview */}
         {replyTo && (
           <div className="mb-2 px-3 py-2 bg-black/80 text-[12px] text-[#cfe9e7] rounded-lg border border-white/10">
@@ -317,8 +279,8 @@ export default function ChatThread(){
           </div>
         )}
 
-        <div className="max-w-3xl mx-auto flex items-end gap-2">
-          {/* Attachment button (left side) */}
+        <div className="flex items-end gap-2">
+          {/* Attachment button */}
           <button className="w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-full hover:bg-white/10 transition-colors">
             <i className="fa-solid fa-plus text-white/70 text-lg" />
           </button>
@@ -333,32 +295,11 @@ export default function ChatThread(){
               value={draft}
               onChange={e=> {
                 setDraft(e.target.value)
-                // typing start (debounced stop)
                 fetch('/api/typing', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ peer: username, is_typing: true }) }).catch(()=>{})
                 if (typingTimer.current) clearTimeout(typingTimer.current)
                 typingTimer.current = setTimeout(() => {
                   fetch('/api/typing', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ peer: username, is_typing: false }) }).catch(()=>{})
                 }, 1200)
-              }}
-              onFocus={() => {
-                // Ensure header stays visible when keyboard appears
-                try {
-                  const header = document.querySelector('[style*="chat-header"]') as HTMLElement
-                  if (header) {
-                    header.style.position = 'sticky';
-                    header.style.top = '3.5rem';
-                    header.style.zIndex = '1001';
-                    header.style.transform = 'translateZ(0)';
-                    header.style.webkitTransform = 'translateZ(0)';
-                  }
-                  
-                  // Also ensure the grid container is stable
-                  const container = document.querySelector('[style*="grid-template-areas"]') as HTMLElement
-                  if (container) {
-                    container.style.position = 'fixed';
-                    container.style.height = '100vh';
-                  }
-                } catch {}
               }}
               style={{
                 lineHeight: '1.4',
@@ -367,7 +308,7 @@ export default function ChatThread(){
               }}
             />
             
-            {/* Send button (inside input container, right side) */}
+            {/* Send button (inside input when typing) */}
             {draft.trim() && (
               <button
                 className={`w-10 h-10 m-1 rounded-full flex items-center justify-center transition-all ${
@@ -388,7 +329,7 @@ export default function ChatThread(){
             )}
           </div>
           
-          {/* Voice message button (when no text) */}
+          {/* Voice button (when no text) */}
           {!draft.trim() && (
             <button className="w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-full bg-[#4db6ac] text-black hover:bg-[#45a99c] active:scale-95 transition-all">
               <i className="fa-solid fa-microphone text-lg" />
