@@ -3411,9 +3411,9 @@ def api_chat_threads():
                             last_sender = last_row[2]
 
                     # Unread count for this thread (messages sent by other -> me)
-                    c.execute("SELECT COUNT(*) FROM messages WHERE sender=? AND receiver=? AND is_read=0", (other_username, username))
+                    c.execute("SELECT COUNT(*) as count FROM messages WHERE sender=? AND receiver=? AND is_read=0", (other_username, username))
                     unread_row = c.fetchone()
-                    unread_count = unread_row[0] if unread_row is not None else 0
+                    unread_count = unread_row['count'] if hasattr(unread_row, 'keys') else (unread_row[0] if unread_row else 0)
 
                     # Profile info (avatar)
                     c.execute(

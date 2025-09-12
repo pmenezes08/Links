@@ -183,17 +183,38 @@ export default function ChatThread(){
     <div className="fixed inset-x-0 top-14 bottom-0 bg-black text-white">
       <div className="h-full max-w-3xl mx-auto flex flex-col">
         {/* Chat subheader with back button (WhatsApp-style) */}
-        <div className="fixed left-0 right-0 top-14 h-12 border-b border-white/10 flex items-center gap-2 px-3 bg-black z-50">
-          <button className="p-2 rounded-full hover:bg-white/5" onClick={()=> navigate('/user_chat')} aria-label="Back">
-            <i className="fa-solid fa-arrow-left" />
+        <div className="fixed left-0 right-0 top-14 h-14 border-b border-white/10 flex items-center gap-3 px-4 bg-black/95 backdrop-blur z-50">
+          <button 
+            className="p-2 rounded-full hover:bg-white/10 transition-colors" 
+            onClick={()=> navigate('/user_chat')} 
+            aria-label="Back to Messages"
+          >
+            <i className="fa-solid fa-arrow-left text-white" />
           </button>
-          <Avatar username={username || ''} url={otherProfile?.profile_picture || undefined} size={28} />
-          <div className="font-medium truncate">{otherProfile?.display_name || username}</div>
+          <Avatar 
+            username={username || ''} 
+            url={otherProfile?.profile_picture || undefined} 
+            size={36} 
+          />
+          <div className="flex-1 min-w-0">
+            <div className="font-semibold truncate text-white">
+              {otherProfile?.display_name || username}
+            </div>
+            <div className="text-xs text-white/60">
+              {typing ? 'typing...' : 'Online'}
+            </div>
+          </div>
+          <button 
+            className="p-2 rounded-full hover:bg-white/10 transition-colors" 
+            aria-label="More options"
+          >
+            <i className="fa-solid fa-ellipsis-vertical text-white/70" />
+          </button>
         </div>
         {/* Messages list (WhatsApp style bubbles) */}
         <div
           ref={listRef}
-          className="flex-1 overflow-y-auto overscroll-contain px-2 sm:px-3 pt-16 py-3 space-y-1 pb-24"
+          className="flex-1 overflow-y-auto overscroll-contain px-2 sm:px-3 pt-18 py-3 space-y-1 pb-24"
           style={{ WebkitOverflowScrolling: 'touch' as any, overscrollBehavior: 'contain' as any }}
           onScroll={(e)=> {
             const el = e.currentTarget
