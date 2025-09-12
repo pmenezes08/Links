@@ -2414,16 +2414,12 @@ def profile():
         with get_db_connection() as conn:
             c = conn.cursor()
             
-            # Get user data and profile data
+            # Get user data and profile data (only columns that definitely exist)
             c.execute("""
-                SELECT u.username, u.email, u.subscription, u.age, u.gender, 
-                       u.weight, u.height, u.blood_type, u.muscle_mass, u.bmi,
-                       u.country, u.city, u.industry,
+                SELECT u.username, u.email, u.subscription,
                        p.display_name, p.bio, p.location, p.website, 
                        p.instagram, p.twitter, p.profile_picture, p.cover_photo,
-                       p.is_public,
-                       u.role, u.company, u.degree, u.school, u.skills, 
-                       u.linkedin, u.experience
+                       p.is_public
                 FROM users u
                 LEFT JOIN user_profiles p ON u.username = p.username
                 WHERE u.username = ?
@@ -2483,6 +2479,9 @@ def api_profile_me():
             return jsonify({ 'success': True, 'profile': profile })
     except Exception as e:
         logger.error(f"Error in api_profile_me: {e}")
+        logger.error(f"Error details: {str(e)}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
         return jsonify({ 'success': False, 'error': 'server error' }), 500
 
 @app.route('/upload_logo', methods=['POST'])
