@@ -1477,8 +1477,12 @@ def signup():
             return render_template('signup.html', error=error_msg, full_name=full_name, email=email, mobile=mobile)
     
     if len(password) < 6:
-        return render_template('signup.html', error='Password must be at least 6 characters long',
-                               full_name=full_name, email=email, mobile=mobile)
+        error_msg = 'Password must be at least 6 characters long'
+        # Check if this is a React request
+        if any(k in request.headers.get('User-Agent', '') for k in ['Mobi', 'Android', 'iPhone', 'iPad']):
+            return jsonify({'success': False, 'error': error_msg}), 400
+        else:
+            return render_template('signup.html', error=error_msg, full_name=full_name, email=email, mobile=mobile)
     
     # Username will be generated automatically
     
@@ -1540,8 +1544,17 @@ def signup():
             
     except Exception as e:
         logger.error(f"Error during user registration: {str(e)}")
-        return render_template('signup.html', error='An error occurred during registration. Please try again.',
-                               full_name=full_name, email=email, mobile=mobile)
+        import traceback
+        logger.error(f"Registration error traceback: {traceback.format_exc()}")
+        
+        # Smart error response: mobile -> JSON, desktop -> HTML
+        ua = request.headers.get('User-Agent', '')
+        is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
+        if is_mobile:
+            return jsonify({'success': False, 'error': 'An error occurred during registration. Please try again.'}), 500
+        else:
+            return render_template('signup.html', error='An error occurred during registration. Please try again.',
+                                   full_name=full_name, email=email, mobile=mobile)
 
 @app.route('/admin_profile')
 @login_required
