@@ -646,14 +646,14 @@ export default function ChatThread(){
             />
           </div>
 
-          {/* Bottom actions */}
+          {/* Bottom back button */}
           <div className="h-16 flex items-center justify-center px-4 flex-shrink-0">
             <button 
-              className="px-4 py-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-colors"
-              onClick={() => window.open(previewImage, '_blank')}
+              className="px-6 py-3 bg-[#4db6ac] text-black rounded-lg hover:bg-[#45a99c] transition-colors font-medium flex items-center gap-2"
+              onClick={() => setPreviewImage(null)}
             >
-              <i className="fa-solid fa-external-link mr-2" />
-              Open in new tab
+              <i className="fa-solid fa-arrow-left" />
+              Back to Chat
             </button>
           </div>
         </div>
