@@ -3233,20 +3233,20 @@ def get_messages():
             c = conn.cursor()
             
             # Get current user ID
-            c.execute("SELECT rowid FROM users WHERE username = ?", (username,))
+            c.execute("SELECT id FROM users WHERE username = ?", (username,))
             user = c.fetchone()
             if not user:
                 return jsonify({'success': False, 'error': 'User not found'})
             
-            user_id = user['rowid']
+            user_id = user['id'] if hasattr(user, 'keys') else user[0]
             
             # Get other user's username
-            c.execute("SELECT username FROM users WHERE rowid = ?", (other_user_id,))
+            c.execute("SELECT username FROM users WHERE id = ?", (other_user_id,))
             other_user = c.fetchone()
             if not other_user:
                 return jsonify({'success': False, 'error': 'Other user not found'})
             
-            other_username = other_user['username']
+            other_username = other_user['username'] if hasattr(other_user, 'keys') else other_user[0]
             
             # Get messages between users
             c.execute("""
@@ -3291,12 +3291,12 @@ def send_message():
             c = conn.cursor()
             
             # Get recipient username
-            c.execute("SELECT username FROM users WHERE rowid = ?", (recipient_id,))
+            c.execute("SELECT username FROM users WHERE id = ?", (recipient_id,))
             recipient = c.fetchone()
             if not recipient:
                 return jsonify({'success': False, 'error': 'Recipient not found'})
             
-            recipient_username = recipient['username']
+            recipient_username = recipient['username'] if hasattr(recipient, 'keys') else recipient[0]
             
             # Insert message
             c.execute("""
@@ -4788,8 +4788,9 @@ def check_unread_messages():
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
-            c.execute("SELECT COUNT(*) FROM messages WHERE receiver=? AND is_read=0", (username,))
-            unread_count = c.fetchone()[0]
+            c.execute("SELECT COUNT(*) as count FROM messages WHERE receiver=? AND is_read=0", (username,))
+            result = c.fetchone()
+            unread_count = result['count'] if hasattr(result, 'keys') else result[0]
         return jsonify({'unread_count': unread_count})
     except Exception as e:
         logger.error(f"Error checking unread messages for {username}: {str(e)}")
@@ -8718,13 +8719,13 @@ def get_user_communities_with_members():
             c = conn.cursor()
             
             # Get user ID
-            c.execute("SELECT rowid FROM users WHERE username = ?", (username,))
+            c.execute("SELECT id FROM users WHERE username = ?", (username,))
             user = c.fetchone()
             if not user:
                 logger.error(f"User not found: {username}")
                 return jsonify({'success': False, 'error': 'User not found'})
             
-            user_id = user['rowid']
+            user_id = user['id'] if hasattr(user, 'keys') else user[0]
             logger.info(f"User ID: {user_id}")
             
             # Get communities the user belongs to
@@ -9063,12 +9064,12 @@ def join_community():
             c = conn.cursor()
             
             # Get user ID
-            c.execute("SELECT rowid FROM users WHERE username = ?", (username,))
+            c.execute("SELECT id FROM users WHERE username = ?", (username,))
             user = c.fetchone()
             if not user:
                 return jsonify({'success': False, 'error': 'User not found'})
             
-            user_id = user['rowid']
+            user_id = user['id'] if hasattr(user, 'keys') else user[0]
             
             # Find community by join code
             c.execute("""
