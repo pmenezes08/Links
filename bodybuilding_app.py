@@ -12831,11 +12831,12 @@ def api_get_user_id_by_username():
             return jsonify({ 'success': False, 'error': 'username required' }), 400
         with get_db_connection() as conn:
             c = conn.cursor()
-            c.execute("SELECT rowid FROM users WHERE username=?", (username,))
+            c.execute("SELECT id FROM users WHERE username=?", (username,))
             row = c.fetchone()
             if not row:
                 return jsonify({ 'success': False, 'error': 'user not found' }), 404
-            return jsonify({ 'success': True, 'user_id': row['rowid'] })
+            user_id = row['id'] if hasattr(row, 'keys') else row[0]
+            return jsonify({ 'success': True, 'user_id': user_id })
     except Exception as e:
         logger.error(f"Error resolving user id: {e}")
         return jsonify({ 'success': False, 'error': 'server error' }), 500
