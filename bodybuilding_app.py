@@ -3474,6 +3474,49 @@ def send_photo_message():
         logger.error(f"Error sending photo message: {str(e)}")
         return jsonify({'success': False, 'error': 'Failed to send photo'})
 
+@app.route('/uploads/message_photos/<filename>')
+@login_required
+def serve_message_photo(filename):
+    """Serve uploaded message photos"""
+    try:
+        uploads_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads', 'message_photos')
+        return send_from_directory(uploads_dir, filename)
+    except Exception as e:
+        logger.error(f"Error serving message photo {filename}: {e}")
+        return "Photo not found", 404
+
+@app.route('/debug/message_photos')
+@login_required
+def debug_message_photos():
+    """Debug route to check message photos directory"""
+    try:
+        uploads_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads', 'message_photos')
+        
+        if not os.path.exists(uploads_dir):
+            return jsonify({
+                'success': False,
+                'error': 'Message photos directory does not exist',
+                'expected_path': uploads_dir
+            })
+        
+        # List files in directory
+        files = os.listdir(uploads_dir) if os.path.exists(uploads_dir) else []
+        
+        return jsonify({
+            'success': True,
+            'uploads_directory': uploads_dir,
+            'files_count': len(files),
+            'files': files[:10],  # First 10 files
+            'directory_exists': os.path.exists(uploads_dir),
+            'directory_writable': os.access(uploads_dir, os.W_OK) if os.path.exists(uploads_dir) else False
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        })
+
 @app.route('/api/chat_threads')
 @login_required
 def api_chat_threads():

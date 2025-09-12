@@ -417,12 +417,17 @@ export default function ChatThread(){
                       {m.image_path ? (
                         <div className="mb-2">
                           <img 
-                            src={`/static/${m.image_path}`}
+                            src={`/uploads/${m.image_path}`}
                             alt="Shared photo"
                             className="max-w-full max-h-64 rounded-lg object-cover cursor-pointer"
                             onClick={() => {
                               // Open image in new tab for full view
-                              window.open(`/static/${m.image_path}`, '_blank')
+                              window.open(`/uploads/${m.image_path}`, '_blank')
+                            }}
+                            onError={(e) => {
+                              // Fallback if image fails to load
+                              console.error('Failed to load image:', m.image_path)
+                              e.currentTarget.style.display = 'none'
                             }}
                           />
                         </div>
