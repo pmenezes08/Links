@@ -26,7 +26,7 @@ export default function ChatThread(){
   const [showDateFloat, setShowDateFloat] = useState(false)
   const dateFloatTimer = useRef<any>(null)
 
-  // Date formatting functions (WhatsApp style)
+  // Date formatting functions
   function formatDateLabel(dateStr: string): string {
     const messageDate = new Date(dateStr)
     const today = new Date()
@@ -58,7 +58,6 @@ export default function ChatThread(){
 
   useEffect(() => {
     if (!username) return
-    // Resolve user id then load messages
     fetch('/api/get_user_id_by_username', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: new URLSearchParams({ username }) })
       .then(r=>r.json()).then(j=>{
         if (j?.success && j.user_id){
@@ -74,7 +73,6 @@ export default function ChatThread(){
                 }))
               }
             }).catch(()=>{})
-          // Load brief profile for header avatar
           fetch(`/api/get_user_profile_brief?username=${encodeURIComponent(username)}`, { credentials:'include' })
             .then(r=>r.json()).then(j=>{
               if (j?.success){ setOtherProfile({ display_name: j.display_name, profile_picture: j.profile_picture||null }) }
@@ -115,12 +113,10 @@ export default function ChatThread(){
     lastCountRef.current = messages.length
   }, [messages])
 
-  // Load persisted meta
   useEffect(() => {
     try{ const raw = localStorage.getItem(storageKey); if (raw) metaRef.current = JSON.parse(raw) || {} }catch{}
   }, [storageKey])
 
-  // Poll for new messages and typing status
   useEffect(() => {
     if (!username || !otherUserId) return
     async function poll(){
@@ -150,7 +146,6 @@ export default function ChatThread(){
     return () => { if (pollTimer.current) clearInterval(pollTimer.current) }
   }, [username, otherUserId])
 
-  // Auto-size composer textarea
   function adjustTextareaHeight(){
     const ta = textareaRef.current
     if (!ta) return
@@ -209,11 +204,11 @@ export default function ChatThread(){
         paddingTop: '3.5rem'
       }}
     >
-      {/* Chat header - always visible */}
+      {/* Chat header */}
       <div 
         className="h-14 border-b border-white/10 flex items-center gap-3 px-4 flex-shrink-0"
         style={{
-          backgroundColor: 'rgb(0, 0, 0)', // Black background as requested
+          backgroundColor: 'rgb(0, 0, 0)',
           borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
           zIndex: 9999,
           position: 'sticky',
@@ -252,14 +247,14 @@ export default function ChatThread(){
         </div>
       </div>
       
-      {/* Floating date indicator (WhatsApp style) */}
+      {/* Floating date indicator */}
       {currentDateLabel && showDateFloat && (
         <div 
-          className="fixed top-20 left-1/2 transform -translate-x-1/2 z-50 pointer-events-none transition-all duration-300"
+          className="fixed left-1/2 z-50 pointer-events-none"
           style={{ 
             top: '7rem',
-            opacity: showDateFloat ? 1 : 0,
             transform: `translateX(-50%) translateY(${showDateFloat ? '0' : '-10px'})`,
+            opacity: showDateFloat ? 1 : 0,
             transition: 'all 0.3s ease-in-out'
           }}
         >
@@ -283,17 +278,15 @@ export default function ChatThread(){
           const near = (el.scrollHeight - el.scrollTop - el.clientHeight) < 120
           if (near) setShowScrollDown(false)
           
-          // Show floating date when scrolling starts
           setShowDateFloat(true)
           
-          // Update current date label based on visible messages (WhatsApp style)
           const messageElements = el.querySelectorAll('[data-message-date]')
           let visibleDate = ''
           
           for (let i = 0; i < messageElements.length; i++) {
             const msgEl = messageElements[i] as HTMLElement
             const rect = msgEl.getBoundingClientRect()
-            const headerHeight = 112 // 3.5rem + 3.5rem
+            const headerHeight = 112
             
             if (rect.top >= headerHeight && rect.top <= headerHeight + 100) {
               visibleDate = msgEl.getAttribute('data-message-date') || ''
@@ -305,7 +298,6 @@ export default function ChatThread(){
             setCurrentDateLabel(formatDateLabel(visibleDate))
           }
           
-          // Auto-hide the floating date after scrolling stops (1.5 seconds)
           if (dateFloatTimer.current) clearTimeout(dateFloatTimer.current)
           dateFloatTimer.current = setTimeout(() => {
             setShowDateFloat(false)
@@ -319,7 +311,6 @@ export default function ChatThread(){
           
           return (
             <div key={m.id}>
-              {/* Date separator (WhatsApp style) */}
               {showDateSeparator && (
                 <div className="flex justify-center my-4">
                   <div className="bg-black/60 backdrop-blur-sm px-3 py-1 rounded-lg text-xs text-white/70 border border-white/10">
@@ -328,42 +319,41 @@ export default function ChatThread(){
                 </div>
               )}
               
-              {/* Message */}
               <div data-message-date={m.time}>
                 <LongPressActionable onDelete={() => {
-            const fd = new URLSearchParams({ message_id: String(m.id) })
-            fetch('/delete_message', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
-              .then(r=>r.json()).then(j=>{ if (j?.success){ setMessages(prev => prev.filter(x => x.id !== m.id)) } }).catch(()=>{})
-          }} onReact={(emoji)=> {
-            setMessages(msgs => msgs.map(x => x.id===m.id ? { ...x, reaction: emoji } : x))
-            const k = `${m.time}|${m.text}|${m.sent ? 'me' : 'other'}`
-            metaRef.current[k] = { ...(metaRef.current[k]||{}), reaction: emoji }
-            try{ localStorage.setItem(storageKey, JSON.stringify(metaRef.current)) }catch{}
-          }} onReply={() => {
-            setReplyTo({ text: m.text })
-            textareaRef.current?.focus()
-          }} onCopy={() => {
-            try{ navigator.clipboard && navigator.clipboard.writeText(m.text) }catch{}
-          }}>
-            <div className={`flex ${m.sent ? 'justify-end' : 'justify-start'}`}>
-              <div
-                className={`max-w-[70%] md:max-w-[70%] px-3 py-2 rounded-2xl text-[14px] leading-snug whitespace-pre-wrap break-words shadow-sm border ${m.sent ? 'bg-[#075E54] text-white border-[#075E54]' : 'bg-[#1a1a1a] text-white border-white/10'} ${m.sent ? 'rounded-br-md' : 'rounded-bl-md'}`}
-                style={{ position: 'relative', ...(m.reaction ? { paddingRight: '1.75rem', paddingBottom: '1.25rem' } : {}) } as any}
-              >
-                {m.replySnippet ? (
-                  <div className="mb-1 px-2 py-1 rounded bg-white/10 text-[12px] text-[#cfe9e7] border border-white/10">
-                    {m.replySnippet}
+                  const fd = new URLSearchParams({ message_id: String(m.id) })
+                  fetch('/delete_message', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
+                    .then(r=>r.json()).then(j=>{ if (j?.success){ setMessages(prev => prev.filter(x => x.id !== m.id)) } }).catch(()=>{})
+                }} onReact={(emoji)=> {
+                  setMessages(msgs => msgs.map(x => x.id===m.id ? { ...x, reaction: emoji } : x))
+                  const k = `${m.time}|${m.text}|${m.sent ? 'me' : 'other'}`
+                  metaRef.current[k] = { ...(metaRef.current[k]||{}), reaction: emoji }
+                  try{ localStorage.setItem(storageKey, JSON.stringify(metaRef.current)) }catch{}
+                }} onReply={() => {
+                  setReplyTo({ text: m.text })
+                  textareaRef.current?.focus()
+                }} onCopy={() => {
+                  try{ navigator.clipboard && navigator.clipboard.writeText(m.text) }catch{}
+                }}>
+                  <div className={`flex ${m.sent ? 'justify-end' : 'justify-start'}`}>
+                    <div
+                      className={`max-w-[70%] md:max-w-[70%] px-3 py-2 rounded-2xl text-[14px] leading-snug whitespace-pre-wrap break-words shadow-sm border ${m.sent ? 'bg-[#075E54] text-white border-[#075E54]' : 'bg-[#1a1a1a] text-white border-white/10'} ${m.sent ? 'rounded-br-md' : 'rounded-bl-md'}`}
+                      style={{ position: 'relative', ...(m.reaction ? { paddingRight: '1.75rem', paddingBottom: '1.25rem' } : {}) } as any}
+                    >
+                      {m.replySnippet ? (
+                        <div className="mb-1 px-2 py-1 rounded bg-white/10 text-[12px] text-[#cfe9e7] border border-white/10">
+                          {m.replySnippet}
+                        </div>
+                      ) : null}
+                      <div>{m.text}</div>
+                      <div className={`text-[10px] mt-1 ${m.sent ? 'text-white/70' : 'text-white/50'} text-right`}>{new Date(m.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+                      {m.reaction ? (
+                        <span className="absolute bottom-0.5 right-1 text-base leading-none select-none z-10">
+                          {m.reaction}
+                        </span>
+                      ) : null}
+                    </div>
                   </div>
-                ) : null}
-                <div>{m.text}</div>
-                <div className={`text-[10px] mt-1 ${m.sent ? 'text-white/70' : 'text-white/50'} text-right`}>{new Date(m.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
-                {m.reaction ? (
-                  <span className="absolute bottom-0.5 right-1 text-base leading-none select-none z-10">
-                    {m.reaction}
-                  </span>
-                ) : null}
-                </div>
-              </div>
                 </LongPressActionable>
               </div>
             </div>
@@ -381,9 +371,8 @@ export default function ChatThread(){
         )}
       </div>
 
-      {/* Composer (WhatsApp-style) */}
+      {/* Composer */}
       <div className="bg-black px-3 py-3 border-t border-white/10 flex-shrink-0">
-        {/* Reply preview */}
         {replyTo && (
           <div className="mb-2 px-3 py-2 bg-black/80 text-[12px] text-[#cfe9e7] rounded-lg border border-white/10">
             <div className="flex items-start gap-2">
@@ -396,12 +385,12 @@ export default function ChatThread(){
 
         <div className="flex items-end gap-2">
           {/* Attachment button */}
-          <button className="w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-full hover:bg-white/10 transition-colors">
-            <i className="fa-solid fa-plus text-white/70 text-lg" />
+          <button className="w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-full hover:bg-white/10 transition-colors">
+            <i className="fa-solid fa-plus text-white/70 text-base" />
           </button>
           
           {/* Message input container */}
-          <div className="flex-1 flex items-end bg-[#1a1a1a] rounded-3xl border border-white/20 overflow-hidden">
+          <div className="flex-1 flex items-end bg-[#1a1a1a] rounded-3xl border border-white/20 overflow-hidden relative">
             <textarea
               ref={textareaRef}
               rows={1}
@@ -417,7 +406,6 @@ export default function ChatThread(){
                 }, 1200)
               }}
               onFocus={() => {
-                // Force header to stay visible when keyboard appears
                 setTimeout(() => {
                   const header = document.querySelector('.h-14.border-b') as HTMLElement
                   if (header) {
@@ -431,7 +419,6 @@ export default function ChatThread(){
                 }, 100)
               }}
               onBlur={() => {
-                // Restore normal positioning when keyboard closes
                 setTimeout(() => {
                   const header = document.querySelector('.h-14.border-b') as HTMLElement
                   if (header) {
@@ -449,33 +436,35 @@ export default function ChatThread(){
               }}
             />
             
-            {/* Send button (inside input when typing) */}
-            {draft.trim() && (
+            {/* Sleeker button transition container */}
+            <div className="absolute right-1 bottom-1 w-8 h-8 flex items-center justify-center">
               <button
-                className={`w-10 h-10 m-1 rounded-full flex items-center justify-center transition-all ${
+                className={`w-7 h-7 rounded-full flex items-center justify-center transition-all duration-300 ease-out ${
                   sending 
                     ? 'bg-gray-600 text-gray-300 cursor-not-allowed' 
-                    : 'bg-[#4db6ac] text-black hover:bg-[#45a99c] active:scale-95'
+                    : 'bg-[#4db6ac] text-black hover:bg-[#45a99c]'
                 }`}
-                onClick={send}
+                onClick={draft.trim() ? send : undefined}
                 disabled={sending}
-                aria-label="Send"
+                aria-label={draft.trim() ? "Send" : "Voice message"}
+                style={{
+                  transform: draft.trim() 
+                    ? 'scale(1) rotate(0deg)' 
+                    : 'scale(1) rotate(0deg)',
+                  opacity: 1,
+                  transition: 'all 0.15s cubic-bezier(0.4, 0, 0.2, 1)'
+                }}
               >
                 {sending ? (
-                  <i className="fa-solid fa-spinner fa-spin text-sm" />
+                  <i className="fa-solid fa-spinner fa-spin text-xs" />
+                ) : draft.trim() ? (
+                  <i className="fa-solid fa-paper-plane text-xs" />
                 ) : (
-                  <i className="fa-solid fa-paper-plane text-sm" />
+                  <i className="fa-solid fa-microphone text-xs" />
                 )}
               </button>
-            )}
+            </div>
           </div>
-          
-          {/* Voice button (when no text) */}
-          {!draft.trim() && (
-            <button className="w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-full bg-[#4db6ac] text-black hover:bg-[#45a99c] active:scale-95 transition-all">
-              <i className="fa-solid fa-microphone text-lg" />
-            </button>
-          )}
         </div>
       </div>
     </div>
