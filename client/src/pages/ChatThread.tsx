@@ -372,7 +372,7 @@ export default function ChatThread(){
       </div>
 
       {/* Composer */}
-      <div className="bg-black px-3 py-3 border-t border-white/10 flex-shrink-0">
+      <div className="bg-black px-3 py-2 border-t border-white/10 flex-shrink-0">
         {replyTo && (
           <div className="mb-2 px-3 py-2 bg-black/80 text-[12px] text-[#cfe9e7] rounded-lg border border-white/10">
             <div className="flex items-start gap-2">
@@ -390,11 +390,11 @@ export default function ChatThread(){
           </button>
           
           {/* Message input container */}
-          <div className="flex-1 flex items-end bg-[#1a1a1a] rounded-3xl border border-white/20 overflow-hidden relative">
+          <div className="flex-1 flex items-center bg-[#1a1a1a] rounded-3xl border border-white/20 overflow-hidden relative">
             <textarea
               ref={textareaRef}
               rows={1}
-              className="flex-1 bg-transparent px-4 py-3 text-[16px] text-white placeholder-white/50 outline-none resize-none max-h-32 min-h-[44px]"
+              className="flex-1 bg-transparent px-4 py-2.5 text-[16px] text-white placeholder-white/50 outline-none resize-none max-h-24 min-h-[36px]"
               placeholder="Message"
               value={draft}
               onChange={e=> {
@@ -436,8 +436,8 @@ export default function ChatThread(){
               }}
             />
             
-            {/* Sleeker button transition container */}
-            <div className="absolute right-1 bottom-1 w-8 h-8 flex items-center justify-center">
+            {/* Sleeker button transition container - centered vertically */}
+            <div className="absolute right-1 top-1/2 transform -translate-y-1/2 w-8 h-8 flex items-center justify-center">
               <button
                 className={`w-7 h-7 rounded-full flex items-center justify-center transition-all duration-300 ease-out ${
                   sending 
