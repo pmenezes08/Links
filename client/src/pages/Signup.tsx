@@ -13,6 +13,7 @@ export default function Signup(){
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string>('')
+  const [debugInfo, setDebugInfo] = useState<string[]>([])
 
   function handleInputChange(field: string, value: string) {
     setFormData(prev => ({ ...prev, [field]: value }))
@@ -24,6 +25,7 @@ export default function Signup(){
     setError('')
 
     console.log('Signup form submitted with data:', formData)
+    setDebugInfo(['Form submitted, validating...'])
 
     // Validation
     if (!formData.first_name.trim()) {
@@ -64,6 +66,7 @@ export default function Signup(){
 
     console.log('Sending signup request to /signup')
     console.log('FormData contents:', Array.from(submitData.entries()))
+    setDebugInfo(prev => [...prev, 'Sending request to server...'])
 
     fetch('/signup', {
       method: 'POST',
@@ -73,6 +76,7 @@ export default function Signup(){
     .then(async r => {
       console.log('Signup response status:', r.status)
       console.log('Signup response headers:', r.headers)
+      setDebugInfo(prev => [...prev, `Response received: ${r.status}`])
       
       if (r.ok) {
         // Try to parse as JSON first
@@ -108,6 +112,7 @@ export default function Signup(){
     })
     .catch((error) => {
       console.error('Signup fetch error:', error)
+      setDebugInfo(prev => [...prev, `Network error: ${error.message}`])
       setError(`Network error: ${error.message}`)
     })
     .finally(() => setLoading(false))
@@ -124,8 +129,18 @@ export default function Signup(){
 
         {/* Error Message */}
         {error && (
-          <div className="mb-6 p-4 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 text-sm">
+          <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 text-sm">
             {error}
+          </div>
+        )}
+
+        {/* Debug Info (visible on screen) */}
+        {debugInfo.length > 0 && (
+          <div className="mb-4 p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg text-blue-400 text-xs">
+            <div className="font-medium mb-1">Debug Info:</div>
+            {debugInfo.map((info, i) => (
+              <div key={i}>• {info}</div>
+            ))}
           </div>
         )}
 
