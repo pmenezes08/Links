@@ -26,6 +26,7 @@ import NewMessage from './pages/NewMessage'
 import ChatThread from './pages/ChatThread'
 import Profile from './pages/Profile'
 import AccountSettings from './pages/AccountSettings'
+import Signup from './pages/Signup'
 import Notifications from './pages/Notifications'
 
 const queryClient = new QueryClient()
@@ -59,6 +60,8 @@ function AppRoutes(){
           <Routes>
           <Route path="/" element={<MobileLogin />} />
           <Route path="/login" element={<MobileLogin />} />
+          <Route path="/signup" element={<Signup />} />
+          <Route path="/signup_react" element={<Signup />} />
           <Route path="/premium" element={<PremiumDashboard />} />
           <Route path="/premium_dashboard" element={<PremiumDashboard />} />
           <Route path="/premium_dashboard_react" element={<PremiumDashboard />} />

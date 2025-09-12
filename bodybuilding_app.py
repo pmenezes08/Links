@@ -1429,31 +1429,52 @@ def authorized():
 def signup():
     """User registration page"""
     if request.method == 'GET':
-        return render_template('signup.html')
+        # Smart UA: mobile -> React signup, desktop -> HTML
+        ua = request.headers.get('User-Agent', '')
+        is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
+        if is_mobile:
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            dist_dir = os.path.join(base_dir, 'client', 'dist')
+            return send_from_directory(dist_dir, 'index.html')
+        else:
+            return render_template('signup.html')
     
-    # Handle POST request for user registration (new compact form)
+    # Handle POST request for user registration (supports both React and HTML forms)
+    # React form sends individual fields, HTML form sends full_name
+    first_name = request.form.get('first_name', '').strip()
+    last_name = request.form.get('last_name', '').strip()
     full_name = request.form.get('full_name', '').strip()
     email = request.form.get('email', '').strip()
     mobile = request.form.get('mobile', '').strip()
     password = request.form.get('password', '')
     confirm_password = request.form.get('confirm_password', '')
     
-    # Split full name into first and last names
-    first_name = ''
-    last_name = ''
-    if full_name:
+    # Handle both form types
+    if not first_name and not last_name and full_name:
+        # HTML form - split full name
         parts = full_name.split()
-        first_name = parts[0]
+        first_name = parts[0] if parts else ''
         last_name = ' '.join(parts[1:]) if len(parts) > 1 else ''
+    elif first_name and last_name:
+        # React form - use individual names
+        full_name = f"{first_name} {last_name}".strip()
     
     # Validation
-    if not all([full_name, email, password, confirm_password]):
-        return render_template('signup.html', error='All required fields must be filled',
-                               full_name=full_name, email=email, mobile=mobile)
+    if not all([first_name, email, password, confirm_password]):
+        error_msg = 'All required fields must be filled'
+        # Check if this is a React request (JSON or AJAX)
+        if request.headers.get('Content-Type') == 'application/x-www-form-urlencoded' and any(k in request.headers.get('User-Agent', '') for k in ['Mobi', 'Android', 'iPhone', 'iPad']):
+            return jsonify({'success': False, 'error': error_msg}), 400
+        else:
+            return render_template('signup.html', error=error_msg, full_name=full_name, email=email, mobile=mobile)
     
     if password != confirm_password:
-        return render_template('signup.html', error='Passwords do not match',
-                               full_name=full_name, email=email, mobile=mobile)
+        error_msg = 'Passwords do not match'
+        # Check if this is a React request
+        if request.headers.get('Content-Type') == 'application/x-www-form-urlencoded' and any(k in request.headers.get('User-Agent', '') for k in ['Mobi', 'Android', 'iPhone', 'iPad']):
+            return jsonify({'success': False, 'error': error_msg}), 400
+        else:
+            return render_template('signup.html', error=error_msg, full_name=full_name, email=email, mobile=mobile)
     
     if len(password) < 6:
         return render_template('signup.html', error='Password must be at least 6 characters long',
@@ -1468,8 +1489,12 @@ def signup():
             # Check if email already exists
             c.execute("SELECT 1 FROM users WHERE email = ?", (email,))
             if c.fetchone():
-                return render_template('signup.html', error='Email already registered',
-                                       full_name=full_name, email=email, mobile=mobile)
+                error_msg = 'Email already registered'
+                # Check if this is a React request
+                if any(k in request.headers.get('User-Agent', '') for k in ['Mobi', 'Android', 'iPhone', 'iPad']):
+                    return jsonify({'success': False, 'error': error_msg}), 400
+                else:
+                    return render_template('signup.html', error=error_msg, full_name=full_name, email=email, mobile=mobile)
             
             # Generate a unique username based on email or name
             base_username = (email.split('@')[0] if email else (first_name + last_name)).lower()
@@ -1505,7 +1530,13 @@ def signup():
             # Show community join prompt on first dashboard visit after signup
             session['show_join_community_prompt'] = True
             
-            return redirect(url_for('dashboard'))
+            # Smart response: mobile -> JSON success, desktop -> HTML redirect
+            ua = request.headers.get('User-Agent', '')
+            is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
+            if is_mobile:
+                return jsonify({'success': True, 'username': username, 'redirect': '/premium_dashboard'})
+            else:
+                return redirect(url_for('dashboard'))  # HTML dashboard
             
     except Exception as e:
         logger.error(f"Error during user registration: {str(e)}")
