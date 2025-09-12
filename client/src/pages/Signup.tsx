@@ -83,9 +83,9 @@ export default function Signup(){
     <div className="min-h-screen bg-black text-white flex items-center justify-center px-4">
       <div className="w-full max-w-md">
         {/* Header */}
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold mb-2">Create Account</h1>
-          <p className="text-white/60">Join C.Point today</p>
+        <div className="text-center mb-6">
+          <h1 className="text-2xl font-bold mb-2">Create Account</h1>
+          <p className="text-white/60 text-sm">Join C.Point today</p>
         </div>
 
         {/* Error Message */}
@@ -96,81 +96,81 @@ export default function Signup(){
         )}
 
         {/* Signup Form */}
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-3">
           {/* Name Fields */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm font-medium mb-2">First Name</label>
+              <label className="block text-xs font-medium mb-1.5">First Name</label>
               <input
                 type="text"
                 value={formData.first_name}
                 onChange={e => handleInputChange('first_name', e.target.value)}
                 placeholder="First"
                 required
-                className="w-full px-4 py-3 bg-white/5 border border-white/20 rounded-lg text-white placeholder-white/50 focus:border-[#4db6ac] focus:outline-none transition-colors"
+                className="w-full px-3 py-2.5 bg-white/5 border border-white/20 rounded-lg text-sm text-white placeholder-white/50 focus:border-[#4db6ac] focus:outline-none transition-colors"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-2">Last Name</label>
+              <label className="block text-xs font-medium mb-1.5">Last Name</label>
               <input
                 type="text"
                 value={formData.last_name}
                 onChange={e => handleInputChange('last_name', e.target.value)}
                 placeholder="Last"
                 required
-                className="w-full px-4 py-3 bg-white/5 border border-white/20 rounded-lg text-white placeholder-white/50 focus:border-[#4db6ac] focus:outline-none transition-colors"
+                className="w-full px-3 py-2.5 bg-white/5 border border-white/20 rounded-lg text-sm text-white placeholder-white/50 focus:border-[#4db6ac] focus:outline-none transition-colors"
               />
             </div>
           </div>
 
           {/* Email */}
           <div>
-            <label className="block text-sm font-medium mb-2">Email</label>
+            <label className="block text-xs font-medium mb-1.5">Email</label>
             <input
               type="email"
               value={formData.email}
               onChange={e => handleInputChange('email', e.target.value)}
               placeholder="your@email.com"
               required
-              className="w-full px-4 py-3 bg-white/5 border border-white/20 rounded-lg text-white placeholder-white/50 focus:border-[#4db6ac] focus:outline-none transition-colors"
+              className="w-full px-3 py-2.5 bg-white/5 border border-white/20 rounded-lg text-sm text-white placeholder-white/50 focus:border-[#4db6ac] focus:outline-none transition-colors"
             />
           </div>
 
           {/* Mobile (Optional) */}
           <div>
-            <label className="block text-sm font-medium mb-2">Mobile (Optional)</label>
+            <label className="block text-xs font-medium mb-1.5">Mobile (Optional)</label>
             <input
               type="tel"
               value={formData.mobile}
               onChange={e => handleInputChange('mobile', e.target.value)}
               placeholder="+1 (555) 123-4567"
-              className="w-full px-4 py-3 bg-white/5 border border-white/20 rounded-lg text-white placeholder-white/50 focus:border-[#4db6ac] focus:outline-none transition-colors"
+              className="w-full px-3 py-2.5 bg-white/5 border border-white/20 rounded-lg text-sm text-white placeholder-white/50 focus:border-[#4db6ac] focus:outline-none transition-colors"
             />
           </div>
 
           {/* Password */}
           <div>
-            <label className="block text-sm font-medium mb-2">Password</label>
+            <label className="block text-xs font-medium mb-1.5">Password</label>
             <input
               type="password"
               value={formData.password}
               onChange={e => handleInputChange('password', e.target.value)}
               placeholder="••••••••"
               required
-              className="w-full px-4 py-3 bg-white/5 border border-white/20 rounded-lg text-white placeholder-white/50 focus:border-[#4db6ac] focus:outline-none transition-colors"
+              className="w-full px-3 py-2.5 bg-white/5 border border-white/20 rounded-lg text-sm text-white placeholder-white/50 focus:border-[#4db6ac] focus:outline-none transition-colors"
             />
           </div>
 
           {/* Confirm Password */}
           <div>
-            <label className="block text-sm font-medium mb-2">Confirm Password</label>
+            <label className="block text-xs font-medium mb-1.5">Confirm Password</label>
             <input
               type="password"
               value={formData.confirm_password}
               onChange={e => handleInputChange('confirm_password', e.target.value)}
               placeholder="••••••••"
               required
-              className="w-full px-4 py-3 bg-white/5 border border-white/20 rounded-lg text-white placeholder-white/50 focus:border-[#4db6ac] focus:outline-none transition-colors"
+              className="w-full px-3 py-2.5 bg-white/5 border border-white/20 rounded-lg text-sm text-white placeholder-white/50 focus:border-[#4db6ac] focus:outline-none transition-colors"
             />
           </div>
 
@@ -178,7 +178,7 @@ export default function Signup(){
           <button
             type="submit"
             disabled={loading}
-            className={`w-full py-3 rounded-lg font-medium transition-colors ${
+            className={`w-full py-2.5 rounded-lg text-sm font-medium transition-colors ${
               loading
                 ? 'bg-gray-600 text-gray-300 cursor-not-allowed'
                 : 'bg-[#4db6ac] text-black hover:bg-[#45a99c]'
@@ -196,11 +196,11 @@ export default function Signup(){
         </form>
 
         {/* Login Link */}
-        <div className="mt-6 text-center">
-          <p className="text-white/60 text-sm">
+        <div className="mt-4 text-center">
+          <p className="text-white/60 text-xs">
             Already have an account?{' '}
             <button 
-              className="text-[#4db6ac] hover:text-[#45a99c] transition-colors"
+              className="text-[#4db6ac] hover:text-[#45a99c] transition-colors text-xs"
               onClick={() => navigate('/')}
             >
               Sign in
@@ -209,7 +209,7 @@ export default function Signup(){
         </div>
 
         {/* Terms */}
-        <div className="mt-6 text-center">
+        <div className="mt-4 text-center">
           <p className="text-white/40 text-xs">
             By creating an account, you agree to our Terms of Service and Privacy Policy
           </p>
