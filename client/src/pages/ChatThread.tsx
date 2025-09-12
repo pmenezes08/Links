@@ -118,21 +118,6 @@ export default function ChatThread(){
     return () => { if (pollTimer.current) clearInterval(pollTimer.current) }
   }, [username, otherUserId])
 
-  // Removed body scroll lock to avoid header disappearing on iOS when focusing the composer
-  // Additionally, reduce body bounce so the sticky/fixed header stays visible when focusing the composer on iOS
-  useEffect(() => {
-    const bodyStyle: any = document.body.style as any
-    const docStyle: any = document.documentElement.style as any
-    const prevBody = bodyStyle.overscrollBehaviorY
-    const prevDoc = docStyle.overscrollBehaviorY
-    bodyStyle.overscrollBehaviorY = 'contain'
-    docStyle.overscrollBehaviorY = 'contain'
-    return () => {
-      bodyStyle.overscrollBehaviorY = prevBody || ''
-      docStyle.overscrollBehaviorY = prevDoc || ''
-    }
-  }, [])
-
   // Auto-size composer textarea
   function adjustTextareaHeight(){
     const ta = textareaRef.current
@@ -210,37 +195,36 @@ export default function ChatThread(){
         }}
       >
         <div className="max-w-3xl mx-auto w-full flex items-center gap-3">
-            <button 
-              className="p-2 rounded-full hover:bg-white/10 transition-colors" 
-              onClick={()=> navigate('/user_chat')} 
-              aria-label="Back to Messages"
-            >
-              <i className="fa-solid fa-arrow-left text-white" />
-            </button>
-            <Avatar 
-              username={username || ''} 
-              url={otherProfile?.profile_picture || undefined} 
-              size={36} 
-            />
-            <div className="flex-1 min-w-0">
-              <div className="font-semibold truncate text-white">
-                {otherProfile?.display_name || username}
-              </div>
-              <div className="text-xs text-white/60">
-                {typing ? 'typing...' : 'Online'}
-              </div>
+          <button 
+            className="p-2 rounded-full hover:bg-white/10 transition-colors" 
+            onClick={()=> navigate('/user_chat')} 
+            aria-label="Back to Messages"
+          >
+            <i className="fa-solid fa-arrow-left text-white" />
+          </button>
+          <Avatar 
+            username={username || ''} 
+            url={otherProfile?.profile_picture || undefined} 
+            size={36} 
+          />
+          <div className="flex-1 min-w-0">
+            <div className="font-semibold truncate text-white">
+              {otherProfile?.display_name || username}
             </div>
-            <button 
-              className="p-2 rounded-full hover:bg-white/10 transition-colors" 
-              aria-label="More options"
-            >
-              <i className="fa-solid fa-ellipsis-vertical text-white/70" />
-            </button>
+            <div className="text-xs text-white/60">
+              {typing ? 'typing...' : 'Online'}
+            </div>
           </div>
+          <button 
+            className="p-2 rounded-full hover:bg-white/10 transition-colors" 
+            aria-label="More options"
+          >
+            <i className="fa-solid fa-ellipsis-vertical text-white/70" />
+          </button>
         </div>
       </div>
       
-      {/* Messages list (WhatsApp style bubbles) */}
+      {/* Messages list */}
       <div
         ref={listRef}
         className="overflow-y-auto overscroll-contain px-3 py-2 space-y-1"
@@ -251,50 +235,50 @@ export default function ChatThread(){
           maxHeight: '100%',
           paddingBottom: '0.5rem'
         }}
-          onScroll={(e)=> {
-            const el = e.currentTarget
-            const near = (el.scrollHeight - el.scrollTop - el.clientHeight) < 120
-            if (near) setShowScrollDown(false)
-          }}
-        >
-          {messages.map(m => (
-            <LongPressActionable key={m.id} onDelete={() => {
-              const fd = new URLSearchParams({ message_id: String(m.id) })
-              fetch('/delete_message', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
-                .then(r=>r.json()).then(j=>{ if (j?.success){ setMessages(prev => prev.filter(x => x.id !== m.id)) } }).catch(()=>{})
-            }} onReact={(emoji)=> {
-              setMessages(msgs => msgs.map(x => x.id===m.id ? { ...x, reaction: emoji } : x))
-              const k = `${m.time}|${m.text}|${m.sent ? 'me' : 'other'}`
-              metaRef.current[k] = { ...(metaRef.current[k]||{}), reaction: emoji }
-              try{ localStorage.setItem(storageKey, JSON.stringify(metaRef.current)) }catch{}
-            }} onReply={() => {
-              setReplyTo({ text: m.text })
-              textareaRef.current?.focus()
-            }} onCopy={() => {
-              try{ navigator.clipboard && navigator.clipboard.writeText(m.text) }catch{}
-            }}>
-              <div className={`flex ${m.sent ? 'justify-end' : 'justify-start'}`}>
-                <div
-                  className={`max-w-[70%] md:max-w-[70%] px-3 py-2 rounded-2xl text-[14px] leading-snug whitespace-pre-wrap break-words shadow-sm border ${m.sent ? 'bg-[#075E54] text-white border-[#075E54]' : 'bg-[#1a1a1a] text-white border-white/10'} ${m.sent ? 'rounded-br-md' : 'rounded-bl-md'}`}
-                  style={{ position: 'relative', ...(m.reaction ? { paddingRight: '1.75rem', paddingBottom: '1.25rem' } : {}) } as any}
-                >
-                  {m.replySnippet ? (
-                    <div className="mb-1 px-2 py-1 rounded bg-white/10 text-[12px] text-[#cfe9e7] border border-white/10">
-                      {m.replySnippet}
-                    </div>
-                  ) : null}
-                  <div>{m.text}</div>
-                  <div className={`text-[10px] mt-1 ${m.sent ? 'text-white/70' : 'text-white/50'} text-right`}>{new Date(m.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
-                  {m.reaction ? (
-                    <span className="absolute bottom-0.5 right-1 text-base leading-none select-none z-10">
-                      {m.reaction}
-                    </span>
-                  ) : null}
-                </div>
+        onScroll={(e)=> {
+          const el = e.currentTarget
+          const near = (el.scrollHeight - el.scrollTop - el.clientHeight) < 120
+          if (near) setShowScrollDown(false)
+        }}
+      >
+        {messages.map(m => (
+          <LongPressActionable key={m.id} onDelete={() => {
+            const fd = new URLSearchParams({ message_id: String(m.id) })
+            fetch('/delete_message', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
+              .then(r=>r.json()).then(j=>{ if (j?.success){ setMessages(prev => prev.filter(x => x.id !== m.id)) } }).catch(()=>{})
+          }} onReact={(emoji)=> {
+            setMessages(msgs => msgs.map(x => x.id===m.id ? { ...x, reaction: emoji } : x))
+            const k = `${m.time}|${m.text}|${m.sent ? 'me' : 'other'}`
+            metaRef.current[k] = { ...(metaRef.current[k]||{}), reaction: emoji }
+            try{ localStorage.setItem(storageKey, JSON.stringify(metaRef.current)) }catch{}
+          }} onReply={() => {
+            setReplyTo({ text: m.text })
+            textareaRef.current?.focus()
+          }} onCopy={() => {
+            try{ navigator.clipboard && navigator.clipboard.writeText(m.text) }catch{}
+          }}>
+            <div className={`flex ${m.sent ? 'justify-end' : 'justify-start'}`}>
+              <div
+                className={`max-w-[70%] md:max-w-[70%] px-3 py-2 rounded-2xl text-[14px] leading-snug whitespace-pre-wrap break-words shadow-sm border ${m.sent ? 'bg-[#075E54] text-white border-[#075E54]' : 'bg-[#1a1a1a] text-white border-white/10'} ${m.sent ? 'rounded-br-md' : 'rounded-bl-md'}`}
+                style={{ position: 'relative', ...(m.reaction ? { paddingRight: '1.75rem', paddingBottom: '1.25rem' } : {}) } as any}
+              >
+                {m.replySnippet ? (
+                  <div className="mb-1 px-2 py-1 rounded bg-white/10 text-[12px] text-[#cfe9e7] border border-white/10">
+                    {m.replySnippet}
+                  </div>
+                ) : null}
+                <div>{m.text}</div>
+                <div className={`text-[10px] mt-1 ${m.sent ? 'text-white/70' : 'text-white/50'} text-right`}>{new Date(m.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+                {m.reaction ? (
+                  <span className="absolute bottom-0.5 right-1 text-base leading-none select-none z-10">
+                    {m.reaction}
+                  </span>
+                ) : null}
               </div>
-            </LongPressActionable>
-          ))}
-        </div>
+            </div>
+          </LongPressActionable>
+        ))}
+        
         {showScrollDown && (
           <button
             className="fixed bottom-24 right-4 z-50 w-10 h-10 rounded-full bg-[#4db6ac] text-black shadow-lg border border-[#4db6ac] hover:brightness-110 flex items-center justify-center"
@@ -304,97 +288,88 @@ export default function ChatThread(){
             <i className="fa-solid fa-arrow-down" />
           </button>
         )}
+      </div>
 
-        {/* Typing indicator row (fixed height to avoid layout shift) */}
-        <div className="h-8 px-3 flex items-center gap-2 text-[#9fb0b5] flex-shrink-0">
-          {typing ? (
-            <>
-              <Avatar username={username || ''} url={otherProfile?.profile_picture || undefined} size={18} />
-              <span className="text-[12px]">typing...</span>
-            </>
-          ) : null}
-        </div>
-
+      {/* Composer (WhatsApp-style) */}
+      <div 
+        className="bg-black px-3 py-2 border-t border-white/10"
+        style={{
+          gridArea: 'composer',
+          backgroundColor: 'rgb(0, 0, 0)',
+          borderTop: '1px solid rgba(255, 255, 255, 0.1)',
+          zIndex: 1000
+        }}
+      >
         {/* Reply preview */}
-        {replyTo ? (
-          <div className="px-3 py-2 border-t border-white/10 bg-black/80 text-[12px] text-[#cfe9e7]">
+        {replyTo && (
+          <div className="mb-2 px-3 py-2 bg-black/80 text-[12px] text-[#cfe9e7] rounded-lg border border-white/10">
             <div className="flex items-start gap-2">
               <div className="w-1.5 h-6 bg-[#4db6ac] rounded" />
               <div className="flex-1 truncate">{replyTo.text.length > 90 ? replyTo.text.slice(0, 90) + '…' : replyTo.text}</div>
               <button className="ml-2 text-[#9fb0b5] text-xs" onClick={()=> setReplyTo(null)}>✕</button>
             </div>
           </div>
-        ) : null}
+        )}
 
-        {/* Composer (WhatsApp-style) */}
-        <div 
-          className="bg-black px-3 py-2 border-t border-white/10"
-          style={{
-            gridArea: 'composer',
-            backgroundColor: 'rgb(0, 0, 0)',
-            borderTop: '1px solid rgba(255, 255, 255, 0.1)',
-            zIndex: 1000
-          }}
-        >
-          <div className="max-w-3xl mx-auto flex items-end gap-2">
-            {/* Attachment button (left side) */}
-            <button className="w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-full hover:bg-white/10 transition-colors">
-              <i className="fa-solid fa-plus text-white/70 text-lg" />
-            </button>
+        <div className="max-w-3xl mx-auto flex items-end gap-2">
+          {/* Attachment button (left side) */}
+          <button className="w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-full hover:bg-white/10 transition-colors">
+            <i className="fa-solid fa-plus text-white/70 text-lg" />
+          </button>
+          
+          {/* Message input container */}
+          <div className="flex-1 flex items-end bg-[#1a1a1a] rounded-3xl border border-white/20 overflow-hidden">
+            <textarea
+              ref={textareaRef}
+              rows={1}
+              className="flex-1 bg-transparent px-4 py-3 text-[16px] text-white placeholder-white/50 outline-none resize-none max-h-32 min-h-[44px]"
+              placeholder="Message"
+              value={draft}
+              onChange={e=> {
+                setDraft(e.target.value)
+                // typing start (debounced stop)
+                fetch('/api/typing', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ peer: username, is_typing: true }) }).catch(()=>{})
+                if (typingTimer.current) clearTimeout(typingTimer.current)
+                typingTimer.current = setTimeout(() => {
+                  fetch('/api/typing', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ peer: username, is_typing: false }) }).catch(()=>{})
+                }, 1200)
+              }}
+              style={{
+                lineHeight: '1.4',
+                scrollbarWidth: 'none',
+                msOverflowStyle: 'none'
+              }}
+            />
             
-            {/* Message input container */}
-            <div className="flex-1 flex items-end bg-[#1a1a1a] rounded-3xl border border-white/20 overflow-hidden">
-              <textarea
-                ref={textareaRef}
-                rows={1}
-                className="flex-1 bg-transparent px-4 py-3 text-[16px] text-white placeholder-white/50 outline-none resize-none max-h-32 min-h-[44px]"
-                placeholder="Message"
-                value={draft}
-                onChange={e=> {
-                  setDraft(e.target.value)
-                  // typing start (debounced stop)
-                  fetch('/api/typing', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ peer: username, is_typing: true }) }).catch(()=>{})
-                  if (typingTimer.current) clearTimeout(typingTimer.current)
-                  typingTimer.current = setTimeout(() => {
-                    fetch('/api/typing', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ peer: username, is_typing: false }) }).catch(()=>{})
-                  }, 1200)
-                }}
-                style={{
-                  lineHeight: '1.4',
-                  scrollbarWidth: 'none',
-                  msOverflowStyle: 'none'
-                }}
-              />
-              
-              {/* Send button (inside input container, right side) */}
-              {draft.trim() && (
-                <button
-                  className={`w-10 h-10 m-1 rounded-full flex items-center justify-center transition-all ${
-                    sending 
-                      ? 'bg-gray-600 text-gray-300 cursor-not-allowed' 
-                      : 'bg-[#4db6ac] text-black hover:bg-[#45a99c] active:scale-95'
-                  }`}
-                  onClick={send}
-                  disabled={sending}
-                  aria-label="Send"
-                >
-                  {sending ? (
-                    <i className="fa-solid fa-spinner fa-spin text-sm" />
-                  ) : (
-                    <i className="fa-solid fa-paper-plane text-sm" />
-                  )}
-                </button>
-              )}
-            </div>
-            
-            {/* Voice message button (when no text) */}
-            {!draft.trim() && (
-              <button className="w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-full bg-[#4db6ac] text-black hover:bg-[#45a99c] active:scale-95 transition-all">
-                <i className="fa-solid fa-microphone text-lg" />
+            {/* Send button (inside input container, right side) */}
+            {draft.trim() && (
+              <button
+                className={`w-10 h-10 m-1 rounded-full flex items-center justify-center transition-all ${
+                  sending 
+                    ? 'bg-gray-600 text-gray-300 cursor-not-allowed' 
+                    : 'bg-[#4db6ac] text-black hover:bg-[#45a99c] active:scale-95'
+                }`}
+                onClick={send}
+                disabled={sending}
+                aria-label="Send"
+              >
+                {sending ? (
+                  <i className="fa-solid fa-spinner fa-spin text-sm" />
+                ) : (
+                  <i className="fa-solid fa-paper-plane text-sm" />
+                )}
               </button>
             )}
           </div>
+          
+          {/* Voice message button (when no text) */}
+          {!draft.trim() && (
+            <button className="w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-full bg-[#4db6ac] text-black hover:bg-[#45a99c] active:scale-95 transition-all">
+              <i className="fa-solid fa-microphone text-lg" />
+            </button>
+          )}
         </div>
+      </div>
     </div>
   )
 }
