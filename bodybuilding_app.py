@@ -3965,7 +3965,7 @@ def add_community_member():
                 return jsonify({'success': False, 'error': 'Only community owner or admin can add members'})
             
             # Check if new member exists
-            c.execute("SELECT rowid FROM users WHERE username = ?", (new_member_username,))
+            c.execute("SELECT id FROM users WHERE username = ?", (new_member_username,))
             new_member = c.fetchone()
             if not new_member:
                 return jsonify({'success': False, 'error': 'User not found'})
@@ -3981,7 +3981,7 @@ def add_community_member():
             
             # Add member
             c.execute("INSERT INTO user_communities (community_id, user_id, joined_at) VALUES (?, ?, ?)",
-                      (community_id, new_member['rowid'], datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+                      (community_id, new_member['id'], datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
             conn.commit()
         return jsonify({'success': True})
     except Exception as e:
@@ -4101,14 +4101,14 @@ def remove_community_member():
                 return jsonify({'success': False, 'error': 'Cannot remove community owner'})
             
             # Get member's user ID
-            c.execute("SELECT rowid FROM users WHERE username = ?", (member_username,))
+            c.execute("SELECT id FROM users WHERE username = ?", (member_username,))
             member = c.fetchone()
             if not member:
                 return jsonify({'success': False, 'error': 'User not found'})
             
             # Remove member
             c.execute("DELETE FROM user_communities WHERE community_id = ? AND user_id = ?",
-                      (community_id, member['rowid']))
+                      (community_id, member['id']))
             conn.commit()
         return jsonify({'success': True})
     except Exception as e:
@@ -4132,7 +4132,7 @@ def update_user_password():
         with get_db_connection() as conn:
             c = conn.cursor()
             # Check if target user exists
-            c.execute("SELECT rowid FROM users WHERE username = ?", (target_username,))
+            c.execute("SELECT id FROM users WHERE username = ?", (target_username,))
             user = c.fetchone()
             if not user:
                 return jsonify({'success': False, 'error': 'User not found'})
@@ -9487,12 +9487,12 @@ def leave_community():
             c = conn.cursor()
             
             # Get user ID
-            c.execute("SELECT rowid FROM users WHERE username = ?", (username,))
+            c.execute("SELECT id FROM users WHERE username = ?", (username,))
             user = c.fetchone()
             if not user:
                 return jsonify({'success': False, 'error': 'User not found'})
             
-            user_id = user['rowid']
+            user_id = user['id']
             
             # Check if user is a member
             c.execute("""
@@ -13348,8 +13348,8 @@ def get_active_chat_counts():
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
-            # Map usernames to rowid for joins
-            c.execute("SELECT rowid FROM users WHERE username=?", (username,))
+            # Map usernames to id for joins
+            c.execute("SELECT id FROM users WHERE username=?", (username,))
             me = c.fetchone()
             if not me:
                 return jsonify({ 'success': False, 'error': 'user not found' }), 404
