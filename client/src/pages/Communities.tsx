@@ -198,32 +198,47 @@ function CommunityItem({
     }
   }
 
+  const handleLeaveClick = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (window.confirm(`Are you sure you want to leave ${community.name}?`)) {
+      try {
+        await onLeave()
+      } catch (error) {
+        console.error('Error leaving community:', error)
+        alert('Failed to leave community. Please try again.')
+      }
+    }
+  }
+
   return (
     <div 
-      className={`relative w-full overflow-hidden rounded-2xl transition-all duration-200 ${
+      className={`relative w-full overflow-hidden rounded-2xl transition-all duration-200 bg-black ${
         isSwipedOpen || dragX < -10 
-          ? 'bg-black border-2 border-[#4db6ac]' 
-          : 'bg-black border border-white/10'
+          ? 'border-2 border-[#4db6ac]' 
+          : 'border border-white/10'
       }`}
     >
-      {/* Leave button (revealed on swipe) - matches bar styling */}
-      <div className="absolute inset-y-0 right-0 flex items-center pr-3">
+      {/* Leave button (revealed on swipe) - fully integrated */}
+      <div className="absolute inset-y-0 right-0 flex items-center">
         <button
-          className="h-full px-4 bg-red-500/10 text-red-400 flex items-center justify-center hover:bg-red-500/20 transition-colors border-l border-red-500/30"
-          onClick={onLeave}
+          className="h-full w-20 bg-red-500/20 text-red-400 flex items-center justify-center hover:bg-red-500/30 transition-all duration-200 rounded-r-2xl"
+          onClick={handleLeaveClick}
           style={{
             opacity: isSwipedOpen || dragX < -20 ? 1 : 0,
             transform: `translateX(${isSwipedOpen ? '0' : '100%'})`,
             transition: isDragging ? 'none' : 'all 0.2s ease-out'
           }}
         >
-          <i className="fa-solid fa-user-minus text-sm" />
+          <div className="flex flex-col items-center gap-1">
+            <i className="fa-solid fa-user-minus text-sm" />
+            <span className="text-xs font-medium">Leave</span>
+          </div>
         </button>
       </div>
 
       {/* Swipeable community content */}
       <div
-        className="w-full px-3 py-3 hover:bg-white/[0.06] flex items-center justify-between cursor-pointer"
+        className="w-full px-3 py-3 hover:bg-white/[0.03] flex items-center justify-between cursor-pointer bg-black"
         style={{
           transform: `translateX(${isDragging ? dragX : (isSwipedOpen ? -80 : 0)}px)`,
           transition: isDragging ? 'none' : 'transform 0.2s ease-out'
@@ -235,7 +250,7 @@ function CommunityItem({
         onClick={handleClick}
       >
         <div className="flex-1">
-          <div className="font-medium">{community.name}</div>
+          <div className="font-medium text-white">{community.name}</div>
           <div className="text-xs text-[#9fb0b5]">{community.type || 'Community'}</div>
         </div>
         <div className="text-[#4db6ac]">
