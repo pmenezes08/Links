@@ -147,15 +147,23 @@ class RedisCache:
     def connect(self):
         """Connect to Redis server"""
         try:
-            self.redis_client = redis.Redis(
-                host=REDIS_HOST,
-                port=REDIS_PORT,
-                password=REDIS_PASSWORD,
-                db=REDIS_DB,
-                decode_responses=True,
-                socket_connect_timeout=5,
-                socket_timeout=5
-            )
+            # Redis Cloud connection with username support
+            redis_kwargs = {
+                'host': REDIS_HOST,
+                'port': REDIS_PORT,
+                'password': REDIS_PASSWORD,
+                'db': REDIS_DB,
+                'decode_responses': True,
+                'socket_connect_timeout': 5,
+                'socket_timeout': 5
+            }
+            
+            # Add username if provided (Redis Cloud requires this)
+            redis_username = os.environ.get('REDIS_USERNAME')
+            if redis_username:
+                redis_kwargs['username'] = redis_username
+            
+            self.redis_client = redis.Redis(**redis_kwargs)
             
             # Test connection
             self.redis_client.ping()
