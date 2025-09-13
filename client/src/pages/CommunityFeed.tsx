@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import Avatar from '../components/Avatar'
+import ImageLoader from '../components/ImageLoader'
 import { useHeader } from '../contexts/HeaderContext'
 
 type PollOption = { id: number; text: string; votes: number }
@@ -272,14 +273,17 @@ export default function CommunityFeed() {
           {/* Top header image from legacy template */}
           {data.community?.background_path ? (
             <div className="community-header-image overflow-hidden rounded-xl border border-white/10 mb-3">
-              <img src={
-                data.community.background_path.startsWith('http')
-                  ? data.community.background_path
-                  : (data.community.background_path.includes('community_backgrounds/')
-                      ? `/static/${data.community.background_path}`
-                      : `/static/community_backgrounds/${data.community.background_path.split('/').slice(-1)[0]}`)
-              }
-                   alt={data.community?.name + ' Header'} className="block w-full h-auto header-image transition-transform duration-300 hover:scale-[1.015]" onError={(e:any)=>{ e.currentTarget.style.display='none' }} />
+              <ImageLoader
+                src={
+                  data.community.background_path.startsWith('http')
+                    ? data.community.background_path
+                    : (data.community.background_path.includes('community_backgrounds/')
+                        ? `/static/${data.community.background_path}`
+                        : `/static/community_backgrounds/${data.community.background_path.split('/').slice(-1)[0]}`)
+                }
+                alt={data.community?.name + ' Header'}
+                className="block w-full h-auto header-image transition-transform duration-300 hover:scale-[1.015]"
+              />
             </div>
           ) : null}
 
@@ -373,7 +377,11 @@ function AdsCard({ communityId: _communityId, ad }:{ communityId: string, ad: an
     <div className="rounded-xl border border-white/10 bg-white/[0.04] p-3 shadow-sm shadow-black/20">
       <div className="flex items-center gap-3">
         <div className="w-12 h-12 rounded bg-white/10 overflow-hidden flex items-center justify-center">
-          {ad.image_url ? (<img src={ad.image_url} alt={ad.title} className="w-full h-full object-cover" />) : (<i className="fa-solid fa-store" />)}
+          {ad.image_url ? (
+            <ImageLoader src={ad.image_url} alt={ad.title} className="w-full h-full object-cover" />
+          ) : (
+            <i className="fa-solid fa-store" />
+          )}
         </div>
         <div className="flex-1 min-w-0">
           <div className="text-xs text-[#9fb0b5]">Sponsored • University Store</div>
@@ -384,7 +392,12 @@ function AdsCard({ communityId: _communityId, ad }:{ communityId: string, ad: an
       </div>
       {ad.image_url ? (
         <div className="mt-2 rounded-lg overflow-hidden border border-white/10">
-          <img src={ad.image_url} alt={ad.title} className="w-full h-auto" onClick={onClick} style={{ cursor: 'pointer' }} />
+          <ImageLoader 
+            src={ad.image_url} 
+            alt={ad.title} 
+            className="w-full h-auto cursor-pointer" 
+            onClick={onClick}
+          />
         </div>
       ) : null}
     </div>
@@ -436,13 +449,17 @@ function PostCard({ post, currentUser, isAdmin, onOpen, onToggleReaction }: { po
           </div>
         )}
         {post.image_path ? (
-          <img src={(() => {
-            const p = post.image_path
-            if (!p) return ''
-            if (p.startsWith('http')) return p
-            if (p.startsWith('/uploads') || p.startsWith('/static')) return p
-            return p.startsWith('uploads') ? `/${p}` : `/uploads/${p}`
-          })()} alt="" className="block mx-auto max-w-full max-h-[360px] rounded border border-white/10" onError={(e:any)=>{ e.currentTarget.style.display='none' }} />
+          <ImageLoader
+            src={(() => {
+              const p = post.image_path
+              if (!p) return ''
+              if (p.startsWith('http')) return p
+              if (p.startsWith('/uploads') || p.startsWith('/static')) return p
+              return p.startsWith('uploads') ? `/${p}` : `/uploads/${p}`
+            })()}
+            alt="Post image"
+            className="block mx-auto max-w-full max-h-[360px] rounded border border-white/10"
+          />
         ) : null}
         {/* Polls are not displayed on the timeline in React */}
         <div className="flex items-center gap-2 text-xs" onClick={(e)=> e.stopPropagation()}>
