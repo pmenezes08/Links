@@ -30,11 +30,17 @@ REDIS_PORT = int(os.environ.get('REDIS_PORT', 6379))
 REDIS_PASSWORD = os.environ.get('REDIS_PASSWORD', None)
 REDIS_DB = int(os.environ.get('REDIS_DB', 0))
 
-# Cache settings
-DEFAULT_CACHE_TTL = 300  # 5 minutes
-USER_CACHE_TTL = 600     # 10 minutes
-COMMUNITY_CACHE_TTL = 180 # 3 minutes
-MESSAGE_CACHE_TTL = 60   # 1 minute
+# Cache settings (optimized for performance)
+DEFAULT_CACHE_TTL = int(os.environ.get('CACHE_TTL_DEFAULT', '300'))  # 5 minutes
+USER_CACHE_TTL = int(os.environ.get('CACHE_TTL_PROFILES', '900'))    # 15 minutes
+COMMUNITY_CACHE_TTL = int(os.environ.get('CACHE_TTL_COMMUNITIES', '300')) # 5 minutes
+MESSAGE_CACHE_TTL = int(os.environ.get('CACHE_TTL_MESSAGES', '60'))  # 1 minute
+CHAT_THREADS_TTL = int(os.environ.get('CACHE_TTL_CHAT_THREADS', '120')) # 2 minutes
+IMAGE_CACHE_TTL = int(os.environ.get('CACHE_TTL_IMAGES', '7200'))    # 2 hours
+
+# Memory management
+MAX_CACHE_ENTRIES = int(os.environ.get('CACHE_MAX_ENTRIES', '10000'))
+CLEANUP_INTERVAL = int(os.environ.get('CACHE_CLEANUP_INTERVAL', '100'))
 
 class MemoryCache:
     """In-memory cache with TTL support for PythonAnywhere"""
@@ -80,8 +86,18 @@ class MemoryCache:
             self.cache[key] = value
             self.expiry[key] = time.time() + ttl
             
-            # Cleanup old entries occasionally
-            if len(self.cache) % 100 == 0:
+            # Memory management - prevent overflow
+            if len(self.cache) > MAX_CACHE_ENTRIES:
+                # Remove oldest entries
+                sorted_keys = sorted(self.expiry.items(), key=lambda x: x[1])
+                keys_to_remove = [k for k, _ in sorted_keys[:MAX_CACHE_ENTRIES//4]]  # Remove 25%
+                for key in keys_to_remove:
+                    self.cache.pop(key, None)
+                    self.expiry.pop(key, None)
+                logger.info(f"🧹 Cleaned up {len(keys_to_remove)} cache entries")
+            
+            # Cleanup expired entries occasionally
+            if len(self.cache) % CLEANUP_INTERVAL == 0:
                 self._cleanup_expired()
             
             return True

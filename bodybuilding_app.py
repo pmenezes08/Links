@@ -2500,7 +2500,8 @@ def api_profile_me():
             }
             
             # Cache profile for faster future requests
-            cache.set(cache_key, profile, 300)  # Cache for 5 minutes
+            from redis_cache import USER_CACHE_TTL
+            cache.set(cache_key, profile, USER_CACHE_TTL)  # Optimized TTL
             logger.debug(f"💾 Cached profile for {username}")
             
             return jsonify({ 'success': True, 'profile': profile })
@@ -3357,7 +3358,8 @@ def get_messages():
             conn.commit()
             
             # Cache messages for faster future loading
-            cache.set(cache_key, messages, 30)  # Cache for 30 seconds
+            from redis_cache import MESSAGE_CACHE_TTL
+            cache.set(cache_key, messages, MESSAGE_CACHE_TTL)  # Optimized TTL
             logger.debug(f"💾 Cached messages for {username} ↔ {other_user_id}")
             
             return jsonify({'success': True, 'messages': messages})
@@ -3566,7 +3568,8 @@ def serve_message_photo(filename):
         response = send_from_directory(uploads_dir, filename)
         
         # Add cache headers for faster loading
-        response.headers['Cache-Control'] = 'public, max-age=3600'  # 1 hour
+        from redis_cache import IMAGE_CACHE_TTL
+        response.headers['Cache-Control'] = f'public, max-age={IMAGE_CACHE_TTL}'
         response.headers['ETag'] = f'"{filename}"'
         
         return response
@@ -3721,7 +3724,8 @@ def api_chat_threads():
         threads.sort(key=lambda t: (t.get('last_activity_time') or ''), reverse=True)
         
         # Cache the result for faster future requests
-        cache.set(cache_key, threads, 60)  # Cache for 1 minute
+        from redis_cache import CHAT_THREADS_TTL
+        cache.set(cache_key, threads, CHAT_THREADS_TTL)  # Optimized TTL
         logger.debug(f"💾 Cached chat_threads for {username}")
         
         return jsonify({'success': True, 'threads': threads})
@@ -10140,7 +10144,8 @@ def static_uploaded_file(filename):
         response = send_from_directory('static/uploads', filename)
         
         # Add cache headers for faster photo loading
-        response.headers['Cache-Control'] = 'public, max-age=3600'  # 1 hour
+        from redis_cache import IMAGE_CACHE_TTL
+        response.headers['Cache-Control'] = f'public, max-age={IMAGE_CACHE_TTL}'
         response.headers['ETag'] = f'"{filename}"'
         
         return response
