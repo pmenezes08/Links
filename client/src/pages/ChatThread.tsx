@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
 import Avatar from '../components/Avatar'
+import ImageLoader from '../components/ImageLoader'
+import MessageImage from '../components/MessageImage'
 
 export default function ChatThread(){
   const { setTitle } = useHeader()
@@ -414,20 +416,15 @@ export default function ChatThread(){
                         </div>
                       ) : null}
                       
-                      {/* Image display */}
+                      {/* Image display with loader */}
                       {m.image_path ? (
                         <div className="mb-2">
-                          <img 
+                          <MessageImage
                             src={`/uploads/${m.image_path}`}
                             alt="Shared photo"
-                            className="max-w-full max-h-64 rounded-md object-cover cursor-pointer border border-white/10"
+                            className="max-w-full max-h-64 cursor-pointer"
                             onClick={() => {
                               setPreviewImage(`/uploads/${m.image_path}`)
-                            }}
-                            onError={(e) => {
-                              // Fallback if image fails to load
-                              console.error('Failed to load image:', m.image_path)
-                              e.currentTarget.style.display = 'none'
                             }}
                           />
                         </div>
@@ -638,7 +635,7 @@ export default function ChatThread(){
             className="flex-1 flex items-center justify-center p-4"
             onClick={(e) => e.stopPropagation()}
           >
-            <img 
+            <ImageLoader
               src={previewImage}
               alt="Photo preview"
               className="max-w-full max-h-full object-contain"
