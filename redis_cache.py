@@ -4,16 +4,27 @@ Redis Caching Layer for C.Point App
 Implements Redis caching to improve response times
 """
 
-import redis
 import json
 import os
 import logging
+import time
 from datetime import datetime, timedelta
 from functools import wraps
+from threading import Lock
 
 logger = logging.getLogger(__name__)
 
-# Redis configuration
+# Try to import Redis, fall back to in-memory cache if not available
+try:
+    import redis
+    REDIS_AVAILABLE = True
+except ImportError:
+    REDIS_AVAILABLE = False
+    logger.info("Redis not available, using in-memory cache")
+
+# Configuration
+REDIS_ENABLED = os.environ.get('REDIS_ENABLED', 'false').lower() == 'true' and REDIS_AVAILABLE
+CACHE_ENABLED = os.environ.get('CACHE_ENABLED', 'true').lower() == 'true'
 REDIS_HOST = os.environ.get('REDIS_HOST', 'localhost')
 REDIS_PORT = int(os.environ.get('REDIS_PORT', 6379))
 REDIS_PASSWORD = os.environ.get('REDIS_PASSWORD', None)
@@ -25,11 +36,97 @@ USER_CACHE_TTL = 600     # 10 minutes
 COMMUNITY_CACHE_TTL = 180 # 3 minutes
 MESSAGE_CACHE_TTL = 60   # 1 minute
 
+class MemoryCache:
+    """In-memory cache with TTL support for PythonAnywhere"""
+    def __init__(self):
+        self.cache = {}
+        self.expiry = {}
+        self.lock = Lock()
+        self.enabled = CACHE_ENABLED
+        logger.info("✅ In-memory cache initialized")
+    
+    def _cleanup_expired(self):
+        """Remove expired entries"""
+        current_time = time.time()
+        expired_keys = [key for key, exp_time in self.expiry.items() if exp_time < current_time]
+        for key in expired_keys:
+            self.cache.pop(key, None)
+            self.expiry.pop(key, None)
+    
+    def get(self, key):
+        """Get value from cache"""
+        if not self.enabled:
+            return None
+        
+        with self.lock:
+            self._cleanup_expired()
+            
+            if key in self.cache and key in self.expiry:
+                if self.expiry[key] > time.time():
+                    return self.cache[key]
+                else:
+                    # Expired
+                    self.cache.pop(key, None)
+                    self.expiry.pop(key, None)
+            
+            return None
+    
+    def set(self, key, value, ttl=DEFAULT_CACHE_TTL):
+        """Set value in cache with TTL"""
+        if not self.enabled:
+            return False
+        
+        with self.lock:
+            self.cache[key] = value
+            self.expiry[key] = time.time() + ttl
+            
+            # Cleanup old entries occasionally
+            if len(self.cache) % 100 == 0:
+                self._cleanup_expired()
+            
+            return True
+    
+    def delete(self, key):
+        """Delete key from cache"""
+        if not self.enabled:
+            return False
+        
+        with self.lock:
+            self.cache.pop(key, None)
+            self.expiry.pop(key, None)
+            return True
+    
+    def delete_pattern(self, pattern):
+        """Delete all keys matching pattern"""
+        if not self.enabled:
+            return False
+        
+        with self.lock:
+            # Simple pattern matching for in-memory cache
+            pattern_clean = pattern.replace('*', '')
+            keys_to_delete = [key for key in self.cache.keys() if pattern_clean in key]
+            for key in keys_to_delete:
+                self.cache.pop(key, None)
+                self.expiry.pop(key, None)
+            return True
+    
+    def flush_all(self):
+        """Clear all cache"""
+        if not self.enabled:
+            return False
+        
+        with self.lock:
+            self.cache.clear()
+            self.expiry.clear()
+            logger.info("🗑️ Memory cache cleared")
+            return True
+
 class RedisCache:
     def __init__(self):
         self.redis_client = None
         self.enabled = False
-        self.connect()
+        if REDIS_ENABLED:
+            self.connect()
     
     def connect(self):
         """Connect to Redis server"""
@@ -51,7 +148,7 @@ class RedisCache:
             
         except Exception as e:
             logger.warning(f"⚠️ Redis connection failed: {e}")
-            logger.warning("App will continue without caching")
+            logger.warning("Falling back to in-memory cache")
             self.enabled = False
     
     def get(self, key):
@@ -120,8 +217,13 @@ class RedisCache:
             logger.warning(f"Redis flush error: {e}")
             return False
 
-# Global cache instance
-cache = RedisCache()
+# Global cache instance - use Redis if available, otherwise in-memory
+if REDIS_ENABLED:
+    cache = RedisCache()
+    logger.info("🚀 Using Redis cache for maximum performance")
+else:
+    cache = MemoryCache()
+    logger.info("💾 Using in-memory cache (PythonAnywhere compatible)")
 
 # Cache key generators
 def user_cache_key(username):

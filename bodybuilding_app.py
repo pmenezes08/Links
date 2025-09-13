@@ -17,6 +17,7 @@ from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
 from pywebpush import webpush, WebPushException
 from hashlib import sha256
+from redis_cache import cache, cache_result, invalidate_user_cache, invalidate_community_cache, invalidate_message_cache
 
 # Initialize Flask app
 app = Flask(__name__, template_folder='templates')
@@ -2457,6 +2458,14 @@ def profile():
 @login_required
 def api_profile_me():
     username = session['username']
+    
+    # Check cache first for faster profile loading
+    cache_key = f"profile:{username}"
+    cached_profile = cache.get(cache_key)
+    if cached_profile:
+        logger.debug(f"🚀 Cache hit: profile for {username}")
+        return jsonify({'success': True, 'profile': cached_profile})
+    
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
@@ -2489,6 +2498,11 @@ def api_profile_me():
                 'profile_picture': get_val('profile_picture') if isinstance(row, dict) or hasattr(row, 'keys') else row[9],
                 'cover_photo': get_val('cover_photo') if isinstance(row, dict) or hasattr(row, 'keys') else row[10],
             }
+            
+            # Cache profile for faster future requests
+            cache.set(cache_key, profile, 300)  # Cache for 5 minutes
+            logger.debug(f"💾 Cached profile for {username}")
+            
             return jsonify({ 'success': True, 'profile': profile })
     except Exception as e:
         logger.error(f"Error in api_profile_me: {e}")
@@ -3292,6 +3306,13 @@ def get_messages():
     if not other_user_id:
         return jsonify({'success': False, 'error': 'Other user ID required'})
     
+    # Check cache first for faster message loading
+    cache_key = f"messages:{username}:{other_user_id}"
+    cached_messages = cache.get(cache_key)
+    if cached_messages:
+        logger.debug(f"🚀 Cache hit: messages for {username} ↔ {other_user_id}")
+        return jsonify({'success': True, 'messages': cached_messages})
+    
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
@@ -3334,6 +3355,11 @@ def get_messages():
             # Mark messages from other user as read
             c.execute("UPDATE messages SET is_read=1 WHERE sender=? AND receiver=? AND is_read=0", (other_username, username))
             conn.commit()
+            
+            # Cache messages for faster future loading
+            cache.set(cache_key, messages, 30)  # Cache for 30 seconds
+            logger.debug(f"💾 Cached messages for {username} ↔ {other_user_id}")
+            
             return jsonify({'success': True, 'messages': messages})
             
     except Exception as e:
@@ -3382,6 +3408,9 @@ def send_message():
             """, (username, recipient_username, message))
             
             conn.commit()
+            
+            # Invalidate message caches for faster updates
+            invalidate_message_cache(username, recipient_username)
             
             # Create notification for the recipient (prevent duplicates)
             try:
@@ -3531,10 +3560,16 @@ def send_photo_message():
 @app.route('/uploads/message_photos/<filename>')
 @login_required
 def serve_message_photo(filename):
-    """Serve uploaded message photos"""
+    """Serve uploaded message photos with caching"""
     try:
         uploads_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads', 'message_photos')
-        return send_from_directory(uploads_dir, filename)
+        response = send_from_directory(uploads_dir, filename)
+        
+        # Add cache headers for faster loading
+        response.headers['Cache-Control'] = 'public, max-age=3600'  # 1 hour
+        response.headers['ETag'] = f'"{filename}"'
+        
+        return response
     except Exception as e:
         logger.error(f"Error serving message photo {filename}: {e}")
         return "Photo not found", 404
@@ -3578,6 +3613,14 @@ def api_chat_threads():
     Shape: { success, threads: [ { other_username, display_name, profile_picture_url, last_sent_text, last_sent_time, last_activity_time } ] }
     """
     username = session.get('username')
+    
+    # Check cache first
+    cache_key = f"chat_threads:{username}"
+    cached_threads = cache.get(cache_key)
+    if cached_threads:
+        logger.debug(f"🚀 Cache hit: chat_threads for {username}")
+        return jsonify({'success': True, 'threads': cached_threads})
+    
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
@@ -3676,6 +3719,11 @@ def api_chat_threads():
         # Sort threads by most recent activity; filter out any without counterpart
         threads = [t for t in threads if t.get('other_username')]
         threads.sort(key=lambda t: (t.get('last_activity_time') or ''), reverse=True)
+        
+        # Cache the result for faster future requests
+        cache.set(cache_key, threads, 60)  # Cache for 1 minute
+        logger.debug(f"💾 Cached chat_threads for {username}")
+        
         return jsonify({'success': True, 'threads': threads})
     except Exception as e:
         logger.error(f"Error building chat threads for {username}: {e}")
@@ -10086,10 +10134,16 @@ def react_members_page(community_id):
         abort(500)
 @app.route('/static/uploads/<path:filename>')
 def static_uploaded_file(filename):
-    """Alternative route for static uploads"""
+    """Alternative route for static uploads with caching"""
     try:
         logger.info(f"Static image request: {filename}")
-        return send_from_directory('static/uploads', filename)
+        response = send_from_directory('static/uploads', filename)
+        
+        # Add cache headers for faster photo loading
+        response.headers['Cache-Control'] = 'public, max-age=3600'  # 1 hour
+        response.headers['ETag'] = f'"{filename}"'
+        
+        return response
     except Exception as e:
         logger.error(f"Error serving static image {filename}: {str(e)}")
         return "Error serving image", 500
@@ -10106,9 +10160,15 @@ def community_background_file(filename):
         static_path = os.path.join('static', 'community_backgrounds', filename)
         
         if os.path.exists(upload_path):
-            return send_from_directory(os.path.join(app.config['UPLOAD_FOLDER'], 'community_backgrounds'), filename)
+            response = send_from_directory(os.path.join(app.config['UPLOAD_FOLDER'], 'community_backgrounds'), filename)
+            response.headers['Cache-Control'] = 'public, max-age=7200'  # 2 hours
+            response.headers['ETag'] = f'"{filename}"'
+            return response
         elif os.path.exists(static_path):
-            return send_from_directory('static/community_backgrounds', filename)
+            response = send_from_directory('static/community_backgrounds', filename)
+            response.headers['Cache-Control'] = 'public, max-age=7200'  # 2 hours
+            response.headers['ETag'] = f'"{filename}"'
+            return response
         else:
             logger.warning(f"Community background file not found in uploads or static: {filename}")
             # Return a transparent 1x1 pixel instead of 404

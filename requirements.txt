@@ -8,3 +8,5 @@ stripe==7.0.0  # Stripe payments
 python-dotenv==1.0.0  # Optional: for managing env vars like API keys
 pywebpush==1.14.0  # Web Push notifications
 cryptography>=41.0.0  # Needed by pywebpush for VAPID
+redis==5.0.1  # Redis caching for performance
+PyMySQL==1.1.0  # MySQL database connector
