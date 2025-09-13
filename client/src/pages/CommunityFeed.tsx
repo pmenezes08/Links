@@ -272,8 +272,8 @@ export default function CommunityFeed() {
         <div className="space-y-3">
           {/* Top header image from legacy template */}
           {data.community?.background_path ? (
-            <div className="community-header-image overflow-hidden rounded-xl border border-white/10 mb-3">
-              <ImageLoader
+            <div className="community-header-image overflow-hidden rounded-xl border border-white/10 mb-3 relative">
+              <img 
                 src={
                   data.community.background_path.startsWith('http')
                     ? data.community.background_path
@@ -283,7 +283,27 @@ export default function CommunityFeed() {
                 }
                 alt={data.community?.name + ' Header'}
                 className="block w-full h-auto header-image transition-transform duration-300 hover:scale-[1.015]"
+                onError={(e:any)=>{ e.currentTarget.style.display='none' }}
+                style={{ 
+                  opacity: 1,
+                  transition: 'opacity 0.3s ease-in-out'
+                }}
+                onLoad={(e) => {
+                  // Hide loading overlay when image loads
+                  const loadingOverlay = e.currentTarget.parentElement?.querySelector('.loading-overlay')
+                  if (loadingOverlay) {
+                    (loadingOverlay as HTMLElement).style.display = 'none'
+                  }
+                }}
               />
+              
+              {/* Loading overlay - same size as image container */}
+              <div className="loading-overlay absolute inset-0 bg-white/5 flex items-center justify-center">
+                <div className="flex flex-col items-center gap-2">
+                  <div className="w-6 h-6 border-2 border-white/20 border-t-white/60 rounded-full animate-spin"></div>
+                  <div className="text-xs text-white/50">Loading header...</div>
+                </div>
+              </div>
             </div>
           ) : null}
 
