@@ -10,6 +10,7 @@ export default function EditCommunity(){
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string| null>(null)
   const [allowed, setAllowed] = useState(false)
+  const [isOwner, setIsOwner] = useState(false)
   const formRef = useRef<HTMLFormElement|null>(null)
 
   useEffect(() => {
@@ -23,8 +24,10 @@ export default function EditCommunity(){
         if (!mounted) return
         const role = j?.current_user_role
         const can = role === 'owner' || role === 'app_admin'
+        const owner = role === 'owner'
         setAllowed(!!can)
-        if (!can){ setError('You do not have permission to edit this community.'); setLoading(false); return }
+        setIsOwner(!!owner)
+        if (!can){ setError('You do not have permission to manage this community.'); setLoading(false); return }
         // Load current community info
         const rc = await fetch(`/api/community_feed/${community_id}`, { credentials:'include' })
         const jc = await rc.json().catch(()=>null)
@@ -58,6 +61,25 @@ export default function EditCommunity(){
     }
   }
 
+  async function onDelete(){
+    if (!isOwner) return
+    if (!window.confirm(`Are you sure you want to delete this community? This action cannot be undone.`)) return
+    
+    try {
+      const fd = new URLSearchParams({ community_id: String(community_id) })
+      const r = await fetch('/delete_community', { method:'POST', credentials:'include', body: fd })
+      const j = await r.json().catch(()=>null)
+      if (j?.success){
+        alert('Community deleted successfully')
+        navigate('/communities_react')
+      } else {
+        alert(j?.error || 'Failed to delete community')
+      }
+    } catch (error) {
+      alert('Failed to delete community')
+    }
+  }
+
   if (loading) return <div className="p-4 text-[#9fb0b5]">Loading…</div>
   if (error) return <div className="p-4 text-red-400">{error}</div>
   if (!allowed) return <div className="p-4 text-[#9fb0b5]">No access.</div>
@@ -68,7 +90,7 @@ export default function EditCommunity(){
         <button className="px-3 py-2 rounded-full text-[#cfd8dc] hover:text-[#4db6ac]" onClick={()=> navigate(-1)}>
           <i className="fa-solid fa-arrow-left" />
         </button>
-        <div className="ml-2 font-semibold">Edit community</div>
+        <div className="ml-2 font-semibold">Manage Community</div>
       </div>
 
       <div className="max-w-2xl mx-auto pt-14 px-3 pb-24">
@@ -91,9 +113,27 @@ export default function EditCommunity(){
           </div>
           <div className="flex justify-end gap-2">
             <button type="button" className="px-3 py-2 rounded-md border border-white/10 hover:bg-white/5" onClick={()=> navigate(-1)}>Cancel</button>
-            <button type="submit" className="px-3 py-2 rounded-md bg-[#4db6ac] text-black hover:brightness-110">Save</button>
+            <button type="submit" className="px-3 py-2 rounded-md bg-[#4db6ac] text-black hover:brightness-110">Save Changes</button>
           </div>
         </form>
+
+        {/* Delete Community Section - Only for owners */}
+        {isOwner && (
+          <div className="mt-8 pt-6 border-t border-white/10">
+            <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4">
+              <h3 className="text-lg font-semibold text-red-400 mb-2">Danger Zone</h3>
+              <p className="text-sm text-[#9fb0b5] mb-4">
+                Deleting this community will permanently remove all posts, messages, and member data. This action cannot be undone.
+              </p>
+              <button 
+                onClick={onDelete}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-md font-medium transition-colors"
+              >
+                Delete Community
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

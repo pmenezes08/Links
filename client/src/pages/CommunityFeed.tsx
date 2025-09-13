@@ -537,7 +537,7 @@ function EditCommunityButton({ communityId, onClose }:{ communityId: string, onC
   if (!allowed) return null
   return (
     <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { onClose(); navigate(`/community/${communityId}/edit`) }}>
-      Edit community
+      Manage Community
     </button>
   )
 }
