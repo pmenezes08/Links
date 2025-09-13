@@ -6,9 +6,28 @@ import { useNavigate } from 'react-router-dom'
 
 export default function PremiumDashboard() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [hasGymAccess, setHasGymAccess] = useState(false)
   const { setTitle } = useHeader()
   useEffect(() => { setTitle('Dashboard') }, [setTitle])
   const navigate = useNavigate()
+
+  useEffect(() => {
+    async function checkGymMembership() {
+      try {
+        const response = await fetch('/api/check_gym_membership', {
+          method: 'GET',
+          credentials: 'include'
+        })
+        const data = await response.json()
+        setHasGymAccess(data.hasGymAccess || false)
+      } catch (error) {
+        console.error('Error checking gym membership:', error)
+        setHasGymAccess(false)
+      }
+    }
+    
+    checkGymMembership()
+  }, [])
 
 
   return (
@@ -23,7 +42,7 @@ export default function PremiumDashboard() {
           <a className="block px-5 py-3 text-sm hover:bg-teal-700/20 hover:text-teal-300" href="/profile">Profile</a>
           <a className="block px-5 py-3 text-sm hover:bg-teal-700/20 hover:text-teal-300" href="/user_chat">Messages</a>
           <a className="block px-5 py-3 text-sm hover:bg-teal-700/20 hover:text-teal-300" href="/communities">Your Communities</a>
-          <a className="block px-5 py-3 text-sm hover:bg-teal-700/20 hover:text-teal-300" href="/your_sports">Your Sports</a>
+          {hasGymAccess && <a className="block px-5 py-3 text-sm hover:bg-teal-700/20 hover:text-teal-300" href="/your_sports">Your Sports</a>}
           <a className="block px-5 py-3 text-sm hover:bg-teal-700/20 hover:text-teal-300" href="/logout">Logout</a>
           <a className="block px-5 py-3 text-sm hover:bg-teal-700/20 hover:text-teal-300" href="/account_settings"><i className="fa-solid fa-cog mr-2" />Settings</a>
         </nav>
@@ -40,7 +59,7 @@ export default function PremiumDashboard() {
             <a className="px-5 py-3 border-b border-[#222]" href="/profile" onClick={() => setMobileMenuOpen(false)}>Profile</a>
             <a className="px-5 py-3 border-b border-[#222]" href="/user_chat" onClick={() => setMobileMenuOpen(false)}>Messages</a>
             <a className="px-5 py-3 border-b border-[#222]" href="/communities" onClick={() => setMobileMenuOpen(false)}>Your Communities</a>
-            <a className="px-5 py-3 border-b border-[#222]" href="/your_sports" onClick={() => setMobileMenuOpen(false)}>Your Sports</a>
+            {hasGymAccess && <a className="px-5 py-3 border-b border-[#222]" href="/your_sports" onClick={() => setMobileMenuOpen(false)}>Your Sports</a>}
             <a className="px-5 py-3 border-b border-[#222]" href="/logout" onClick={() => setMobileMenuOpen(false)}>Logout</a>
             <a className="px-5 py-3" href="/account_settings" onClick={() => setMobileMenuOpen(false)}><i className="fa-solid fa-cog mr-2" />Settings</a>
           </nav>
@@ -61,7 +80,7 @@ export default function PremiumDashboard() {
           <div className="w-full max-w-5xl grid grid-cols-1 sm:grid-cols-3 gap-4">
             <Card iconClass="fa-solid fa-plus" title="Create/Join a Community" onClick={() => (location.assign('/communities'))} />
             <Card iconClass="fa-solid fa-house" title="Your Communities" onClick={() => navigate('/home')} />
-            <Card iconClass="fa-solid fa-person-snowboarding" title="Your Sports" onClick={() => (location.assign('/your_sports'))} />
+            {hasGymAccess && <Card iconClass="fa-solid fa-person-snowboarding" title="Your Sports" onClick={() => (location.assign('/your_sports'))} />}
           </div>
         </div>
       </div>

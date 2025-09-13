@@ -10188,6 +10188,35 @@ def community_background_file(filename):
 @login_required
 def your_sports():
     username = session.get('username')
+    
+    # Check if user belongs to a gym community
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("""
+                SELECT c.type FROM communities c
+                JOIN user_communities uc ON c.id = uc.community_id
+                JOIN users u ON uc.user_id = u.id
+                WHERE u.username = ? AND c.type = 'gym'
+                LIMIT 1
+            """, (username,))
+            gym_membership = c.fetchone()
+            
+            if not gym_membership:
+                # User doesn't belong to a gym community
+                ua = request.headers.get('User-Agent', '')
+                is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
+                if is_mobile:
+                    return redirect(url_for('premium_dashboard'))
+                return render_template('error.html', 
+                                     error_title='Access Restricted',
+                                     error_message='You must be a member of a gym community to access Your Sports.',
+                                     username=username)
+    except Exception as e:
+        logger.error(f"Error checking gym membership for {username}: {str(e)}")
+        # On error, allow access (fail open)
+        pass
+    
     try:
         ua = request.headers.get('User-Agent', '')
         is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
@@ -10198,6 +10227,32 @@ def your_sports():
         return render_template('your_sports.html', username=username)
     except Exception:
         return render_template('your_sports.html', username=username)
+
+@app.route('/api/check_gym_membership')
+@login_required
+def check_gym_membership():
+    """Check if user belongs to a gym community"""
+    username = session.get('username')
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("""
+                SELECT c.type FROM communities c
+                JOIN user_communities uc ON c.id = uc.community_id
+                JOIN users u ON uc.user_id = u.id
+                WHERE u.username = ? AND c.type = 'gym'
+                LIMIT 1
+            """, (username,))
+            gym_membership = c.fetchone()
+            
+            return jsonify({
+                'hasGymAccess': bool(gym_membership),
+                'username': username
+            })
+    except Exception as e:
+        logger.error(f"Error checking gym membership for {username}: {str(e)}")
+        return jsonify({'hasGymAccess': False, 'error': str(e)}), 500
 
 @app.route('/gym_react')
 @login_required
