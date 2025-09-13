@@ -7,26 +7,39 @@ import { useNavigate } from 'react-router-dom'
 export default function PremiumDashboard() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [hasGymAccess, setHasGymAccess] = useState(false)
+  const [parentCommunity, setParentCommunity] = useState<{id: number, name: string, type: string} | null>(null)
   const { setTitle } = useHeader()
   useEffect(() => { setTitle('Dashboard') }, [setTitle])
   const navigate = useNavigate()
 
   useEffect(() => {
-    async function checkGymMembership() {
+    async function loadUserData() {
       try {
-        const response = await fetch('/api/check_gym_membership', {
+        // Check gym membership
+        const gymResponse = await fetch('/api/check_gym_membership', {
           method: 'GET',
           credentials: 'include'
         })
-        const data = await response.json()
-        setHasGymAccess(data.hasGymAccess || false)
+        const gymData = await gymResponse.json()
+        setHasGymAccess(gymData.hasGymAccess || false)
+
+        // Get parent community
+        const parentResponse = await fetch('/api/user_parent_community', {
+          method: 'GET',
+          credentials: 'include'
+        })
+        const parentData = await parentResponse.json()
+        if (parentData.success && parentData.parentCommunity) {
+          setParentCommunity(parentData.parentCommunity)
+        }
       } catch (error) {
-        console.error('Error checking gym membership:', error)
+        console.error('Error loading user data:', error)
         setHasGymAccess(false)
+        setParentCommunity(null)
       }
     }
     
-    checkGymMembership()
+    loadUserData()
   }, [])
 
 
@@ -78,7 +91,11 @@ export default function PremiumDashboard() {
         {/* Cards grid */}
         <div className="h-full flex items-center justify-center px-3 md:ml-52">
           <div className="w-full max-w-5xl grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Card iconClass="fa-solid fa-house" title="Your Communities" onClick={() => navigate('/home')} />
+            <Card 
+              iconClass="fa-solid fa-house" 
+              title={parentCommunity?.name || "Your Communities"} 
+              onClick={() => navigate('/communities')} 
+            />
             {hasGymAccess && <Card iconClass="fa-solid fa-person-snowboarding" title="Your Sports" onClick={() => (location.assign('/your_sports'))} />}
           </div>
         </div>

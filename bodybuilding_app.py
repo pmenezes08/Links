@@ -1630,8 +1630,8 @@ def login_password():
         password = request.form.get('password', '')
         print(f"Password entered: {password}")
         if username == 'admin' and password == '12345':
-            print("Hardcoded admin match, redirecting to premium_dashboard")
-            return redirect(url_for('premium_dashboard'))
+            print("Hardcoded admin match, redirecting to communities")
+            return redirect(url_for('communities'))
         try:
             conn = get_db_connection()
             c = conn.cursor()
@@ -1691,7 +1691,7 @@ def login_password():
                     session.permanent = True
                     # Issue remember-me token
                     from flask import make_response
-                    resp = make_response(redirect(url_for('premium_dashboard' if subscription == 'premium' else 'dashboard')))
+                    resp = make_response(redirect(url_for('communities')))
                     _issue_remember_token(resp, username)
                     return resp
                     
@@ -1733,7 +1733,7 @@ def dashboard():
         show_join_prompt = session.pop('show_join_community_prompt', False)
         
         if user['subscription'] == 'premium':
-            return redirect(url_for('premium_dashboard'))
+            return redirect(url_for('communities'))
         return render_template('dashboard.html', name=username, communities=communities, show_join_prompt=show_join_prompt)
     except Exception as e:
         logger.error(f"Error in dashboard for {username}: {str(e)}")
@@ -9279,6 +9279,55 @@ def delete_community():
         logger.error(f"Error deleting community: {str(e)}")
         return jsonify({'success': False, 'error': 'Failed to delete community'}), 500
 
+@app.route('/migrate_parent_communities')
+@login_required
+def migrate_parent_communities():
+    """Migrate parent community relationships from SQLite backup"""
+    username = session.get('username')
+    if username != 'admin':
+        return jsonify({'success': False, 'error': 'Admin access required'}), 403
+    
+    try:
+        # For now, let's manually set some parent community relationships
+        # This would typically come from SQLite backup data
+        parent_relationships = [
+            # Example: community_id -> parent_community_id
+            # These would be populated from actual SQLite data
+        ]
+        
+        if not parent_relationships:
+            return jsonify({'success': True, 'message': 'No parent community relationships to migrate', 'updated': 0})
+        
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            updated_count = 0
+            
+            for community_id, parent_id in parent_relationships:
+                try:
+                    c.execute("""
+                        UPDATE communities 
+                        SET parent_community_id = %s 
+                        WHERE id = %s
+                    """, (parent_id, community_id))
+                    
+                    if c.rowcount > 0:
+                        updated_count += 1
+                        
+                except Exception as e:
+                    logger.error(f"Error updating community {community_id}: {e}")
+                    
+            conn.commit()
+            
+        return jsonify({
+            'success': True, 
+            'message': f'Updated {updated_count} communities with parent relationships',
+            'updated': updated_count
+        })
+        
+    except Exception as e:
+        logger.error(f"Error migrating parent communities: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @app.route('/migrate_database')
 def migrate_database():
     """Manual database migration endpoint"""
@@ -10253,6 +10302,59 @@ def check_gym_membership():
     except Exception as e:
         logger.error(f"Error checking gym membership for {username}: {str(e)}")
         return jsonify({'hasGymAccess': False, 'error': str(e)}), 500
+
+@app.route('/api/user_parent_community')
+@login_required
+def get_user_parent_community():
+    """Get the user's parent community information"""
+    username = session.get('username')
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Get user's communities and their parent relationships
+            c.execute("""
+                SELECT DISTINCT 
+                    COALESCE(pc.id, c.id) as community_id,
+                    COALESCE(pc.name, c.name) as community_name,
+                    COALESCE(pc.type, c.type) as community_type,
+                    c.parent_community_id,
+                    CASE 
+                        WHEN c.parent_community_id IS NOT NULL THEN pc.name
+                        ELSE c.name
+                    END as display_name
+                FROM communities c
+                JOIN user_communities uc ON c.id = uc.community_id
+                JOIN users u ON uc.user_id = u.id
+                LEFT JOIN communities pc ON c.parent_community_id = pc.id
+                WHERE u.username = ?
+                ORDER BY 
+                    CASE WHEN c.parent_community_id IS NULL THEN 0 ELSE 1 END,
+                    display_name
+                LIMIT 1
+            """, (username,))
+            
+            community = c.fetchone()
+            
+            if community:
+                return jsonify({
+                    'success': True,
+                    'parentCommunity': {
+                        'id': community['community_id'],
+                        'name': community['display_name'],
+                        'type': community['community_type']
+                    }
+                })
+            else:
+                return jsonify({
+                    'success': True,
+                    'parentCommunity': None
+                })
+                
+    except Exception as e:
+        logger.error(f"Error getting parent community for {username}: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/gym_react')
 @login_required
