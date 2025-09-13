@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
 
@@ -11,6 +11,7 @@ export default function Communities(){
   const [communities, setCommunities] = useState<Community[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string|null>(null)
+  const [swipedCommunity, setSwipedCommunity] = useState<number|null>(null)
   
   async function createCommunity(){
     try{
@@ -76,8 +77,7 @@ export default function Communities(){
     return () => { mounted = false }
   }, [])
 
-  useEffect(() => { setTitle('Your Communities') }, [setTitle])
-  useEffect(() => { setTitle('Communities') }, [setTitle])
+  useEffect(() => { setTitle('Community Management') }, [setTitle])
 
   return (
     <div className="h-screen overflow-hidden bg-black text-white">
@@ -91,7 +91,7 @@ export default function Communities(){
             <div className="h-0.5 bg-transparent rounded-full w-16 mx-auto mt-1" />
           </button>
           <button type="button" className="flex-1 text-center text-sm font-medium text-white/95">
-            <div className="pt-2">Communities</div>
+            <div className="pt-2">Community Management</div>
             <div className="h-0.5 bg-[#4db6ac] rounded-full w-16 mx-auto mt-1" />
           </button>
         </div>
@@ -116,32 +116,24 @@ export default function Communities(){
             {communities.length === 0 ? (
               <div className="text-[#9fb0b5]">You are not a member of any communities.</div>
             ) : communities.map(c => (
-              <div key={c.id} className="w-full px-3 py-2 rounded-2xl bg-white/[0.035] hover:bg-white/[0.06] flex items-center justify-between">
-                <div>
-                  <div className="font-medium">{c.name}</div>
-                  <div className="text-xs text-[#9fb0b5]">{c.type || 'Community'}</div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button className="px-2 py-2 rounded-md hover:bg-white/5" onClick={()=>{
-                    const ua = navigator.userAgent || ''
-                    const isMobile = /Mobi|Android|iPhone|iPad/i.test(ua) || window.innerWidth < 768
-                    if (isMobile) navigate(`/community_feed_react/${c.id}`); else window.location.href = `/community_feed/${c.id}`
-                  }}>
-                    <span className="text-[#4db6ac]"><i className="fa-solid fa-door-open" /></span>
-                  </button>
-                  <button aria-label="Leave community" title="Leave"
-                    className="w-9 h-9 inline-flex items-center justify-center rounded-md hover:bg-white/5"
-                    onClick={async()=>{
-                    const fd = new URLSearchParams({ community_id: String(c.id) })
-                    const r = await fetch('/leave_community', { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
-                    const j = await r.json().catch(()=>null)
-                    if (j?.success) window.location.reload()
-                    else alert(j?.error||'Error leaving community')
-                  }}>
-                    <i className="fa-solid fa-user-minus" style={{ color: '#e53935' }} />
-                  </button>
-                </div>
-              </div>
+              <CommunityItem 
+                key={c.id} 
+                community={c} 
+                isSwipedOpen={swipedCommunity === c.id}
+                onSwipe={(isOpen) => setSwipedCommunity(isOpen ? c.id : null)}
+                onEnter={() => {
+                  const ua = navigator.userAgent || ''
+                  const isMobile = /Mobi|Android|iPhone|iPad/i.test(ua) || window.innerWidth < 768
+                  if (isMobile) navigate(`/community_feed_react/${c.id}`); else window.location.href = `/community_feed/${c.id}`
+                }}
+                onLeave={async () => {
+                  const fd = new URLSearchParams({ community_id: String(c.id) })
+                  const r = await fetch('/leave_community', { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
+                  const j = await r.json().catch(()=>null)
+                  if (j?.success) window.location.reload()
+                  else alert(j?.error||'Error leaving community')
+                }}
+              />
             ))}
           </div>
         )}
@@ -154,6 +146,96 @@ export default function Communities(){
       >
         <i className="fa-solid fa-plus" />
       </button>
+    </div>
+  )
+}
+
+function CommunityItem({ 
+  community, 
+  isSwipedOpen, 
+  onSwipe, 
+  onEnter, 
+  onLeave 
+}: { 
+  community: Community
+  isSwipedOpen: boolean
+  onSwipe: (isOpen: boolean) => void
+  onEnter: () => void
+  onLeave: () => void
+}) {
+  const [dragX, setDragX] = useState(0)
+  const [isDragging, setIsDragging] = useState(false)
+  const startXRef = useRef(0)
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    startXRef.current = e.touches[0].clientX
+    setIsDragging(true)
+    setDragX(isSwipedOpen ? -80 : 0)
+  }
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!isDragging) return
+    const currentX = e.touches[0].clientX
+    const deltaX = currentX - startXRef.current
+    const newDragX = Math.min(0, deltaX + (isSwipedOpen ? -80 : 0))
+    setDragX(newDragX)
+  }
+
+  const handleTouchEnd = () => {
+    if (!isDragging) return
+    setIsDragging(false)
+    
+    const shouldOpen = dragX < -40
+    onSwipe(shouldOpen)
+    setDragX(0)
+  }
+
+  const handleClick = () => {
+    if (isSwipedOpen) {
+      onSwipe(false)
+    } else if (Math.abs(dragX) < 10) {
+      onEnter()
+    }
+  }
+
+  return (
+    <div className="relative w-full overflow-hidden rounded-2xl bg-white/[0.035]">
+      {/* Leave button (revealed on swipe) */}
+      <div className="absolute inset-y-0 right-0 flex items-center pr-4">
+        <button
+          className="w-16 h-12 bg-red-500/20 text-red-400 rounded-lg flex items-center justify-center hover:bg-red-500/30 transition-colors"
+          onClick={onLeave}
+          style={{
+            opacity: isSwipedOpen || dragX < -20 ? 1 : 0,
+            transform: `translateX(${isSwipedOpen ? '0' : '100%'})`,
+            transition: isDragging ? 'none' : 'all 0.2s ease-out'
+          }}
+        >
+          <i className="fa-solid fa-user-minus" />
+        </button>
+      </div>
+
+      {/* Swipeable community content */}
+      <div
+        className="w-full px-3 py-3 hover:bg-white/[0.06] flex items-center justify-between cursor-pointer"
+        style={{
+          transform: `translateX(${isDragging ? dragX : (isSwipedOpen ? -80 : 0)}px)`,
+          transition: isDragging ? 'none' : 'transform 0.2s ease-out'
+        }}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        onTouchCancel={handleTouchEnd}
+        onClick={handleClick}
+      >
+        <div className="flex-1">
+          <div className="font-medium">{community.name}</div>
+          <div className="text-xs text-[#9fb0b5]">{community.type || 'Community'}</div>
+        </div>
+        <div className="text-[#4db6ac]">
+          <i className="fa-solid fa-chevron-right" />
+        </div>
+      </div>
     </div>
   )
 }
