@@ -241,13 +241,34 @@ class RedisCache:
             logger.warning(f"Redis flush error: {e}")
             return False
 
-# Global cache instance - use Redis if available, otherwise in-memory
-if REDIS_ENABLED:
-    cache = RedisCache()
-    logger.info("🚀 Using Redis cache for maximum performance")
-else:
-    cache = MemoryCache()
-    logger.info("💾 Using in-memory cache (PythonAnywhere compatible)")
+# Smart cache selection based on performance
+def create_optimal_cache():
+    """Create the fastest cache available"""
+    if REDIS_ENABLED:
+        redis_cache = RedisCache()
+        if redis_cache.enabled:
+            # Test Redis performance
+            import time
+            try:
+                start = time.time()
+                redis_cache.redis_client.ping()
+                ping_time = (time.time() - start) * 1000
+                
+                if ping_time < 100:  # If Redis is fast (< 100ms)
+                    logger.info(f"🚀 Using Redis cache (ping: {ping_time:.1f}ms)")
+                    return redis_cache
+                else:
+                    logger.warning(f"⚠️ Redis too slow (ping: {ping_time:.1f}ms), using in-memory cache")
+                    return MemoryCache()
+            except:
+                logger.warning("Redis performance test failed, using in-memory cache")
+                return MemoryCache()
+    
+    logger.info("💾 Using optimized in-memory cache")
+    return MemoryCache()
+
+# Global cache instance - automatically selects fastest option
+cache = create_optimal_cache()
 
 # Cache key generators
 def user_cache_key(username):
