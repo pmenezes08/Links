@@ -13,25 +13,6 @@ export default function Communities(){
   const [error, setError] = useState<string|null>(null)
   const [swipedCommunity, setSwipedCommunity] = useState<number|null>(null)
   
-  async function createCommunity(){
-    try{
-      const nameRaw = window.prompt('Community name?')
-      const name = (nameRaw || '').trim()
-      if (!name) return
-      const typeRaw = window.prompt('Type (e.g., community, gym, crossfit)?', 'community')
-      const type = (typeRaw || 'community').trim() || 'community'
-      const fd = new URLSearchParams({ name, type })
-      const r = await fetch('/create_community', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: fd,
-      })
-      const j = await r.json().catch(()=>null)
-      if (j?.success) window.location.reload()
-      else alert(j?.error || 'Failed to create community')
-    }catch{}
-  }
 
   useEffect(() => {
     const link = document.getElementById('legacy-styles') as HTMLLinkElement | null
@@ -138,14 +119,6 @@ export default function Communities(){
           </div>
         )}
       </div>
-      {/* Create community action */}
-      <button
-        aria-label="Create community"
-        onClick={createCommunity}
-        className="fixed bottom-6 right-6 w-12 h-12 rounded-full bg-[#22d3c7] hover:bg-[#2ee3d7] text-white shadow-lg flex items-center justify-center z-50"
-      >
-        <i className="fa-solid fa-plus" />
-      </button>
     </div>
   )
 }
