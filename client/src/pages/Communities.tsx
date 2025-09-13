@@ -199,11 +199,17 @@ function CommunityItem({
   }
 
   return (
-    <div className="relative w-full overflow-hidden rounded-2xl bg-white/[0.035]">
-      {/* Leave button (revealed on swipe) */}
-      <div className="absolute inset-y-0 right-0 flex items-center pr-4">
+    <div 
+      className={`relative w-full overflow-hidden rounded-2xl transition-all duration-200 ${
+        isSwipedOpen || dragX < -10 
+          ? 'bg-black border-2 border-[#4db6ac]' 
+          : 'bg-black border border-white/10'
+      }`}
+    >
+      {/* Leave button (revealed on swipe) - matches bar styling */}
+      <div className="absolute inset-y-0 right-0 flex items-center pr-3">
         <button
-          className="w-16 h-12 bg-red-500/20 text-red-400 rounded-lg flex items-center justify-center hover:bg-red-500/30 transition-colors"
+          className="h-full px-4 bg-red-500/10 text-red-400 flex items-center justify-center hover:bg-red-500/20 transition-colors border-l border-red-500/30"
           onClick={onLeave}
           style={{
             opacity: isSwipedOpen || dragX < -20 ? 1 : 0,
@@ -211,7 +217,7 @@ function CommunityItem({
             transition: isDragging ? 'none' : 'all 0.2s ease-out'
           }}
         >
-          <i className="fa-solid fa-user-minus" />
+          <i className="fa-solid fa-user-minus text-sm" />
         </button>
       </div>
 
