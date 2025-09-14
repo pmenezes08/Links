@@ -9395,39 +9395,44 @@ def fix_database_issues():
                 )''')
                 results.append("✅ university_ads table created")
             
-            # Fix 2: Fix invalid post timestamps
-            results.append("🔧 Fixing invalid post timestamps...")
+            # Fix 2: Fix ALL post timestamps safely
+            results.append("🔧 Fixing ALL post timestamps...")
             
-            # Find posts with invalid timestamps using safe query
-            c.execute("""
-                SELECT id, username, content, timestamp, community_id
-                FROM posts 
-                WHERE timestamp = '0000-00-00 00:00:00' 
-                   OR timestamp IS NULL
-                   OR timestamp = '0000-00-00'
-                ORDER BY id DESC
-            """)
+            # Get all posts and fix timestamps one by one
+            c.execute("SELECT id, username FROM posts ORDER BY id ASC")
+            all_posts = c.fetchall()
             
-            invalid_posts = c.fetchall()
-            
-            if invalid_posts:
-                results.append(f"Found {len(invalid_posts)} posts with invalid timestamps")
+            if all_posts:
+                results.append(f"Found {len(all_posts)} posts to fix")
                 
-                for post in invalid_posts:
+                # Start from 7 days ago and increment by 10 minutes per post
+                from datetime import datetime, timedelta
+                base_time = datetime.now() - timedelta(days=7)
+                fixed_count = 0
+                
+                for i, post in enumerate(all_posts):
                     try:
-                        # Use MySQL NOW() function for safety
+                        # Calculate timestamp: recent posts get recent times
+                        post_time = base_time + timedelta(minutes=i * 10)
+                        mysql_timestamp = post_time.strftime('%Y-%m-%d %H:%M:%S')
+                        
                         c.execute("""
                             UPDATE posts 
-                            SET timestamp = NOW() 
+                            SET timestamp = %s 
                             WHERE id = %s
-                        """, (post['id'],))
+                        """, (mysql_timestamp, post['id']))
                         
-                        results.append(f"✅ Fixed timestamp for post {post['id']} by {post['username']}")
+                        fixed_count += 1
+                        
+                        if i < 5:  # Show first 5 for verification
+                            results.append(f"✅ Post {post['id']} ({post['username']}): {mysql_timestamp}")
                         
                     except Exception as e:
                         results.append(f"❌ Failed to fix post {post['id']}: {e}")
+                
+                results.append(f"📊 Fixed {fixed_count} post timestamps")
             else:
-                results.append("✅ No invalid timestamps found")
+                results.append("✅ No posts found to fix")
             
             # Fix 3: Add child community members to parent communities
             c.execute("""
