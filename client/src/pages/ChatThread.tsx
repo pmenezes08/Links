@@ -5,6 +5,17 @@ import Avatar from '../components/Avatar'
 import ImageLoader from '../components/ImageLoader'
 import MessageImage from '../components/MessageImage'
 
+interface Message {
+  id: number | string
+  text: string
+  image_path?: string
+  sent: boolean
+  time: string
+  reaction?: string
+  replySnippet?: string
+  isOptimistic?: boolean // Track if this is an optimistic update
+}
+
 export default function ChatThread(){
   const { setTitle } = useHeader()
   const { username } = useParams()
@@ -12,7 +23,7 @@ export default function ChatThread(){
   useEffect(() => { setTitle(username ? `Chat: ${username}` : 'Chat') }, [setTitle, username])
 
   const [otherUserId, setOtherUserId] = useState<number|''>('')
-  const [messages, setMessages] = useState<Array<{ id:number; text:string; image_path?:string; sent:boolean; time:string; reaction?:string; replySnippet?:string }>>([])
+  const [messages, setMessages] = useState<Message[]>([])
   const [draft, setDraft] = useState('')
   const [replyTo, setReplyTo] = useState<{ text:string }|null>(null)
   const [sending, setSending] = useState(false)
@@ -31,6 +42,8 @@ export default function ChatThread(){
   const fileInputRef = useRef<HTMLInputElement|null>(null)
   const cameraInputRef = useRef<HTMLInputElement|null>(null)
   const [previewImage, setPreviewImage] = useState<string|null>(null)
+  const lastFetchTime = useRef<number>(0)
+  const pendingDeletions = useRef<Set<number|string>>(new Set())
 
   // Date formatting functions
   function formatDateLabel(dateStr: string): string {
@@ -62,40 +75,76 @@ export default function ChatThread(){
     return new Date(dateStr).toDateString()
   }
 
+  // Initial load of messages and other user info
   useEffect(() => {
     if (!username) return
-    fetch('/api/get_user_id_by_username', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: new URLSearchParams({ username }) })
-      .then(r=>r.json()).then(j=>{
-        if (j?.success && j.user_id){
-          setOtherUserId(j.user_id)
-          const fd = new URLSearchParams({ other_user_id: String(j.user_id) })
-          fetch('/get_messages', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
-            .then(r=>r.json()).then(j=>{
-              if (j?.success && Array.isArray(j.messages)) {
-                setMessages(j.messages.map((m:any) => {
-                  const k = `${m.time}|${m.text}|${m.sent ? 'me' : 'other'}`
-                  const meta = metaRef.current[k] || {}
-                  return { ...m, reaction: meta.reaction, replySnippet: meta.replySnippet }
-                }))
+    
+    // Get other user ID
+    fetch('/api/get_user_id_by_username', { 
+      method:'POST', 
+      credentials:'include', 
+      headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, 
+      body: new URLSearchParams({ username }) 
+    })
+    .then(r=>r.json())
+    .then(j=>{
+      if (j?.success && j.user_id){
+        setOtherUserId(j.user_id)
+        
+        // Load initial messages
+        const fd = new URLSearchParams({ other_user_id: String(j.user_id) })
+        fetch('/get_messages', { 
+          method:'POST', 
+          credentials:'include', 
+          headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, 
+          body: fd 
+        })
+        .then(r=>r.json())
+        .then(j=>{
+          if (j?.success && Array.isArray(j.messages)) {
+            const processedMessages = j.messages.map((m:any) => {
+              const k = `${m.time}|${m.text}|${m.sent ? 'me' : 'other'}`
+              const meta = metaRef.current[k] || {}
+              return { 
+                ...m, 
+                reaction: meta.reaction, 
+                replySnippet: meta.replySnippet,
+                isOptimistic: false 
               }
-            }).catch(()=>{})
-          fetch(`/api/get_user_profile_brief?username=${encodeURIComponent(username)}`, { credentials:'include' })
-            .then(r=>r.json()).then(j=>{
-              if (j?.success){ setOtherProfile({ display_name: j.display_name, profile_picture: j.profile_picture||null }) }
-            }).catch(()=>{})
-        }
-      }).catch(()=>{})
+            })
+            setMessages(processedMessages)
+            lastFetchTime.current = Date.now()
+          }
+        }).catch(()=>{})
+        
+        // Load user profile
+        fetch(`/api/get_user_profile_brief?username=${encodeURIComponent(username)}`, { credentials:'include' })
+          .then(r=>r.json())
+          .then(j=>{
+            if (j?.success){ 
+              setOtherProfile({ 
+                display_name: j.display_name, 
+                profile_picture: j.profile_picture||null 
+              }) 
+            }
+          }).catch(()=>{})
+      }
+    }).catch(()=>{})
   }, [username])
 
   // Auto-scroll logic
   const lastCountRef = useRef(0)
   const didInitialAutoScrollRef = useRef(false)
   const [showScrollDown, setShowScrollDown] = useState(false)
+  
   function scrollToBottom(){
     const el = listRef.current
     if (!el) return
-    requestAnimationFrame(() => requestAnimationFrame(() => { el.scrollTop = el.scrollHeight }))
+    requestAnimationFrame(() => requestAnimationFrame(() => { 
+      el.scrollTop = el.scrollHeight 
+    }))
   }
+  
   useEffect(() => {
     const el = listRef.current
     if (!el) return
@@ -119,56 +168,95 @@ export default function ChatThread(){
     lastCountRef.current = messages.length
   }, [messages])
 
+  // Load metadata from localStorage
   useEffect(() => {
-    try{ const raw = localStorage.getItem(storageKey); if (raw) metaRef.current = JSON.parse(raw) || {} }catch{}
+    try{ 
+      const raw = localStorage.getItem(storageKey)
+      if (raw) metaRef.current = JSON.parse(raw) || {} 
+    }catch{}
   }, [storageKey])
 
+  // Polling for new messages and typing status
   useEffect(() => {
     if (!username || !otherUserId) return
+    
     async function poll(){
       try{
-        const fd = new URLSearchParams({ other_user_id: String(otherUserId) })
-        const r = await fetch('/get_messages', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
-        const j = await r.json()
-        if (j?.success && Array.isArray(j.messages)){
-          setMessages(prev => {
-            // Create a map of existing temporary/optimistic messages (those with non-integer IDs)
-            const optimisticMessages = prev.filter(m => !Number.isInteger(m.id))
-            
-            // Process server messages
-            const serverMessages = j.messages.map((m:any) => {
-              const existing = prev.find(x => x.id === m.id)
-              const k = `${m.time}|${m.text}|${m.sent ? 'me' : 'other'}`
-              const meta = metaRef.current[k] || {}
-              return existing
-                ? { ...m, reaction: existing.reaction ?? meta.reaction, replySnippet: existing.replySnippet ?? meta.replySnippet }
-                : { ...m, reaction: meta.reaction, replySnippet: meta.replySnippet }
-            })
-            
-            // Check if any optimistic messages now exist on server (match by text and approximate time)
-            const filteredOptimistic = optimisticMessages.filter(opt => {
-              const matchFound = serverMessages.some(srv => 
-                srv.sent === opt.sent && 
-                srv.text === opt.text && 
-                Math.abs(new Date(srv.time).getTime() - new Date(opt.time).getTime()) < 10000 // Within 10 seconds
-              )
-              return !matchFound // Keep only if no match found
-            })
-            
-            // Combine server messages with remaining optimistic messages
-            return [...serverMessages, ...filteredOptimistic]
+        // Only fetch messages if enough time has passed or we have pending operations
+        const now = Date.now()
+        const shouldFetch = (now - lastFetchTime.current) > 1500 // At least 1.5 seconds between fetches
+        
+        if (shouldFetch) {
+          const fd = new URLSearchParams({ other_user_id: String(otherUserId) })
+          const r = await fetch('/get_messages', { 
+            method:'POST', 
+            credentials:'include', 
+            headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, 
+            body: fd 
           })
+          const j = await r.json()
+          
+          if (j?.success && Array.isArray(j.messages)){
+            lastFetchTime.current = now
+            
+            setMessages(prev => {
+              // Keep track of optimistic messages that haven't been confirmed yet
+              const optimisticMessages = prev.filter(m => m.isOptimistic === true)
+              
+              // Process server messages
+              const serverMessages = j.messages.map((m:any) => {
+                // Skip if this message is pending deletion
+                if (pendingDeletions.current.has(m.id)) {
+                  return null
+                }
+                
+                const existing = prev.find(x => x.id === m.id && !x.isOptimistic)
+                const k = `${m.time}|${m.text}|${m.sent ? 'me' : 'other'}`
+                const meta = metaRef.current[k] || {}
+                
+                return {
+                  ...m,
+                  reaction: existing?.reaction ?? meta.reaction,
+                  replySnippet: existing?.replySnippet ?? meta.replySnippet,
+                  isOptimistic: false
+                }
+              }).filter(Boolean)
+              
+              // Remove optimistic messages that now exist on server
+              const remainingOptimistic = optimisticMessages.filter(opt => {
+                // Check if this optimistic message now exists on server
+                const serverMatch = serverMessages.some((srv:any) => 
+                  srv.sent === opt.sent && 
+                  srv.text === opt.text && 
+                  Math.abs(new Date(srv.time).getTime() - new Date(opt.time).getTime()) < 30000 // Within 30 seconds
+                )
+                return !serverMatch
+              })
+              
+              // Combine and sort by time
+              const allMessages = [...serverMessages, ...remainingOptimistic]
+              return allMessages.sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime())
+            })
+          }
         }
-      }catch{}
+      }catch(e){
+        console.error('Polling error:', e)
+      }
+      
+      // Check typing status
       try{
         const t = await fetch(`/api/typing?peer=${encodeURIComponent(username!)}`, { credentials:'include' })
         const tj = await t.json().catch(()=>null)
         setTyping(!!tj?.is_typing)
       }catch{}
     }
-    poll()
-    pollTimer.current = setInterval(poll, 2000)
-    return () => { if (pollTimer.current) clearInterval(pollTimer.current) }
+    
+    poll() // Initial poll
+    pollTimer.current = setInterval(poll, 2000) // Poll every 2 seconds
+    
+    return () => { 
+      if (pollTimer.current) clearInterval(pollTimer.current) 
+    }
   }, [username, otherUserId])
 
   function adjustTextareaHeight(){
@@ -178,6 +266,7 @@ export default function ChatThread(){
     const maxPx = 160
     ta.style.height = Math.min(ta.scrollHeight, maxPx) + 'px'
   }
+  
   useEffect(() => { adjustTextareaHeight() }, [])
   useEffect(() => { adjustTextareaHeight() }, [draft])
 
@@ -187,21 +276,26 @@ export default function ChatThread(){
     setSending(true)
     const messageText = draft.trim()
     const now = new Date().toISOString().slice(0,19).replace('T',' ')
-    const tempId = Date.now() + Math.random()
+    const tempId = `temp_${Date.now()}_${Math.random()}`
     const replySnippet = replyTo ? (replyTo.text.length > 90 ? replyTo.text.slice(0,90) + '…' : replyTo.text) : undefined
     
-    // Immediately add the message to the UI (optimistic update)
-    const optimisticMessage = { 
+    // Create optimistic message
+    const optimisticMessage: Message = { 
       id: tempId, 
       text: messageText, 
       sent: true, 
       time: now, 
-      replySnippet 
+      replySnippet,
+      isOptimistic: true
     }
     
+    // Add optimistic message immediately
     setMessages(prev => [...prev, optimisticMessage])
     setDraft('')
     setReplyTo(null)
+    
+    // Force scroll to bottom for sent messages
+    setTimeout(scrollToBottom, 50)
     
     // Store reply snippet in metadata if needed
     if (replySnippet){
@@ -210,26 +304,43 @@ export default function ChatThread(){
       try{ localStorage.setItem(storageKey, JSON.stringify(metaRef.current)) }catch{}
     }
     
+    // Send to server
     const fd = new URLSearchParams({ recipient_id: String(otherUserId), message: messageText })
     
-    fetch('/send_message', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
-      .then(r=>r.json()).then(j=>{
-        if (j?.success){
-          // Message sent successfully, stop typing indicator
-          fetch('/api/typing', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ peer: username, is_typing: false }) }).catch(()=>{})
-        } else {
-          // If sending failed, remove the optimistic message
-          setMessages(prev => prev.filter(m => m.id !== tempId))
-          setDraft(messageText) // Restore the draft
-          alert('Failed to send message. Please try again.')
-        }
-      }).catch(()=>{
-        // Network error - remove optimistic message and restore draft
+    fetch('/send_message', { 
+      method:'POST', 
+      credentials:'include', 
+      headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, 
+      body: fd 
+    })
+    .then(r=>r.json())
+    .then(j=>{
+      if (j?.success){
+        // Message sent successfully
+        // Force a poll to get the real message ID from server
+        lastFetchTime.current = 0 // Reset to force immediate fetch
+        
+        // Stop typing indicator
+        fetch('/api/typing', { 
+          method:'POST', 
+          credentials:'include', 
+          headers:{ 'Content-Type':'application/json' }, 
+          body: JSON.stringify({ peer: username, is_typing: false }) 
+        }).catch(()=>{})
+      } else {
+        // If sending failed, remove the optimistic message
         setMessages(prev => prev.filter(m => m.id !== tempId))
-        setDraft(messageText)
-        alert('Network error. Please check your connection and try again.')
-      })
-      .finally(() => setSending(false))
+        setDraft(messageText) // Restore the draft
+        alert('Failed to send message. Please try again.')
+      }
+    })
+    .catch(()=>{
+      // Network error - remove optimistic message and restore draft
+      setMessages(prev => prev.filter(m => m.id !== tempId))
+      setDraft(messageText)
+      alert('Network error. Please check your connection and try again.')
+    })
+    .finally(() => setSending(false))
   }
 
   function handlePhotoSelect() {
@@ -264,17 +375,19 @@ export default function ChatThread(){
       if (j?.success) {
         const now = new Date().toISOString().slice(0,19).replace('T',' ')
         
-        // Add photo message to UI
-        setMessages(prev => {
-          const photoMessage = {
-            id: Math.random(),
-            text: '📷 Photo',
-            image_path: j.image_path,
-            sent: true,
-            time: now
-          }
-          return [...prev, photoMessage]
-        })
+        // Add photo message as optimistic update
+        const photoMessage: Message = {
+          id: `temp_photo_${Date.now()}`,
+          text: '📷 Photo',
+          image_path: j.image_path,
+          sent: true,
+          time: now,
+          isOptimistic: true
+        }
+        setMessages(prev => [...prev, photoMessage])
+        
+        // Force poll to get real message
+        lastFetchTime.current = 0
         
         // Stop typing state
         fetch('/api/typing', { 
@@ -294,6 +407,76 @@ export default function ChatThread(){
     
     // Reset input
     event.target.value = ''
+  }
+
+  function handleDeleteMessage(messageId: number | string, messageData: Message) {
+    // Show confirmation dialog
+    if (!confirm('Are you sure you want to delete this message?')) {
+      return
+    }
+    
+    // Add to pending deletions
+    pendingDeletions.current.add(messageId)
+    
+    // Optimistically remove the message
+    setMessages(prev => prev.filter(x => x.id !== messageId))
+    
+    // Send delete request
+    const fd = new URLSearchParams({ message_id: String(messageId) })
+    
+    fetch('/delete_message', { 
+      method:'POST', 
+      credentials:'include', 
+      headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, 
+      body: fd 
+    })
+    .then(r=>r.json())
+    .then(j=>{ 
+      if (!j?.success) { 
+        // Remove from pending deletions
+        pendingDeletions.current.delete(messageId)
+        
+        // Restore the message if deletion failed
+        setMessages(prev => {
+          // Check if message still exists (might have been re-added by polling)
+          if (prev.some(x => x.id === messageId)) {
+            return prev
+          }
+          // Re-add the message in the correct position
+          const newMessages = [...prev, messageData]
+          return newMessages.sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime())
+        })
+        
+        // Show error
+        if (j?.error) {
+          alert(j.error === 'Premium subscription required!' 
+            ? 'Premium subscription required to delete messages' 
+            : `Failed to delete message: ${j.error}`)
+        } else {
+          alert('Failed to delete message')
+        }
+      } else {
+        // Success - keep in pending deletions for a while to prevent re-appearing
+        setTimeout(() => {
+          pendingDeletions.current.delete(messageId)
+        }, 5000)
+      }
+    })
+    .catch(()=>{
+      // Network error
+      pendingDeletions.current.delete(messageId)
+      
+      // Restore the message
+      setMessages(prev => {
+        if (prev.some(x => x.id === messageId)) {
+          return prev
+        }
+        const newMessages = [...prev, messageData]
+        return newMessages.sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime())
+      })
+      
+      alert('Network error. Could not delete message.')
+    })
   }
 
   return (
@@ -427,68 +610,35 @@ export default function ChatThread(){
               )}
               
               <div data-message-date={m.time}>
-                <LongPressActionable onDelete={() => {
-                  // Show confirmation dialog
-                  if (!confirm('Are you sure you want to delete this message?')) {
-                    return
-                  }
-                  
-                  const messageId = m.id
-                  const messageToDelete = m
-                  const fd = new URLSearchParams({ message_id: String(messageId) })
-                  
-                  // Optimistically remove the message
-                  setMessages(prev => prev.filter(x => x.id !== messageId))
-                  
-                  fetch('/delete_message', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
-                    .then(r=>r.json())
-                    .then(j=>{ 
-                      if (!j?.success) { 
-                        // Restore the message if deletion failed
-                        setMessages(prev => {
-                          // Check if message was already re-added (e.g., by polling)
-                          if (prev.some(x => x.id === messageId)) {
-                            return prev
-                          }
-                          // Find the right position to insert the message back
-                          const newMessages = [...prev, messageToDelete]
-                          return newMessages.sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime())
-                        })
-                        if (j?.error) {
-                          alert(j.error === 'Premium subscription required!' 
-                            ? 'Premium subscription required to delete messages' 
-                            : `Failed to delete message: ${j.error}`)
-                        } else {
-                          alert('Failed to delete message')
-                        }
-                      }
-                    })
-                    .catch(()=>{
-                      // Network error - restore the message
-                      setMessages(prev => {
-                        if (prev.some(x => x.id === messageId)) {
-                          return prev
-                        }
-                        const newMessages = [...prev, messageToDelete]
-                        return newMessages.sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime())
-                      })
-                      alert('Network error. Could not delete message.')
-                    })
-                }} onReact={(emoji)=> {
-                  setMessages(msgs => msgs.map(x => x.id===m.id ? { ...x, reaction: emoji } : x))
-                  const k = `${m.time}|${m.text}|${m.sent ? 'me' : 'other'}`
-                  metaRef.current[k] = { ...(metaRef.current[k]||{}), reaction: emoji }
-                  try{ localStorage.setItem(storageKey, JSON.stringify(metaRef.current)) }catch{}
-                }} onReply={() => {
-                  setReplyTo({ text: m.text })
-                  textareaRef.current?.focus()
-                }} onCopy={() => {
-                  try{ navigator.clipboard && navigator.clipboard.writeText(m.text) }catch{}
-                }}>
+                <LongPressActionable 
+                  onDelete={() => handleDeleteMessage(m.id, m)}
+                  onReact={(emoji)=> {
+                    setMessages(msgs => msgs.map(x => x.id===m.id ? { ...x, reaction: emoji } : x))
+                    const k = `${m.time}|${m.text}|${m.sent ? 'me' : 'other'}`
+                    metaRef.current[k] = { ...(metaRef.current[k]||{}), reaction: emoji }
+                    try{ localStorage.setItem(storageKey, JSON.stringify(metaRef.current)) }catch{}
+                  }} 
+                  onReply={() => {
+                    setReplyTo({ text: m.text })
+                    textareaRef.current?.focus()
+                  }} 
+                  onCopy={() => {
+                    try{ navigator.clipboard && navigator.clipboard.writeText(m.text) }catch{}
+                  }}
+                >
                   <div className={`flex ${m.sent ? 'justify-end' : 'justify-start'}`}>
                     <div
-                      className={`max-w-[70%] md:max-w-[70%] px-3 py-2 rounded-2xl text-[14px] leading-snug whitespace-pre-wrap break-words shadow-sm border ${m.sent ? 'bg-[#075E54] text-white border-[#075E54]' : 'bg-[#1a1a1a] text-white border-white/10'} ${m.sent ? 'rounded-br-md' : 'rounded-bl-md'}`}
-                      style={{ position: 'relative', ...(m.reaction ? { paddingRight: '1.75rem', paddingBottom: '1.25rem' } : {}) } as any}
+                      className={`max-w-[70%] md:max-w-[70%] px-3 py-2 rounded-2xl text-[14px] leading-snug whitespace-pre-wrap break-words shadow-sm border ${
+                        m.sent 
+                          ? 'bg-[#075E54] text-white border-[#075E54]' 
+                          : 'bg-[#1a1a1a] text-white border-white/10'
+                      } ${m.sent ? 'rounded-br-md' : 'rounded-bl-md'} ${
+                        m.isOptimistic ? 'opacity-70' : 'opacity-100'
+                      }`}
+                      style={{ 
+                        position: 'relative', 
+                        ...(m.reaction ? { paddingRight: '1.75rem', paddingBottom: '1.25rem' } : {}) 
+                      } as any}
                     >
                       {m.replySnippet ? (
                         <div className="mb-1 px-2 py-1 rounded bg-white/10 text-[12px] text-[#cfe9e7] border border-white/10">
@@ -512,7 +662,9 @@ export default function ChatThread(){
                       
                       {/* Text content */}
                       {m.text && <div>{m.text}</div>}
-                      <div className={`text-[10px] mt-1 ${m.sent ? 'text-white/70' : 'text-white/50'} text-right`}>{new Date(m.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+                      <div className={`text-[10px] mt-1 ${m.sent ? 'text-white/70' : 'text-white/50'} text-right`}>
+                        {new Date(m.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </div>
                       {m.reaction ? (
                         <span className="absolute bottom-0.5 right-1 text-base leading-none select-none z-10">
                           {m.reaction}
@@ -623,11 +775,27 @@ export default function ChatThread(){
               value={draft}
               onChange={e=> {
                 setDraft(e.target.value)
-                fetch('/api/typing', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ peer: username, is_typing: true }) }).catch(()=>{})
+                fetch('/api/typing', { 
+                  method:'POST', 
+                  credentials:'include', 
+                  headers:{ 'Content-Type':'application/json' }, 
+                  body: JSON.stringify({ peer: username, is_typing: true }) 
+                }).catch(()=>{})
                 if (typingTimer.current) clearTimeout(typingTimer.current)
                 typingTimer.current = setTimeout(() => {
-                  fetch('/api/typing', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ peer: username, is_typing: false }) }).catch(()=>{})
+                  fetch('/api/typing', { 
+                    method:'POST', 
+                    credentials:'include', 
+                    headers:{ 'Content-Type':'application/json' }, 
+                    body: JSON.stringify({ peer: username, is_typing: false }) 
+                  }).catch(()=>{})
                 }, 1200)
+              }}
+              onKeyDown={e => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault()
+                  if (draft.trim()) send()
+                }
               }}
               onFocus={() => {
                 setTimeout(() => {
@@ -739,7 +907,19 @@ export default function ChatThread(){
   )
 }
 
-function LongPressActionable({ children, onDelete, onReact, onReply, onCopy }: { children: React.ReactNode; onDelete: () => void; onReact: (emoji:string)=>void; onReply: ()=>void; onCopy: ()=>void }){
+function LongPressActionable({ 
+  children, 
+  onDelete, 
+  onReact, 
+  onReply, 
+  onCopy 
+}: { 
+  children: React.ReactNode
+  onDelete: () => void
+  onReact: (emoji:string)=>void
+  onReply: ()=>void
+  onCopy: ()=>void
+}){
   const [showMenu, setShowMenu] = useState(false)
   const [isPressed, setIsPressed] = useState(false)
   const timerRef = useRef<any>(null)
@@ -751,7 +931,7 @@ function LongPressActionable({ children, onDelete, onReact, onReply, onCopy }: {
     timerRef.current = setTimeout(() => {
       setShowMenu(true)
       setIsPressed(false)
-    }, 500) // Reduced from 1000ms to 500ms for better UX
+    }, 500) // 500ms for better UX
   }
   
   function handleEnd(){
@@ -772,7 +952,7 @@ function LongPressActionable({ children, onDelete, onReact, onReply, onCopy }: {
           e.preventDefault()
           setShowMenu(true)
         }}
-        title="Hold to see options"
+        title="Hold for options or right-click"
       >
         {children}
       </div>
