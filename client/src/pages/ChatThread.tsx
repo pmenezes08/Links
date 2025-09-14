@@ -481,7 +481,7 @@ export default function ChatThread(){
 
   return (
     <div 
-      className="bg-black text-white flex flex-col" 
+      className="bg-white text-black flex flex-col" 
       style={{ 
         height: '100vh',
         minHeight: '100vh',
