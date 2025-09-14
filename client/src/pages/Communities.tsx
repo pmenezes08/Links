@@ -2,7 +2,14 @@ import { useEffect, useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
 
-type Community = { id:number; name:string; type?:string; is_active?:boolean }
+type Community = { 
+  id: number; 
+  name: string; 
+  type?: string; 
+  is_active?: boolean;
+  parent_community_id?: number;
+  children?: Community[];
+}
 
 export default function Communities(){
   const navigate = useNavigate()
@@ -12,6 +19,7 @@ export default function Communities(){
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string|null>(null)
   const [swipedCommunity, setSwipedCommunity] = useState<number|null>(null)
+  const [expandedParents, setExpandedParents] = useState<Set<number>>(new Set())
   
 
   useEffect(() => {
@@ -39,11 +47,14 @@ export default function Communities(){
           }
         }catch{}
 
-        const rc = await fetch('/get_user_communities', { credentials:'include' })
+        const rc = await fetch('/api/user_communities_hierarchical', { credentials:'include' })
         const jc = await rc.json()
         if (!mounted) return
         if (jc?.success){
           setCommunities(jc.communities || [])
+          // Auto-expand parents that have children
+          const parentsWithChildren = jc.communities?.filter((c: Community) => c.children && c.children.length > 0).map((c: Community) => c.id) || []
+          setExpandedParents(new Set(parentsWithChildren))
           setError(null)
         } else {
           setError(jc?.error || 'Error loading communities')
@@ -97,24 +108,64 @@ export default function Communities(){
             {communities.length === 0 ? (
               <div className="text-[#9fb0b5]">You are not a member of any communities.</div>
             ) : communities.map(c => (
-              <CommunityItem 
-                key={c.id} 
-                community={c} 
-                isSwipedOpen={swipedCommunity === c.id}
-                onSwipe={(isOpen) => setSwipedCommunity(isOpen ? c.id : null)}
-                onEnter={() => {
-                  const ua = navigator.userAgent || ''
-                  const isMobile = /Mobi|Android|iPhone|iPad/i.test(ua) || window.innerWidth < 768
-                  if (isMobile) navigate(`/community_feed_react/${c.id}`); else window.location.href = `/community_feed/${c.id}`
-                }}
-                onLeave={async () => {
-                  const fd = new URLSearchParams({ community_id: String(c.id) })
-                  const r = await fetch('/leave_community', { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
-                  const j = await r.json().catch(()=>null)
-                  if (j?.success) window.location.reload()
-                  else alert(j?.error||'Error leaving community')
-                }}
-              />
+              <div key={c.id} className="space-y-2">
+                {/* Parent Community */}
+                <CommunityItem 
+                  community={c} 
+                  isSwipedOpen={swipedCommunity === c.id}
+                  onSwipe={(isOpen) => setSwipedCommunity(isOpen ? c.id : null)}
+                  onEnter={() => {
+                    const ua = navigator.userAgent || ''
+                    const isMobile = /Mobi|Android|iPhone|iPad/i.test(ua) || window.innerWidth < 768
+                    if (isMobile) navigate(`/community_feed_react/${c.id}`); else window.location.href = `/community_feed/${c.id}`
+                  }}
+                  onLeave={async () => {
+                    const fd = new URLSearchParams({ community_id: String(c.id) })
+                    const r = await fetch('/leave_community', { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
+                    const j = await r.json().catch(()=>null)
+                    if (j?.success) window.location.reload()
+                    else alert(j?.error||'Error leaving community')
+                  }}
+                  hasChildren={c.children && c.children.length > 0}
+                  isExpanded={expandedParents.has(c.id)}
+                  onToggleExpand={() => {
+                    const newExpanded = new Set(expandedParents)
+                    if (expandedParents.has(c.id)) {
+                      newExpanded.delete(c.id)
+                    } else {
+                      newExpanded.add(c.id)
+                    }
+                    setExpandedParents(newExpanded)
+                  }}
+                />
+                
+                {/* Child Communities */}
+                {c.children && c.children.length > 0 && expandedParents.has(c.id) && (
+                  <div className="ml-6 space-y-2">
+                    {c.children.map(child => (
+                      <CommunityItem 
+                        key={child.id}
+                        community={child} 
+                        isSwipedOpen={swipedCommunity === child.id}
+                        onSwipe={(isOpen) => setSwipedCommunity(isOpen ? child.id : null)}
+                        onEnter={() => {
+                          const ua = navigator.userAgent || ''
+                          const isMobile = /Mobi|Android|iPhone|iPad/i.test(ua) || window.innerWidth < 768
+                          if (isMobile) navigate(`/community_feed_react/${child.id}`); else window.location.href = `/community_feed/${child.id}`
+                        }}
+                        onLeave={async () => {
+                          const fd = new URLSearchParams({ community_id: String(child.id) })
+                          const r = await fetch('/leave_community', { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
+                          const j = await r.json().catch(()=>null)
+                          if (j?.success) window.location.reload()
+                          else alert(j?.error||'Error leaving community')
+                        }}
+                        isChild={true}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
             ))}
           </div>
         )}
@@ -128,13 +179,21 @@ function CommunityItem({
   isSwipedOpen, 
   onSwipe, 
   onEnter, 
-  onLeave 
+  onLeave,
+  hasChildren = false,
+  isExpanded = false,
+  onToggleExpand,
+  isChild = false
 }: { 
   community: Community
   isSwipedOpen: boolean
   onSwipe: (isOpen: boolean) => void
   onEnter: () => void
   onLeave: () => void
+  hasChildren?: boolean
+  isExpanded?: boolean
+  onToggleExpand?: () => void
+  isChild?: boolean
 }) {
   const [dragX, setDragX] = useState(0)
   const [isDragging, setIsDragging] = useState(false)
@@ -211,7 +270,7 @@ function CommunityItem({
 
       {/* Swipeable community content */}
       <div
-        className="w-full px-3 py-3 hover:bg-white/[0.03] flex items-center justify-between cursor-pointer bg-black"
+        className={`w-full px-3 py-3 hover:bg-white/[0.03] flex items-center justify-between cursor-pointer bg-black ${isChild ? 'pl-4' : ''}`}
         style={{
           transform: `translateX(${isDragging ? dragX : (isSwipedOpen ? -80 : 0)}px)`,
           transition: isDragging ? 'none' : 'transform 0.2s ease-out'
@@ -222,12 +281,30 @@ function CommunityItem({
         onTouchCancel={handleTouchEnd}
         onClick={handleClick}
       >
-        <div className="flex-1">
-          <div className="font-medium text-white">{community.name}</div>
-          <div className="text-xs text-[#9fb0b5]">{community.type || 'Community'}</div>
+        <div className="flex-1 flex items-center">
+          {isChild && <div className="w-4 h-4 mr-2 flex items-center justify-center">
+            <div className="w-2 h-2 rounded-full bg-[#4db6ac]" />
+          </div>}
+          <div className="flex-1">
+            <div className="font-medium text-white">{community.name}</div>
+            <div className="text-xs text-[#9fb0b5]">{community.type || 'Community'}</div>
+          </div>
         </div>
-        <div className="text-[#4db6ac]">
-          <i className="fa-solid fa-chevron-right" />
+        <div className="flex items-center gap-2">
+          {hasChildren && onToggleExpand && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                onToggleExpand()
+              }}
+              className="p-1 text-[#9fb0b5] hover:text-[#4db6ac] transition-colors"
+            >
+              <i className={`fa-solid fa-chevron-${isExpanded ? 'down' : 'right'} text-sm`} />
+            </button>
+          )}
+          <div className="text-[#4db6ac]">
+            <i className="fa-solid fa-chevron-right" />
+          </div>
         </div>
       </div>
     </div>

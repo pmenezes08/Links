@@ -10367,6 +10367,90 @@ def get_user_parent_community():
         logger.error(f"Error getting parent community for {username}: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@app.route('/api/user_communities_hierarchical')
+@login_required
+def get_user_communities_hierarchical():
+    """Get user's communities organized in parent-child hierarchy"""
+    username = session.get('username')
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Get all user's communities with parent information
+            c.execute("""
+                SELECT DISTINCT 
+                    c.id,
+                    c.name,
+                    c.type,
+                    c.parent_community_id,
+                    pc.name as parent_name
+                FROM communities c
+                JOIN user_communities uc ON c.id = uc.community_id
+                JOIN users u ON uc.user_id = u.id
+                LEFT JOIN communities pc ON c.parent_community_id = pc.id
+                WHERE u.username = %s
+                ORDER BY 
+                    CASE WHEN c.parent_community_id IS NULL THEN 0 ELSE 1 END,
+                    COALESCE(pc.name, c.name),
+                    c.name
+            """, (username,))
+            
+            communities = c.fetchall()
+            
+            # Organize into hierarchy
+            parent_communities = {}
+            child_communities = []
+            
+            for community in communities:
+                community_data = {
+                    'id': community['id'],
+                    'name': community['name'],
+                    'type': community['type'],
+                    'parent_community_id': community['parent_community_id']
+                }
+                
+                if community['parent_community_id']:
+                    # This is a child community
+                    child_communities.append(community_data)
+                else:
+                    # This is a parent community
+                    community_data['children'] = []
+                    parent_communities[community['id']] = community_data
+            
+            # Add child communities to their parents
+            for child in child_communities:
+                parent_id = child['parent_community_id']
+                if parent_id in parent_communities:
+                    parent_communities[parent_id]['children'].append(child)
+                else:
+                    # Parent not in user's communities, but child is
+                    # Get parent info and add it
+                    c.execute("SELECT id, name, type FROM communities WHERE id = %s", (parent_id,))
+                    parent_info = c.fetchone()
+                    if parent_info:
+                        parent_data = {
+                            'id': parent_info['id'],
+                            'name': parent_info['name'],
+                            'type': parent_info['type'],
+                            'parent_community_id': None,
+                            'children': [child],
+                            'is_parent_only': True  # User is not directly member of parent
+                        }
+                        parent_communities[parent_id] = parent_data
+            
+            # Convert to list
+            result = list(parent_communities.values())
+            
+            return jsonify({
+                'success': True,
+                'communities': result
+            })
+                
+    except Exception as e:
+        logger.error(f"Error getting hierarchical communities for {username}: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @app.route('/gym_react')
 @login_required
 def gym_react():
