@@ -38,6 +38,7 @@ export default function ChatThread(){
   const fileInputRef = useRef<HTMLInputElement|null>(null)
   const cameraInputRef = useRef<HTMLInputElement|null>(null)
   const [previewImage, setPreviewImage] = useState<string|null>(null)
+  const lastMessageSentRef = useRef<number>(0)
 
   // Date formatting functions
   function formatDateLabel(dateStr: string): string {
@@ -133,6 +134,13 @@ export default function ChatThread(){
   useEffect(() => {
     if (!username || !otherUserId) return
     async function poll(){
+      // If we just sent a message, wait a bit before polling to give server time to save
+      const timeSinceLastMessage = Date.now() - lastMessageSentRef.current
+      if (timeSinceLastMessage < 3000) { // Wait 3 seconds after sending
+        console.log('Waiting for server to save message...')
+        return
+      }
+
       try{
         const fd = new URLSearchParams({ other_user_id: String(otherUserId) })
         const r = await fetch('/get_messages', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
@@ -149,8 +157,14 @@ export default function ChatThread(){
             const preservedOptimistic = prev.filter(p =>
               !serverMessages.some(s => s.id === p.id) &&
               p.id.toString().startsWith('temp_') &&
-              (Date.now() - new Date(p.time).getTime()) < 10000 // Within last 10 seconds
+              (Date.now() - new Date(p.time).getTime()) < 30000 // Within last 30 seconds (increased from 10)
             )
+
+            console.log('Polling update:', {
+              serverMessagesCount: serverMessages.length,
+              preservedOptimisticCount: preservedOptimistic.length,
+              totalMessages: serverMessages.length + preservedOptimistic.length
+            })
 
             return [...serverMessages, ...preservedOptimistic].sort((a, b) =>
               new Date(a.time).getTime() - new Date(b.time).getTime()
@@ -190,10 +204,13 @@ export default function ChatThread(){
       return
     }
 
-    console.log('Sending message:', draft.trim())
+        console.log('Sending message:', draft.trim())
     setSending(true)
     const messageText = draft.trim()
     const fd = new URLSearchParams({ recipient_id: String(otherUserId), message: messageText })
+
+    // Track when we sent a message
+    lastMessageSentRef.current = Date.now()
 
     fetch('/send_message', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
       .then(r=>r.json()).then(j=>{
@@ -230,6 +247,7 @@ export default function ChatThread(){
             const newMessage = { id: messageId, text: messageText, sent:true, time: now, replySnippet }
             console.log('Adding message to UI:', messageId, messageText)
             console.log('New message object:', newMessage)
+            console.log('Messages before update:', prev.length)
 
             const updatedMessages = [...prev, newMessage]
             console.log('Updated messages count:', updatedMessages.length)
