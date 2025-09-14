@@ -5571,9 +5571,9 @@ def post_status():
             if community_id:
                 return redirect(url_for('community_feed', community_id=community_id) + '?error=Content or image is required!')
             else:
-                return redirect(url_for('feed') + '?error=Content or image is required!')
+                        return redirect(url_for('feed') + '?error=Content or image is required!')
     
-    timestamp = datetime.now().strftime('%m.%d.%y %H:%M')
+    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
@@ -5770,7 +5770,7 @@ def create_poll():
     if len(options) > 6:
         return jsonify({'success': False, 'error': 'Maximum 6 options allowed!'})
     
-    timestamp = datetime.now().strftime('%m.%d.%y %H:%M')
+    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     expires_at_raw = request.form.get('expires_at', '').strip()
     expires_at_sql = None
     if expires_at_raw:
