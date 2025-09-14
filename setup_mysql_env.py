@@ -55,7 +55,7 @@ DB_BACKEND={defaults['DB_BACKEND']}
             f.write(env_content)
 
         print("✅ .env file created successfully!")
-        print("   File: .env"
+        print("   File: .env")
         print("   Location:", os.path.abspath('.env'))
 
     except Exception as e:
