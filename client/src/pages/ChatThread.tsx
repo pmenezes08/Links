@@ -71,6 +71,14 @@ export default function ChatThread(){
     })
   }
 
+  // Add initial debug message when panel is enabled
+  useEffect(() => {
+    if (showDebug) {
+      addDebugLog('🎯 DEBUG PANEL ENABLED - Send a message to see the flow!')
+      addDebugLog('📊 Watch for: Send → Optimistic → Poll → Confirm')
+    }
+  }, [showDebug])
+
   // Date formatting functions
   function formatDateLabel(dateStr: string): string {
     const messageDate = new Date(dateStr)
@@ -406,11 +414,12 @@ export default function ChatThread(){
             </div>
           </div>
           <button
-            className="p-2 rounded-full hover:bg-white/10 transition-colors"
+            className="p-2 rounded-full hover:bg-white/10 transition-colors border border-white/20"
             onClick={() => setShowDebug(!showDebug)}
-            aria-label="Debug"
+            aria-label="Debug Panel"
+            title="Toggle Debug Panel"
           >
-            <i className="fa-solid fa-bug text-white/70" />
+            <i className={`fa-solid fa-bug text-lg ${showDebug ? 'text-yellow-400' : 'text-white/70'}`} />
           </button>
         </div>
       </div>
@@ -728,28 +737,37 @@ export default function ChatThread(){
 
       {/* Debug Panel */}
       {showDebug && (
-        <div className="fixed bottom-20 right-4 z-40 bg-black/90 backdrop-blur-md border border-white/20 rounded-lg max-w-xs max-h-60 overflow-hidden">
-          <div className="p-2 border-b border-white/10 flex items-center justify-between">
-            <span className="text-xs font-medium text-white">Debug Logs</span>
+        <div className="fixed bottom-20 right-4 z-50 bg-black/95 backdrop-blur-md border-2 border-yellow-400 rounded-lg shadow-2xl max-w-sm max-h-80 overflow-hidden">
+          <div className="p-3 border-b border-yellow-400/30 flex items-center justify-between bg-yellow-400/10">
+            <span className="text-sm font-bold text-yellow-400">🐛 DEBUG PANEL</span>
             <button
               onClick={() => setDebugLogs([])}
-              className="text-xs text-white/60 hover:text-white"
+              className="text-sm text-white/80 hover:text-white font-bold px-2 py-1 rounded bg-red-500/20 hover:bg-red-500/40"
             >
-              Clear
+              CLEAR
             </button>
           </div>
-          <div className="p-2 max-h-48 overflow-y-auto">
+          <div className="p-3 max-h-64 overflow-y-auto bg-black/50">
             {debugLogs.length === 0 ? (
-              <div className="text-xs text-white/50 text-center py-4">
-                No debug logs yet
+              <div className="text-sm text-white/70 text-center py-8">
+                🔍 No debug logs yet<br/>
+                <span className="text-xs text-white/50">Send a message to see logs</span>
               </div>
             ) : (
               debugLogs.map((log, index) => (
-                <div key={index} className="text-xs text-white/80 font-mono mb-1 leading-tight">
+                <div key={index} className="text-xs text-green-300 font-mono mb-2 leading-relaxed bg-black/30 p-2 rounded border border-white/10">
                   {log}
                 </div>
               ))
             )}
+          </div>
+          <div className="p-2 border-t border-white/10 bg-black/30">
+            <button
+              onClick={() => setShowDebug(false)}
+              className="w-full text-xs text-white/60 hover:text-white py-1"
+            >
+              Click to close debug panel
+            </button>
           </div>
         </div>
       )}
