@@ -39,6 +39,7 @@ export default function ChatThread(){
   const cameraInputRef = useRef<HTMLInputElement|null>(null)
   const [previewImage, setPreviewImage] = useState<string|null>(null)
   const lastMessageSentRef = useRef<number>(0)
+  const [pollingDisabled, setPollingDisabled] = useState(false)
 
   // Date formatting functions
   function formatDateLabel(dateStr: string): string {
@@ -134,10 +135,16 @@ export default function ChatThread(){
   useEffect(() => {
     if (!username || !otherUserId) return
     async function poll(){
-      // If we just sent a message, wait a bit before polling to give server time to save
+      // If polling is disabled after sending a message, skip
+      if (pollingDisabled) {
+        console.log('Polling disabled, skipping...')
+        return
+      }
+
+      // If we just sent a message, wait longer before polling to give server time to save
       const timeSinceLastMessage = Date.now() - lastMessageSentRef.current
-      if (timeSinceLastMessage < 3000) { // Wait 3 seconds after sending
-        console.log('Waiting for server to save message...')
+      if (timeSinceLastMessage < 8000) { // Wait 8 seconds after sending (increased from 3)
+        console.log('Waiting for server to save message...', Math.round(timeSinceLastMessage/1000), 'seconds elapsed')
         return
       }
 
@@ -157,7 +164,7 @@ export default function ChatThread(){
             const preservedOptimistic = prev.filter(p =>
               !serverMessages.some(s => s.id === p.id) &&
               p.id.toString().startsWith('temp_') &&
-              (Date.now() - new Date(p.time).getTime()) < 30000 // Within last 30 seconds (increased from 10)
+              (Date.now() - new Date(p.time).getTime()) < 60000 // Within last 60 seconds (increased from 30)
             )
 
             console.log('Polling update:', {
@@ -181,7 +188,7 @@ export default function ChatThread(){
     poll()
     pollTimer.current = setInterval(poll, 2000)
     return () => { if (pollTimer.current) clearInterval(pollTimer.current) }
-  }, [username, otherUserId])
+  }, [username, otherUserId, pollingDisabled])
 
   function adjustTextareaHeight(){
     const ta = textareaRef.current
@@ -209,8 +216,16 @@ export default function ChatThread(){
     const messageText = draft.trim()
     const fd = new URLSearchParams({ recipient_id: String(otherUserId), message: messageText })
 
-    // Track when we sent a message
+    // Track when we sent a message and temporarily disable polling
     lastMessageSentRef.current = Date.now()
+    setPollingDisabled(true)
+    console.log('Polling disabled for 5 seconds after sending message')
+
+    // Re-enable polling after 5 seconds
+    setTimeout(() => {
+      setPollingDisabled(false)
+      console.log('Polling re-enabled')
+    }, 5000)
 
     fetch('/send_message', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
       .then(r=>r.json()).then(j=>{
