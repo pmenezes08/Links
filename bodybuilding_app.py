@@ -19,6 +19,10 @@ from pywebpush import webpush, WebPushException
 from hashlib import sha256
 from redis_cache import cache, cache_result, invalidate_user_cache, invalidate_community_cache, invalidate_message_cache
 
+# Load environment variables from .env file
+from dotenv import load_dotenv
+load_dotenv()
+
 # Initialize Flask app
 app = Flask(__name__, template_folder='templates')
 
