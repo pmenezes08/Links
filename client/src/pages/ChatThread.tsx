@@ -131,14 +131,24 @@ export default function ChatThread(){
         const r = await fetch('/get_messages', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
         const j = await r.json()
         if (j?.success && Array.isArray(j.messages)){
-          setMessages(prev => j.messages.map((m:any) => {
-            const existing = prev.find(x => x.id === m.id)
-            const k = `${m.time}|${m.text}|${m.sent ? 'me' : 'other'}`
-            const meta = metaRef.current[k] || {}
-            return existing
-              ? { ...m, reaction: existing.reaction ?? meta.reaction, replySnippet: existing.replySnippet ?? meta.replySnippet }
-              : { ...m, reaction: meta.reaction, replySnippet: meta.replySnippet }
-          }))
+          setMessages(prev => {
+            const serverMessages = j.messages.map((m:any) => {
+              const k = `${m.time}|${m.text}|${m.sent ? 'me' : 'other'}`
+              const meta = metaRef.current[k] || {}
+              return { ...m, reaction: meta.reaction, replySnippet: meta.replySnippet }
+            })
+
+            // Preserve optimistic updates for messages that aren't in server response yet
+            const preservedOptimistic = prev.filter(p =>
+              !serverMessages.some(s => s.id === p.id) &&
+              p.id.toString().startsWith('temp_') &&
+              (Date.now() - new Date(p.time).getTime()) < 10000 // Within last 10 seconds
+            )
+
+            return [...serverMessages, ...preservedOptimistic].sort((a, b) =>
+              new Date(a.time).getTime() - new Date(b.time).getTime()
+            )
+          })
         }
       }catch{}
       try{
@@ -164,34 +174,53 @@ export default function ChatThread(){
 
   function send(){
     if (!otherUserId || !draft.trim() || sending) return
-    
+
+    console.log('Sending message:', draft.trim())
     setSending(true)
     const messageText = draft.trim()
     const fd = new URLSearchParams({ recipient_id: String(otherUserId), message: messageText })
-    
+
     fetch('/send_message', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
       .then(r=>r.json()).then(j=>{
+        console.log('Send response:', j)
         if (j?.success){
+          console.log('Message sent successfully, updating UI')
           setDraft('')
           const now = new Date().toISOString().slice(0,19).replace('T',' ')
           const replySnippet = replyTo ? (replyTo.text.length > 90 ? replyTo.text.slice(0,90) + '…' : replyTo.text) : undefined
-          
+
           if (replySnippet){
             const k = `${now}|${messageText}|me`
             metaRef.current[k] = { ...(metaRef.current[k]||{}), replySnippet }
             try{ localStorage.setItem(storageKey, JSON.stringify(metaRef.current)) }catch{}
           }
-          
+
           setMessages(prev => {
-            const exists = prev.some(m => m.text === messageText && m.sent && Math.abs(new Date(m.time).getTime() - new Date(now).getTime()) < 5000)
-            if (exists) return prev
-            return [...prev, { id: Math.random(), text: messageText, sent:true, time: now, replySnippet }]
+            // Better duplicate prevention - check for exact match within last 30 seconds
+            const exists = prev.some(m =>
+              m.text === messageText &&
+              m.sent === true &&
+              Math.abs(new Date(m.time).getTime() - new Date(now).getTime()) < 30000
+            )
+            if (exists) {
+              console.log('Message appears to be duplicate, skipping UI update')
+              return prev
+            }
+
+            // Use timestamp as ID for better uniqueness
+            const messageId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+            console.log('Adding message to UI:', messageId, messageText)
+            return [...prev, { id: messageId, text: messageText, sent:true, time: now, replySnippet }]
           })
-          
+
           setReplyTo(null)
           fetch('/api/typing', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ peer: username, is_typing: false }) }).catch(()=>{})
+        } else {
+          console.error('Send failed:', j)
         }
-      }).catch(()=>{})
+      }).catch(error=>{
+        console.error('Send error:', error)
+      })
       .finally(() => setSending(false))
   }
 
