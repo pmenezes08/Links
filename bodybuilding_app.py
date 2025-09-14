@@ -5573,7 +5573,7 @@ def post_status():
             else:
                         return redirect(url_for('feed') + '?error=Content or image is required!')
     
-    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    timestamp = datetime.now().strftime('%d-%m-%Y %H:%M:%S')
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
@@ -5770,7 +5770,7 @@ def create_poll():
     if len(options) > 6:
         return jsonify({'success': False, 'error': 'Maximum 6 options allowed!'})
     
-    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    timestamp = datetime.now().strftime('%d-%m-%Y %H:%M:%S')
     expires_at_raw = request.form.get('expires_at', '').strip()
     expires_at_sql = None
     if expires_at_raw:
@@ -9414,7 +9414,7 @@ def fix_database_issues():
                     try:
                         # Calculate timestamp: recent posts get recent times
                         post_time = base_time + timedelta(minutes=i * 10)
-                        mysql_timestamp = post_time.strftime('%Y-%m-%d %H:%M:%S')
+                        mysql_timestamp = post_time.strftime('%d-%m-%Y %H:%M:%S')
                         
                         c.execute("""
                             UPDATE posts 
@@ -10192,17 +10192,22 @@ def api_home_timeline():
                 if not s:
                     return None
                 try:
-                    # Try ISO / SQLite default
+                    # Try DD-MM-YYYY HH:MM:SS (new format)
+                    return datetime.strptime(s[:19], '%d-%m-%Y %H:%M:%S')
+                except Exception:
+                    pass
+                try:
+                    # Try ISO / SQLite default (legacy)
                     return datetime.strptime(s[:19], '%Y-%m-%d %H:%M:%S')
                 except Exception:
                     pass
                 try:
-                    # MM.DD.YY HH:MM
+                    # MM.DD.YY HH:MM (legacy)
                     return datetime.strptime(s, '%m.%d.%y %H:%M')
                 except Exception:
                     pass
                 try:
-                    # MM/DD/YY HH:MM AM/PM
+                    # MM/DD/YY HH:MM AM/PM (legacy)
                     return datetime.strptime(s, '%m/%d/%y %I:%M %p')
                 except Exception:
                     pass
@@ -10228,12 +10233,11 @@ def api_home_timeline():
             for r in rows:
                 dt = parse_ts(str(r.get('timestamp', '')))
                 if dt is None:
-                    # If cannot parse, include conservatively (temporarily for debugging)
-                    posts.append(r)
+                    # Skip posts with unparseable timestamps
                     continue
-                # Temporarily disabled 48-hour filter for debugging
-                # if now - dt <= forty_eight:
-                posts.append(r)
+                # Filter posts from last 48 hours
+                if now - dt <= forty_eight:
+                    posts.append(r)
 
             # Enrich posts with author picture, reactions, user reaction, poll, replies_count, and community_name
             for post in posts:
