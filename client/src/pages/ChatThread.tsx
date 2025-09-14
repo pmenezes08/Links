@@ -17,12 +17,14 @@ export default function ChatThread(){
 
   // Debug messages state changes
   useEffect(() => {
-    console.log('=== MESSAGES STATE CHANGED ===')
-    console.log('Server messages count:', messages.length)
-    console.log('Optimistic messages count:', optimisticMessages.length)
-    console.log('Total displayed:', messages.length + optimisticMessages.length)
-    console.log('Server messages:', messages.slice(-2).map(m => ({ id: m.id, text: m.text.substring(0, 20) })))
-    console.log('Optimistic messages:', optimisticMessages.map(m => ({ id: m.id, text: m.text.substring(0, 20) })))
+    addDebugLog('=== MESSAGES STATE CHANGED ===')
+    addDebugLog(`Server messages: ${messages.length}, Optimistic: ${optimisticMessages.length}, Total: ${messages.length + optimisticMessages.length}`)
+    if (messages.length > 0) {
+      addDebugLog(`Last server msg: "${messages[messages.length - 1].text.substring(0, 30)}"`)
+    }
+    if (optimisticMessages.length > 0) {
+      addDebugLog(`Optimistic msg: "${optimisticMessages[optimisticMessages.length - 1].text.substring(0, 30)}"`)
+    }
   }, [messages, optimisticMessages])
 
   // Safety check - if optimistic messages disappear unexpectedly, log it
@@ -31,7 +33,7 @@ export default function ChatThread(){
     const timer = setTimeout(() => {
       // This will run after the current render cycle
       if (optimisticMessages.length < prevOptimisticCount && prevOptimisticCount > 0) {
-        console.warn('⚠️ OPTIMISTIC MESSAGES DISAPPEARED! Was:', prevOptimisticCount, 'Now:', optimisticMessages.length)
+        addDebugLog(`⚠️ OPTIMISTIC MESSAGES DISAPPEARED! Was: ${prevOptimisticCount}, Now: ${optimisticMessages.length}`)
       }
     }, 100)
     return () => clearTimeout(timer)
@@ -54,6 +56,20 @@ export default function ChatThread(){
   const fileInputRef = useRef<HTMLInputElement|null>(null)
   const cameraInputRef = useRef<HTMLInputElement|null>(null)
   const [previewImage, setPreviewImage] = useState<string|null>(null)
+  const [debugLogs, setDebugLogs] = useState<string[]>([])
+  const [showDebug, setShowDebug] = useState(false)
+
+  // Debug logging function
+  const addDebugLog = (message: string) => {
+    const timestamp = new Date().toLocaleTimeString()
+    const logEntry = `[${timestamp}] ${message}`
+    console.log(logEntry) // Still log to console for developer tools
+    setDebugLogs(prev => {
+      const newLogs = [...prev, logEntry]
+      // Keep only last 20 logs to prevent memory issues
+      return newLogs.length > 20 ? newLogs.slice(-20) : newLogs
+    })
+  }
 
   // Date formatting functions
   function formatDateLabel(dateStr: string): string {
@@ -87,32 +103,32 @@ export default function ChatThread(){
 
   useEffect(() => {
     if (!username) return
-    console.log('=== INITIAL CHAT LOAD ===')
+    addDebugLog('=== INITIAL CHAT LOAD ===')
     fetch('/api/get_user_id_by_username', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: new URLSearchParams({ username }) })
       .then(r=>r.json()).then(j=>{
         if (j?.success && j.user_id){
-          console.log('Got user ID:', j.user_id)
+          addDebugLog(`Got user ID: ${j.user_id}`)
           setOtherUserId(j.user_id)
           const fd = new URLSearchParams({ other_user_id: String(j.user_id) })
           fetch('/get_messages', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
             .then(r=>r.json()).then(j=>{
               if (j?.success && Array.isArray(j.messages)) {
-                console.log('Initial load: server returned', j.messages.length, 'messages')
+                addDebugLog(`Initial load: server returned ${j.messages.length} messages`)
                 const serverMsgs = j.messages.map((m:any) => {
                   const k = `${m.time}|${m.text}|${m.sent ? 'me' : 'other'}`
                   const meta = metaRef.current[k] || {}
                   return { ...m, reaction: meta.reaction, replySnippet: meta.replySnippet }
                 })
                 setMessages(serverMsgs)
-                console.log('Initial messages state set with', serverMsgs.length, 'messages')
+                addDebugLog(`Initial messages state set with ${serverMsgs.length} messages`)
               }
-            }).catch((err) => console.error('Initial messages fetch error:', err))
+            }).catch((err) => addDebugLog(`Initial messages fetch error: ${err}`))
           fetch(`/api/get_user_profile_brief?username=${encodeURIComponent(username)}`, { credentials:'include' })
             .then(r=>r.json()).then(j=>{
               if (j?.success){ setOtherProfile({ display_name: j.display_name, profile_picture: j.profile_picture||null }) }
             }).catch(()=>{})
         }
-      }).catch((err) => console.error('User ID fetch error:', err))
+      }).catch((err) => addDebugLog(`User ID fetch error: ${err}`))
   }, [username])
 
   // Auto-scroll logic
@@ -153,7 +169,7 @@ export default function ChatThread(){
 
   useEffect(() => {
     if (!username || !otherUserId) return
-    console.log('=== POLLING SETUP ===')
+    addDebugLog('=== POLLING SETUP ===')
     async function poll(){
       try{
         const fd = new URLSearchParams({ other_user_id: String(otherUserId) })
@@ -166,11 +182,11 @@ export default function ChatThread(){
             return { ...m, reaction: meta.reaction, replySnippet: meta.replySnippet }
           })
 
-          console.log('Poll: server returned', serverMessages.length, 'messages')
+          addDebugLog(`Poll: server returned ${serverMessages.length} messages`)
 
           // Update server messages
           setMessages(prevMessages => {
-            console.log('Poll: updating server messages from', prevMessages.length, 'to', serverMessages.length)
+            addDebugLog(`Poll: server messages ${prevMessages.length} → ${serverMessages.length}`)
             return serverMessages
           })
 
@@ -187,16 +203,16 @@ export default function ChatThread(){
 
             const removedCount = prevOptimistic.length - stillOptimistic.length
             if (removedCount > 0) {
-              console.log('Poll: removed', removedCount, 'confirmed optimistic messages')
+              addDebugLog(`Poll: confirmed ${removedCount} optimistic messages`)
             }
 
             return stillOptimistic
           })
         } else {
-          console.log('Poll: invalid response', j)
+          addDebugLog(`Poll: invalid response`)
         }
       }catch(err){
-        console.error('Poll error:', err)
+        addDebugLog(`Poll error: ${err}`)
       }
       try{
         const t = await fetch(`/api/typing?peer=${encodeURIComponent(username!)}`, { credentials:'include' })
@@ -204,10 +220,10 @@ export default function ChatThread(){
         setTyping(!!tj?.is_typing)
       }catch{}
     }
-    console.log('Starting initial poll...')
+    addDebugLog('Starting initial poll...')
     poll()
     pollTimer.current = setInterval(() => {
-      console.log('Running scheduled poll...')
+      addDebugLog('Running scheduled poll...')
       poll()
     }, 2000)
     return () => { if (pollTimer.current) clearInterval(pollTimer.current) }
@@ -224,17 +240,15 @@ export default function ChatThread(){
   useEffect(() => { adjustTextareaHeight() }, [draft])
 
   function send(){
-    console.log('=== SEND FUNCTION CALLED ===')
-    console.log('otherUserId:', otherUserId)
-    console.log('draft.trim():', draft.trim())
-    console.log('sending:', sending)
+    addDebugLog('=== SEND FUNCTION CALLED ===')
+    addDebugLog(`User: ${otherUserId}, Draft: "${draft.trim()}", Sending: ${sending}`)
 
     if (!otherUserId || !draft.trim() || sending) {
-      console.log('Send blocked - returning early')
+      addDebugLog('Send blocked - returning early')
       return
     }
 
-        console.log('Sending message:', draft.trim())
+    addDebugLog(`Sending message: "${draft.trim()}"`)
     setSending(true)
     const messageText = draft.trim()
     const fd = new URLSearchParams({ recipient_id: String(otherUserId), message: messageText })
@@ -242,9 +256,9 @@ export default function ChatThread(){
 
     fetch('/send_message', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
       .then(r=>r.json()).then(j=>{
-        console.log('Send response:', j)
+        addDebugLog(`Send response: ${j?.success ? 'SUCCESS' : 'FAILED'}`)
         if (j?.success){
-          console.log('Message sent successfully, updating UI')
+          addDebugLog('Message sent successfully, updating UI')
           setDraft('')
           const now = new Date().toISOString().slice(0,19).replace('T',' ')
           const replySnippet = replyTo ? (replyTo.text.length > 90 ? replyTo.text.slice(0,90) + '…' : replyTo.text) : undefined
@@ -259,12 +273,10 @@ export default function ChatThread(){
           const optimisticId = `opt_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
           const optimisticMessage = { id: optimisticId, text: messageText, sent: true, time: now, replySnippet }
 
-          console.log('Adding optimistic message:', optimisticId, messageText)
+          addDebugLog(`Adding optimistic message: "${messageText}"`)
           setOptimisticMessages(prev => {
-            console.log('Adding to optimistic messages. Previous count:', prev.length)
-            const newOptimistic = [...prev, optimisticMessage]
-            console.log('New optimistic messages count:', newOptimistic.length)
-            return newOptimistic
+            addDebugLog(`Optimistic messages: ${prev.length} → ${prev.length + 1}`)
+            return [...prev, optimisticMessage]
           })
 
           // Don't touch the main messages state - let polling handle server updates
@@ -272,10 +284,10 @@ export default function ChatThread(){
           setReplyTo(null)
           fetch('/api/typing', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ peer: username, is_typing: false }) }).catch(()=>{})
         } else {
-          console.error('Send failed:', j)
+          addDebugLog(`Send failed: ${JSON.stringify(j)}`)
         }
       }).catch(error=>{
-        console.error('Send error:', error)
+        addDebugLog(`Send error: ${error}`)
       })
       .finally(() => setSending(false))
   }
@@ -393,11 +405,12 @@ export default function ChatThread(){
               {typing ? 'typing...' : 'Online'}
             </div>
           </div>
-          <button 
-            className="p-2 rounded-full hover:bg-white/10 transition-colors" 
-            aria-label="More options"
+          <button
+            className="p-2 rounded-full hover:bg-white/10 transition-colors"
+            onClick={() => setShowDebug(!showDebug)}
+            aria-label="Debug"
           >
-            <i className="fa-solid fa-ellipsis-vertical text-white/70" />
+            <i className="fa-solid fa-bug text-white/70" />
           </button>
         </div>
       </div>
@@ -712,6 +725,34 @@ export default function ChatThread(){
           </div>
         </div>
       </div>
+
+      {/* Debug Panel */}
+      {showDebug && (
+        <div className="fixed bottom-20 right-4 z-40 bg-black/90 backdrop-blur-md border border-white/20 rounded-lg max-w-xs max-h-60 overflow-hidden">
+          <div className="p-2 border-b border-white/10 flex items-center justify-between">
+            <span className="text-xs font-medium text-white">Debug Logs</span>
+            <button
+              onClick={() => setDebugLogs([])}
+              className="text-xs text-white/60 hover:text-white"
+            >
+              Clear
+            </button>
+          </div>
+          <div className="p-2 max-h-48 overflow-y-auto">
+            {debugLogs.length === 0 ? (
+              <div className="text-xs text-white/50 text-center py-4">
+                No debug logs yet
+              </div>
+            ) : (
+              debugLogs.map((log, index) => (
+                <div key={index} className="text-xs text-white/80 font-mono mb-1 leading-tight">
+                  {log}
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Photo preview modal */}
       {previewImage && (
