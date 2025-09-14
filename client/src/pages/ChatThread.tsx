@@ -15,10 +15,6 @@ export default function ChatThread(){
   const [messages, setMessages] = useState<Array<{ id:number; text:string; image_path?:string; sent:boolean; time:string; reaction?:string; replySnippet?:string }>>([])
   const [optimisticMessages, setOptimisticMessages] = useState<Array<{ id:string; text:string; sent:boolean; time:string; replySnippet?:string }>>([])
 
-  // Simple debug messages state changes (non-problematic)
-  useEffect(() => {
-    console.log(`Messages: ${messages.length}, Optimistic: ${optimisticMessages.length}`)
-  }, [messages, optimisticMessages])
 
 
   const [draft, setDraft] = useState('')
@@ -39,34 +35,7 @@ export default function ChatThread(){
   const fileInputRef = useRef<HTMLInputElement|null>(null)
   const cameraInputRef = useRef<HTMLInputElement|null>(null)
   const [previewImage, setPreviewImage] = useState<string|null>(null)
-  const [debugLogs, setDebugLogs] = useState<string[]>([])
-  const [showDebug, setShowDebug] = useState(false)
 
-  // Debug logging function
-  const addDebugLog = (message: string) => {
-    const timestamp = new Date().toLocaleTimeString()
-    const logEntry = `[${timestamp}] ${message}`
-    console.log(logEntry) // Still log to console for developer tools
-    setDebugLogs(prev => {
-      const newLogs = [...prev, logEntry]
-      // Keep only last 20 logs to prevent memory issues
-      return newLogs.length > 20 ? newLogs.slice(-20) : newLogs
-    })
-  }
-
-  // Add initial debug message when panel is enabled
-  useEffect(() => {
-    if (showDebug) {
-      addDebugLog('🎯 DEBUG PANEL ENABLED - Send a message to see the flow!')
-      addDebugLog('📊 Watch for: Send → Optimistic → Poll → Confirm')
-    }
-  }, [showDebug])
-
-  // TEMPORARY: Add console log to verify the code is running
-  useEffect(() => {
-    console.log('🚀 ChatThread component loaded - Debug panel available!')
-    console.log('🐛 Look for the bug icon in the top-right of chat header')
-  }, [])
 
   // Date formatting functions
   function formatDateLabel(dateStr: string): string {
@@ -100,32 +69,28 @@ export default function ChatThread(){
 
   useEffect(() => {
     if (!username) return
-    addDebugLog('=== INITIAL CHAT LOAD ===')
     fetch('/api/get_user_id_by_username', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: new URLSearchParams({ username }) })
       .then(r=>r.json()).then(j=>{
         if (j?.success && j.user_id){
-          addDebugLog(`Got user ID: ${j.user_id}`)
           setOtherUserId(j.user_id)
           const fd = new URLSearchParams({ other_user_id: String(j.user_id) })
           fetch('/get_messages', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
             .then(r=>r.json()).then(j=>{
               if (j?.success && Array.isArray(j.messages)) {
-                addDebugLog(`Initial load: server returned ${j.messages.length} messages`)
                 const serverMsgs = j.messages.map((m:any) => {
                   const k = `${m.time}|${m.text}|${m.sent ? 'me' : 'other'}`
                   const meta = metaRef.current[k] || {}
                   return { ...m, reaction: meta.reaction, replySnippet: meta.replySnippet }
                 })
                 setMessages(serverMsgs)
-                addDebugLog(`Initial messages state set with ${serverMsgs.length} messages`)
               }
-            }).catch((err) => addDebugLog(`Initial messages fetch error: ${err}`))
+            }).catch(()=>{})
           fetch(`/api/get_user_profile_brief?username=${encodeURIComponent(username)}`, { credentials:'include' })
             .then(r=>r.json()).then(j=>{
               if (j?.success){ setOtherProfile({ display_name: j.display_name, profile_picture: j.profile_picture||null }) }
             }).catch(()=>{})
         }
-      }).catch((err) => addDebugLog(`User ID fetch error: ${err}`))
+      }).catch(()=>{})
   }, [username])
 
   // Auto-scroll logic
@@ -166,7 +131,6 @@ export default function ChatThread(){
 
   useEffect(() => {
     if (!username || !otherUserId) return
-    addDebugLog('=== POLLING SETUP ===')
     async function poll(){
       try{
         const fd = new URLSearchParams({ other_user_id: String(otherUserId) })
@@ -179,11 +143,9 @@ export default function ChatThread(){
             return { ...m, reaction: meta.reaction, replySnippet: meta.replySnippet }
           })
 
-          addDebugLog(`Poll: server returned ${serverMessages.length} messages`)
 
           // Update server messages only if different
           setMessages(prevMessages => {
-            addDebugLog(`Poll: server messages ${prevMessages.length} → ${serverMessages.length}`)
             // Only update if messages actually changed
             if (prevMessages.length !== serverMessages.length || 
                 JSON.stringify(prevMessages) !== JSON.stringify(serverMessages)) {
@@ -204,11 +166,9 @@ export default function ChatThread(){
             })
             return stillOptimistic
           })
-        } else {
-          addDebugLog(`Poll: invalid response`)
         }
       }catch(err){
-        addDebugLog(`Poll error: ${err}`)
+        // Silent error handling
       }
       try{
         const t = await fetch(`/api/typing?peer=${encodeURIComponent(username!)}`, { credentials:'include' })
@@ -216,12 +176,8 @@ export default function ChatThread(){
         setTyping(!!tj?.is_typing)
       }catch{}
     }
-    addDebugLog('Starting initial poll...')
     poll()
-    pollTimer.current = setInterval(() => {
-      addDebugLog('Running scheduled poll...')
-      poll()
-    }, 5000) // Increased from 2000ms to 5000ms to reduce polling frequency
+    pollTimer.current = setInterval(poll, 5000)
     return () => { if (pollTimer.current) clearInterval(pollTimer.current) }
   }, [username, otherUserId])
 
@@ -236,17 +192,9 @@ export default function ChatThread(){
   useEffect(() => { adjustTextareaHeight() }, [draft])
 
   function send(){
-    addDebugLog('=== SEND FUNCTION CALLED ===')
-    addDebugLog(`User: ${otherUserId}, Draft: "${draft.trim()}", Sending: ${sending}`)
-
     if (!otherUserId || !draft.trim() || sending) {
-      addDebugLog('Send blocked - returning early')
       return
     }
-
-
-
-    addDebugLog(`Sending message: "${draft.trim()}"`)
     setSending(true)
     const messageText = draft.trim()
     const fd = new URLSearchParams({ recipient_id: String(otherUserId), message: messageText })
@@ -254,9 +202,7 @@ export default function ChatThread(){
 
     fetch('/send_message', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
       .then(r=>r.json()).then(j=>{
-        addDebugLog(`Send response: ${j?.success ? 'SUCCESS' : 'FAILED'}`)
         if (j?.success){
-          addDebugLog('Message sent successfully, updating UI')
           setDraft('')
           const now = new Date().toISOString().slice(0,19).replace('T',' ')
           const replySnippet = replyTo ? (replyTo.text.length > 90 ? replyTo.text.slice(0,90) + '…' : replyTo.text) : undefined
@@ -277,12 +223,8 @@ export default function ChatThread(){
 
           setReplyTo(null)
           fetch('/api/typing', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ peer: username, is_typing: false }) }).catch(()=>{})
-        } else {
-          addDebugLog(`Send failed: ${JSON.stringify(j)}`)
         }
-      }).catch(error=>{
-        addDebugLog(`Send error: ${error}`)
-      })
+      }).catch(()=>{})
       .finally(() => setSending(false))
   }
 
@@ -399,14 +341,6 @@ export default function ChatThread(){
               {typing ? 'typing...' : 'Online'}
             </div>
           </div>
-          <button
-            className="p-2 rounded-full hover:bg-white/10 transition-colors border border-white/20"
-            onClick={() => setShowDebug(!showDebug)}
-            aria-label="Debug Panel"
-            title="Toggle Debug Panel"
-          >
-            <i className={`fa-solid fa-bug text-lg ${showDebug ? 'text-yellow-400' : 'text-white/70'}`} />
-          </button>
         </div>
       </div>
       
@@ -721,42 +655,6 @@ export default function ChatThread(){
         </div>
       </div>
 
-      {/* Debug Panel */}
-      {showDebug && (
-        <div className="fixed bottom-20 right-4 z-50 bg-black/95 backdrop-blur-md border-2 border-yellow-400 rounded-lg shadow-2xl max-w-sm max-h-80 overflow-hidden">
-          <div className="p-3 border-b border-yellow-400/30 flex items-center justify-between bg-yellow-400/10">
-            <span className="text-sm font-bold text-yellow-400">🐛 DEBUG PANEL</span>
-            <button
-              onClick={() => setDebugLogs([])}
-              className="text-sm text-white/80 hover:text-white font-bold px-2 py-1 rounded bg-red-500/20 hover:bg-red-500/40"
-            >
-              CLEAR
-            </button>
-          </div>
-          <div className="p-3 max-h-64 overflow-y-auto bg-black/50">
-            {debugLogs.length === 0 ? (
-              <div className="text-sm text-white/70 text-center py-8">
-                🔍 No debug logs yet<br/>
-                <span className="text-xs text-white/50">Send a message to see logs</span>
-              </div>
-            ) : (
-              debugLogs.map((log, index) => (
-                <div key={index} className="text-xs text-green-300 font-mono mb-2 leading-relaxed bg-black/30 p-2 rounded border border-white/10">
-                  {log}
-                </div>
-              ))
-            )}
-          </div>
-          <div className="p-2 border-t border-white/10 bg-black/30">
-            <button
-              onClick={() => setShowDebug(false)}
-              className="w-full text-xs text-white/60 hover:text-white py-1"
-            >
-              Click to close debug panel
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* Photo preview modal */}
       {previewImage && (
