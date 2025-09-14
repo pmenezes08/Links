@@ -5562,22 +5562,17 @@ def post_status():
             
             # If community_id is provided, verify user is member (admin bypass)
             if community_id and username != 'admin':
-                # Check if user is direct member or member of child community
                 c.execute("""
                     SELECT 1 FROM user_communities uc
                     JOIN users u ON uc.user_id = u.id
-                    JOIN communities c ON uc.community_id = c.id
-                    WHERE u.username = ? AND (
-                        uc.community_id = ? OR 
-                        c.parent_community_id = ?
-                    )
-                """, (username, community_id, community_id))
+                    WHERE u.username = ? AND uc.community_id = ?
+                """, (username, community_id))
                 
                 if not c.fetchone():
                     if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-                        return jsonify({'success': False, 'error': 'You are not a member of this community or its sub-communities'}), 403
+                        return jsonify({'success': False, 'error': 'You are not a member of this community'}), 403
                     else:
-                        return redirect(url_for('community_feed', community_id=community_id) + '?error=You are not a member of this community or its sub-communities')
+                        return redirect(url_for('community_feed', community_id=community_id) + '?error=You are not a member of this community')
             
             # Debug: Log the exact values being inserted
             logger.info(f"About to insert post with values: username={username}, content={content}, image_path={image_path}, timestamp={timestamp}, community_id={community_id} (type: {type(community_id)})")
