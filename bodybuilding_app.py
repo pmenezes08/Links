@@ -3414,22 +3414,36 @@ def send_message():
             recipient_username = recipient['username'] if hasattr(recipient, 'keys') else recipient[0]
             
             # Check for duplicate message in last 5 seconds to prevent double-sends
-            c.execute("""
-                SELECT id FROM messages 
-                WHERE sender = ? AND receiver = ? AND message = ?
-                AND timestamp > DATE_SUB(NOW(), INTERVAL 5 SECOND)
-                LIMIT 1
-            """, (username, recipient_username, message))
+            if USE_MYSQL:
+                c.execute("""
+                    SELECT id FROM messages 
+                    WHERE sender = %s AND receiver = %s AND message = %s
+                    AND timestamp > DATE_SUB(NOW(), INTERVAL 5 SECOND)
+                    LIMIT 1
+                """, (username, recipient_username, message))
+            else:
+                c.execute("""
+                    SELECT id FROM messages 
+                    WHERE sender = ? AND receiver = ? AND message = ?
+                    AND timestamp > datetime('now', '-5 seconds')
+                    LIMIT 1
+                """, (username, recipient_username, message))
             
             if c.fetchone():
                 # Duplicate message detected, return success but don't insert
                 return jsonify({'success': True, 'message': 'Message already sent'})
             
             # Insert message
-            c.execute("""
-                INSERT INTO messages (sender, receiver, message, timestamp)
-                VALUES (?, ?, ?, NOW())
-            """, (username, recipient_username, message))
+            if USE_MYSQL:
+                c.execute("""
+                    INSERT INTO messages (sender, receiver, message, timestamp)
+                    VALUES (%s, %s, %s, NOW())
+                """, (username, recipient_username, message))
+            else:
+                c.execute("""
+                    INSERT INTO messages (sender, receiver, message, timestamp)
+                    VALUES (?, ?, ?, datetime('now'))
+                """, (username, recipient_username, message))
             
             conn.commit()
             
@@ -3439,18 +3453,32 @@ def send_message():
             # Create notification for the recipient (prevent duplicates)
             try:
                 # Check for duplicate notification in last 10 seconds
-                c.execute("""
-                    SELECT id FROM notifications 
-                    WHERE user_id = ? AND from_user = ? AND type = 'message'
-                    AND created_at > DATE_SUB(NOW(), INTERVAL 10 SECOND)
-                    LIMIT 1
-                """, (recipient_username, username))
+                if USE_MYSQL:
+                    c.execute("""
+                        SELECT id FROM notifications 
+                        WHERE user_id = %s AND from_user = %s AND type = 'message'
+                        AND created_at > DATE_SUB(NOW(), INTERVAL 10 SECOND)
+                        LIMIT 1
+                    """, (recipient_username, username))
+                else:
+                    c.execute("""
+                        SELECT id FROM notifications 
+                        WHERE user_id = ? AND from_user = ? AND type = 'message'
+                        AND created_at > datetime('now', '-10 seconds')
+                        LIMIT 1
+                    """, (recipient_username, username))
                 
                 if not c.fetchone():
-                    c.execute("""
-                        INSERT INTO notifications (user_id, from_user, type, message, created_at)
-                        VALUES (?, ?, 'message', ?, NOW())
-                    """, (recipient_username, username, f"New message from {username}"))
+                    if USE_MYSQL:
+                        c.execute("""
+                            INSERT INTO notifications (user_id, from_user, type, message, created_at)
+                            VALUES (%s, %s, 'message', %s, NOW())
+                        """, (recipient_username, username, f"New message from {username}"))
+                    else:
+                        c.execute("""
+                            INSERT INTO notifications (user_id, from_user, type, message, created_at)
+                            VALUES (?, ?, 'message', ?, datetime('now'))
+                        """, (recipient_username, username, f"New message from {username}"))
                     conn.commit()
             except Exception as notif_e:
                 logger.warning(f"Could not create message notification: {notif_e}")
