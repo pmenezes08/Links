@@ -19,7 +19,6 @@ export default function Communities(){
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string|null>(null)
   const [swipedCommunity, setSwipedCommunity] = useState<number|null>(null)
-  const [expandedParents, setExpandedParents] = useState<Set<number>>(new Set())
   
 
   useEffect(() => {
@@ -52,9 +51,6 @@ export default function Communities(){
         if (!mounted) return
         if (jc?.success){
           setCommunities(jc.communities || [])
-          // Auto-expand parents that have children
-          const parentsWithChildren = jc.communities?.filter((c: Community) => c.children && c.children.length > 0).map((c: Community) => c.id) || []
-          setExpandedParents(new Set(parentsWithChildren))
           setError(null)
         } else {
           setError(jc?.error || 'Error loading communities')
@@ -126,21 +122,10 @@ export default function Communities(){
                     if (j?.success) window.location.reload()
                     else alert(j?.error||'Error leaving community')
                   }}
-                  hasChildren={c.children && c.children.length > 0}
-                  isExpanded={expandedParents.has(c.id)}
-                  onToggleExpand={() => {
-                    const newExpanded = new Set(expandedParents)
-                    if (expandedParents.has(c.id)) {
-                      newExpanded.delete(c.id)
-                    } else {
-                      newExpanded.add(c.id)
-                    }
-                    setExpandedParents(newExpanded)
-                  }}
                 />
                 
-                {/* Child Communities */}
-                {c.children && c.children.length > 0 && expandedParents.has(c.id) && (
+                {/* Child Communities - Always Visible */}
+                {c.children && c.children.length > 0 && (
                   <div className="ml-6 space-y-2">
                     {c.children.map(child => (
                       <CommunityItem 
@@ -180,9 +165,6 @@ function CommunityItem({
   onSwipe, 
   onEnter, 
   onLeave,
-  hasChildren = false,
-  isExpanded = false,
-  onToggleExpand,
   isChild = false
 }: { 
   community: Community
@@ -190,9 +172,6 @@ function CommunityItem({
   onSwipe: (isOpen: boolean) => void
   onEnter: () => void
   onLeave: () => void
-  hasChildren?: boolean
-  isExpanded?: boolean
-  onToggleExpand?: () => void
   isChild?: boolean
 }) {
   const [dragX, setDragX] = useState(0)
@@ -290,21 +269,8 @@ function CommunityItem({
             <div className="text-xs text-[#9fb0b5]">{community.type || 'Community'}</div>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          {hasChildren && onToggleExpand && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation()
-                onToggleExpand()
-              }}
-              className="p-1 text-[#9fb0b5] hover:text-[#4db6ac] transition-colors"
-            >
-              <i className={`fa-solid fa-chevron-${isExpanded ? 'down' : 'right'} text-sm`} />
-            </button>
-          )}
-          <div className="text-[#4db6ac]">
-            <i className="fa-solid fa-chevron-right" />
-          </div>
+        <div className="text-[#4db6ac]">
+          <i className="fa-solid fa-chevron-right" />
         </div>
       </div>
     </div>
