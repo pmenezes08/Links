@@ -21,7 +21,21 @@ export default function ChatThread(){
     console.log('Server messages count:', messages.length)
     console.log('Optimistic messages count:', optimisticMessages.length)
     console.log('Total displayed:', messages.length + optimisticMessages.length)
+    console.log('Server messages:', messages.slice(-2).map(m => ({ id: m.id, text: m.text.substring(0, 20) })))
+    console.log('Optimistic messages:', optimisticMessages.map(m => ({ id: m.id, text: m.text.substring(0, 20) })))
   }, [messages, optimisticMessages])
+
+  // Safety check - if optimistic messages disappear unexpectedly, log it
+  useEffect(() => {
+    const prevOptimisticCount = optimisticMessages.length
+    const timer = setTimeout(() => {
+      // This will run after the current render cycle
+      if (optimisticMessages.length < prevOptimisticCount && prevOptimisticCount > 0) {
+        console.warn('⚠️ OPTIMISTIC MESSAGES DISAPPEARED! Was:', prevOptimisticCount, 'Now:', optimisticMessages.length)
+      }
+    }, 100)
+    return () => clearTimeout(timer)
+  }, [optimisticMessages])
   const [draft, setDraft] = useState('')
   const [replyTo, setReplyTo] = useState<{ text:string }|null>(null)
   const [sending, setSending] = useState(false)
@@ -73,27 +87,32 @@ export default function ChatThread(){
 
   useEffect(() => {
     if (!username) return
+    console.log('=== INITIAL CHAT LOAD ===')
     fetch('/api/get_user_id_by_username', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: new URLSearchParams({ username }) })
       .then(r=>r.json()).then(j=>{
         if (j?.success && j.user_id){
+          console.log('Got user ID:', j.user_id)
           setOtherUserId(j.user_id)
           const fd = new URLSearchParams({ other_user_id: String(j.user_id) })
           fetch('/get_messages', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
             .then(r=>r.json()).then(j=>{
               if (j?.success && Array.isArray(j.messages)) {
-                setMessages(j.messages.map((m:any) => {
+                console.log('Initial load: server returned', j.messages.length, 'messages')
+                const serverMsgs = j.messages.map((m:any) => {
                   const k = `${m.time}|${m.text}|${m.sent ? 'me' : 'other'}`
                   const meta = metaRef.current[k] || {}
                   return { ...m, reaction: meta.reaction, replySnippet: meta.replySnippet }
-                }))
+                })
+                setMessages(serverMsgs)
+                console.log('Initial messages state set with', serverMsgs.length, 'messages')
               }
-            }).catch(()=>{})
+            }).catch((err) => console.error('Initial messages fetch error:', err))
           fetch(`/api/get_user_profile_brief?username=${encodeURIComponent(username)}`, { credentials:'include' })
             .then(r=>r.json()).then(j=>{
               if (j?.success){ setOtherProfile({ display_name: j.display_name, profile_picture: j.profile_picture||null }) }
             }).catch(()=>{})
         }
-      }).catch(()=>{})
+      }).catch((err) => console.error('User ID fetch error:', err))
   }, [username])
 
   // Auto-scroll logic
@@ -134,6 +153,7 @@ export default function ChatThread(){
 
   useEffect(() => {
     if (!username || !otherUserId) return
+    console.log('=== POLLING SETUP ===')
     async function poll(){
       try{
         const fd = new URLSearchParams({ other_user_id: String(otherUserId) })
@@ -146,37 +166,50 @@ export default function ChatThread(){
             return { ...m, reaction: meta.reaction, replySnippet: meta.replySnippet }
           })
 
-          console.log('Server returned', serverMessages.length, 'messages')
+          console.log('Poll: server returned', serverMessages.length, 'messages')
 
           // Update server messages
-          setMessages(serverMessages)
+          setMessages(prevMessages => {
+            console.log('Poll: updating server messages from', prevMessages.length, 'to', serverMessages.length)
+            return serverMessages
+          })
 
           // Remove optimistic messages that are now in server response
-          setOptimisticMessages(prev => {
-            const stillOptimistic = prev.filter(opt =>
-              !serverMessages.some(server =>
+          setOptimisticMessages(prevOptimistic => {
+            const stillOptimistic = prevOptimistic.filter(opt => {
+              const isConfirmed = serverMessages.some(server =>
                 server.text === opt.text &&
                 server.sent === opt.sent &&
                 Math.abs(new Date(server.time).getTime() - new Date(opt.time).getTime()) < 5000 // Within 5 seconds
               )
-            )
+              return !isConfirmed
+            })
 
-            if (prev.length !== stillOptimistic.length) {
-              console.log('Removed', prev.length - stillOptimistic.length, 'confirmed optimistic messages')
+            const removedCount = prevOptimistic.length - stillOptimistic.length
+            if (removedCount > 0) {
+              console.log('Poll: removed', removedCount, 'confirmed optimistic messages')
             }
 
             return stillOptimistic
           })
+        } else {
+          console.log('Poll: invalid response', j)
         }
-      }catch{}
+      }catch(err){
+        console.error('Poll error:', err)
+      }
       try{
         const t = await fetch(`/api/typing?peer=${encodeURIComponent(username!)}`, { credentials:'include' })
         const tj = await t.json().catch(()=>null)
         setTyping(!!tj?.is_typing)
       }catch{}
     }
+    console.log('Starting initial poll...')
     poll()
-    pollTimer.current = setInterval(poll, 2000)
+    pollTimer.current = setInterval(() => {
+      console.log('Running scheduled poll...')
+      poll()
+    }, 2000)
     return () => { if (pollTimer.current) clearInterval(pollTimer.current) }
   }, [username, otherUserId])
 
@@ -227,7 +260,12 @@ export default function ChatThread(){
           const optimisticMessage = { id: optimisticId, text: messageText, sent: true, time: now, replySnippet }
 
           console.log('Adding optimistic message:', optimisticId, messageText)
-          setOptimisticMessages(prev => [...prev, optimisticMessage])
+          setOptimisticMessages(prev => {
+            console.log('Adding to optimistic messages. Previous count:', prev.length)
+            const newOptimistic = [...prev, optimisticMessage]
+            console.log('New optimistic messages count:', newOptimistic.length)
+            return newOptimistic
+          })
 
           // Don't touch the main messages state - let polling handle server updates
 
