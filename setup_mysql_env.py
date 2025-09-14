@@ -29,7 +29,7 @@ def setup_mysql_env():
     print(f"   MYSQL_USER={defaults['MYSQL_USER']}")
     print(f"   MYSQL_DB={defaults['MYSQL_DB']}")
     print(f"   DB_BACKEND={defaults['DB_BACKEND']}")
-    print("   MYSQL_PASSWORD=•••••••••••••• (your MySQL password)"
+    print("   MYSQL_PASSWORD=•••••••••••••• (your MySQL password)")
     print()
 
     print("🔑 Please enter your MySQL password:")
