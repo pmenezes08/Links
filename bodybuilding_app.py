@@ -10244,6 +10244,17 @@ def api_home_timeline():
                 post_id = post['id']
                 comm_id = post.get('community_id')
                 post['community_name'] = id_to_name.get(comm_id)
+                
+                # Convert timestamp to DD-MM-YYYY format for display
+                try:
+                    if post.get('timestamp'):
+                        # Parse MySQL format and convert to DD-MM-YYYY for display
+                        dt = datetime.strptime(str(post['timestamp'])[:19], '%Y-%m-%d %H:%M:%S')
+                        post['display_timestamp'] = dt.strftime('%d-%m-%Y %H:%M:%S')
+                    else:
+                        post['display_timestamp'] = post.get('timestamp', '')
+                except Exception:
+                    post['display_timestamp'] = post.get('timestamp', '')
 
                 # Profile picture
                 try:

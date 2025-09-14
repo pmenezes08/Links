@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
 import Avatar from '../components/Avatar'
 
-type Post = { id:number; username:string; content:string; image_path?:string|null; timestamp:string; community_id?:number|null; community_name?:string; reactions:Record<string,number>; user_reaction:string|null; poll?:any|null; replies_count?:number; profile_picture?:string|null }
+type Post = { id:number; username:string; content:string; image_path?:string|null; timestamp:string; display_timestamp?:string; community_id?:number|null; community_name?:string; reactions:Record<string,number>; user_reaction:string|null; poll?:any|null; replies_count?:number; profile_picture?:string|null }
 
 function formatTimestamp(input: string): string {
   function parseDate(str: string): Date | null {
@@ -157,7 +157,7 @@ export default function HomeTimeline(){
                       ) : null}
                     </div>
                   </div>
-                  <div className="text-xs text-[#9fb0b5] ml-auto tabular-nums">{formatTimestamp(p.timestamp)}</div>
+                  <div className="text-xs text-[#9fb0b5] ml-auto tabular-nums">{formatTimestamp(p.display_timestamp || p.timestamp)}</div>
                 </div>
                 <div className="px-3 py-2 space-y-2">
                   <div className="whitespace-pre-wrap text-[14px] leading-relaxed">{p.content}</div>
