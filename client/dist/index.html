@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>C-Point</title>
     <link rel="manifest" href="/manifest.webmanifest">
     <meta name="theme-color" content="#000000">
@@ -16,6 +16,11 @@
       html, body, #root { background-color:#000000; color:#ffffff; height:100%; }
       body { margin:0; }
       html, body { overscroll-behavior: contain; }
+      /* Prevent zoom on input focus (iOS Safari) */
+      input, textarea, select { font-size: 16px !important; }
+      @media screen and (max-width: 768px) {
+        input, textarea, select { font-size: 16px !important; }
+      }
     </style>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <script type="module" crossorigin src="/assets/index-DQ8glpo8.js"></script>
