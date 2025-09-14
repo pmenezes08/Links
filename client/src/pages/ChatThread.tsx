@@ -13,13 +13,15 @@ export default function ChatThread(){
 
   const [otherUserId, setOtherUserId] = useState<number|''>('')
   const [messages, setMessages] = useState<Array<{ id:number; text:string; image_path?:string; sent:boolean; time:string; reaction?:string; replySnippet?:string }>>([])
+  const [optimisticMessages, setOptimisticMessages] = useState<Array<{ id:string; text:string; sent:boolean; time:string; replySnippet?:string }>>([])
 
   // Debug messages state changes
   useEffect(() => {
     console.log('=== MESSAGES STATE CHANGED ===')
-    console.log('Messages count:', messages.length)
-    console.log('Messages:', messages.map(m => ({ id: m.id, text: m.text.substring(0, 30), sent: m.sent, time: m.time })))
-  }, [messages])
+    console.log('Server messages count:', messages.length)
+    console.log('Optimistic messages count:', optimisticMessages.length)
+    console.log('Total displayed:', messages.length + optimisticMessages.length)
+  }, [messages, optimisticMessages])
   const [draft, setDraft] = useState('')
   const [replyTo, setReplyTo] = useState<{ text:string }|null>(null)
   const [sending, setSending] = useState(false)
@@ -38,8 +40,6 @@ export default function ChatThread(){
   const fileInputRef = useRef<HTMLInputElement|null>(null)
   const cameraInputRef = useRef<HTMLInputElement|null>(null)
   const [previewImage, setPreviewImage] = useState<string|null>(null)
-  const lastMessageSentRef = useRef<number>(0)
-  const [pollingDisabled, setPollingDisabled] = useState(false)
 
   // Date formatting functions
   function formatDateLabel(dateStr: string): string {
@@ -135,47 +135,37 @@ export default function ChatThread(){
   useEffect(() => {
     if (!username || !otherUserId) return
     async function poll(){
-      // If polling is disabled after sending a message, skip
-      if (pollingDisabled) {
-        console.log('Polling disabled, skipping...')
-        return
-      }
-
-      // If we just sent a message, wait longer before polling to give server time to save
-      const timeSinceLastMessage = Date.now() - lastMessageSentRef.current
-      if (timeSinceLastMessage < 8000) { // Wait 8 seconds after sending (increased from 3)
-        console.log('Waiting for server to save message...', Math.round(timeSinceLastMessage/1000), 'seconds elapsed')
-        return
-      }
-
       try{
         const fd = new URLSearchParams({ other_user_id: String(otherUserId) })
         const r = await fetch('/get_messages', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
         const j = await r.json()
         if (j?.success && Array.isArray(j.messages)){
-          setMessages(prev => {
-            const serverMessages = j.messages.map((m:any) => {
-              const k = `${m.time}|${m.text}|${m.sent ? 'me' : 'other'}`
-              const meta = metaRef.current[k] || {}
-              return { ...m, reaction: meta.reaction, replySnippet: meta.replySnippet }
-            })
+          const serverMessages = j.messages.map((m:any) => {
+            const k = `${m.time}|${m.text}|${m.sent ? 'me' : 'other'}`
+            const meta = metaRef.current[k] || {}
+            return { ...m, reaction: meta.reaction, replySnippet: meta.replySnippet }
+          })
 
-            // Preserve optimistic updates for messages that aren't in server response yet
-            const preservedOptimistic = prev.filter(p =>
-              !serverMessages.some(s => s.id === p.id) &&
-              p.id.toString().startsWith('temp_') &&
-              (Date.now() - new Date(p.time).getTime()) < 60000 // Within last 60 seconds (increased from 30)
+          console.log('Server returned', serverMessages.length, 'messages')
+
+          // Update server messages
+          setMessages(serverMessages)
+
+          // Remove optimistic messages that are now in server response
+          setOptimisticMessages(prev => {
+            const stillOptimistic = prev.filter(opt =>
+              !serverMessages.some(server =>
+                server.text === opt.text &&
+                server.sent === opt.sent &&
+                Math.abs(new Date(server.time).getTime() - new Date(opt.time).getTime()) < 5000 // Within 5 seconds
+              )
             )
 
-            console.log('Polling update:', {
-              serverMessagesCount: serverMessages.length,
-              preservedOptimisticCount: preservedOptimistic.length,
-              totalMessages: serverMessages.length + preservedOptimistic.length
-            })
+            if (prev.length !== stillOptimistic.length) {
+              console.log('Removed', prev.length - stillOptimistic.length, 'confirmed optimistic messages')
+            }
 
-            return [...serverMessages, ...preservedOptimistic].sort((a, b) =>
-              new Date(a.time).getTime() - new Date(b.time).getTime()
-            )
+            return stillOptimistic
           })
         }
       }catch{}
@@ -188,7 +178,7 @@ export default function ChatThread(){
     poll()
     pollTimer.current = setInterval(poll, 2000)
     return () => { if (pollTimer.current) clearInterval(pollTimer.current) }
-  }, [username, otherUserId, pollingDisabled])
+  }, [username, otherUserId])
 
   function adjustTextareaHeight(){
     const ta = textareaRef.current
@@ -216,16 +206,6 @@ export default function ChatThread(){
     const messageText = draft.trim()
     const fd = new URLSearchParams({ recipient_id: String(otherUserId), message: messageText })
 
-    // Track when we sent a message and temporarily disable polling
-    lastMessageSentRef.current = Date.now()
-    setPollingDisabled(true)
-    console.log('Polling disabled for 5 seconds after sending message')
-
-    // Re-enable polling after 5 seconds
-    setTimeout(() => {
-      setPollingDisabled(false)
-      console.log('Polling re-enabled')
-    }, 5000)
 
     fetch('/send_message', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
       .then(r=>r.json()).then(j=>{
@@ -242,32 +222,14 @@ export default function ChatThread(){
             try{ localStorage.setItem(storageKey, JSON.stringify(metaRef.current)) }catch{}
           }
 
-          setMessages(prev => {
-            console.log('Current messages before update:', prev.length)
-            console.log('Previous messages:', prev.map(m => ({ id: m.id, text: m.text.substring(0, 20), sent: m.sent })))
+          // Add to optimistic messages (separate from server messages)
+          const optimisticId = `opt_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+          const optimisticMessage = { id: optimisticId, text: messageText, sent: true, time: now, replySnippet }
 
-            // Better duplicate prevention - check for exact match within last 30 seconds
-            const exists = prev.some(m =>
-              m.text === messageText &&
-              m.sent === true &&
-              Math.abs(new Date(m.time).getTime() - new Date(now).getTime()) < 30000
-            )
-            if (exists) {
-              console.log('Message appears to be duplicate, skipping UI update')
-              return prev
-            }
+          console.log('Adding optimistic message:', optimisticId, messageText)
+          setOptimisticMessages(prev => [...prev, optimisticMessage])
 
-            // Use timestamp as ID for better uniqueness
-            const messageId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-            const newMessage = { id: messageId, text: messageText, sent:true, time: now, replySnippet }
-            console.log('Adding message to UI:', messageId, messageText)
-            console.log('New message object:', newMessage)
-            console.log('Messages before update:', prev.length)
-
-            const updatedMessages = [...prev, newMessage]
-            console.log('Updated messages count:', updatedMessages.length)
-            return updatedMessages
-          })
+          // Don't touch the main messages state - let polling handle server updates
 
           setReplyTo(null)
           fetch('/api/typing', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ peer: username, is_typing: false }) }).catch(()=>{})
@@ -459,9 +421,12 @@ export default function ChatThread(){
           }, 1500)
         }}
       >
-        {messages.map((m, index) => {
+        {/* Combine server messages and optimistic messages, sorted by time */}
+        {[...messages, ...optimisticMessages.map(m => ({ ...m, id: parseInt(m.id.split('_')[1]) || 999999 }))].sort((a, b) =>
+          new Date(a.time).getTime() - new Date(b.time).getTime()
+        ).map((m, index, allMessages) => {
           const messageDate = getDateKey(m.time)
-          const prevMessageDate = index > 0 ? getDateKey(messages[index - 1].time) : null
+          const prevMessageDate = index > 0 ? getDateKey(allMessages[index - 1].time) : null
           const showDateSeparator = messageDate !== prevMessageDate
           
           return (
