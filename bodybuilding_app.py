@@ -10192,13 +10192,13 @@ def api_home_timeline():
                 if not s:
                     return None
                 try:
-                    # Try DD-MM-YYYY HH:MM:SS (new format)
-                    return datetime.strptime(s[:19], '%d-%m-%Y %H:%M:%S')
+                    # Try ISO / MySQL format (YYYY-MM-DD HH:MM:SS) - most common
+                    return datetime.strptime(s[:19], '%Y-%m-%d %H:%M:%S')
                 except Exception:
                     pass
                 try:
-                    # Try ISO / SQLite default (legacy)
-                    return datetime.strptime(s[:19], '%Y-%m-%d %H:%M:%S')
+                    # Try DD-MM-YYYY HH:MM:SS (new format)
+                    return datetime.strptime(s[:19], '%d-%m-%Y %H:%M:%S')
                 except Exception:
                     pass
                 try:
