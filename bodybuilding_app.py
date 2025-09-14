@@ -840,6 +840,24 @@ def init_db():
                           FOREIGN KEY (community_id) REFERENCES communities (id) ON DELETE CASCADE,
                           FOREIGN KEY (created_by) REFERENCES users (username))''')
             
+            # Ensure university_ads table exists
+            c.execute('''CREATE TABLE IF NOT EXISTS university_ads (
+                id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                community_id INTEGER NOT NULL,
+                title TEXT NOT NULL,
+                description TEXT,
+                price TEXT NOT NULL,
+                image_url TEXT NOT NULL,
+                link_url TEXT,
+                is_active TINYINT(1) DEFAULT 1,
+                display_order INTEGER DEFAULT 0,
+                created_at TEXT NOT NULL,
+                created_by TEXT NOT NULL,
+                clicks INTEGER DEFAULT 0,
+                impressions INTEGER DEFAULT 0,
+                FOREIGN KEY (community_id) REFERENCES communities (id) ON DELETE CASCADE
+            )''')
+            
             # Add impressions column if it doesn't exist (for existing databases)
             try:
                 c.execute("SELECT impressions FROM university_ads LIMIT 1")
