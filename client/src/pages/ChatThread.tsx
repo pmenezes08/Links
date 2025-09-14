@@ -167,31 +167,49 @@ export default function ChatThread(){
     
     setSending(true)
     const messageText = draft.trim()
+    const now = new Date().toISOString().slice(0,19).replace('T',' ')
+    const tempId = Date.now() + Math.random()
+    const replySnippet = replyTo ? (replyTo.text.length > 90 ? replyTo.text.slice(0,90) + '…' : replyTo.text) : undefined
+    
+    // Immediately add the message to the UI (optimistic update)
+    const optimisticMessage = { 
+      id: tempId, 
+      text: messageText, 
+      sent: true, 
+      time: now, 
+      replySnippet 
+    }
+    
+    setMessages(prev => [...prev, optimisticMessage])
+    setDraft('')
+    setReplyTo(null)
+    
+    // Store reply snippet in metadata if needed
+    if (replySnippet){
+      const k = `${now}|${messageText}|me`
+      metaRef.current[k] = { ...(metaRef.current[k]||{}), replySnippet }
+      try{ localStorage.setItem(storageKey, JSON.stringify(metaRef.current)) }catch{}
+    }
+    
     const fd = new URLSearchParams({ recipient_id: String(otherUserId), message: messageText })
     
     fetch('/send_message', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
       .then(r=>r.json()).then(j=>{
         if (j?.success){
-          setDraft('')
-          const now = new Date().toISOString().slice(0,19).replace('T',' ')
-          const replySnippet = replyTo ? (replyTo.text.length > 90 ? replyTo.text.slice(0,90) + '…' : replyTo.text) : undefined
-          
-          if (replySnippet){
-            const k = `${now}|${messageText}|me`
-            metaRef.current[k] = { ...(metaRef.current[k]||{}), replySnippet }
-            try{ localStorage.setItem(storageKey, JSON.stringify(metaRef.current)) }catch{}
-          }
-          
-          setMessages(prev => {
-            const exists = prev.some(m => m.text === messageText && m.sent && Math.abs(new Date(m.time).getTime() - new Date(now).getTime()) < 5000)
-            if (exists) return prev
-            return [...prev, { id: Math.random(), text: messageText, sent:true, time: now, replySnippet }]
-          })
-          
-          setReplyTo(null)
+          // Message sent successfully, stop typing indicator
           fetch('/api/typing', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ peer: username, is_typing: false }) }).catch(()=>{})
+        } else {
+          // If sending failed, remove the optimistic message
+          setMessages(prev => prev.filter(m => m.id !== tempId))
+          setDraft(messageText) // Restore the draft
+          alert('Failed to send message. Please try again.')
         }
-      }).catch(()=>{})
+      }).catch(()=>{
+        // Network error - remove optimistic message and restore draft
+        setMessages(prev => prev.filter(m => m.id !== tempId))
+        setDraft(messageText)
+        alert('Network error. Please check your connection and try again.')
+      })
       .finally(() => setSending(false))
   }
 
@@ -392,8 +410,31 @@ export default function ChatThread(){
               <div data-message-date={m.time}>
                 <LongPressActionable onDelete={() => {
                   const fd = new URLSearchParams({ message_id: String(m.id) })
+                  
+                  // Optimistically remove the message
+                  const originalMessages = messages
+                  setMessages(prev => prev.filter(x => x.id !== m.id))
+                  
                   fetch('/delete_message', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
-                    .then(r=>r.json()).then(j=>{ if (j?.success){ setMessages(prev => prev.filter(x => x.id !== m.id)) } }).catch(()=>{})
+                    .then(r=>r.json())
+                    .then(j=>{ 
+                      if (!j?.success) { 
+                        // Restore the message if deletion failed
+                        setMessages(originalMessages)
+                        if (j?.error) {
+                          alert(j.error === 'Premium subscription required!' 
+                            ? 'Premium subscription required to delete messages' 
+                            : `Failed to delete message: ${j.error}`)
+                        } else {
+                          alert('Failed to delete message')
+                        }
+                      }
+                    })
+                    .catch(()=>{
+                      // Network error - restore the message
+                      setMessages(originalMessages)
+                      alert('Network error. Could not delete message.')
+                    })
                 }} onReact={(emoji)=> {
                   setMessages(msgs => msgs.map(x => x.id===m.id ? { ...x, reaction: emoji } : x))
                   const k = `${m.time}|${m.text}|${m.sent ? 'me' : 'other'}`
