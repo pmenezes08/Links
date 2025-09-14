@@ -168,15 +168,18 @@ def test_chat_functionality():
         tests_passed = 0
         total_tests = 4
 
-        print("✅ Test 1 - Get User IDs: PASSED"        tests_passed += 1
+        print("✅ Test 1 - Get User IDs: PASSED")
+        tests_passed += 1
 
         if send_result.get('success'):
-            print("✅ Test 2 - Send Message: PASSED"            tests_passed += 1
+            print("✅ Test 2 - Send Message: PASSED")
+            tests_passed += 1
         else:
             print("❌ Test 2 - Send Message: FAILED")
 
         if messages_result.get('success'):
-            print("✅ Test 3 - Retrieve Messages: PASSED"            tests_passed += 1
+            print("✅ Test 3 - Retrieve Messages: PASSED")
+            tests_passed += 1
         else:
             print("❌ Test 3 - Retrieve Messages: FAILED")
 
