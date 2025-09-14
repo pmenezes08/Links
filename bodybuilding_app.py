@@ -9282,48 +9282,59 @@ def delete_community():
 @app.route('/migrate_parent_communities')
 @login_required
 def migrate_parent_communities():
-    """Migrate parent community relationships from SQLite backup"""
+    """Migrate KW28 parent community relationship"""
     username = session.get('username')
     if username != 'admin':
         return jsonify({'success': False, 'error': 'Admin access required'}), 403
     
     try:
-        # For now, let's manually set some parent community relationships
-        # This would typically come from SQLite backup data
-        parent_relationships = [
-            # Example: community_id -> parent_community_id
-            # These would be populated from actual SQLite data
-        ]
-        
-        if not parent_relationships:
-            return jsonify({'success': True, 'message': 'No parent community relationships to migrate', 'updated': 0})
-        
         with get_db_connection() as conn:
             c = conn.cursor()
-            updated_count = 0
             
-            for community_id, parent_id in parent_relationships:
-                try:
-                    c.execute("""
-                        UPDATE communities 
-                        SET parent_community_id = %s 
-                        WHERE id = %s
-                    """, (parent_id, community_id))
-                    
-                    if c.rowcount > 0:
-                        updated_count += 1
-                        
-                except Exception as e:
-                    logger.error(f"Error updating community {community_id}: {e}")
-                    
-            conn.commit()
+            # Find KW28 community
+            c.execute("SELECT id, name FROM communities WHERE name LIKE %s", ('%KW28%',))
+            kw28_community = c.fetchone()
             
-        return jsonify({
-            'success': True, 
-            'message': f'Updated {updated_count} communities with parent relationships',
-            'updated': updated_count
-        })
-        
+            # Find WHU/Otto community  
+            c.execute("SELECT id, name FROM communities WHERE name LIKE %s OR name LIKE %s", ('%WHU%', '%Otto%'))
+            whu_community = c.fetchone()
+            
+            if not kw28_community:
+                return jsonify({'success': False, 'error': 'KW28 community not found'})
+                
+            if not whu_community:
+                return jsonify({'success': False, 'error': 'WHU/Otto community not found'})
+            
+            # Set KW28's parent to WHU
+            c.execute("""
+                UPDATE communities 
+                SET parent_community_id = %s 
+                WHERE id = %s
+            """, (whu_community['id'], kw28_community['id']))
+            
+            if c.rowcount > 0:
+                conn.commit()
+                
+                # Get users in KW28 community for verification
+                c.execute("""
+                    SELECT u.username 
+                    FROM users u
+                    JOIN user_communities uc ON u.id = uc.user_id
+                    WHERE uc.community_id = %s
+                """, (kw28_community['id'],))
+                users = c.fetchall()
+                
+                return jsonify({
+                    'success': True,
+                    'message': f'Successfully set {whu_community["name"]} as parent of {kw28_community["name"]}',
+                    'parent_community': whu_community['name'],
+                    'child_community': kw28_community['name'],
+                    'affected_users': len(users),
+                    'users': [u['username'] for u in users]
+                })
+            else:
+                return jsonify({'success': False, 'error': 'No communities were updated'})
+                
     except Exception as e:
         logger.error(f"Error migrating parent communities: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
