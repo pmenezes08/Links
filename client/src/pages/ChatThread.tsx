@@ -131,14 +131,33 @@ export default function ChatThread(){
         const r = await fetch('/get_messages', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
         const j = await r.json()
         if (j?.success && Array.isArray(j.messages)){
-          setMessages(prev => j.messages.map((m:any) => {
-            const existing = prev.find(x => x.id === m.id)
-            const k = `${m.time}|${m.text}|${m.sent ? 'me' : 'other'}`
-            const meta = metaRef.current[k] || {}
-            return existing
-              ? { ...m, reaction: existing.reaction ?? meta.reaction, replySnippet: existing.replySnippet ?? meta.replySnippet }
-              : { ...m, reaction: meta.reaction, replySnippet: meta.replySnippet }
-          }))
+          setMessages(prev => {
+            // Create a map of existing temporary/optimistic messages (those with non-integer IDs)
+            const optimisticMessages = prev.filter(m => !Number.isInteger(m.id))
+            
+            // Process server messages
+            const serverMessages = j.messages.map((m:any) => {
+              const existing = prev.find(x => x.id === m.id)
+              const k = `${m.time}|${m.text}|${m.sent ? 'me' : 'other'}`
+              const meta = metaRef.current[k] || {}
+              return existing
+                ? { ...m, reaction: existing.reaction ?? meta.reaction, replySnippet: existing.replySnippet ?? meta.replySnippet }
+                : { ...m, reaction: meta.reaction, replySnippet: meta.replySnippet }
+            })
+            
+            // Check if any optimistic messages now exist on server (match by text and approximate time)
+            const filteredOptimistic = optimisticMessages.filter(opt => {
+              const matchFound = serverMessages.some(srv => 
+                srv.sent === opt.sent && 
+                srv.text === opt.text && 
+                Math.abs(new Date(srv.time).getTime() - new Date(opt.time).getTime()) < 10000 // Within 10 seconds
+              )
+              return !matchFound // Keep only if no match found
+            })
+            
+            // Combine server messages with remaining optimistic messages
+            return [...serverMessages, ...filteredOptimistic]
+          })
         }
       }catch{}
       try{
@@ -409,6 +428,11 @@ export default function ChatThread(){
               
               <div data-message-date={m.time}>
                 <LongPressActionable onDelete={() => {
+                  // Show confirmation dialog
+                  if (!confirm('Are you sure you want to delete this message?')) {
+                    return
+                  }
+                  
                   const fd = new URLSearchParams({ message_id: String(m.id) })
                   
                   // Optimistically remove the message
