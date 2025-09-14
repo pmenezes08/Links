@@ -13,6 +13,13 @@ export default function ChatThread(){
 
   const [otherUserId, setOtherUserId] = useState<number|''>('')
   const [messages, setMessages] = useState<Array<{ id:number; text:string; image_path?:string; sent:boolean; time:string; reaction?:string; replySnippet?:string }>>([])
+
+  // Debug messages state changes
+  useEffect(() => {
+    console.log('=== MESSAGES STATE CHANGED ===')
+    console.log('Messages count:', messages.length)
+    console.log('Messages:', messages.map(m => ({ id: m.id, text: m.text.substring(0, 30), sent: m.sent, time: m.time })))
+  }, [messages])
   const [draft, setDraft] = useState('')
   const [replyTo, setReplyTo] = useState<{ text:string }|null>(null)
   const [sending, setSending] = useState(false)
@@ -173,7 +180,15 @@ export default function ChatThread(){
   useEffect(() => { adjustTextareaHeight() }, [draft])
 
   function send(){
-    if (!otherUserId || !draft.trim() || sending) return
+    console.log('=== SEND FUNCTION CALLED ===')
+    console.log('otherUserId:', otherUserId)
+    console.log('draft.trim():', draft.trim())
+    console.log('sending:', sending)
+
+    if (!otherUserId || !draft.trim() || sending) {
+      console.log('Send blocked - returning early')
+      return
+    }
 
     console.log('Sending message:', draft.trim())
     setSending(true)
@@ -196,6 +211,9 @@ export default function ChatThread(){
           }
 
           setMessages(prev => {
+            console.log('Current messages before update:', prev.length)
+            console.log('Previous messages:', prev.map(m => ({ id: m.id, text: m.text.substring(0, 20), sent: m.sent })))
+
             // Better duplicate prevention - check for exact match within last 30 seconds
             const exists = prev.some(m =>
               m.text === messageText &&
@@ -209,8 +227,13 @@ export default function ChatThread(){
 
             // Use timestamp as ID for better uniqueness
             const messageId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+            const newMessage = { id: messageId, text: messageText, sent:true, time: now, replySnippet }
             console.log('Adding message to UI:', messageId, messageText)
-            return [...prev, { id: messageId, text: messageText, sent:true, time: now, replySnippet }]
+            console.log('New message object:', newMessage)
+
+            const updatedMessages = [...prev, newMessage]
+            console.log('Updated messages count:', updatedMessages.length)
+            return updatedMessages
           })
 
           setReplyTo(null)
@@ -578,6 +601,13 @@ export default function ChatThread(){
                   fetch('/api/typing', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ peer: username, is_typing: false }) }).catch(()=>{})
                 }, 1200)
               }}
+              onKeyDown={e=> {
+                if (e.key === 'Enter' && !e.shiftKey && draft.trim()) {
+                  e.preventDefault()
+                  console.log('Enter key pressed, calling send()')
+                  send()
+                }
+              }}
               onFocus={() => {
                 setTimeout(() => {
                   const header = document.querySelector('.h-14.border-b') as HTMLElement
@@ -619,7 +649,16 @@ export default function ChatThread(){
                       ? 'bg-[#4db6ac] text-black hover:bg-[#45a99c] hover:scale-105 active:scale-95'
                       : 'bg-white/20 text-white/70 cursor-not-allowed'
                 }`}
-                onClick={draft.trim() ? send : undefined}
+                onClick={() => {
+                  console.log('Send button clicked')
+                  console.log('draft.trim():', draft.trim())
+                  if (draft.trim()) {
+                    console.log('Calling send() from button click')
+                    send()
+                  } else {
+                    console.log('Send blocked - draft is empty')
+                  }
+                }}
                 disabled={sending || !draft.trim()}
                 aria-label="Send"
                 style={{
