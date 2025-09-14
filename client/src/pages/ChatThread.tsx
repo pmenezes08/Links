@@ -69,12 +69,12 @@ export default function ChatThread(){
 
   useEffect(() => {
     if (!username) return
-    fetch('/api/get_user_id_by_username', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: new URLSearchParams({ username }) })
+    fetch('/api/get_user_id_by_username', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded', 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' }, body: new URLSearchParams({ username, _ts: String(Date.now()) }) as any, cache: 'no-store' as any })
       .then(r=>r.json()).then(j=>{
         if (j?.success && j.user_id){
           setOtherUserId(j.user_id)
-          const fd = new URLSearchParams({ other_user_id: String(j.user_id) })
-          fetch('/get_messages', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
+          const fd = new URLSearchParams({ other_user_id: String(j.user_id), _ts: String(Date.now()) })
+          fetch('/get_messages', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded', 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' }, body: fd, cache: 'no-store' as any })
             .then(r=>r.json()).then(j=>{
               if (j?.success && Array.isArray(j.messages)) {
                 const serverMsgs = j.messages.map((m:any) => {
@@ -85,7 +85,7 @@ export default function ChatThread(){
                 setMessages(serverMsgs)
               }
             }).catch(()=>{})
-          fetch(`/api/get_user_profile_brief?username=${encodeURIComponent(username)}`, { credentials:'include' })
+          fetch(`/api/get_user_profile_brief?username=${encodeURIComponent(username)}&_ts=${Date.now()}`, { credentials:'include', cache: 'no-store' as any, headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' } as any })
             .then(r=>r.json()).then(j=>{
               if (j?.success){ setOtherProfile({ display_name: j.display_name, profile_picture: j.profile_picture||null }) }
             }).catch(()=>{})
@@ -133,8 +133,8 @@ export default function ChatThread(){
     if (!username || !otherUserId) return
     async function poll(){
       try{
-        const fd = new URLSearchParams({ other_user_id: String(otherUserId) })
-        const r = await fetch('/get_messages', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
+        const fd = new URLSearchParams({ other_user_id: String(otherUserId), _ts: String(Date.now()) })
+        const r = await fetch('/get_messages', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded', 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' }, body: fd, cache: 'no-store' as any })
         const j = await r.json()
         if (j?.success && Array.isArray(j.messages)){
           const serverMessages = j.messages.map((m:any) => {
@@ -170,7 +170,7 @@ export default function ChatThread(){
         // Silent error handling
       }
       try{
-        const t = await fetch(`/api/typing?peer=${encodeURIComponent(username!)}`, { credentials:'include' })
+        const t = await fetch(`/api/typing?peer=${encodeURIComponent(username!)}&_ts=${Date.now()}`, { credentials:'include', cache: 'no-store' as any, headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' } as any })
         const tj = await t.json().catch(()=>null)
         setTyping(!!tj?.is_typing)
       }catch{}
@@ -178,6 +178,46 @@ export default function ChatThread(){
     poll()
     pollTimer.current = setInterval(poll, 2000) // Reduced from 5000ms to 2000ms for faster updates
     return () => { if (pollTimer.current) clearInterval(pollTimer.current) }
+  }, [username, otherUserId])
+
+  // Immediate refresh when page becomes visible or window gains focus (avoids timer throttling delays)
+  useEffect(() => {
+    if (!username || !otherUserId) return
+    const fetchOnce = async () => {
+      try{
+        const fd = new URLSearchParams({ other_user_id: String(otherUserId), _ts: String(Date.now()) })
+        const r = await fetch('/get_messages', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded', 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' }, body: fd, cache: 'no-store' as any })
+        const j = await r.json()
+        if (j?.success && Array.isArray(j.messages)){
+          const serverMessages = j.messages.map((m:any) => {
+            const k = `${m.time}|${m.text}|${m.sent ? 'me' : 'other'}`
+            const meta = metaRef.current[k] || {}
+            return { ...m, reaction: meta.reaction, replySnippet: meta.replySnippet }
+          })
+          setMessages(prevMessages => {
+            if (prevMessages.length !== serverMessages.length || JSON.stringify(prevMessages) !== JSON.stringify(serverMessages)) {
+              return serverMessages
+            }
+            return prevMessages
+          })
+          setOptimisticMessages(prevOptimistic => {
+            const stillOptimistic = prevOptimistic.filter(opt => {
+              const isConfirmed = serverMessages.some(server => server.text === opt.text && server.sent === opt.sent)
+              return !isConfirmed
+            })
+            return stillOptimistic
+          })
+        }
+      }catch{}
+    }
+    const onVis = () => { if (document.visibilityState === 'visible') fetchOnce() }
+    const onFocus = () => { fetchOnce() }
+    window.addEventListener('focus', onFocus)
+    document.addEventListener('visibilitychange', onVis)
+    return () => {
+      window.removeEventListener('focus', onFocus)
+      document.removeEventListener('visibilitychange', onVis)
+    }
   }, [username, otherUserId])
 
 
@@ -398,9 +438,9 @@ export default function ChatThread(){
           }, 1500)
         }}
       >
-        {/* Combine server messages and optimistic messages, sorted by time */}
+        {/* Combine server messages and optimistic messages, sorted by time (string compare for stability) */}
         {[...messages, ...optimisticMessages].sort((a, b) =>
-          new Date(a.time).getTime() - new Date(b.time).getTime()
+          String(a.time).localeCompare(String(b.time))
         ).map((m, index, allMessages) => {
           const messageDate = getDateKey(m.time)
           const prevMessageDate = index > 0 ? getDateKey(allMessages[index - 1].time) : null
