@@ -158,9 +158,8 @@ export default function ChatThread(){
           setOptimisticMessages(prevOptimistic => {
             const stillOptimistic = prevOptimistic.filter(opt => {
               const isConfirmed = serverMessages.some(server =>
-                server.text.trim() === opt.text.trim() &&
-                server.sent === opt.sent &&
-                Math.abs(new Date(server.time).getTime() - new Date(opt.time).getTime()) < 10000 // Increased to 10 seconds
+                server.text === opt.text &&
+                server.sent === opt.sent
               )
               return !isConfirmed
             })
@@ -181,21 +180,6 @@ export default function ChatThread(){
     return () => { if (pollTimer.current) clearInterval(pollTimer.current) }
   }, [username, otherUserId])
 
-  // Cleanup stale optimistic messages (older than 30 seconds)
-  useEffect(() => {
-    const cleanupTimer = setInterval(() => {
-      const now = Date.now()
-      setOptimisticMessages(prev => {
-        const valid = prev.filter(opt => {
-          const age = now - new Date(opt.time).getTime()
-          return age < 30000 // Remove messages older than 30 seconds
-        })
-        return valid.length !== prev.length ? valid : prev
-      })
-    }, 10000) // Check every 10 seconds
-
-    return () => clearInterval(cleanupTimer)
-  }, [])
 
   function adjustTextareaHeight(){
     const ta = textareaRef.current
@@ -213,31 +197,28 @@ export default function ChatThread(){
     }
     setSending(true)
     const messageText = draft.trim()
-    const fd = new URLSearchParams({ recipient_id: String(otherUserId), message: messageText })
+    const now = new Date().toISOString().slice(0,19).replace('T',' ')
+    const replySnippet = replyTo ? (replyTo.text.length > 90 ? replyTo.text.slice(0,90) + '…' : replyTo.text) : undefined
 
+    // Optimistic UI: show message immediately before server response
+    const optimisticId = `opt_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    const optimisticMessage = { id: optimisticId, text: messageText, sent: true, time: now, replySnippet }
+    setOptimisticMessages(prev => [...prev, optimisticMessage])
+    setDraft('')
+    setReplyTo(null)
+
+    const fd = new URLSearchParams({ recipient_id: String(otherUserId), message: messageText })
 
     fetch('/send_message', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
       .then(r=>r.json()).then(j=>{
         if (j?.success){
-          setDraft('')
-          const now = new Date().toISOString().slice(0,19).replace('T',' ')
-          const replySnippet = replyTo ? (replyTo.text.length > 90 ? replyTo.text.slice(0,90) + '…' : replyTo.text) : undefined
-
           if (replySnippet){
             const k = `${now}|${messageText}|me`
             metaRef.current[k] = { ...(metaRef.current[k]||{}), replySnippet }
             try{ localStorage.setItem(storageKey, JSON.stringify(metaRef.current)) }catch{}
           }
 
-          // Add to optimistic messages (separate from server messages)
-          const optimisticId = `opt_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-          const optimisticMessage = { id: optimisticId, text: messageText, sent: true, time: now, replySnippet }
-
-          setOptimisticMessages(prev => [...prev, optimisticMessage])
-
           // Don't touch the main messages state - let polling handle server updates
-
-          setReplyTo(null)
           fetch('/api/typing', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ peer: username, is_typing: false }) }).catch(()=>{})
         }
       }).catch(()=>{})
@@ -418,7 +399,7 @@ export default function ChatThread(){
         }}
       >
         {/* Combine server messages and optimistic messages, sorted by time */}
-        {[...messages, ...optimisticMessages.map(m => ({ ...m, id: Math.random() * 1000000 }))].sort((a, b) =>
+        {[...messages, ...optimisticMessages].sort((a, b) =>
           new Date(a.time).getTime() - new Date(b.time).getTime()
         ).map((m, index, allMessages) => {
           const messageDate = getDateKey(m.time)
