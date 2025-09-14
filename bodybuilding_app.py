@@ -176,6 +176,34 @@ DAILY_API_LIMIT = 10
 
 USE_MYSQL = (os.getenv('DB_BACKEND', 'sqlite').lower() == 'mysql')
 
+# Database exception handling - works with both SQLite and MySQL
+class DatabaseIntegrityError(Exception):
+    """Generic database integrity error that works with both SQLite and MySQL"""
+    pass
+
+class DatabaseOperationalError(Exception):
+    """Generic database operational error that works with both SQLite and MySQL"""
+    pass
+
+def handle_db_error(e):
+    """Convert database-specific errors to generic ones"""
+    if USE_MYSQL:
+        import pymysql
+        if isinstance(e, pymysql.IntegrityError):
+            raise DatabaseIntegrityError(str(e))
+        elif isinstance(e, pymysql.OperationalError):
+            raise DatabaseOperationalError(str(e))
+        elif isinstance(e, pymysql.ProgrammingError):
+            raise DatabaseOperationalError(str(e))
+    else:
+        import sqlite3
+        if isinstance(e, sqlite3.IntegrityError):
+            raise DatabaseIntegrityError(str(e))
+        elif isinstance(e, sqlite3.OperationalError):
+            raise DatabaseOperationalError(str(e))
+    # Re-raise if not a handled database error
+    raise e
+
 # Database connection helper: MySQL in production (if configured), SQLite locally
 def get_db_connection():
     if USE_MYSQL:
@@ -190,9 +218,9 @@ def get_db_connection():
             host = os.environ.get('MYSQL_HOST')
             user = os.environ.get('MYSQL_USER')
             password = os.environ.get('MYSQL_PASSWORD')
-            database = os.environ.get('MYSQL_DB')
+            database = os.environ.get('MYSQL_DATABASE')
             if not all([host, user, password, database]):
-                raise RuntimeError('Missing MySQL env vars: MYSQL_HOST, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DB')
+                raise RuntimeError('Missing MySQL env vars: MYSQL_HOST, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE')
 
             conn = pymysql.connect(
                 host=host,
@@ -347,21 +375,31 @@ def add_missing_tables():
                 try:
                     c.execute(f"ALTER TABLE communities ADD COLUMN {column_name} {column_type}")
                     logger.info(f"Added column {column_name} to communities table")
-                except sqlite3.OperationalError as e:
-                    if "duplicate column name" in str(e):
-                        logger.info(f"Column {column_name} already exists in communities table")
-                    else:
+                except Exception as e:
+                    try:
+                        handle_db_error(e)
+                    except DatabaseOperationalError as db_e:
+                        if "duplicate column name" in str(db_e) or "Duplicate column name" in str(db_e):
+                            logger.info(f"Column {column_name} already exists in communities table")
+                        else:
+                            logger.warning(f"Could not add column {column_name}: {db_e}")
+                    except Exception:
                         logger.warning(f"Could not add column {column_name}: {e}")
             
             # Add parent_reply_id column to replies if missing
             try:
                 c.execute("ALTER TABLE replies ADD COLUMN parent_reply_id INTEGER")
                 logger.info("Added column parent_reply_id to replies table")
-            except sqlite3.OperationalError as e:
-                if "duplicate column name" in str(e):
-                    logger.info("Column parent_reply_id already exists in replies table")
-                else:
-                    logger.warning(f"Could not add column parent_reply_id: {e}")
+            except Exception as e:
+                try:
+                    handle_db_error(e)
+                except DatabaseOperationalError as db_e:
+                    if "duplicate column name" in str(db_e) or "Duplicate column name" in str(db_e):
+                        logger.info("Column parent_reply_id already exists in replies table")
+                    else:
+                        logger.warning(f"Could not add parent_reply_id column: {db_e}")
+                except Exception:
+                    logger.warning(f"Could not add parent_reply_id column: {e}")
 
             # Ensure messages table has is_read column
             try:
@@ -493,10 +531,15 @@ def init_db():
                 try:
                     c.execute(f"ALTER TABLE users ADD COLUMN {column_name} {column_type}")
                     logger.info(f"Added column {column_name}")
-                except sqlite3.OperationalError as e:
-                    if "duplicate column name" in str(e):
-                        logger.info(f"Column {column_name} already exists")
-                    else:
+                except Exception as e:
+                    try:
+                        handle_db_error(e)
+                    except DatabaseOperationalError as db_e:
+                        if "duplicate column name" in str(db_e) or "Duplicate column name" in str(db_e):
+                            logger.info(f"Column {column_name} already exists")
+                        else:
+                            logger.warning(f"Could not add column {column_name}: {db_e}")
+                    except Exception:
                         logger.warning(f"Could not add column {column_name}: {e}")
             
             # Insert admin user
@@ -697,23 +740,41 @@ def init_db():
             # Add info column to communities table if it doesn't exist
             try:
                 c.execute("SELECT info FROM communities LIMIT 1")
-            except sqlite3.OperationalError:
-                logger.info("Adding info column to communities table...")
-                c.execute("ALTER TABLE communities ADD COLUMN info TEXT")
+            except Exception as e:
+                try:
+                    handle_db_error(e)
+                except DatabaseOperationalError:
+                    logger.info("Adding info column to communities table...")
+                    c.execute("ALTER TABLE communities ADD COLUMN info TEXT")
+                except Exception:
+                    logger.info("Adding info column to communities table...")
+                    c.execute("ALTER TABLE communities ADD COLUMN info TEXT")
             
             # Add info_updated_at column to communities table if it doesn't exist
             try:
                 c.execute("SELECT info_updated_at FROM communities LIMIT 1")
-            except sqlite3.OperationalError:
-                logger.info("Adding info_updated_at column to communities table...")
-                c.execute("ALTER TABLE communities ADD COLUMN info_updated_at TEXT")
+            except Exception as e:
+                try:
+                    handle_db_error(e)
+                except DatabaseOperationalError:
+                    logger.info("Adding info_updated_at column to communities table...")
+                    c.execute("ALTER TABLE communities ADD COLUMN info_updated_at TEXT")
+                except Exception:
+                    logger.info("Adding info_updated_at column to communities table...")
+                    c.execute("ALTER TABLE communities ADD COLUMN info_updated_at TEXT")
             
             # Add description column to community_files table if it doesn't exist
             try:
                 c.execute("SELECT description FROM community_files LIMIT 1")
-            except sqlite3.OperationalError:
-                logger.info("Adding description column to community_files table...")
-                c.execute("ALTER TABLE community_files ADD COLUMN description TEXT")
+            except Exception as e:
+                try:
+                    handle_db_error(e)
+                except DatabaseOperationalError:
+                    logger.info("Adding description column to community_files table...")
+                    c.execute("ALTER TABLE community_files ADD COLUMN description TEXT")
+                except Exception:
+                    logger.info("Adding description column to community_files table...")
+                    c.execute("ALTER TABLE community_files ADD COLUMN description TEXT")
             
                         # Create polls table
             logger.info("Creating polls table...")
@@ -2219,8 +2280,13 @@ def admin():
                         # Refresh users list
                         c.execute("SELECT username, subscription, is_active FROM users ORDER BY username")
                         users = c.fetchall()
-                    except sqlite3.IntegrityError:
-                        return render_template('admin.html', users=users, communities=communities, stats=stats, error=f"Username {new_username} already exists!")
+                    except Exception as e:
+                        try:
+                            handle_db_error(e)
+                        except DatabaseIntegrityError:
+                            return render_template('admin.html', users=users, communities=communities, stats=stats, error=f"Username {new_username} already exists!")
+                        except Exception:
+                            return render_template('admin.html', users=users, communities=communities, stats=stats, error=f"Username {new_username} already exists!")
                         
                 elif 'update_user' in request.form:
                     user_to_update = request.form.get('username')
@@ -2253,7 +2319,7 @@ def admin():
                         c.execute("DELETE FROM replies WHERE username=?", (user_to_delete,))
                         c.execute("DELETE FROM reactions WHERE username=?", (user_to_delete,))
                         c.execute("DELETE FROM reply_reactions WHERE username=?", (user_to_delete,))
-                        c.execute("DELETE FROM user_communities WHERE user_id=(SELECT rowid FROM users WHERE username=?)", (user_to_delete,))
+                        c.execute("DELETE FROM user_communities WHERE user_id=(SELECT id FROM users WHERE username=?)", (user_to_delete,))
                         c.execute("DELETE FROM saved_data WHERE username=?", (user_to_delete,))
                         c.execute("DELETE FROM messages WHERE sender=?", (user_to_delete,))
                         c.execute("DELETE FROM messages WHERE receiver=?", (user_to_delete,))
@@ -3128,11 +3194,8 @@ def saved_nutrition():
             if not plans:
                 logger.warning(f"No nutrition plans found for {username}")
         return render_template('saved_nutrition.html', plans=plans, name=username, subscription=user['subscription'])
-    except sqlite3.Error as e:
-        logger.error(f"Database error in saved_nutrition for {username}: {str(e)}")
-        abort(500)
     except Exception as e:
-        logger.error(f"Unexpected error in saved_nutrition for {username}: {str(e)}")
+        logger.error(f"Error in saved_nutrition for {username}: {str(e)}")
         abort(500)
 
 @app.route('/delete_nutrition', methods=['POST'], endpoint='delete_nutrition_endpoint')
@@ -4793,7 +4856,7 @@ def check_duplicate_users():
             
             # Check for duplicate usernames
             c.execute("""
-                SELECT username, COUNT(*) as count, GROUP_CONCAT(rowid) as ids, 
+                SELECT username, COUNT(*) as count, GROUP_CONCAT(id) as ids, 
                        GROUP_CONCAT(password, '|||') as passwords,
                        GROUP_CONCAT(email, '|||') as emails,
                        GROUP_CONCAT(subscription, '|||') as subscriptions
@@ -4805,10 +4868,10 @@ def check_duplicate_users():
             
             # Get all admin records specifically
             c.execute("""
-                SELECT rowid, username, email, password, subscription, created_at
+                SELECT id, username, email, password, subscription, created_at
                 FROM users 
                 WHERE LOWER(username) = 'admin'
-                ORDER BY rowid
+                ORDER BY id
             """)
             admin_records = c.fetchall()
             
@@ -5023,10 +5086,10 @@ def fix_duplicate_user(username):
             
             # Get all records for this username
             c.execute("""
-                SELECT rowid, username, password, email, subscription
+                SELECT id, username, password, email, subscription
                 FROM users 
                 WHERE LOWER(username) = LOWER(?)
-                ORDER BY rowid
+                ORDER BY id
             """, (username,))
             records = c.fetchall()
             
@@ -5040,7 +5103,7 @@ def fix_duplicate_user(username):
             # Delete duplicate records
             c.execute(f"""
                 DELETE FROM users 
-                WHERE rowid IN ({','.join(['?' for _ in delete_ids])})
+                WHERE id IN ({','.join(['?' for _ in delete_ids])})
             """, delete_ids)
             
             conn.commit()
@@ -8044,9 +8107,15 @@ def add_calendar_event():
                             VALUES (?, ?, ?, ?, 0, ?, 'event_invitation', ?)
                         """, (invited_user, username, notification_message, datetime.now().isoformat(), notification_link, community_id))
                         
-                    except sqlite3.IntegrityError:
-                        # Skip if already invited
-                        pass
+                    except Exception as e:
+                        try:
+                            handle_db_error(e)
+                        except DatabaseIntegrityError:
+                            # Skip if already invited
+                            pass
+                        except Exception:
+                            # Skip if already invited or other error
+                            pass
             
             conn.commit()
             
@@ -10925,7 +10994,7 @@ def add_exercise():
         if not all([weight, reps, date]):
             return jsonify({'success': False, 'error': 'Weight, reps, and date are required'})
         
-        conn = sqlite3.connect('users.db')
+        conn = get_db_connection()
         cursor = conn.cursor()
         
         # Check if exercise already exists for this user
@@ -11037,7 +11106,7 @@ def get_workout_exercises():
     try:
         username = session.get('username')
         
-        conn = sqlite3.connect('users.db')
+        conn = get_db_connection()
         cursor = conn.cursor()
         
         # Get exercises with data from both exercise_sets (Exercise Management) and workout_exercises (Workouts)
@@ -11120,7 +11189,7 @@ def edit_exercise():
         if not name and not muscle_group:
             return jsonify({'success': False, 'error': 'Nothing to update'})
         
-        conn = sqlite3.connect('users.db')
+        conn = get_db_connection()
         cursor = conn.cursor()
         
         # Normalize and validate muscle group if provided
@@ -11538,7 +11607,7 @@ def delete_exercise():
         if not exercise_id:
             return jsonify({'success': False, 'error': 'Exercise ID is required'})
         
-        conn = sqlite3.connect('users.db')
+        conn = get_db_connection()
         cursor = conn.cursor()
         
         # Delete the exercise (sets will be deleted automatically due to CASCADE)
@@ -11570,7 +11639,7 @@ def log_weight_set():
         if not all([exercise_id, weight, reps, date]):
             return jsonify({'success': False, 'error': 'All fields are required'})
         
-        conn = sqlite3.connect('users.db')
+        conn = get_db_connection()
         cursor = conn.cursor()
         
         # Verify the exercise belongs to the user
@@ -11641,7 +11710,7 @@ def edit_set():
         if not all([exercise_id, set_id, weight]):
             return jsonify({'success': False, 'error': 'All fields are required'})
         
-        conn = sqlite3.connect('users.db')
+        conn = get_db_connection()
         cursor = conn.cursor()
         
         # Verify the exercise belongs to the user
@@ -11679,7 +11748,7 @@ def delete_set():
         if not all([exercise_id, set_id]):
             return jsonify({'success': False, 'error': 'Exercise ID and set ID are required'})
         
-        conn = sqlite3.connect('users.db')
+        conn = get_db_connection()
         cursor = conn.cursor()
         
         # Verify the exercise belongs to the user
@@ -11718,7 +11787,7 @@ def delete_weight_entry():
         if not all([exercise_id, date, weight, reps]):
             return jsonify({'success': False, 'error': 'All fields are required'})
         
-        conn = sqlite3.connect('users.db')
+        conn = get_db_connection()
         cursor = conn.cursor()
         
         # Verify the exercise belongs to the user
@@ -11763,7 +11832,7 @@ def get_exercise_progress():
         if not exercise_id:
             return jsonify({'success': False, 'error': 'Exercise ID is required'})
         
-        conn = sqlite3.connect('users.db')
+        conn = get_db_connection()
         cursor = conn.cursor()
         
         # Build date filter
@@ -11834,7 +11903,7 @@ def get_exercise_one_rm():
         if not exercise_id:
             return jsonify({'success': False, 'error': 'Exercise ID is required'})
         
-        conn = sqlite3.connect('users.db')
+        conn = get_db_connection()
         cursor = conn.cursor()
         
         # Get all weight entries for the exercise and calculate max 1RM
@@ -11876,7 +11945,7 @@ def update_exercise_one_rm():
         if not all([exercise_id, weight, reps]):
             return jsonify({'success': False, 'error': 'All fields are required'})
         
-        conn = sqlite3.connect('users.db')
+        conn = get_db_connection()
         cursor = conn.cursor()
         
         # Verify the exercise belongs to the user
@@ -11913,7 +11982,7 @@ def check_exercise_in_workout():
         if not all([workout_id, exercise_id]):
             return jsonify({'success': False, 'error': 'Workout ID and Exercise ID are required'})
         
-        conn = sqlite3.connect('users.db')
+        conn = get_db_connection()
         cursor = conn.cursor()
         
         # Check if the exercise is already in the workout and get its details
@@ -11958,7 +12027,7 @@ def update_exercise_in_workout():
         if not all([workout_exercise_id, weight, sets, reps]):
             return jsonify({'success': False, 'error': 'All fields are required'})
         
-        conn = sqlite3.connect('users.db')
+        conn = get_db_connection()
         cursor = conn.cursor()
         
         # Verify the workout exercise belongs to the user
@@ -11998,7 +12067,7 @@ def get_progress_summary():
         if not exercise_id:
             return jsonify({'success': False, 'error': 'Exercise ID is required'})
         
-        conn = sqlite3.connect('users.db')
+        conn = get_db_connection()
         cursor = conn.cursor()
         
         # Get exercise name
@@ -12066,7 +12135,7 @@ def get_workout_summary():
     try:
         username = session.get('username')
         
-        conn = sqlite3.connect('users.db')
+        conn = get_db_connection()
         cursor = conn.cursor()
         
         # Get total workouts
@@ -12113,7 +12182,7 @@ def share_progress():
         if not exercise_id or not communities:
             return jsonify({'success': False, 'error': 'Missing required fields'})
         
-        conn = sqlite3.connect('users.db')
+        conn = get_db_connection()
         cursor = conn.cursor()
         
         # Get exercise name
@@ -12209,7 +12278,7 @@ def share_workouts():
         if not communities:
             return jsonify({'success': False, 'error': 'No communities selected'})
         
-        conn = sqlite3.connect('users.db')
+        conn = get_db_connection()
         cursor = conn.cursor()
         
         # Get workout summary
@@ -12267,7 +12336,7 @@ def get_individual_workout_summary():
         if not workout_id:
             return jsonify({'success': False, 'error': 'Workout ID is required'})
         
-        conn = sqlite3.connect('users.db')
+        conn = get_db_connection()
         cursor = conn.cursor()
         
         # Get workout details
@@ -12321,7 +12390,7 @@ def share_individual_workout():
         if not communities:
             return jsonify({'success': False, 'error': 'No communities selected'})
         
-        conn = sqlite3.connect('users.db')
+        conn = get_db_connection()
         cursor = conn.cursor()
         
         # Get workout details
@@ -12422,7 +12491,7 @@ def create_workout():
             print(f"Debug: Missing required fields")
             return jsonify({'success': False, 'error': 'Missing required fields'})
         
-        conn = sqlite3.connect('users.db')
+        conn = get_db_connection()
         cursor = conn.cursor()
         
         # Create workouts table if it doesn't exist
@@ -12456,7 +12525,7 @@ def get_workouts():
         return jsonify({'success': False, 'error': 'Not logged in'})
     
     try:
-        conn = sqlite3.connect('users.db')
+        conn = get_db_connection()
         cursor = conn.cursor()
         
         # Get workouts
@@ -12497,7 +12566,7 @@ def get_workout_details():
         if not workout_id:
             return jsonify({'success': False, 'error': 'Missing workout ID'})
         
-        conn = sqlite3.connect('users.db')
+        conn = get_db_connection()
         cursor = conn.cursor()
         
         # Get workout details
@@ -12562,7 +12631,7 @@ def add_exercise_to_workout():
         if not all([workout_id, exercise_id, weight, sets, reps]):
             return jsonify({'success': False, 'error': 'Missing required fields'})
         
-        conn = sqlite3.connect('users.db')
+        conn = get_db_connection()
         cursor = conn.cursor()
         
         # Verify workout belongs to user
@@ -12601,7 +12670,7 @@ def remove_exercise_from_workout():
         
         print(f"Debug: Removing workout exercise ID: {workout_exercise_id}")
         
-        conn = sqlite3.connect('users.db')
+        conn = get_db_connection()
         cursor = conn.cursor()
         
         # Verify workout exercise belongs to user
@@ -12638,7 +12707,7 @@ def delete_workout():
         if not workout_id:
             return jsonify({'success': False, 'error': 'Missing workout ID'})
         
-        conn = sqlite3.connect('users.db')
+        conn = get_db_connection()
         cursor = conn.cursor()
         
         # Verify workout belongs to user
@@ -12670,7 +12739,7 @@ def get_user_exercises():
     try:
         username = session.get('username')
         
-        conn = sqlite3.connect('users.db')
+        conn = get_db_connection()
         cursor = conn.cursor()
         
         # Get all exercises with their weight history
@@ -12734,7 +12803,7 @@ def test_version():
 @app.route('/test_database')
 def test_database():
     try:
-        conn = sqlite3.connect('users.db')
+        conn = get_db_connection()
         cursor = conn.cursor()
         
         # Check if tables exist
@@ -13456,7 +13525,7 @@ def seed_dummy_data():
                 c.execute('SELECT id FROM communities WHERE name=? AND type=?', (name, ctype))
                 r = c.fetchone()
                 if r:
-                    return r['id'] if isinstance(r, sqlite3.Row) else r[0]
+                    return r['id'] if hasattr(r, 'keys') else r[0]
                 join_code = generate_join_code()
                 c.execute('''INSERT INTO communities (name, type, creator_username, join_code, created_at)
                              VALUES (?, ?, ?, ?, ?)''', (name, ctype, 'admin', join_code, datetime.now().strftime('%m.%d.%y %H:%M')))
@@ -13467,14 +13536,14 @@ def seed_dummy_data():
 
             # Helper to get or create user and map to communities
             def ensure_user(u):
-                c.execute('SELECT rowid FROM users WHERE username=?', (u,))
+                c.execute('SELECT id FROM users WHERE username=?', (u,))
                 row = c.fetchone()
                 if not row:
                     c.execute('''INSERT INTO users (username, email, password, created_at)
                                  VALUES (?, ?, ?, ?)''', (u, f'{u}@example.com', '12345', datetime.now().strftime('%m.%d.%y %H:%M')))
-                    c.execute('SELECT rowid FROM users WHERE username=?', (u,))
+                    c.execute('SELECT id FROM users WHERE username=?', (u,))
                     row = c.fetchone()
-                user_id = row['rowid'] if isinstance(row, sqlite3.Row) else row[0]
+                user_id = row['id'] if hasattr(row, 'keys') else row[0]
                 # Add to communities if not already
                 for comm_id in (gym_comm_id, cf_comm_id):
                     c.execute('SELECT 1 FROM user_communities WHERE user_id=? AND community_id=?', (user_id, comm_id))
@@ -13510,7 +13579,7 @@ def seed_dummy_data():
                     c.execute('SELECT id FROM exercises WHERE username=? AND name=?', (u, name))
                     row = c.fetchone()
                     if row:
-                        ex_id = row['id'] if isinstance(row, sqlite3.Row) else row[0]
+                        ex_id = row['id'] if hasattr(row, 'keys') else row[0]
                     else:
                         c.execute('INSERT INTO exercises (username, name, muscle_group) VALUES (?, ?, ?)', (u, name, group))
                         ex_id = c.lastrowid
