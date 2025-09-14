@@ -198,10 +198,15 @@ export default function ChatThread(){
 
           addDebugLog(`Poll: server returned ${serverMessages.length} messages`)
 
-          // Update server messages
+          // Update server messages only if different
           setMessages(prevMessages => {
             addDebugLog(`Poll: server messages ${prevMessages.length} → ${serverMessages.length}`)
-            return serverMessages
+            // Only update if messages actually changed
+            if (prevMessages.length !== serverMessages.length || 
+                JSON.stringify(prevMessages) !== JSON.stringify(serverMessages)) {
+              return serverMessages
+            }
+            return prevMessages
           })
 
           // Remove optimistic messages that are now in server response
@@ -239,7 +244,7 @@ export default function ChatThread(){
     pollTimer.current = setInterval(() => {
       addDebugLog('Running scheduled poll...')
       poll()
-    }, 2000)
+    }, 5000) // Increased from 2000ms to 5000ms to reduce polling frequency
     return () => { if (pollTimer.current) clearInterval(pollTimer.current) }
   }, [username, otherUserId])
 
