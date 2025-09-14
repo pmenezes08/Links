@@ -79,6 +79,12 @@ export default function ChatThread(){
     }
   }, [showDebug])
 
+  // TEMPORARY: Add console log to verify the code is running
+  useEffect(() => {
+    console.log('🚀 ChatThread component loaded - Debug panel available!')
+    console.log('🐛 Look for the bug icon in the top-right of chat header')
+  }, [])
+
   // Date formatting functions
   function formatDateLabel(dateStr: string): string {
     const messageDate = new Date(dateStr)
