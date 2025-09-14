@@ -9357,6 +9357,105 @@ def migrate_parent_communities():
         logger.error(f"Error migrating parent communities: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@app.route('/fix_database_issues')
+@login_required  
+def fix_database_issues():
+    """Fix database issues: missing tables and parent community memberships"""
+    username = session.get('username')
+    if username != 'admin':
+        return jsonify({'success': False, 'error': 'Admin access required'}), 403
+    
+    try:
+        results = []
+        
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Fix 1: Ensure university_ads table exists
+            try:
+                c.execute("SELECT 1 FROM university_ads LIMIT 1")
+                results.append("✅ university_ads table exists")
+            except:
+                results.append("🔨 Creating university_ads table...")
+                c.execute('''CREATE TABLE university_ads (
+                    id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                    community_id INTEGER NOT NULL,
+                    title TEXT NOT NULL,
+                    description TEXT,
+                    price TEXT NOT NULL,
+                    image_url TEXT NOT NULL,
+                    link_url TEXT,
+                    is_active TINYINT(1) DEFAULT 1,
+                    display_order INTEGER DEFAULT 0,
+                    created_at TEXT NOT NULL,
+                    created_by TEXT NOT NULL,
+                    clicks INTEGER DEFAULT 0,
+                    impressions INTEGER DEFAULT 0,
+                    FOREIGN KEY (community_id) REFERENCES communities (id) ON DELETE CASCADE
+                )''')
+                results.append("✅ university_ads table created")
+            
+            # Fix 2: Add child community members to parent communities
+            c.execute("""
+                SELECT c.id, c.name, c.parent_community_id, pc.name as parent_name
+                FROM communities c
+                JOIN communities pc ON c.parent_community_id = pc.id
+                WHERE c.parent_community_id IS NOT NULL
+            """)
+            child_communities = c.fetchall()
+            
+            total_added = 0
+            
+            for child in child_communities:
+                child_id = child['id']
+                parent_id = child['parent_community_id']
+                child_name = child['name']
+                parent_name = child['parent_name']
+                
+                # Get members of child community who are not in parent
+                c.execute("""
+                    SELECT uc.user_id, u.username
+                    FROM user_communities uc
+                    JOIN users u ON uc.user_id = u.id
+                    WHERE uc.community_id = %s
+                    AND uc.user_id NOT IN (
+                        SELECT user_id FROM user_communities 
+                        WHERE community_id = %s
+                    )
+                """, (child_id, parent_id))
+                
+                members_to_add = c.fetchall()
+                
+                for member in members_to_add:
+                    user_id = member['user_id']
+                    username_member = member['username']
+                    
+                    try:
+                        # Add to parent community
+                        c.execute("""
+                            INSERT INTO user_communities (user_id, community_id, joined_at)
+                            VALUES (%s, %s, NOW())
+                        """, (user_id, parent_id))
+                        
+                        total_added += 1
+                        results.append(f"✅ Added {username_member} to {parent_name}")
+                        
+                    except Exception as e:
+                        results.append(f"❌ Failed to add {username_member}: {e}")
+            
+            conn.commit()
+            results.append(f"📊 Total members added to parent communities: {total_added}")
+            
+        return jsonify({
+            'success': True, 
+            'message': 'Database issues fixed successfully',
+            'results': results
+        })
+        
+    except Exception as e:
+        logger.error(f"Error fixing database issues: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @app.route('/migrate_database')
 def migrate_database():
     """Manual database migration endpoint"""
