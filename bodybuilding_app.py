@@ -9360,7 +9360,7 @@ def migrate_parent_communities():
 @app.route('/fix_database_issues')
 @login_required  
 def fix_database_issues():
-    """Fix database issues: missing tables and parent community memberships"""
+    """Fix database issues: missing tables, parent community memberships, and timestamps"""
     username = session.get('username')
     if username != 'admin':
         return jsonify({'success': False, 'error': 'Admin access required'}), 403
@@ -9395,7 +9395,41 @@ def fix_database_issues():
                 )''')
                 results.append("✅ university_ads table created")
             
-            # Fix 2: Add child community members to parent communities
+            # Fix 2: Fix invalid post timestamps
+            results.append("🔧 Fixing invalid post timestamps...")
+            
+            # Find posts with invalid timestamps using safe query
+            c.execute("""
+                SELECT id, username, content, timestamp, community_id
+                FROM posts 
+                WHERE timestamp = '0000-00-00 00:00:00' 
+                   OR timestamp IS NULL
+                   OR timestamp = '0000-00-00'
+                ORDER BY id DESC
+            """)
+            
+            invalid_posts = c.fetchall()
+            
+            if invalid_posts:
+                results.append(f"Found {len(invalid_posts)} posts with invalid timestamps")
+                
+                for post in invalid_posts:
+                    try:
+                        # Use MySQL NOW() function for safety
+                        c.execute("""
+                            UPDATE posts 
+                            SET timestamp = NOW() 
+                            WHERE id = %s
+                        """, (post['id'],))
+                        
+                        results.append(f"✅ Fixed timestamp for post {post['id']} by {post['username']}")
+                        
+                    except Exception as e:
+                        results.append(f"❌ Failed to fix post {post['id']}: {e}")
+            else:
+                results.append("✅ No invalid timestamps found")
+            
+            # Fix 3: Add child community members to parent communities
             c.execute("""
                 SELECT c.id, c.name, c.parent_community_id, pc.name as parent_name
                 FROM communities c

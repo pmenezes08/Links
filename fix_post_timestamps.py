@@ -53,6 +53,8 @@ def fix_post_timestamps():
                 WHERE timestamp = '0000-00-00 00:00:00' 
                    OR timestamp IS NULL 
                    OR timestamp = ''
+                   OR timestamp = '0000-00-00'
+                   OR LENGTH(TRIM(timestamp)) = 0
                 ORDER BY id DESC
             """)
             
@@ -64,16 +66,29 @@ def fix_post_timestamps():
                 for post in invalid_posts:
                     print(f"  ID: {post['id']}, User: {post['username']}, Timestamp: {post['timestamp']}")
                     
-                    # Fix with current timestamp in the format the app expects
-                    current_time = datetime.now().strftime('%m.%d.%y %H:%M')
+                    # Fix with current timestamp in MySQL format
+                    current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                     
-                    c.execute("""
-                        UPDATE posts 
-                        SET timestamp = %s 
-                        WHERE id = %s
-                    """, (current_time, post['id']))
-                    
-                    print(f"    ✅ Updated to: {current_time}")
+                    try:
+                        c.execute("""
+                            UPDATE posts 
+                            SET timestamp = %s 
+                            WHERE id = %s
+                        """, (current_time, post['id']))
+                        
+                        print(f"    ✅ Updated to: {current_time}")
+                    except Exception as update_error:
+                        print(f"    ❌ Failed to update post {post['id']}: {update_error}")
+                        # Try alternative approach
+                        try:
+                            c.execute("""
+                                UPDATE posts 
+                                SET timestamp = NOW() 
+                                WHERE id = %s
+                            """, (post['id'],))
+                            print(f"    ✅ Updated using NOW() function")
+                        except Exception as alt_error:
+                            print(f"    ❌ Alternative update also failed: {alt_error}")
                 
                 conn.commit()
                 print(f"\n✅ Fixed {len(invalid_posts)} posts with invalid timestamps")
