@@ -10169,12 +10169,12 @@ def api_home_timeline():
             placeholders = ",".join(["?"] * len(community_ids))
             params = list(community_ids)
 
-            # Fetch recent posts across user's communities, then filter last 48h in Python (timestamps may have varied formats)
+            # Fetch recent posts across user's communities (temporarily removed 48h filter for debugging)
             c.execute(f"""
                 SELECT * FROM posts
                 WHERE community_id IN ({placeholders})
                 ORDER BY id DESC
-                LIMIT 600
+                LIMIT 50
             """, params)
             rows = [dict(row) for row in c.fetchall()]
 
@@ -10223,10 +10223,12 @@ def api_home_timeline():
             for r in rows:
                 dt = parse_ts(str(r.get('timestamp', '')))
                 if dt is None:
-                    # If cannot parse, include conservatively
-                    continue
-                if now - dt <= forty_eight:
+                    # If cannot parse, include conservatively (temporarily for debugging)
                     posts.append(r)
+                    continue
+                # Temporarily disabled 48-hour filter for debugging
+                # if now - dt <= forty_eight:
+                posts.append(r)
 
             # Enrich posts with author picture, reactions, user reaction, poll, replies_count, and community_name
             for post in posts:
