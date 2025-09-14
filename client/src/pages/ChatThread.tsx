@@ -15,38 +15,12 @@ export default function ChatThread(){
   const [messages, setMessages] = useState<Array<{ id:number; text:string; image_path?:string; sent:boolean; time:string; reaction?:string; replySnippet?:string }>>([])
   const [optimisticMessages, setOptimisticMessages] = useState<Array<{ id:string; text:string; sent:boolean; time:string; replySnippet?:string }>>([])
 
-  // Debug messages state changes with more detail
+  // Simple debug messages state changes (non-problematic)
   useEffect(() => {
-    addDebugLog('=== MESSAGES STATE CHANGED ===')
-    addDebugLog(`Server messages: ${messages.length}, Optimistic: ${optimisticMessages.length}, Total: ${messages.length + optimisticMessages.length}`)
-    if (messages.length > 0) {
-      addDebugLog(`Last server msg: "${messages[messages.length - 1].text.substring(0, 30)}" (${messages[messages.length - 1].time})`)
-    }
-    if (optimisticMessages.length > 0) {
-      addDebugLog(`Optimistic msg: "${optimisticMessages[optimisticMessages.length - 1].text.substring(0, 30)}" (${optimisticMessages[optimisticMessages.length - 1].time})`)
-    }
-    
-    // Check for duplicate messages
-    const allMessages = [...messages, ...optimisticMessages.map(m => ({ ...m, id: parseInt(m.id.split('_')[1]) || 999999 }))]
-    const duplicates = allMessages.filter((msg, index) => 
-      allMessages.findIndex(m => m.text === msg.text && Math.abs(new Date(m.time).getTime() - new Date(msg.time).getTime()) < 1000) !== index
-    )
-    if (duplicates.length > 0) {
-      addDebugLog(`⚠️ FOUND ${duplicates.length} DUPLICATE MESSAGES!`)
-    }
+    console.log(`Messages: ${messages.length}, Optimistic: ${optimisticMessages.length}`)
   }, [messages, optimisticMessages])
 
-  // Safety check - if optimistic messages disappear unexpectedly, log it
-  useEffect(() => {
-    const prevOptimisticCount = optimisticMessages.length
-    const timer = setTimeout(() => {
-      // This will run after the current render cycle
-      if (optimisticMessages.length < prevOptimisticCount && prevOptimisticCount > 0) {
-        addDebugLog(`⚠️ OPTIMISTIC MESSAGES DISAPPEARED! Was: ${prevOptimisticCount}, Now: ${optimisticMessages.length}`)
-      }
-    }, 100)
-    return () => clearTimeout(timer)
-  }, [optimisticMessages])
+
   const [draft, setDraft] = useState('')
   const [replyTo, setReplyTo] = useState<{ text:string }|null>(null)
   const [sending, setSending] = useState(false)
@@ -221,27 +195,13 @@ export default function ChatThread(){
           // Remove optimistic messages that are now in server response
           setOptimisticMessages(prevOptimistic => {
             const stillOptimistic = prevOptimistic.filter(opt => {
-              // More precise matching to prevent false confirmations
               const isConfirmed = serverMessages.some(server =>
-                server.text.trim() === opt.text.trim() &&
+                server.text === opt.text &&
                 server.sent === opt.sent &&
-                Math.abs(new Date(server.time).getTime() - new Date(opt.time).getTime()) < 10000 // Within 10 seconds
+                Math.abs(new Date(server.time).getTime() - new Date(opt.time).getTime()) < 5000
               )
-              
-              if (isConfirmed) {
-                addDebugLog(`Poll: confirming optimistic message: "${opt.text.substring(0, 30)}..."`)
-              }
-              
               return !isConfirmed
             })
-
-            const removedCount = prevOptimistic.length - stillOptimistic.length
-            if (removedCount > 0) {
-              addDebugLog(`Poll: confirmed ${removedCount} optimistic messages`)
-            } else if (prevOptimistic.length > 0) {
-              addDebugLog(`Poll: ${prevOptimistic.length} optimistic messages still pending`)
-            }
-
             return stillOptimistic
           })
         } else {
@@ -284,12 +244,7 @@ export default function ChatThread(){
       return
     }
 
-    // Check if we already have this message as optimistic
-    const currentOptimistic = optimisticMessages.find(opt => opt.text.trim() === draft.trim())
-    if (currentOptimistic) {
-      addDebugLog('⚠️ DUPLICATE MESSAGE PREVENTION: Already sending this message optimistically')
-      return
-    }
+
 
     addDebugLog(`Sending message: "${draft.trim()}"`)
     setSending(true)
@@ -316,11 +271,7 @@ export default function ChatThread(){
           const optimisticId = `opt_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
           const optimisticMessage = { id: optimisticId, text: messageText, sent: true, time: now, replySnippet }
 
-          addDebugLog(`Adding optimistic message: "${messageText}"`)
-          setOptimisticMessages(prev => {
-            addDebugLog(`Optimistic messages: ${prev.length} → ${prev.length + 1}`)
-            return [...prev, optimisticMessage]
-          })
+          setOptimisticMessages(prev => [...prev, optimisticMessage])
 
           // Don't touch the main messages state - let polling handle server updates
 
