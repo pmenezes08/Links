@@ -433,18 +433,27 @@ export default function ChatThread(){
                     return
                   }
                   
-                  const fd = new URLSearchParams({ message_id: String(m.id) })
+                  const messageId = m.id
+                  const messageToDelete = m
+                  const fd = new URLSearchParams({ message_id: String(messageId) })
                   
                   // Optimistically remove the message
-                  const originalMessages = messages
-                  setMessages(prev => prev.filter(x => x.id !== m.id))
+                  setMessages(prev => prev.filter(x => x.id !== messageId))
                   
                   fetch('/delete_message', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
                     .then(r=>r.json())
                     .then(j=>{ 
                       if (!j?.success) { 
                         // Restore the message if deletion failed
-                        setMessages(originalMessages)
+                        setMessages(prev => {
+                          // Check if message was already re-added (e.g., by polling)
+                          if (prev.some(x => x.id === messageId)) {
+                            return prev
+                          }
+                          // Find the right position to insert the message back
+                          const newMessages = [...prev, messageToDelete]
+                          return newMessages.sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime())
+                        })
                         if (j?.error) {
                           alert(j.error === 'Premium subscription required!' 
                             ? 'Premium subscription required to delete messages' 
@@ -456,7 +465,13 @@ export default function ChatThread(){
                     })
                     .catch(()=>{
                       // Network error - restore the message
-                      setMessages(originalMessages)
+                      setMessages(prev => {
+                        if (prev.some(x => x.id === messageId)) {
+                          return prev
+                        }
+                        const newMessages = [...prev, messageToDelete]
+                        return newMessages.sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime())
+                      })
                       alert('Network error. Could not delete message.')
                     })
                 }} onReact={(emoji)=> {
@@ -726,23 +741,38 @@ export default function ChatThread(){
 
 function LongPressActionable({ children, onDelete, onReact, onReply, onCopy }: { children: React.ReactNode; onDelete: () => void; onReact: (emoji:string)=>void; onReply: ()=>void; onCopy: ()=>void }){
   const [showMenu, setShowMenu] = useState(false)
+  const [isPressed, setIsPressed] = useState(false)
   const timerRef = useRef<any>(null)
+  
   function handleStart(e?: any){
     try{ e && e.preventDefault && e.preventDefault() }catch{}
+    setIsPressed(true)
     if (timerRef.current) clearTimeout(timerRef.current)
-    timerRef.current = setTimeout(() => setShowMenu(true), 1000)
+    timerRef.current = setTimeout(() => {
+      setShowMenu(true)
+      setIsPressed(false)
+    }, 500) // Reduced from 1000ms to 500ms for better UX
   }
+  
   function handleEnd(){
+    setIsPressed(false)
     if (timerRef.current) clearTimeout(timerRef.current)
   }
+  
   return (
     <div className="relative select-none" style={{ userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none' as any }}>
       <div
+        className={`transition-opacity ${isPressed ? 'opacity-70' : 'opacity-100'}`}
         onMouseDown={handleStart}
         onMouseUp={handleEnd}
         onMouseLeave={handleEnd}
         onTouchStart={handleStart}
         onTouchEnd={handleEnd}
+        onContextMenu={(e) => {
+          e.preventDefault()
+          setShowMenu(true)
+        }}
+        title="Hold to see options"
       >
         {children}
       </div>
