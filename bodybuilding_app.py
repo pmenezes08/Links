@@ -18,9 +18,39 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from pywebpush import webpush, WebPushException
 from hashlib import sha256
 from redis_cache import cache, cache_result, invalidate_user_cache, invalidate_community_cache, invalidate_message_cache
+try:
+    from PIL import Image
+    PIL_AVAILABLE = True
+except ImportError:
+    PIL_AVAILABLE = False
+    print("Warning: PIL not available, image optimization disabled")
 
 # Initialize Flask app
 app = Flask(__name__, template_folder='templates')
+
+# Add caching headers for static files (especially images)
+@app.after_request
+def add_cache_headers(response):
+    """Add aggressive caching headers for static files to improve performance"""
+    # Check if this is a static file request
+    if request.path.startswith('/static/'):
+        # Images get long cache time (7 days)
+        if any(request.path.endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.ico']):
+            response.headers['Cache-Control'] = 'public, max-age=604800, immutable'  # 7 days
+            response.headers['Expires'] = (datetime.now() + timedelta(days=7)).strftime('%a, %d %b %Y %H:%M:%S GMT')
+        # CSS and JS get medium cache time (1 day)
+        elif any(request.path.endswith(ext) for ext in ['.css', '.js']):
+            response.headers['Cache-Control'] = 'public, max-age=86400'  # 1 day
+            response.headers['Expires'] = (datetime.now() + timedelta(days=1)).strftime('%a, %d %b %Y %H:%M:%S GMT')
+        # Other static files get short cache time (1 hour)
+        else:
+            response.headers['Cache-Control'] = 'public, max-age=3600'  # 1 hour
+    
+    # Add security headers while we're at it
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'SAMEORIGIN'
+    
+    return response
 
 # Custom template filters
 @app.template_filter('nl2br')
@@ -40,6 +70,32 @@ def nl2br_filter(text):
 UPLOAD_FOLDER = 'static/uploads'
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+
+def optimize_image(file_path, max_width=1920, quality=85):
+    """Optimize image for web - compress and resize if needed"""
+    if not PIL_AVAILABLE:
+        return False
+    
+    try:
+        with Image.open(file_path) as img:
+            # Convert RGBA to RGB if necessary (for JPEG compatibility)
+            if img.mode in ('RGBA', 'LA', 'P'):
+                rgb_img = Image.new('RGB', img.size, (255, 255, 255))
+                rgb_img.paste(img, mask=img.split()[-1] if img.mode == 'RGBA' else None)
+                img = rgb_img
+            
+            # Resize if image is too large
+            if img.width > max_width:
+                ratio = max_width / img.width
+                new_height = int(img.height * ratio)
+                img = img.resize((max_width, new_height), Image.Resampling.LANCZOS)
+            
+            # Save with optimization
+            img.save(file_path, 'JPEG', quality=quality, optimize=True, progressive=True)
+            return True
+    except Exception as e:
+        logger.warning(f"Could not optimize image {file_path}: {e}")
+        return False
 
 # Session configuration: persist login for 30 days
 app.config['SESSION_COOKIE_HTTPONLY'] = True
@@ -3529,6 +3585,9 @@ def send_photo_message():
             # Save file
             file_path = os.path.join(uploads_dir, unique_filename)
             photo.save(file_path)
+            
+            # Optimize the image for faster loading
+            optimize_image(file_path, max_width=1280, quality=80)
             
             # Store relative path for database
             relative_path = f"message_photos/{unique_filename}"
@@ -9995,11 +10054,19 @@ def uploaded_file(filename):
         file_size = os.path.getsize(file_path)
         logger.info(f"Serving image: {clean_filename}, size: {file_size} bytes")
         
-        # Set proper headers for mobile compatibility
+        # Set proper headers for mobile compatibility and performance
         response = send_from_directory(app.config['UPLOAD_FOLDER'], clean_filename)
-        response.headers['Cache-Control'] = 'public, max-age=31536000'  # Cache for 1 year
+        response.headers['Cache-Control'] = 'public, max-age=31536000, immutable'  # Cache for 1 year, immutable
         response.headers['Access-Control-Allow-Origin'] = '*'
-        response.headers['Content-Type'] = 'image/jpeg'  # Will be overridden by Flask if needed
+        
+        # Add ETag for better caching
+        import hashlib
+        etag = hashlib.md5(f"{clean_filename}-{file_size}".encode()).hexdigest()
+        response.headers['ETag'] = f'"{etag}"'
+        
+        # Check if client has cached version
+        if request.headers.get('If-None-Match') == f'"{etag}"':
+            return '', 304  # Not Modified
         
         return response
         
