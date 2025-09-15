@@ -50,7 +50,7 @@ export default function PremiumDashboard() {
   return (
     <div className="min-h-screen pt-14 bg-[#0b0f10] text-white">
       {/* Desktop sidebar */}
-      <div className="fixed left-0 top-0 h-screen w-52 border-r border-[#333] bg-[#1a1a1a] hidden md:flex flex-col z-50">
+      <div className="fixed left-0 top-14 bottom-0 w-52 border-r border-[#333] bg-[#1a1a1a] hidden md:flex flex-col z-30">
         <div className="flex items-center h-14 px-2 border-b border-[#333]">
           <div className="text-white font-semibold text-base truncate pl-2">Dashboard</div>
         </div>
@@ -103,7 +103,12 @@ export default function PremiumDashboard() {
                 onClick={() => navigate('/communities')} 
               />
             ))}
-            {hasGymAccess && <Card iconClass="fa-solid fa-person-snowboarding" title="Your Sports" onClick={() => (location.assign('/your_sports'))} />}
+            {hasGymAccess && (
+              <>
+                <Card iconClass="fa-solid fa-dumbbell" title="Gym" onClick={() => navigate('/gym')} />
+                <Card iconClass="fa-solid fa-person-snowboarding" title="Your Sports" onClick={() => (location.assign('/your_sports'))} />
+              </>
+            )}
           </div>
         </div>
       </div>

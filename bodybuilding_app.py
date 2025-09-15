@@ -1895,6 +1895,7 @@ def premium_dashboard():
         dist_dir = os.path.join(base_dir, 'client', 'dist')
         index_path = os.path.join(dist_dir, 'index.html')
         if os.path.exists(index_path):
+            logger.info("Serving React index.html for premium_dashboard")
             return send_from_directory(dist_dir, 'index.html')
         return render_template('premium_dashboard.html', name=session.get('username',''))
     except Exception as e:
@@ -1964,6 +1965,7 @@ def admin_dashboard_react():
         dist_dir = os.path.join(base_dir, 'client', 'dist')
         index_path = os.path.join(dist_dir, 'index.html')
         if os.path.exists(index_path):
+            logger.info("Serving React index.html for admin_dashboard")
             return send_from_directory(dist_dir, 'index.html')
         # Fallback to communities page if React build not available
         return redirect(url_for('communities'))
