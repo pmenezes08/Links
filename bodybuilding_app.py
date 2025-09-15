@@ -477,7 +477,7 @@ def init_db():
                           password TEXT, first_name TEXT, last_name TEXT, age INTEGER, gender TEXT, 
                           fitness_level TEXT, primary_goal TEXT, weight REAL, height REAL, blood_type TEXT, 
                           muscle_mass REAL, bmi REAL, nutrition_goal TEXT, nutrition_restrictions TEXT, 
-                          created_at TEXT)''')
+                          created_at TEXT, is_admin BOOLEAN DEFAULT 0)''')
             
             # Add id column for MySQL compatibility if it doesn't exist
             try:
