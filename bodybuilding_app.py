@@ -3433,32 +3433,47 @@ def send_message():
             # Invalidate message caches for faster updates
             invalidate_message_cache(username, recipient_username)
             
-            # Create notification for the recipient (prevent duplicates)
+            # Create or update notification for the recipient
             try:
-                # Check for duplicate notification in last 10 seconds
+                # Check for existing unread notification from this sender
                 c.execute("""
                     SELECT id FROM notifications 
-                    WHERE user_id = ? AND from_user = ? AND type = 'message'
-                    AND created_at > DATE_SUB(NOW(), INTERVAL 10 SECOND)
+                    WHERE user_id = ? AND from_user = ? AND type = 'message' 
+                    AND is_read = 0
                     LIMIT 1
                 """, (recipient_username, username))
                 
-                if not c.fetchone():
+                existing_notif = c.fetchone()
+                
+                if existing_notif:
+                    # Update the existing notification timestamp
+                    c.execute("""
+                        UPDATE notifications 
+                        SET created_at = NOW(), 
+                            message = ?
+                        WHERE id = ?
+                    """, (f"You have new messages from {username}", existing_notif['id'] if hasattr(existing_notif, 'keys') else existing_notif[0]))
+                else:
+                    # Create new notification
                     c.execute("""
                         INSERT INTO notifications (user_id, from_user, type, message, created_at)
                         VALUES (?, ?, 'message', ?, NOW())
-                    """, (recipient_username, username, f"New message from {username}"))
-                    conn.commit()
+                    """, (recipient_username, username, f"You have new messages from {username}"))
+                
+                conn.commit()
             except Exception as notif_e:
-                logger.warning(f"Could not create message notification: {notif_e}")
+                logger.warning(f"Could not create/update message notification: {notif_e}")
             
             # Push notification to recipient (if subscribed)
             try:
-                send_push_to_user(recipient_username, {
-                    'title': f'New message from {username}',
-                    'body': message[:120],
-                    'url': f'/user_chat/chat/{username}',
-                })
+                # Only send push notification if this is a new notification (not an update)
+                if not existing_notif:
+                    send_push_to_user(recipient_username, {
+                        'title': f'Message from {username}',
+                        'body': f'You have new messages from {username}',
+                        'url': f'/user_chat/chat/{username}',
+                        'tag': f'message-{username}',  # This ensures only one notification per sender
+                    })
             except Exception as _e:
                 logger.warning(f"push send_message warn: {_e}")
 
@@ -3538,33 +3553,47 @@ def send_photo_message():
             
             conn.commit()
             
-            # Create notification for the recipient
+            # Create or update notification for the recipient
             try:
+                # Check for existing unread notification from this sender
                 c.execute("""
                     SELECT id FROM notifications 
-                    WHERE user_id = ? AND from_user = ? AND type = 'message'
-                    AND created_at > DATE_SUB(NOW(), INTERVAL 10 SECOND)
+                    WHERE user_id = ? AND from_user = ? AND type = 'message' 
+                    AND is_read = 0
                     LIMIT 1
                 """, (recipient_username, username))
                 
-                if not c.fetchone():
-                    notification_text = f"📷 {username} sent a photo" + (f": {message}" if message else "")
+                existing_notif = c.fetchone()
+                
+                if existing_notif:
+                    # Update the existing notification timestamp
+                    c.execute("""
+                        UPDATE notifications 
+                        SET created_at = NOW(), 
+                            message = ?
+                        WHERE id = ?
+                    """, (f"You have new messages from {username}", existing_notif['id'] if hasattr(existing_notif, 'keys') else existing_notif[0]))
+                else:
+                    # Create new notification
                     c.execute("""
                         INSERT INTO notifications (user_id, from_user, type, message, created_at)
                         VALUES (?, ?, 'message', ?, NOW())
-                    """, (recipient_username, username, notification_text))
-                    conn.commit()
+                    """, (recipient_username, username, f"You have new messages from {username}"))
+                
+                conn.commit()
             except Exception as notif_e:
-                logger.warning(f"Could not create photo message notification: {notif_e}")
+                logger.warning(f"Could not create/update photo message notification: {notif_e}")
             
             # Push notification
             try:
-                notification_body = f"📷 Photo" + (f": {message}" if message else "")
-                send_push_to_user(recipient_username, {
-                    'title': f'New message from {username}',
-                    'body': notification_body,
-                    'url': f'/user_chat/chat/{username}',
-                })
+                # Only send push notification if this is a new notification (not an update)
+                if not existing_notif:
+                    send_push_to_user(recipient_username, {
+                        'title': f'Message from {username}',
+                        'body': f'You have new messages from {username}',
+                        'url': f'/user_chat/chat/{username}',
+                        'tag': f'message-{username}',  # This ensures only one notification per sender
+                    })
             except Exception as _e:
                 logger.warning(f"push send_photo_message warn: {_e}")
 
