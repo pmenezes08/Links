@@ -119,7 +119,7 @@ export default function PremiumDashboard() {
                 } else if (!hasChildren) {
                   navigate(`/community_feed_react/${community.id}`)
                 } else {
-                  navigate('/communities')
+                  navigate(`/communities?parent_id=${community.id}`)
                 }
               }
               return (

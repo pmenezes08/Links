@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
 
 type Community = { 
@@ -13,6 +13,7 @@ type Community = {
 
 export default function Communities(){
   const navigate = useNavigate()
+  const location = useLocation()
   const { setTitle } = useHeader()
   const [_data, setData] = useState<{ username:string; current_user_profile_picture?:string|null; community_name?:string }|null>(null)
   const [communities, setCommunities] = useState<Community[]>([])
@@ -50,7 +51,22 @@ export default function Communities(){
         const jc = await rc.json()
         if (!mounted) return
         if (jc?.success){
-          setCommunities(jc.communities || [])
+          // Optional filtering by parent_id
+          const qs = new URLSearchParams(location.search)
+          const parentIdParam = qs.get('parent_id')
+          const all: Community[] = jc.communities || []
+          if (parentIdParam) {
+            const pid = Number(parentIdParam)
+            const parent = all.find(c => c.id === pid)
+            if (parent) {
+              const subset: Community[] = [{ ...parent, children: parent.children || [] }]
+              setCommunities(subset)
+            } else {
+              setCommunities(all)
+            }
+          } else {
+            setCommunities(all)
+          }
           setError(null)
         } else {
           setError(jc?.error || 'Error loading communities')
