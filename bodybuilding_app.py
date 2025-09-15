@@ -1417,10 +1417,13 @@ def index():
         try:
             with get_db_connection() as conn:
                 c = conn.cursor()
+                # Use the automatic placeholder conversion
                 c.execute("SELECT 1 FROM users WHERE username=? LIMIT 1", (username,))
                 exists = c.fetchone() is not None
         except Exception as e:
             logger.error(f"Database error validating username '{username}': {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
             if is_mobile:
                 return redirect(url_for('index', error='Server error. Please try again.'))
             return render_template('index.html', error="Server error. Please try again.")
