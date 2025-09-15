@@ -11489,6 +11489,11 @@ def get_user_parent_community():
 
                 communities_list = list(top_parents.values())
                 communities_list.sort(key=lambda x: (x.get('name') or '').lower())
+                try:
+                    logger.info(f"Dashboard: top-level parent communities for {username} -> {len(communities_list)} items: " + 
+                                ", ".join([f"{c.get('id')}:{c.get('name')}" for c in communities_list]))
+                except Exception:
+                    pass
             
             logger.info(f"Returning {len(communities_list)} communities for dashboard")
             
