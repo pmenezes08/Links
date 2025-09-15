@@ -2262,6 +2262,15 @@ def check_admin():
     username = session.get('username')
     return jsonify({'is_admin': is_app_admin(username)})
 
+@app.route('/health', methods=['GET'])
+def health_check():
+    """Simple health check endpoint"""
+    return jsonify({
+        'status': 'healthy',
+        'timestamp': datetime.now().isoformat(),
+        'version': '2025.01.15'
+    })
+
 @app.route('/api/test', methods=['GET'])
 def test_endpoint():
     """Test endpoint to verify server is running"""
