@@ -11403,20 +11403,28 @@ def get_user_parent_community():
             communities = c.fetchall()
             logger.info(f"Query returned {len(communities)} communities")
             
-            # Convert to list of dicts
+            # Convert to list of dicts (works for both MySQL dict rows and SQLite Row/tuple)
             communities_list = []
             seen_ids = set()
-            
+
             for comm in communities:
-                comm_id = comm.get('id')
+                if hasattr(comm, 'keys'):
+                    comm_id = comm['id']
+                    comm_name = comm['name']
+                    comm_type = comm['type']
+                else:
+                    comm_id = comm[0] if len(comm) > 0 else None
+                    comm_name = comm[1] if len(comm) > 1 else None
+                    comm_type = comm[2] if len(comm) > 2 else None
+
                 if comm_id and comm_id not in seen_ids:
                     communities_list.append({
                         'id': comm_id,
-                        'name': comm.get('name'),
-                        'type': comm.get('type')
+                        'name': comm_name,
+                        'type': comm_type
                     })
                     seen_ids.add(comm_id)
-                    logger.info(f"  Added: {comm.get('name')} (id: {comm_id})")
+                    logger.info(f"  Added: {comm_name} (id: {comm_id})")
             
             logger.info(f"Returning {len(communities_list)} communities for dashboard")
             
