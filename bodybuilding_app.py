@@ -11392,25 +11392,53 @@ def get_user_parent_community():
                     else:
                         communities_list.append({'id': row[0], 'name': row[1], 'type': row[2]})
             else:
-                # User: gather communities by membership OR creator OR admin role
-                c.execute(f"""
-                    SELECT c.id, c.name, c.type, c.parent_community_id
-                    FROM communities c
-                    JOIN user_communities uc ON c.id = uc.community_id
-                    JOIN users u ON uc.user_id = u.id
-                    WHERE u.username = {placeholder}
-                    UNION
-                    SELECT c.id, c.name, c.type, c.parent_community_id
-                    FROM communities c
-                    WHERE c.creator_username = {placeholder}
-                    UNION
-                    SELECT c.id, c.name, c.type, c.parent_community_id
-                    FROM communities c
-                    JOIN community_admins ca ON c.id = ca.community_id
-                    WHERE ca.username = {placeholder}
-                """, (username, username, username))
-                member_rows = c.fetchall()
-                logger.info(f"Dashboard: gathered {len(member_rows)} direct communities for {username}")
+                # User: gather communities by membership OR creator OR admin role (run separately for robust cross-DB behavior)
+                # 1) Memberships via user_communities
+                c.execute(f"SELECT id FROM users WHERE username = {placeholder}", (username,))
+                user_row = c.fetchone()
+                user_id = user_row['id'] if hasattr(user_row, 'keys') else (user_row[0] if user_row else None)
+                if not user_id:
+                    logger.warning(f"Dashboard: user_id not found for {username}")
+                community_ids = set()
+                if user_id:
+                    c.execute(f"SELECT community_id FROM user_communities WHERE user_id = {placeholder}", (user_id,))
+                    uc_rows = c.fetchall()
+                    for r in uc_rows:
+                        cid = r['community_id'] if hasattr(r, 'keys') else (r[0] if len(r) > 0 else None)
+                        if cid:
+                            community_ids.add(cid)
+                    logger.info(f"Dashboard: membership communities for {username}: {len(uc_rows)} rows, {len(community_ids)} unique IDs")
+
+                # 2) Communities created by user
+                c.execute(f"SELECT id FROM communities WHERE creator_username = {placeholder}", (username,))
+                created_rows = c.fetchall()
+                for r in created_rows:
+                    cid = r['id'] if hasattr(r, 'keys') else (r[0] if len(r) > 0 else None)
+                    if cid:
+                        community_ids.add(cid)
+                logger.info(f"Dashboard: created communities for {username}: {len(created_rows)} rows, total IDs now {len(community_ids)}")
+
+                # 3) Communities where user is admin
+                c.execute(f"SELECT community_id FROM community_admins WHERE username = {placeholder}", (username,))
+                admin_rows = c.fetchall()
+                for r in admin_rows:
+                    cid = r['community_id'] if hasattr(r, 'keys') else (r[0] if len(r) > 0 else None)
+                    if cid:
+                        community_ids.add(cid)
+                logger.info(f"Dashboard: admin communities for {username}: {len(admin_rows)} rows, total IDs now {len(community_ids)}")
+
+                if not community_ids:
+                    logger.info(f"Dashboard: no direct communities found for {username}")
+
+                # Fetch full rows for these community IDs
+                member_rows = []
+                if community_ids:
+                    # Build placeholder list safely
+                    ph = get_sql_placeholder()
+                    placeholders = ','.join([ph for _ in community_ids])
+                    c.execute(f"SELECT id, name, type, parent_community_id FROM communities WHERE id IN ({placeholders})", tuple(community_ids))
+                    member_rows = c.fetchall()
+                logger.info(f"Dashboard: resolved {len(member_rows)} community rows for {username}")
 
                 # Helper to fetch a community by id
                 def fetch_comm(comm_id):
