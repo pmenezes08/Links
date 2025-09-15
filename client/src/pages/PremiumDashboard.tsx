@@ -8,6 +8,7 @@ export default function PremiumDashboard() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [hasGymAccess, setHasGymAccess] = useState(false)
   const [communities, setCommunities] = useState<Array<{id: number, name: string, type: string}>>([])
+  const [parentsWithChildren, setParentsWithChildren] = useState<Set<number>>(new Set())
   const { setTitle } = useHeader()
   useEffect(() => { setTitle('Dashboard') }, [setTitle])
   const navigate = useNavigate()
@@ -36,6 +37,20 @@ export default function PremiumDashboard() {
         } else {
           console.log('Dashboard: No communities found or API error')
         }
+
+        // Fetch hierarchical communities to detect which parents have children
+        try {
+          const hierResp = await fetch('/api/user_communities_hierarchical', { credentials: 'include' })
+          const hierData = await hierResp.json()
+          const parents = new Set<number>()
+          if (hierData?.success && Array.isArray(hierData.communities)) {
+            for (const c of hierData.communities) {
+              const pid: number | null | undefined = c.parent_community_id
+              if (pid !== null && pid !== undefined) parents.add(pid as number)
+            }
+          }
+          setParentsWithChildren(parents)
+        } catch {}
       } catch (error) {
         console.error('Error loading user data:', error)
         setHasGymAccess(false)
@@ -95,14 +110,27 @@ export default function PremiumDashboard() {
         <div className="flex items-start justify-center px-3 md:ml-52 py-6">
           <div className="w-full max-w-5xl grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {/* Show all communities */}
-            {communities.map(community => (
-              <Card 
-                key={community.id}
-                iconClass="fa-solid fa-house" 
-                title={community.name} 
-                onClick={() => navigate('/communities')} 
-              />
-            ))}
+            {communities.map(community => {
+              const typeLower = (community.type || '').toLowerCase()
+              const hasChildren = parentsWithChildren.has(community.id)
+              const onCardClick = () => {
+                if (typeLower === 'gym') {
+                  navigate('/gym')
+                } else if (!hasChildren) {
+                  navigate(`/community_feed_react/${community.id}`)
+                } else {
+                  navigate('/communities')
+                }
+              }
+              return (
+                <Card 
+                  key={community.id}
+                  iconClass="fa-solid fa-house" 
+                  title={community.name} 
+                  onClick={onCardClick} 
+                />
+              )
+            })}
             {hasGymAccess && (
               <>
                 <Card iconClass="fa-solid fa-dumbbell" title="Gym" onClick={() => navigate('/gym')} />
