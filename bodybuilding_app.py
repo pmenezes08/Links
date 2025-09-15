@@ -2282,11 +2282,10 @@ def admin_dashboard_api():
                 ORDER BY c.name
             """)
             communities_raw = c.fetchall()
+            logger.info(f"Admin dashboard: Found {len(communities_raw)} total communities")
             
-            # Organize communities into parent-child structure
-            parent_communities = {}
-            child_communities = []
-            
+            # First, create all community objects
+            all_communities = {}
             for comm in communities_raw:
                 community_data = {
                     'id': comm[0],
@@ -2299,22 +2298,50 @@ def admin_dashboard_api():
                     'is_active': True,
                     'children': []
                 }
-                
-                if comm[5] is None:  # This is a parent community or standalone
-                    parent_communities[comm[0]] = community_data
+                all_communities[comm[0]] = community_data
+            
+            # Now organize into parent-child structure
+            root_communities = {}
+            
+            for comm_id, comm_data in all_communities.items():
+                if comm_data['parent_community_id'] is None:
+                    # This is a root community
+                    root_communities[comm_id] = comm_data
                 else:
-                    child_communities.append(community_data)
+                    # This is a child community - add it to its parent if parent exists
+                    parent_id = comm_data['parent_community_id']
+                    if parent_id in all_communities:
+                        all_communities[parent_id]['children'].append(comm_data)
+                    else:
+                        # Parent doesn't exist, treat this as a root community
+                        root_communities[comm_id] = comm_data
             
-            # Add children to their parents
-            for child in child_communities:
-                parent_id = child['parent_community_id']
-                if parent_id in parent_communities:
-                    parent_communities[parent_id]['children'].append(child)
-                    # Add child's member count to parent's total
-                    parent_communities[parent_id]['member_count'] += child['member_count']
+            # For any community that has children but isn't a root (nested hierarchy),
+            # we need to ensure it appears as a root if its parent isn't in our list
+            for comm_id, comm_data in all_communities.items():
+                if comm_data['children'] and comm_id not in root_communities:
+                    # Check if this community's parent is in our list
+                    if comm_data['parent_community_id'] and comm_data['parent_community_id'] not in all_communities:
+                        root_communities[comm_id] = comm_data
             
-            # Convert to list
-            communities = list(parent_communities.values())
+            # Convert to list and include all communities (even orphaned ones)
+            communities = list(root_communities.values())
+            
+            # Also include any communities that might have been missed
+            included_ids = set()
+            
+            def collect_ids(comm):
+                included_ids.add(comm['id'])
+                for child in comm['children']:
+                    collect_ids(child)
+            
+            for comm in communities:
+                collect_ids(comm)
+            
+            # Add any missing communities as root level
+            for comm_id, comm_data in all_communities.items():
+                if comm_id not in included_ids:
+                    communities.append(comm_data)
             
             return jsonify({
                 'success': True,
