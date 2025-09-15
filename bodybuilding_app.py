@@ -3325,12 +3325,13 @@ def get_messages():
     if not other_user_id:
         return jsonify({'success': False, 'error': 'Other user ID required'})
     
-    # Check cache first for faster message loading
-    cache_key = f"messages:{username}:{other_user_id}"
-    cached_messages = cache.get(cache_key)
-    if cached_messages:
-        logger.debug(f"🚀 Cache hit: messages for {username} ↔ {other_user_id}")
-        return jsonify({'success': True, 'messages': cached_messages})
+    # Skip cache for now - it's causing issues with message synchronization
+    # TODO: Fix cache key consistency between get_messages and invalidate_message_cache
+    # cache_key = f"messages:{username}:{other_user_id}"
+    # cached_messages = cache.get(cache_key)
+    # if cached_messages:
+    #     logger.debug(f"🚀 Cache hit: messages for {username} ↔ {other_user_id}")
+    #     return jsonify({'success': True, 'messages': cached_messages})
     
     try:
         with get_db_connection() as conn:
@@ -3375,10 +3376,10 @@ def get_messages():
             c.execute("UPDATE messages SET is_read=1 WHERE sender=? AND receiver=? AND is_read=0", (other_username, username))
             conn.commit()
             
-            # Cache messages for faster future loading
-            from redis_cache import MESSAGE_CACHE_TTL
-            cache.set(cache_key, messages, MESSAGE_CACHE_TTL)  # Optimized TTL
-            logger.debug(f"💾 Cached messages for {username} ↔ {other_user_id}")
+            # Skip caching for now - disabled due to cache key inconsistency
+            # from redis_cache import MESSAGE_CACHE_TTL
+            # cache.set(cache_key, messages, MESSAGE_CACHE_TTL)  # Optimized TTL
+            # logger.debug(f"💾 Cached messages for {username} ↔ {other_user_id}")
             
             return jsonify({'success': True, 'messages': messages})
             
