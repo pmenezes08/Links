@@ -106,7 +106,7 @@ app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)
 app.config['SESSION_COOKIE_SECURE'] = True  # Re-enabled for HTTPS
 # Don't set domain - let Flask handle it automatically
 # app.config['SESSION_COOKIE_DOMAIN'] = os.getenv('SESSION_COOKIE_DOMAIN') or None
-app.config['SESSION_COOKIE_NAME'] = 'session'
+app.config['SESSION_COOKIE_NAME'] = 'cpoint_session'  # Changed to avoid conflicts with old cookies
 app.config['PREFERRED_URL_SCHEME'] = 'https'
 
 # Optional: enforce canonical host (e.g., www.c-point.co) to prevent cookie splits
@@ -1754,7 +1754,8 @@ def logout():
 def login_password():
     print("Entering login_password route")
     logger.info(f"login_password route - Request cookies: {request.cookies}")
-    logger.info(f"login_password route - Session cookie value: {request.cookies.get('session', 'NO COOKIE')}")
+    logger.info(f"login_password route - Old session cookie: {request.cookies.get('session', 'NO OLD COOKIE')}")
+    logger.info(f"login_password route - New session cookie: {request.cookies.get('cpoint_session', 'NO NEW COOKIE')}")
     logger.info(f"login_password route - Session contents: {dict(session)}")
     logger.info(f"login_password route - Session keys: {list(session.keys())}")
     logger.info(f"login_password route - Request headers Host: {request.headers.get('Host')}")
@@ -2328,6 +2329,28 @@ def test_endpoint():
             'error': str(e),
             'traceback': traceback.format_exc()
         }), 500
+
+@app.route('/clear_sessions')
+def clear_sessions():
+    """Clear all old session cookies"""
+    from flask import make_response
+    resp = make_response("""
+    <html>
+    <body style="background: black; color: white; padding: 50px; font-family: Arial;">
+        <h1>Session Cookies Cleared</h1>
+        <p>All old session cookies have been removed.</p>
+        <p><a href="/" style="color: #4db6ac;">Go to login page</a></p>
+    </body>
+    </html>
+    """)
+    # Clear the old 'session' cookies
+    resp.set_cookie('session', '', expires=0, path='/')
+    # Clear any potential domain-specific cookies
+    resp.set_cookie('session', '', expires=0, path='/', domain='.c-point.co')
+    resp.set_cookie('session', '', expires=0, path='/', domain='www.c-point.co')
+    # Also clear the new cookie name just in case
+    resp.set_cookie('cpoint_session', '', expires=0, path='/')
+    return resp
 
 @app.route('/test_login')
 def test_login_page():
