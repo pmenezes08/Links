@@ -339,9 +339,21 @@
             const loginForm = document.getElementById('loginForm');
             if (loginForm) {
                 console.log('Login form found');
+                
+                // Try to force form submission on Enter key
+                document.getElementById('username').addEventListener('keypress', function(e) {
+                    if (e.key === 'Enter') {
+                        console.log('Enter key pressed, submitting form...');
+                        e.preventDefault();
+                        loginForm.submit();
+                    }
+                });
+                
                 loginForm.addEventListener('submit', function(e) {
                     console.log('Form is submitting...');
                     console.log('Username:', document.getElementById('username').value);
+                    console.log('Form action:', loginForm.action);
+                    console.log('Form method:', loginForm.method);
                     // Don't prevent default - let it submit normally
                 });
             }

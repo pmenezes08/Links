@@ -1442,8 +1442,9 @@ def index():
                 logger.info("Database connection obtained")
                 c = conn.cursor()
                 # Use the automatic placeholder conversion
-                logger.info(f"Executing query for username: {username}")
-                c.execute("SELECT 1 FROM users WHERE username=? LIMIT 1", (username,))
+                placeholder = get_sql_placeholder()
+                logger.info(f"Executing query for username: {username} with placeholder: {placeholder}")
+                c.execute(f"SELECT 1 FROM users WHERE username={placeholder} LIMIT 1", (username,))
                 result = c.fetchone()
                 exists = result is not None
                 logger.info(f"Username exists: {exists}, result: {result}")
@@ -1745,12 +1746,13 @@ def login_password():
         try:
             conn = get_db_connection()
             c = conn.cursor()
+            placeholder = get_sql_placeholder()
             try:
-                c.execute("SELECT password, subscription, is_active FROM users WHERE username=?", (username,))
+                c.execute(f"SELECT password, subscription, is_active FROM users WHERE username={placeholder}", (username,))
                 row = c.fetchone()
             except Exception:
                 # Fallback if is_active column does not exist in MySQL
-                c.execute("SELECT password, subscription FROM users WHERE username=?", (username,))
+                c.execute(f"SELECT password, subscription FROM users WHERE username={placeholder}", (username,))
                 r2 = c.fetchone()
                 row = (r2[0], r2[1], 1) if r2 else None
             user = row
@@ -2297,6 +2299,11 @@ def test_endpoint():
             'error': str(e),
             'traceback': traceback.format_exc()
         }), 500
+
+@app.route('/test_login')
+def test_login_page():
+    """Serve the test login page"""
+    return render_template('test_login.html')
 
 @app.route('/test_form', methods=['GET', 'POST'])
 def test_form():
