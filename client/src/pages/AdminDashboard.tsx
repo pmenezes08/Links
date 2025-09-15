@@ -35,6 +35,16 @@ export default function AdminDashboard() {
   const [stats, setStats] = useState<Stats | null>(null)
   const [users, setUsers] = useState<User[]>([])
   const [communities, setCommunities] = useState<Community[]>([])
+  const flatCommunities: Community[] = (() => {
+    const flat: Community[] = []
+    for (const parent of communities) {
+      flat.push(parent)
+      if (parent.children && parent.children.length) {
+        for (const child of parent.children) flat.push(child)
+      }
+    }
+    return flat
+  })()
   const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'communities'>('overview')
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
@@ -180,6 +190,11 @@ export default function AdminDashboard() {
     community.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     community.type.toLowerCase().includes(searchQuery.toLowerCase()) ||
     community.creator_username.toLowerCase().includes(searchQuery.toLowerCase())
+  )
+  const filteredFlatCommunities = flatCommunities.filter(c => 
+    c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    c.type.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    c.creator_username.toLowerCase().includes(searchQuery.toLowerCase())
   )
 
   if (loading) {
@@ -490,7 +505,7 @@ export default function AdminDashboard() {
             <div className="mt-6">
               <h4 className="text-sm font-semibold mb-2 text-white/80">All Communities (flat list)</h4>
               <div className="space-y-2">
-                {filteredCommunities.map(c => (
+                {filteredFlatCommunities.map(c => (
                   <div key={c.id} className="flex items-center justify-between bg-white/5 rounded-lg p-2 border border-white/10">
                     <div className="flex items-center gap-3">
                       <div className="w-6 h-6 bg-[#4db6ac]/30 text-[#4db6ac] rounded flex items-center justify-center text-[10px] font-bold">
