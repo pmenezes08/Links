@@ -11506,13 +11506,21 @@ def get_user_parent_community():
                         has_gym_access = c.fetchone() is not None
 
                     if has_gym_access:
-                        # Add any top-level gym communities if not already present
-                        c.execute("""
-                            SELECT id, name, type
-                            FROM communities
-                            WHERE type = 'gym' AND parent_community_id IS NULL
-                            ORDER BY name
-                        """)
+                        # Add any top-level gym communities (case-insensitive) if not already present
+                        if USE_MYSQL:
+                            c.execute("""
+                                SELECT id, name, type
+                                FROM communities
+                                WHERE LOWER(type) = 'gym' AND parent_community_id IS NULL
+                                ORDER BY name
+                            """)
+                        else:
+                            c.execute("""
+                                SELECT id, name, type
+                                FROM communities
+                                WHERE LOWER(type) = 'gym' AND parent_community_id IS NULL
+                                ORDER BY name
+                            """)
                         gym_parents = c.fetchall()
                         seen_ids = {item['id'] if hasattr(item, 'keys') else item[0] for item in communities_list}
                         added = 0

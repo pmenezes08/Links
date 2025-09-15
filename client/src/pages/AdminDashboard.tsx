@@ -186,16 +186,20 @@ export default function AdminDashboard() {
     return matchesSearch && matchesFilter
   })
 
-  const filteredCommunities = communities.filter(community => 
-    community.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    community.type.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    community.creator_username.toLowerCase().includes(searchQuery.toLowerCase())
-  )
-  const filteredFlatCommunities = flatCommunities.filter(c => 
-    c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    c.type.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    c.creator_username.toLowerCase().includes(searchQuery.toLowerCase())
-  )
+  const filteredCommunities = communities.filter(community => {
+    const q = searchQuery.toLowerCase()
+    const name = (community.name || '').toLowerCase()
+    const type = (community.type || '').toLowerCase()
+    const creator = (community.creator_username || '').toLowerCase()
+    return name.includes(q) || type.includes(q) || creator.includes(q)
+  })
+  const filteredFlatCommunities = flatCommunities.filter(c => {
+    const q = searchQuery.toLowerCase()
+    const name = (c.name || '').toLowerCase()
+    const type = (c.type || '').toLowerCase()
+    const creator = (c.creator_username || '').toLowerCase()
+    return name.includes(q) || type.includes(q) || creator.includes(q)
+  })
 
   if (loading) {
     return (
