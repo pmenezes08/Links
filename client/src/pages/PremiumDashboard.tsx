@@ -112,7 +112,7 @@ export default function PremiumDashboard() {
             {/* Show all communities */}
             {communities.map(community => {
               const typeLower = (community.type || '').toLowerCase()
-              const hasChildren = parentsWithChildren.has(community.id)
+              const hasChildren = parentsWithChildren.has(community.id) || ((community.type || '').toLowerCase() === 'university')
               const onCardClick = () => {
                 if (typeLower === 'gym') {
                   navigate('/gym')
