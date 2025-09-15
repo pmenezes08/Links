@@ -2272,27 +2272,49 @@ def admin_dashboard_api():
                     'is_admin': is_app_admin(user['username'] if hasattr(user, 'keys') else user[0])
                 })
             
-            # Get communities
+            # Get all communities with parent information
             c.execute("""
                 SELECT c.id, c.name, c.type, c.creator_username, c.join_code,
-                       COUNT(uc.user_id) as member_count
+                       c.parent_community_id, COUNT(uc.user_id) as member_count
                 FROM communities c
                 LEFT JOIN user_communities uc ON c.id = uc.community_id
-                GROUP BY c.id, c.name, c.type, c.creator_username, c.join_code
+                GROUP BY c.id, c.name, c.type, c.creator_username, c.join_code, c.parent_community_id
                 ORDER BY c.name
             """)
             communities_raw = c.fetchall()
-            communities = []
+            
+            # Organize communities into parent-child structure
+            parent_communities = {}
+            child_communities = []
+            
             for comm in communities_raw:
-                communities.append({
+                community_data = {
                     'id': comm[0],
                     'name': comm[1],
                     'type': comm[2],
                     'creator_username': comm[3],
                     'join_code': comm[4],
-                    'member_count': comm[5],
-                    'is_active': True  # Default for now
-                })
+                    'parent_community_id': comm[5],
+                    'member_count': comm[6],
+                    'is_active': True,
+                    'children': []
+                }
+                
+                if comm[5] is None:  # This is a parent community or standalone
+                    parent_communities[comm[0]] = community_data
+                else:
+                    child_communities.append(community_data)
+            
+            # Add children to their parents
+            for child in child_communities:
+                parent_id = child['parent_community_id']
+                if parent_id in parent_communities:
+                    parent_communities[parent_id]['children'].append(child)
+                    # Add child's member count to parent's total
+                    parent_communities[parent_id]['member_count'] += child['member_count']
+            
+            # Convert to list
+            communities = list(parent_communities.values())
             
             return jsonify({
                 'success': True,

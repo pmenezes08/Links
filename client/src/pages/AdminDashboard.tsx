@@ -25,6 +25,8 @@ interface Community {
   join_code: string
   member_count: number
   is_active: boolean
+  parent_community_id?: number | null
+  children?: Community[]
 }
 
 export default function AdminDashboard() {
@@ -228,6 +230,7 @@ export default function AdminDashboard() {
         {/* Overview Tab */}
         {activeTab === 'overview' && stats && (
           <div className="space-y-4">
+            {/* Stats Grid */}
             <div className="grid grid-cols-2 gap-3">
               <div className="bg-white/5 backdrop-blur rounded-xl p-4 border border-white/10">
                 <div className="text-2xl font-bold text-[#4db6ac]">{stats.total_users}</div>
@@ -244,6 +247,56 @@ export default function AdminDashboard() {
               <div className="bg-white/5 backdrop-blur rounded-xl p-4 border border-white/10">
                 <div className="text-2xl font-bold text-[#4db6ac]">{stats.total_posts}</div>
                 <div className="text-xs text-white/60 mt-1">Total Posts</div>
+              </div>
+            </div>
+
+            {/* Parent Communities Cards */}
+            <div>
+              <h3 className="text-sm font-semibold mb-3 text-white/80">Parent Communities</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {communities.filter(c => !c.parent_community_id || c.parent_community_id === null).map(community => (
+                  <div key={community.id} className="bg-white/5 backdrop-blur rounded-xl p-4 border border-white/10">
+                    <div className="flex justify-between items-start mb-2">
+                      <div>
+                        <h4 className="font-semibold text-sm">{community.name}</h4>
+                        <p className="text-xs text-white/60">{community.type}</p>
+                      </div>
+                      <span className="text-xs bg-[#4db6ac]/20 text-[#4db6ac] px-2 py-1 rounded">
+                        {community.member_count} members
+                      </span>
+                    </div>
+                    
+                    {/* Show child communities if any */}
+                    {community.children && community.children.length > 0 && (
+                      <div className="mt-3 pt-3 border-t border-white/10">
+                        <p className="text-xs text-white/60 mb-2">Sub-communities:</p>
+                        <div className="space-y-1">
+                          {community.children.map(child => (
+                            <div key={child.id} className="flex justify-between items-center text-xs">
+                              <span className="text-white/80">• {child.name}</span>
+                              <span className="text-white/50">{child.member_count} members</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    
+                    <div className="flex gap-2 mt-3">
+                      <button
+                        onClick={() => navigate(`/community_feed_react/${community.id}`)}
+                        className="flex-1 py-1 text-xs bg-white/5 border border-white/10 rounded-lg hover:bg-white/10"
+                      >
+                        View
+                      </button>
+                      <button
+                        onClick={() => setActiveTab('communities')}
+                        className="flex-1 py-1 text-xs bg-white/5 border border-white/10 rounded-lg hover:bg-white/10"
+                      >
+                        Manage
+                      </button>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
 
@@ -371,9 +424,9 @@ export default function AdminDashboard() {
               </button>
             </div>
 
-            {/* Communities List */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {filteredCommunities.map(community => (
+            {/* Communities List - Show parent communities with their children */}
+            <div className="space-y-3">
+              {filteredCommunities.filter(c => !c.parent_community_id).map(community => (
                 <div key={community.id} className="bg-white/5 backdrop-blur rounded-xl p-4 border border-white/10">
                   <div className="flex justify-between items-start mb-2">
                     <div>
@@ -388,6 +441,33 @@ export default function AdminDashboard() {
                     <div>Creator: {community.creator_username}</div>
                     <div>Code: {community.join_code}</div>
                   </div>
+                  
+                  {/* Show child communities if any */}
+                  {community.children && community.children.length > 0 && (
+                    <div className="mb-3 p-2 bg-black/20 rounded-lg">
+                      <p className="text-xs text-white/60 mb-2">Sub-communities:</p>
+                      <div className="space-y-2">
+                        {community.children.map(child => (
+                          <div key={child.id} className="flex justify-between items-center">
+                            <div className="text-xs">
+                              <span className="text-white/80">• {child.name}</span>
+                              <span className="text-white/50 ml-2">({child.type})</span>
+                            </div>
+                            <div className="flex gap-1">
+                              <span className="text-xs text-white/50">{child.member_count} members</span>
+                              <button
+                                onClick={() => navigate(`/community_feed_react/${child.id}`)}
+                                className="px-2 py-0.5 text-xs bg-white/5 border border-white/10 rounded hover:bg-white/10"
+                              >
+                                View
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  
                   <div className="flex gap-2">
                     <button
                       onClick={() => navigate(`/community_feed_react/${community.id}`)}
