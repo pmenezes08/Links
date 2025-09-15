@@ -1410,11 +1410,13 @@ def index():
     print(f"=== INDEX ROUTE: Method={request.method}, Form={dict(request.form)}")
     logger.info(f"=== INDEX ROUTE: Method={request.method}")
     logger.info(f"Form data: {dict(request.form)}")
+    logger.info(f"Content-Type: {request.headers.get('Content-Type')}")
     
     # Simple test - if ANY POST comes in, log it clearly
     if request.method == 'POST':
         print("POST REQUEST RECEIVED IN INDEX!")
         logger.info("POST REQUEST RECEIVED IN INDEX!")
+        logger.info(f"Raw data: {request.get_data()}")
     
     if request.method == 'POST':
         username = (request.form.get('username') or '').strip()
@@ -2299,7 +2301,10 @@ def test_endpoint():
 @app.route('/test_form', methods=['GET', 'POST'])
 def test_form():
     """Test form to debug POST requests"""
+    logger.info(f"Test form accessed: Method={request.method}")
+    
     if request.method == 'POST':
+        logger.info(f"Test form POST received: {dict(request.form)}")
         return f"""
         <html><body style="background: black; color: white; padding: 20px;">
         <h1>POST received successfully!</h1>
@@ -2313,20 +2318,33 @@ def test_form():
     return """
     <html><body style="background: black; color: white; padding: 20px;">
     <h1>Test Form</h1>
+    <p style="color: yellow;">This page tests if POST requests are working</p>
+    
+    <h2>1. Simple Test</h2>
     <form method="POST" action="/test_form">
-        <input type="text" name="test_field" placeholder="Enter anything" style="padding: 10px; margin: 10px 0;">
+        <input type="text" name="test_field" placeholder="Enter anything" style="padding: 10px; margin: 10px 0; color: black;">
         <button type="submit" style="padding: 10px 20px; background: #4db6ac; color: white; border: none; cursor: pointer;">
             Submit Test
         </button>
     </form>
+    
     <hr style="margin: 20px 0;">
-    <h2>Test Main Login Form</h2>
+    
+    <h2>2. Test Main Login Form</h2>
     <form method="POST" action="/">
-        <input type="text" name="username" placeholder="Enter username" required style="padding: 10px; margin: 10px 0;">
+        <input type="text" name="username" placeholder="Enter username" required style="padding: 10px; margin: 10px 0; color: black;">
         <button type="submit" style="padding: 10px 20px; background: #4db6ac; color: white; border: none; cursor: pointer;">
             Submit to Main Route
         </button>
     </form>
+    
+    <hr style="margin: 20px 0;">
+    
+    <h2>3. Direct Link Test</h2>
+    <p>If forms don't work, try these direct links:</p>
+    <a href="/health" style="color: #4db6ac;">Health Check</a> | 
+    <a href="/api/test" style="color: #4db6ac;">API Test</a> | 
+    <a href="/login_password" style="color: #4db6ac;">Login Password Page</a>
     </body></html>
     """
 
