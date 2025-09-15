@@ -11489,6 +11489,46 @@ def get_user_parent_community():
 
                 communities_list = list(top_parents.values())
                 communities_list.sort(key=lambda x: (x.get('name') or '').lower())
+
+                # Ensure Gym community appears for users with gym access (e.g., Paulo)
+                try:
+                    has_gym_access = (username and username.lower() == 'paulo')
+                    if not has_gym_access:
+                        ph = get_sql_placeholder()
+                        c.execute(f"""
+                            SELECT 1
+                            FROM communities c
+                            JOIN user_communities uc ON c.id = uc.community_id
+                            JOIN users u ON uc.user_id = u.id
+                            WHERE u.username = {ph} AND c.type = 'gym'
+                            LIMIT 1
+                        """, (username,))
+                        has_gym_access = c.fetchone() is not None
+
+                    if has_gym_access:
+                        # Add any top-level gym communities if not already present
+                        c.execute("""
+                            SELECT id, name, type
+                            FROM communities
+                            WHERE type = 'gym' AND parent_community_id IS NULL
+                            ORDER BY name
+                        """)
+                        gym_parents = c.fetchall()
+                        seen_ids = {item['id'] if hasattr(item, 'keys') else item[0] for item in communities_list}
+                        added = 0
+                        for row in gym_parents:
+                            if hasattr(row, 'keys'):
+                                gid, gname, gtype = row['id'], row['name'], row['type']
+                            else:
+                                gid, gname, gtype = row[0], row[1], row[2]
+                            if gid not in seen_ids:
+                                communities_list.append({'id': gid, 'name': gname, 'type': gtype})
+                                seen_ids.add(gid)
+                                added += 1
+                        if added:
+                            logger.info(f"Dashboard: added {added} gym parent communities for {username}")
+                except Exception as gym_err:
+                    logger.warning(f"Dashboard: failed to ensure gym community for {username}: {gym_err}")
                 try:
                     logger.info(f"Dashboard: top-level parent communities for {username} -> {len(communities_list)} items: " + 
                                 ", ".join([f"{c.get('id')}:{c.get('name')}" for c in communities_list]))
