@@ -25,7 +25,7 @@ export default function ChatThread(){
   const [otherUserId, setOtherUserId] = useState<number|''>('')
   const [messages, setMessages] = useState<Message[]>([])
   const [draft, setDraft] = useState('')
-  const [replyTo, setReplyTo] = useState<{ text:string }|null>(null)
+  const [replyTo, setReplyTo] = useState<{ text:string; sender?:string }|null>(null)
   const [sending, setSending] = useState(false)
   const listRef = useRef<HTMLDivElement|null>(null)
   const textareaRef = useRef<HTMLTextAreaElement|null>(null)
@@ -103,12 +103,24 @@ export default function ChatThread(){
         .then(j=>{
           if (j?.success && Array.isArray(j.messages)) {
             const processedMessages = j.messages.map((m:any) => {
-              const k = `${m.time}|${m.text}|${m.sent ? 'me' : 'other'}`
+              // Parse reply information from message text
+              let messageText = m.text
+              let replySnippet = undefined
+              const replyMatch = messageText.match(/^\[REPLY:([^:]+):([^\]]+)\]\n(.*)$/s)
+              if (replyMatch) {
+                // Extract reply info and actual message
+                // const replySender = replyMatch[1] // Can use this later if needed
+                replySnippet = replyMatch[2]
+                messageText = replyMatch[3]
+              }
+              
+              const k = `${m.time}|${messageText}|${m.sent ? 'me' : 'other'}`
               const meta = metaRef.current[k] || {}
               return { 
-                ...m, 
+                ...m,
+                text: messageText,
                 reaction: meta.reaction, 
-                replySnippet: meta.replySnippet,
+                replySnippet: replySnippet || meta.replySnippet,
                 isOptimistic: false 
               }
             })
@@ -212,13 +224,26 @@ export default function ChatThread(){
               }
               
               const existing = existingById.get(m.id)
-              const k = `${m.time}|${m.text}|${m.sent ? 'me' : 'other'}`
+              
+              // Parse reply information from message text
+              let messageText = m.text
+              let replySnippet = undefined
+              const replyMatch = messageText.match(/^\[REPLY:([^:]+):([^\]]+)\]\n(.*)$/s)
+              if (replyMatch) {
+                // Extract reply info and actual message
+                // const replySender = replyMatch[1] // Can use this later if needed
+                replySnippet = replyMatch[2]
+                messageText = replyMatch[3]
+              }
+              
+              const k = `${m.time}|${messageText}|${m.sent ? 'me' : 'other'}`
               const meta = metaRef.current[k] || {}
               
               return {
                 ...m,
+                text: messageText,
                 reaction: existing?.reaction ?? meta.reaction,
-                replySnippet: existing?.replySnippet ?? meta.replySnippet,
+                replySnippet: replySnippet || existing?.replySnippet || meta.replySnippet,
                 isOptimistic: false
               }
             }).filter(Boolean)
@@ -291,6 +316,14 @@ export default function ChatThread(){
     const tempId = `temp_${Date.now()}_${Math.random()}`
     const replySnippet = replyTo ? (replyTo.text.length > 90 ? replyTo.text.slice(0,90) + '…' : replyTo.text) : undefined
     
+    // Format message with reply if needed
+    let formattedMessage = messageText
+    if (replyTo) {
+      // Add a special format that we can parse later
+      // Using a format that won't interfere with normal messages
+      formattedMessage = `[REPLY:${replyTo.sender}:${replyTo.text.slice(0,90)}]\n${messageText}`
+    }
+    
     // Create optimistic message
     const optimisticMessage: Message = { 
       id: tempId, 
@@ -319,8 +352,8 @@ export default function ChatThread(){
       try{ localStorage.setItem(storageKey, JSON.stringify(metaRef.current)) }catch{}
     }
     
-    // Send to server
-    const fd = new URLSearchParams({ recipient_id: String(otherUserId), message: messageText })
+    // Send to server with formatted message
+    const fd = new URLSearchParams({ recipient_id: String(otherUserId), message: formattedMessage })
     
     fetch('/send_message', { 
       method:'POST', 
@@ -631,7 +664,10 @@ export default function ChatThread(){
                     try{ localStorage.setItem(storageKey, JSON.stringify(metaRef.current)) }catch{}
                   }} 
                   onReply={() => {
-                    setReplyTo({ text: m.text })
+                    setReplyTo({ 
+                      text: m.text,
+                      sender: m.sent ? 'You' : (otherProfile?.display_name || username || 'User')
+                    })
                     textareaRef.current?.focus()
                   }} 
                   onCopy={() => {
@@ -653,8 +689,13 @@ export default function ChatThread(){
                       } as any}
                     >
                       {m.replySnippet ? (
-                        <div className="mb-1 px-2 py-1 rounded bg-white/10 text-[12px] text-[#cfe9e7] border border-white/10">
-                          {m.replySnippet}
+                        <div className="mb-2 px-2 py-1.5 rounded-lg bg-white/5 border-l-2 border-[#4db6ac]">
+                          <div className="text-[11px] text-[#4db6ac] font-medium mb-0.5">
+                            {m.sent ? 'You' : (otherProfile?.display_name || username || 'User')}
+                          </div>
+                          <div className="text-[12px] text-white/70 line-clamp-2">
+                            {m.replySnippet}
+                          </div>
                         </div>
                       ) : null}
                       
@@ -704,11 +745,20 @@ export default function ChatThread(){
       {/* Composer */}
       <div className="bg-black px-3 py-2 border-t border-white/10 flex-shrink-0 mb-4">
         {replyTo && (
-          <div className="mb-2 px-3 py-2 bg-black/80 text-[12px] text-[#cfe9e7] rounded-lg border border-white/10">
-            <div className="flex items-start gap-2">
-              <div className="w-1.5 h-6 bg-[#4db6ac] rounded" />
-              <div className="flex-1 truncate">{replyTo.text.length > 90 ? replyTo.text.slice(0, 90) + '…' : replyTo.text}</div>
-              <button className="ml-2 text-[#9fb0b5] text-xs" onClick={()=> setReplyTo(null)}>✕</button>
+          <div className="mb-2 px-3 py-2 bg-[#1a1a1a] rounded-lg border-l-4 border-[#4db6ac]">
+            <div className="flex items-center justify-between mb-1">
+              <div className="text-[11px] text-[#4db6ac] font-semibold">
+                Replying to {replyTo.sender === 'You' ? 'yourself' : (otherProfile?.display_name || username || 'User')}
+              </div>
+              <button 
+                className="text-white/50 hover:text-white/80 transition-colors" 
+                onClick={()=> setReplyTo(null)}
+              >
+                <i className="fa-solid fa-xmark text-sm" />
+              </button>
+            </div>
+            <div className="text-[13px] text-white/70 line-clamp-2">
+              {replyTo.text.length > 100 ? replyTo.text.slice(0, 100) + '…' : replyTo.text}
             </div>
           </div>
         )}
