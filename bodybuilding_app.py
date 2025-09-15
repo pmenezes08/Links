@@ -1394,8 +1394,11 @@ def business_login_required(f):
 @app.route('/', methods=['GET', 'POST'])
 # @csrf.exempt
 def index():
-    print("Entering index route")
+    print(f"Entering index route - Method: {request.method}")
     logger.info(f"Request method: {request.method}")
+    logger.info(f"Request form data: {request.form}")
+    logger.info(f"Request headers: {dict(request.headers)}")
+    
     if request.method == 'POST':
         username = (request.form.get('username') or '').strip()
         print(f"Received username: {username}")
@@ -1415,18 +1418,25 @@ def index():
 
         # Validate username exists in database
         try:
+            logger.info(f"Attempting to validate username: {username}")
             with get_db_connection() as conn:
+                logger.info("Database connection obtained")
                 c = conn.cursor()
                 # Use the automatic placeholder conversion
+                logger.info(f"Executing query for username: {username}")
                 c.execute("SELECT 1 FROM users WHERE username=? LIMIT 1", (username,))
-                exists = c.fetchone() is not None
+                result = c.fetchone()
+                exists = result is not None
+                logger.info(f"Username exists: {exists}, result: {result}")
         except Exception as e:
             logger.error(f"Database error validating username '{username}': {e}")
             import traceback
             logger.error(f"Traceback: {traceback.format_exc()}")
+            print(f"Database error: {e}")
+            print(traceback.format_exc())
             if is_mobile:
                 return redirect(url_for('index', error='Server error. Please try again.'))
-            return render_template('index.html', error="Server error. Please try again.")
+            return render_template('index.html', error=f"Database error: {str(e)}")
 
         if not exists:
             print("Username does not exist")
@@ -2234,6 +2244,30 @@ def check_admin():
     """Check if current user is admin"""
     username = session.get('username')
     return jsonify({'is_admin': is_app_admin(username)})
+
+@app.route('/api/test', methods=['GET'])
+def test_endpoint():
+    """Test endpoint to verify server is running"""
+    try:
+        # Test database connection
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT COUNT(*) FROM users")
+            user_count = c.fetchone()[0]
+            
+        return jsonify({
+            'status': 'ok',
+            'database': 'MySQL' if USE_MYSQL else 'SQLite',
+            'user_count': user_count,
+            'timestamp': datetime.now().isoformat()
+        })
+    except Exception as e:
+        import traceback
+        return jsonify({
+            'status': 'error',
+            'error': str(e),
+            'traceback': traceback.format_exc()
+        }), 500
 
 @app.route('/api/debug_communities', methods=['GET'])
 @login_required
