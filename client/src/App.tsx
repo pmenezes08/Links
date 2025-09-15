@@ -28,6 +28,7 @@ import Profile from './pages/Profile'
 import AccountSettings from './pages/AccountSettings'
 import Signup from './pages/Signup'
 import Notifications from './pages/Notifications'
+import AdminDashboard from './pages/AdminDashboard'
 
 const queryClient = new QueryClient()
 
@@ -77,6 +78,8 @@ function AppRoutes(){
           <Route path="/account_settings" element={<AccountSettings />} />
           <Route path="/account_settings_react" element={<AccountSettings />} />
           <Route path="/notifications" element={<Notifications />} />
+          <Route path="/admin" element={<AdminDashboard />} />
+          <Route path="/admin_dashboard" element={<AdminDashboard />} />
           <Route path="/home" element={<HomeTimeline />} />
           <Route path="/workout_tracking" element={<WorkoutTracking />} />
           <Route path="/community_feed_react/:community_id" element={<CommunityFeed />} />

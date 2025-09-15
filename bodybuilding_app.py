@@ -2202,6 +2202,166 @@ def delete_weight():
     except Exception as e:
         logger.error(f"Error deleting weight for {username}: {str(e)}")
         return jsonify({'success': False, 'error': f'Unexpected error: {str(e)}'}), 500
+# Admin helper functions
+def is_app_admin(username):
+    """Check if a user is an app admin"""
+    return username == 'admin'  # For now, only 'admin' user is admin
+
+def is_community_owner(username, community_id):
+    """Check if a user owns a community"""
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT creator_username FROM communities WHERE id = ?", (community_id,))
+            result = c.fetchone()
+            if result:
+                creator = result['creator_username'] if hasattr(result, 'keys') else result[0]
+                return creator == username
+    except Exception as e:
+        logger.error(f"Error checking community owner: {e}")
+    return False
+
+@app.route('/api/check_admin', methods=['GET'])
+@login_required
+def check_admin():
+    """Check if current user is admin"""
+    username = session.get('username')
+    return jsonify({'is_admin': is_app_admin(username)})
+
+@app.route('/api/admin/dashboard', methods=['GET'])
+@login_required
+def admin_dashboard_api():
+    """API endpoint for admin dashboard data"""
+    username = session.get('username')
+    if not is_app_admin(username):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Get statistics
+            c.execute("SELECT COUNT(*) FROM users")
+            total_users = c.fetchone()[0]
+            
+            c.execute("SELECT COUNT(*) FROM users WHERE subscription = 'premium'")
+            premium_users = c.fetchone()[0]
+            
+            c.execute("SELECT COUNT(*) FROM communities")
+            total_communities = c.fetchone()[0]
+            
+            c.execute("SELECT COUNT(*) FROM posts")
+            total_posts = c.fetchone()[0]
+            
+            stats = {
+                'total_users': total_users,
+                'premium_users': premium_users,
+                'total_communities': total_communities,
+                'total_posts': total_posts
+            }
+            
+            # Get users list
+            c.execute("SELECT username, subscription FROM users ORDER BY username")
+            users_raw = c.fetchall()
+            users = []
+            for user in users_raw:
+                users.append({
+                    'username': user['username'] if hasattr(user, 'keys') else user[0],
+                    'subscription': user['subscription'] if hasattr(user, 'keys') else user[1],
+                    'is_active': True,  # Default for now
+                    'is_admin': is_app_admin(user['username'] if hasattr(user, 'keys') else user[0])
+                })
+            
+            # Get communities
+            c.execute("""
+                SELECT c.id, c.name, c.type, c.creator_username, c.join_code,
+                       COUNT(uc.user_id) as member_count
+                FROM communities c
+                LEFT JOIN user_communities uc ON c.id = uc.community_id
+                GROUP BY c.id, c.name, c.type, c.creator_username, c.join_code
+                ORDER BY c.name
+            """)
+            communities_raw = c.fetchall()
+            communities = []
+            for comm in communities_raw:
+                communities.append({
+                    'id': comm[0],
+                    'name': comm[1],
+                    'type': comm[2],
+                    'creator_username': comm[3],
+                    'join_code': comm[4],
+                    'member_count': comm[5],
+                    'is_active': True  # Default for now
+                })
+            
+            return jsonify({
+                'success': True,
+                'stats': stats,
+                'users': users,
+                'communities': communities
+            })
+            
+    except Exception as e:
+        logger.error(f"Error in admin dashboard API: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/admin/update_user', methods=['POST'])
+@login_required
+def admin_update_user():
+    """Update user details as admin"""
+    username = session.get('username')
+    if not is_app_admin(username):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    
+    data = request.get_json()
+    target_user = data.get('username')
+    
+    if not target_user:
+        return jsonify({'success': False, 'error': 'Username required'}), 400
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            if 'subscription' in data:
+                c.execute("UPDATE users SET subscription = ? WHERE username = ?", 
+                         (data['subscription'], target_user))
+            
+            conn.commit()
+            return jsonify({'success': True})
+            
+    except Exception as e:
+        logger.error(f"Error updating user: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/admin/update_community', methods=['POST'])
+@login_required
+def admin_update_community():
+    """Update community details as admin"""
+    username = session.get('username')
+    if not is_app_admin(username):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    
+    data = request.get_json()
+    community_id = data.get('community_id')
+    
+    if not community_id:
+        return jsonify({'success': False, 'error': 'Community ID required'}), 400
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # For now just return success
+            # Add actual update logic as needed
+            
+            conn.commit()
+            return jsonify({'success': True})
+            
+    except Exception as e:
+        logger.error(f"Error updating community: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @app.route('/admin', methods=['GET', 'POST'])
 @login_required
 def admin():
@@ -2210,6 +2370,14 @@ def admin():
         print("User is not admin, redirecting")
         return redirect(url_for('index'))
     print("User is admin, proceeding")
+    
+    # Check if request is from mobile and serve React
+    ua = request.headers.get('User-Agent', '')
+    is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
+    if is_mobile:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        dist_dir = os.path.join(base_dir, 'client', 'dist')
+        return send_from_directory(dist_dir, 'index.html')
     
     try:
         with get_db_connection() as conn:
