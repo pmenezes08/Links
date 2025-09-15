@@ -2362,6 +2362,109 @@ def admin_update_community():
         logger.error(f"Error updating community: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@app.route('/api/admin/add_user', methods=['POST'])
+@login_required
+def admin_add_user():
+    """Add a new user as admin"""
+    username = session.get('username')
+    if not is_app_admin(username):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    
+    data = request.get_json()
+    new_username = data.get('username')
+    new_password = data.get('password')
+    subscription = data.get('subscription', 'free')
+    
+    if not new_username or not new_password:
+        return jsonify({'success': False, 'error': 'Username and password required'}), 400
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Check if user already exists
+            c.execute("SELECT 1 FROM users WHERE username = ?", (new_username,))
+            if c.fetchone():
+                return jsonify({'success': False, 'error': 'Username already exists'}), 400
+            
+            # Hash the password
+            from werkzeug.security import generate_password_hash
+            hashed_password = generate_password_hash(new_password)
+            
+            # Insert new user
+            c.execute("""
+                INSERT INTO users (username, password, subscription, created_at)
+                VALUES (?, ?, ?, NOW())
+            """, (new_username, hashed_password, subscription))
+            
+            conn.commit()
+            return jsonify({'success': True})
+            
+    except Exception as e:
+        logger.error(f"Error adding user: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/admin/delete_user', methods=['POST'])
+@login_required
+def admin_delete_user():
+    """Delete a user as admin"""
+    username = session.get('username')
+    if not is_app_admin(username):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    
+    data = request.get_json()
+    target_username = data.get('username')
+    
+    if not target_username:
+        return jsonify({'success': False, 'error': 'Username required'}), 400
+    
+    if target_username == 'admin':
+        return jsonify({'success': False, 'error': 'Cannot delete admin user'}), 400
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Delete user
+            c.execute("DELETE FROM users WHERE username = ?", (target_username,))
+            
+            conn.commit()
+            return jsonify({'success': True})
+            
+    except Exception as e:
+        logger.error(f"Error deleting user: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/admin/delete_community', methods=['POST'])
+@login_required
+def admin_delete_community():
+    """Delete a community as admin"""
+    username = session.get('username')
+    if not is_app_admin(username):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    
+    data = request.get_json()
+    community_id = data.get('community_id')
+    
+    if not community_id:
+        return jsonify({'success': False, 'error': 'Community ID required'}), 400
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Delete community and related data
+            c.execute("DELETE FROM user_communities WHERE community_id = ?", (community_id,))
+            c.execute("DELETE FROM posts WHERE community_id = ?", (community_id,))
+            c.execute("DELETE FROM communities WHERE id = ?", (community_id,))
+            
+            conn.commit()
+            return jsonify({'success': True})
+            
+    except Exception as e:
+        logger.error(f"Error deleting community: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @app.route('/admin', methods=['GET', 'POST'])
 @login_required
 def admin():

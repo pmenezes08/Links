@@ -14,6 +14,7 @@ interface User {
   subscription: string
   is_active: boolean
   is_admin?: boolean
+  created_at?: string
 }
 
 interface Community {
@@ -32,15 +33,17 @@ export default function AdminDashboard() {
   const [stats, setStats] = useState<Stats | null>(null)
   const [users, setUsers] = useState<User[]>([])
   const [communities, setCommunities] = useState<Community[]>([])
-  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'communities' | 'create'>('overview')
+  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'communities'>('overview')
   const [loading, setLoading] = useState(true)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [filterType, setFilterType] = useState<'all' | 'premium' | 'free'>('all')
+  const [showAddUserModal, setShowAddUserModal] = useState(false)
   
-  // New community form
-  const [newCommunity, setNewCommunity] = useState({
-    name: '',
-    type: 'gym',
-    description: '',
-    location: ''
+  // New user form
+  const [newUser, setNewUser] = useState({
+    username: '',
+    password: '',
+    subscription: 'free'
   })
 
   useEffect(() => {
@@ -80,6 +83,30 @@ export default function AdminDashboard() {
     }
   }
 
+  const handleAddUser = async (e: React.FormEvent) => {
+    e.preventDefault()
+    try {
+      const response = await fetch('/api/admin/add_user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(newUser)
+      })
+      
+      const data = await response.json()
+      if (data.success) {
+        setShowAddUserModal(false)
+        setNewUser({ username: '', password: '', subscription: 'free' })
+        loadAdminData()
+      } else {
+        alert(data.error || 'Failed to add user')
+      }
+    } catch (error) {
+      console.error('Error adding user:', error)
+      alert('Failed to add user')
+    }
+  }
+
   const handleUserUpdate = async (username: string, updates: Partial<User>) => {
     try {
       const response = await fetch('/api/admin/update_user', {
@@ -98,13 +125,15 @@ export default function AdminDashboard() {
     }
   }
 
-  const handleCommunityUpdate = async (communityId: number, updates: Partial<Community>) => {
+  const handleDeleteUser = async (username: string) => {
+    if (!confirm(`Are you sure you want to delete user ${username}?`)) return
+    
     try {
-      const response = await fetch('/api/admin/update_community', {
+      const response = await fetch('/api/admin/delete_user', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ community_id: communityId, ...updates })
+        body: JSON.stringify({ username })
       })
       
       const data = await response.json()
@@ -112,30 +141,44 @@ export default function AdminDashboard() {
         loadAdminData()
       }
     } catch (error) {
-      console.error('Error updating community:', error)
+      console.error('Error deleting user:', error)
     }
   }
 
-  const handleCreateCommunity = async (e: React.FormEvent) => {
-    e.preventDefault()
+
+  const handleDeleteCommunity = async (communityId: number) => {
+    if (!confirm('Are you sure you want to delete this community?')) return
+    
     try {
-      const response = await fetch('/create_community', {
+      const response = await fetch('/api/admin/delete_community', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: new URLSearchParams(newCommunity)
+        body: JSON.stringify({ community_id: communityId })
       })
       
       const data = await response.json()
       if (data.success) {
-        setNewCommunity({ name: '', type: 'gym', description: '', location: '' })
         loadAdminData()
-        setActiveTab('communities')
       }
     } catch (error) {
-      console.error('Error creating community:', error)
+      console.error('Error deleting community:', error)
     }
   }
+
+  const filteredUsers = users.filter(user => {
+    const matchesSearch = user.username.toLowerCase().includes(searchQuery.toLowerCase())
+    const matchesFilter = filterType === 'all' || 
+      (filterType === 'premium' && user.subscription === 'premium') ||
+      (filterType === 'free' && user.subscription === 'free')
+    return matchesSearch && matchesFilter
+  })
+
+  const filteredCommunities = communities.filter(community => 
+    community.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    community.type.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    community.creator_username.toLowerCase().includes(searchQuery.toLowerCase())
+  )
 
   if (loading) {
     return (
@@ -146,223 +189,285 @@ export default function AdminDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-black text-white">
-      {/* Header */}
-      <div className="bg-gray-900 border-b border-gray-800 p-4">
-        <h1 className="text-2xl font-bold">Admin Dashboard</h1>
-        <p className="text-gray-400 text-sm mt-1">Manage your platform</p>
-      </div>
-
-      {/* Tabs */}
-      <div className="border-b border-gray-800 bg-gray-900/50">
-        <div className="flex overflow-x-auto">
-          <button
+    <div className="h-screen overflow-hidden bg-black text-white">
+      {/* Secondary nav like Communities page */}
+      <div className="fixed left-0 right-0 top-14 h-10 bg-black/70 backdrop-blur z-40">
+        <div className="max-w-4xl mx-auto h-full flex">
+          <button 
             onClick={() => setActiveTab('overview')}
-            className={`px-6 py-3 font-medium transition-colors ${
-              activeTab === 'overview'
-                ? 'text-[#4db6ac] border-b-2 border-[#4db6ac]'
-                : 'text-gray-400 hover:text-white'
+            className={`flex-1 text-center text-sm font-medium ${
+              activeTab === 'overview' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'
             }`}
           >
-            Overview
+            <div className="pt-2">Overview</div>
+            <div className={`h-0.5 ${activeTab === 'overview' ? 'bg-[#4db6ac]' : 'bg-transparent'} rounded-full w-16 mx-auto mt-1`} />
           </button>
-          <button
+          <button 
             onClick={() => setActiveTab('users')}
-            className={`px-6 py-3 font-medium transition-colors ${
-              activeTab === 'users'
-                ? 'text-[#4db6ac] border-b-2 border-[#4db6ac]'
-                : 'text-gray-400 hover:text-white'
+            className={`flex-1 text-center text-sm font-medium ${
+              activeTab === 'users' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'
             }`}
           >
-            Users
+            <div className="pt-2">Users</div>
+            <div className={`h-0.5 ${activeTab === 'users' ? 'bg-[#4db6ac]' : 'bg-transparent'} rounded-full w-16 mx-auto mt-1`} />
           </button>
-          <button
+          <button 
             onClick={() => setActiveTab('communities')}
-            className={`px-6 py-3 font-medium transition-colors ${
-              activeTab === 'communities'
-                ? 'text-[#4db6ac] border-b-2 border-[#4db6ac]'
-                : 'text-gray-400 hover:text-white'
+            className={`flex-1 text-center text-sm font-medium ${
+              activeTab === 'communities' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'
             }`}
           >
-            Communities
-          </button>
-          <button
-            onClick={() => setActiveTab('create')}
-            className={`px-6 py-3 font-medium transition-colors ${
-              activeTab === 'create'
-                ? 'text-[#4db6ac] border-b-2 border-[#4db6ac]'
-                : 'text-gray-400 hover:text-white'
-            }`}
-          >
-            Create Community
+            <div className="pt-2">Communities</div>
+            <div className={`h-0.5 ${activeTab === 'communities' ? 'bg-[#4db6ac]' : 'bg-transparent'} rounded-full w-16 mx-auto mt-1`} />
           </button>
         </div>
       </div>
 
       {/* Content */}
-      <div className="p-4">
+      <div className="max-w-4xl mx-auto pt-[70px] h-[calc(100vh-70px)] pb-6 px-3 overflow-y-auto no-scrollbar">
         {/* Overview Tab */}
         {activeTab === 'overview' && stats && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="bg-gray-900 rounded-lg p-4">
-              <div className="text-3xl font-bold text-[#4db6ac]">{stats.total_users}</div>
-              <div className="text-sm text-gray-400 mt-1">Total Users</div>
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="bg-white/5 backdrop-blur rounded-xl p-4 border border-white/10">
+                <div className="text-2xl font-bold text-[#4db6ac]">{stats.total_users}</div>
+                <div className="text-xs text-white/60 mt-1">Total Users</div>
+              </div>
+              <div className="bg-white/5 backdrop-blur rounded-xl p-4 border border-white/10">
+                <div className="text-2xl font-bold text-[#4db6ac]">{stats.premium_users}</div>
+                <div className="text-xs text-white/60 mt-1">Premium Users</div>
+              </div>
+              <div className="bg-white/5 backdrop-blur rounded-xl p-4 border border-white/10">
+                <div className="text-2xl font-bold text-[#4db6ac]">{stats.total_communities}</div>
+                <div className="text-xs text-white/60 mt-1">Communities</div>
+              </div>
+              <div className="bg-white/5 backdrop-blur rounded-xl p-4 border border-white/10">
+                <div className="text-2xl font-bold text-[#4db6ac]">{stats.total_posts}</div>
+                <div className="text-xs text-white/60 mt-1">Total Posts</div>
+              </div>
             </div>
-            <div className="bg-gray-900 rounded-lg p-4">
-              <div className="text-3xl font-bold text-[#4db6ac]">{stats.premium_users}</div>
-              <div className="text-sm text-gray-400 mt-1">Premium Users</div>
-            </div>
-            <div className="bg-gray-900 rounded-lg p-4">
-              <div className="text-3xl font-bold text-[#4db6ac]">{stats.total_communities}</div>
-              <div className="text-sm text-gray-400 mt-1">Communities</div>
-            </div>
-            <div className="bg-gray-900 rounded-lg p-4">
-              <div className="text-3xl font-bold text-[#4db6ac]">{stats.total_posts}</div>
-              <div className="text-sm text-gray-400 mt-1">Total Posts</div>
+
+            {/* Quick Actions */}
+            <div className="bg-white/5 backdrop-blur rounded-xl p-4 border border-white/10">
+              <h3 className="text-sm font-semibold mb-3">Quick Actions</h3>
+              <div className="grid grid-cols-2 gap-2">
+                <button 
+                  onClick={() => { setActiveTab('users'); setShowAddUserModal(true) }}
+                  className="py-2 px-3 bg-[#4db6ac]/20 text-[#4db6ac] rounded-lg text-sm font-medium hover:bg-[#4db6ac]/30 transition-colors"
+                >
+                  Add New User
+                </button>
+                <button 
+                  onClick={() => navigate('/communities')}
+                  className="py-2 px-3 bg-[#4db6ac]/20 text-[#4db6ac] rounded-lg text-sm font-medium hover:bg-[#4db6ac]/30 transition-colors"
+                >
+                  Create Community
+                </button>
+              </div>
             </div>
           </div>
         )}
 
         {/* Users Tab */}
         {activeTab === 'users' && (
-          <div className="space-y-2">
-            {users.map(user => (
-              <div key={user.username} className="bg-gray-900 rounded-lg p-4 flex items-center justify-between">
-                <div>
-                  <div className="font-medium">{user.username}</div>
-                  <div className="text-sm text-gray-400">
-                    {user.subscription} • {user.is_active ? 'Active' : 'Inactive'}
-                    {user.is_admin && ' • Admin'}
+          <div className="space-y-3">
+            {/* Search and Filter Bar */}
+            <div className="bg-white/5 backdrop-blur rounded-xl p-3 border border-white/10 flex items-center gap-2">
+              <input
+                type="text"
+                placeholder="Search users..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-sm text-white placeholder-white/40 focus:outline-none focus:border-[#4db6ac]"
+              />
+              <select
+                value={filterType}
+                onChange={(e) => setFilterType(e.target.value as any)}
+                className="bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-[#4db6ac]"
+              >
+                <option value="all">All</option>
+                <option value="premium">Premium</option>
+                <option value="free">Free</option>
+              </select>
+              <button
+                onClick={() => setShowAddUserModal(true)}
+                className="px-3 py-1.5 bg-[#4db6ac] text-black rounded-lg text-sm font-medium hover:bg-[#45a099]"
+              >
+                Add User
+              </button>
+            </div>
+
+            {/* Users List */}
+            <div className="space-y-2">
+              {filteredUsers.map(user => (
+                <div key={user.username} className="bg-white/5 backdrop-blur rounded-xl p-3 border border-white/10">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 bg-[#4db6ac] rounded-full flex items-center justify-center text-xs font-bold text-black">
+                        {user.username[0].toUpperCase()}
+                      </div>
+                      <div>
+                        <div className="font-medium text-sm">{user.username}</div>
+                        <div className="text-xs text-white/60">
+                          {user.subscription === 'premium' ? (
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-[#4db6ac]/20 text-[#4db6ac] font-medium">
+                              PREMIUM
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-white/10 text-white/60">
+                              FREE
+                            </span>
+                          )}
+                          {user.is_admin && (
+                            <span className="ml-1 inline-flex items-center px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400 font-medium">
+                              ADMIN
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex gap-1">
+                      <button
+                        onClick={() => handleUserUpdate(user.username, { 
+                          subscription: user.subscription === 'premium' ? 'free' : 'premium' 
+                        })}
+                        className="px-2 py-1 text-xs rounded-lg bg-white/5 border border-white/10 hover:bg-white/10"
+                      >
+                        {user.subscription === 'premium' ? 'Downgrade' : 'Upgrade'}
+                      </button>
+                      {user.username !== 'admin' && (
+                        <button
+                          onClick={() => handleDeleteUser(user.username)}
+                          className="px-2 py-1 text-xs rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20"
+                        >
+                          Delete
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => handleUserUpdate(user.username, { 
-                      subscription: user.subscription === 'premium' ? 'free' : 'premium' 
-                    })}
-                    className="px-3 py-1 bg-[#4db6ac] text-black rounded-lg text-sm font-medium"
-                  >
-                    Toggle Premium
-                  </button>
-                  <button
-                    onClick={() => handleUserUpdate(user.username, { 
-                      is_active: !user.is_active 
-                    })}
-                    className={`px-3 py-1 rounded-lg text-sm font-medium ${
-                      user.is_active 
-                        ? 'bg-red-500 text-white' 
-                        : 'bg-green-500 text-white'
-                    }`}
-                  >
-                    {user.is_active ? 'Deactivate' : 'Activate'}
-                  </button>
-                </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         )}
 
         {/* Communities Tab */}
         {activeTab === 'communities' && (
-          <div className="space-y-2">
-            {communities.map(community => (
-              <div key={community.id} className="bg-gray-900 rounded-lg p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <div>
-                    <div className="font-medium text-lg">{community.name}</div>
-                    <div className="text-sm text-gray-400">
-                      Type: {community.type} • Creator: {community.creator_username}
+          <div className="space-y-3">
+            {/* Search Bar */}
+            <div className="bg-white/5 backdrop-blur rounded-xl p-3 border border-white/10 flex items-center gap-2">
+              <input
+                type="text"
+                placeholder="Search communities..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-sm text-white placeholder-white/40 focus:outline-none focus:border-[#4db6ac]"
+              />
+              <button
+                onClick={() => navigate('/communities')}
+                className="px-3 py-1.5 bg-[#4db6ac] text-black rounded-lg text-sm font-medium hover:bg-[#45a099]"
+              >
+                Create New
+              </button>
+            </div>
+
+            {/* Communities List */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {filteredCommunities.map(community => (
+                <div key={community.id} className="bg-white/5 backdrop-blur rounded-xl p-4 border border-white/10">
+                  <div className="flex justify-between items-start mb-2">
+                    <div>
+                      <h3 className="font-semibold text-sm">{community.name}</h3>
+                      <p className="text-xs text-white/60">{community.type}</p>
                     </div>
-                    <div className="text-sm text-gray-400">
-                      Code: {community.join_code} • {community.member_count} members
-                    </div>
+                    <span className="text-xs bg-[#4db6ac]/20 text-[#4db6ac] px-2 py-1 rounded">
+                      {community.member_count} members
+                    </span>
                   </div>
-                  <button
-                    onClick={() => handleCommunityUpdate(community.id, { 
-                      is_active: !community.is_active 
-                    })}
-                    className={`px-3 py-1 rounded-lg text-sm font-medium ${
-                      community.is_active 
-                        ? 'bg-red-500 text-white' 
-                        : 'bg-green-500 text-white'
-                    }`}
-                  >
-                    {community.is_active ? 'Deactivate' : 'Activate'}
-                  </button>
+                  <div className="text-xs text-white/60 mb-3">
+                    <div>Creator: {community.creator_username}</div>
+                    <div>Code: {community.join_code}</div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => navigate(`/community_feed_react/${community.id}`)}
+                      className="flex-1 py-1 text-xs bg-white/5 border border-white/10 rounded-lg hover:bg-white/10"
+                    >
+                      View
+                    </button>
+                    <button
+                      onClick={() => handleDeleteCommunity(community.id)}
+                      className="px-2 py-1 text-xs rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20"
+                    >
+                      Delete
+                    </button>
+                  </div>
                 </div>
-                <button
-                  onClick={() => navigate(`/community_feed/${community.id}`)}
-                  className="text-[#4db6ac] text-sm hover:underline"
-                >
-                  View Community →
-                </button>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         )}
-
-        {/* Create Community Tab */}
-        {activeTab === 'create' && (
-          <form onSubmit={handleCreateCommunity} className="max-w-lg mx-auto space-y-4">
-            <div>
-              <label className="block text-sm font-medium mb-2">Community Name</label>
-              <input
-                type="text"
-                value={newCommunity.name}
-                onChange={(e) => setNewCommunity({ ...newCommunity, name: e.target.value })}
-                className="w-full px-4 py-2 bg-gray-900 border border-gray-800 rounded-lg focus:outline-none focus:border-[#4db6ac]"
-                required
-              />
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium mb-2">Type</label>
-              <select
-                value={newCommunity.type}
-                onChange={(e) => setNewCommunity({ ...newCommunity, type: e.target.value })}
-                className="w-full px-4 py-2 bg-gray-900 border border-gray-800 rounded-lg focus:outline-none focus:border-[#4db6ac]"
-              >
-                <option value="gym">Gym</option>
-                <option value="crossfit">CrossFit</option>
-                <option value="yoga">Yoga</option>
-                <option value="martial_arts">Martial Arts</option>
-                <option value="running">Running</option>
-                <option value="cycling">Cycling</option>
-                <option value="swimming">Swimming</option>
-                <option value="other">Other</option>
-              </select>
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium mb-2">Description</label>
-              <textarea
-                value={newCommunity.description}
-                onChange={(e) => setNewCommunity({ ...newCommunity, description: e.target.value })}
-                className="w-full px-4 py-2 bg-gray-900 border border-gray-800 rounded-lg focus:outline-none focus:border-[#4db6ac] h-24"
-                placeholder="Optional description..."
-              />
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium mb-2">Location</label>
-              <input
-                type="text"
-                value={newCommunity.location}
-                onChange={(e) => setNewCommunity({ ...newCommunity, location: e.target.value })}
-                className="w-full px-4 py-2 bg-gray-900 border border-gray-800 rounded-lg focus:outline-none focus:border-[#4db6ac]"
-                placeholder="Optional location..."
-              />
-            </div>
-            
-            <button
-              type="submit"
-              className="w-full py-3 bg-[#4db6ac] text-black font-medium rounded-lg hover:bg-[#45a099] transition-colors"
-            >
-              Create Community
-            </button>
-          </form>
-        )}
       </div>
+
+      {/* Add User Modal */}
+      {showAddUserModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-[#1a1a1a] rounded-xl p-6 w-full max-w-md border border-white/10">
+            <h2 className="text-lg font-semibold mb-4">Add New User</h2>
+            <form onSubmit={handleAddUser} className="space-y-4">
+              <div>
+                <label className="block text-xs text-white/60 mb-1">Username</label>
+                <input
+                  type="text"
+                  value={newUser.username}
+                  onChange={(e) => setNewUser({ ...newUser, username: e.target.value })}
+                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm focus:outline-none focus:border-[#4db6ac]"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-white/60 mb-1">Password</label>
+                <input
+                  type="password"
+                  value={newUser.password}
+                  onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
+                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm focus:outline-none focus:border-[#4db6ac]"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-white/60 mb-1">Subscription</label>
+                <select
+                  value={newUser.subscription}
+                  onChange={(e) => setNewUser({ ...newUser, subscription: e.target.value })}
+                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm focus:outline-none focus:border-[#4db6ac]"
+                >
+                  <option value="free">Free</option>
+                  <option value="premium">Premium</option>
+                </select>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  type="submit"
+                  className="flex-1 py-2 bg-[#4db6ac] text-black rounded-lg font-medium hover:bg-[#45a099]"
+                >
+                  Add User
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowAddUserModal(false)
+                    setNewUser({ username: '', password: '', subscription: 'free' })
+                  }}
+                  className="flex-1 py-2 bg-white/5 border border-white/10 rounded-lg hover:bg-white/10"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
