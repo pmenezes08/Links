@@ -11121,6 +11121,60 @@ def check_gym_membership():
         logger.error(f"Error checking gym membership for {username}: {str(e)}")
         return jsonify({'hasGymAccess': False, 'error': str(e)}), 500
 
+@app.route('/api/all_communities_debug')
+@login_required
+def get_all_communities_debug():
+    """Debug endpoint to see ALL communities and user memberships"""
+    username = session.get('username')
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Get ALL communities in the database
+            c.execute("""
+                SELECT id, name, type, parent_community_id
+                FROM communities
+                ORDER BY name
+            """)
+            all_communities = c.fetchall()
+            
+            # Get user's direct community memberships
+            placeholder = get_sql_placeholder()
+            c.execute(f"""
+                SELECT c.id, c.name, c.type, c.parent_community_id
+                FROM communities c
+                JOIN user_communities uc ON c.id = uc.community_id
+                JOIN users u ON uc.user_id = u.id
+                WHERE u.username = {placeholder}
+                ORDER BY c.name
+            """, (username,))
+            user_communities = c.fetchall()
+            
+            return jsonify({
+                'success': True,
+                'username': username,
+                'all_communities_in_db': [
+                    {
+                        'id': c.get('id'),
+                        'name': c.get('name'),
+                        'type': c.get('type'),
+                        'parent_id': c.get('parent_community_id')
+                    } for c in all_communities
+                ],
+                'user_direct_memberships': [
+                    {
+                        'id': c.get('id'),
+                        'name': c.get('name'),
+                        'type': c.get('type'),
+                        'parent_id': c.get('parent_community_id')
+                    } for c in user_communities
+                ]
+            })
+    except Exception as e:
+        logger.error(f"Debug all communities error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @app.route('/api/user_parent_community')
 @login_required
 def get_user_parent_community():
@@ -11178,6 +11232,11 @@ def get_user_parent_community():
                 """, (username,))
             
             communities = c.fetchall()
+            logger.info(f"Raw communities query returned {len(communities)} rows for {username}")
+            
+            # Log raw data for debugging
+            for i, comm in enumerate(communities):
+                logger.info(f"  Row {i}: id={comm.get('community_id')}, name={comm.get('community_name')}, type={comm.get('community_type')}")
             
             # Group communities by parent ID to avoid duplicates
             parent_communities = {}
@@ -11191,7 +11250,9 @@ def get_user_parent_community():
                     }
             
             communities_list = list(parent_communities.values())
-            logger.info(f"Found {len(communities_list)} parent communities for {username}")
+            logger.info(f"After deduplication: {len(communities_list)} parent communities for {username}")
+            for comm in communities_list:
+                logger.info(f"  Community: id={comm['id']}, name={comm['name']}, type={comm['type']}")
             
             return jsonify({
                 'success': True,

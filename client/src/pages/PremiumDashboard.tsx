@@ -29,8 +29,12 @@ export default function PremiumDashboard() {
           credentials: 'include'
         })
         const parentData = await parentResponse.json()
+        console.log('Dashboard: Parent communities API response:', parentData)
         if (parentData.success && parentData.communities) {
+          console.log('Dashboard: Setting communities:', parentData.communities)
           setCommunities(parentData.communities)
+        } else {
+          console.log('Dashboard: No communities found or API error')
         }
       } catch (error) {
         console.error('Error loading user data:', error)
@@ -92,22 +96,14 @@ export default function PremiumDashboard() {
         <div className="h-full flex items-center justify-center px-3 md:ml-52">
           <div className="w-full max-w-5xl grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {/* Show all communities */}
-            {communities.length > 0 ? (
-              communities.map(community => (
-                <Card 
-                  key={community.id}
-                  iconClass="fa-solid fa-house" 
-                  title={community.name} 
-                  onClick={() => navigate('/communities')} 
-                />
-              ))
-            ) : (
+            {communities.map(community => (
               <Card 
+                key={community.id}
                 iconClass="fa-solid fa-house" 
-                title="Your Communities" 
+                title={community.name} 
                 onClick={() => navigate('/communities')} 
               />
-            )}
+            ))}
             {hasGymAccess && <Card iconClass="fa-solid fa-person-snowboarding" title="Your Sports" onClick={() => (location.assign('/your_sports'))} />}
           </div>
         </div>
