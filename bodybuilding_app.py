@@ -1407,10 +1407,14 @@ def business_login_required(f):
 @app.route('/', methods=['GET', 'POST'])
 # @csrf.exempt
 def index():
-    print(f"Entering index route - Method: {request.method}")
-    logger.info(f"Request method: {request.method}")
-    logger.info(f"Request form data: {request.form}")
-    logger.info(f"Request headers: {dict(request.headers)}")
+    print(f"=== INDEX ROUTE: Method={request.method}, Form={dict(request.form)}")
+    logger.info(f"=== INDEX ROUTE: Method={request.method}")
+    logger.info(f"Form data: {dict(request.form)}")
+    
+    # Simple test - if ANY POST comes in, log it clearly
+    if request.method == 'POST':
+        print("POST REQUEST RECEIVED IN INDEX!")
+        logger.info("POST REQUEST RECEIVED IN INDEX!")
     
     if request.method == 'POST':
         username = (request.form.get('username') or '').strip()
@@ -2282,6 +2286,40 @@ def test_endpoint():
             'error': str(e),
             'traceback': traceback.format_exc()
         }), 500
+
+@app.route('/test_form', methods=['GET', 'POST'])
+def test_form():
+    """Test form to debug POST requests"""
+    if request.method == 'POST':
+        return f"""
+        <html><body style="background: black; color: white; padding: 20px;">
+        <h1>POST received successfully!</h1>
+        <p>Form data: {dict(request.form)}</p>
+        <p>Method: {request.method}</p>
+        <p>Headers: Content-Type = {request.headers.get('Content-Type')}</p>
+        <a href="/test_form" style="color: #4db6ac;">Try again</a>
+        </body></html>
+        """
+    
+    return """
+    <html><body style="background: black; color: white; padding: 20px;">
+    <h1>Test Form</h1>
+    <form method="POST" action="/test_form">
+        <input type="text" name="test_field" placeholder="Enter anything" style="padding: 10px; margin: 10px 0;">
+        <button type="submit" style="padding: 10px 20px; background: #4db6ac; color: white; border: none; cursor: pointer;">
+            Submit Test
+        </button>
+    </form>
+    <hr style="margin: 20px 0;">
+    <h2>Test Main Login Form</h2>
+    <form method="POST" action="/">
+        <input type="text" name="username" placeholder="Enter username" required style="padding: 10px; margin: 10px 0;">
+        <button type="submit" style="padding: 10px 20px; background: #4db6ac; color: white; border: none; cursor: pointer;">
+            Submit to Main Route
+        </button>
+    </form>
+    </body></html>
+    """
 
 @app.route('/api/debug_communities', methods=['GET'])
 @login_required
