@@ -1889,20 +1889,13 @@ def free_workouts():
 @app.route('/premium_dashboard')
 @login_required
 def premium_dashboard():
-    # Smart route: Desktop -> HTML template, Mobile -> React (if available)
+    # Prefer React app if built; fallback to HTML template
     try:
-        ua = request.headers.get('User-Agent', '')
-        is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
-        if is_mobile:
-            try:
-                base_dir = os.path.dirname(os.path.abspath(__file__))
-                dist_dir = os.path.join(base_dir, 'client', 'dist')
-                index_path = os.path.join(dist_dir, 'index.html')
-                if os.path.exists(index_path):
-                    return send_from_directory(dist_dir, 'index.html')
-            except Exception as e:
-                logger.warning(f"React Premium Dashboard not available: {e}")
-        # Desktop or React missing -> HTML template
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        dist_dir = os.path.join(base_dir, 'client', 'dist')
+        index_path = os.path.join(dist_dir, 'index.html')
+        if os.path.exists(index_path):
+            return send_from_directory(dist_dir, 'index.html')
         return render_template('premium_dashboard.html', name=session.get('username',''))
     except Exception as e:
         logger.error(f"Error in premium_dashboard: {str(e)}")
@@ -1961,6 +1954,21 @@ def premium_dashboard_react():
         return send_from_directory(dist_dir, 'index.html')
     except Exception as e:
         logger.error(f"Error serving React premium dashboard: {str(e)}")
+        abort(500)
+
+@app.route('/admin_dashboard')
+@login_required
+def admin_dashboard_react():
+    try:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        dist_dir = os.path.join(base_dir, 'client', 'dist')
+        index_path = os.path.join(dist_dir, 'index.html')
+        if os.path.exists(index_path):
+            return send_from_directory(dist_dir, 'index.html')
+        # Fallback to communities page if React build not available
+        return redirect(url_for('communities'))
+    except Exception as e:
+        logger.error(f"Error serving React admin dashboard: {str(e)}")
         abort(500)
 
 @app.route('/saved_workouts')
@@ -11506,32 +11514,41 @@ def get_user_parent_community():
                         has_gym_access = c.fetchone() is not None
 
                     if has_gym_access:
-                        # Add any top-level gym communities (case-insensitive) if not already present
-                        if USE_MYSQL:
-                            c.execute("""
-                                SELECT id, name, type
-                                FROM communities
-                                WHERE LOWER(type) = 'gym' AND parent_community_id IS NULL
-                                ORDER BY name
-                            """)
-                        else:
-                            c.execute("""
-                                SELECT id, name, type
-                                FROM communities
-                                WHERE LOWER(type) = 'gym' AND parent_community_id IS NULL
-                                ORDER BY name
-                            """)
-                        gym_parents = c.fetchall()
+                        # Add any gym communities by climbing to their top-level parent
+                        c.execute("""
+                            SELECT id, name, type, parent_community_id
+                            FROM communities
+                            WHERE LOWER(type) = 'gym'
+                        """)
+                        gym_rows = c.fetchall()
                         seen_ids = {item['id'] if hasattr(item, 'keys') else item[0] for item in communities_list}
                         added = 0
-                        for row in gym_parents:
+                        for row in gym_rows:
                             if hasattr(row, 'keys'):
-                                gid, gname, gtype = row['id'], row['name'], row['type']
+                                cid, name, gtype, parent_id = row['id'], row['name'], row['type'], row['parent_community_id']
                             else:
-                                gid, gname, gtype = row[0], row[1], row[2]
-                            if gid not in seen_ids:
-                                communities_list.append({'id': gid, 'name': gname, 'type': gtype})
-                                seen_ids.add(gid)
+                                cid, name, gtype, parent_id = row[0], row[1], row[2], row[3]
+
+                            # climb to top parent
+                            top_id, top_name, top_type = cid, name, gtype
+                            visited = set()
+                            while parent_id is not None and parent_id not in visited:
+                                visited.add(parent_id)
+                                ph = get_sql_placeholder()
+                                c.execute(f"SELECT id, name, type, parent_community_id FROM communities WHERE id = {ph}", (parent_id,))
+                                prow = c.fetchone()
+                                if not prow:
+                                    break
+                                if hasattr(prow, 'keys'):
+                                    top_id, top_name, top_type = prow['id'], prow['name'], prow['type']
+                                    parent_id = prow['parent_community_id']
+                                else:
+                                    top_id, top_name, top_type = prow[0], prow[1], prow[2]
+                                    parent_id = prow[3]
+
+                            if top_id not in seen_ids:
+                                communities_list.append({'id': top_id, 'name': top_name, 'type': top_type})
+                                seen_ids.add(top_id)
                                 added += 1
                         if added:
                             logger.info(f"Dashboard: added {added} gym parent communities for {username}")
