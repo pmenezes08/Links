@@ -11341,6 +11341,7 @@ def get_user_parent_community():
             c.execute(f"SELECT is_admin FROM users WHERE username = {placeholder}", (username,))
             user_result = c.fetchone()
             is_admin = user_result and user_result.get('is_admin', 0) == 1
+            logger.info(f"User {username} admin check: result={user_result}, is_admin={is_admin}")
             
             if is_admin:
                 # For admins, get ALL parent communities (those without parent_community_id)
@@ -11354,6 +11355,7 @@ def get_user_parent_community():
                     WHERE parent_community_id IS NULL
                     ORDER BY name
                 """)
+                logger.info(f"Admin query: Getting all parent communities")
             else:
                 # For regular users, get parent communities they belong to
                 # This includes:
