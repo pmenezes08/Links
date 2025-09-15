@@ -176,7 +176,8 @@ def auto_login_from_remember_token():
         session.permanent = True
         session['username'] = username
     except Exception as e:
-        logger.warning(f"auto_login_from_remember_token failed: {e}")
+        # logger not yet defined here, use print for now
+        print(f"WARNING: auto_login_from_remember_token failed: {e}")
 
 # Create uploads directory if it doesn't exist
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -188,9 +189,9 @@ FLASK_SECRET_KEY = os.getenv('FLASK_SECRET_KEY')
 if not FLASK_SECRET_KEY:
     # Use a hardcoded key as fallback (not ideal for production but ensures consistency)
     FLASK_SECRET_KEY = 'c-point-secret-key-2024-stable-across-workers'
-    logger.warning("Using hardcoded secret key - set FLASK_SECRET_KEY env var in production")
+    print("WARNING: Using hardcoded secret key - set FLASK_SECRET_KEY env var in production")
 app.secret_key = FLASK_SECRET_KEY
-logger.info(f"App initialized with secret key hash: {hash(app.secret_key)}")
+print(f"App initialized with secret key hash: {hash(app.secret_key)}")
 STRIPE_API_KEY = os.getenv('STRIPE_API_KEY', 'sk_test_your_stripe_key')
 XAI_API_KEY = os.getenv('XAI_API_KEY', 'xai-hFCxhRKITxZXsIQy5rRpRus49rxcgUPw4NECAunCgHU0BnWnbPE9Y594Nk5jba03t5FYl2wJkjcwyxRh')
 X_CONSUMER_KEY = os.getenv('X_CONSUMER_KEY', 'cjB0MmRPRFRnOG9jcTA0UGRZV006MTpjaQ')
