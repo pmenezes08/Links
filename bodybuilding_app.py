@@ -11370,14 +11370,12 @@ def get_user_parent_community():
             # Simple approach: Just get all parent communities (those without parent_community_id)
             # Admins see all, regular users see only theirs
             placeholder = get_sql_placeholder()
-            
-            # Check if user is admin
-            c.execute(f"SELECT is_admin FROM users WHERE username = {placeholder}", (username,))
-            user_result = c.fetchone()
-            is_admin = user_result and (user_result.get('is_admin', 0) == 1 or user_result.get('is_admin', 0) == '1')
+
+            # Determine admin using application logic to avoid DB column dependency
+            is_admin = is_app_admin(username)
             logger.info(f"User {username} is_admin: {is_admin}")
-            
-            if is_admin or username.lower() == 'admin':  # Double-check for admin user
+
+            if is_admin:
                 # Get ALL parent communities for admin
                 c.execute("""
                     SELECT id, name, type
@@ -13817,8 +13815,8 @@ def test_community_template():
             'traceback': traceback.format_exc()
         })
 
-@app.route('/simple_test')
-def simple_test():
+@app.route('/simple_test', endpoint='simple_test_route')
+def simple_test_route():
     """Simple test route without any decorators"""
     return jsonify({'success': True, 'message': 'Simple test route works'})
 # Community Announcements Routes
