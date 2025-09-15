@@ -485,6 +485,40 @@ export default function AdminDashboard() {
                 </div>
               ))}
             </div>
+
+            {/* Flat list of all communities with delete */}
+            <div className="mt-6">
+              <h4 className="text-sm font-semibold mb-2 text-white/80">All Communities (flat list)</h4>
+              <div className="space-y-2">
+                {filteredCommunities.map(c => (
+                  <div key={c.id} className="flex items-center justify-between bg-white/5 rounded-lg p-2 border border-white/10">
+                    <div className="flex items-center gap-3">
+                      <div className="w-6 h-6 bg-[#4db6ac]/30 text-[#4db6ac] rounded flex items-center justify-center text-[10px] font-bold">
+                        {c.name.substring(0,2).toUpperCase()}
+                      </div>
+                      <div className="text-xs">
+                        <div className="text-white/90 font-medium">{c.name}</div>
+                        <div className="text-white/50">{c.type}{c.parent_community_id ? ` — child of ${c.parent_community_id}` : ' — parent'}</div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => navigate(`/community_feed_react/${c.id}`)}
+                        className="px-2 py-1 text-xs bg-white/5 border border-white/10 rounded hover:bg-white/10"
+                      >
+                        View
+                      </button>
+                      <button
+                        onClick={() => handleDeleteCommunity(c.id)}
+                        className="px-2 py-1 text-xs rounded bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         )}
       </div>
