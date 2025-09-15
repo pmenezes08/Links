@@ -2232,6 +2232,70 @@ def check_admin():
     username = session.get('username')
     return jsonify({'is_admin': is_app_admin(username)})
 
+@app.route('/api/debug_communities', methods=['GET'])
+@login_required
+def debug_communities():
+    """Debug endpoint to check all communities in database"""
+    username = session.get('username')
+    if not is_app_admin(username):
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Get all communities
+            c.execute("""
+                SELECT id, name, type, parent_community_id, creator_username
+                FROM communities
+                ORDER BY id
+            """)
+            all_communities = c.fetchall()
+            
+            # Get user_communities count
+            c.execute("SELECT COUNT(*) FROM user_communities")
+            uc_count = c.fetchone()[0]
+            
+            # Get admin's communities
+            placeholder = get_sql_placeholder()
+            c.execute(f"""
+                SELECT c.id, c.name
+                FROM communities c
+                JOIN user_communities uc ON c.id = uc.community_id
+                JOIN users u ON uc.user_id = u.id
+                WHERE u.username = {placeholder}
+            """, ('admin',))
+            admin_communities = c.fetchall()
+            
+            communities_list = []
+            for comm in all_communities:
+                communities_list.append({
+                    'id': comm[0] if not hasattr(comm, 'keys') else comm['id'],
+                    'name': comm[1] if not hasattr(comm, 'keys') else comm['name'],
+                    'type': comm[2] if not hasattr(comm, 'keys') else comm['type'],
+                    'parent_id': comm[3] if not hasattr(comm, 'keys') else comm['parent_community_id'],
+                    'creator': comm[4] if not hasattr(comm, 'keys') else comm['creator_username']
+                })
+            
+            admin_comm_list = []
+            for comm in admin_communities:
+                admin_comm_list.append({
+                    'id': comm[0] if not hasattr(comm, 'keys') else comm['id'],
+                    'name': comm[1] if not hasattr(comm, 'keys') else comm['name']
+                })
+            
+            return jsonify({
+                'total_communities': len(all_communities),
+                'user_communities_entries': uc_count,
+                'all_communities': communities_list,
+                'admin_communities': admin_comm_list,
+                'database_type': 'MySQL' if USE_MYSQL else 'SQLite'
+            })
+    except Exception as e:
+        logger.error(f"Debug communities error: {e}")
+        import traceback
+        return jsonify({'error': str(e), 'traceback': traceback.format_exc()}), 500
+
 @app.route('/api/admin/dashboard', methods=['GET'])
 @login_required
 def admin_dashboard_api():
