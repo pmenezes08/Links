@@ -1223,7 +1223,10 @@ def ensure_indexes():
 # Permission helper functions
 def is_app_admin(username):
     """Check if user is the app admin"""
-    return username == 'admin'
+    try:
+        return bool(username) and username.lower() in ('admin', 'paulo')
+    except Exception:
+        return False
 
 def is_community_owner(username, community_id):
     """Check if user is the owner of a community"""
@@ -2283,7 +2286,10 @@ def delete_weight():
 # Admin helper functions
 def is_app_admin(username):
     """Check if a user is an app admin"""
-    return username == 'admin'  # For now, only 'admin' user is admin
+    try:
+        return bool(username) and username.lower() in ('admin', 'paulo')
+    except Exception:
+        return False
 
 def is_community_owner(username, community_id):
     """Check if a user owns a community"""
