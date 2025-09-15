@@ -11072,6 +11072,13 @@ def check_gym_membership():
     """Check if user belongs to a gym community"""
     username = session.get('username')
     
+    # Special access for Paulo
+    if username == 'Paulo':
+        return jsonify({
+            'hasGymAccess': True,
+            'username': username
+        })
+    
     try:
         with get_db_connection() as conn:
             c = conn.cursor()

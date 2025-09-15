@@ -20,6 +20,7 @@ import EditCommunity from './pages/EditCommunity'
 import Communities from './pages/Communities'
 import HomeTimeline from './pages/HomeTimeline'
 import WorkoutTracking from './pages/WorkoutTracking'
+import Gym from './pages/Gym'
 import YourSports from './pages/YourSports'
 import Messages from './pages/Messages'
 import NewMessage from './pages/NewMessage'
@@ -70,6 +71,7 @@ function AppRoutes(){
           <Route path="/crossfit_react" element={<CrossfitExact />} />
           <Route path="/communities" element={<Communities />} />
           <Route path="/your_sports" element={<YourSports />} />
+          <Route path="/gym" element={<Gym />} />
           <Route path="/user_chat" element={<Messages />} />
           <Route path="/user_chat/new" element={<NewMessage />} />
           <Route path="/user_chat/chat/:username" element={<ChatThread />} />
