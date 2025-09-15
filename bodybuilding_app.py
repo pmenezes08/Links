@@ -1922,6 +1922,78 @@ def react_assets(filename):
             return send_from_directory(assets_dir, filename)
         logger.warning(f"React asset not found: {asset_path}")
         abort(404)
+
+@app.route('/api/community_group_feed/<int:parent_id>')
+@login_required
+def api_community_group_feed(parent_id: int):
+    """Return recent posts for a parent community and all its child communities."""
+    username = session.get('username')
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+
+            # Build list of community IDs: parent + children
+            ph = get_sql_placeholder()
+            c.execute(f"SELECT id FROM communities WHERE parent_community_id = {ph}", (parent_id,))
+            child_rows = c.fetchall()
+            community_ids = [parent_id]
+            for r in child_rows:
+                cid = r['id'] if hasattr(r, 'keys') else r[0]
+                if cid:
+                    community_ids.append(cid)
+
+            # Fetch recent posts across these communities
+            if not community_ids:
+                return jsonify({'success': True, 'posts': []})
+
+            placeholders = ','.join([ph for _ in community_ids])
+            c.execute(f"""
+                SELECT id, username, content, community_id, created_at, image_path
+                FROM posts
+                WHERE community_id IN ({placeholders})
+                ORDER BY id DESC
+                LIMIT 50
+            """, tuple(community_ids))
+
+            rows = c.fetchall()
+            posts = []
+
+            # Optionally map community names for display
+            name_map = {}
+            for cid in community_ids:
+                c.execute(f"SELECT name FROM communities WHERE id = {ph}", (cid,))
+                nm = c.fetchone()
+                if nm:
+                    name_map[cid] = nm['name'] if hasattr(nm, 'keys') else nm[0]
+
+            for row in rows:
+                if hasattr(row, 'keys'):
+                    pid = row['id']
+                    posts.append({
+                        'id': pid,
+                        'username': row.get('username'),
+                        'content': row.get('content'),
+                        'community_id': row.get('community_id'),
+                        'community_name': name_map.get(row.get('community_id')),
+                        'created_at': row.get('created_at'),
+                        'image_path': row.get('image_path')
+                    })
+                else:
+                    pid, uname, content, cid, created_at, image_path = row
+                    posts.append({
+                        'id': pid,
+                        'username': uname,
+                        'content': content,
+                        'community_id': cid,
+                        'community_name': name_map.get(cid),
+                        'created_at': created_at,
+                        'image_path': image_path
+                    })
+
+            return jsonify({'success': True, 'posts': posts})
+    except Exception as e:
+        logger.error(f"Error in community_group_feed for parent {parent_id}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
     except Exception as e:
         logger.error(f"Error serving React asset {filename}: {str(e)}")
         abort(404)

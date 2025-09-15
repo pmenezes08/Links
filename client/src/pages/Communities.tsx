@@ -127,6 +127,10 @@ export default function Communities(){
           <div className="text-red-400">{error}</div>
         ) : (
           <div className="space-y-3">
+            {/* Home Timeline preview for parent + children when scoped */}
+            {new URLSearchParams(location.search).get('parent_id') && (
+              <ParentTimeline parentId={Number(new URLSearchParams(location.search).get('parent_id'))} />
+            )}
             {/* Join new community - hide when scoped to a specific parent */}
             {!new URLSearchParams(location.search).get('parent_id') && (
               <JoinCommunity onJoined={()=>{ window.location.reload() }} />
@@ -185,6 +189,48 @@ export default function Communities(){
             ))}
           </div>
         )}
+      </div>
+    </div>
+  )
+}
+
+function ParentTimeline({ parentId }:{ parentId:number }){
+  const [posts, setPosts] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string|undefined>()
+  useEffect(() => {
+    let ok = true
+    async function load(){
+      setLoading(true)
+      try{
+        const r = await fetch(`/api/community_group_feed/${parentId}`, { credentials:'include' })
+        const j = await r.json()
+        if (!ok) return
+        if (j?.success) setPosts(j.posts || [])
+        else setError(j?.error || 'Error loading timeline')
+      }catch{
+        if (ok) setError('Error loading timeline')
+      }finally{
+        if (ok) setLoading(false)
+      }
+    }
+    load()
+    return ()=>{ ok = false }
+  }, [parentId])
+
+  if (loading) return null
+  if (error) return null
+  if (!posts.length) return null
+
+  return (
+    <div className="bg-white/5 backdrop-blur rounded-xl p-3 border border-white/10">
+      <div className="text-sm font-semibold mb-2">Home Timeline</div>
+      <div className="space-y-2">
+        {posts.slice(0, 5).map(p => (
+          <div key={p.id} className="text-sm text-white/80">
+            <span className="text-white/60">[{p.community_name || 'Community'}]</span> {p.content || ''}
+          </div>
+        ))}
       </div>
     </div>
   )
