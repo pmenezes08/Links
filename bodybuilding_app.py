@@ -11124,8 +11124,9 @@ def check_gym_membership():
 @app.route('/api/user_parent_community')
 @login_required
 def get_user_parent_community():
-    """Get ALL parent communities for the user"""
+    """Get ALL parent communities for the user (including standalone communities treated as parents)"""
     username = session.get('username')
+    logger.info(f"Getting parent communities for user: {username}")
     
     try:
         with get_db_connection() as conn:
@@ -11139,6 +11140,7 @@ def get_user_parent_community():
             
             if is_admin:
                 # For admins, get ALL parent communities (those without parent_community_id)
+                # These are true parent communities
                 c.execute("""
                     SELECT DISTINCT 
                         id as community_id,
@@ -11149,12 +11151,24 @@ def get_user_parent_community():
                     ORDER BY name
                 """)
             else:
-                # For regular users, get their parent communities
+                # For regular users, get parent communities they belong to
+                # This includes:
+                # 1. Actual parent communities they belong to (via child membership)
+                # 2. Standalone communities (no parent) they belong to
                 c.execute(f"""
                     SELECT DISTINCT 
-                        COALESCE(pc.id, c.id) as community_id,
-                        COALESCE(pc.name, c.name) as community_name,
-                        COALESCE(pc.type, c.type) as community_type
+                        CASE 
+                            WHEN c.parent_community_id IS NULL THEN c.id
+                            ELSE pc.id
+                        END as community_id,
+                        CASE 
+                            WHEN c.parent_community_id IS NULL THEN c.name
+                            ELSE pc.name
+                        END as community_name,
+                        CASE 
+                            WHEN c.parent_community_id IS NULL THEN c.type
+                            ELSE pc.type
+                        END as community_type
                     FROM communities c
                     JOIN user_communities uc ON c.id = uc.community_id
                     JOIN users u ON uc.user_id = u.id
@@ -11165,11 +11179,11 @@ def get_user_parent_community():
             
             communities = c.fetchall()
             
-            # Group communities by parent to avoid duplicates
+            # Group communities by parent ID to avoid duplicates
             parent_communities = {}
             for comm in communities:
                 parent_id = comm['community_id']
-                if parent_id not in parent_communities:
+                if parent_id and parent_id not in parent_communities:
                     parent_communities[parent_id] = {
                         'id': parent_id,
                         'name': comm['community_name'],
@@ -11177,6 +11191,7 @@ def get_user_parent_community():
                     }
             
             communities_list = list(parent_communities.values())
+            logger.info(f"Found {len(communities_list)} parent communities for {username}")
             
             return jsonify({
                 'success': True,
