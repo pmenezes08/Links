@@ -16,8 +16,8 @@ export default function HeaderBar({ title, username, avatarUrl }: HeaderBarProps
   const [unreadNotifs, setUnreadNotifs] = useState<number>(0)
   const [hasGymAccess, setHasGymAccess] = useState(false)
   
-  // Special access for Paulo
-  const hasSportsAccess = hasGymAccess || username === 'Paulo'
+  // Special access for Paulo (case-insensitive)
+  const hasSportsAccess = hasGymAccess || (username && username.toLowerCase() === 'paulo')
 
   useEffect(() => {
     async function checkGymMembership() {

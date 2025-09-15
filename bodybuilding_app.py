@@ -11072,8 +11072,8 @@ def check_gym_membership():
     """Check if user belongs to a gym community"""
     username = session.get('username')
     
-    # Special access for Paulo
-    if username == 'Paulo':
+    # Special access for Paulo (case-insensitive)
+    if username and username.lower() == 'paulo':
         return jsonify({
             'hasGymAccess': True,
             'username': username

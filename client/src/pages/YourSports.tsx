@@ -19,16 +19,19 @@ export default function YourSports(){
           credentials: 'include'
         })
         const userData = await userResponse.json()
+        console.log('YourSports: userData =', userData)
         if (userData.success && userData.username) {
-          // Special access for Paulo
-          if (userData.username === 'Paulo') {
+          console.log('YourSports: checking username:', userData.username)
+          // Special access for Paulo (case-insensitive check)
+          if (userData.username && userData.username.toLowerCase() === 'paulo') {
+            console.log('YourSports: Paulo detected, granting access')
             setHasGymAccess(true)
             setLoading(false)
-            return
+            return  // Stop here for Paulo - don't check gym membership
           }
         }
         
-        // Check regular gym membership
+        // Only check regular gym membership for non-Paulo users
         const response = await fetch('/api/check_gym_membership', {
           method: 'GET',
           credentials: 'include'
@@ -37,6 +40,7 @@ export default function YourSports(){
         
         if (data.hasGymAccess) {
           setHasGymAccess(true)
+          setLoading(false)
         } else {
           // Redirect to premium dashboard if no gym access
           navigate('/premium_dashboard')
