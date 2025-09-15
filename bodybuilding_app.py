@@ -237,6 +237,19 @@ def get_sql_placeholder():
     """Get the correct SQL placeholder based on database type"""
     return '%s' if USE_MYSQL else '?'
 
+def get_scalar_result(row, column_index=0, column_name=None):
+    """Helper to get a scalar value from a database row that could be dict or tuple"""
+    if row is None:
+        return None
+    if hasattr(row, 'keys'):  # Dict-like result (MySQL with DictCursor)
+        if column_name:
+            return row.get(column_name)
+        # If no column name provided, try to get first value
+        values = list(row.values())
+        return values[column_index] if values else None
+    else:  # Tuple/list result (SQLite)
+        return row[column_index] if len(row) > column_index else None
+
 def get_db_connection():
     if USE_MYSQL:
         try:
@@ -2252,8 +2265,9 @@ def test_endpoint():
         # Test database connection
         with get_db_connection() as conn:
             c = conn.cursor()
-            c.execute("SELECT COUNT(*) FROM users")
-            user_count = c.fetchone()[0]
+            c.execute("SELECT COUNT(*) as count FROM users")
+            result = c.fetchone()
+            user_count = result['count'] if hasattr(result, 'keys') else result[0]
             
         return jsonify({
             'status': 'ok',
@@ -2290,8 +2304,8 @@ def debug_communities():
             all_communities = c.fetchall()
             
             # Get user_communities count
-            c.execute("SELECT COUNT(*) FROM user_communities")
-            uc_count = c.fetchone()[0]
+            c.execute("SELECT COUNT(*) as count FROM user_communities")
+            uc_count = get_scalar_result(c.fetchone(), column_name='count')
             
             # Get admin's communities
             placeholder = get_sql_placeholder()
@@ -2346,17 +2360,17 @@ def admin_dashboard_api():
             c = conn.cursor()
             
             # Get statistics
-            c.execute("SELECT COUNT(*) FROM users")
-            total_users = c.fetchone()[0]
+            c.execute("SELECT COUNT(*) as count FROM users")
+            total_users = get_scalar_result(c.fetchone(), column_name='count')
             
-            c.execute("SELECT COUNT(*) FROM users WHERE subscription = 'premium'")
-            premium_users = c.fetchone()[0]
+            c.execute("SELECT COUNT(*) as count FROM users WHERE subscription = 'premium'")
+            premium_users = get_scalar_result(c.fetchone(), column_name='count')
             
-            c.execute("SELECT COUNT(*) FROM communities")
-            total_communities = c.fetchone()[0]
+            c.execute("SELECT COUNT(*) as count FROM communities")
+            total_communities = get_scalar_result(c.fetchone(), column_name='count')
             
-            c.execute("SELECT COUNT(*) FROM posts")
-            total_posts = c.fetchone()[0]
+            c.execute("SELECT COUNT(*) as count FROM posts")
+            total_posts = get_scalar_result(c.fetchone(), column_name='count')
             
             stats = {
                 'total_users': total_users,
@@ -2641,17 +2655,17 @@ def admin():
             c = conn.cursor()
             
             # Get statistics
-            c.execute("SELECT COUNT(*) FROM users")
-            total_users = c.fetchone()[0]
+            c.execute("SELECT COUNT(*) as count FROM users")
+            total_users = get_scalar_result(c.fetchone(), column_name='count')
             
-            c.execute("SELECT COUNT(*) FROM users WHERE subscription = 'premium'")
-            premium_users = c.fetchone()[0]
+            c.execute("SELECT COUNT(*) as count FROM users WHERE subscription = 'premium'")
+            premium_users = get_scalar_result(c.fetchone(), column_name='count')
             
-            c.execute("SELECT COUNT(*) FROM communities")
-            total_communities = c.fetchone()[0]
+            c.execute("SELECT COUNT(*) as count FROM communities")
+            total_communities = get_scalar_result(c.fetchone(), column_name='count')
             
-            c.execute("SELECT COUNT(*) FROM posts")
-            total_posts = c.fetchone()[0]
+            c.execute("SELECT COUNT(*) as count FROM posts")
+            total_posts = get_scalar_result(c.fetchone(), column_name='count')
             
             stats = {
                 'total_users': total_users,
