@@ -182,62 +182,72 @@ export default function ChatThread(){
     
     async function poll(){
       try{
-        // Only fetch messages if enough time has passed or we have pending operations
-        const now = Date.now()
-        const shouldFetch = (now - lastFetchTime.current) > 1500 // At least 1.5 seconds between fetches
+        const fd = new URLSearchParams({ other_user_id: String(otherUserId) })
+        const r = await fetch('/get_messages', { 
+          method:'POST', 
+          credentials:'include', 
+          headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, 
+          body: fd 
+        })
+        const j = await r.json()
         
-        if (shouldFetch) {
-          const fd = new URLSearchParams({ other_user_id: String(otherUserId) })
-          const r = await fetch('/get_messages', { 
-            method:'POST', 
-            credentials:'include', 
-            headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, 
-            body: fd 
-          })
-          const j = await r.json()
-          
-          if (j?.success && Array.isArray(j.messages)){
-            lastFetchTime.current = now
+        if (j?.success && Array.isArray(j.messages)){
+          setMessages(prev => {
+            // Create a map of all existing messages by ID for quick lookup
+            const existingById = new Map()
+            prev.forEach(m => {
+              if (!m.isOptimistic && m.id) {
+                existingById.set(m.id, m)
+              }
+            })
             
-            setMessages(prev => {
-              // Keep track of optimistic messages that haven't been confirmed yet
-              const optimisticMessages = prev.filter(m => m.isOptimistic === true)
+            // Keep optimistic messages separate
+            const optimisticMessages = prev.filter(m => m.isOptimistic === true)
+            
+            // Process server messages, preserving local state
+            const serverMessages = j.messages.map((m:any) => {
+              // Skip if pending deletion
+              if (pendingDeletions.current.has(m.id)) {
+                return null
+              }
               
-              // Process server messages
-              const serverMessages = j.messages.map((m:any) => {
-                // Skip if this message is pending deletion
-                if (pendingDeletions.current.has(m.id)) {
-                  return null
-                }
-                
-                const existing = prev.find(x => x.id === m.id && !x.isOptimistic)
-                const k = `${m.time}|${m.text}|${m.sent ? 'me' : 'other'}`
-                const meta = metaRef.current[k] || {}
-                
-                return {
-                  ...m,
-                  reaction: existing?.reaction ?? meta.reaction,
-                  replySnippet: existing?.replySnippet ?? meta.replySnippet,
-                  isOptimistic: false
-                }
-              }).filter(Boolean)
+              const existing = existingById.get(m.id)
+              const k = `${m.time}|${m.text}|${m.sent ? 'me' : 'other'}`
+              const meta = metaRef.current[k] || {}
               
-              // Remove optimistic messages that now exist on server
-              const remainingOptimistic = optimisticMessages.filter(opt => {
-                // Check if this optimistic message now exists on server
-                const serverMatch = serverMessages.some((srv:any) => 
-                  srv.sent === opt.sent && 
-                  srv.text === opt.text && 
-                  Math.abs(new Date(srv.time).getTime() - new Date(opt.time).getTime()) < 30000 // Within 30 seconds
-                )
-                return !serverMatch
+              return {
+                ...m,
+                reaction: existing?.reaction ?? meta.reaction,
+                replySnippet: existing?.replySnippet ?? meta.replySnippet,
+                isOptimistic: false
+              }
+            }).filter(Boolean)
+            
+            // Keep optimistic messages that don't have a server match yet
+            // Be more lenient with matching to avoid duplicates
+            const remainingOptimistic = optimisticMessages.filter(opt => {
+              const serverMatch = serverMessages.some((srv:any) => {
+                // Match by text and sender, with a reasonable time window
+                if (srv.sent === opt.sent && srv.text === opt.text) {
+                  const timeDiff = Math.abs(new Date(srv.time).getTime() - new Date(opt.time).getTime())
+                  return timeDiff < 60000 // Within 60 seconds
+                }
+                return false
               })
               
-              // Combine and sort by time
-              const allMessages = [...serverMessages, ...remainingOptimistic]
-              return allMessages.sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime())
+              // Also remove old optimistic messages (older than 2 minutes)
+              const optAge = Date.now() - new Date(opt.time).getTime()
+              if (optAge > 120000) {
+                return false // Remove stale optimistic messages
+              }
+              
+              return !serverMatch
             })
-          }
+            
+            // Combine and sort
+            const allMessages = [...serverMessages, ...remainingOptimistic]
+            return allMessages.sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime())
+          })
         }
       }catch(e){
         console.error('Polling error:', e)
@@ -251,8 +261,11 @@ export default function ChatThread(){
       }catch{}
     }
     
-    poll() // Initial poll
-    pollTimer.current = setInterval(poll, 2000) // Poll every 2 seconds
+    // Initial poll after a short delay to let optimistic messages show
+    setTimeout(poll, 500)
+    
+    // Poll every 3 seconds (slightly less aggressive)
+    pollTimer.current = setInterval(poll, 3000)
     
     return () => { 
       if (pollTimer.current) clearInterval(pollTimer.current) 
@@ -273,7 +286,6 @@ export default function ChatThread(){
   function send(){
     if (!otherUserId || !draft.trim() || sending) return
     
-    setSending(true)
     const messageText = draft.trim()
     const now = new Date().toISOString().slice(0,19).replace('T',' ')
     const tempId = `temp_${Date.now()}_${Math.random()}`
@@ -289,10 +301,13 @@ export default function ChatThread(){
       isOptimistic: true
     }
     
-    // Add optimistic message immediately
-    setMessages(prev => [...prev, optimisticMessage])
+    // Clear input immediately for better UX
     setDraft('')
     setReplyTo(null)
+    setSending(true)
+    
+    // Add optimistic message immediately
+    setMessages(prev => [...prev, optimisticMessage])
     
     // Force scroll to bottom for sent messages
     setTimeout(scrollToBottom, 50)
@@ -316,10 +331,7 @@ export default function ChatThread(){
     .then(r=>r.json())
     .then(j=>{
       if (j?.success){
-        // Message sent successfully
-        // Force a poll to get the real message ID from server
-        lastFetchTime.current = 0 // Reset to force immediate fetch
-        
+        // Message sent successfully - the polling will pick up the real message
         // Stop typing indicator
         fetch('/api/typing', { 
           method:'POST', 
@@ -481,10 +493,8 @@ export default function ChatThread(){
 
   return (
     <div 
-      className="flex flex-col" 
+      className="bg-black text-white flex flex-col" 
       style={{ 
-        backgroundColor: 'white',
-        color: 'black',
         height: '100vh',
         minHeight: '100vh',
         maxHeight: '100vh',
