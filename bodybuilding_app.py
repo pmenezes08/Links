@@ -2543,21 +2543,38 @@ def admin_dashboard_api():
             communities_raw = c.fetchall()
             logger.info(f"Admin dashboard: Found {len(communities_raw)} total communities")
             
-            # First, create all community objects
+            # First, create all community objects (support dict or tuple rows)
             all_communities = {}
             for comm in communities_raw:
+                if hasattr(comm, 'keys'):
+                    cid = comm['id']
+                    cname = comm['name']
+                    ctype = comm['type']
+                    ccreator = comm['creator_username']
+                    cjoin = comm['join_code']
+                    cparent = comm['parent_community_id']
+                    cmembers = comm['member_count']
+                else:
+                    cid = comm[0]
+                    cname = comm[1]
+                    ctype = comm[2]
+                    ccreator = comm[3]
+                    cjoin = comm[4]
+                    cparent = comm[5]
+                    cmembers = comm[6]
+
                 community_data = {
-                    'id': comm[0],
-                    'name': comm[1],
-                    'type': comm[2],
-                    'creator_username': comm[3],
-                    'join_code': comm[4],
-                    'parent_community_id': comm[5],
-                    'member_count': comm[6],
+                    'id': cid,
+                    'name': cname,
+                    'type': ctype,
+                    'creator_username': ccreator,
+                    'join_code': cjoin,
+                    'parent_community_id': cparent,
+                    'member_count': cmembers,
                     'is_active': True,
                     'children': []
                 }
-                all_communities[comm[0]] = community_data
+                all_communities[cid] = community_data
             
             # Now organize into parent-child structure
             root_communities = {}
