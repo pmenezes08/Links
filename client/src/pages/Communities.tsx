@@ -226,7 +226,7 @@ function ParentTimeline({ parentId }:{ parentId:number }){
     <div className="bg-white/5 backdrop-blur rounded-xl p-3 border border-white/10">
       <div className="text-sm font-semibold mb-2">Home Timeline</div>
       <div className="space-y-2">
-        {posts.slice(0, 5).map(p => (
+        {posts.map(p => (
           <div key={p.id} className="text-sm text-white/80">
             <span className="text-white/60">[{p.community_name || 'Community'}]</span> {p.content || ''}
           </div>
