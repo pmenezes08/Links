@@ -1922,6 +1922,9 @@ def react_assets(filename):
             return send_from_directory(assets_dir, filename)
         logger.warning(f"React asset not found: {asset_path}")
         abort(404)
+    except Exception as e:
+        logger.error(f"Error serving React asset {filename}: {str(e)}")
+        abort(404)
 
 @app.route('/api/community_group_feed/<int:parent_id>')
 @login_required
