@@ -101,8 +101,12 @@ def optimize_image(file_path, max_width=1920, quality=85):
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)
-app.config['SESSION_COOKIE_SECURE'] = True
-app.config['SESSION_COOKIE_DOMAIN'] = os.getenv('SESSION_COOKIE_DOMAIN') or None
+# Temporarily disable secure cookie for debugging
+# app.config['SESSION_COOKIE_SECURE'] = True
+app.config['SESSION_COOKIE_SECURE'] = False  # Temporarily disabled for debugging
+# Don't set domain - let Flask handle it automatically
+# app.config['SESSION_COOKIE_DOMAIN'] = os.getenv('SESSION_COOKIE_DOMAIN') or None
+app.config['SESSION_COOKIE_NAME'] = 'session'
 app.config['PREFERRED_URL_SCHEME'] = 'https'
 
 # Optional: enforce canonical host (e.g., www.c-point.co) to prevent cookie splits
@@ -1468,9 +1472,17 @@ def index():
         # Set long-lived session on initial username step
         session.permanent = True
         session['username'] = username
+        session.permanent = True  # Make session persist
+        session.modified = True  # Force session to be saved
         print(f"Session username set to: {session['username']}")
         logger.info(f"Session username set to: {session['username']}")
-        return redirect(url_for('login_password'))
+        logger.info(f"Session after setting: {dict(session)}")
+        logger.info(f"Session ID: {request.cookies.get('session', 'NO SESSION COOKIE')}")
+        logger.info(f"Request host: {request.host}")
+        logger.info(f"Request URL: {request.url}")
+        response = redirect(url_for('login_password'))
+        logger.info(f"Redirecting to login_password with session: {dict(session)}")
+        return response
     # GET request: Desktop -> HTML template, Mobile -> React (if available)
     try:
         ua = request.headers.get('User-Agent', '')
@@ -1732,11 +1744,15 @@ def logout():
 # @csrf.exempt
 def login_password():
     print("Entering login_password route")
+    logger.info(f"login_password route - Session contents: {dict(session)}")
+    logger.info(f"login_password route - Session keys: {list(session.keys())}")
     if 'username' not in session:
         print("No username in session, redirecting to /")
+        logger.error(f"No username in session! Session: {dict(session)}")
         return redirect(url_for('index'))
     username = session['username']
     print(f"Username from session: {username}")
+    logger.info(f"Username from session: {username}")
     if request.method == 'POST':
         password = request.form.get('password', '')
         print(f"Password entered: {password}")
