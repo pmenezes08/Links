@@ -17,6 +17,7 @@ export default function Communities(){
   const { setTitle } = useHeader()
   const [_data, setData] = useState<{ username:string; current_user_profile_picture?:string|null; community_name?:string }|null>(null)
   const [communities, setCommunities] = useState<Community[]>([])
+  const [parentName, setParentName] = useState<string>('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string|null>(null)
   const [swipedCommunity, setSwipedCommunity] = useState<number|null>(null)
@@ -61,11 +62,14 @@ export default function Communities(){
             if (parent) {
               const subset: Community[] = [{ ...parent, children: parent.children || [] }]
               setCommunities(subset)
+              setParentName(parent.name)
             } else {
               setCommunities(all)
+              setParentName('')
             }
           } else {
             setCommunities(all)
+            setParentName('')
           }
           setError(null)
         } else {
@@ -81,7 +85,10 @@ export default function Communities(){
     return () => { mounted = false }
   }, [])
 
-  useEffect(() => { setTitle('Community Management') }, [setTitle])
+  useEffect(() => { 
+    if (parentName) setTitle(`Community: ${parentName}`)
+    else setTitle('Community Management')
+  }, [setTitle, parentName])
 
   return (
     <div className="h-screen overflow-hidden bg-black text-white">
@@ -90,7 +97,16 @@ export default function Communities(){
       {/* Secondary nav like X */}
       <div className="fixed left-0 right-0 top-14 h-10 bg-black/70 backdrop-blur z-40">
         <div className="max-w-2xl mx-auto h-full flex">
-          <button type="button" className="flex-1 text-center text-sm font-medium text-[#9fb0b5] hover:text-white/90" onClick={()=> navigate('/home')}>
+          <button 
+            type="button" 
+            className="flex-1 text-center text-sm font-medium text-[#9fb0b5] hover:text-white/90" 
+            onClick={()=> {
+              const qs = new URLSearchParams(location.search)
+              const pid = qs.get('parent_id')
+              if (pid) navigate(`/community_feed_react/${pid}`)
+              else navigate('/home')
+            }}
+          >
             <div className="pt-2">Home Timeline</div>
             <div className="h-0.5 bg-transparent rounded-full w-16 mx-auto mt-1" />
           </button>
@@ -111,11 +127,10 @@ export default function Communities(){
           <div className="text-red-400">{error}</div>
         ) : (
           <div className="space-y-3">
-            {/* Join new community */}
-            <JoinCommunity onJoined={()=>{
-              // reload
-              window.location.reload()
-            }} />
+            {/* Join new community - hide when scoped to a specific parent */}
+            {!new URLSearchParams(location.search).get('parent_id') && (
+              <JoinCommunity onJoined={()=>{ window.location.reload() }} />
+            )}
             {/* Divider removed per request */}
             {communities.length === 0 ? (
               <div className="text-[#9fb0b5]">You are not a member of any communities.</div>
