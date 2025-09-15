@@ -11180,6 +11180,97 @@ def check_gym_membership():
         logger.error(f"Error checking gym membership for {username}: {str(e)}")
         return jsonify({'hasGymAccess': False, 'error': str(e)}), 500
 
+@app.route('/api/dashboard_communities_test')
+@login_required
+def dashboard_communities_test():
+    """Test endpoint to show what communities should appear on dashboard"""
+    username = session.get('username')
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # First, get ALL communities to understand the structure
+            c.execute("""
+                SELECT id, name, type, parent_community_id
+                FROM communities
+                ORDER BY parent_community_id NULLS FIRST, name
+            """)
+            all_communities = c.fetchall()
+            
+            # Get user's memberships
+            placeholder = get_sql_placeholder()
+            c.execute(f"""
+                SELECT c.id, c.name, c.type, c.parent_community_id
+                FROM communities c
+                JOIN user_communities uc ON c.id = uc.community_id
+                JOIN users u ON uc.user_id = u.id
+                WHERE u.username = {placeholder}
+                ORDER BY c.name
+            """, (username,))
+            user_communities = c.fetchall()
+            
+            # Determine what should show on dashboard
+            dashboard_communities = []
+            seen_parents = set()
+            
+            for comm in user_communities:
+                comm_id = comm.get('id')
+                parent_id = comm.get('parent_community_id')
+                
+                if parent_id is None:
+                    # This is a standalone/parent community - show it
+                    if comm_id not in seen_parents:
+                        dashboard_communities.append({
+                            'id': comm_id,
+                            'name': comm.get('name'),
+                            'type': comm.get('type'),
+                            'reason': 'Standalone community (no parent)'
+                        })
+                        seen_parents.add(comm_id)
+                else:
+                    # This is a child community - show its parent
+                    if parent_id not in seen_parents:
+                        # Find parent details
+                        parent = next((c for c in all_communities if c.get('id') == parent_id), None)
+                        if parent:
+                            dashboard_communities.append({
+                                'id': parent_id,
+                                'name': parent.get('name'),
+                                'type': parent.get('type'),
+                                'reason': f"Parent of {comm.get('name')}"
+                            })
+                            seen_parents.add(parent_id)
+            
+            return jsonify({
+                'success': True,
+                'username': username,
+                'all_communities_count': len(all_communities),
+                'user_communities_count': len(user_communities),
+                'dashboard_should_show': dashboard_communities,
+                'dashboard_count': len(dashboard_communities),
+                'all_communities': [
+                    {
+                        'id': c.get('id'),
+                        'name': c.get('name'),
+                        'type': c.get('type'),
+                        'parent_id': c.get('parent_community_id')
+                    } for c in all_communities
+                ],
+                'user_communities': [
+                    {
+                        'id': c.get('id'),
+                        'name': c.get('name'),
+                        'type': c.get('type'),
+                        'parent_id': c.get('parent_community_id')
+                    } for c in user_communities
+                ]
+            })
+            
+    except Exception as e:
+        logger.error(f"Dashboard communities test error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @app.route('/api/all_communities_debug')
 @login_required
 def get_all_communities_debug():
