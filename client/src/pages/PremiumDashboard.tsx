@@ -8,6 +8,7 @@ export default function PremiumDashboard() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [hasGymAccess, setHasGymAccess] = useState(false)
   const [parentCommunity, setParentCommunity] = useState<{id: number, name: string, type: string} | null>(null)
+  const [username, setUsername] = useState<string>('')
   const { setTitle } = useHeader()
   useEffect(() => { setTitle('Dashboard') }, [setTitle])
   const navigate = useNavigate()
@@ -15,6 +16,16 @@ export default function PremiumDashboard() {
   useEffect(() => {
     async function loadUserData() {
       try {
+        // Get username from home timeline endpoint
+        const userResponse = await fetch('/api/home_timeline', {
+          method: 'GET',
+          credentials: 'include'
+        })
+        const userData = await userResponse.json()
+        if (userData.success && userData.username) {
+          setUsername(userData.username)
+        }
+        
         // Check gym membership
         const gymResponse = await fetch('/api/check_gym_membership', {
           method: 'GET',
@@ -55,7 +66,7 @@ export default function PremiumDashboard() {
           <a className="block px-5 py-3 text-sm hover:bg-teal-700/20 hover:text-teal-300" href="/profile">Profile</a>
           <a className="block px-5 py-3 text-sm hover:bg-teal-700/20 hover:text-teal-300" href="/user_chat">Messages</a>
           <a className="block px-5 py-3 text-sm hover:bg-teal-700/20 hover:text-teal-300" href="/communities">Your Communities</a>
-          {hasGymAccess && <a className="block px-5 py-3 text-sm hover:bg-teal-700/20 hover:text-teal-300" href="/your_sports">Your Sports</a>}
+          {(hasGymAccess || username === 'Paulo') && <a className="block px-5 py-3 text-sm hover:bg-teal-700/20 hover:text-teal-300" href="/your_sports">Your Sports</a>}
           <a className="block px-5 py-3 text-sm hover:bg-teal-700/20 hover:text-teal-300" href="/logout">Logout</a>
           <a className="block px-5 py-3 text-sm hover:bg-teal-700/20 hover:text-teal-300" href="/account_settings"><i className="fa-solid fa-cog mr-2" />Settings</a>
         </nav>
@@ -72,7 +83,7 @@ export default function PremiumDashboard() {
             <a className="px-5 py-3 border-b border-[#222]" href="/profile" onClick={() => setMobileMenuOpen(false)}>Profile</a>
             <a className="px-5 py-3 border-b border-[#222]" href="/user_chat" onClick={() => setMobileMenuOpen(false)}>Messages</a>
             <a className="px-5 py-3 border-b border-[#222]" href="/communities" onClick={() => setMobileMenuOpen(false)}>Your Communities</a>
-            {hasGymAccess && <a className="px-5 py-3 border-b border-[#222]" href="/your_sports" onClick={() => setMobileMenuOpen(false)}>Your Sports</a>}
+            {(hasGymAccess || username === 'Paulo') && <a className="px-5 py-3 border-b border-[#222]" href="/your_sports" onClick={() => setMobileMenuOpen(false)}>Your Sports</a>}
             <a className="px-5 py-3 border-b border-[#222]" href="/logout" onClick={() => setMobileMenuOpen(false)}>Logout</a>
             <a className="px-5 py-3" href="/account_settings" onClick={() => setMobileMenuOpen(false)}><i className="fa-solid fa-cog mr-2" />Settings</a>
           </nav>
@@ -96,7 +107,7 @@ export default function PremiumDashboard() {
               title={parentCommunity?.name || "Your Communities"} 
               onClick={() => navigate('/communities')} 
             />
-            {hasGymAccess && <Card iconClass="fa-solid fa-person-snowboarding" title="Your Sports" onClick={() => (location.assign('/your_sports'))} />}
+            {(hasGymAccess || username === 'Paulo') && <Card iconClass="fa-solid fa-person-snowboarding" title="Your Sports" onClick={() => (location.assign('/your_sports'))} />}
           </div>
         </div>
       </div>

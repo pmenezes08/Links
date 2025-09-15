@@ -11,8 +11,24 @@ export default function YourSports(){
   useEffect(() => { setTitle('Your Sports') }, [setTitle])
 
   useEffect(() => {
-    async function checkGymMembership() {
+    async function checkAccess() {
       try {
+        // Get username first
+        const userResponse = await fetch('/api/home_timeline', {
+          method: 'GET',
+          credentials: 'include'
+        })
+        const userData = await userResponse.json()
+        if (userData.success && userData.username) {
+          // Special access for Paulo
+          if (userData.username === 'Paulo') {
+            setHasGymAccess(true)
+            setLoading(false)
+            return
+          }
+        }
+        
+        // Check regular gym membership
         const response = await fetch('/api/check_gym_membership', {
           method: 'GET',
           credentials: 'include'
@@ -35,7 +51,7 @@ export default function YourSports(){
       setLoading(false)
     }
     
-    checkGymMembership()
+    checkAccess()
   }, [navigate])
 
   if (loading) {

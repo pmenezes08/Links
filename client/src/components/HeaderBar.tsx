@@ -15,6 +15,9 @@ export default function HeaderBar({ title, username, avatarUrl }: HeaderBarProps
   const [unreadMsgs, setUnreadMsgs] = useState<number>(0)
   const [unreadNotifs, setUnreadNotifs] = useState<number>(0)
   const [hasGymAccess, setHasGymAccess] = useState(false)
+  
+  // Special access for Paulo
+  const hasSportsAccess = hasGymAccess || username === 'Paulo'
 
   useEffect(() => {
     async function checkGymMembership() {
@@ -128,7 +131,7 @@ export default function HeaderBar({ title, username, avatarUrl }: HeaderBarProps
             <a className="block px-4 py-3 rounded-xl hover:bg:white/5 text-white" href="/profile">Profile</a>
             <a className="block px-4 py-3 rounded-xl hover:bg:white/5 text:white" href="/user_chat">Messages</a>
             <button className="block w-full text-left px-4 py-3 rounded-xl hover:bg:white/5 text-white" onClick={()=> { setMenuOpen(false); navigate('/communities') }}>Your Communities</button>
-            {hasGymAccess && <a className="block px-4 py-3 rounded-xl hover:bg:white/5 text-white" href="/your_sports">Your Sports</a>}
+            {hasSportsAccess && <a className="block px-4 py-3 rounded-xl hover:bg:white/5 text-white" href="/your_sports">Your Sports</a>}
             <a className="block px-4 py-3 rounded-xl hover:bg:white/5 text-white" href="/logout">Logout</a>
             <a className="block px-4 py-3 rounded-xl hover:bg:white/5 text-white" href="/account_settings">Settings</a>
           </div>
