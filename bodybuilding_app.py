@@ -9407,14 +9407,23 @@ def get_user_communities_with_members():
             user_id = user['id'] if hasattr(user, 'keys') else user[0]
             logger.info(f"User ID: {user_id}")
             
-            # Get communities the user belongs to
-            c.execute("""
-                SELECT c.id, c.name, c.type, c.creator_username
-                FROM communities c
-                JOIN user_communities uc ON c.id = uc.community_id
-                WHERE uc.user_id = ?
-                ORDER BY c.name
-            """, (user_id,))
+            # Get communities based on admin status
+            if is_app_admin(username):
+                # Admin sees all communities
+                c.execute("""
+                    SELECT c.id, c.name, c.type, c.creator_username
+                    FROM communities c
+                    ORDER BY c.name
+                """)
+            else:
+                # Regular users see only their communities
+                c.execute("""
+                    SELECT c.id, c.name, c.type, c.creator_username
+                    FROM communities c
+                    JOIN user_communities uc ON c.id = uc.community_id
+                    WHERE uc.user_id = ?
+                    ORDER BY c.name
+                """, (user_id,))
             
             communities = c.fetchall()
             logger.info(f"Found {len(communities)} communities for user {username}")
@@ -9474,15 +9483,24 @@ def get_user_communities():
         with get_db_connection() as conn:
             c = conn.cursor()
             
-            # Get user's communities with creator information and active status
-            c.execute("""
-                SELECT c.id, c.name, c.type, c.join_code, c.created_at, c.creator_username, c.is_active
-                FROM communities c
-                JOIN user_communities uc ON c.id = uc.community_id
-                JOIN users u ON uc.user_id = u.id
-                WHERE u.username = ?
-                ORDER BY c.created_at DESC
-            """, (username,))
+            # Check if user is admin
+            if is_app_admin(username):
+                # Admin sees all communities
+                c.execute("""
+                    SELECT c.id, c.name, c.type, c.join_code, c.created_at, c.creator_username, c.is_active
+                    FROM communities c
+                    ORDER BY c.created_at DESC
+                """)
+            else:
+                # Regular users see only their communities
+                c.execute("""
+                    SELECT c.id, c.name, c.type, c.join_code, c.created_at, c.creator_username, c.is_active
+                    FROM communities c
+                    JOIN user_communities uc ON c.id = uc.community_id
+                    JOIN users u ON uc.user_id = u.id
+                    WHERE u.username = ?
+                    ORDER BY c.created_at DESC
+                """, (username,))
             
             communities = []
             for row in c.fetchall():
@@ -10918,24 +10936,42 @@ def get_user_communities_hierarchical():
         with get_db_connection() as conn:
             c = conn.cursor()
             
-            # Get all user's communities with parent information
-            c.execute("""
-                SELECT DISTINCT 
-                    c.id,
-                    c.name,
-                    c.type,
-                    c.parent_community_id,
-                    pc.name as parent_name
-                FROM communities c
-                JOIN user_communities uc ON c.id = uc.community_id
-                JOIN users u ON uc.user_id = u.id
-                LEFT JOIN communities pc ON c.parent_community_id = pc.id
-                WHERE u.username = %s
-                ORDER BY 
-                    CASE WHEN c.parent_community_id IS NULL THEN 0 ELSE 1 END,
-                    COALESCE(pc.name, c.name),
-                    c.name
-            """, (username,))
+            # Check if user is admin
+            if is_app_admin(username):
+                # Admin sees all communities
+                c.execute("""
+                    SELECT DISTINCT 
+                        c.id,
+                        c.name,
+                        c.type,
+                        c.parent_community_id,
+                        pc.name as parent_name
+                    FROM communities c
+                    LEFT JOIN communities pc ON c.parent_community_id = pc.id
+                    ORDER BY 
+                        CASE WHEN c.parent_community_id IS NULL THEN 0 ELSE 1 END,
+                        COALESCE(pc.name, c.name),
+                        c.name
+                """)
+            else:
+                # Regular users see only their communities
+                c.execute("""
+                    SELECT DISTINCT 
+                        c.id,
+                        c.name,
+                        c.type,
+                        c.parent_community_id,
+                        pc.name as parent_name
+                    FROM communities c
+                    JOIN user_communities uc ON c.id = uc.community_id
+                    JOIN users u ON uc.user_id = u.id
+                    LEFT JOIN communities pc ON c.parent_community_id = pc.id
+                    WHERE u.username = %s
+                    ORDER BY 
+                        CASE WHEN c.parent_community_id IS NULL THEN 0 ELSE 1 END,
+                        COALESCE(pc.name, c.name),
+                        c.name
+                """, (username,))
             
             communities = c.fetchall()
             
