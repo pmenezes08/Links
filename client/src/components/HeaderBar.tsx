@@ -15,9 +15,6 @@ export default function HeaderBar({ title, username, avatarUrl }: HeaderBarProps
   const [unreadMsgs, setUnreadMsgs] = useState<number>(0)
   const [unreadNotifs, setUnreadNotifs] = useState<number>(0)
   const [hasGymAccess, setHasGymAccess] = useState(false)
-  
-  // Special access for Paulo (case-insensitive)
-  const hasSportsAccess = hasGymAccess || (username && username.toLowerCase() === 'paulo')
 
   useEffect(() => {
     async function checkGymMembership() {
@@ -27,6 +24,7 @@ export default function HeaderBar({ title, username, avatarUrl }: HeaderBarProps
           credentials: 'include'
         })
         const data = await response.json()
+        // This will be true for Paulo due to backend special access
         setHasGymAccess(data.hasGymAccess || false)
       } catch (error) {
         console.error('Error checking gym membership:', error)
@@ -131,7 +129,7 @@ export default function HeaderBar({ title, username, avatarUrl }: HeaderBarProps
             <a className="block px-4 py-3 rounded-xl hover:bg:white/5 text-white" href="/profile">Profile</a>
             <a className="block px-4 py-3 rounded-xl hover:bg:white/5 text:white" href="/user_chat">Messages</a>
             <button className="block w-full text-left px-4 py-3 rounded-xl hover:bg:white/5 text-white" onClick={()=> { setMenuOpen(false); navigate('/communities') }}>Your Communities</button>
-            {hasSportsAccess && <a className="block px-4 py-3 rounded-xl hover:bg:white/5 text-white" href="/your_sports">Your Sports</a>}
+            {hasGymAccess && <a className="block px-4 py-3 rounded-xl hover:bg:white/5 text-white" href="/your_sports">Your Sports</a>}
             <a className="block px-4 py-3 rounded-xl hover:bg:white/5 text-white" href="/logout">Logout</a>
             <a className="block px-4 py-3 rounded-xl hover:bg:white/5 text-white" href="/account_settings">Settings</a>
           </div>

@@ -13,35 +13,20 @@ export default function YourSports(){
   useEffect(() => {
     async function checkAccess() {
       try {
-        // Get username first
-        const userResponse = await fetch('/api/home_timeline', {
-          method: 'GET',
-          credentials: 'include'
-        })
-        const userData = await userResponse.json()
-        console.log('YourSports: userData =', userData)
-        if (userData.success && userData.username) {
-          console.log('YourSports: checking username:', userData.username)
-          // Special access for Paulo (case-insensitive check)
-          if (userData.username && userData.username.toLowerCase() === 'paulo') {
-            console.log('YourSports: Paulo detected, granting access')
-            setHasGymAccess(true)
-            setLoading(false)
-            return  // Stop here for Paulo - don't check gym membership
-          }
-        }
-        
-        // Only check regular gym membership for non-Paulo users
+        // Always check gym membership API first (it has Paulo's special access built in)
         const response = await fetch('/api/check_gym_membership', {
           method: 'GET',
           credentials: 'include'
         })
         const data = await response.json()
+        console.log('YourSports: gym membership check result:', data)
         
         if (data.hasGymAccess) {
+          console.log('YourSports: Access granted (hasGymAccess=true)')
           setHasGymAccess(true)
           setLoading(false)
         } else {
+          console.log('YourSports: Access denied, redirecting to dashboard')
           // Redirect to premium dashboard if no gym access
           navigate('/premium_dashboard')
           return
@@ -52,7 +37,6 @@ export default function YourSports(){
         navigate('/premium_dashboard')
         return
       }
-      setLoading(false)
     }
     
     checkAccess()

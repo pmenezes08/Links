@@ -10758,6 +10758,7 @@ def api_community_feed(community_id):
 def api_home_timeline():
     """Aggregate timeline across all communities the user belongs to for the last 48 hours."""
     username = session.get('username')
+    logger.info(f"api_home_timeline called for user: {username}")
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
@@ -11089,12 +11090,15 @@ def your_sports():
 def check_gym_membership():
     """Check if user belongs to a gym community"""
     username = session.get('username')
+    logger.info(f"check_gym_membership called for user: {username}")
     
     # Special access for Paulo (case-insensitive)
     if username and username.lower() == 'paulo':
+        logger.info(f"Paulo detected, granting gym access")
         return jsonify({
             'hasGymAccess': True,
-            'username': username
+            'username': username,
+            'special_access': True
         })
     
     try:
