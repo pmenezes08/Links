@@ -11392,19 +11392,30 @@ def get_user_parent_community():
                     else:
                         communities_list.append({'id': row[0], 'name': row[1], 'type': row[2]})
             else:
-                # User: gather memberships, then climb to top-most parent for each
+                # User: gather communities by membership OR creator OR admin role
                 c.execute(f"""
                     SELECT c.id, c.name, c.type, c.parent_community_id
                     FROM communities c
                     JOIN user_communities uc ON c.id = uc.community_id
                     JOIN users u ON uc.user_id = u.id
                     WHERE u.username = {placeholder}
-                """, (username,))
+                    UNION
+                    SELECT c.id, c.name, c.type, c.parent_community_id
+                    FROM communities c
+                    WHERE c.creator_username = {placeholder}
+                    UNION
+                    SELECT c.id, c.name, c.type, c.parent_community_id
+                    FROM communities c
+                    JOIN community_admins ca ON c.id = ca.community_id
+                    WHERE ca.username = {placeholder}
+                """, (username, username, username))
                 member_rows = c.fetchall()
+                logger.info(f"Dashboard: gathered {len(member_rows)} direct communities for {username}")
 
                 # Helper to fetch a community by id
                 def fetch_comm(comm_id):
-                    c.execute("SELECT id, name, type, parent_community_id FROM communities WHERE id = %s", (comm_id,))
+                    ph = get_sql_placeholder()
+                    c.execute(f"SELECT id, name, type, parent_community_id FROM communities WHERE id = {ph}", (comm_id,))
                     return c.fetchone()
 
                 top_parents = {}
@@ -11412,11 +11423,17 @@ def get_user_parent_community():
                     if hasattr(row, 'keys'):
                         current_id = row['id']
                         parent_id = row['parent_community_id']
+                        current_name = row['name']
+                        current_type = row['type']
                     else:
                         current_id = row[0]
                         parent_id = row[3]
+                        current_name = row[1]
+                        current_type = row[2]
 
                     seen_chain = set()
+                    top_name = current_name
+                    top_type = current_type
                     # Walk up parent chain until root
                     while parent_id is not None and parent_id not in seen_chain:
                         seen_chain.add(parent_id)
@@ -11426,17 +11443,21 @@ def get_user_parent_community():
                         if hasattr(parent_row, 'keys'):
                             current_id = parent_row['id']
                             parent_id = parent_row['parent_community_id']
-                            name = parent_row['name']
-                            ctype = parent_row['type']
+                            top_name = parent_row['name']
+                            top_type = parent_row['type']
                         else:
                             current_id = parent_row[0]
                             parent_id = parent_row[3]
-                            name = parent_row[1]
-                            ctype = parent_row[2]
+                            top_name = parent_row[1]
+                            top_type = parent_row[2]
 
                     # current_id now points to the top-most parent (or original if no parent)
                     if current_id not in top_parents:
-                        top_parents[current_id] = {'id': current_id, 'name': name if 'name' in locals() else (row['name'] if hasattr(row, 'keys') else row[1]), 'type': ctype if 'ctype' in locals() else (row['type'] if hasattr(row, 'keys') else row[2])}
+                        top_parents[current_id] = {
+                            'id': current_id,
+                            'name': top_name,
+                            'type': top_type
+                        }
 
                 communities_list = list(top_parents.values())
                 communities_list.sort(key=lambda x: (x.get('name') or '').lower())
