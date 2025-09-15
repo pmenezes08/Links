@@ -1899,7 +1899,14 @@ def premium_dashboard():
         index_path = os.path.join(dist_dir, 'index.html')
         if os.path.exists(index_path):
             logger.info("Serving React index.html for premium_dashboard")
-            return send_from_directory(dist_dir, 'index.html')
+            resp = send_from_directory(dist_dir, 'index.html')
+            try:
+                resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+                resp.headers['Pragma'] = 'no-cache'
+                resp.headers['Expires'] = '0'
+            except Exception:
+                pass
+            return resp
         return render_template('premium_dashboard.html', name=session.get('username',''))
     except Exception as e:
         logger.error(f"Error in premium_dashboard: {str(e)}")
@@ -1969,7 +1976,14 @@ def admin_dashboard_react():
         index_path = os.path.join(dist_dir, 'index.html')
         if os.path.exists(index_path):
             logger.info("Serving React index.html for admin_dashboard")
-            return send_from_directory(dist_dir, 'index.html')
+            resp = send_from_directory(dist_dir, 'index.html')
+            try:
+                resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+                resp.headers['Pragma'] = 'no-cache'
+                resp.headers['Expires'] = '0'
+            except Exception:
+                pass
+            return resp
         # Fallback to communities page if React build not available
         return redirect(url_for('communities'))
     except Exception as e:
