@@ -11182,7 +11182,7 @@ def check_gym_membership():
 
 @app.route('/api/simple_test')
 @login_required
-def simple_test():
+def simple_community_test():
     """Super simple test to see what communities exist"""
     username = session.get('username')
     
