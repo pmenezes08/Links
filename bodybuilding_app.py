@@ -11194,7 +11194,7 @@ def dashboard_communities_test():
             c.execute("""
                 SELECT id, name, type, parent_community_id
                 FROM communities
-                ORDER BY parent_community_id NULLS FIRST, name
+                ORDER BY CASE WHEN parent_community_id IS NULL THEN 0 ELSE 1 END, name
             """)
             all_communities = c.fetchall()
             
