@@ -11376,55 +11376,70 @@ def get_user_parent_community():
             logger.info(f"User {username} is_admin: {is_admin}")
 
             if is_admin:
-                # Get ALL parent communities for admin
+                # Admin: return ALL top-level parent communities
                 c.execute("""
                     SELECT id, name, type
                     FROM communities
                     WHERE parent_community_id IS NULL
                     ORDER BY name
                 """)
-                logger.info("Fetching ALL parent communities for admin")
+                parent_rows = c.fetchall()
+                logger.info("Admin: fetched all top-level parent communities")
+                communities_list = []
+                for row in parent_rows:
+                    if hasattr(row, 'keys'):
+                        communities_list.append({'id': row['id'], 'name': row['name'], 'type': row['type']})
+                    else:
+                        communities_list.append({'id': row[0], 'name': row[1], 'type': row[2]})
             else:
-                # Get only communities the user belongs to
+                # User: gather memberships, then climb to top-most parent for each
                 c.execute(f"""
-                    SELECT DISTINCT 
-                        COALESCE(pc.id, c.id) as id,
-                        COALESCE(pc.name, c.name) as name,
-                        COALESCE(pc.type, c.type) as type
+                    SELECT c.id, c.name, c.type, c.parent_community_id
                     FROM communities c
                     JOIN user_communities uc ON c.id = uc.community_id
                     JOIN users u ON uc.user_id = u.id
-                    LEFT JOIN communities pc ON c.parent_community_id = pc.id
                     WHERE u.username = {placeholder}
-                    ORDER BY name
                 """, (username,))
-                logger.info(f"Fetching user-specific communities for {username}")
-            
-            communities = c.fetchall()
-            logger.info(f"Query returned {len(communities)} communities")
-            
-            # Convert to list of dicts (works for both MySQL dict rows and SQLite Row/tuple)
-            communities_list = []
-            seen_ids = set()
+                member_rows = c.fetchall()
 
-            for comm in communities:
-                if hasattr(comm, 'keys'):
-                    comm_id = comm['id']
-                    comm_name = comm['name']
-                    comm_type = comm['type']
-                else:
-                    comm_id = comm[0] if len(comm) > 0 else None
-                    comm_name = comm[1] if len(comm) > 1 else None
-                    comm_type = comm[2] if len(comm) > 2 else None
+                # Helper to fetch a community by id
+                def fetch_comm(comm_id):
+                    c.execute("SELECT id, name, type, parent_community_id FROM communities WHERE id = %s", (comm_id,))
+                    return c.fetchone()
 
-                if comm_id and comm_id not in seen_ids:
-                    communities_list.append({
-                        'id': comm_id,
-                        'name': comm_name,
-                        'type': comm_type
-                    })
-                    seen_ids.add(comm_id)
-                    logger.info(f"  Added: {comm_name} (id: {comm_id})")
+                top_parents = {}
+                for row in member_rows:
+                    if hasattr(row, 'keys'):
+                        current_id = row['id']
+                        parent_id = row['parent_community_id']
+                    else:
+                        current_id = row[0]
+                        parent_id = row[3]
+
+                    seen_chain = set()
+                    # Walk up parent chain until root
+                    while parent_id is not None and parent_id not in seen_chain:
+                        seen_chain.add(parent_id)
+                        parent_row = fetch_comm(parent_id)
+                        if not parent_row:
+                            break
+                        if hasattr(parent_row, 'keys'):
+                            current_id = parent_row['id']
+                            parent_id = parent_row['parent_community_id']
+                            name = parent_row['name']
+                            ctype = parent_row['type']
+                        else:
+                            current_id = parent_row[0]
+                            parent_id = parent_row[3]
+                            name = parent_row[1]
+                            ctype = parent_row[2]
+
+                    # current_id now points to the top-most parent (or original if no parent)
+                    if current_id not in top_parents:
+                        top_parents[current_id] = {'id': current_id, 'name': name if 'name' in locals() else (row['name'] if hasattr(row, 'keys') else row[1]), 'type': ctype if 'ctype' in locals() else (row['type'] if hasattr(row, 'keys') else row[2])}
+
+                communities_list = list(top_parents.values())
+                communities_list.sort(key=lambda x: (x.get('name') or '').lower())
             
             logger.info(f"Returning {len(communities_list)} communities for dashboard")
             
