@@ -233,6 +233,10 @@ DAILY_API_LIMIT = 10
 USE_MYSQL = (os.getenv('DB_BACKEND', 'sqlite').lower() == 'mysql')
 
 # Database connection helper: MySQL in production (if configured), SQLite locally
+def get_sql_placeholder():
+    """Get the correct SQL placeholder based on database type"""
+    return '%s' if USE_MYSQL else '?'
+
 def get_db_connection():
     if USE_MYSQL:
         try:
@@ -9466,11 +9470,13 @@ def get_user_communities_with_members():
                 """)
             else:
                 # Regular users see only their communities
-                c.execute("""
+                # Use correct placeholder based on database type
+                placeholder = '%s' if USE_MYSQL else '?'
+                c.execute(f"""
                     SELECT c.id, c.name, c.type, c.creator_username
                     FROM communities c
                     JOIN user_communities uc ON c.id = uc.community_id
-                    WHERE uc.user_id = ?
+                    WHERE uc.user_id = {placeholder}
                     ORDER BY c.name
                 """, (user_id,))
             
@@ -9542,12 +9548,14 @@ def get_user_communities():
                 """)
             else:
                 # Regular users see only their communities
-                c.execute("""
+                # Use correct placeholder based on database type
+                placeholder = '%s' if USE_MYSQL else '?'
+                c.execute(f"""
                     SELECT c.id, c.name, c.type, c.join_code, c.created_at, c.creator_username, c.is_active
                     FROM communities c
                     JOIN user_communities uc ON c.id = uc.community_id
                     JOIN users u ON uc.user_id = u.id
-                    WHERE u.username = ?
+                    WHERE u.username = {placeholder}
                     ORDER BY c.created_at DESC
                 """, (username,))
             
@@ -10933,7 +10941,8 @@ def get_user_parent_community():
             c = conn.cursor()
             
             # Get user's communities and their parent relationships
-            c.execute("""
+            placeholder = get_sql_placeholder()
+            c.execute(f"""
                 SELECT DISTINCT 
                     COALESCE(pc.id, c.id) as community_id,
                     COALESCE(pc.name, c.name) as community_name,
@@ -10947,7 +10956,7 @@ def get_user_parent_community():
                 JOIN user_communities uc ON c.id = uc.community_id
                 JOIN users u ON uc.user_id = u.id
                 LEFT JOIN communities pc ON c.parent_community_id = pc.id
-                WHERE u.username = ?
+                WHERE u.username = {placeholder}
                 ORDER BY 
                     CASE WHEN c.parent_community_id IS NULL THEN 0 ELSE 1 END,
                     display_name
@@ -11004,7 +11013,9 @@ def get_user_communities_hierarchical():
                 """)
             else:
                 # Regular users see only their communities
-                c.execute("""
+                # Use correct placeholder based on database type
+                placeholder = '%s' if USE_MYSQL else '?'
+                c.execute(f"""
                     SELECT DISTINCT 
                         c.id,
                         c.name,
@@ -11015,7 +11026,7 @@ def get_user_communities_hierarchical():
                     JOIN user_communities uc ON c.id = uc.community_id
                     JOIN users u ON uc.user_id = u.id
                     LEFT JOIN communities pc ON c.parent_community_id = pc.id
-                    WHERE u.username = %s
+                    WHERE u.username = {placeholder}
                     ORDER BY 
                         CASE WHEN c.parent_community_id IS NULL THEN 0 ELSE 1 END,
                         COALESCE(pc.name, c.name),
