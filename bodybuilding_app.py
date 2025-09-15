@@ -100,10 +100,10 @@ def optimize_image(file_path, max_width=1920, quality=85):
 # Session configuration: persist login for 30 days
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['SESSION_COOKIE_PATH'] = '/'  # Ensure cookie is available for all paths
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)
-# Temporarily disable secure cookie for debugging
-# app.config['SESSION_COOKIE_SECURE'] = True
-app.config['SESSION_COOKIE_SECURE'] = False  # Temporarily disabled for debugging
+# For production with HTTPS
+app.config['SESSION_COOKIE_SECURE'] = True  # Re-enabled for HTTPS
 # Don't set domain - let Flask handle it automatically
 # app.config['SESSION_COOKIE_DOMAIN'] = os.getenv('SESSION_COOKIE_DOMAIN') or None
 app.config['SESSION_COOKIE_NAME'] = 'session'
@@ -182,7 +182,15 @@ def auto_login_from_remember_token():
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 # Load secret keys from environment variables
-app.secret_key = os.getenv('FLASK_SECRET_KEY', 'temporary-secret-key-12345')
+# IMPORTANT: Must be consistent across all workers/processes
+# On PythonAnywhere, set this in your web app's environment variables
+FLASK_SECRET_KEY = os.getenv('FLASK_SECRET_KEY')
+if not FLASK_SECRET_KEY:
+    # Use a hardcoded key as fallback (not ideal for production but ensures consistency)
+    FLASK_SECRET_KEY = 'c-point-secret-key-2024-stable-across-workers'
+    logger.warning("Using hardcoded secret key - set FLASK_SECRET_KEY env var in production")
+app.secret_key = FLASK_SECRET_KEY
+logger.info(f"App initialized with secret key hash: {hash(app.secret_key)}")
 STRIPE_API_KEY = os.getenv('STRIPE_API_KEY', 'sk_test_your_stripe_key')
 XAI_API_KEY = os.getenv('XAI_API_KEY', 'xai-hFCxhRKITxZXsIQy5rRpRus49rxcgUPw4NECAunCgHU0BnWnbPE9Y594Nk5jba03t5FYl2wJkjcwyxRh')
 X_CONSUMER_KEY = os.getenv('X_CONSUMER_KEY', 'cjB0MmRPRFRnOG9jcTA0UGRZV006MTpjaQ')
@@ -1744,11 +1752,15 @@ def logout():
 # @csrf.exempt
 def login_password():
     print("Entering login_password route")
+    logger.info(f"login_password route - Request cookies: {request.cookies}")
+    logger.info(f"login_password route - Session cookie value: {request.cookies.get('session', 'NO COOKIE')}")
     logger.info(f"login_password route - Session contents: {dict(session)}")
     logger.info(f"login_password route - Session keys: {list(session.keys())}")
+    logger.info(f"login_password route - Request headers Host: {request.headers.get('Host')}")
     if 'username' not in session:
         print("No username in session, redirecting to /")
         logger.error(f"No username in session! Session: {dict(session)}")
+        logger.error(f"Secret key hash: {hash(app.secret_key)}")
         return redirect(url_for('index'))
     username = session['username']
     print(f"Username from session: {username}")
