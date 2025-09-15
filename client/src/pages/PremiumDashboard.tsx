@@ -7,7 +7,7 @@ import { useNavigate } from 'react-router-dom'
 export default function PremiumDashboard() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [hasGymAccess, setHasGymAccess] = useState(false)
-  const [parentCommunity, setParentCommunity] = useState<{id: number, name: string, type: string} | null>(null)
+  const [communities, setCommunities] = useState<Array<{id: number, name: string, type: string}>>([])
   const { setTitle } = useHeader()
   useEffect(() => { setTitle('Dashboard') }, [setTitle])
   const navigate = useNavigate()
@@ -23,19 +23,19 @@ export default function PremiumDashboard() {
         const gymData = await gymResponse.json()
         setHasGymAccess(gymData.hasGymAccess || false)
 
-        // Get parent community
+        // Get all user communities
         const parentResponse = await fetch('/api/user_parent_community', {
           method: 'GET',
           credentials: 'include'
         })
         const parentData = await parentResponse.json()
-        if (parentData.success && parentData.parentCommunity) {
-          setParentCommunity(parentData.parentCommunity)
+        if (parentData.success && parentData.communities) {
+          setCommunities(parentData.communities)
         }
       } catch (error) {
         console.error('Error loading user data:', error)
         setHasGymAccess(false)
-        setParentCommunity(null)
+        setCommunities([])
       }
     }
     
@@ -90,12 +90,24 @@ export default function PremiumDashboard() {
 
         {/* Cards grid */}
         <div className="h-full flex items-center justify-center px-3 md:ml-52">
-          <div className="w-full max-w-5xl grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Card 
-              iconClass="fa-solid fa-house" 
-              title={parentCommunity?.name || "Your Communities"} 
-              onClick={() => navigate('/communities')} 
-            />
+          <div className="w-full max-w-5xl grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {/* Show all communities */}
+            {communities.length > 0 ? (
+              communities.map(community => (
+                <Card 
+                  key={community.id}
+                  iconClass="fa-solid fa-house" 
+                  title={community.name} 
+                  onClick={() => navigate('/communities')} 
+                />
+              ))
+            ) : (
+              <Card 
+                iconClass="fa-solid fa-house" 
+                title="Your Communities" 
+                onClick={() => navigate('/communities')} 
+              />
+            )}
             {hasGymAccess && <Card iconClass="fa-solid fa-person-snowboarding" title="Your Sports" onClick={() => (location.assign('/your_sports'))} />}
           </div>
         </div>
