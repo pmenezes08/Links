@@ -11180,6 +11180,37 @@ def check_gym_membership():
         logger.error(f"Error checking gym membership for {username}: {str(e)}")
         return jsonify({'hasGymAccess': False, 'error': str(e)}), 500
 
+@app.route('/api/simple_test')
+@login_required
+def simple_test():
+    """Super simple test to see what communities exist"""
+    username = session.get('username')
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Get ALL parent communities
+            c.execute("""
+                SELECT id, name, type
+                FROM communities
+                WHERE parent_community_id IS NULL
+                ORDER BY name
+            """)
+            all_parents = c.fetchall()
+            
+            return jsonify({
+                'success': True,
+                'username': username,
+                'total_parent_communities': len(all_parents),
+                'parent_communities': [
+                    {'id': c.get('id'), 'name': c.get('name'), 'type': c.get('type')}
+                    for c in all_parents
+                ]
+            })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @app.route('/api/dashboard_communities_test')
 @login_required
 def dashboard_communities_test():
@@ -11328,83 +11359,68 @@ def get_all_communities_debug():
 @app.route('/api/user_parent_community')
 @login_required
 def get_user_parent_community():
-    """Get ALL parent communities for the user (including standalone communities treated as parents)"""
+    """Get communities to display on dashboard - SIMPLIFIED"""
     username = session.get('username')
-    logger.info(f"Getting parent communities for user: {username}")
+    logger.info(f"Getting dashboard communities for user: {username}")
     
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
             
-            # Check if user is an admin
+            # Simple approach: Just get all parent communities (those without parent_community_id)
+            # Admins see all, regular users see only theirs
             placeholder = get_sql_placeholder()
+            
+            # Check if user is admin
             c.execute(f"SELECT is_admin FROM users WHERE username = {placeholder}", (username,))
             user_result = c.fetchone()
-            is_admin = user_result and user_result.get('is_admin', 0) == 1
-            logger.info(f"User {username} admin check: result={user_result}, is_admin={is_admin}")
+            is_admin = user_result and (user_result.get('is_admin', 0) == 1 or user_result.get('is_admin', 0) == '1')
+            logger.info(f"User {username} is_admin: {is_admin}")
             
-            if is_admin:
-                # For admins, get ALL parent communities (those without parent_community_id)
-                # These are true parent communities
+            if is_admin or username.lower() == 'admin':  # Double-check for admin user
+                # Get ALL parent communities for admin
                 c.execute("""
-                    SELECT DISTINCT 
-                        id as community_id,
-                        name as community_name,
-                        type as community_type
+                    SELECT id, name, type
                     FROM communities
                     WHERE parent_community_id IS NULL
                     ORDER BY name
                 """)
-                logger.info(f"Admin query: Getting all parent communities")
+                logger.info("Fetching ALL parent communities for admin")
             else:
-                # For regular users, get parent communities they belong to
-                # This includes:
-                # 1. Actual parent communities they belong to (via child membership)
-                # 2. Standalone communities (no parent) they belong to
+                # Get only communities the user belongs to
                 c.execute(f"""
                     SELECT DISTINCT 
-                        CASE 
-                            WHEN c.parent_community_id IS NULL THEN c.id
-                            ELSE pc.id
-                        END as community_id,
-                        CASE 
-                            WHEN c.parent_community_id IS NULL THEN c.name
-                            ELSE pc.name
-                        END as community_name,
-                        CASE 
-                            WHEN c.parent_community_id IS NULL THEN c.type
-                            ELSE pc.type
-                        END as community_type
+                        COALESCE(pc.id, c.id) as id,
+                        COALESCE(pc.name, c.name) as name,
+                        COALESCE(pc.type, c.type) as type
                     FROM communities c
                     JOIN user_communities uc ON c.id = uc.community_id
                     JOIN users u ON uc.user_id = u.id
                     LEFT JOIN communities pc ON c.parent_community_id = pc.id
                     WHERE u.username = {placeholder}
-                    ORDER BY community_name
+                    ORDER BY name
                 """, (username,))
+                logger.info(f"Fetching user-specific communities for {username}")
             
             communities = c.fetchall()
-            logger.info(f"Raw communities query returned {len(communities)} rows for {username}")
+            logger.info(f"Query returned {len(communities)} communities")
             
-            # Log raw data for debugging
-            for i, comm in enumerate(communities):
-                logger.info(f"  Row {i}: id={comm.get('community_id')}, name={comm.get('community_name')}, type={comm.get('community_type')}")
+            # Convert to list of dicts
+            communities_list = []
+            seen_ids = set()
             
-            # Group communities by parent ID to avoid duplicates
-            parent_communities = {}
             for comm in communities:
-                parent_id = comm['community_id']
-                if parent_id and parent_id not in parent_communities:
-                    parent_communities[parent_id] = {
-                        'id': parent_id,
-                        'name': comm['community_name'],
-                        'type': comm['community_type']
-                    }
+                comm_id = comm.get('id')
+                if comm_id and comm_id not in seen_ids:
+                    communities_list.append({
+                        'id': comm_id,
+                        'name': comm.get('name'),
+                        'type': comm.get('type')
+                    })
+                    seen_ids.add(comm_id)
+                    logger.info(f"  Added: {comm.get('name')} (id: {comm_id})")
             
-            communities_list = list(parent_communities.values())
-            logger.info(f"After deduplication: {len(communities_list)} parent communities for {username}")
-            for comm in communities_list:
-                logger.info(f"  Community: id={comm['id']}, name={comm['name']}, type={comm['type']}")
+            logger.info(f"Returning {len(communities_list)} communities for dashboard")
             
             return jsonify({
                 'success': True,
