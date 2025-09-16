@@ -1955,7 +1955,7 @@ def api_community_group_feed(parent_id: int):
                 FROM posts
                 WHERE community_id IN ({placeholders})
                 ORDER BY id DESC
-                LIMIT 200
+                LIMIT 1000
             """, tuple(community_ids))
 
             rows = c.fetchall()
@@ -1979,7 +1979,24 @@ def api_community_group_feed(parent_id: int):
                 if timestamp_val:
                     candidates.append(timestamp_val)
                 for val in candidates:
-                    for fmt in ('%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M', '%m.%d.%y %H:%M'):
+                    # If numeric epoch string
+                    try:
+                        sval = str(val).strip()
+                        if sval.isdigit() and len(sval) >= 10:
+                            epoch = int(sval[:10])
+                            return datetime.fromtimestamp(epoch)
+                    except Exception:
+                        pass
+                    # Try various common formats
+                    for fmt in (
+                        '%Y-%m-%d %H:%M:%S',
+                        '%Y-%m-%d %H:%M',
+                        '%m.%d.%y %H:%M',
+                        '%Y-%m-%dT%H:%M:%S',
+                        '%Y-%m-%dT%H:%M:%S.%f',
+                        '%Y-%m-%dT%H:%M:%SZ',
+                        '%Y-%m-%dT%H:%M:%S.%fZ',
+                    ):
                         try:
                             return datetime.strptime(str(val), fmt)
                         except Exception:
@@ -2018,7 +2035,15 @@ def api_community_group_feed(parent_id: int):
 
             # Sort by parsed datetime desc
             def sort_key(p):
-                for fmt in ('%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M', '%m.%d.%y %H:%M'):
+                for fmt in (
+                    '%Y-%m-%d %H:%M:%S',
+                    '%Y-%m-%d %H:%M',
+                    '%m.%d.%y %H:%M',
+                    '%Y-%m-%dT%H:%M:%S',
+                    '%Y-%m-%dT%H:%M:%S.%f',
+                    '%Y-%m-%dT%H:%M:%SZ',
+                    '%Y-%m-%dT%H:%M:%S.%fZ',
+                ):
                     try:
                         return datetime.strptime(str(p.get('created_at') or ''), fmt)
                     except Exception:
