@@ -1950,6 +1950,7 @@ def api_community_group_feed(parent_id: int):
                 return jsonify({'success': True, 'posts': []})
 
             placeholders = ','.join([ph for _ in community_ids])
+            logger.info(f"Community group feed: parent_id={parent_id}, fetching posts for communities: {community_ids}")
             c.execute(f"""
                 SELECT id, username, content, community_id, created_at, timestamp, image_path
                 FROM posts
@@ -1959,6 +1960,7 @@ def api_community_group_feed(parent_id: int):
             """, tuple(community_ids))
 
             rows = c.fetchall()
+            logger.info(f"Community group feed: fetched {len(rows)} rows before filtering")
             posts = []
 
             # Optionally map community names for display
@@ -1987,6 +1989,12 @@ def api_community_group_feed(parent_id: int):
                             return datetime.fromtimestamp(epoch)
                     except Exception:
                         pass
+                    # Try fromisoformat
+                    try:
+                        dt = datetime.fromisoformat(str(val).replace('Z', '+00:00'))
+                        return dt
+                    except Exception:
+                        pass
                     # Try various common formats
                     for fmt in (
                         '%Y-%m-%d %H:%M:%S',
@@ -2003,10 +2011,14 @@ def api_community_group_feed(parent_id: int):
                             continue
                 return None
 
+            sample_logged = 0
             for row in rows:
                 if hasattr(row, 'keys'):
                     pid = row['id']
                     dt = parse_dt(row.get('created_at'), row.get('timestamp'))
+                    if sample_logged < 5:
+                        logger.info(f"Group feed row id={pid}, raw_created_at={row.get('created_at')}, raw_timestamp={row.get('timestamp')}, parsed={dt}")
+                        sample_logged += 1
                     post_obj = {
                         'id': pid,
                         'username': row.get('username'),
@@ -2021,6 +2033,9 @@ def api_community_group_feed(parent_id: int):
                 else:
                     pid, uname, content, cid, created_at_val, timestamp_val, image_path = row
                     dt = parse_dt(created_at_val, timestamp_val)
+                    if sample_logged < 5:
+                        logger.info(f"Group feed row id={pid}, raw_created_at={created_at_val}, raw_timestamp={timestamp_val}, parsed={dt}")
+                        sample_logged += 1
                     post_obj = {
                         'id': pid,
                         'username': uname,
@@ -2050,6 +2065,7 @@ def api_community_group_feed(parent_id: int):
                         continue
                 return datetime.min
             posts.sort(key=sort_key, reverse=True)
+            logger.info(f"Community group feed: returning {len(posts)} posts after 48h filter")
 
             return jsonify({'success': True, 'posts': posts})
     except Exception as e:
