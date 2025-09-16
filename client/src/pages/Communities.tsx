@@ -100,7 +100,15 @@ export default function Communities(){
 
       {/* Secondary nav like X */}
       <div className="fixed left-0 right-0 top-14 h-10 bg-black/70 backdrop-blur z-40">
-        <div className="max-w-2xl mx-auto h-full flex">
+        <div className="max-w-2xl mx-auto h-full flex items-center gap-2">
+          <button
+            type="button"
+            className="px-3 text-sm text-[#9fb0b5] hover:text-white/90"
+            onClick={()=> navigate('/premium_dashboard')}
+            aria-label="Back to Dashboard"
+          >
+            ← Back
+          </button>
           <button 
             type="button" 
             className={`flex-1 text-center text-sm font-medium ${activeTab==='timeline' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`} 
@@ -136,24 +144,15 @@ export default function Communities(){
           <div className="text-red-400">{error}</div>
         ) : (
           <div className="space-y-3">
-            {/* Back to Dashboard */}
-            <div className="flex items-center">
-              <button className="px-3 py-1.5 rounded-lg border border-white/10 bg-white/[0.03] text-sm hover:bg-white/10"
-                onClick={()=> { window.location.href = '/premium_dashboard' }}
-                aria-label="Back to Dashboard"
-              >
-                ← Back to Dashboard
-              </button>
-            </div>
-            {(() => {
-              const pid = new URLSearchParams(location.search).get('parent_id')
-              if (pid && activeTab === 'timeline') {
-                return (
-                  <div id="parent-timeline">
-                    <ParentTimeline parentId={Number(pid)} />
-                  </div>
-                )
-              }
+             {(() => {
+               const pid = new URLSearchParams(location.search).get('parent_id')
+               if (pid && activeTab === 'timeline') {
+                 return (
+                   <div id="parent-timeline">
+                     <ParentTimeline parentId={Number(pid)} />
+                   </div>
+                 )
+               }
               return (
                 <>
                   {!pid && (
