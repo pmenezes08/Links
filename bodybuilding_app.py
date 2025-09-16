@@ -2020,21 +2020,49 @@ def free_workouts():
 @app.route('/premium_dashboard')
 @login_required
 def premium_dashboard():
-    # Prefer React app if built; fallback to HTML template
+    # Serve a dynamic HTML wrapper pointing to the latest built assets to avoid hash mismatches
     try:
         base_dir = os.path.dirname(os.path.abspath(__file__))
-        dist_dir = os.path.join(base_dir, 'client', 'dist')
-        index_path = os.path.join(dist_dir, 'index.html')
-        if os.path.exists(index_path):
-            logger.info("Serving React index.html for premium_dashboard")
-            resp = send_from_directory(dist_dir, 'index.html')
-            try:
+        assets_dir = os.path.join(base_dir, 'client', 'dist', 'assets')
+        if os.path.isdir(assets_dir):
+            js_candidates = [f for f in os.listdir(assets_dir) if f.startswith('index-') and f.endswith('.js')]
+            css_candidates = [f for f in os.listdir(assets_dir) if f.startswith('index-') and f.endswith('.css')]
+            def pick_latest(files):
+                files = [(f, os.path.getmtime(os.path.join(assets_dir, f))) for f in files]
+                files.sort(key=lambda x: x[1], reverse=True)
+                return files[0][0] if files else None
+            js_file = pick_latest(js_candidates)
+            css_file = pick_latest(css_candidates)
+            if js_file:
+                html = [
+                    '<!doctype html>',
+                    '<html lang="en">',
+                    '<head>',
+                    '<meta charset="UTF-8"/>',
+                    '<meta name="viewport" content="width=device-width, initial-scale=1.0"/>',
+                    '<title>C-Point</title>',
+                    f'<link rel="icon" type="image/svg+xml" href="/vite.svg"/>',
+                    (f'<link rel="stylesheet" href="/assets/{css_file}"/>' if css_file else ''),
+                    '</head>',
+                    '<body>',
+                    '<div id="root"></div>',
+                    '<script>window.addEventListener("error",function(e){try{fetch("/api/client_log",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({level:"error",type:"boot_error",msg:e.message,src:e.filename,lineno:e.lineno,colno:e.colno,ua:navigator.userAgent})}).catch(function(){})}catch{}});</script>',
+                    f'<script type="module" crossorigin src="/assets/{js_file}"></script>',
+                    '</body>',
+                    '</html>'
+                ]
+                resp = Response('\n'.join(html), mimetype='text/html')
                 resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
                 resp.headers['Pragma'] = 'no-cache'
                 resp.headers['Expires'] = '0'
-            except Exception:
-                pass
-            return resp
+                logger.info("Serving dynamic React wrapper for premium_dashboard")
+                return resp
+        # Fallbacks
+        dist_dir = os.path.join(base_dir, 'client', 'dist')
+        index_path = os.path.join(dist_dir, 'index.html')
+        if os.path.exists(index_path):
+            logger.info("Serving React index.html for premium_dashboard (fallback)")
+            return send_from_directory(dist_dir, 'index.html')
         return render_template('premium_dashboard.html', name=session.get('username',''))
     except Exception as e:
         logger.error(f"Error in premium_dashboard: {str(e)}")
