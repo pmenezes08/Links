@@ -270,6 +270,18 @@ export default function CommunityFeed() {
       {/* Scrollable content area below fixed global header */}
       <div ref={scrollRef} className="h-full max-w-2xl mx-auto overflow-y-auto no-scrollbar pt-3 pb-20 px-3" style={{ WebkitOverflowScrolling: 'touch' as any }}>
         <div className="space-y-3">
+          {/* Back to communities (parent) */}
+          <div className="flex items-center">
+            <button className="px-3 py-1.5 rounded-lg border border-white/10 bg-white/[0.03] text-sm hover:bg-white/10"
+              onClick={()=> {
+                const pid = (data?.parent_community?.id || data?.community?.parent_community_id || data?.community?.id)
+                if (pid) window.location.href = `/communities?parent_id=${pid}`
+                else window.location.href = '/communities'
+              }}
+            >
+              ← Back to Communities
+            </button>
+          </div>
           {/* Top header image from legacy template */}
           {data.community?.background_path ? (
             <div className="community-header-image overflow-hidden rounded-xl border border-white/10 mb-3 relative">
