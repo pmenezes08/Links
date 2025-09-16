@@ -18,10 +18,11 @@ export default function Communities(){
   const [_data, setData] = useState<{ username:string; current_user_profile_picture?:string|null; community_name?:string }|null>(null)
   const [communities, setCommunities] = useState<Community[]>([])
   const [parentName, setParentName] = useState<string>('')
+  const [parentType, setParentType] = useState<string>('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string|null>(null)
   const [swipedCommunity, setSwipedCommunity] = useState<number|null>(null)
-  const [activeTab, setActiveTab] = useState<'timeline' | 'management'>(() => {
+  const [activeTab, setActiveTab] = useState<'timeline'|'management'|'training'>(() => {
     const qs = new URLSearchParams(location.search)
     return qs.get('parent_id') ? 'timeline' : 'management'
   })
@@ -67,13 +68,16 @@ export default function Communities(){
               const subset: Community[] = [{ ...parent, children: parent.children || [] }]
               setCommunities(subset)
               setParentName(parent.name)
+              setParentType(parent.type || '')
             } else {
               setCommunities(all)
               setParentName('')
+              setParentType('')
             }
           } else {
             setCommunities(all)
             setParentName('')
+            setParentType('')
           }
           setError(null)
         } else {
@@ -132,6 +136,16 @@ export default function Communities(){
               <div className="pt-2 whitespace-nowrap text-center">Community Management</div>
               <div className={`h-0.5 ${activeTab==='management' ? 'bg-[#4db6ac]' : 'bg-transparent'} rounded-full w-16 mx-auto mt-1`} />
             </button>
+            {(parentType || '').toLowerCase() === 'gym' && (
+              <button 
+                type="button" 
+                className={`text-sm font-medium ${activeTab==='training' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`}
+                onClick={()=> setActiveTab('training')}
+              >
+                <div className="pt-2 whitespace-nowrap text-center">Your Training</div>
+                <div className={`h-0.5 ${activeTab==='training' ? 'bg-[#4db6ac]' : 'bg-transparent'} rounded-full w-16 mx-auto mt-1`} />
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -152,6 +166,19 @@ export default function Communities(){
                  return (
                    <div id="parent-timeline">
                      <ParentTimeline parentId={Number(pid)} />
+                   </div>
+                 )
+               }
+               if (pid && activeTab === 'training' && (parentType || '').toLowerCase() === 'gym') {
+                 return (
+                   <div className="bg-white/5 backdrop-blur rounded-xl p-4 border border-white/10">
+                     <div className="text-sm font-semibold mb-3">Your Training</div>
+                     <button
+                       className="px-4 py-2 rounded-lg bg-[#4db6ac] text-black text-sm hover:brightness-110"
+                       onClick={()=> window.location.href = '/workout_tracking'}
+                     >
+                       Go to Workout Tracking
+                     </button>
                    </div>
                  )
                }
