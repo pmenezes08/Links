@@ -2110,6 +2110,9 @@ def api_community_group_feed(parent_id: int):
                     # If numeric epoch string
                     try:
                         sval = str(val).strip()
+                        # Treat MySQL zero datetime as invalid
+                        if sval.startswith('0000-00-00'):
+                            continue
                         if sval.isdigit() and len(sval) >= 10:
                             epoch = int(sval[:10])
                             return datetime.fromtimestamp(epoch)
@@ -2125,6 +2128,8 @@ def api_community_group_feed(parent_id: int):
                     for fmt in (
                         '%Y-%m-%d %H:%M:%S',
                         '%Y-%m-%d %H:%M',
+                        '%d-%m-%Y %H:%M:%S',
+                        '%d-%m-%Y %H:%M',
                         '%m.%d.%y %H:%M',
                         '%Y-%m-%dT%H:%M:%S',
                         '%Y-%m-%dT%H:%M:%S.%f',
@@ -2179,6 +2184,8 @@ def api_community_group_feed(parent_id: int):
                 for fmt in (
                     '%Y-%m-%d %H:%M:%S',
                     '%Y-%m-%d %H:%M',
+                    '%d-%m-%Y %H:%M:%S',
+                    '%d-%m-%Y %H:%M',
                     '%m.%d.%y %H:%M',
                     '%Y-%m-%dT%H:%M:%S',
                     '%Y-%m-%dT%H:%M:%S.%f',
