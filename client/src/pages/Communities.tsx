@@ -19,6 +19,7 @@ export default function Communities(){
   const [communities, setCommunities] = useState<Community[]>([])
   const [parentName, setParentName] = useState<string>('')
   const [parentType, setParentType] = useState<string>('')
+  const [hasGymAccess, setHasGymAccess] = useState<boolean>(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string|null>(null)
   const [swipedCommunity, setSwipedCommunity] = useState<number|null>(null)
@@ -32,8 +33,9 @@ export default function Communities(){
     const parentTypeLower = (parent.type || parentType || '').toLowerCase()
     if (parentTypeLower === 'gym') return true
     const children = parent.children || []
-    return children.some(ch => (ch.type || '').toLowerCase() === 'gym')
-  }, [communities, parentType])
+    if (children.some(ch => (ch.type || '').toLowerCase() === 'gym')) return true
+    return hasGymAccess
+  }, [communities, parentType, hasGymAccess])
   
 
   useEffect(() => {
@@ -110,6 +112,18 @@ export default function Communities(){
     if (parentName) setTitle(`Community: ${parentName}`)
     else setTitle('Community Management')
   }, [setTitle, parentName])
+
+  useEffect(() => {
+    // Check gym access to decide whether to show Your Training tab as a fallback
+    async function checkGym(){
+      try{
+        const r = await fetch('/api/check_gym_membership', { credentials:'include' })
+        const j = await r.json()
+        setHasGymAccess(!!j?.hasGymAccess)
+      }catch{ setHasGymAccess(false) }
+    }
+    checkGym()
+  }, [])
 
   return (
     <div className="h-screen overflow-hidden bg-black text-white">
