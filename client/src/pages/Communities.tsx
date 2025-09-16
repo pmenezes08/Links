@@ -29,7 +29,7 @@ export default function Communities(){
   const showTrainingTab = useMemo(() => {
     const parent = communities && communities.length > 0 ? communities[0] : null
     if (!parent) return false
-    const parentTypeLower = (parent.type || parentType || '').toLowerCase()
+    const parentTypeLower = ((parent as any).community_type || parent.type || parentType || '').toLowerCase()
     return parentTypeLower === 'gym'
   }, [communities, parentType])
   

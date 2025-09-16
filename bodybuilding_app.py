@@ -1298,6 +1298,61 @@ except Exception as e:
     logger.error(f"Failed to initialize database on startup: {e}")
     print(f"WARNING: Database initialization failed on startup: {e}")
 
+# Ensure communities table has community_type column and normalize Gym
+def ensure_community_type_column():
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            has_column = False
+            try:
+                if USE_MYSQL:
+                    c.execute("SHOW COLUMNS FROM communities LIKE 'community_type'")
+                    has_column = c.fetchone() is not None
+                else:
+                    c.execute("PRAGMA table_info(communities)")
+                    rows = c.fetchall()
+                    for r in rows:
+                        col_name = r['name'] if hasattr(r, 'keys') else r[1]
+                        if col_name == 'community_type':
+                            has_column = True
+                            break
+            except Exception as e:
+                logger.warning(f"Failed to check community_type column: {e}")
+
+            if not has_column:
+                try:
+                    if USE_MYSQL:
+                        c.execute("ALTER TABLE communities ADD COLUMN community_type VARCHAR(255) NULL")
+                    else:
+                        c.execute("ALTER TABLE communities ADD COLUMN community_type TEXT")
+                    logger.info("Added community_type column to communities table")
+                except Exception as e:
+                    logger.warning(f"Failed to add community_type column (may already exist): {e}")
+
+            # Backfill community_type from type if missing
+            try:
+                if USE_MYSQL:
+                    c.execute("UPDATE communities SET community_type = type WHERE (community_type IS NULL OR community_type = '')")
+                else:
+                    c.execute("UPDATE communities SET community_type = type WHERE community_type IS NULL")
+            except Exception as e:
+                logger.warning(f"Failed backfilling community_type from type: {e}")
+
+            # Ensure 'Gym' community row has type/community_type set to 'Gym'
+            try:
+                if USE_MYSQL:
+                    c.execute("UPDATE communities SET type='Gym', community_type='Gym' WHERE LOWER(name)='gym'")
+                else:
+                    c.execute("UPDATE communities SET type='Gym', community_type='Gym' WHERE LOWER(name)='gym'")
+            except Exception as e:
+                logger.warning(f"Failed normalizing Gym community type: {e}")
+
+            conn.commit()
+    except Exception as e:
+        logger.error(f"ensure_community_type_column error: {e}")
+
+ensure_community_type_column()
+
 # Register the format_date Jinja2 filter
 @app.template_filter('format_date')
 def format_date(date_str, format_str):
