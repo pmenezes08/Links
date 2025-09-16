@@ -11694,6 +11694,8 @@ def get_all_communities_debug():
     except Exception as e:
         logger.error(f"Debug all communities error: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
+@app.route('/api/user_parent_community')
+@login_required
 def get_user_parent_community():
     """Get communities to display on dashboard - SIMPLIFIED"""
     username = session.get('username')
