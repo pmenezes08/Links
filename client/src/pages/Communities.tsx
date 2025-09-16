@@ -19,7 +19,6 @@ export default function Communities(){
   const [communities, setCommunities] = useState<Community[]>([])
   const [parentName, setParentName] = useState<string>('')
   const [parentType, setParentType] = useState<string>('')
-  const [hasGymAccess, setHasGymAccess] = useState<boolean>(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string|null>(null)
   const [swipedCommunity, setSwipedCommunity] = useState<number|null>(null)
@@ -31,11 +30,8 @@ export default function Communities(){
     const parent = communities && communities.length > 0 ? communities[0] : null
     if (!parent) return false
     const parentTypeLower = (parent.type || parentType || '').toLowerCase()
-    if (parentTypeLower === 'gym') return true
-    const children = parent.children || []
-    if (children.some(ch => (ch.type || '').toLowerCase() === 'gym')) return true
-    return hasGymAccess
-  }, [communities, parentType, hasGymAccess])
+    return parentTypeLower === 'gym'
+  }, [communities, parentType])
   
 
   useEffect(() => {
@@ -113,18 +109,6 @@ export default function Communities(){
     else setTitle('Community Management')
   }, [setTitle, parentName])
 
-  useEffect(() => {
-    // Check gym access to decide whether to show Your Training tab as a fallback
-    async function checkGym(){
-      try{
-        const r = await fetch('/api/check_gym_membership', { credentials:'include' })
-        const j = await r.json()
-        setHasGymAccess(!!j?.hasGymAccess)
-      }catch{ setHasGymAccess(false) }
-    }
-    checkGym()
-  }, [])
-
   return (
     <div className="h-screen overflow-hidden bg-black text-white">
       {/* Global header used from App */}
@@ -140,7 +124,7 @@ export default function Communities(){
           >
             <i className="fa-solid fa-arrow-left" />
           </button>
-          <div className="flex-1 flex items-center justify-center gap-8">
+          <div className="flex-1 flex items-center justify-center gap-8 overflow-x-auto no-scrollbar" style={{ WebkitOverflowScrolling: 'touch' as any }}>
             <button 
               type="button" 
               className={`text-sm font-medium ${activeTab==='timeline' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`} 
