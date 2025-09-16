@@ -3,6 +3,22 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App'
 
+// Unregister any existing service workers and clear caches to avoid stale bundles
+async function purgeSW(){
+  try{
+    if ('serviceWorker' in navigator){
+      const regs = await navigator.serviceWorker.getRegistrations()
+      await Promise.all(regs.map(r => r.unregister().catch(()=>{})))
+    }
+    if ('caches' in window){
+      const keys = await caches.keys()
+      await Promise.all(keys.map(k => caches.delete(k).catch(()=>{})))
+    }
+  }catch{}
+}
+
+purgeSW()
+
 // Minimal client error reporter
 function installClientLogger(){
   const send = (level: 'error'|'warn', payload: any) => {
