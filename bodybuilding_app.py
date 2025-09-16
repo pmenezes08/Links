@@ -10161,7 +10161,7 @@ def edit_community():
             c = conn.cursor()
             
             # Check if user is the creator of this community
-            c.execute("SELECT creator_username FROM communities WHERE id = ?", (community_id,))
+            c.execute(f"SELECT creator_username FROM communities WHERE id = {get_sql_placeholder()} ", (community_id,))
             community = c.fetchone()
             
             if not community:
@@ -10284,13 +10284,13 @@ def delete_community():
                 return jsonify({'success': False, 'error': 'Only the community creator can delete the community'}), 403
             
             # Delete all posts in the community
-            c.execute("DELETE FROM posts WHERE community_id = ?", (community_id,))
+            c.execute(f"DELETE FROM posts WHERE community_id = {get_sql_placeholder()} ", (community_id,))
             
             # Delete all user_communities entries for this community
-            c.execute("DELETE FROM user_communities WHERE community_id = ?", (community_id,))
+            c.execute(f"DELETE FROM user_communities WHERE community_id = {get_sql_placeholder()} ", (community_id,))
             
             # Delete the community itself
-            c.execute("DELETE FROM communities WHERE id = ?", (community_id,))
+            c.execute(f"DELETE FROM communities WHERE id = {get_sql_placeholder()} ", (community_id,))
             
             conn.commit()
             
@@ -11913,6 +11913,7 @@ def get_user_communities_hierarchical():
                         c.name,
                         c.type,
                         c.parent_community_id,
+                        c.creator_username,
                         pc.name as parent_name
                     FROM communities c
                     LEFT JOIN communities pc ON c.parent_community_id = pc.id
@@ -11931,6 +11932,7 @@ def get_user_communities_hierarchical():
                         c.name,
                         c.type,
                         c.parent_community_id,
+                        c.creator_username,
                         pc.name as parent_name
                     FROM communities c
                     JOIN user_communities uc ON c.id = uc.community_id
@@ -11954,7 +11956,8 @@ def get_user_communities_hierarchical():
                     'id': community['id'],
                     'name': community['name'],
                     'type': community['type'],
-                    'parent_community_id': community['parent_community_id']
+                    'parent_community_id': community['parent_community_id'],
+                    'creator_username': community.get('creator_username') if hasattr(community, 'get') else community['creator_username']
                 }
                 
                 if community['parent_community_id']:
@@ -11973,13 +11976,14 @@ def get_user_communities_hierarchical():
                 else:
                     # Parent not in user's communities, but child is
                     # Get parent info and add it
-                    c.execute("SELECT id, name, type FROM communities WHERE id = %s", (parent_id,))
+                    c.execute("SELECT id, name, type, creator_username FROM communities WHERE id = %s", (parent_id,))
                     parent_info = c.fetchone()
                     if parent_info:
                         parent_data = {
                             'id': parent_info['id'],
                             'name': parent_info['name'],
                             'type': parent_info['type'],
+                            'creator_username': parent_info.get('creator_username') if hasattr(parent_info, 'get') else parent_info['creator_username'],
                             'parent_community_id': None,
                             'children': [child],
                             'is_parent_only': True  # User is not directly member of parent

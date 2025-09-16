@@ -9,6 +9,7 @@ type Community = {
   is_active?: boolean;
   parent_community_id?: number;
   children?: Community[];
+  creator_username?: string;
 }
 
 export default function Communities(){
@@ -219,13 +220,15 @@ export default function Communities(){
                           const isMobile = /Mobi|Android|iPhone|iPad/i.test(ua) || window.innerWidth < 768
                           if (isMobile) navigate(`/community_feed_react/${c.id}`); else window.location.href = `/community_feed/${c.id}`
                         }}
-                        onLeave={async () => {
+                        onDeleteOrLeave={async (asDelete:boolean) => {
                           const fd = new URLSearchParams({ community_id: String(c.id) })
-                          const r = await fetch('/leave_community', { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
+                          const url = asDelete ? '/delete_community' : '/leave_community'
+                          const r = await fetch(url, { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
                           const j = await r.json().catch(()=>null)
                           if (j?.success) window.location.reload()
-                          else alert(j?.error||'Error leaving community')
+                          else alert(j?.error||`Error ${asDelete?'deleting':'leaving'} community`)
                         }}
+                        currentUsername={_data?.username || ''}
                       />
                       {c.children && c.children.length > 0 && (
                         <div className="ml-6 space-y-2">
@@ -240,14 +243,16 @@ export default function Communities(){
                                 const isMobile = /Mobi|Android|iPhone|iPad/i.test(ua) || window.innerWidth < 768
                                 if (isMobile) navigate(`/community_feed_react/${child.id}`); else window.location.href = `/community_feed/${child.id}`
                               }}
-                              onLeave={async () => {
+                              onDeleteOrLeave={async (asDelete:boolean) => {
                                 const fd = new URLSearchParams({ community_id: String(child.id) })
-                                const r = await fetch('/leave_community', { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
+                                const url = asDelete ? '/delete_community' : '/leave_community'
+                                const r = await fetch(url, { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
                                 const j = await r.json().catch(()=>null)
                                 if (j?.success) window.location.reload()
-                                else alert(j?.error||'Error leaving community')
+                                else alert(j?.error||`Error ${asDelete?'deleting':'leaving'} community`)
                               }}
                               isChild={true}
+                              currentUsername={_data?.username || ''}
                             />
                           ))}
                         </div>
@@ -314,15 +319,17 @@ function CommunityItem({
   isSwipedOpen, 
   onSwipe, 
   onEnter, 
-  onLeave,
-  isChild = false
+  onDeleteOrLeave,
+  isChild = false,
+  currentUsername
 }: { 
   community: Community
   isSwipedOpen: boolean
   onSwipe: (isOpen: boolean) => void
   onEnter: () => void
-  onLeave: () => void
+  onDeleteOrLeave: (asDelete:boolean) => void
   isChild?: boolean
+  currentUsername: string
 }) {
   const [dragX, setDragX] = useState(0)
   const [isDragging, setIsDragging] = useState(false)
@@ -363,10 +370,22 @@ function CommunityItem({
     e.stopPropagation()
     if (window.confirm(`Are you sure you want to leave ${community.name}?`)) {
       try {
-        await onLeave()
+        await onDeleteOrLeave(false)
       } catch (error) {
         console.error('Error leaving community:', error)
         alert('Failed to leave community. Please try again.')
+      }
+    }
+  }
+
+  const handleDeleteClick = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (window.confirm(`Delete "${community.name}"? This cannot be undone.`)){
+      try{
+        await onDeleteOrLeave(true)
+      }catch(err){
+        console.error('Error deleting community:', err)
+        alert('Failed to delete community. Please try again.')
       }
     }
   }
@@ -379,22 +398,39 @@ function CommunityItem({
           : 'border border-white/10'
       }`}
     >
-      {/* Leave button (revealed on swipe) - fully integrated */}
+      {/* Action button (Leave or Delete depending on ownership) */}
       <div className="absolute inset-y-0 right-0 flex items-center">
-        <button
-          className="h-full w-20 bg-red-500/20 text-red-400 flex items-center justify-center hover:bg-red-500/30 transition-all duration-200 rounded-r-2xl"
-          onClick={handleLeaveClick}
-          style={{
-            opacity: isSwipedOpen || dragX < -20 ? 1 : 0,
-            transform: `translateX(${isSwipedOpen ? '0' : '100%'})`,
-            transition: isDragging ? 'none' : 'all 0.2s ease-out'
-          }}
-        >
-          <div className="flex flex-col items-center gap-1">
-            <i className="fa-solid fa-user-minus text-sm" />
-            <span className="text-xs font-medium">Leave</span>
-          </div>
-        </button>
+        {community.creator_username && currentUsername === community.creator_username ? (
+          <button
+            className="h-full w-20 bg-red-500/20 text-red-400 flex items-center justify-center hover:bg-red-500/30 transition-all duration-200 rounded-r-2xl"
+            onClick={handleDeleteClick}
+            style={{
+              opacity: isSwipedOpen || dragX < -20 ? 1 : 0,
+              transform: `translateX(${isSwipedOpen ? '0' : '100%'})`,
+              transition: isDragging ? 'none' : 'all 0.2s ease-out'
+            }}
+          >
+            <div className="flex flex-col items-center gap-1">
+              <i className="fa-solid fa-trash text-sm" />
+              <span className="text-xs font-medium">Delete</span>
+            </div>
+          </button>
+        ) : (
+          <button
+            className="h-full w-20 bg-red-500/20 text-red-400 flex items-center justify-center hover:bg-red-500/30 transition-all duration-200 rounded-r-2xl"
+            onClick={handleLeaveClick}
+            style={{
+              opacity: isSwipedOpen || dragX < -20 ? 1 : 0,
+              transform: `translateX(${isSwipedOpen ? '0' : '100%'})`,
+              transition: isDragging ? 'none' : 'all 0.2s ease-out'
+            }}
+          >
+            <div className="flex flex-col items-center gap-1">
+              <i className="fa-solid fa-user-minus text-sm" />
+              <span className="text-xs font-medium">Leave</span>
+            </div>
+          </button>
+        )}
       </div>
 
       {/* Swipeable community content */}
