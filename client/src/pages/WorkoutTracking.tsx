@@ -32,6 +32,9 @@ type Community = { id: number; name: string; type?: string }
 export default function WorkoutTracking(){
   const { setTitle } = useHeader()
   useEffect(() => { setTitle('Your Workouts') }, [setTitle])
+  const parentId = useMemo(()=> {
+    try{ return new URLSearchParams(window.location.search).get('parent_id') }catch{ return null }
+  }, [])
 
   const [activeTab, setActiveTab] = useState<'performance' | 'exercise' | 'workouts' | 'leaderboard' | 'generator'>('performance')
   const [showAddModal, setShowAddModal] = useState(false)
@@ -215,9 +218,25 @@ export default function WorkoutTracking(){
 
   return (
     <div className="min-h-screen bg-black text-white pt-14">
+      <div className="fixed left-0 right-0 top-14 h-10 bg-black/70 backdrop-blur z-40">
+        <div className="max-w-3xl mx-auto h-full flex items-center px-3">
+          <button
+            type="button"
+            className="mr-2 p-2 rounded-full hover:bg-white/5"
+            onClick={()=> {
+              if (parentId) window.location.href = `/communities?parent_id=${parentId}`
+              else window.history.back()
+            }}
+            aria-label="Back"
+          >
+            <i className="fa-solid fa-arrow-left" />
+          </button>
+          <div className="text-sm text-white/90">Back</div>
+        </div>
+      </div>
       <div className="max-w-3xl mx-auto px-3 pt-0 pb-4">
         {/* Tabs */}
-        <div className="flex gap-1 border-b border-white/10 mt-0 mb-2 overflow-x-auto no-scrollbar flex-nowrap">
+        <div className="flex gap-1 border-b border-white/10 mt-12 mb-2 overflow-x-auto no-scrollbar flex-nowrap">
           <TabButton active={activeTab==='performance'} onClick={()=> setActiveTab('performance')} icon="fa-chart-line" label="Performance Tracking" />
           <TabButton active={activeTab==='exercise'} onClick={()=> setActiveTab('exercise')} icon="fa-dumbbell" label="Exercise Management" />
           <TabButton active={activeTab==='workouts'} onClick={()=> setActiveTab('workouts')} icon="fa-calendar-alt" label="Workouts" />

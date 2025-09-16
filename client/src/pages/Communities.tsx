@@ -195,7 +195,10 @@ export default function Communities(){
                     </div>
                      <button
                        className="px-4 py-2 rounded-lg bg-[#4db6ac] text-black text-sm hover:brightness-110"
-                       onClick={()=> window.location.href = '/workout_tracking'}
+                       onClick={()=> {
+                         const pid = new URLSearchParams(location.search).get('parent_id')
+                         window.location.href = pid ? `/workout_tracking?parent_id=${pid}` : '/workout_tracking'
+                       }}
                      >
                        Go to Workout Tracking
                      </button>
