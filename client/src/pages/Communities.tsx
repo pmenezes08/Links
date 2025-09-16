@@ -99,16 +99,17 @@ export default function Communities(){
         <div className="max-w-2xl mx-auto h-full flex">
           <button 
             type="button" 
-            className="flex-1 text-center text-sm font-medium text-[#9fb0b5] hover:text-white/90" 
+            className={`flex-1 text-center text-sm font-medium ${new URLSearchParams(location.search).get('parent_id') ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`}
             onClick={()=> {
-              const qs = new URLSearchParams(location.search)
-              const pid = qs.get('parent_id')
-              if (pid) navigate(`/community_feed_react/${pid}`)
-              else navigate('/home')
+              const pid = new URLSearchParams(location.search).get('parent_id')
+              if (!pid) { navigate('/home'); return }
+              // Stay on page, just scroll to timeline section
+              const el = document.getElementById('parent-timeline')
+              if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
             }}
           >
             <div className="pt-2">Home Timeline</div>
-            <div className="h-0.5 bg-transparent rounded-full w-16 mx-auto mt-1" />
+            <div className={`h-0.5 ${new URLSearchParams(location.search).get('parent_id') ? 'bg-[#4db6ac]' : 'bg-transparent'} rounded-full w-16 mx-auto mt-1`} />
           </button>
           <button type="button" className="flex-1 text-center text-sm font-medium text-white/95">
             <div className="pt-2">Community Management</div>
@@ -129,7 +130,9 @@ export default function Communities(){
           <div className="space-y-3">
             {/* Home Timeline preview for parent + children when scoped */}
             {new URLSearchParams(location.search).get('parent_id') && (
-              <ParentTimeline parentId={Number(new URLSearchParams(location.search).get('parent_id'))} />
+              <div id="parent-timeline">
+                <ParentTimeline parentId={Number(new URLSearchParams(location.search).get('parent_id'))} />
+              </div>
             )}
             {/* Join new community - hide when scoped to a specific parent */}
             {!new URLSearchParams(location.search).get('parent_id') && (
