@@ -2026,6 +2026,39 @@ def api_community_group_feed(parent_id: int):
                 return datetime.min
             posts.sort(key=sort_key, reverse=True)
 
+            # Fallback: if no posts in last 48h, return latest 20 regardless of time
+            if not posts:
+                c.execute(f"""
+                    SELECT id, username, content, community_id, created_at, timestamp, image_path
+                    FROM posts
+                    WHERE community_id IN ({placeholders})
+                    ORDER BY id DESC
+                    LIMIT 20
+                """, tuple(community_ids))
+                rows = c.fetchall()
+                for row in rows:
+                    if hasattr(row, 'keys'):
+                        posts.append({
+                            'id': row.get('id'),
+                            'username': row.get('username'),
+                            'content': row.get('content'),
+                            'community_id': row.get('community_id'),
+                            'community_name': name_map.get(row.get('community_id')),
+                            'created_at': row.get('created_at') or row.get('timestamp'),
+                            'image_path': row.get('image_path')
+                        })
+                    else:
+                        pid, uname, content, cid, created_at_val, timestamp_val, image_path = row
+                        posts.append({
+                            'id': pid,
+                            'username': uname,
+                            'content': content,
+                            'community_id': cid,
+                            'community_name': name_map.get(cid),
+                            'created_at': created_at_val or timestamp_val,
+                            'image_path': image_path
+                        })
+
             return jsonify({'success': True, 'posts': posts})
     except Exception as e:
         logger.error(f"Error in community_group_feed for parent {parent_id}: {e}")
