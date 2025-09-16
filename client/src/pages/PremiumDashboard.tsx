@@ -8,6 +8,9 @@ export default function PremiumDashboard() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [hasGymAccess, setHasGymAccess] = useState(false)
   const [communities, setCommunities] = useState<Array<{id: number, name: string, type: string}>>([])
+  const [fabOpen, setFabOpen] = useState(false)
+  const [showJoinModal, setShowJoinModal] = useState(false)
+  const [joinCode, setJoinCode] = useState('')
   const [parentsWithChildren, setParentsWithChildren] = useState<Set<number>>(new Set())
   const { setTitle } = useHeader()
   useEffect(() => { setTitle('Dashboard') }, [setTitle])
@@ -133,9 +136,48 @@ export default function PremiumDashboard() {
             })}
           </div>
         </div>
+
+        {/* Floating Action Button */}
+        <div className="fixed bottom-6 right-6 z-50">
+          {fabOpen && (
+            <div className="mb-2 rounded-xl border border-white/10 bg-black/80 backdrop-blur p-2 w-48 shadow-lg">
+              <button className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/5 text-sm" onClick={()=> { setFabOpen(false); location.href = '/communities' }}>Create Community</button>
+              <button className="w-full text-left px-3 py-2 rounded-lg hover:bg:white/5 text-sm" onClick={()=> { setFabOpen(false); setShowJoinModal(true) }}>Join Community</button>
+            </div>
+          )}
+          <button className="w-14 h-14 rounded-full bg-[#4db6ac] text-black shadow-lg hover:brightness-110 grid place-items-center border border-[#4db6ac]" onClick={()=> setFabOpen(v=>!v)} aria-label="Actions">
+            <i className="fa-solid fa-plus" />
+          </button>
+        </div>
       </div>
 
       {/* Communities modal removed; button links to /communities */}
+      {showJoinModal && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur flex items-center justify-center" onClick={(e)=> e.currentTarget===e.target && setShowJoinModal(false)}>
+          <div className="w-[92%] max-w-sm rounded-2xl border border:white/10 bg-[#0b0f10] p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="font-semibold text-sm">Join Community</div>
+              <button className="p-2 rounded-md hover:bg:white/5" onClick={()=> setShowJoinModal(false)} aria-label="Close"><i className="fa-solid fa-xmark"/></button>
+            </div>
+            <div className="space-y-3">
+              <input value={joinCode} onChange={e=> setJoinCode(e.target.value)} placeholder="Enter community code" className="w-full px-3 py-2 rounded-md bg-black border border:white/15 text-sm" />
+              <div className="flex items-center justify-end gap-2">
+                <button className="px-3 py-2 rounded-md bg:white/10 hover:bg:white/15" onClick={()=> setShowJoinModal(false)}>Cancel</button>
+                <button className="px-3 py-2 rounded-md bg-[#4db6ac] text-black hover:brightness-110" onClick={async()=> {
+                  if (!joinCode.trim()) { alert('Please enter a code'); return }
+                  try{
+                    const fd = new URLSearchParams({ community_code: joinCode.trim() })
+                    const r = await fetch('/join_community', { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
+                    const j = await r.json().catch(()=>null)
+                    if (j?.success){ setShowJoinModal(false); setJoinCode(''); location.href = '/communities' }
+                    else alert(j?.error || 'Failed to join community')
+                  }catch{ alert('Failed to join community') }
+                }}>Join</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
