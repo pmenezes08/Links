@@ -21,6 +21,10 @@ export default function Communities(){
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string|null>(null)
   const [swipedCommunity, setSwipedCommunity] = useState<number|null>(null)
+  const [activeTab, setActiveTab] = useState<'timeline' | 'management'>(() => {
+    const qs = new URLSearchParams(location.search)
+    return qs.get('parent_id') ? 'timeline' : 'management'
+  })
   
 
   useEffect(() => {
@@ -99,21 +103,25 @@ export default function Communities(){
         <div className="max-w-2xl mx-auto h-full flex">
           <button 
             type="button" 
-            className={`flex-1 text-center text-sm font-medium ${new URLSearchParams(location.search).get('parent_id') ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`}
+            className={`flex-1 text-center text-sm font-medium ${activeTab==='timeline' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`} 
             onClick={()=> {
               const pid = new URLSearchParams(location.search).get('parent_id')
               if (!pid) { navigate('/home'); return }
-              // Stay on page, just scroll to timeline section
+              setActiveTab('timeline')
               const el = document.getElementById('parent-timeline')
               if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
             }}
           >
             <div className="pt-2">Home Timeline</div>
-            <div className={`h-0.5 ${new URLSearchParams(location.search).get('parent_id') ? 'bg-[#4db6ac]' : 'bg-transparent'} rounded-full w-16 mx-auto mt-1`} />
+            <div className={`h-0.5 ${activeTab==='timeline' ? 'bg-[#4db6ac]' : 'bg-transparent'} rounded-full w-16 mx-auto mt-1`} />
           </button>
-          <button type="button" className="flex-1 text-center text-sm font-medium text-white/95">
+          <button 
+            type="button" 
+            className={`flex-1 text-center text-sm font-medium ${activeTab==='management' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`}
+            onClick={()=> setActiveTab('management')}
+          >
             <div className="pt-2">Community Management</div>
-            <div className="h-0.5 bg-[#4db6ac] rounded-full w-16 mx-auto mt-1" />
+            <div className={`h-0.5 ${activeTab==='management' ? 'bg-[#4db6ac]' : 'bg-transparent'} rounded-full w-16 mx-auto mt-1`} />
           </button>
         </div>
       </div>
@@ -128,68 +136,71 @@ export default function Communities(){
           <div className="text-red-400">{error}</div>
         ) : (
           <div className="space-y-3">
-            {/* Home Timeline preview for parent + children when scoped */}
-            {new URLSearchParams(location.search).get('parent_id') && (
-              <div id="parent-timeline">
-                <ParentTimeline parentId={Number(new URLSearchParams(location.search).get('parent_id'))} />
-              </div>
-            )}
-            {/* Join new community - hide when scoped to a specific parent */}
-            {!new URLSearchParams(location.search).get('parent_id') && (
-              <JoinCommunity onJoined={()=>{ window.location.reload() }} />
-            )}
-            {/* Divider removed per request */}
-            {communities.length === 0 ? (
-              <div className="text-[#9fb0b5]">You are not a member of any communities.</div>
-            ) : communities.map(c => (
-              <div key={c.id} className="space-y-2">
-                {/* Parent Community */}
-                <CommunityItem 
-                  community={c} 
-                  isSwipedOpen={swipedCommunity === c.id}
-                  onSwipe={(isOpen) => setSwipedCommunity(isOpen ? c.id : null)}
-                  onEnter={() => {
-                    const ua = navigator.userAgent || ''
-                    const isMobile = /Mobi|Android|iPhone|iPad/i.test(ua) || window.innerWidth < 768
-                    if (isMobile) navigate(`/community_feed_react/${c.id}`); else window.location.href = `/community_feed/${c.id}`
-                  }}
-                  onLeave={async () => {
-                    const fd = new URLSearchParams({ community_id: String(c.id) })
-                    const r = await fetch('/leave_community', { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
-                    const j = await r.json().catch(()=>null)
-                    if (j?.success) window.location.reload()
-                    else alert(j?.error||'Error leaving community')
-                  }}
-                />
-                
-                {/* Child Communities - Always Visible */}
-                {c.children && c.children.length > 0 && (
-                  <div className="ml-6 space-y-2">
-                    {c.children.map(child => (
+            {(() => {
+              const pid = new URLSearchParams(location.search).get('parent_id')
+              if (pid && activeTab === 'timeline') {
+                return (
+                  <div id="parent-timeline">
+                    <ParentTimeline parentId={Number(pid)} />
+                  </div>
+                )
+              }
+              return (
+                <>
+                  {!pid && (
+                    <JoinCommunity onJoined={()=>{ window.location.reload() }} />
+                  )}
+                  {communities.length === 0 ? (
+                    <div className="text-[#9fb0b5]">You are not a member of any communities.</div>
+                  ) : communities.map(c => (
+                    <div key={c.id} className="space-y-2">
                       <CommunityItem 
-                        key={child.id}
-                        community={child} 
-                        isSwipedOpen={swipedCommunity === child.id}
-                        onSwipe={(isOpen) => setSwipedCommunity(isOpen ? child.id : null)}
+                        community={c} 
+                        isSwipedOpen={swipedCommunity === c.id}
+                        onSwipe={(isOpen) => setSwipedCommunity(isOpen ? c.id : null)}
                         onEnter={() => {
                           const ua = navigator.userAgent || ''
                           const isMobile = /Mobi|Android|iPhone|iPad/i.test(ua) || window.innerWidth < 768
-                          if (isMobile) navigate(`/community_feed_react/${child.id}`); else window.location.href = `/community_feed/${child.id}`
+                          if (isMobile) navigate(`/community_feed_react/${c.id}`); else window.location.href = `/community_feed/${c.id}`
                         }}
                         onLeave={async () => {
-                          const fd = new URLSearchParams({ community_id: String(child.id) })
+                          const fd = new URLSearchParams({ community_id: String(c.id) })
                           const r = await fetch('/leave_community', { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
                           const j = await r.json().catch(()=>null)
                           if (j?.success) window.location.reload()
                           else alert(j?.error||'Error leaving community')
                         }}
-                        isChild={true}
                       />
-                    ))}
-                  </div>
-                )}
-              </div>
-            ))}
+                      {c.children && c.children.length > 0 && (
+                        <div className="ml-6 space-y-2">
+                          {c.children.map(child => (
+                            <CommunityItem 
+                              key={child.id}
+                              community={child} 
+                              isSwipedOpen={swipedCommunity === child.id}
+                              onSwipe={(isOpen) => setSwipedCommunity(isOpen ? child.id : null)}
+                              onEnter={() => {
+                                const ua = navigator.userAgent || ''
+                                const isMobile = /Mobi|Android|iPhone|iPad/i.test(ua) || window.innerWidth < 768
+                                if (isMobile) navigate(`/community_feed_react/${child.id}`); else window.location.href = `/community_feed/${child.id}`
+                              }}
+                              onLeave={async () => {
+                                const fd = new URLSearchParams({ community_id: String(child.id) })
+                                const r = await fetch('/leave_community', { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
+                                const j = await r.json().catch(()=>null)
+                                if (j?.success) window.location.reload()
+                                else alert(j?.error||'Error leaving community')
+                              }}
+                              isChild={true}
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </>
+              )
+            })()}
           </div>
         )}
       </div>
