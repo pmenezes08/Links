@@ -1952,7 +1952,7 @@ def api_community_group_feed(parent_id: int):
             placeholders = ','.join([ph for _ in community_ids])
             logger.info(f"Community group feed: parent_id={parent_id}, fetching posts for communities: {community_ids}")
             c.execute(f"""
-                SELECT id, username, content, community_id, created_at, timestamp, image_path
+                SELECT *
                 FROM posts
                 WHERE community_id IN ({placeholders})
                 ORDER BY id DESC
