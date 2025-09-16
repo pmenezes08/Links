@@ -136,6 +136,15 @@ export default function Communities(){
           <div className="text-red-400">{error}</div>
         ) : (
           <div className="space-y-3">
+            {/* Back to Dashboard */}
+            <div className="flex items-center">
+              <button className="px-3 py-1.5 rounded-lg border border-white/10 bg-white/[0.03] text-sm hover:bg-white/10"
+                onClick={()=> { window.location.href = '/premium_dashboard' }}
+                aria-label="Back to Dashboard"
+              >
+                ← Back to Dashboard
+              </button>
+            </div>
             {(() => {
               const pid = new URLSearchParams(location.search).get('parent_id')
               if (pid && activeTab === 'timeline') {
