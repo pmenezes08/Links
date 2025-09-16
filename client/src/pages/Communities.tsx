@@ -100,37 +100,39 @@ export default function Communities(){
 
       {/* Secondary nav like X */}
       <div className="fixed left-0 right-0 top-14 h-10 bg-black/70 backdrop-blur z-40">
-        <div className="max-w-2xl mx-auto h-full flex items-center gap-2">
+        <div className="max-w-2xl mx-auto h-full flex items-center">
           <button
             type="button"
-            className="px-3 text-sm text-[#9fb0b5] hover:text-white/90 shrink-0"
+            className="mr-2 p-2 rounded-full hover:bg-white/5"
             onClick={()=> navigate('/premium_dashboard')}
-            aria-label="Back to Dashboard"
+            aria-label="Back"
           >
-            ←
+            <i className="fa-solid fa-arrow-left" />
           </button>
-          <button 
-            type="button" 
-            className={`flex-1 text-center text-sm font-medium ${activeTab==='timeline' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`} 
-            onClick={()=> {
-              const pid = new URLSearchParams(location.search).get('parent_id')
-              if (!pid) { navigate('/home'); return }
-              setActiveTab('timeline')
-              const el = document.getElementById('parent-timeline')
-              if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
-            }}
-          >
-            <div className="pt-2 whitespace-nowrap">Home Timeline</div>
-            <div className={`h-0.5 ${activeTab==='timeline' ? 'bg-[#4db6ac]' : 'bg-transparent'} rounded-full w-16 mx-auto mt-1`} />
-          </button>
-          <button 
-            type="button" 
-            className={`flex-1 text-center text-sm font-medium ${activeTab==='management' ? 'text:white/95' : 'text-[#9fb0b5] hover:text-white/90'}`}
-            onClick={()=> setActiveTab('management')}
-          >
-            <div className="pt-2 whitespace-nowrap">Community Management</div>
-            <div className={`h-0.5 ${activeTab==='management' ? 'bg-[#4db6ac]' : 'bg-transparent'} rounded-full w-16 mx-auto mt-1`} />
-          </button>
+          <div className="flex-1 flex items-center justify-center gap-8">
+            <button 
+              type="button" 
+              className={`text-sm font-medium ${activeTab==='timeline' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`} 
+              onClick={()=> {
+                const pid = new URLSearchParams(location.search).get('parent_id')
+                if (!pid) { navigate('/home'); return }
+                setActiveTab('timeline')
+                const el = document.getElementById('parent-timeline')
+                if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+              }}
+            >
+              <div className="pt-2 whitespace-nowrap text-center">Home Timeline</div>
+              <div className={`h-0.5 ${activeTab==='timeline' ? 'bg-[#4db6ac]' : 'bg-transparent'} rounded-full w-16 mx-auto mt-1`} />
+            </button>
+            <button 
+              type="button" 
+              className={`text-sm font-medium ${activeTab==='management' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`}
+              onClick={()=> setActiveTab('management')}
+            >
+              <div className="pt-2 whitespace-nowrap text-center">Community Management</div>
+              <div className={`h-0.5 ${activeTab==='management' ? 'bg-[#4db6ac]' : 'bg-transparent'} rounded-full w-16 mx-auto mt-1`} />
+            </button>
+          </div>
         </div>
       </div>
 
