@@ -92,15 +92,17 @@ export default function Members(){
             {members.length === 0 ? (
               <div className="text-[#9fb0b5]">No members.</div>
             ) : members.map((m, i) => (
-              <div key={i} className="flex items-center gap-3 p-2 rounded-xl bg-white/[0.03]">
+              <button key={i} className="flex items-center gap-3 p-2 rounded-xl bg-white/[0.03] w-full text-left hover:bg-white/[0.06]"
+                onClick={()=> navigate(`/profile/${encodeURIComponent(m.username)}`)}
+                aria-label={`View @${m.username} profile`}>
                 <Avatar username={m.username} url={m.profile_picture || undefined} size={36} />
                 <div className="font-medium">{m.username}</div>
                 {canManage && m.username !== ownerUsername ? (
-                  <button className="ml-auto p-2 rounded-full hover:bg-white/5" title="Remove member" onClick={()=> removeMember(m.username)}>
+                  <button className="ml-auto p-2 rounded-full hover:bg-white/5" title="Remove member" onClick={(e)=> { e.stopPropagation(); removeMember(m.username) }}>
                     <i className="fa-regular fa-trash-can" style={{ color:'#d9534f' }} />
                   </button>
                 ) : null}
-              </div>
+              </button>
             ))}
           </div>
         )}
