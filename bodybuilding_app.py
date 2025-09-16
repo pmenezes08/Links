@@ -9914,33 +9914,36 @@ def create_community():
             join_code = generate_join_code()
             
             # Create the community (support types like 'gym', 'crossfit', etc.)
-            c.execute("""
+            placeholders = ', '.join([get_sql_placeholder()] * 14)
+            c.execute(f"""
                 INSERT INTO communities (name, type, creator_username, join_code, created_at, description, location, background_path, template, background_color, text_color, accent_color, card_color, parent_community_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES ({placeholders})
             """, (name, community_type, username, join_code, datetime.now().strftime('%m.%d.%y %H:%M'), description, location, background_path, template, background_color, text_color, accent_color, card_color, parent_community_id if parent_community_id and parent_community_id != 'none' else None))
             
             community_id = c.lastrowid
             
             # Get user's ID and add creator as member
-            c.execute("SELECT id FROM users WHERE username = ?", (username,))
+            c.execute(f"SELECT id FROM users WHERE username = {get_sql_placeholder()}", (username,))
             user_row = c.fetchone()
             if user_row:
                 user_id = user_row[0] if not hasattr(user_row, 'keys') else user_row['id']
-                c.execute("""
+                uc_ph = ', '.join([get_sql_placeholder()] * 3)
+                c.execute(f"""
                     INSERT INTO user_communities (user_id, community_id, joined_at)
-                    VALUES (?, ?, ?)
+                    VALUES ({uc_ph})
                 """, (user_id, community_id, datetime.now().strftime('%m.%d.%y %H:%M')))
             
             # Ensure admin is also a member of every community
             c.execute("SELECT id FROM users WHERE username = 'admin'")
             admin_row = c.fetchone()
             if admin_row:
-                admin_id = admin_row[0]
-                c.execute("SELECT 1 FROM user_communities WHERE user_id=? AND community_id=?", (admin_id, community_id))
+                admin_id = admin_row['id'] if hasattr(admin_row, 'keys') else admin_row[0]
+                c.execute(f"SELECT 1 FROM user_communities WHERE user_id={get_sql_placeholder()} AND community_id={get_sql_placeholder()}", (admin_id, community_id))
                 if not c.fetchone():
-                    c.execute("""
+                    uc2_ph = ', '.join([get_sql_placeholder()] * 3)
+                    c.execute(f"""
                         INSERT INTO user_communities (user_id, community_id, joined_at)
-                        VALUES (?, ?, ?)
+                        VALUES ({uc2_ph})
                     """, (admin_id, community_id, datetime.now().strftime('%m.%d.%y %H:%M')))
             
             conn.commit()
@@ -10581,7 +10584,7 @@ def join_community():
             c = conn.cursor()
             
             # Get user ID
-            c.execute("SELECT id FROM users WHERE username = ?", (username,))
+            c.execute(f"SELECT id FROM users WHERE username = {get_sql_placeholder()}", (username,))
             user = c.fetchone()
             if not user:
                 return jsonify({'success': False, 'error': 'User not found'})
@@ -10589,9 +10592,9 @@ def join_community():
             user_id = user['id'] if hasattr(user, 'keys') else user[0]
             
             # Find community by join code
-            c.execute("""
+            c.execute(f"""
                 SELECT id, name, join_code FROM communities 
-                WHERE join_code = ?
+                WHERE join_code = {get_sql_placeholder()}
             """, (community_code,))
             
             community = c.fetchone()
@@ -10603,14 +10606,14 @@ def join_community():
             community_name = community['name']
             
             # Get community type
-            c.execute("SELECT type FROM communities WHERE id = ?", (community_id,))
+            c.execute(f"SELECT type FROM communities WHERE id = {get_sql_placeholder()} ", (community_id,))
             community_type_result = c.fetchone()
             community_type = community_type_result['type'] if community_type_result else 'public'
             
             # Check if user is already a member
-            c.execute("""
+            c.execute(f"""
                 SELECT id FROM user_communities 
-                WHERE user_id = ? AND community_id = ?
+                WHERE user_id = {get_sql_placeholder()} AND community_id = {get_sql_placeholder()}
             """, (user_id, community_id))
             
             existing_membership = c.fetchone()
@@ -10618,33 +10621,34 @@ def join_community():
                 return jsonify({'success': False, 'error': 'You are already a member of this community'})
             
             # Add user to community as a member
-            c.execute("""
+            c.execute(f"""
                 INSERT INTO user_communities (user_id, community_id, joined_at)
-                VALUES (?, ?, NOW())
-            """, (user_id, community_id))
+                VALUES ({get_sql_placeholder()}, {get_sql_placeholder()}, { 'NOW()' if USE_MYSQL else get_sql_placeholder() })
+            """, (user_id, community_id) if USE_MYSQL else (user_id, community_id, datetime.now().strftime('%m.%d.%y %H:%M')))
 
             # If the community has a parent, auto-add membership to the parent community as well
             try:
-                c.execute("SELECT parent_community_id FROM communities WHERE id = ?", (community_id,))
+                c.execute(f"SELECT parent_community_id FROM communities WHERE id = {get_sql_placeholder()} ", (community_id,))
                 parent_row = c.fetchone()
                 parent_id = parent_row['parent_community_id'] if parent_row else None
                 if parent_id:
                     # Check if already a member of the parent
-                    c.execute("SELECT 1 FROM user_communities WHERE user_id = ? AND community_id = ?", (user_id, parent_id))
+                    c.execute(f"SELECT 1 FROM user_communities WHERE user_id = {get_sql_placeholder()} AND community_id = {get_sql_placeholder()} ", (user_id, parent_id))
                     if not c.fetchone():
-                        c.execute("""
+                        c.execute(f"""
                             INSERT INTO user_communities (user_id, community_id, joined_at)
-                            VALUES (?, ?, NOW())
-                        """, (user_id, parent_id))
+                            VALUES ({get_sql_placeholder()}, {get_sql_placeholder()}, { 'NOW()' if USE_MYSQL else get_sql_placeholder() })
+                        """, (user_id, parent_id) if USE_MYSQL else (user_id, parent_id, datetime.now().strftime('%m.%d.%y %H:%M')))
 
                         # Notify user about parent membership
                         try:
-                            c.execute("SELECT name FROM communities WHERE id = ?", (parent_id,))
+                            c.execute(f"SELECT name FROM communities WHERE id = {get_sql_placeholder()} ", (parent_id,))
                             parent_name_row = c.fetchone()
                             parent_name = parent_name_row['name'] if parent_name_row else 'Parent Community'
-                            c.execute("""
+                            notif_ph = ', '.join([get_sql_placeholder()] * 6)
+                            c.execute(f"""
                                 INSERT INTO notifications (user_id, from_user, type, community_id, message, link)
-                                VALUES (?, ?, ?, ?, ?, ?)
+                                VALUES ({notif_ph})
                             """, (
                                 username,
                                 'system',
