@@ -184,15 +184,7 @@ export default function Communities(){
                if (pid && activeTab === 'training' && showTrainingTab) {
                  return (
                    <div className="bg-white/5 backdrop-blur rounded-xl p-4 border border-white/10">
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="text-sm font-semibold">Your Training</div>
-                      <button className="px-3 py-1.5 rounded-lg border border-white/10 bg:white/[0.03] text-sm hover:bg:white/10"
-                        onClick={()=> setActiveTab('management')}
-                        aria-label="Back to Community Management"
-                      >
-                        ← Back
-                      </button>
-                    </div>
+                    <div className="text-sm font-semibold mb-3">Your Training</div>
                      <button
                        className="px-4 py-2 rounded-lg bg-[#4db6ac] text-black text-sm hover:brightness-110"
                        onClick={()=> {
