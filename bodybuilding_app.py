@@ -1,3 +1,55 @@
+@app.route('/api/profile/<username>')
+def api_public_profile(username):
+    """JSON API for public profile used by React page."""
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            c.execute(f"SELECT username FROM users WHERE LOWER(username)=LOWER({ph})", (username,))
+            user = c.fetchone()
+            if not user:
+                return jsonify({'success': False, 'error': 'User not found'}), 404
+            actual_username = user['username'] if hasattr(user, 'keys') else user[0]
+
+            c.execute(f"""
+                SELECT u.username,
+                       p.display_name, p.bio, p.location, p.website,
+                       p.instagram, p.twitter, p.profile_picture, p.cover_photo,
+                       p.is_public
+                FROM users u
+                LEFT JOIN user_profiles p ON u.username = p.username
+                WHERE u.username = {ph}
+            """, (actual_username,))
+            profile = c.fetchone()
+
+            c.execute(f"""
+                SELECT id, content, image_path, timestamp
+                FROM posts
+                WHERE username = {ph}
+                ORDER BY timestamp DESC
+                LIMIT 20
+            """, (actual_username,))
+            posts = [dict(r) if hasattr(r, 'keys') else r for r in c.fetchall()]
+
+            c.execute(f"""
+                SELECT c.id, c.name
+                FROM communities c
+                JOIN user_communities uc ON c.id = uc.community_id
+                JOIN users u ON uc.user_id = u.id
+                WHERE u.username = {ph}
+                ORDER BY c.name
+            """, (actual_username,))
+            communities = [dict(r) if hasattr(r, 'keys') else r for r in c.fetchall()]
+
+            return jsonify({
+                'success': True,
+                'profile': dict(profile) if profile and hasattr(profile, 'keys') else profile,
+                'posts': posts,
+                'communities': communities
+            })
+    except Exception as e:
+        logger.error(f"API profile error for {username}: {e}")
+        return jsonify({'success': False, 'error': 'Server error'}), 500
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session, flash, abort, send_from_directory, Response
 # from flask_wtf.csrf import CSRFProtect, generate_csrf, validate_csrf as wtf_validate_csrf
 import os
@@ -3293,7 +3345,7 @@ def public_profile(username):
                 return redirect(url_for('feed'))
             actual_username = user['username'] if hasattr(user, 'keys') else user[0]
             
-            # Get profile data - LEFT JOIN ensures we get user data even if no profile exists
+            # Get profile data for JSON API fallback
             c.execute(f"""
                 SELECT u.username, u.email, u.subscription,
                        p.display_name, p.bio, p.location, p.website, 
@@ -3343,19 +3395,31 @@ def public_profile(username):
             # Check if viewing own profile
             is_own_profile = 'username' in session and session['username'] == actual_username
             
-            return render_template('public_profile.html',
-                                 profile=profile_data,
-                                 posts=posts,
-                                 communities=communities,
-                                 is_own_profile=is_own_profile,
-                                 username=session.get('username'))
+            try:
+                base_dir = os.path.dirname(os.path.abspath(__file__))
+                dist_dir = os.path.join(base_dir, 'client', 'dist')
+                # Serve React app; client route /profile/:username will fetch JSON via /api
+                return send_from_directory(dist_dir, 'index.html')
+            except Exception:
+                # Fallback to server-rendered template if React build missing
+                return render_template('public_profile.html',
+                                     profile=profile_data,
+                                     posts=posts,
+                                     communities=communities,
+                                     is_own_profile=is_own_profile,
+                                     username=session.get('username'))
                                  
     except Exception as e:
         logger.error(f"Error loading profile for {username}: {str(e)}")
         import traceback
         logger.error(f"Traceback: {traceback.format_exc()}")
-        flash('Error loading profile', 'error')
-        return redirect(url_for('feed'))
+        try:
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            dist_dir = os.path.join(base_dir, 'client', 'dist')
+            return send_from_directory(dist_dir, 'index.html')
+        except Exception:
+            flash('Error loading profile', 'error')
+            return redirect(url_for('feed'))
 
 @app.route('/account_settings')
 @login_required
