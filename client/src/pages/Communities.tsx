@@ -234,18 +234,21 @@ function ParentTimeline({ parentId }:{ parentId:number }){
 
   if (loading) return null
   if (error) return null
-  if (!posts.length) return null
 
   return (
-    <div className="bg-white/5 backdrop-blur rounded-xl p-3 border border-white/10">
+    <div className="bg:white/5 backdrop-blur rounded-xl p-3 border border-white/10">
       <div className="text-sm font-semibold mb-2">Home Timeline</div>
-      <div className="space-y-2">
-        {posts.map(p => (
-          <div key={p.id} className="text-sm text-white/80">
-            <span className="text-white/60">[{p.community_name || 'Community'}]</span> {p.content || ''}
-          </div>
-        ))}
-      </div>
+      {posts.length === 0 ? (
+        <div className="text-[#9fb0b5] text-sm">No posts created in the past 48h</div>
+      ) : (
+        <div className="space-y-2">
+          {posts.map(p => (
+            <div key={p.id} className="text-sm text-white/80">
+              <span className="text-white/60">[{p.community_name || 'Community'}]</span> {p.content || ''}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
