@@ -1,55 +1,4 @@
-@app.route('/api/profile/<username>')
-def api_public_profile(username):
-    """JSON API for public profile used by React page."""
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            ph = get_sql_placeholder()
-            c.execute(f"SELECT username FROM users WHERE LOWER(username)=LOWER({ph})", (username,))
-            user = c.fetchone()
-            if not user:
-                return jsonify({'success': False, 'error': 'User not found'}), 404
-            actual_username = user['username'] if hasattr(user, 'keys') else user[0]
-
-            c.execute(f"""
-                SELECT u.username,
-                       p.display_name, p.bio, p.location, p.website,
-                       p.instagram, p.twitter, p.profile_picture, p.cover_photo,
-                       p.is_public
-                FROM users u
-                LEFT JOIN user_profiles p ON u.username = p.username
-                WHERE u.username = {ph}
-            """, (actual_username,))
-            profile = c.fetchone()
-
-            c.execute(f"""
-                SELECT id, content, image_path, timestamp
-                FROM posts
-                WHERE username = {ph}
-                ORDER BY timestamp DESC
-                LIMIT 20
-            """, (actual_username,))
-            posts = [dict(r) if hasattr(r, 'keys') else r for r in c.fetchall()]
-
-            c.execute(f"""
-                SELECT c.id, c.name
-                FROM communities c
-                JOIN user_communities uc ON c.id = uc.community_id
-                JOIN users u ON uc.user_id = u.id
-                WHERE u.username = {ph}
-                ORDER BY c.name
-            """, (actual_username,))
-            communities = [dict(r) if hasattr(r, 'keys') else r for r in c.fetchall()]
-
-            return jsonify({
-                'success': True,
-                'profile': dict(profile) if profile and hasattr(profile, 'keys') else profile,
-                'posts': posts,
-                'communities': communities
-            })
-    except Exception as e:
-        logger.error(f"API profile error for {username}: {e}")
-        return jsonify({'success': False, 'error': 'Server error'}), 500
+from flask import Flask, render_template, request, jsonify, redirect, url_for, session, flash, abort, send_from_directory, Response
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session, flash, abort, send_from_directory, Response
 # from flask_wtf.csrf import CSRFProtect, generate_csrf, validate_csrf as wtf_validate_csrf
 import os
@@ -3323,6 +3272,61 @@ def admin_test():
         return redirect(url_for('index'))
     return "Admin test route is working!"
                     
+
+@app.route('/api/profile/<username>')
+def api_public_profile(username):
+    """JSON API for public profile used by React page."""
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            c.execute(f"SELECT username FROM users WHERE LOWER(username)=LOWER({ph})", (username,))
+            user = c.fetchone()
+            if not user:
+                return jsonify({'success': False, 'error': 'User not found'}), 404
+            actual_username = user['username'] if hasattr(user, 'keys') else user[0]
+
+            c.execute(f"""
+                SELECT u.username,
+                       p.display_name, p.bio, p.location, p.website,
+                       p.instagram, p.twitter, p.profile_picture, p.cover_photo,
+                       p.is_public
+                FROM users u
+                LEFT JOIN user_profiles p ON u.username = p.username
+                WHERE u.username = {ph}
+            """, (actual_username,))
+            profile = c.fetchone()
+
+            c.execute(f"""
+                SELECT id, content, image_path, timestamp
+                FROM posts
+                WHERE username = {ph}
+                ORDER BY timestamp DESC
+                LIMIT 20
+            """, (actual_username,))
+            posts = [dict(r) if hasattr(r, 'keys') else {
+                'id': r[0], 'content': r[1], 'image_path': r[2], 'timestamp': r[3]
+            } for r in c.fetchall()]
+
+            c.execute(f"""
+                SELECT c.id, c.name
+                FROM communities c
+                JOIN user_communities uc ON c.id = uc.community_id
+                JOIN users u ON uc.user_id = u.id
+                WHERE u.username = {ph}
+                ORDER BY c.name
+            """, (actual_username,))
+            communities = [dict(r) if hasattr(r, 'keys') else {'id': r[0], 'name': r[1]} for r in c.fetchall()]
+
+            return jsonify({
+                'success': True,
+                'profile': dict(profile) if profile and hasattr(profile, 'keys') else (dict(profile) if profile else None),
+                'posts': posts,
+                'communities': communities
+            })
+    except Exception as e:
+        logger.error(f"API profile error for {username}: {e}")
+        return jsonify({'success': False, 'error': 'Server error'}), 500
 
 @app.route('/profile/<username>')
 def public_profile(username):
