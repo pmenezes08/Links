@@ -19,35 +19,44 @@ export default function PremiumDashboard() {
   useEffect(() => { setTitle('Dashboard') }, [setTitle])
   const navigate = useNavigate()
 
+  async function fetchJson(url: string){
+    try{
+      const r = await fetch(url, { credentials:'include' })
+      const ct = r.headers.get('content-type')||''
+      let bodyText = ''
+      try{ bodyText = await r.clone().text() }catch{}
+      if (!ct.includes('application/json')){
+        try{ await fetch('/api/client_log', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ level:'error', type:'dashboard_fetch', url, status:r.status, ct, body: bodyText.slice(0,200) }) }) }catch{}
+      }
+      const data = await r.json()
+      return data
+    }catch(err:any){
+      try{ await fetch('/api/client_log', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ level:'error', type:'dashboard_fetch_error', url, message: String(err) }) }) }catch{}
+      return null
+    }
+  }
+
   useEffect(() => {
     async function loadUserData() {
       try {
         // Check gym membership
-        const gymResponse = await fetch('/api/check_gym_membership', {
-          method: 'GET',
-          credentials: 'include'
-        })
-        const gymData = await gymResponse.json()
+        const gymData = await fetchJson('/api/check_gym_membership')
         setHasGymAccess(gymData.hasGymAccess || false)
 
         // Get all user communities
-        const parentResponse = await fetch('/api/user_parent_community', {
-          method: 'GET',
-          credentials: 'include'
-        })
-        const parentData = await parentResponse.json()
+        const parentData = await fetchJson('/api/user_parent_community')
         console.log('Dashboard: Parent communities API response:', parentData)
         if (parentData.success && parentData.communities) {
           console.log('Dashboard: Setting communities:', parentData.communities)
           setCommunities(parentData.communities)
         } else {
           console.log('Dashboard: No communities found or API error')
+          setCommunities([])
         }
 
         // Fetch hierarchical communities to detect which parents have children
         try {
-          const hierResp = await fetch('/api/user_communities_hierarchical', { credentials: 'include' })
-          const hierData = await hierResp.json()
+          const hierData = await fetchJson('/api/user_communities_hierarchical')
           const parents = new Set<number>()
           if (hierData?.success && Array.isArray(hierData.communities)) {
             for (const c of hierData.communities) {
@@ -114,9 +123,13 @@ export default function PremiumDashboard() {
 
         {/* Cards grid */}
         <div className="flex items-start justify-center px-3 md:ml-52 py-6">
-          <div className="w-full max-w-5xl grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {/* Show all communities */}
-            {communities.map(community => {
+          <div className="w-full max-w-5xl">
+            {communities.length === 0 ? (
+              <div className="text-[#9fb0b5] text-sm px-2 py-8 text-center">No communities found.</div>
+            ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {/* Show all communities */}
+              {communities.map(community => {
               const typeLower = (community.type || '').toLowerCase()
               const hasChildren = parentsWithChildren.has(community.id) || ((community.type || '').toLowerCase() === 'university')
               const onCardClick = () => {
@@ -136,7 +149,9 @@ export default function PremiumDashboard() {
                   onClick={onCardClick} 
                 />
               )
-            })}
+              })}
+            </div>
+            )}
           </div>
         </div>
 
