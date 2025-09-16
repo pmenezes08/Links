@@ -1951,11 +1951,11 @@ def api_community_group_feed(parent_id: int):
 
             placeholders = ','.join([ph for _ in community_ids])
             c.execute(f"""
-                SELECT id, username, content, community_id, created_at, image_path
+                SELECT id, username, content, community_id, created_at, timestamp, image_path
                 FROM posts
                 WHERE community_id IN ({placeholders})
                 ORDER BY id DESC
-                LIMIT 50
+                LIMIT 200
             """, tuple(community_ids))
 
             rows = c.fetchall()
@@ -1969,29 +1969,62 @@ def api_community_group_feed(parent_id: int):
                 if nm:
                     name_map[cid] = nm['name'] if hasattr(nm, 'keys') else nm[0]
 
+            from datetime import datetime, timedelta
+            cutoff = datetime.now() - timedelta(hours=48)
+
+            def parse_dt(created_at_val, timestamp_val):
+                candidates = []
+                if created_at_val:
+                    candidates.append(created_at_val)
+                if timestamp_val:
+                    candidates.append(timestamp_val)
+                for val in candidates:
+                    for fmt in ('%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M', '%m.%d.%y %H:%M'):
+                        try:
+                            return datetime.strptime(str(val), fmt)
+                        except Exception:
+                            continue
+                return None
+
             for row in rows:
                 if hasattr(row, 'keys'):
                     pid = row['id']
-                    posts.append({
+                    dt = parse_dt(row.get('created_at'), row.get('timestamp'))
+                    post_obj = {
                         'id': pid,
                         'username': row.get('username'),
                         'content': row.get('content'),
                         'community_id': row.get('community_id'),
                         'community_name': name_map.get(row.get('community_id')),
-                        'created_at': row.get('created_at'),
+                        'created_at': row.get('created_at') or row.get('timestamp'),
                         'image_path': row.get('image_path')
-                    })
+                    }
+                    if (dt is None) or (dt >= cutoff):
+                        posts.append(post_obj)
                 else:
-                    pid, uname, content, cid, created_at, image_path = row
-                    posts.append({
+                    pid, uname, content, cid, created_at_val, timestamp_val, image_path = row
+                    dt = parse_dt(created_at_val, timestamp_val)
+                    post_obj = {
                         'id': pid,
                         'username': uname,
                         'content': content,
                         'community_id': cid,
                         'community_name': name_map.get(cid),
-                        'created_at': created_at,
+                        'created_at': created_at_val or timestamp_val,
                         'image_path': image_path
-                    })
+                    }
+                    if (dt is None) or (dt >= cutoff):
+                        posts.append(post_obj)
+
+            # Sort by parsed datetime desc
+            def sort_key(p):
+                for fmt in ('%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M', '%m.%d.%y %H:%M'):
+                    try:
+                        return datetime.strptime(str(p.get('created_at') or ''), fmt)
+                    except Exception:
+                        continue
+                return datetime.min
+            posts.sort(key=sort_key, reverse=True)
 
             return jsonify({'success': True, 'posts': posts})
     except Exception as e:
