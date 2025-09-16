@@ -115,7 +115,7 @@ export default function PremiumDashboard() {
               const hasChildren = parentsWithChildren.has(community.id) || ((community.type || '').toLowerCase() === 'university')
               const onCardClick = () => {
                 if (typeLower === 'gym') {
-                  navigate('/gym')
+                  navigate(`/communities?parent_id=${community.id}`)
                 } else if (!hasChildren) {
                   navigate(`/community_feed_react/${community.id}`)
                 } else {

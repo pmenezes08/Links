@@ -72,7 +72,12 @@ export default function Communities(){
             } else {
               setCommunities(all)
               setParentName('')
-              setParentType('')
+              try {
+                // If navigated without parent_id but only one parent root is in view, capture its type
+                const roots = all.filter(c => !c.parent_community_id)
+                if (roots.length === 1) setParentType(roots[0].type || '')
+                else setParentType('')
+              } catch { setParentType('') }
             }
           } else {
             setCommunities(all)
