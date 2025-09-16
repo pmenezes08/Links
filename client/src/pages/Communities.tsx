@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useMemo } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
 
@@ -26,6 +26,14 @@ export default function Communities(){
     const qs = new URLSearchParams(location.search)
     return qs.get('parent_id') ? 'timeline' : 'management'
   })
+  const showTrainingTab = useMemo(() => {
+    const parent = communities && communities.length > 0 ? communities[0] : null
+    if (!parent) return false
+    const parentTypeLower = (parent.type || parentType || '').toLowerCase()
+    if (parentTypeLower === 'gym') return true
+    const children = parent.children || []
+    return children.some(ch => (ch.type || '').toLowerCase() === 'gym')
+  }, [communities, parentType])
   
 
   useEffect(() => {
@@ -141,7 +149,7 @@ export default function Communities(){
               <div className="pt-2 whitespace-nowrap text-center">Community Management</div>
               <div className={`h-0.5 ${activeTab==='management' ? 'bg-[#4db6ac]' : 'bg-transparent'} rounded-full w-16 mx-auto mt-1`} />
             </button>
-            {(parentType || '').toLowerCase() === 'gym' && (
+            {showTrainingTab && (
               <button 
                 type="button" 
                 className={`text-sm font-medium ${activeTab==='training' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`}
@@ -174,7 +182,7 @@ export default function Communities(){
                    </div>
                  )
                }
-               if (pid && activeTab === 'training' && (parentType || '').toLowerCase() === 'gym') {
+               if (pid && activeTab === 'training' && showTrainingTab) {
                  return (
                    <div className="bg-white/5 backdrop-blur rounded-xl p-4 border border-white/10">
                      <div className="text-sm font-semibold mb-3">Your Training</div>
