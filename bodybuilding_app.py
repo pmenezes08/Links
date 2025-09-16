@@ -490,7 +490,6 @@ def add_missing_tables():
     except Exception as e:
         logger.error(f"Error adding missing tables: {e}")
         raise
-
 def init_db():
     """Initialize the database with all required tables."""
     try:
@@ -1287,9 +1286,7 @@ def ensure_admin_member_of_all():
             conn.commit()
     except Exception as e:
         logger.error(f"ensure_admin_member_of_all error: {e}")
-
 ensure_admin_member_of_all()
-
 # Initialize database on application startup
 try:
     ensure_database_exists()
@@ -1837,12 +1834,12 @@ def admin_profile():
             c = conn.cursor()
             
             # Get admin information including profile picture
-            c.execute("""
+            c.execute(f"""
                 SELECT u.username, u.email, u.first_name, u.last_name, u.subscription, u.created_at,
                        p.profile_picture
                 FROM users u
                 LEFT JOIN user_profiles p ON u.username = p.username
-                WHERE u.username = ?
+                WHERE u.username = {get_sql_placeholder()}
             """, (username,))
             admin_info = dict(c.fetchone())
             
@@ -1994,12 +1991,12 @@ def dashboard():
             user = c.fetchone()
             
             # Get user's communities
-            c.execute("""
+            c.execute(f"""
                 SELECT c.id, c.name, c.type
                 FROM communities c
                 JOIN user_communities uc ON c.id = uc.community_id
                 JOIN users u ON uc.user_id = u.id
-                WHERE u.username = ?
+                WHERE u.username = {get_sql_placeholder()}
                 ORDER BY c.name
             """, (username,))
             communities = [{'id': row['id'], 'name': row['name'], 'type': row['type']} for row in c.fetchall()]
@@ -2055,7 +2052,6 @@ def react_assets(filename):
     except Exception as e:
         logger.error(f"Error serving React asset {filename}: {str(e)}")
         abort(404)
-
 @app.route('/api/community_group_feed/<int:parent_id>')
 @login_required
 def api_community_group_feed(parent_id: int):
@@ -2779,7 +2775,6 @@ def debug_communities():
         logger.error(f"Debug communities error: {e}")
         import traceback
         return jsonify({'error': str(e), 'traceback': traceback.format_exc()}), 500
-
 @app.route('/api/admin/dashboard', methods=['GET'])
 @login_required
 def admin_dashboard_api():
@@ -3282,7 +3277,8 @@ def public_profile(username):
             c = conn.cursor()
             
             # Check if user exists
-            c.execute("SELECT username FROM users WHERE username=?", (username,))
+            ph = get_sql_placeholder()
+            c.execute(f"SELECT username FROM users WHERE username = {ph}", (username,))
             user = c.fetchone()
             if not user:
                 logger.warning(f"User not found: {username}")
@@ -3290,7 +3286,7 @@ def public_profile(username):
                 return redirect(url_for('feed'))
             
             # Get profile data - LEFT JOIN ensures we get user data even if no profile exists
-            c.execute("""
+            c.execute(f"""
                 SELECT u.username, u.email, u.subscription, u.age, u.gender, 
                        u.weight, u.height, u.blood_type, u.muscle_mass, u.bmi,
                        u.country, u.city, u.industry,
@@ -3299,7 +3295,7 @@ def public_profile(username):
                        p.is_public
                 FROM users u
                 LEFT JOIN user_profiles p ON u.username = p.username
-                WHERE u.username = ?
+                WHERE u.username = {ph}
             """, (username,))
             
             profile_data = c.fetchone()
@@ -3313,10 +3309,10 @@ def public_profile(username):
             logger.info(f"Profile data found for {username}")
             
             # Get user's posts
-            c.execute("""
+            c.execute(f"""
                 SELECT id, content, image_path, timestamp 
                 FROM posts 
-                WHERE username = ? 
+                WHERE username = {ph} 
                 ORDER BY timestamp DESC 
                 LIMIT 20
             """, (username,))
@@ -3324,12 +3320,12 @@ def public_profile(username):
             
             # Get user's communities
             try:
-                c.execute("""
+                c.execute(f"""
                     SELECT c.id, c.name, c.description, c.accent_color
                     FROM communities c
                     JOIN user_communities uc ON c.id = uc.community_id
                     JOIN users u ON uc.user_id = u.id
-                    WHERE u.username = ?
+                    WHERE u.username = {ph}
                     ORDER BY c.name
                 """, (username,))
                 communities = c.fetchall()
@@ -3395,8 +3391,7 @@ def profile():
             c.execute("""
                 SELECT u.username, u.email, u.subscription,
                        p.display_name, p.bio, p.location, p.website, 
-                       p.instagram, p.twitter, p.profile_picture, p.cover_photo,
-                       p.is_public
+                       p.instagram, p.twitter, p.profile_picture, p.cover_photo
                 FROM users u
                 LEFT JOIN user_profiles p ON u.username = p.username
                 WHERE u.username = ?
@@ -3549,7 +3544,6 @@ def check_profile_picture():
                 return f"No profile found for {username}"
     except Exception as e:
         return f"Error: {str(e)}"
-
 @app.route('/update_public_profile', methods=['POST'])
 @login_required
 def update_public_profile():
@@ -3594,7 +3588,8 @@ def update_public_profile():
                                 logger.warning(f"Could not delete old profile picture: {e}")
             
             # Check if profile exists
-            c.execute("SELECT username FROM user_profiles WHERE username=?", (username,))
+            ph = get_sql_placeholder()
+            c.execute(f"SELECT username FROM user_profiles WHERE username = {ph}", (username,))
             exists = c.fetchone()
             
             if exists:
@@ -4331,7 +4326,6 @@ def get_messages():
     except Exception as e:
         logger.error(f"Error fetching messages: {str(e)}")
         return jsonify({'success': False, 'error': 'Failed to fetch messages'})
-
 @app.route('/send_message', methods=['POST'])
 @login_required
 def send_message():
@@ -5110,7 +5104,6 @@ def remove_community_member():
     except Exception as e:
         logger.error(f"Error removing community member for {username}: {str(e)}")
         return jsonify({'success': False, 'error': str(e)})
-
 @app.route('/update_user_password', methods=['POST'])
 @login_required
 def update_user_password():
@@ -5128,7 +5121,8 @@ def update_user_password():
         with get_db_connection() as conn:
             c = conn.cursor()
             # Check if target user exists
-            c.execute("SELECT id FROM users WHERE username = ?", (target_username,))
+            ph = get_sql_placeholder()
+            c.execute(f"SELECT id FROM users WHERE username = {ph}", (target_username,))
             user = c.fetchone()
             if not user:
                 return jsonify({'success': False, 'error': 'User not found'})
@@ -5758,7 +5752,6 @@ def check_password_status():
     except Exception as e:
         logger.error(f"Error checking password status: {str(e)}")
         return f"Error: {str(e)}", 500
-
 @app.route('/check_duplicate_users')
 def check_duplicate_users():
     """Check for duplicate usernames in the database - ADMIN ONLY"""
@@ -6500,8 +6493,6 @@ def delete_read_notifications():
     except Exception as e:
         logger.error(f"Error deleting read notifications: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
-
-
 @app.route('/post_status', methods=['POST'])
 @login_required
 def post_status():
@@ -7251,7 +7242,6 @@ def report_issue():
     except Exception as e:
         logger.error(f"Error reporting issue: {str(e)}")
         return jsonify({'success': False, 'error': str(e)})
-
 @app.route('/get_community_issues')
 @login_required
 def get_community_issues():
@@ -7950,7 +7940,8 @@ def appoint_community_admin(community_id):
             c = conn.cursor()
             
             # Check if user exists
-            c.execute("SELECT 1 FROM users WHERE username = ?", (new_admin,))
+            ph = get_sql_placeholder()
+            c.execute(f"SELECT username FROM users WHERE username = {ph}", (new_admin,))
             if not c.fetchone():
                 return jsonify({'success': False, 'message': 'User not found'}), 404
             
@@ -8818,9 +8809,6 @@ def admin_ads_overview():
         logger.error(f"Error loading admin ads overview: {e}")
         flash('Error loading ads overview', 'error')
         return redirect(url_for('admin'))
-
-@app.route('/get_calendar_events')
-@login_required
 def get_calendar_events():
     """Get all calendar events"""
     try:
@@ -9555,7 +9543,6 @@ def get_event_rsvp_details():
     except Exception as e:
         logger.error(f"Error getting RSVP details: {str(e)}")
         return jsonify({'success': False, 'message': str(e)}), 500
-
 @app.route('/delete_calendar_event', methods=['POST'])
 @login_required
 def delete_calendar_event():
@@ -10299,7 +10286,6 @@ def delete_community():
     except Exception as e:
         logger.error(f"Error deleting community: {str(e)}")
         return jsonify({'success': False, 'error': 'Failed to delete community'}), 500
-
 @app.route('/migrate_parent_communities')
 @login_required
 def migrate_parent_communities():
@@ -11005,7 +10991,6 @@ def community_feed_smart(community_id):
     except Exception as e:
         logger.error(f"Error in community_feed_smart: {e}")
         abort(500)
-
 @app.route('/api/community_feed/<int:community_id>')
 @login_required
 def api_community_feed(community_id):
@@ -11685,7 +11670,6 @@ def get_all_communities_debug():
     except Exception as e:
         logger.error(f"Debug all communities error: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
-
 @app.route('/api/user_parent_community')
 @login_required
 def get_user_parent_community():
@@ -13212,7 +13196,6 @@ def get_exercise_progress():
         
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
-
 @app.route('/get_exercise_one_rm', methods=['GET'])
 @login_required
 def get_exercise_one_rm():
@@ -13976,7 +13959,6 @@ def add_exercise_to_workout():
         
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
-
 @app.route('/remove_exercise_from_workout', methods=['POST'])
 def remove_exercise_from_workout():
     if 'username' not in session:
@@ -14015,7 +13997,6 @@ def remove_exercise_from_workout():
         
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
-
 @app.route('/delete_workout', methods=['POST'])
 def delete_workout():
     if 'username' not in session:
@@ -14773,7 +14754,6 @@ def debug_table_structure():
         
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
-
 @app.route('/cleanup_missing_images')
 @login_required
 def cleanup_missing_images():
