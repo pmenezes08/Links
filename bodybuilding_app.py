@@ -1353,6 +1353,81 @@ def ensure_community_type_column():
 
 ensure_community_type_column()
 
+def ensure_paulo_member_of_gym():
+    """Ensure user 'Paulo' is a member of the Gym community."""
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+
+            # Find Paulo (case-insensitive)
+            try:
+                if USE_MYSQL:
+                    c.execute(f"SELECT id, username FROM users WHERE LOWER(username)=LOWER({ph})", ('Paulo',))
+                else:
+                    c.execute(f"SELECT id, username FROM users WHERE LOWER(username)=LOWER({ph})", ('Paulo',))
+                urow = c.fetchone()
+                if not urow:
+                    logger.info("Paulo user not found; skipping gym membership ensure")
+                    return
+                user_id = urow['id'] if hasattr(urow, 'keys') else urow[0]
+            except Exception as e:
+                logger.warning(f"Failed to find Paulo user: {e}")
+                return
+
+            # Find Gym community by name/type/community_type
+            gym_id = None
+            try:
+                if USE_MYSQL:
+                    c.execute("""
+                        SELECT id FROM communities 
+                        WHERE LOWER(name)='gym' OR LOWER(type)='gym' OR LOWER(COALESCE(community_type, ''))='gym'
+                        ORDER BY id LIMIT 1
+                    """)
+                else:
+                    c.execute("""
+                        SELECT id FROM communities 
+                        WHERE LOWER(name)='gym' OR LOWER(type)='gym' OR LOWER(COALESCE(community_type, ''))='gym'
+                        ORDER BY id LIMIT 1
+                    """)
+                crow = c.fetchone()
+                if crow:
+                    gym_id = crow['id'] if hasattr(crow, 'keys') else crow[0]
+            except Exception as e:
+                logger.warning(f"Failed to find Gym community: {e}")
+                return
+
+            if not gym_id:
+                logger.info("Gym community not found; skipping Paulo gym membership ensure")
+                return
+
+            # Ensure membership exists
+            try:
+                c.execute(f"SELECT 1 FROM user_communities WHERE user_id={ph} AND community_id={ph}", (user_id, gym_id))
+                exists = c.fetchone() is not None
+                if not exists:
+                    if USE_MYSQL:
+                        c.execute(
+                            "INSERT IGNORE INTO user_communities (user_id, community_id, joined_at) VALUES (%s, %s, NOW())",
+                            (user_id, gym_id)
+                        )
+                    else:
+                        from datetime import datetime
+                        c.execute(
+                            "INSERT INTO user_communities (user_id, community_id, joined_at) VALUES (?, ?, ?)",
+                            (user_id, gym_id, datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+                        )
+                    conn.commit()
+                    logger.info(f"Added Paulo (user_id={user_id}) to Gym community (id={gym_id})")
+                else:
+                    logger.info("Paulo is already a member of the Gym community")
+            except Exception as e:
+                logger.error(f"Failed to ensure Paulo gym membership: {e}")
+    except Exception as e:
+        logger.error(f"ensure_paulo_member_of_gym error: {e}")
+
+ensure_paulo_member_of_gym()
+
 # Register the format_date Jinja2 filter
 @app.template_filter('format_date')
 def format_date(date_str, format_str):
