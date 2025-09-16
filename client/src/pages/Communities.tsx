@@ -184,7 +184,6 @@ export default function Communities(){
                if (pid && activeTab === 'training' && showTrainingTab) {
                  return (
                    <div className="bg-white/5 backdrop-blur rounded-xl p-4 border border-white/10">
-                    <div className="text-sm font-semibold mb-3">Your Training</div>
                      <button
                        className="px-4 py-2 rounded-lg bg-[#4db6ac] text-black text-sm hover:brightness-110"
                        onClick={()=> {
