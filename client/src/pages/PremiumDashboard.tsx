@@ -11,6 +11,9 @@ export default function PremiumDashboard() {
   const [fabOpen, setFabOpen] = useState(false)
   const [showJoinModal, setShowJoinModal] = useState(false)
   const [joinCode, setJoinCode] = useState('')
+  const [showCreateModal, setShowCreateModal] = useState(false)
+  const [newCommName, setNewCommName] = useState('')
+  const [newCommType, setNewCommType] = useState<'Gym'|'University'>('Gym')
   const [parentsWithChildren, setParentsWithChildren] = useState<Set<number>>(new Set())
   const { setTitle } = useHeader()
   useEffect(() => { setTitle('Dashboard') }, [setTitle])
@@ -140,8 +143,8 @@ export default function PremiumDashboard() {
         {/* Floating Action Button */}
         <div className="fixed bottom-6 right-6 z-50">
           {fabOpen && (
-            <div className="mb-2 rounded-xl border border-white/10 bg-black/80 backdrop-blur p-2 w-48 shadow-lg">
-              <button className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/5 text-sm" onClick={()=> { setFabOpen(false); location.href = '/communities' }}>Create Community</button>
+            <div className="mb-2 rounded-xl border border-white/10 bg:black/80 backdrop-blur p-2 w-48 shadow-lg">
+              <button className="w-full text-left px-3 py-2 rounded-lg hover:bg:white/5 text-sm" onClick={()=> { setFabOpen(false); setShowCreateModal(true) }}>Create Community</button>
               <button className="w-full text-left px-3 py-2 rounded-lg hover:bg:white/5 text-sm" onClick={()=> { setFabOpen(false); setShowJoinModal(true) }}>Join Community</button>
             </div>
           )}
@@ -152,9 +155,50 @@ export default function PremiumDashboard() {
       </div>
 
       {/* Communities modal removed; button links to /communities */}
+      {showCreateModal && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur flex items-center justify-center" onClick={(e)=> e.currentTarget===e.target && setShowCreateModal(false)}>
+          <div className="w-[92%] max-w-sm rounded-2xl border border-white/10 bg-[#0b0f10] p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="font-semibold text-sm">Create Community</div>
+              <button className="p-2 rounded-md hover:bg:white/5" onClick={()=> setShowCreateModal(false)} aria-label="Close"><i className="fa-solid fa-xmark"/></button>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs text-[#9fb0b5] mb-1">Community Name</label>
+                <input value={newCommName} onChange={e=> setNewCommName(e.target.value)} placeholder="e.g., My Gym" className="w-full px-3 py-2 rounded-md bg-black border border:white/15 text-sm" />
+              </div>
+              <div>
+                <label className="block text-xs text-[#9fb0b5] mb-1">Community Type</label>
+                <select value={newCommType} onChange={e=> setNewCommType(e.target.value as any)} className="w-full px-3 py-2 rounded-md bg-black border border:white/15 text-sm">
+                  <option value="Gym">Gym</option>
+                  <option value="University">University</option>
+                </select>
+              </div>
+              <div className="flex items-center justify-end gap-2">
+                <button className="px-3 py-2 rounded-md bg:white/10 hover:bg:white/15" onClick={()=> setShowCreateModal(false)}>Cancel</button>
+                <button className="px-3 py-2 rounded-md bg-[#4db6ac] text-black hover:brightness-110" onClick={async()=> {
+                  if (!newCommName.trim()) { alert('Please provide a name'); return }
+                  try{
+                    const fd = new URLSearchParams({ name: newCommName.trim(), type: newCommType })
+                    const r = await fetch('/create_community', { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
+                    const j = await r.json().catch(()=>null)
+                    if (j?.success){
+                      setShowCreateModal(false); setNewCommName('');
+                      // Refresh dashboard communities
+                      const resp = await fetch('/api/user_parent_community', { method:'GET', credentials:'include' })
+                      const data = await resp.json().catch(()=>null)
+                      if (data?.success && data.communities) setCommunities(data.communities)
+                    } else alert(j?.error || 'Failed to create community')
+                  }catch{ alert('Failed to create community') }
+                }}>Create</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       {showJoinModal && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur flex items-center justify-center" onClick={(e)=> e.currentTarget===e.target && setShowJoinModal(false)}>
-          <div className="w-[92%] max-w-sm rounded-2xl border border:white/10 bg-[#0b0f10] p-4">
+          <div className="w-[92%] max-w-sm rounded-2xl border border-white/10 bg-[#0b0f10] p-4">
             <div className="flex items-center justify-between mb-3">
               <div className="font-semibold text-sm">Join Community</div>
               <button className="p-2 rounded-md hover:bg:white/5" onClick={()=> setShowJoinModal(false)} aria-label="Close"><i className="fa-solid fa-xmark"/></button>
