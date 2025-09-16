@@ -103,11 +103,11 @@ export default function Communities(){
         <div className="max-w-2xl mx-auto h-full flex items-center gap-2">
           <button
             type="button"
-            className="px-3 text-sm text-[#9fb0b5] hover:text-white/90"
+            className="px-3 text-sm text-[#9fb0b5] hover:text-white/90 shrink-0"
             onClick={()=> navigate('/premium_dashboard')}
             aria-label="Back to Dashboard"
           >
-            ← Back
+            ←
           </button>
           <button 
             type="button" 
@@ -120,15 +120,15 @@ export default function Communities(){
               if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
             }}
           >
-            <div className="pt-2">Home Timeline</div>
+            <div className="pt-2 whitespace-nowrap">Home Timeline</div>
             <div className={`h-0.5 ${activeTab==='timeline' ? 'bg-[#4db6ac]' : 'bg-transparent'} rounded-full w-16 mx-auto mt-1`} />
           </button>
           <button 
             type="button" 
-            className={`flex-1 text-center text-sm font-medium ${activeTab==='management' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`}
+            className={`flex-1 text-center text-sm font-medium ${activeTab==='management' ? 'text:white/95' : 'text-[#9fb0b5] hover:text-white/90'}`}
             onClick={()=> setActiveTab('management')}
           >
-            <div className="pt-2">Community Management</div>
+            <div className="pt-2 whitespace-nowrap">Community Management</div>
             <div className={`h-0.5 ${activeTab==='management' ? 'bg-[#4db6ac]' : 'bg-transparent'} rounded-full w-16 mx-auto mt-1`} />
           </button>
         </div>
