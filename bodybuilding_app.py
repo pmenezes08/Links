@@ -2040,6 +2040,22 @@ def premium_dashboard():
         logger.error(f"Error in premium_dashboard: {str(e)}")
         return ("Internal Server Error", 500)
 
+@app.route('/api/client_log', methods=['POST'])
+def api_client_log():
+    try:
+        data = request.get_json(silent=True) or {}
+        level = (data.get('level') or 'error').lower()
+        prefix = 'CLIENT'
+        msg = json.dumps(data)
+        if level == 'warn':
+            logger.warning(f"{prefix}: {msg}")
+        else:
+            logger.error(f"{prefix}: {msg}")
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"Error in api_client_log: {e}")
+        return jsonify({'success': False}), 500
+
 @app.route('/assets/<path:filename>')
 def react_assets(filename):
     try:
