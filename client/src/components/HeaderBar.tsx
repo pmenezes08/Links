@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import Avatar from './Avatar'
 
@@ -14,28 +14,6 @@ export default function HeaderBar({ title, username, avatarUrl }: HeaderBarProps
   const [menuOpen, setMenuOpen] = useState(false)
   const [unreadMsgs, setUnreadMsgs] = useState<number>(0)
   const [unreadNotifs, setUnreadNotifs] = useState<number>(0)
-  const [hasGymAccess, setHasGymAccess] = useState(false)
-
-  useEffect(() => {
-    async function checkGymMembership() {
-      try {
-        const response = await fetch('/api/check_gym_membership', {
-          method: 'GET',
-          credentials: 'include'
-        })
-        const data = await response.json()
-        // This will be true for Paulo due to backend special access
-        setHasGymAccess(data.hasGymAccess || false)
-      } catch (error) {
-        console.error('Error checking gym membership:', error)
-        setHasGymAccess(false)
-      }
-    }
-    
-    if (username) {
-      checkGymMembership()
-    }
-  }, [username])
 
   // Light polling for unread counts
   // Using window.setInterval to avoid importing useEffect here per minimal diff constraints
@@ -128,10 +106,9 @@ export default function HeaderBar({ title, username, avatarUrl }: HeaderBarProps
             <a className="block px-4 py-3 rounded-xl hover:bg:white/5 text-white" href="/premium_dashboard">Dashboard</a>
             <a className="block px-4 py-3 rounded-xl hover:bg:white/5 text-white" href="/profile">Profile</a>
             <a className="block px-4 py-3 rounded-xl hover:bg:white/5 text:white" href="/user_chat">Messages</a>
-            <button className="block w-full text-left px-4 py-3 rounded-xl hover:bg:white/5 text-white" onClick={()=> { setMenuOpen(false); navigate('/communities') }}>Your Communities</button>
-            {hasGymAccess && <a className="block px-4 py-3 rounded-xl hover:bg:white/5 text-white" href="/your_sports">Your Sports</a>}
-            <a className="block px-4 py-3 rounded-xl hover:bg:white/5 text-white" href="/logout">Logout</a>
-            <a className="block px-4 py-3 rounded-xl hover:bg:white/5 text-white" href="/account_settings">Settings</a>
+            <button className="block w-full text-left px-4 py-3 rounded-xl hover:bg:white/5 text:white" onClick={()=> { setMenuOpen(false); navigate('/communities') }}>Your Communities</button>
+            <a className="block px-4 py-3 rounded-xl hover:bg:white/5 text:white" href="/logout">Logout</a>
+            <a className="block px-4 py-3 rounded-xl hover:bg:white/5 text:white" href="/account_settings">Settings</a>
           </div>
           <div className="flex-1 h-full" onClick={()=> setMenuOpen(false)} />
         </div>

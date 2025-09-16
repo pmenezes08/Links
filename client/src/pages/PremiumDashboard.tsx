@@ -131,12 +131,6 @@ export default function PremiumDashboard() {
                 />
               )
             })}
-            {hasGymAccess && (
-              <>
-                <Card iconClass="fa-solid fa-dumbbell" title="Gym" onClick={() => navigate('/gym')} />
-                <Card iconClass="fa-solid fa-person-snowboarding" title="Your Sports" onClick={() => (location.assign('/your_sports'))} />
-              </>
-            )}
           </div>
         </div>
       </div>
