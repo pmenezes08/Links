@@ -3283,27 +3283,26 @@ def public_profile(username):
         with get_db_connection() as conn:
             c = conn.cursor()
             
-            # Check if user exists
+            # Check if user exists (case-insensitive)
             ph = get_sql_placeholder()
-            c.execute(f"SELECT username FROM users WHERE username = {ph}", (username,))
+            c.execute(f"SELECT username FROM users WHERE LOWER(username) = LOWER({ph})", (username,))
             user = c.fetchone()
             if not user:
                 logger.warning(f"User not found: {username}")
                 flash('User not found', 'error')
                 return redirect(url_for('feed'))
+            actual_username = user['username'] if hasattr(user, 'keys') else user[0]
             
             # Get profile data - LEFT JOIN ensures we get user data even if no profile exists
             c.execute(f"""
-                SELECT u.username, u.email, u.subscription, u.age, u.gender, 
-                       u.weight, u.height, u.blood_type, u.muscle_mass, u.bmi,
-                       u.country, u.city, u.industry,
+                SELECT u.username, u.email, u.subscription,
                        p.display_name, p.bio, p.location, p.website, 
                        p.instagram, p.twitter, p.profile_picture, p.cover_photo,
                        p.is_public
                 FROM users u
                 LEFT JOIN user_profiles p ON u.username = p.username
                 WHERE u.username = {ph}
-            """, (username,))
+            """, (actual_username,))
             
             profile_data = c.fetchone()
             
@@ -3322,7 +3321,7 @@ def public_profile(username):
                 WHERE username = {ph} 
                 ORDER BY timestamp DESC 
                 LIMIT 20
-            """, (username,))
+            """, (actual_username,))
             posts = c.fetchall()
             
             # Get user's communities
@@ -3334,7 +3333,7 @@ def public_profile(username):
                     JOIN users u ON uc.user_id = u.id
                     WHERE u.username = {ph}
                     ORDER BY c.name
-                """, (username,))
+                """, (actual_username,))
                 communities = c.fetchall()
                 logger.info(f"Found {len(communities)} communities for {username}")
             except Exception as e:
@@ -3342,7 +3341,7 @@ def public_profile(username):
                 communities = []  # Continue with empty communities list instead of failing
             
             # Check if viewing own profile
-            is_own_profile = 'username' in session and session['username'] == username
+            is_own_profile = 'username' in session and session['username'] == actual_username
             
             return render_template('public_profile.html',
                                  profile=profile_data,
@@ -5759,7 +5758,6 @@ def check_password_status():
     except Exception as e:
         logger.error(f"Error checking password status: {str(e)}")
         return f"Error: {str(e)}", 500
-@app.route('/check_duplicate_users')
 def check_duplicate_users():
     """Check for duplicate usernames in the database - ADMIN ONLY"""
     if session.get('username') != 'admin':
@@ -7249,8 +7247,6 @@ def report_issue():
     except Exception as e:
         logger.error(f"Error reporting issue: {str(e)}")
         return jsonify({'success': False, 'error': str(e)})
-@app.route('/get_community_issues')
-@login_required
 def get_community_issues():
     """Get issues for a specific community"""
     try:
@@ -11677,8 +11673,6 @@ def get_all_communities_debug():
     except Exception as e:
         logger.error(f"Debug all communities error: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
-@app.route('/api/user_parent_community')
-@login_required
 def get_user_parent_community():
     """Get communities to display on dashboard - SIMPLIFIED"""
     username = session.get('username')
