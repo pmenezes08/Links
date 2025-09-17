@@ -257,15 +257,20 @@ export default function PostDetail(){
           />
           {(composerActive || !!content || !!file) ? (
             <div className="flex items-center justify-end gap-2 flex-wrap">
-              <input ref={fileInputRef} type="file" accept="image/*" onChange={(e)=> setFile(e.target.files?.[0]||null)} style={{ display: 'none' }} />
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={(e)=> setFile(e.target.files?.[0]||null)}
+                style={{ position:'absolute', left:'-9999px', width:1, height:1, opacity:0 }}
+              />
               <button
                 type="button"
-                className="px-3 py-2 rounded-full border border-white/10 text-sm text-[#9fb0b5] hover:border-[#2a3f41] flex items-center gap-2"
+                className="p-2 rounded-full hover:bg-white/10"
                 onClick={()=> fileInputRef.current?.click()}
                 aria-label="Add picture"
               >
-                <i className="fa-regular fa-image text-base" style={{ color: '#4db6ac' }} />
-                {file ? <span className="max-w-[160px] truncate">{file.name}</span> : <span>Add picture</span>}
+                <i className="fa-regular fa-image text-xl" style={{ color: '#4db6ac' }} />
               </button>
               {/(https?:\/\/[^\s]+|www\.[^\s]+)/.test(content) ? (
                 <button className="px-2.5 py-1.5 rounded-full border border-white/10 text-xs text-[#9fb0b5] hover:border-[#2a3f41] break-words" onClick={()=> {
@@ -350,15 +355,20 @@ function ReplyNode({ reply, depth=0, onToggle, onInlineReply }:{ reply: Reply, d
           {showComposer ? (
             <div className="mt-2 flex items-center gap-2">
               <input className="flex-1 px-3 py-1.5 rounded-full bg-black border border-[#4db6ac] text-[16px] focus:outline-none focus:ring-1 focus:ring-[#4db6ac]" value={text} onChange={(e)=> setText(e.target.value)} placeholder={`Reply to @${reply.username}`} />
-              <input ref={inlineFileRef} type="file" accept="image/*" onChange={(e)=> setImg(e.target.files?.[0]||null)} style={{ display: 'none' }} />
+              <input
+                ref={inlineFileRef}
+                type="file"
+                accept="image/*"
+                onChange={(e)=> setImg(e.target.files?.[0]||null)}
+                style={{ position:'absolute', left:'-9999px', width:1, height:1, opacity:0 }}
+              />
               <button
                 type="button"
-                className="px-3 py-2 rounded-full border border-white/10 text-sm text-[#9fb0b5] hover:border-[#2a3f41] flex items-center gap-2"
+                className="p-2 rounded-full hover:bg-white/10"
                 onClick={()=> inlineFileRef.current?.click()}
                 aria-label="Add picture"
               >
-                <i className="fa-regular fa-image text-base" style={{ color: '#4db6ac' }} />
-                {img ? <span className="max-w-[120px] truncate">{img.name}</span> : <span>Picture</span>}
+                <i className="fa-regular fa-image text-xl" style={{ color: '#4db6ac' }} />
               </button>
               <button className="px-2.5 py-1.5 rounded-full bg-[#4db6ac] text-white border border-[#4db6ac] hover:brightness-110" onClick={()=> { if (!text && !img) return; onInlineReply(reply.id, text, img || undefined); setText(''); setImg(null); setShowComposer(false) }} aria-label="Send reply">
                 <i className="fa-solid fa-paper-plane" />
