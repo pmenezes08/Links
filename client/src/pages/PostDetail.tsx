@@ -90,6 +90,7 @@ export default function PostDetail(){
   const [content, setContent] = useState('')
   const [file, setFile] = useState<File|null>(null)
   const [currentUser, setCurrentUser] = useState<string | null>(null)
+  const [previewSrc, setPreviewSrc] = useState<string | null>(null)
   
   const fileInputRef = useRef<HTMLInputElement|null>(null)
 
@@ -269,7 +270,12 @@ export default function PostDetail(){
           <div className="px-3 py-2 space-y-2">
             <div className="whitespace-pre-wrap text-[14px] break-words break-all">{renderRichText(post.content)}</div>
             {post.image_path ? (
-              <img src={post.image_path.startsWith('/uploads') || post.image_path.startsWith('/static') ? post.image_path : `/uploads/${post.image_path}`} alt="" className="block mx-auto max-w-full max-h-[360px] rounded border border-white/10" />
+              <img
+                src={post.image_path.startsWith('/uploads') || post.image_path.startsWith('/static') ? post.image_path : `/uploads/${post.image_path}`}
+                alt=""
+                className="block mx-auto max-w-full max-h-[360px] rounded border border-white/10 cursor-zoom-in"
+                onClick={(e)=> setPreviewSrc((e.currentTarget as HTMLImageElement).src)}
+              />
             ) : null}
             <div className="flex items-center gap-2 text-xs">
               <Reaction icon="fa-regular fa-heart" count={post.reactions?.['heart']||0} active={post.user_reaction==='heart'} onClick={()=> toggleReaction('heart')} />
@@ -281,10 +287,20 @@ export default function PostDetail(){
 
         <div className="mt-3 rounded-2xl border border-white/10">
           {post.replies.map(r => (
-            <ReplyNode key={r.id} reply={r} currentUser={currentUser} onToggle={(id, reaction)=> toggleReplyReaction(id, reaction)} onInlineReply={(id, text, file)=> submitInlineReply(id, text, file)} onDelete={(id)=> deleteReply(id)} />
+            <ReplyNode key={r.id} reply={r} currentUser={currentUser} onToggle={(id, reaction)=> toggleReplyReaction(id, reaction)} onInlineReply={(id, text, file)=> submitInlineReply(id, text, file)} onDelete={(id)=> deleteReply(id)} onPreviewImage={(src)=> setPreviewSrc(src)} />
           ))}
         </div>
       </div>
+
+      {/* Image preview modal */}
+      {previewSrc ? (
+        <div className="fixed inset-0 z-[100] bg-black/85 backdrop-blur flex items-center justify-center" onClick={(e)=> e.currentTarget===e.target && setPreviewSrc(null)}>
+          <button className="absolute top-3 right-3 w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 text-white flex items-center justify-center" onClick={()=> setPreviewSrc(null)} aria-label="Close preview">
+            <i className="fa-solid fa-xmark" />
+          </button>
+          <img src={previewSrc} alt="preview" className="max-w-[92vw] max-h-[85vh] rounded border border-white/10" />
+        </div>
+      ) : null}
 
       {/* Fixed-bottom reply composer */}
       <div className="fixed left-0 right-0 bottom-0 z-50 bg-black/85 border-t border-white/10 backdrop-blur">
@@ -369,7 +385,7 @@ function Reaction({ icon, count, active, onClick }:{ icon: string, count: number
   )
 }
 
-function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDelete }:{ reply: Reply, depth?: number, currentUser?: string|null, onToggle: (id:number, reaction:string)=>void, onInlineReply: (id:number, text:string, file?: File)=>void, onDelete: (id:number)=>void }){
+function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDelete, onPreviewImage }:{ reply: Reply, depth?: number, currentUser?: string|null, onToggle: (id:number, reaction:string)=>void, onInlineReply: (id:number, text:string, file?: File)=>void, onDelete: (id:number)=>void, onPreviewImage: (src:string)=>void }){
   const [showComposer, setShowComposer] = useState(false)
   const [text, setText] = useState('')
   const [img, setImg] = useState<File|null>(null)
@@ -407,7 +423,8 @@ function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDel
               <img
                 src={reply.image_path.startsWith('/uploads') || reply.image_path.startsWith('/static') ? reply.image_path : `/uploads/${reply.image_path}`}
                 alt=""
-                className="block mx-auto max-w-full max-h-[300px] rounded border border-white/10"
+                className="block mx-auto max-w-full max-h-[300px] rounded border border-white/10 cursor-zoom-in"
+                onClick={(e)=> onPreviewImage((e.currentTarget as HTMLImageElement).src)}
               />
             </div>
           ) : null}
@@ -453,7 +470,7 @@ function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDel
         </div>
       </div>
       {reply.children && reply.children.length ? reply.children.map(ch => (
-        <ReplyNode key={ch.id} reply={ch} depth={Math.min(depth+1, 3)} currentUser={currentUser} onToggle={onToggle} onInlineReply={onInlineReply} onDelete={onDelete} />
+        <ReplyNode key={ch.id} reply={ch} depth={Math.min(depth+1, 3)} currentUser={currentUser} onToggle={onToggle} onInlineReply={onInlineReply} onDelete={onDelete} onPreviewImage={onPreviewImage} />
       )) : null}
     </div>
   )
