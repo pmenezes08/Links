@@ -258,16 +258,21 @@ export default function PostDetail(){
           {(composerActive || !!content || !!file) ? (
             <div className="flex items-center justify-end gap-2 flex-wrap">
               {file && (
-                <div className="text-xs text-[#7fe7df] flex items-center gap-1">
-                  <i className="fa-solid fa-image" />
-                  <span>{file.name}</span>
-                  <button 
-                    onClick={() => setFile(null)}
-                    className="ml-1 text-red-400 hover:text-red-300"
-                    aria-label="Remove file"
-                  >
-                    <i className="fa-solid fa-times" />
-                  </button>
+                <div className="flex items-center gap-2 mr-auto">
+                  <div className="w-16 h-16 rounded-md overflow-hidden border border-white/10">
+                    <img src={URL.createObjectURL(file)} alt="preview" className="w-full h-full object-cover" />
+                  </div>
+                  <div className="text-xs text-[#7fe7df] flex items-center gap-1">
+                    <i className="fa-solid fa-image" />
+                    <span className="max-w-[160px] truncate">{file.name}</span>
+                    <button 
+                      onClick={() => { setFile(null); if (fileInputRef.current) fileInputRef.current.value = '' }}
+                      className="ml-1 text-red-400 hover:text-red-300"
+                      aria-label="Remove file"
+                    >
+                      <i className="fa-solid fa-times" />
+                    </button>
+                  </div>
                 </div>
               )}
               <label className="relative inline-flex items-center justify-center w-10 h-10 rounded-full hover:bg-white/10 cursor-pointer" aria-label="Add image">
