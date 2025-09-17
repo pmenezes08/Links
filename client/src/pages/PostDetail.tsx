@@ -257,7 +257,7 @@ export default function PostDetail(){
           />
           {(composerActive || !!content || !!file) ? (
             <div className="flex items-center justify-end gap-2 flex-wrap">
-              <label className="px-3 py-2 rounded-full hover:bg-white/10 cursor-pointer" aria-label="Add image">
+              <label className="px-3 py-2 rounded-full hover:bg-white/10 cursor-pointer" aria-label="Add image" onClick={()=> fileInputRef.current?.click()}>
                 <i className="fa-regular fa-image text-xl" style={{ color: '#4db6ac' }} />
                 <input ref={fileInputRef} type="file" accept="image/*" onChange={(e)=> setFile(e.target.files?.[0]||null)} style={{ display: 'none' }} />
               </label>
@@ -344,7 +344,7 @@ function ReplyNode({ reply, depth=0, onToggle, onInlineReply }:{ reply: Reply, d
           {showComposer ? (
             <div className="mt-2 flex items-center gap-2">
               <input className="flex-1 px-3 py-1.5 rounded-full bg-black border border-[#4db6ac] text-[16px] focus:outline-none focus:ring-1 focus:ring-[#4db6ac]" value={text} onChange={(e)=> setText(e.target.value)} placeholder={`Reply to @${reply.username}`} />
-              <label className="px-3 py-2 rounded-full hover:bg-white/10 cursor-pointer" aria-label="Add image">
+              <label className="px-3 py-2 rounded-full hover:bg-white/10 cursor-pointer" aria-label="Add image" onClick={()=> inlineFileRef.current?.click()}>
                 <i className="fa-regular fa-image text-xl" style={{ color: '#4db6ac' }} />
                 <input ref={inlineFileRef} type="file" accept="image/*" onChange={(e)=> setImg(e.target.files?.[0]||null)} style={{ display: 'none' }} />
               </label>
