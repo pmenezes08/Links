@@ -7474,24 +7474,24 @@ def get_university_ads():
                         'title': 'University Hoodie',
                         'description': 'Official university hoodie',
                         'price': '$49.99',
-                        'image': 'https://via.placeholder.com/250x180/2d8a7e/ffffff?text=University+Hoodie',
-                        'link': '#'
+                        'image_url': 'https://via.placeholder.com/800x600/2d8a7e/ffffff?text=University+Hoodie',
+                        'link_url': '#'
                     },
                     {
                         'id': 0,
                         'title': 'Campus T-Shirt',
                         'description': 'Comfortable cotton t-shirt',
                         'price': '$24.99',
-                        'image': 'https://via.placeholder.com/250x180/4db6ac/ffffff?text=Campus+Tee',
-                        'link': '#'
+                        'image_url': 'https://via.placeholder.com/800x600/4db6ac/ffffff?text=Campus+Tee',
+                        'link_url': '#'
                     },
                     {
                         'id': 0,
                         'title': 'Student Backpack',
                         'description': 'Durable laptop backpack',
                         'price': '$79.99',
-                        'image': 'https://via.placeholder.com/250x180/37a69c/ffffff?text=Backpack',
-                        'link': '#'
+                        'image_url': 'https://via.placeholder.com/800x600/37a69c/ffffff?text=Backpack',
+                        'link_url': '#'
                     }
                 ]
             

@@ -318,7 +318,7 @@ export default function CommunityFeed() {
 
           {/* Feed items */}
           {timeline.map((item, i) => item.type === 'ad' ? (
-            <AdsCarousel key={`ad-${i}`} communityId={String(community_id)} ads={ads} />
+            <AdAsPost key={`ad-${i}`} ads={ads} />
           ) : (
             <PostCard key={item.post!.id} post={item.post!} currentUser={data.username} isAdmin={!!data.is_community_admin} onOpen={() => navigate(`/post/${item.post!.id}`)} onToggleReaction={handleToggleReaction} />
           ))}
@@ -394,7 +394,7 @@ export default function CommunityFeed() {
 
 // ActionPill removed from UI in this layout
 
-function AdsCarousel({ communityId: _communityId, ads }:{ communityId: string, ads: any[] }){
+function AdAsPost({ ads }:{ ads: any[] }){
   const [idx, setIdx] = useState(0)
   useEffect(() => {
     if (!ads || ads.length <= 1) return
@@ -410,39 +410,40 @@ function AdsCarousel({ communityId: _communityId, ads }:{ communityId: string, a
     if (link) window.open(link, '_blank')
   }
   return (
-    <div className="rounded-xl border border-white/10 bg-white/[0.04] p-3 shadow-sm shadow-black/20">
-      <div className="flex items-center gap-3">
-        <div className="w-12 h-12 rounded bg-white/10 overflow-hidden flex items-center justify-center">
-          {img ? (
-            <ImageLoader src={img} alt={ad.title} className="w-full h-full object-cover" />
-          ) : (
-            <i className="fa-solid fa-store" />
-          )}
+    <div className="rounded-2xl border border-white/10 bg-white/[0.035] shadow-sm shadow-black/20">
+      <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2">
+        <div className="w-8 h-8 rounded bg-white/10 overflow-hidden flex items-center justify-center">
+          <i className="fa-solid fa-store" />
         </div>
-        <div className="flex-1 min-w-0">
-          <div className="text-xs text-[#9fb0b5]">Sponsored • University Store</div>
-          <div className="font-medium truncate">{ad.title || 'Store'}</div>
-          <div className="text-sm text-[#9fb0b5] truncate">{ad.description || 'Explore official merch and accessories.'}</div>
-        </div>
-        <button className="px-3 py-2 rounded-full bg-[#4db6ac] text-white border border-[#4db6ac] hover:brightness-110" onClick={onClick}>Shop</button>
+        <div className="font-medium tracking-[-0.01em]">Sponsored</div>
+        <div className="text-xs text-[#9fb0b5] ml-auto tabular-nums">Ad</div>
       </div>
-      {img ? (
-        <div className="mt-2 rounded-lg overflow-hidden border border-white/10 relative">
-          <ImageLoader 
-            src={img} 
-            alt={ad.title} 
-            className="w-full h-auto cursor-pointer" 
-            onClick={onClick}
-          />
-          {ads.length > 1 && (
-            <div className="absolute bottom-2 inset-x-0 flex items-center justify-center gap-1">
-              {ads.map((_:any, i:number) => (
-                <span key={i} className={`w-2 h-2 rounded-full ${i===idx ? 'bg-[#4db6ac]' : 'bg-white/30'}`} />
-              ))}
-            </div>
-          )}
+      <div className="px-3 py-2 space-y-2">
+        <div className="text-[14px] leading-relaxed tracking-[0]">{ad.title || 'Promotion'}</div>
+        {img ? (
+          <div className="w-full flex items-center justify-center">
+            <ImageLoader
+              src={img}
+              alt={ad.title}
+              className="max-w-full max-h-[360px] rounded border border-white/10 cursor-pointer"
+              onClick={onClick}
+            />
+          </div>
+        ) : null}
+        {ad.description ? (
+          <div className="text-sm text-[#9fb0b5]">{ad.description}</div>
+        ) : null}
+        <div className="flex items-center justify-end">
+          <button className="px-3 py-1.5 rounded-full bg-[#4db6ac] text-black border border-[#4db6ac] hover:brightness-110" onClick={onClick}>Shop</button>
         </div>
-      ) : null}
+        {ads.length > 1 && (
+          <div className="flex items-center justify-center gap-1 pt-1">
+            {ads.map((_:any, i:number) => (
+              <span key={i} className={`w-2 h-2 rounded-full ${i===idx ? 'bg-[#4db6ac]' : 'bg-white/30'}`} />
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   )
 }
