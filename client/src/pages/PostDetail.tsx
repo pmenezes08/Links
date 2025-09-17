@@ -244,17 +244,6 @@ export default function PostDetail(){
         </div>
       </div>
 
-      {/* Hidden file input for main composer */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/*"
-        onChange={(e) => {
-          console.log('File selected:', e.target.files);
-          setFile(e.target.files?.[0] || null);
-        }}
-        style={{ display: 'none', position: 'fixed', top: '-9999px', left: '-9999px' }}
-      />
 
       {/* Fixed-bottom reply composer */}
       <div className="fixed left-0 right-0 bottom-0 z-50 bg-black/85 border-t border-white/10 backdrop-blur">
@@ -285,7 +274,9 @@ export default function PostDetail(){
                 <div
                   className="inline-flex items-center justify-center w-10 h-10 rounded-full hover:bg-white/10 cursor-pointer" 
                   aria-label="Add image"
-                  onClick={() => {
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
                     console.log('Image button clicked - triggering file input');
                     if (fileInputRef.current) {
                       console.log('File input ref found, clicking...');
@@ -294,8 +285,10 @@ export default function PostDetail(){
                       console.error('File input ref not found');
                     }
                   }}
+                  role="button"
+                  tabIndex={0}
                 >
-                  <i className="fa-regular fa-image text-xl" style={{ color: file ? '#7fe7df' : '#4db6ac' }} />
+                  <i className="fa-regular fa-image text-xl pointer-events-none" style={{ color: file ? '#7fe7df' : '#4db6ac' }} />
                 </div>
                 {/(https?:\/\/[^\s]+|www\.[^\s]+)/.test(content) ? (
                   <button className="px-2.5 py-1.5 rounded-full border border-white/10 text-xs text-[#9fb0b5] hover:border-[#2a3f41] break-words" onClick={()=> {
@@ -311,19 +304,52 @@ export default function PostDetail(){
                 ) : null}
                 <div
                   className="px-2.5 py-1.5 rounded-full bg-[#4db6ac] text-white border border-[#4db6ac] hover:brightness-110 cursor-pointer inline-flex items-center" 
-                  onClick={() => {
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
                     console.log('Send button clicked - submitting reply with content:', content, 'and file:', file);
+                    console.log('Event target:', e.target);
+                    console.log('Event currentTarget:', e.currentTarget);
                     submitReply();
                   }} 
+                  onMouseDown={(e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                  }}
                   aria-label="Send reply"
+                  role="button"
+                  tabIndex={0}
                 >
-                  <i className="fa-solid fa-paper-plane" />
+                  <i className="fa-solid fa-paper-plane pointer-events-none" />
                 </div>
               </div>
             </>
           ) : null}
         </div>
       </div>
+      
+      {/* Hidden file input - placed at the very end to avoid any interference */}
+      <input
+        id="main-reply-file-input"
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        onChange={(e) => {
+          console.log('Main file input triggered - File selected:', e.target.files);
+          setFile(e.target.files?.[0] || null);
+        }}
+        style={{ 
+          position: 'absolute',
+          width: '1px',
+          height: '1px',
+          padding: 0,
+          margin: '-1px',
+          overflow: 'hidden',
+          clip: 'rect(0,0,0,0)',
+          whiteSpace: 'nowrap',
+          border: 0
+        }}
+      />
     </div>
   )
 }
@@ -392,7 +418,9 @@ function ReplyNode({ reply, depth=0, onToggle, onInlineReply }:{ reply: Reply, d
                 <div
                   className="inline-flex items-center justify-center w-10 h-10 rounded-full hover:bg-white/10 cursor-pointer" 
                   aria-label="Add image"
-                  onClick={() => {
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
                     console.log('Inline image button clicked - triggering file input');
                     if (inlineFileRef.current) {
                       console.log('Inline file input ref found, clicking...');
@@ -401,12 +429,16 @@ function ReplyNode({ reply, depth=0, onToggle, onInlineReply }:{ reply: Reply, d
                       console.error('Inline file input ref not found');
                     }
                   }}
+                  role="button"
+                  tabIndex={0}
                 >
-                  <i className="fa-regular fa-image text-xl" style={{ color: img ? '#7fe7df' : '#4db6ac' }} />
+                  <i className="fa-regular fa-image text-xl pointer-events-none" style={{ color: img ? '#7fe7df' : '#4db6ac' }} />
                 </div>
                 <div
                   className="px-2.5 py-1.5 rounded-full bg-[#4db6ac] text-white border border-[#4db6ac] hover:brightness-110 cursor-pointer inline-flex items-center" 
-                  onClick={() => {
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
                     console.log('Inline send button clicked - submitting reply with text:', text, 'and img:', img);
                     if (!text && !img) return;
                     onInlineReply(reply.id, text, img || undefined);
@@ -414,9 +446,15 @@ function ReplyNode({ reply, depth=0, onToggle, onInlineReply }:{ reply: Reply, d
                     setImg(null);
                     setShowComposer(false);
                   }} 
+                  onMouseDown={(e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                  }}
                   aria-label="Send reply"
+                  role="button"
+                  tabIndex={0}
                 >
-                  <i className="fa-solid fa-paper-plane" />
+                  <i className="fa-solid fa-paper-plane pointer-events-none" />
                 </div>
               </div>
               {img && (
