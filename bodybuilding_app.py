@@ -2113,6 +2113,31 @@ def api_community_group_feed(parent_id: int):
             logger.info(f"Community group feed: fetched {len(rows)} rows before filtering")
             posts = []
 
+            # Lazy profile picture cache to avoid repeated lookups
+            pp_cache: dict[str, str|None] = {}
+            def get_profile_picture(u: str|None):
+                if not u:
+                    return None
+                if u in pp_cache:
+                    return pp_cache[u]
+                try:
+                    c.execute("SELECT profile_picture FROM user_profiles WHERE username = ?", (u,))
+                    rpp = c.fetchone()
+                    val = None
+                    if rpp:
+                        try:
+                            val = rpp['profile_picture'] if 'profile_picture' in rpp.keys() else rpp[0]
+                        except Exception:
+                            try:
+                                val = rpp[0]
+                            except Exception:
+                                val = None
+                    pp_cache[u] = val
+                    return val
+                except Exception:
+                    pp_cache[u] = None
+                    return None
+
             # Optionally map community names for display
             name_map = {}
             for cid in community_ids:
@@ -2174,14 +2199,16 @@ def api_community_group_feed(parent_id: int):
                     if sample_logged < 5:
                         logger.info(f"Group feed row id={pid}, raw_created_at={row.get('created_at')}, raw_timestamp={row.get('timestamp')}, parsed={dt}")
                         sample_logged += 1
+                    uname = row.get('username')
                     post_obj = {
                         'id': pid,
-                        'username': row.get('username'),
+                        'username': uname,
                         'content': row.get('content'),
                         'community_id': row.get('community_id'),
                         'community_name': name_map.get(row.get('community_id')),
                         'created_at': row.get('created_at') or row.get('timestamp'),
-                        'image_path': row.get('image_path')
+                        'image_path': row.get('image_path'),
+                        'profile_picture': get_profile_picture(uname)
                     }
                     if (dt is not None) and (dt >= cutoff):
                         posts.append(post_obj)
@@ -2198,7 +2225,8 @@ def api_community_group_feed(parent_id: int):
                         'community_id': cid,
                         'community_name': name_map.get(cid),
                         'created_at': created_at_val or timestamp_val,
-                        'image_path': image_path
+                        'image_path': image_path,
+                        'profile_picture': get_profile_picture(uname)
                     }
                     if (dt is not None) and (dt >= cutoff):
                         posts.append(post_obj)
