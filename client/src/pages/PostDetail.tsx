@@ -89,6 +89,7 @@ export default function PostDetail(){
   const [error, setError] = useState<string| null>(null)
   const [content, setContent] = useState('')
   const [file, setFile] = useState<File|null>(null)
+  const [currentUser, setCurrentUser] = useState<string | null>(null)
   
   const fileInputRef = useRef<HTMLInputElement|null>(null)
 
@@ -110,6 +111,21 @@ export default function PostDetail(){
     load()
     return () => { mounted = false }
   }, [post_id])
+
+  // Load current username for ownership checks (lightweight usage of existing endpoint)
+  useEffect(() => {
+    let mounted = true
+    async function loadUser(){
+      try{
+        const r = await fetch('/api/home_timeline', { credentials:'include' })
+        const j = await r.json().catch(()=>null)
+        if (!mounted) return
+        if (j?.success && j.username) setCurrentUser(j.username)
+      }catch{}
+    }
+    loadUser()
+    return () => { mounted = false }
+  }, [])
 
   async function toggleReaction(reaction: string){
     if (!post) return
@@ -207,6 +223,32 @@ export default function PostDetail(){
     }
   }
 
+  async function deleteReply(replyId: number){
+    if (!post) return
+    const ok = window.confirm('Delete this reply?')
+    if (!ok) return
+    try{
+      const fd = new FormData()
+      fd.append('reply_id', String(replyId))
+      const r = await fetch('/delete_reply', { method:'POST', credentials:'include', body: fd })
+      const j = await r.json().catch(()=>null)
+      if (!j?.success) return
+      setPost(p => {
+        if (!p) return p
+        function removeById(list: Reply[]): Reply[] {
+          const out: Reply[] = []
+          for (const item of list){
+            if (item.id === replyId) continue
+            const children = item.children ? removeById(item.children) : item.children
+            out.push({ ...item, children })
+          }
+          return out
+        }
+        return { ...p, replies: removeById(p.replies) }
+      })
+    }catch{}
+  }
+
   if (loading) return <div className="p-4 text-[#9fb0b5]">Loading…</div>
   if (error || !post) return <div className="p-4 text-red-400">{error||'Error'}</div>
 
@@ -239,7 +281,7 @@ export default function PostDetail(){
 
         <div className="mt-3 rounded-2xl border border-white/10">
           {post.replies.map(r => (
-            <ReplyNode key={r.id} reply={r} onToggle={(id, reaction)=> toggleReplyReaction(id, reaction)} onInlineReply={(id, text, file)=> submitInlineReply(id, text, file)} />
+            <ReplyNode key={r.id} reply={r} currentUser={currentUser} onToggle={(id, reaction)=> toggleReplyReaction(id, reaction)} onInlineReply={(id, text, file)=> submitInlineReply(id, text, file)} onDelete={(id)=> deleteReply(id)} />
           ))}
         </div>
       </div>
@@ -327,7 +369,7 @@ function Reaction({ icon, count, active, onClick }:{ icon: string, count: number
   )
 }
 
-function ReplyNode({ reply, depth=0, onToggle, onInlineReply }:{ reply: Reply, depth?: number, onToggle: (id:number, reaction:string)=>void, onInlineReply: (id:number, text:string, file?: File)=>void }){
+function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDelete }:{ reply: Reply, depth?: number, currentUser?: string|null, onToggle: (id:number, reaction:string)=>void, onInlineReply: (id:number, text:string, file?: File)=>void, onDelete: (id:number)=>void }){
   const [showComposer, setShowComposer] = useState(false)
   const [text, setText] = useState('')
   const [img, setImg] = useState<File|null>(null)
@@ -349,6 +391,15 @@ function ReplyNode({ reply, depth=0, onToggle, onInlineReply }:{ reply: Reply, d
           <div className="flex items-center gap-2">
             <div className="font-medium">{reply.username}</div>
             <div className="text-[11px] text-[#9fb0b5] ml-auto">{formatTimestamp(reply.timestamp)}</div>
+            {(currentUser && (currentUser === reply.username || currentUser === 'admin')) ? (
+              <button
+                className="ml-2 px-2 py-1 rounded-full text-[#6c757d] hover:text-red-400"
+                title="Delete reply"
+                onClick={()=> onDelete(reply.id)}
+              >
+                <i className="fa-regular fa-trash-can" />
+              </button>
+            ) : null}
           </div>
           <div className="text-[#dfe6e9] whitespace-pre-wrap mt-0.5 break-words break-all">{renderRichText(reply.content)}</div>
           {reply.image_path ? (
@@ -402,7 +453,7 @@ function ReplyNode({ reply, depth=0, onToggle, onInlineReply }:{ reply: Reply, d
         </div>
       </div>
       {reply.children && reply.children.length ? reply.children.map(ch => (
-        <ReplyNode key={ch.id} reply={ch} depth={Math.min(depth+1, 3)} onToggle={onToggle} onInlineReply={onInlineReply} />
+        <ReplyNode key={ch.id} reply={ch} depth={Math.min(depth+1, 3)} currentUser={currentUser} onToggle={onToggle} onInlineReply={onInlineReply} onDelete={onDelete} />
       )) : null}
     </div>
   )
