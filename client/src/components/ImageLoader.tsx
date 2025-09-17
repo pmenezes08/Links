@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
 interface ImageLoaderProps {
   src: string
@@ -11,6 +11,16 @@ interface ImageLoaderProps {
 export default function ImageLoader({ src, alt, className = '', onClick, style }: ImageLoaderProps) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
+
+  useEffect(() => {
+    setLoading(true)
+    setError(false)
+    const t = setTimeout(() => {
+      if (loading) { setLoading(false); setError(true) }
+    }, 6000)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [src])
 
   const handleLoad = () => {
     setLoading(false)

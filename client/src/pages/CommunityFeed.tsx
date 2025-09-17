@@ -421,7 +421,7 @@ function AdAsPost({ ads }:{ ads: any[] }){
       <div className="px-3 py-2 space-y-2">
         <div className="text-[14px] leading-relaxed tracking-[0]">{ad.title || 'Promotion'}</div>
         {img ? (
-          <div className="w-full flex items-center justify-center">
+          <div className="w-full flex items-center justify-center min-h-[160px]">
             <ImageLoader
               src={img}
               alt={ad.title}
