@@ -6840,7 +6840,7 @@ def post_reply():
                 'username': username,
                 'content': content,
                 'image_path': image_path,
-                'timestamp': timestamp_display,  # Use the display-friendly timestamp
+                'timestamp': timestamp_db,  # Return precise timestamp for clients
                 'reactions': {},
                 'user_reaction': None,
                 'parent_reply_id': parent_reply_id
