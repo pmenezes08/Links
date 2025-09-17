@@ -91,6 +91,7 @@ export default function PostDetail(){
   const [file, setFile] = useState<File|null>(null)
   const [composerActive, setComposerActive] = useState(false)
   const fileInputRef = useRef<HTMLInputElement|null>(null)
+  const fileCallbackRef = useRef<((file: File) => void) | null>(null)
 
   useEffect(() => {
     let mounted = true
@@ -153,6 +154,7 @@ export default function PostDetail(){
 
   async function submitReply(parentReplyId?: number){
     if (!post || (!content && !file)) return
+    console.log('submitReply called with content:', content, 'file:', file)
     const fd = new FormData()
     fd.append('post_id', String(post.id))
     fd.append('content', content)
@@ -183,6 +185,7 @@ export default function PostDetail(){
 
   async function submitInlineReply(parentId: number, text: string, file?: File){
     if (!post || (!text && !file)) return
+    console.log('submitInlineReply called with text:', text, 'file:', file)
     const fd = new FormData()
     fd.append('post_id', String(post.id))
     fd.append('content', text || '')
@@ -205,6 +208,37 @@ export default function PostDetail(){
         return { ...p, replies: attach(p.replies) }
       })
     }
+  }
+
+  function openFilePicker(callback: (file: File) => void) {
+    console.log('openFilePicker called')
+    fileCallbackRef.current = callback
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '' // Reset the input
+      fileInputRef.current.click()
+    }
+  }
+
+  function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    console.log('handleFileSelect called:', e.target.files)
+    const selectedFile = e.target.files?.[0]
+    if (selectedFile && fileCallbackRef.current) {
+      fileCallbackRef.current(selectedFile)
+      fileCallbackRef.current = null
+    }
+  }
+
+  function handleMainImageClick() {
+    console.log('Main image button clicked')
+    openFilePicker((selectedFile) => {
+      console.log('Main image selected:', selectedFile)
+      setFile(selectedFile)
+    })
+  }
+
+  function handleMainSendClick() {
+    console.log('Main send button clicked')
+    submitReply()
   }
 
   if (loading) return <div className="p-4 text-[#9fb0b5]">Loading…</div>
@@ -239,11 +273,16 @@ export default function PostDetail(){
 
         <div className="mt-3 rounded-2xl border border-white/10">
           {post.replies.map(r => (
-            <ReplyNode key={r.id} reply={r} onToggle={(id, reaction)=> toggleReplyReaction(id, reaction)} onInlineReply={(id, text, file)=> submitInlineReply(id, text, file)} />
+            <ReplyNode 
+              key={r.id} 
+              reply={r} 
+              onToggle={(id, reaction)=> toggleReplyReaction(id, reaction)} 
+              onInlineReply={(id, text, file)=> submitInlineReply(id, text, file)}
+              onRequestFile={openFilePicker}
+            />
           ))}
         </div>
       </div>
-
 
       {/* Fixed-bottom reply composer */}
       <div className="fixed left-0 right-0 bottom-0 z-50 bg-black/85 border-t border-white/10 backdrop-blur">
@@ -257,98 +296,57 @@ export default function PostDetail(){
             onBlur={()=> { if (!content && !file) setComposerActive(false) }}
           />
           {(composerActive || !!content || !!file) ? (
-            <>
-              <div className="flex items-center justify-end gap-2 flex-wrap">
-                {file && (
-                  <div className="text-xs text-[#7fe7df] flex items-center gap-1">
-                    <i className="fa-solid fa-check" />
-                    <span>{file.name}</span>
-                    <button 
-                      onClick={() => setFile(null)}
-                      className="ml-1 text-red-400 hover:text-red-300"
-                    >
-                      <i className="fa-solid fa-times" />
-                    </button>
-                  </div>
-                )}
-                <div
-                  className="inline-flex items-center justify-center w-10 h-10 rounded-full hover:bg-white/10 cursor-pointer" 
-                  aria-label="Add image"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    e.preventDefault();
-                    console.log('Image button clicked - triggering file input');
-                    if (fileInputRef.current) {
-                      console.log('File input ref found, clicking...');
-                      fileInputRef.current.click();
-                    } else {
-                      console.error('File input ref not found');
-                    }
-                  }}
-                  role="button"
-                  tabIndex={0}
-                >
-                  <i className="fa-regular fa-image text-xl pointer-events-none" style={{ color: file ? '#7fe7df' : '#4db6ac' }} />
+            <div className="flex items-center justify-end gap-2 flex-wrap">
+              {file && (
+                <div className="text-xs text-[#7fe7df] flex items-center gap-1">
+                  <i className="fa-solid fa-check" />
+                  <span>{file.name}</span>
+                  <button 
+                    onClick={() => setFile(null)}
+                    className="ml-1 text-red-400 hover:text-red-300"
+                  >
+                    <i className="fa-solid fa-times" />
+                  </button>
                 </div>
-                {/(https?:\/\/[^\s]+|www\.[^\s]+)/.test(content) ? (
-                  <button className="px-2.5 py-1.5 rounded-full border border-white/10 text-xs text-[#9fb0b5] hover:border-[#2a3f41] break-words" onClick={()=> {
-                    const m = content.match(/(https?:\/\/[^\s]+|www\.[^\s]+)/)
-                    if (!m) return
-                    const urlText = m[0]
-                    // eslint-disable-next-line no-alert
-                    const label = window.prompt('Link text', urlText) || urlText
-                    const href = urlText
-                    const replacement = `[${label}](${href})`
-                    setContent(content.replace(urlText, replacement))
-                  }}>Link name</button>
-                ) : null}
-                <div
-                  className="px-2.5 py-1.5 rounded-full bg-[#4db6ac] text-white border border-[#4db6ac] hover:brightness-110 cursor-pointer inline-flex items-center" 
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    e.preventDefault();
-                    console.log('Send button clicked - submitting reply with content:', content, 'and file:', file);
-                    console.log('Event target:', e.target);
-                    console.log('Event currentTarget:', e.currentTarget);
-                    submitReply();
-                  }} 
-                  onMouseDown={(e) => {
-                    e.stopPropagation();
-                    e.preventDefault();
-                  }}
-                  aria-label="Send reply"
-                  role="button"
-                  tabIndex={0}
-                >
-                  <i className="fa-solid fa-paper-plane pointer-events-none" />
-                </div>
-              </div>
-            </>
+              )}
+              <button
+                type="button"
+                className="inline-flex items-center justify-center w-10 h-10 rounded-full hover:bg-white/10" 
+                onClick={handleMainImageClick}
+              >
+                <i className="fa-regular fa-image text-xl" style={{ color: file ? '#7fe7df' : '#4db6ac' }} />
+              </button>
+              {/(https?:\/\/[^\s]+|www\.[^\s]+)/.test(content) ? (
+                <button className="px-2.5 py-1.5 rounded-full border border-white/10 text-xs text-[#9fb0b5] hover:border-[#2a3f41] break-words" onClick={()=> {
+                  const m = content.match(/(https?:\/\/[^\s]+|www\.[^\s]+)/)
+                  if (!m) return
+                  const urlText = m[0]
+                  // eslint-disable-next-line no-alert
+                  const label = window.prompt('Link text', urlText) || urlText
+                  const href = urlText
+                  const replacement = `[${label}](${href})`
+                  setContent(content.replace(urlText, replacement))
+                }}>Link name</button>
+              ) : null}
+              <button 
+                type="button"
+                className="px-2.5 py-1.5 rounded-full bg-[#4db6ac] text-white border border-[#4db6ac] hover:brightness-110" 
+                onClick={handleMainSendClick}
+              >
+                <i className="fa-solid fa-paper-plane" />
+              </button>
+            </div>
           ) : null}
         </div>
       </div>
       
-      {/* Hidden file input - placed at the very end to avoid any interference */}
+      {/* Single global file input */}
       <input
-        id="main-reply-file-input"
         ref={fileInputRef}
         type="file"
         accept="image/*"
-        onChange={(e) => {
-          console.log('Main file input triggered - File selected:', e.target.files);
-          setFile(e.target.files?.[0] || null);
-        }}
-        style={{ 
-          position: 'absolute',
-          width: '1px',
-          height: '1px',
-          padding: 0,
-          margin: '-1px',
-          overflow: 'hidden',
-          clip: 'rect(0,0,0,0)',
-          whiteSpace: 'nowrap',
-          border: 0
-        }}
+        onChange={handleFileSelect}
+        style={{ display: 'none' }}
       />
     </div>
   )
@@ -372,12 +370,41 @@ function Reaction({ icon, count, active, onClick }:{ icon: string, count: number
   )
 }
 
-function ReplyNode({ reply, depth=0, onToggle, onInlineReply }:{ reply: Reply, depth?: number, onToggle: (id:number, reaction:string)=>void, onInlineReply: (id:number, text:string, file?: File)=>void }){
+function ReplyNode({ 
+  reply, 
+  depth=0, 
+  onToggle, 
+  onInlineReply,
+  onRequestFile 
+}:{ 
+  reply: Reply, 
+  depth?: number, 
+  onToggle: (id:number, reaction:string)=>void, 
+  onInlineReply: (id:number, text:string, file?: File)=>void,
+  onRequestFile: (callback: (file: File) => void) => void
+}){
   const [showComposer, setShowComposer] = useState(false)
   const [text, setText] = useState('')
   const [img, setImg] = useState<File|null>(null)
-  const inlineFileRef = useRef<HTMLInputElement|null>(null)
   const avatarSizePx = 28
+  
+  function handleInlineImageClick() {
+    console.log('Inline image button clicked for reply', reply.id)
+    onRequestFile((selectedFile) => {
+      console.log('Inline image selected:', selectedFile)
+      setImg(selectedFile)
+    })
+  }
+  
+  function handleInlineSendClick() {
+    console.log('Inline send button clicked for reply', reply.id)
+    if (!text && !img) return
+    onInlineReply(reply.id, text, img || undefined)
+    setText('')
+    setImg(null)
+    setShowComposer(false)
+  }
+  
   return (
     <div className="border-b border-white/10 py-2">
       <div className="relative flex items-start gap-2 px-3">
@@ -414,48 +441,26 @@ function ReplyNode({ reply, depth=0, onToggle, onInlineReply }:{ reply: Reply, d
           {showComposer ? (
             <div className="mt-2 space-y-2">
               <div className="flex items-center gap-2">
-                <input className="flex-1 px-3 py-1.5 rounded-full bg-black border border-[#4db6ac] text-[16px] focus:outline-none focus:ring-1 focus:ring-[#4db6ac]" value={text} onChange={(e)=> setText(e.target.value)} placeholder={`Reply to @${reply.username}`} />
-                <div
-                  className="inline-flex items-center justify-center w-10 h-10 rounded-full hover:bg-white/10 cursor-pointer" 
-                  aria-label="Add image"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    e.preventDefault();
-                    console.log('Inline image button clicked - triggering file input');
-                    if (inlineFileRef.current) {
-                      console.log('Inline file input ref found, clicking...');
-                      inlineFileRef.current.click();
-                    } else {
-                      console.error('Inline file input ref not found');
-                    }
-                  }}
-                  role="button"
-                  tabIndex={0}
+                <input 
+                  className="flex-1 px-3 py-1.5 rounded-full bg-black border border-[#4db6ac] text-[16px] focus:outline-none focus:ring-1 focus:ring-[#4db6ac]" 
+                  value={text} 
+                  onChange={(e)=> setText(e.target.value)} 
+                  placeholder={`Reply to @${reply.username}`} 
+                />
+                <button
+                  type="button"
+                  className="inline-flex items-center justify-center w-10 h-10 rounded-full hover:bg-white/10" 
+                  onClick={handleInlineImageClick}
                 >
-                  <i className="fa-regular fa-image text-xl pointer-events-none" style={{ color: img ? '#7fe7df' : '#4db6ac' }} />
-                </div>
-                <div
-                  className="px-2.5 py-1.5 rounded-full bg-[#4db6ac] text-white border border-[#4db6ac] hover:brightness-110 cursor-pointer inline-flex items-center" 
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    e.preventDefault();
-                    console.log('Inline send button clicked - submitting reply with text:', text, 'and img:', img);
-                    if (!text && !img) return;
-                    onInlineReply(reply.id, text, img || undefined);
-                    setText('');
-                    setImg(null);
-                    setShowComposer(false);
-                  }} 
-                  onMouseDown={(e) => {
-                    e.stopPropagation();
-                    e.preventDefault();
-                  }}
-                  aria-label="Send reply"
-                  role="button"
-                  tabIndex={0}
+                  <i className="fa-regular fa-image text-xl" style={{ color: img ? '#7fe7df' : '#4db6ac' }} />
+                </button>
+                <button
+                  type="button"
+                  className="px-2.5 py-1.5 rounded-full bg-[#4db6ac] text-white border border-[#4db6ac] hover:brightness-110" 
+                  onClick={handleInlineSendClick}
                 >
-                  <i className="fa-solid fa-paper-plane pointer-events-none" />
-                </div>
+                  <i className="fa-solid fa-paper-plane" />
+                </button>
               </div>
               {img && (
                 <div className="text-xs text-[#7fe7df] flex items-center gap-1 px-3">
@@ -471,20 +476,17 @@ function ReplyNode({ reply, depth=0, onToggle, onInlineReply }:{ reply: Reply, d
               )}
             </div>
           ) : null}
-          <input
-            ref={inlineFileRef}
-            type="file"
-            accept="image/*"
-            onChange={(e) => {
-              console.log('Inline file selected:', e.target.files);
-              setImg(e.target.files?.[0] || null);
-            }}
-            style={{ display: 'none', position: 'absolute', top: '-9999px', left: '-9999px' }}
-          />
         </div>
       </div>
       {reply.children && reply.children.length ? reply.children.map(ch => (
-        <ReplyNode key={ch.id} reply={ch} depth={Math.min(depth+1, 3)} onToggle={onToggle} onInlineReply={onInlineReply} />
+        <ReplyNode 
+          key={ch.id} 
+          reply={ch} 
+          depth={Math.min(depth+1, 3)} 
+          onToggle={onToggle} 
+          onInlineReply={onInlineReply}
+          onRequestFile={onRequestFile}
+        />
       )) : null}
     </div>
   )
