@@ -11069,19 +11069,24 @@ def api_community_feed(community_id):
                 post_id = post['id']
                 # Normalize display timestamp (DD-MM-YYYY) and ignore zero dates
                 try:
-                    # Chat approach: accept multiple formats, return DD-MM-YYYY
+                    # Prefer DB ISO timestamp
                     raw_ts = (post.get('timestamp') or post.get('created_at') or '').strip()
-                    dt = None
-                    if raw_ts and not raw_ts.startswith('0000-00-00'):
+                    if raw_ts.startswith('0000-00-00') or not raw_ts:
+                        post['display_timestamp'] = ''
+                    else:
                         from datetime import datetime as _dt
-                        for fmt in (
-                            '%d-%m-%Y %H:%M:%S','%d-%m-%Y %H:%M','%Y-%m-%d %H:%M:%S','%Y-%m-%d %H:%M','%m.%d.%y %H:%M','%Y-%m-%dT%H:%M:%S','%Y-%m-%d'):
-                            try:
-                                dt = _dt.strptime(raw_ts.replace('T',' '), fmt)
-                                break
-                            except Exception:
-                                continue
-                    post['display_timestamp'] = dt.strftime('%d-%m-%Y') if dt else ''
+                        # If ISO-like, slice safely
+                        dt = None
+                        try:
+                            dt = _dt.strptime(raw_ts[:19].replace('T',' '), '%Y-%m-%d %H:%M:%S')
+                        except Exception:
+                            for fmt in ('%d-%m-%Y %H:%M:%S','%d-%m-%Y %H:%M','%Y-%m-%d %H:%M','%m.%d.%y %H:%M','%Y-%m-%d'):
+                                try:
+                                    dt = _dt.strptime(raw_ts.replace('T',' '), fmt)
+                                    break
+                                except Exception:
+                                    continue
+                        post['display_timestamp'] = dt.strftime('%d-%m-%Y') if dt else ''
                 except Exception:
                     post['display_timestamp'] = ''
                 # Normalize/format display timestamp for frontend (DD-MM-YYYY)
