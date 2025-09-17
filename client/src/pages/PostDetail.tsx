@@ -210,19 +210,17 @@ export default function PostDetail(){
 
   return (
     <div className="min-h-screen bg-black text-white pb-24">
-      <div className="fixed left-0 right-0 top-0 h-12 border-b border-white/10 bg-black/70 backdrop-blur flex items-center px-3 z-40">
-        <button className="px-3 py-2 rounded-full text-[#cfd8dc] hover:text-[#4db6ac]" onClick={()=> navigate(-1)}>
-          <i className="fa-solid fa-arrow-left" />
-        </button>
-        <div className="ml-2 font-semibold">Post</div>
-      </div>
-
       <div className="max-w-2xl mx-auto pt-14 px-3">
+        <div className="mb-2">
+          <button className="px-3 py-1.5 rounded-lg border border-white/10 bg-white/[0.03] text-sm hover:bg-white/10" onClick={()=> navigate(-1)} aria-label="Back">
+            ← Back
+          </button>
+        </div>
         <div className="rounded-2xl border border-white/10 bg-white/[0.035] shadow-sm shadow-black/20">
           <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2">
             <Avatar username={post.username} url={(post as any).profile_picture || undefined} size={32} />
             <div className="font-medium">{post.username}</div>
-            <div className="text-xs text-[#9fb0b5] ml-auto">{formatTimestamp(post.timestamp)}</div>
+            <div className="text-xs text-[#9fb0b5] ml-auto">{formatTimestamp((post as any).display_timestamp || post.timestamp)}</div>
           </div>
           <div className="px-3 py-2 space-y-2">
             <div className="whitespace-pre-wrap text-[14px] break-words break-all">{renderRichText(post.content)}</div>
