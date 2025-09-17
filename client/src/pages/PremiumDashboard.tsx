@@ -14,6 +14,8 @@ export default function PremiumDashboard() {
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [newCommName, setNewCommName] = useState('')
   const [newCommType, setNewCommType] = useState<'Gym'|'University'>('Gym')
+  const [parentOptions, setParentOptions] = useState<Array<{ id:number; name:string; type?:string }>>([])
+  const [selectedParentId, setSelectedParentId] = useState<string>('none')
   const [parentsWithChildren, setParentsWithChildren] = useState<Set<number>>(new Set())
   const { setTitle } = useHeader()
   useEffect(() => { setTitle('Dashboard') }, [setTitle])
@@ -75,6 +77,28 @@ export default function PremiumDashboard() {
     
     loadUserData()
   }, [])
+
+  // Load available parent communities when opening create modal
+  useEffect(() => {
+    let mounted = true
+    async function loadParents(){
+      try{
+        const r = await fetch('/get_available_parent_communities', { credentials:'include' })
+        const j = await r.json().catch(()=>null)
+        if (!mounted) return
+        if (j?.success && Array.isArray(j.communities)){
+          setParentOptions(j.communities)
+        } else {
+          setParentOptions([])
+        }
+      }catch{ setParentOptions([]) }
+    }
+    if (showCreateModal){
+      setSelectedParentId('none')
+      loadParents()
+    }
+    return () => { mounted = false }
+  }, [showCreateModal])
 
 
   return (
@@ -189,16 +213,32 @@ export default function PremiumDashboard() {
                   <option value="University">University</option>
                 </select>
               </div>
+              <div>
+                <label className="block text-xs text-[#9fb0b5] mb-1">Parent Community (optional)</label>
+                <select
+                  value={selectedParentId}
+                  onChange={(e)=> setSelectedParentId(e.target.value)}
+                  className="w-full px-3 py-2 rounded-md bg-black border border:white/15 text-sm"
+                >
+                  <option value="none">None</option>
+                  {parentOptions.map(opt => (
+                    <option key={opt.id} value={String(opt.id)}>{opt.name}{opt.type ? ` (${opt.type})` : ''}</option>
+                  ))}
+                </select>
+              </div>
               <div className="flex items-center justify-end gap-2">
                 <button className="px-3 py-2 rounded-md bg:white/10 hover:bg:white/15" onClick={()=> setShowCreateModal(false)}>Cancel</button>
                 <button className="px-3 py-2 rounded-md bg-[#4db6ac] text-black hover:brightness-110" onClick={async()=> {
                   if (!newCommName.trim()) { alert('Please provide a name'); return }
                   try{
                     const fd = new URLSearchParams({ name: newCommName.trim(), type: newCommType })
+                    if (selectedParentId && selectedParentId !== 'none'){
+                      fd.append('parent_community_id', selectedParentId)
+                    }
                     const r = await fetch('/create_community', { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
                     const j = await r.json().catch(()=>null)
                     if (j?.success){
-                      setShowCreateModal(false); setNewCommName('');
+                      setShowCreateModal(false); setNewCommName(''); setSelectedParentId('none')
                       // Refresh dashboard communities
                       const resp = await fetch('/api/user_parent_community', { method:'GET', credentials:'include' })
                       const data = await resp.json().catch(()=>null)
