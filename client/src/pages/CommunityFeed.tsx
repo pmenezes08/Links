@@ -99,7 +99,7 @@ export default function CommunityFeed() {
   const [hasUnseenAnnouncements, setHasUnseenAnnouncements] = useState(false)
   const [showAnnouncements, _setShowAnnouncements] = useState(false)
   const [_announcements, _setAnnouncements] = useState<Array<{id:number, content:string, created_by:string, created_at:string}>>([])
-  const [ads, setAds] = useState<any[]>([])
+  // Ads removed
   const [moreOpen, setMoreOpen] = useState(false)
   const scrollRef = useRef<HTMLDivElement|null>(null)
   // Modal removed in favor of dedicated PostDetail route
@@ -155,20 +155,7 @@ export default function CommunityFeed() {
     return () => { isMounted = false }
   }, [community_id])
 
-  useEffect(() => {
-    // Pull ads from backend ads section for the community
-    async function loadAds(){
-      try{
-        const r = await fetch(`/get_university_ads?community_id=${community_id}`, { credentials: 'include' })
-        const j = await r.json()
-        if (j?.success && Array.isArray(j.ads)) setAds(j.ads)
-        else setAds([])
-      }catch{
-        setAds([])
-      }
-    }
-    loadAds()
-  }, [community_id])
+  // Ads removed
 
   useEffect(() => {
     // Check for unseen announcements (highlight icon)
@@ -243,16 +230,7 @@ export default function CommunityFeed() {
 
   // Reply reactions handled inside PostDetail page
 
-  const timeline = useMemo(() => {
-    if (!data?.posts) return []
-    const items: Array<{ type: 'post'|'ad'; post?: Post }> = []
-    data.posts.forEach((p: Post, idx: number) => {
-      if (idx === 3) items.push({ type: 'ad' })
-      items.push({ type: 'post', post: p })
-    })
-    if (items.length === 0) items.push({ type: 'ad' })
-    return items
-  }, [data])
+  const postsOnly = useMemo(() => Array.isArray(data?.posts) ? data.posts : [], [data])
 
   if (loading) return <div className="p-4 text-[#9fb0b5]">Loading…</div>
   if (error) return <div className="p-4 text-red-400">{error || 'Failed to load feed.'}</div>
@@ -313,10 +291,8 @@ export default function CommunityFeed() {
           ) : null}
 
           {/* Feed items */}
-          {timeline.map((item, i) => item.type === 'ad' ? (
-            <AdAsPost key={`ad-${i}`} ads={ads} />
-          ) : (
-            <PostCard key={item.post!.id} post={item.post!} currentUser={data.username} isAdmin={!!data.is_community_admin} onOpen={() => navigate(`/post/${item.post!.id}`)} onToggleReaction={handleToggleReaction} />
+          {postsOnly.map((p: Post) => (
+            <PostCard key={p.id} post={p} currentUser={data.username} isAdmin={!!data.is_community_admin} onOpen={() => navigate(`/post/${p.id}`)} onToggleReaction={handleToggleReaction} />
           ))}
         </div>
       </div>
@@ -390,61 +366,7 @@ export default function CommunityFeed() {
 
 // ActionPill removed from UI in this layout
 
-function AdAsPost({ ads }:{ ads: any[] }){
-  const [idx, setIdx] = useState(0)
-  useEffect(() => {
-    if (!ads || ads.length <= 1) return
-    const t = setInterval(() => setIdx(i => (i + 1) % ads.length), 4000)
-    return () => clearInterval(t)
-  }, [ads])
-  if (!ads || ads.length === 0) return null
-  const ad = ads[idx]
-  const img = ad.image || ad.image_url
-  const link = ad.link || ad.link_url
-  const onClick = async () => {
-    try{ await fetch('/track_ad_click', { method: 'POST', credentials: 'include', headers: { 'Content-Type':'application/json' }, body: JSON.stringify({ ad_id: ad.id }) }) }catch{}
-    if (link) window.open(link, '_blank')
-  }
-  return (
-    <div className="rounded-2xl border border-white/10 bg-white/[0.035] shadow-sm shadow-black/20">
-      <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2">
-        <div className="w-8 h-8 rounded bg-white/10 overflow-hidden flex items-center justify-center">
-          <i className="fa-solid fa-store" />
-        </div>
-        <div className="font-medium tracking-[-0.01em]">Sponsored</div>
-        <div className="text-xs text-[#9fb0b5] ml-auto tabular-nums">Ad</div>
-      </div>
-      <div className="px-3 py-2 space-y-2">
-        <div className="text-[14px] leading-relaxed tracking-[0]">{ad.title || 'Promotion'}</div>
-        {img ? (
-          <div className="w-full flex items-center justify-center min-h-[160px]">
-            <ImageLoader
-              src={img}
-              alt={ad.title}
-              className="max-w-full max-h-[360px] rounded border border-white/10 cursor-pointer"
-              onClick={onClick}
-            />
-          </div>
-        ) : null}
-        {ad.description ? (
-          <div className="text-sm text-[#9fb0b5]">{ad.description}</div>
-        ) : null}
-        <div className="flex items-center justify-end">
-          <button className="px-3 py-1.5 rounded-full bg-[#4db6ac] text-black border border-[#4db6ac] hover:brightness-110" onClick={onClick}>Shop</button>
-        </div>
-        {ads.length > 1 && (
-          <div className="flex items-center justify-center gap-1 pt-1">
-            {ads.map((_:any, i:number) => (
-              <span key={i} className={`w-2 h-2 rounded-full ${i===idx ? 'bg-[#4db6ac]' : 'bg-white/30'}`} />
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-// Removed legacy toggleReaction; reactions handled inline with state
+// Ad components removed
 
 function PostCard({ post, currentUser, isAdmin, onOpen, onToggleReaction }: { post: Post, currentUser: string, isAdmin: boolean, onOpen: ()=>void, onToggleReaction: (postId:number, reaction:string)=>void }) {
   const cardRef = useRef<HTMLDivElement|null>(null)

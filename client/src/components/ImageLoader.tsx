@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 
 interface ImageLoaderProps {
   src: string
@@ -10,17 +10,6 @@ interface ImageLoaderProps {
 
 export default function ImageLoader({ src, alt, className = '', onClick, style }: ImageLoaderProps) {
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(false)
-
-  useEffect(() => {
-    setLoading(true)
-    setError(false)
-    const t = setTimeout(() => {
-      if (loading) { setLoading(false); setError(true) }
-    }, 6000)
-    return () => clearTimeout(t)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [src])
 
   const handleLoad = () => {
     setLoading(false)
@@ -28,7 +17,6 @@ export default function ImageLoader({ src, alt, className = '', onClick, style }
 
   const handleError = () => {
     setLoading(false)
-    setError(true)
   }
 
   return (
@@ -43,15 +31,7 @@ export default function ImageLoader({ src, alt, className = '', onClick, style }
         </div>
       )}
 
-      {/* Error state */}
-      {error && (
-        <div className="absolute inset-0 bg-white/5 rounded-md flex items-center justify-center border border-white/10">
-          <div className="flex flex-col items-center gap-2">
-            <i className="fa-solid fa-image text-white/30 text-2xl"></i>
-            <div className="text-xs text-white/40">Failed to load</div>
-          </div>
-        </div>
-      )}
+      {/* Error state removed per request */}
 
       {/* Actual image */}
       <img
