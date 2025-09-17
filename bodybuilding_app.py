@@ -11066,6 +11066,29 @@ def api_community_feed(community_id):
             # Enrich posts
             for post in posts:
                 post_id = post['id']
+                # Normalize/format display timestamp for frontend (DD-MM-YYYY)
+                try:
+                    raw_ts = post.get('timestamp') or post.get('created_at') or ''
+                    ts_str = str(raw_ts).strip()
+                    dt = None
+                    if ts_str and not ts_str.startswith('0000-00-00'):
+                        # Try multiple formats
+                        from datetime import datetime as _dt
+                        for fmt in (
+                            '%d-%m-%Y %H:%M:%S', '%d-%m-%Y %H:%M',
+                            '%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M',
+                            '%m.%d.%y %H:%M', '%Y-%m-%dT%H:%M:%S', '%Y-%m-%d'):
+                            try:
+                                dt = _dt.strptime(ts_str.replace('T', ' '), fmt)
+                                break
+                            except Exception:
+                                continue
+                    if dt is not None:
+                        post['display_timestamp'] = dt.strftime('%d-%m-%Y')
+                    else:
+                        post['display_timestamp'] = ''
+                except Exception:
+                    post['display_timestamp'] = ''
                 # Add profile picture for post author
                 try:
                     c.execute("SELECT profile_picture FROM user_profiles WHERE username = ?", (post['username'],))
