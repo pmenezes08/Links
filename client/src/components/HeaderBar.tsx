@@ -67,7 +67,7 @@ export default function HeaderBar({ title, username, avatarUrl }: HeaderBarProps
 
   return (
     <>
-      <div className="fixed left-0 right-0 top-0 h-14 border-b border-[#262f30] bg-black flex items-center px-3 z-[100] text-white will-change-transform">
+      <div className="fixed left-0 right-0 top-0 h-14 border-b border-[#262f30] bg-black flex items-center px-3 z-[1000] text-white will-change-transform">
         {showBack ? (
           <button className="mr-2 p-2 rounded-full hover:bg-white/5" onClick={goBack} aria-label="Back">
             <i className="fa-solid fa-arrow-left" />
