@@ -177,7 +177,7 @@ export default function PostDetail(){
         }
         return { ...p, replies: [j.reply, ...p.replies] }
       })
-      setContent(''); setFile(null)
+      setContent(''); setFile(null); if (fileInputRef.current) fileInputRef.current.value = ''
     }
   }
 
@@ -255,36 +255,35 @@ export default function PostDetail(){
             onFocus={()=> setComposerActive(true)}
             onBlur={()=> { if (!content && !file) setComposerActive(false) }}
           />
-          {(composerActive || !!content || !!file) ? (
-            <div className="flex items-center justify-end gap-2 flex-wrap">
-              {file && (
-                <div className="flex items-center gap-2 mr-auto">
-                  <div className="w-16 h-16 rounded-md overflow-hidden border border-white/10">
-                    <img src={URL.createObjectURL(file)} alt="preview" className="w-full h-full object-cover" />
-                  </div>
-                  <div className="text-xs text-[#7fe7df] flex items-center gap-1">
-                    <i className="fa-solid fa-image" />
-                    <span className="max-w-[160px] truncate">{file.name}</span>
-                    <button 
-                      onClick={() => { setFile(null); if (fileInputRef.current) fileInputRef.current.value = '' }}
-                      className="ml-1 text-red-400 hover:text-red-300"
-                      aria-label="Remove file"
-                    >
-                      <i className="fa-solid fa-times" />
-                    </button>
-                  </div>
+          <div className="flex items-center justify-end gap-2 flex-wrap">
+            {file && (
+              <div className="flex items-center gap-2 mr-auto">
+                <div className="w-16 h-16 rounded-md overflow-hidden border border-white/10">
+                  <img src={URL.createObjectURL(file)} alt="preview" className="w-full h-full object-cover" />
                 </div>
-              )}
-              <label className="relative inline-flex items-center justify-center w-10 h-10 rounded-full hover:bg-white/10 cursor-pointer" aria-label="Add image">
-                <i className="fa-regular fa-image text-xl" style={{ color: file ? '#7fe7df' : '#4db6ac' }} />
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  onChange={(e)=> setFile(e.target.files?.[0]||null)}
-                  className="absolute inset-0 opacity-0"
-                />
-              </label>
+                <div className="text-xs text-[#7fe7df] flex items-center gap-1">
+                  <i className="fa-solid fa-image" />
+                  <span className="max-w-[160px] truncate">{file.name}</span>
+                  <button 
+                    onClick={() => { setFile(null); if (fileInputRef.current) fileInputRef.current.value = '' }}
+                    className="ml-1 text-red-400 hover:text-red-300"
+                    aria-label="Remove file"
+                  >
+                    <i className="fa-solid fa-times" />
+                  </button>
+                </div>
+              </div>
+            )}
+            <button type="button" className="w-10 h-10 rounded-full hover:bg-white/10 grid place-items-center" aria-label="Add image" onClick={()=> fileInputRef.current?.click()}>
+              <i className="fa-regular fa-image text-xl" style={{ color: file ? '#7fe7df' : '#4db6ac' }} />
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={(e)=> setFile((e.target as HTMLInputElement).files?.[0]||null)}
+              className="hidden"
+            />
               {/(https?:\/\/[^\s]+|www\.[^\s]+)/.test(content) ? (
                 <button className="px-2.5 py-1.5 rounded-full border border-white/10 text-xs text-[#9fb0b5] hover:border-[#2a3f41] break-words" onClick={()=> {
                   const m = content.match(/(https?:\/\/[^\s]+|www\.[^\s]+)/)
@@ -297,11 +296,15 @@ export default function PostDetail(){
                   setContent(content.replace(urlText, replacement))
                 }}>Link name</button>
               ) : null}
-              <button className="px-2.5 py-1.5 rounded-full bg-[#4db6ac] text-white border border-[#4db6ac] hover:brightness-110" onClick={()=> submitReply()} aria-label="Send reply">
-                <i className="fa-solid fa-paper-plane" />
-              </button>
-            </div>
-          ) : null}
+            <button
+              className="px-2.5 py-1.5 rounded-full bg-[#4db6ac] text-white border border-[#4db6ac] hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed"
+              onClick={()=> submitReply()}
+              aria-label="Send reply"
+              disabled={!content && !file}
+            >
+              <i className="fa-solid fa-paper-plane" />
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -369,26 +372,26 @@ function ReplyNode({ reply, depth=0, onToggle, onInlineReply }:{ reply: Reply, d
             <div className="mt-2 space-y-2">
               <div className="flex items-center gap-2">
                 <input className="flex-1 px-3 py-1.5 rounded-full bg-black border border-[#4db6ac] text-[16px] focus:outline-none focus:ring-1 focus:ring-[#4db6ac]" value={text} onChange={(e)=> setText(e.target.value)} placeholder={`Reply to @${reply.username}`} />
-                <label className="relative inline-flex items-center justify-center w-10 h-10 rounded-full hover:bg-white/10 cursor-pointer" aria-label="Add image">
+                <button type="button" className="w-10 h-10 rounded-full hover:bg-white/10 grid place-items-center" aria-label="Add image" onClick={()=> inlineFileRef.current?.click()}>
                   <i className="fa-regular fa-image text-xl" style={{ color: img ? '#7fe7df' : '#4db6ac' }} />
-                  <input
-                    ref={inlineFileRef}
-                    type="file"
-                    accept="image/*"
-                    onChange={(e)=> setImg(e.target.files?.[0]||null)}
-                    className="absolute inset-0 opacity-0"
-                  />
-                </label>
-                <button className="px-2.5 py-1.5 rounded-full bg-[#4db6ac] text-white border border-[#4db6ac] hover:brightness-110" onClick={()=> { if (!text && !img) return; onInlineReply(reply.id, text, img || undefined); setText(''); setImg(null); setShowComposer(false) }} aria-label="Send reply">
+                </button>
+                <input
+                  ref={inlineFileRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={(e)=> setImg((e.target as HTMLInputElement).files?.[0]||null)}
+                  className="hidden"
+                />
+                <button className="px-2.5 py-1.5 rounded-full bg-[#4db6ac] text-white border border-[#4db6ac] hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed" onClick={()=> { if (!text && !img) return; onInlineReply(reply.id, text, img || undefined); setText(''); setImg(null); if (inlineFileRef.current) inlineFileRef.current.value=''; setShowComposer(false) }} aria-label="Send reply" disabled={!text && !img}>
                   <i className="fa-solid fa-paper-plane" />
                 </button>
               </div>
               {img && (
                 <div className="text-xs text-[#7fe7df] flex items-center gap-1 px-3">
                   <i className="fa-solid fa-image" />
-                  <span>{img.name}</span>
+                  <span className="max-w-[160px] truncate">{img.name}</span>
                   <button 
-                    onClick={() => setImg(null)}
+                    onClick={() => { setImg(null); if (inlineFileRef.current) inlineFileRef.current.value = '' }}
                     className="ml-1 text-red-400 hover:text-red-300"
                     aria-label="Remove file"
                   >
