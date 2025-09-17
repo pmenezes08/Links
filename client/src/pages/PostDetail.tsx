@@ -3,7 +3,7 @@ import type React from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import Avatar from '../components/Avatar'
 
-type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null, parent_reply_id?: number|null, children?: Reply[], profile_picture?: string|null }
+type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null, parent_reply_id?: number|null, children?: Reply[], profile_picture?: string|null, image_path?: string|null }
 type Post = { id: number; username: string; content: string; image_path?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; replies: Reply[] }
 
 function formatTimestamp(input: string): string {
@@ -324,6 +324,15 @@ function ReplyNode({ reply, depth=0, onToggle, onInlineReply }:{ reply: Reply, d
             <div className="text-[11px] text-[#9fb0b5] ml-auto">{formatTimestamp(reply.timestamp)}</div>
           </div>
           <div className="text-[#dfe6e9] whitespace-pre-wrap mt-0.5 break-words break-all">{renderRichText(reply.content)}</div>
+          {reply.image_path ? (
+            <div className="mt-2">
+              <img
+                src={reply.image_path.startsWith('/uploads') || reply.image_path.startsWith('/static') ? reply.image_path : `/uploads/${reply.image_path}`}
+                alt=""
+                className="block mx-auto max-w-full max-h-[300px] rounded border border-white/10"
+              />
+            </div>
+          ) : null}
           <div className="mt-1 flex items-center gap-2 text-[11px]">
             <Reaction icon="fa-regular fa-heart" count={reply.reactions?.['heart']||0} active={reply.user_reaction==='heart'} onClick={()=> onToggle(reply.id, 'heart')} />
             <Reaction icon="fa-regular fa-thumbs-up" count={reply.reactions?.['thumbs-up']||0} active={reply.user_reaction==='thumbs-up'} onClick={()=> onToggle(reply.id, 'thumbs-up')} />
