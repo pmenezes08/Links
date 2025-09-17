@@ -744,41 +744,73 @@ def init_db():
                           FOREIGN KEY (sender) REFERENCES users(username),
                           FOREIGN KEY (receiver) REFERENCES users(username))''')
 
-            # Create workout-related tables
+            # Create workout-related tables (MySQL/SQLite compatible)
             logger.info("Creating workout tables...")
-            c.execute('''CREATE TABLE IF NOT EXISTS exercises
-                         (id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                          username TEXT NOT NULL,
-                          name TEXT NOT NULL,
-                          muscle_group TEXT NOT NULL,
-                          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
-            
-            c.execute('''CREATE TABLE IF NOT EXISTS exercise_sets
-                         (id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                          exercise_id INTEGER NOT NULL,
-                          weight REAL NOT NULL,
-                          reps INTEGER NOT NULL,
-                          created_at TEXT NOT NULL,
-                          FOREIGN KEY (exercise_id) REFERENCES exercises (id) ON DELETE CASCADE
-                         )''')
-            
-            c.execute('''CREATE TABLE IF NOT EXISTS workouts
-                         (id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                          username TEXT NOT NULL,
-                          name TEXT NOT NULL,
-                          date TEXT NOT NULL,
-                          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
-            
-            c.execute('''CREATE TABLE IF NOT EXISTS workout_exercises
-                         (id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                          workout_id INTEGER NOT NULL,
-                          exercise_id INTEGER NOT NULL,
-                          sets INTEGER DEFAULT 0,
-                          reps INTEGER DEFAULT 0,
-                          weight REAL DEFAULT 0,
-                          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                          FOREIGN KEY (workout_id) REFERENCES workouts (id) ON DELETE CASCADE,
-                          FOREIGN KEY (exercise_id) REFERENCES exercises (id) ON DELETE CASCADE)''')
+            if USE_MYSQL:
+                c.execute('''CREATE TABLE IF NOT EXISTS exercises
+                             (id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                              username TEXT NOT NULL,
+                              name TEXT NOT NULL,
+                              muscle_group TEXT NOT NULL,
+                              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
+                c.execute('''CREATE TABLE IF NOT EXISTS exercise_sets
+                             (id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                              exercise_id INTEGER NOT NULL,
+                              weight REAL NOT NULL,
+                              reps INTEGER NOT NULL,
+                              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                              FOREIGN KEY (exercise_id) REFERENCES exercises (id) ON DELETE CASCADE
+                             )''')
+                c.execute('''CREATE TABLE IF NOT EXISTS workouts
+                             (id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                              username TEXT NOT NULL,
+                              name TEXT NOT NULL,
+                              date TEXT NOT NULL,
+                              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
+                c.execute('''CREATE TABLE IF NOT EXISTS workout_exercises
+                             (id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                              workout_id INTEGER NOT NULL,
+                              exercise_id INTEGER NOT NULL,
+                              sets INTEGER DEFAULT 0,
+                              reps INTEGER DEFAULT 0,
+                              weight REAL DEFAULT 0,
+                              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                              FOREIGN KEY (workout_id) REFERENCES workouts (id) ON DELETE CASCADE,
+                              FOREIGN KEY (exercise_id) REFERENCES exercises (id) ON DELETE CASCADE)''')
+            else:
+                c.execute('''CREATE TABLE IF NOT EXISTS exercises
+                             (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                              username TEXT NOT NULL,
+                              name TEXT NOT NULL,
+                              muscle_group TEXT NOT NULL,
+                              created_at TEXT DEFAULT (datetime('now'))
+                             )''')
+                c.execute('''CREATE TABLE IF NOT EXISTS exercise_sets
+                             (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                              exercise_id INTEGER NOT NULL,
+                              weight REAL NOT NULL,
+                              reps INTEGER NOT NULL,
+                              created_at TEXT DEFAULT (datetime('now')),
+                              FOREIGN KEY (exercise_id) REFERENCES exercises (id) ON DELETE CASCADE
+                             )''')
+                c.execute('''CREATE TABLE IF NOT EXISTS workouts
+                             (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                              username TEXT NOT NULL,
+                              name TEXT NOT NULL,
+                              date TEXT NOT NULL,
+                              created_at TEXT DEFAULT (datetime('now'))
+                             )''')
+                c.execute('''CREATE TABLE IF NOT EXISTS workout_exercises
+                             (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                              workout_id INTEGER NOT NULL,
+                              exercise_id INTEGER NOT NULL,
+                              sets INTEGER DEFAULT 0,
+                              reps INTEGER DEFAULT 0,
+                              weight REAL DEFAULT 0,
+                              created_at TEXT DEFAULT (datetime('now')),
+                              FOREIGN KEY (workout_id) REFERENCES workouts (id) ON DELETE CASCADE,
+                              FOREIGN KEY (exercise_id) REFERENCES exercises (id) ON DELETE CASCADE
+                             )''')
 
             # Add info column to communities table if it doesn't exist
             try:
