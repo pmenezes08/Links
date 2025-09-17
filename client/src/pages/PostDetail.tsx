@@ -180,12 +180,13 @@ export default function PostDetail(){
     }
   }
 
-  async function submitInlineReply(parentId: number, text: string){
-    if (!post || !text) return
+  async function submitInlineReply(parentId: number, text: string, file?: File){
+    if (!post || (!text && !file)) return
     const fd = new FormData()
     fd.append('post_id', String(post.id))
-    fd.append('content', text)
+    fd.append('content', text || '')
     fd.append('parent_reply_id', String(parentId))
+    if (file) fd.append('image', file)
     const r = await fetch('/post_reply', { method:'POST', credentials:'include', body: fd })
     const j = await r.json().catch(()=>null)
     if (j?.success && j.reply){
@@ -300,9 +301,10 @@ function Reaction({ icon, count, active, onClick }:{ icon: string, count: number
   )
 }
 
-function ReplyNode({ reply, depth=0, onToggle, onInlineReply }:{ reply: Reply, depth?: number, onToggle: (id:number, reaction:string)=>void, onInlineReply: (id:number, text:string)=>void }){
+function ReplyNode({ reply, depth=0, onToggle, onInlineReply }:{ reply: Reply, depth?: number, onToggle: (id:number, reaction:string)=>void, onInlineReply: (id:number, text:string, file?: File)=>void }){
   const [showComposer, setShowComposer] = useState(false)
   const [text, setText] = useState('')
+  const [img, setImg] = useState<File|null>(null)
   const avatarSizePx = 28
   return (
     <div className="border-b border-white/10 py-2">
@@ -331,7 +333,11 @@ function ReplyNode({ reply, depth=0, onToggle, onInlineReply }:{ reply: Reply, d
           {showComposer ? (
             <div className="mt-2 flex items-center gap-2">
               <input className="flex-1 px-3 py-1.5 rounded-full bg-black border border-[#4db6ac] text-[16px] focus:outline-none focus:ring-1 focus:ring-[#4db6ac]" value={text} onChange={(e)=> setText(e.target.value)} placeholder={`Reply to @${reply.username}`} />
-              <button className="px-2.5 py-1.5 rounded-full bg-[#4db6ac] text-white border border-[#4db6ac] hover:brightness-110" onClick={()=> { if (!text) return; onInlineReply(reply.id, text); setText(''); setShowComposer(false) }} aria-label="Send reply">
+              <label className="px-2.5 py-1.5 rounded-full border border-white/10 text-xs text-[#9fb0b5] hover:border-[#2a3f41] cursor-pointer">
+                <i className="fa-regular fa-image" style={{ color: '#4db6ac' }} />
+                <input type="file" accept="image/*" onChange={(e)=> setImg(e.target.files?.[0]||null)} style={{ display: 'none' }} />
+              </label>
+              <button className="px-2.5 py-1.5 rounded-full bg-[#4db6ac] text-white border border-[#4db6ac] hover:brightness-110" onClick={()=> { if (!text && !img) return; onInlineReply(reply.id, text, img || undefined); setText(''); setImg(null); setShowComposer(false) }} aria-label="Send reply">
                 <i className="fa-solid fa-paper-plane" />
               </button>
             </div>
