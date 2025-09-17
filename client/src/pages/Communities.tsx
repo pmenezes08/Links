@@ -320,6 +320,70 @@ function ParentTimeline({ parentId }:{ parentId:number }){
                 {p.image_path ? (
                   <img src={(p.image_path.startsWith('/uploads') || p.image_path.startsWith('/static')) ? p.image_path : `/uploads/${p.image_path}`} alt="" className="block mx-auto max-w-full max-h-[360px] rounded border border-white/10" />
                 ) : null}
+                <div className="flex items-center gap-2 text-xs" onClick={(e)=> e.stopPropagation()}>
+                  <button className="px-2 py-1 rounded transition-colors" onClick={async()=>{
+                    // Optimistic toggle
+                    const prev = p.user_reaction
+                    const next = prev === 'heart' ? null : 'heart'
+                    const counts = { ...(p.reactions||{}) }
+                    if (prev) counts[prev] = Math.max(0, (counts[prev]||0)-1)
+                    if (next) counts[next] = (counts[next]||0)+1
+                    setPosts(list => list.map(it => it.id===p.id ? ({ ...it, user_reaction: next, reactions: counts }) : it))
+                    try{
+                      const fd = new URLSearchParams({ post_id: String(p.id), reaction: 'heart' })
+                      const r = await fetch('/add_reaction', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
+                      const j = await r.json().catch(()=>null)
+                      if (j?.success){
+                        setPosts(list => list.map(it => it.id===p.id ? ({ ...it, reactions: { ...(it.reactions||{}), ...j.counts }, user_reaction: j.user_reaction }) : it))
+                      }
+                    }catch{}
+                  }}>
+                    <i className={`fa-regular fa-heart ${p.user_reaction==='heart' ? '' : ''}`} style={{ color: p.user_reaction==='heart' ? '#4db6ac' : '#6c757d', WebkitTextStroke: p.user_reaction==='heart' ? '1px #4db6ac' : undefined }} />
+                    <span className="ml-1" style={{ color: p.user_reaction==='heart' ? '#cfe9e7' : '#9fb0b5' }}>{(p.reactions?.['heart'])||0}</span>
+                  </button>
+                  <button className="px-2 py-1 rounded transition-colors" onClick={async()=>{
+                    const prev = p.user_reaction
+                    const next = prev === 'thumbs-up' ? null : 'thumbs-up'
+                    const counts = { ...(p.reactions||{}) }
+                    if (prev) counts[prev] = Math.max(0, (counts[prev]||0)-1)
+                    if (next) counts[next] = (counts[next]||0)+1
+                    setPosts(list => list.map(it => it.id===p.id ? ({ ...it, user_reaction: next, reactions: counts }) : it))
+                    try{
+                      const fd = new URLSearchParams({ post_id: String(p.id), reaction: 'thumbs-up' })
+                      const r = await fetch('/add_reaction', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
+                      const j = await r.json().catch(()=>null)
+                      if (j?.success){
+                        setPosts(list => list.map(it => it.id===p.id ? ({ ...it, reactions: { ...(it.reactions||{}), ...j.counts }, user_reaction: j.user_reaction }) : it))
+                      }
+                    }catch{}
+                  }}>
+                    <i className="fa-regular fa-thumbs-up" style={{ color: p.user_reaction==='thumbs-up' ? '#4db6ac' : '#6c757d', WebkitTextStroke: p.user_reaction==='thumbs-up' ? '1px #4db6ac' : undefined }} />
+                    <span className="ml-1" style={{ color: p.user_reaction==='thumbs-up' ? '#cfe9e7' : '#9fb0b5' }}>{(p.reactions?.['thumbs-up'])||0}</span>
+                  </button>
+                  <button className="px-2 py-1 rounded transition-colors" onClick={async()=>{
+                    const prev = p.user_reaction
+                    const next = prev === 'thumbs-down' ? null : 'thumbs-down'
+                    const counts = { ...(p.reactions||{}) }
+                    if (prev) counts[prev] = Math.max(0, (counts[prev]||0)-1)
+                    if (next) counts[next] = (counts[next]||0)+1
+                    setPosts(list => list.map(it => it.id===p.id ? ({ ...it, user_reaction: next, reactions: counts }) : it))
+                    try{
+                      const fd = new URLSearchParams({ post_id: String(p.id), reaction: 'thumbs-down' })
+                      const r = await fetch('/add_reaction', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
+                      const j = await r.json().catch(()=>null)
+                      if (j?.success){
+                        setPosts(list => list.map(it => it.id===p.id ? ({ ...it, reactions: { ...(it.reactions||{}), ...j.counts }, user_reaction: j.user_reaction }) : it))
+                      }
+                    }catch{}
+                  }}>
+                    <i className="fa-regular fa-thumbs-down" style={{ color: p.user_reaction==='thumbs-down' ? '#4db6ac' : '#6c757d', WebkitTextStroke: p.user_reaction==='thumbs-down' ? '1px #4db6ac' : undefined }} />
+                    <span className="ml-1" style={{ color: p.user_reaction==='thumbs-down' ? '#cfe9e7' : '#9fb0b5' }}>{(p.reactions?.['thumbs-down'])||0}</span>
+                  </button>
+                  <button className="ml-auto px-2.5 py-1 rounded-full text-[#cfd8dc]" onClick={()=> navigate(`/post/${p.id}`)}>
+                    <i className="fa-regular fa-comment" />
+                    <span className="ml-1">{p.replies_count||0}</span>
+                  </button>
+                </div>
               </div>
             </div>
           ))}

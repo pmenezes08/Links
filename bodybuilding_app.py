@@ -2200,6 +2200,32 @@ def api_community_group_feed(parent_id: int):
                         logger.info(f"Group feed row id={pid}, raw_created_at={row.get('created_at')}, raw_timestamp={row.get('timestamp')}, parsed={dt}")
                         sample_logged += 1
                     uname = row.get('username')
+                    # Post reaction counts
+                    try:
+                        c.execute("""
+                            SELECT reaction_type, COUNT(*) as count
+                            FROM reactions
+                            WHERE post_id = ?
+                            GROUP BY reaction_type
+                        """, (pid,))
+                        rc = c.fetchall()
+                        reaction_counts = {r['reaction_type']: r['count'] for r in rc}
+                    except Exception:
+                        reaction_counts = {}
+                    # Current user's reaction
+                    try:
+                        c.execute("SELECT reaction_type FROM reactions WHERE post_id = ? AND username = ?", (pid, username))
+                        urr = c.fetchone()
+                        user_reaction_val = urr['reaction_type'] if urr else None
+                    except Exception:
+                        user_reaction_val = None
+                    # Replies count
+                    try:
+                        c.execute("SELECT COUNT(*) as cnt FROM replies WHERE post_id = ?", (pid,))
+                        rr = c.fetchone()
+                        replies_count_val = rr['cnt'] if hasattr(rr, 'keys') else (rr[0] if rr else 0)
+                    except Exception:
+                        replies_count_val = 0
                     post_obj = {
                         'id': pid,
                         'username': uname,
@@ -2208,7 +2234,10 @@ def api_community_group_feed(parent_id: int):
                         'community_name': name_map.get(row.get('community_id')),
                         'created_at': row.get('created_at') or row.get('timestamp'),
                         'image_path': row.get('image_path'),
-                        'profile_picture': get_profile_picture(uname)
+                        'profile_picture': get_profile_picture(uname),
+                        'reactions': reaction_counts,
+                        'user_reaction': user_reaction_val,
+                        'replies_count': replies_count_val
                     }
                     if (dt is not None) and (dt >= cutoff):
                         posts.append(post_obj)
@@ -2218,6 +2247,32 @@ def api_community_group_feed(parent_id: int):
                     if sample_logged < 5:
                         logger.info(f"Group feed row id={pid}, raw_created_at={created_at_val}, raw_timestamp={timestamp_val}, parsed={dt}")
                         sample_logged += 1
+                    # Post reaction counts
+                    try:
+                        c.execute("""
+                            SELECT reaction_type, COUNT(*) as count
+                            FROM reactions
+                            WHERE post_id = ?
+                            GROUP BY reaction_type
+                        """, (pid,))
+                        rc = c.fetchall()
+                        reaction_counts = {r['reaction_type']: r['count'] for r in rc}
+                    except Exception:
+                        reaction_counts = {}
+                    # Current user's reaction
+                    try:
+                        c.execute("SELECT reaction_type FROM reactions WHERE post_id = ? AND username = ?", (pid, username))
+                        urr = c.fetchone()
+                        user_reaction_val = urr['reaction_type'] if urr else None
+                    except Exception:
+                        user_reaction_val = None
+                    # Replies count
+                    try:
+                        c.execute("SELECT COUNT(*) as cnt FROM replies WHERE post_id = ?", (pid,))
+                        rr = c.fetchone()
+                        replies_count_val = rr['cnt'] if hasattr(rr, 'keys') else (rr[0] if rr else 0)
+                    except Exception:
+                        replies_count_val = 0
                     post_obj = {
                         'id': pid,
                         'username': uname,
@@ -2226,7 +2281,10 @@ def api_community_group_feed(parent_id: int):
                         'community_name': name_map.get(cid),
                         'created_at': created_at_val or timestamp_val,
                         'image_path': image_path,
-                        'profile_picture': get_profile_picture(uname)
+                        'profile_picture': get_profile_picture(uname),
+                        'reactions': reaction_counts,
+                        'user_reaction': user_reaction_val,
+                        'replies_count': replies_count_val
                     }
                     if (dt is not None) and (dt >= cutoff):
                         posts.append(post_obj)
