@@ -244,6 +244,18 @@ export default function PostDetail(){
         </div>
       </div>
 
+      {/* Hidden file input for main composer */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        onChange={(e) => {
+          console.log('File selected:', e.target.files);
+          setFile(e.target.files?.[0] || null);
+        }}
+        style={{ display: 'none', position: 'fixed', top: '-9999px', left: '-9999px' }}
+      />
+
       {/* Fixed-bottom reply composer */}
       <div className="fixed left-0 right-0 bottom-0 z-50 bg-black/85 border-t border-white/10 backdrop-blur">
         <div className="px-3 py-2 flex flex-col gap-1.5">
@@ -274,11 +286,14 @@ export default function PostDetail(){
                   type="button"
                   className="inline-flex items-center justify-center w-10 h-10 rounded-full hover:bg-white/10" 
                   aria-label="Add image"
-                  onClick={() => {
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
                     console.log('Image button clicked - triggering file input');
-                    const input = document.getElementById('main-file-input') as HTMLInputElement;
-                    if (input) {
-                      input.click();
+                    if (fileInputRef.current) {
+                      fileInputRef.current.click();
+                    } else {
+                      console.error('File input ref not found');
                     }
                   }}
                 >
@@ -299,7 +314,9 @@ export default function PostDetail(){
                 <button 
                   type="button"
                   className="px-2.5 py-1.5 rounded-full bg-[#4db6ac] text-white border border-[#4db6ac] hover:brightness-110" 
-                  onClick={() => {
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
                     console.log('Send button clicked - submitting reply');
                     submitReply();
                   }} 
@@ -308,17 +325,6 @@ export default function PostDetail(){
                   <i className="fa-solid fa-paper-plane" />
                 </button>
               </div>
-              <input
-                id="main-file-input"
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                onChange={(e) => {
-                  console.log('File selected:', e.target.files);
-                  setFile(e.target.files?.[0] || null);
-                }}
-                style={{ position: 'absolute', left: '-9999px', visibility: 'hidden' }}
-              />
             </>
           ) : null}
         </div>
@@ -392,11 +398,14 @@ function ReplyNode({ reply, depth=0, onToggle, onInlineReply }:{ reply: Reply, d
                   type="button"
                   className="inline-flex items-center justify-center w-10 h-10 rounded-full hover:bg-white/10" 
                   aria-label="Add image"
-                  onClick={() => {
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
                     console.log('Inline image button clicked - triggering file input');
-                    const input = document.getElementById(`inline-file-input-${reply.id}`) as HTMLInputElement;
-                    if (input) {
-                      input.click();
+                    if (inlineFileRef.current) {
+                      inlineFileRef.current.click();
+                    } else {
+                      console.error('Inline file input ref not found');
                     }
                   }}
                 >
@@ -405,7 +414,9 @@ function ReplyNode({ reply, depth=0, onToggle, onInlineReply }:{ reply: Reply, d
                 <button 
                   type="button"
                   className="px-2.5 py-1.5 rounded-full bg-[#4db6ac] text-white border border-[#4db6ac] hover:brightness-110" 
-                  onClick={() => {
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
                     console.log('Inline send button clicked - submitting reply');
                     if (!text && !img) return;
                     onInlineReply(reply.id, text, img || undefined);
@@ -430,19 +441,18 @@ function ReplyNode({ reply, depth=0, onToggle, onInlineReply }:{ reply: Reply, d
                   </button>
                 </div>
               )}
-              <input
-                id={`inline-file-input-${reply.id}`}
-                ref={inlineFileRef}
-                type="file"
-                accept="image/*"
-                onChange={(e) => {
-                  console.log('Inline file selected:', e.target.files);
-                  setImg(e.target.files?.[0] || null);
-                }}
-                style={{ position: 'absolute', left: '-9999px', visibility: 'hidden' }}
-              />
             </div>
           ) : null}
+          <input
+            ref={inlineFileRef}
+            type="file"
+            accept="image/*"
+            onChange={(e) => {
+              console.log('Inline file selected:', e.target.files);
+              setImg(e.target.files?.[0] || null);
+            }}
+            style={{ display: 'none', position: 'absolute', top: '-9999px', left: '-9999px' }}
+          />
         </div>
       </div>
       {reply.children && reply.children.length ? reply.children.map(ch => (
