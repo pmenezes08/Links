@@ -2,39 +2,12 @@ import { useEffect, useRef, useState } from 'react'
 import type React from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import Avatar from '../components/Avatar'
+import { formatSmartTime } from '../utils/time'
 
 type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null, parent_reply_id?: number|null, children?: Reply[], profile_picture?: string|null, image_path?: string|null }
 type Post = { id: number; username: string; content: string; image_path?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; replies: Reply[] }
 
-function formatTimestamp(input: string): string {
-  function parseDate(str: string): Date | null {
-    if (!str) return null
-    const s = String(str).trim()
-    if (s.startsWith('0000-00-00')) return null
-    if (/^\d{10,13}$/.test(s)){
-      const n = Number(s)
-      const d = new Date(n > 1e12 ? n : n * 1000)
-      return isNaN(d.getTime()) ? null : d
-    }
-    let d = new Date(s); if (!isNaN(d.getTime())) return d
-    d = new Date(s.replace(' ', 'T')); if (!isNaN(d.getTime())) return d
-    const mdyDots = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{2}) (\d{1,2}):(\d{2})$/)
-    if (mdyDots){ const mm = Number(mdyDots[1]), dd = Number(mdyDots[2]), yy = Number(mdyDots[3]); const HH = Number(mdyDots[4]), MM = Number(mdyDots[5]); const dt = new Date(2000 + yy, mm - 1, dd, HH, MM); return isNaN(dt.getTime()) ? null : dt }
-    const mdySlashAm = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2}) (\d{1,2}):(\d{2}) (AM|PM)$/i)
-    if (mdySlashAm){ let hh = Number(mdySlashAm[4]); const MM = Number(mdySlashAm[5]); const ampm = mdySlashAm[6].toUpperCase(); if (ampm === 'PM' && hh < 12) hh += 12; if (ampm === 'AM' && hh === 12) hh = 0; const dt = new Date(2000 + Number(mdySlashAm[3]), Number(mdySlashAm[1]) - 1, Number(mdySlashAm[2]), hh, MM); return isNaN(dt.getTime()) ? null : dt }
-    const dmyDash = s.match(/^(\d{2})-(\d{2})-(\d{4})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?$/)
-    if (dmyDash){ const dd = Number(dmyDash[1]), mm = Number(dmyDash[2]), yyyy = Number(dmyDash[3]); const HH = dmyDash[4]?Number(dmyDash[4]):0; const MM = dmyDash[5]?Number(dmyDash[5]):0; const SS = dmyDash[6]?Number(dmyDash[6]):0; const dt = new Date(yyyy, mm - 1, dd, HH, MM, SS); return isNaN(dt.getTime()) ? null : dt }
-    const ymd = s.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/)
-    if (ymd){ const dt = new Date(Number(ymd[1]), Number(ymd[2]) - 1, Number(ymd[3]), Number(ymd[4]), Number(ymd[5]), ymd[6]?Number(ymd[6]):0); return isNaN(dt.getTime()) ? null : dt }
-    return null
-  }
-  const d = parseDate(input)
-  if (!d) return input
-  const dd = String(d.getDate()).padStart(2,'0')
-  const mm = String(d.getMonth()+1).padStart(2,'0')
-  const yyyy = String(d.getFullYear())
-  return `${dd}-${mm}-${yyyy}`
-}
+// old formatTimestamp removed; using formatSmartTime
 
 function renderRichText(input: string){
   const nodes: Array<React.ReactNode> = []
@@ -265,7 +238,7 @@ export default function PostDetail(){
           <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2">
             <Avatar username={post.username} url={(post as any).profile_picture || undefined} size={32} />
             <div className="font-medium">{post.username}</div>
-            <div className="text-xs text-[#9fb0b5] ml-auto">{formatTimestamp((post as any).display_timestamp || post.timestamp)}</div>
+            <div className="text-xs text-[#9fb0b5] ml-auto">{formatSmartTime((post as any).display_timestamp || post.timestamp)}</div>
           </div>
           <div className="px-3 py-2 space-y-2">
             <div className="whitespace-pre-wrap text-[14px] break-words break-all">{renderRichText(post.content)}</div>
@@ -406,7 +379,7 @@ function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDel
         <div className="flex-1 min-w-0 pr-2">
           <div className="flex items-center gap-2">
             <div className="font-medium">{reply.username}</div>
-            <div className="text-[11px] text-[#9fb0b5] ml-auto">{formatTimestamp(reply.timestamp)}</div>
+            <div className="text-[11px] text-[#9fb0b5] ml-auto">{formatSmartTime(reply.timestamp)}</div>
             {(currentUser && (currentUser === reply.username || currentUser === 'admin')) ? (
               <button
                 className="ml-2 px-2 py-1 rounded-full text-[#6c757d] hover:text-red-400"

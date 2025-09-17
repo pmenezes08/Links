@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef, useMemo } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
+import { formatSmartTime } from '../utils/time'
 import { useHeader } from '../contexts/HeaderContext'
 import Avatar from '../components/Avatar'
 
@@ -313,7 +314,7 @@ function ParentTimeline({ parentId }:{ parentId:number }){
                     ) : null}
                   </div>
                 </div>
-                <div className="text-xs text-[#9fb0b5] ml-auto tabular-nums">{String(p.created_at || '').slice(0, 10)}</div>
+                <div className="text-xs text-[#9fb0b5] ml-auto tabular-nums">{formatSmartTime(p.created_at)}</div>
               </div>
               <div className="px-3 py-2 space-y-2">
                 <div className="whitespace-pre-wrap text-[14px] leading-relaxed">{p.content}</div>

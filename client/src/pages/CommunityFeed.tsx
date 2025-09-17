@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import Avatar from '../components/Avatar'
+import { formatSmartTime } from '../utils/time'
 import ImageLoader from '../components/ImageLoader'
 import { useHeader } from '../contexts/HeaderContext'
 
@@ -9,83 +10,7 @@ type Poll = { id: number; question: string; is_active: number; options: PollOpti
 type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null, profile_picture?: string|null }
 type Post = { id: number; username: string; content: string; image_path?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; poll?: Poll|null; replies: Reply[], profile_picture?: string|null }
 
-function formatTimestamp(input: string): string {
-  function parseDate(str: string): Date | null {
-    if (!str) return null
-    const s = String(str).trim()
-    if (s.startsWith('0000-00-00')) return null
-    // Epoch ms
-    if (/^\d{10,13}$/.test(s)){
-      const n = Number(s)
-      const d = new Date(n > 1e12 ? n : n * 1000)
-      return isNaN(d.getTime()) ? null : d
-    }
-    // ISO or browser-parseable
-    let d = new Date(s)
-    if (!isNaN(d.getTime())) return d
-    // Replace space with T
-    d = new Date(s.replace(' ', 'T'))
-    if (!isNaN(d.getTime())) return d
-    // MM.DD.YY HH:MM (24h)
-    const mdyDots = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{2}) (\d{1,2}):(\d{2})$/)
-    if (mdyDots){
-      const mm = Number(mdyDots[1])
-      const dd = Number(mdyDots[2])
-      const yy = Number(mdyDots[3])
-      const HH = Number(mdyDots[4])
-      const MM = Number(mdyDots[5])
-      const year = 2000 + yy
-      const dt = new Date(year, mm - 1, dd, HH, MM)
-      return isNaN(dt.getTime()) ? null : dt
-    }
-    // MM/DD/YY hh:MM AM/PM
-    const mdySlashAm = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2}) (\d{1,2}):(\d{2}) (AM|PM)$/i)
-    if (mdySlashAm){
-      const mm = Number(mdySlashAm[1])
-      const dd = Number(mdySlashAm[2])
-      const yy = Number(mdySlashAm[3])
-      let hh = Number(mdySlashAm[4])
-      const MM = Number(mdySlashAm[5])
-      const ampm = mdySlashAm[6].toUpperCase()
-      if (ampm === 'PM' && hh < 12) hh += 12
-      if (ampm === 'AM' && hh === 12) hh = 0
-      const year = 2000 + yy
-      const dt = new Date(year, mm - 1, dd, hh, MM)
-      return isNaN(dt.getTime()) ? null : dt
-    }
-    // DD-MM-YYYY[ HH:MM[:SS]]
-    const dmyDash = s.match(/^(\d{2})-(\d{2})-(\d{4})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?$/)
-    if (dmyDash){
-      const dd = Number(dmyDash[1])
-      const mm = Number(dmyDash[2])
-      const yyyy = Number(dmyDash[3])
-      const HH = dmyDash[4] ? Number(dmyDash[4]) : 0
-      const MM = dmyDash[5] ? Number(dmyDash[5]) : 0
-      const SS = dmyDash[6] ? Number(dmyDash[6]) : 0
-      const dt = new Date(yyyy, mm - 1, dd, HH, MM, SS)
-      return isNaN(dt.getTime()) ? null : dt
-    }
-    // YYYY-MM-DD HH:MM:SS
-    const ymd = s.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/)
-    if (ymd){
-      const year = Number(ymd[1])
-      const mm = Number(ymd[2])
-      const dd = Number(ymd[3])
-      const HH = Number(ymd[4])
-      const MM = Number(ymd[5])
-      const SS = ymd[6] ? Number(ymd[6]) : 0
-      const dt = new Date(year, mm - 1, dd, HH, MM, SS)
-      return isNaN(dt.getTime()) ? null : dt
-    }
-    return null
-  }
-  const date = parseDate(input)
-  if (!date) return input
-  const dd = String(date.getDate()).padStart(2, '0')
-  const mm = String(date.getMonth() + 1).padStart(2, '0')
-  const yyyy = String(date.getFullYear())
-  return `${dd}-${mm}-${yyyy}`
-}
+// old formatTimestamp removed; using formatSmartTime
 
 export default function CommunityFeed() {
   let { community_id } = useParams()
@@ -384,7 +309,7 @@ function PostCard({ post, currentUser, isAdmin, onOpen, onToggleReaction }: { po
       <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2">
         <Avatar username={post.username} url={post.profile_picture || undefined} size={32} />
         <div className="font-medium tracking-[-0.01em]">{post.username}</div>
-        <div className="text-xs text-[#9fb0b5] ml-auto tabular-nums">{formatTimestamp((post as any).display_timestamp || post.timestamp)}</div>
+        <div className="text-xs text-[#9fb0b5] ml-auto tabular-nums">{formatSmartTime((post as any).display_timestamp || post.timestamp)}</div>
         {(post.username === currentUser || isAdmin || currentUser === 'admin') && (
           <button className="ml-2 px-2 py-1 rounded-full text-[#6c757d] hover:text-[#4db6ac]" title="Delete"
             onClick={async(e)=> { e.stopPropagation(); const ok = confirm('Delete this post?'); if(!ok) return; const fd = new FormData(); fd.append('post_id', String(post.id)); await fetch('/delete_post', { method:'POST', credentials:'include', body: fd }); location.reload() }}>

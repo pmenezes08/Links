@@ -2,34 +2,9 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
 import Avatar from '../components/Avatar'
+import { formatSmartTime } from '../utils/time'
 
 type Post = { id:number; username:string; content:string; image_path?:string|null; timestamp:string; display_timestamp?:string; community_id?:number|null; community_name?:string; reactions:Record<string,number>; user_reaction:string|null; poll?:any|null; replies_count?:number; profile_picture?:string|null }
-
-function formatTimestamp(input: string): string {
-  function parseDate(str: string): Date | null {
-    if (!str) return null
-    const s = String(str).trim()
-    if (s.startsWith('0000-00-00')) return null
-    if (/^\d{10,13}$/.test(s)){ const n = Number(s); const d = new Date(n > 1e12 ? n : n * 1000); return isNaN(d.getTime()) ? null : d }
-    let d = new Date(s); if (!isNaN(d.getTime())) return d
-    d = new Date(s.replace(' ', 'T')); if (!isNaN(d.getTime())) return d
-    const mdyDots = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{2}) (\d{1,2}):(\d{2})$/)
-    if (mdyDots){ const dt = new Date(2000+Number(mdyDots[3]), Number(mdyDots[1])-1, Number(mdyDots[2]), Number(mdyDots[4]), Number(mdyDots[5])); return isNaN(dt.getTime()) ? null : dt }
-    const mdySlashAm = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2}) (\d{1,2}):(\d{2}) (AM|PM)$/i)
-    if (mdySlashAm){ let hh = Number(mdySlashAm[4]); const MM = Number(mdySlashAm[5]); const ampm = mdySlashAm[6].toUpperCase(); if (ampm==='PM'&&hh<12) hh+=12; if (ampm==='AM'&&hh===12) hh=0; const dt = new Date(2000+Number(mdySlashAm[3]), Number(mdySlashAm[1])-1, Number(mdySlashAm[2]), hh, MM); return isNaN(dt.getTime()) ? null : dt }
-    const dmyDash = s.match(/^(\d{2})-(\d{2})-(\d{4})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?$/)
-    if (dmyDash){ const dd = Number(dmyDash[1]), mm = Number(dmyDash[2]), yyyy = Number(dmyDash[3]); const HH = dmyDash[4]?Number(dmyDash[4]):0; const MM = dmyDash[5]?Number(dmyDash[5]):0; const SS = dmyDash[6]?Number(dmyDash[6]):0; const dt = new Date(yyyy, mm-1, dd, HH, MM, SS); return isNaN(dt.getTime()) ? null : dt }
-    const ymd = s.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/)
-    if (ymd){ const dt = new Date(Number(ymd[1]), Number(ymd[2])-1, Number(ymd[3]), Number(ymd[4]), Number(ymd[5]), ymd[6]?Number(ymd[6]):0); return isNaN(dt.getTime()) ? null : dt }
-    return null
-  }
-  const date = parseDate(input)
-  if (!date) return input
-  const dd = String(date.getDate()).padStart(2,'0')
-  const mm = String(date.getMonth()+1).padStart(2,'0')
-  const yyyy = String(date.getFullYear())
-  return `${dd}-${mm}-${yyyy}`
-}
 
 export default function HomeTimeline(){
   const navigate = useNavigate()
@@ -107,7 +82,7 @@ export default function HomeTimeline(){
                       ) : null}
                     </div>
                   </div>
-                  <div className="text-xs text-[#9fb0b5] ml-auto tabular-nums">{formatTimestamp(p.display_timestamp || p.timestamp)}</div>
+                  <div className="text-xs text-[#9fb0b5] ml-auto tabular-nums">{formatSmartTime(p.display_timestamp || p.timestamp)}</div>
                 </div>
                 <div className="px-3 py-2 space-y-2">
                   <div className="whitespace-pre-wrap text-[14px] leading-relaxed">{p.content}</div>
