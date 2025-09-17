@@ -2063,7 +2063,14 @@ def react_assets(filename):
         assets_dir = os.path.join(base_dir, 'client', 'dist', 'assets')
         asset_path = os.path.join(assets_dir, filename)
         if os.path.exists(asset_path):
-            return send_from_directory(assets_dir, filename)
+            resp = send_from_directory(assets_dir, filename)
+            try:
+                resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+                resp.headers['Pragma'] = 'no-cache'
+                resp.headers['Expires'] = '0'
+            except Exception:
+                pass
+            return resp
         logger.warning(f"React asset not found: {asset_path}")
         abort(404)
     except Exception as e:
@@ -2240,7 +2247,14 @@ def service_worker():
     try:
         base_dir = os.path.dirname(os.path.abspath(__file__))
         dist_dir = os.path.join(base_dir, 'client', 'dist')
-        return send_from_directory(dist_dir, 'sw.js')
+        resp = send_from_directory(dist_dir, 'sw.js')
+        try:
+            resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+            resp.headers['Pragma'] = 'no-cache'
+            resp.headers['Expires'] = '0'
+        except Exception:
+            pass
+        return resp
     except Exception as e:
         logger.error(f"Error serving sw.js: {str(e)}")
         abort(404)
@@ -2261,7 +2275,14 @@ def premium_dashboard_react():
     try:
         base_dir = os.path.dirname(os.path.abspath(__file__))
         dist_dir = os.path.join(base_dir, 'client', 'dist')
-        return send_from_directory(dist_dir, 'index.html')
+        resp = send_from_directory(dist_dir, 'index.html')
+        try:
+            resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+            resp.headers['Pragma'] = 'no-cache'
+            resp.headers['Expires'] = '0'
+        except Exception:
+            pass
+        return resp
     except Exception as e:
         logger.error(f"Error serving React premium dashboard: {str(e)}")
         abort(500)
@@ -11424,7 +11445,14 @@ def react_post_detail(post_id):
     try:
         base_dir = os.path.dirname(os.path.abspath(__file__))
         dist_dir = os.path.join(base_dir, 'client', 'dist')
-        return send_from_directory(dist_dir, 'index.html')
+        resp = send_from_directory(dist_dir, 'index.html')
+        try:
+            resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+            resp.headers['Pragma'] = 'no-cache'
+            resp.headers['Expires'] = '0'
+        except Exception:
+            pass
+        return resp
     except Exception as e:
         logger.error(f"Error serving React post detail: {str(e)}")
         abort(500)

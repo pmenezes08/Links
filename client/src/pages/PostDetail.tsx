@@ -89,7 +89,7 @@ export default function PostDetail(){
   const [error, setError] = useState<string| null>(null)
   const [content, setContent] = useState('')
   const [file, setFile] = useState<File|null>(null)
-  const [composerActive, setComposerActive] = useState(false)
+  
   const fileInputRef = useRef<HTMLInputElement|null>(null)
 
   useEffect(() => {
@@ -252,8 +252,6 @@ export default function PostDetail(){
             placeholder="Write a reply…"
             value={content}
             onChange={(e)=> setContent(e.target.value)}
-            onFocus={()=> setComposerActive(true)}
-            onBlur={()=> { if (!content && !file) setComposerActive(false) }}
           />
           <div className="flex items-center justify-end gap-2 flex-wrap">
             {file && (
