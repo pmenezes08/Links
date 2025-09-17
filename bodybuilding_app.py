@@ -6568,7 +6568,8 @@ def post_status():
             else:
                         return redirect(url_for('feed') + '?error=Content or image is required!')
     
-    timestamp = datetime.now().strftime('%d-%m-%Y %H:%M:%S')
+    # Store in DB-friendly ISO format to avoid MySQL zero-datetime coercion
+    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
@@ -6686,10 +6687,10 @@ def post_reply():
     if not content and not image_path:
         return jsonify({'success': False, 'error': 'Content or image is required!'}), 400
 
-    # Use a consistent timestamp format for storage and a display-friendly one for the response
+    # Use DB-friendly ISO for storage; frontend will format for display
     now = datetime.now()
-    timestamp_db = now.strftime('%m.%d.%y %H:%M')
-    timestamp_display = now.strftime('%m/%d/%y %I:%M %p')
+    timestamp_db = now.strftime('%Y-%m-%d %H:%M:%S')
+    timestamp_display = now.strftime('%d-%m-%Y')
 
     try:
         with get_db_connection() as conn:
