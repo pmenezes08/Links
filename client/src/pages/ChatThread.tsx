@@ -606,7 +606,7 @@ export default function ChatThread(){
         style={{ 
           WebkitOverflowScrolling: 'touch' as any, 
           overscrollBehavior: 'contain' as any,
-          paddingBottom: '1rem'
+          paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 6rem)'
         }}
         onScroll={(e)=> {
           const el = e.currentTarget
@@ -743,7 +743,7 @@ export default function ChatThread(){
       </div>
 
       {/* Composer */}
-      <div className="bg-black px-3 py-2 border-t border-white/10 flex-shrink-0 mb-4">
+      <div className="bg-black px-3 py-2 border-t border-white/10 flex-shrink-0" style={{ marginBottom: 'calc(env(safe-area-inset-bottom, 0px) + 20px)' }}>
         {replyTo && (
           <div className="mb-2 px-3 py-2 bg-[#1a1a1a] rounded-lg border-l-4 border-[#4db6ac]">
             <div className="flex items-center justify-between mb-1">
