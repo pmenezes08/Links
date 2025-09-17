@@ -368,7 +368,7 @@ export default function CommunityFeed() {
 
 // Ad components removed
 
-function PostCard({ post, currentUser, isAdmin, onOpen, onToggleReaction }: { post: Post, currentUser: string, isAdmin: boolean, onOpen: ()=>void, onToggleReaction: (postId:number, reaction:string)=>void }) {
+function PostCard({ post, currentUser, isAdmin, onOpen, onToggleReaction }: { post: Post & { display_timestamp?: string }, currentUser: string, isAdmin: boolean, onOpen: ()=>void, onToggleReaction: (postId:number, reaction:string)=>void }) {
   const cardRef = useRef<HTMLDivElement|null>(null)
   const [isEditing, setIsEditing] = useState(false)
   const [editText, setEditText] = useState(post.content)
@@ -384,7 +384,7 @@ function PostCard({ post, currentUser, isAdmin, onOpen, onToggleReaction }: { po
       <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2">
         <Avatar username={post.username} url={post.profile_picture || undefined} size={32} />
         <div className="font-medium tracking-[-0.01em]">{post.username}</div>
-        <div className="text-xs text-[#9fb0b5] ml-auto tabular-nums">{formatTimestamp(post.timestamp)}</div>
+        <div className="text-xs text-[#9fb0b5] ml-auto tabular-nums">{formatTimestamp((post as any).display_timestamp || post.timestamp)}</div>
         {(post.username === currentUser || isAdmin || currentUser === 'admin') && (
           <button className="ml-2 px-2 py-1 rounded-full text-[#6c757d] hover:text-[#4db6ac]" title="Delete"
             onClick={async(e)=> { e.stopPropagation(); const ok = confirm('Delete this post?'); if(!ok) return; const fd = new FormData(); fd.append('post_id', String(post.id)); await fetch('/delete_post', { method:'POST', credentials:'include', body: fd }); location.reload() }}>

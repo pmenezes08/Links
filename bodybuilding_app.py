@@ -11068,17 +11068,15 @@ def api_community_feed(community_id):
                 post_id = post['id']
                 # Normalize display timestamp (DD-MM-YYYY) and ignore zero dates
                 try:
-                    raw_ts = post.get('timestamp') or post.get('created_at') or ''
-                    ts_str = str(raw_ts).strip()
+                    # Chat approach: accept multiple formats, return DD-MM-YYYY
+                    raw_ts = (post.get('timestamp') or post.get('created_at') or '').strip()
                     dt = None
-                    if ts_str and not ts_str.startswith('0000-00-00'):
+                    if raw_ts and not raw_ts.startswith('0000-00-00'):
                         from datetime import datetime as _dt
                         for fmt in (
-                            '%d-%m-%Y %H:%M:%S', '%d-%m-%Y %H:%M',
-                            '%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M',
-                            '%m.%d.%y %H:%M', '%Y-%m-%dT%H:%M:%S', '%Y-%m-%d'):
+                            '%d-%m-%Y %H:%M:%S','%d-%m-%Y %H:%M','%Y-%m-%d %H:%M:%S','%Y-%m-%d %H:%M','%m.%d.%y %H:%M','%Y-%m-%dT%H:%M:%S','%Y-%m-%d'):
                             try:
-                                dt = _dt.strptime(ts_str.replace('T', ' '), fmt)
+                                dt = _dt.strptime(raw_ts.replace('T',' '), fmt)
                                 break
                             except Exception:
                                 continue
