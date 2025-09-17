@@ -7445,13 +7445,15 @@ def get_university_ads():
             ads = []
             ad_ids = []
             for row in c.fetchall():
+                img = row['image_url'] if hasattr(row, 'keys') else row[4]
+                link = row['link_url'] if hasattr(row, 'keys') else row[5]
                 ads.append({
-                    'id': row['id'],
-                    'title': row['title'],
-                    'description': row['description'],
-                    'price': row['price'],
-                    'image': row['image_url'],
-                    'link': row['link_url'] or '#'
+                    'id': row['id'] if hasattr(row, 'keys') else row[0],
+                    'title': row['title'] if hasattr(row, 'keys') else row[1],
+                    'description': row['description'] if hasattr(row, 'keys') else row[2],
+                    'price': row['price'] if hasattr(row, 'keys') else row[3],
+                    'image_url': img,
+                    'link_url': link or '#'
                 })
                 ad_ids.append(row['id'])
             

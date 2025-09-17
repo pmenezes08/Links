@@ -103,7 +103,7 @@ export default function CommunityFeed() {
   const [hasUnseenAnnouncements, setHasUnseenAnnouncements] = useState(false)
   const [showAnnouncements, _setShowAnnouncements] = useState(false)
   const [_announcements, _setAnnouncements] = useState<Array<{id:number, content:string, created_by:string, created_at:string}>>([])
-  const [ad, setAd] = useState<any>(null)
+  const [ads, setAds] = useState<any[]>([])
   const [moreOpen, setMoreOpen] = useState(false)
   const scrollRef = useRef<HTMLDivElement|null>(null)
   // Modal removed in favor of dedicated PostDetail route
@@ -165,13 +165,10 @@ export default function CommunityFeed() {
       try{
         const r = await fetch(`/get_university_ads?community_id=${community_id}`, { credentials: 'include' })
         const j = await r.json()
-        if (j?.success && j.ads?.length){
-          setAd(j.ads[0])
-        } else {
-          setAd(null)
-        }
+        if (j?.success && Array.isArray(j.ads)) setAds(j.ads)
+        else setAds([])
       }catch{
-        setAd(null)
+        setAds([])
       }
     }
     loadAds()
@@ -321,7 +318,7 @@ export default function CommunityFeed() {
 
           {/* Feed items */}
           {timeline.map((item, i) => item.type === 'ad' ? (
-            <AdsCard key={`ad-${i}`} communityId={String(community_id)} ad={ad} />
+            <AdsCarousel key={`ad-${i}`} communityId={String(community_id)} ads={ads} />
           ) : (
             <PostCard key={item.post!.id} post={item.post!} currentUser={data.username} isAdmin={!!data.is_community_admin} onOpen={() => navigate(`/post/${item.post!.id}`)} onToggleReaction={handleToggleReaction} />
           ))}
@@ -397,20 +394,27 @@ export default function CommunityFeed() {
 
 // ActionPill removed from UI in this layout
 
-function AdsCard({ communityId: _communityId, ad }:{ communityId: string, ad: any }){
-  if (!ad) return null
+function AdsCarousel({ communityId: _communityId, ads }:{ communityId: string, ads: any[] }){
+  const [idx, setIdx] = useState(0)
+  useEffect(() => {
+    if (!ads || ads.length <= 1) return
+    const t = setInterval(() => setIdx(i => (i + 1) % ads.length), 4000)
+    return () => clearInterval(t)
+  }, [ads])
+  if (!ads || ads.length === 0) return null
+  const ad = ads[idx]
+  const img = ad.image || ad.image_url
+  const link = ad.link || ad.link_url
   const onClick = async () => {
-    try{
-      await fetch('/track_ad_click', { method: 'POST', credentials: 'include', headers: { 'Content-Type':'application/json' }, body: JSON.stringify({ ad_id: ad.id }) })
-    }catch{}
-    if (ad.link_url) window.open(ad.link_url, '_blank')
+    try{ await fetch('/track_ad_click', { method: 'POST', credentials: 'include', headers: { 'Content-Type':'application/json' }, body: JSON.stringify({ ad_id: ad.id }) }) }catch{}
+    if (link) window.open(link, '_blank')
   }
   return (
     <div className="rounded-xl border border-white/10 bg-white/[0.04] p-3 shadow-sm shadow-black/20">
       <div className="flex items-center gap-3">
         <div className="w-12 h-12 rounded bg-white/10 overflow-hidden flex items-center justify-center">
-          {ad.image_url ? (
-            <ImageLoader src={ad.image_url} alt={ad.title} className="w-full h-full object-cover" />
+          {img ? (
+            <ImageLoader src={img} alt={ad.title} className="w-full h-full object-cover" />
           ) : (
             <i className="fa-solid fa-store" />
           )}
@@ -422,14 +426,21 @@ function AdsCard({ communityId: _communityId, ad }:{ communityId: string, ad: an
         </div>
         <button className="px-3 py-2 rounded-full bg-[#4db6ac] text-white border border-[#4db6ac] hover:brightness-110" onClick={onClick}>Shop</button>
       </div>
-      {ad.image_url ? (
-        <div className="mt-2 rounded-lg overflow-hidden border border-white/10">
+      {img ? (
+        <div className="mt-2 rounded-lg overflow-hidden border border-white/10 relative">
           <ImageLoader 
-            src={ad.image_url} 
+            src={img} 
             alt={ad.title} 
             className="w-full h-auto cursor-pointer" 
             onClick={onClick}
           />
+          {ads.length > 1 && (
+            <div className="absolute bottom-2 inset-x-0 flex items-center justify-center gap-1">
+              {ads.map((_:any, i:number) => (
+                <span key={i} className={`w-2 h-2 rounded-full ${i===idx ? 'bg-[#4db6ac]' : 'bg-white/30'}`} />
+              ))}
+            </div>
+          )}
         </div>
       ) : null}
     </div>
