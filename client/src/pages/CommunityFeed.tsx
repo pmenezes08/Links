@@ -11,20 +11,23 @@ type Post = { id: number; username: string; content: string; image_path?: string
 
 function formatTimestamp(input: string): string {
   function parseDate(str: string): Date | null {
+    if (!str) return null
+    const s = String(str).trim()
+    if (s.startsWith('0000-00-00')) return null
     // Epoch ms
-    if (/^\d{10,13}$/.test(str.trim())){
-      const n = Number(str)
+    if (/^\d{10,13}$/.test(s)){
+      const n = Number(s)
       const d = new Date(n > 1e12 ? n : n * 1000)
       return isNaN(d.getTime()) ? null : d
     }
     // ISO or browser-parseable
-    let d = new Date(str)
+    let d = new Date(s)
     if (!isNaN(d.getTime())) return d
     // Replace space with T
-    d = new Date(str.replace(' ', 'T'))
+    d = new Date(s.replace(' ', 'T'))
     if (!isNaN(d.getTime())) return d
     // MM.DD.YY HH:MM (24h)
-    const mdyDots = str.match(/^(\d{1,2})\.(\d{1,2})\.(\d{2}) (\d{1,2}):(\d{2})$/)
+    const mdyDots = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{2}) (\d{1,2}):(\d{2})$/)
     if (mdyDots){
       const mm = Number(mdyDots[1])
       const dd = Number(mdyDots[2])
@@ -36,7 +39,7 @@ function formatTimestamp(input: string): string {
       return isNaN(dt.getTime()) ? null : dt
     }
     // MM/DD/YY hh:MM AM/PM
-    const mdySlashAm = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2}) (\d{1,2}):(\d{2}) (AM|PM)$/i)
+    const mdySlashAm = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2}) (\d{1,2}):(\d{2}) (AM|PM)$/i)
     if (mdySlashAm){
       const mm = Number(mdySlashAm[1])
       const dd = Number(mdySlashAm[2])
@@ -50,8 +53,20 @@ function formatTimestamp(input: string): string {
       const dt = new Date(year, mm - 1, dd, hh, MM)
       return isNaN(dt.getTime()) ? null : dt
     }
+    // DD-MM-YYYY[ HH:MM[:SS]]
+    const dmyDash = s.match(/^(\d{2})-(\d{2})-(\d{4})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?$/)
+    if (dmyDash){
+      const dd = Number(dmyDash[1])
+      const mm = Number(dmyDash[2])
+      const yyyy = Number(dmyDash[3])
+      const HH = dmyDash[4] ? Number(dmyDash[4]) : 0
+      const MM = dmyDash[5] ? Number(dmyDash[5]) : 0
+      const SS = dmyDash[6] ? Number(dmyDash[6]) : 0
+      const dt = new Date(yyyy, mm - 1, dd, HH, MM, SS)
+      return isNaN(dt.getTime()) ? null : dt
+    }
     // YYYY-MM-DD HH:MM:SS
-    const ymd = str.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/)
+    const ymd = s.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/)
     if (ymd){
       const year = Number(ymd[1])
       const mm = Number(ymd[2])
@@ -64,31 +79,12 @@ function formatTimestamp(input: string): string {
     }
     return null
   }
-
   const date = parseDate(input)
   if (!date) return input
-  const now = new Date()
-  let diffMs = now.getTime() - date.getTime()
-  if (diffMs < 0) diffMs = 0
-  const minuteMs = 60 * 1000
-  const hourMs = 60 * minuteMs
-  const dayMs = 24 * hourMs
-  if (diffMs < hourMs){
-    const mins = Math.floor(diffMs / minuteMs)
-    return `${mins}m`
-  }
-  if (diffMs < dayMs){
-    const hours = Math.floor(diffMs / hourMs)
-    return `${hours}h`
-  }
-  const days = Math.floor(diffMs / dayMs)
-  if (days < 10){
-    return `${days}d`
-  }
-  const mm = String(date.getMonth() + 1).padStart(2, '0')
   const dd = String(date.getDate()).padStart(2, '0')
-  const yy = String(date.getFullYear() % 100).padStart(2, '0')
-  return `${mm}/${dd}/${yy}`
+  const mm = String(date.getMonth() + 1).padStart(2, '0')
+  const yyyy = String(date.getFullYear())
+  return `${dd}-${mm}-${yyyy}`
 }
 
 export default function CommunityFeed() {

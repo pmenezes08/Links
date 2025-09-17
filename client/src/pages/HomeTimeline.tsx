@@ -7,78 +7,28 @@ type Post = { id:number; username:string; content:string; image_path?:string|nul
 
 function formatTimestamp(input: string): string {
   function parseDate(str: string): Date | null {
-    if (/^\d{10,13}$/.test(str.trim())){
-      const n = Number(str)
-      const d = new Date(n > 1e12 ? n : n * 1000)
-      return isNaN(d.getTime()) ? null : d
-    }
-    let d = new Date(str)
-    if (!isNaN(d.getTime())) return d
-    d = new Date(str.replace(' ', 'T'))
-    if (!isNaN(d.getTime())) return d
-    const mdyDots = str.match(/^(\d{1,2})\.(\d{1,2})\.(\d{2}) (\d{1,2}):(\d{2})$/)
-    if (mdyDots){
-      const mm = Number(mdyDots[1])
-      const dd = Number(mdyDots[2])
-      const yy = Number(mdyDots[3])
-      const HH = Number(mdyDots[4])
-      const MM = Number(mdyDots[5])
-      const year = 2000 + yy
-      const dt = new Date(year, mm - 1, dd, HH, MM)
-      return isNaN(dt.getTime()) ? null : dt
-    }
-    const mdySlashAm = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2}) (\d{1,2}):(\d{2}) (AM|PM)$/i)
-    if (mdySlashAm){
-      const mm = Number(mdySlashAm[1])
-      const dd = Number(mdySlashAm[2])
-      const yy = Number(mdySlashAm[3])
-      let hh = Number(mdySlashAm[4])
-      const MM = Number(mdySlashAm[5])
-      const ampm = mdySlashAm[6].toUpperCase()
-      if (ampm === 'PM' && hh < 12) hh += 12
-      if (ampm === 'AM' && hh === 12) hh = 0
-      const year = 2000 + yy
-      const dt = new Date(year, mm - 1, dd, hh, MM)
-      return isNaN(dt.getTime()) ? null : dt
-    }
-    const ymd = str.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/)
-    if (ymd){
-      const year = Number(ymd[1])
-      const mm = Number(ymd[2])
-      const dd = Number(ymd[3])
-      const HH = Number(ymd[4])
-      const MM = Number(ymd[5])
-      const SS = ymd[6] ? Number(ymd[6]) : 0
-      const dt = new Date(year, mm - 1, dd, HH, MM, SS)
-      return isNaN(dt.getTime()) ? null : dt
-    }
+    if (!str) return null
+    const s = String(str).trim()
+    if (s.startsWith('0000-00-00')) return null
+    if (/^\d{10,13}$/.test(s)){ const n = Number(s); const d = new Date(n > 1e12 ? n : n * 1000); return isNaN(d.getTime()) ? null : d }
+    let d = new Date(s); if (!isNaN(d.getTime())) return d
+    d = new Date(s.replace(' ', 'T')); if (!isNaN(d.getTime())) return d
+    const mdyDots = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{2}) (\d{1,2}):(\d{2})$/)
+    if (mdyDots){ const dt = new Date(2000+Number(mdyDots[3]), Number(mdyDots[1])-1, Number(mdyDots[2]), Number(mdyDots[4]), Number(mdyDots[5])); return isNaN(dt.getTime()) ? null : dt }
+    const mdySlashAm = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2}) (\d{1,2}):(\d{2}) (AM|PM)$/i)
+    if (mdySlashAm){ let hh = Number(mdySlashAm[4]); const MM = Number(mdySlashAm[5]); const ampm = mdySlashAm[6].toUpperCase(); if (ampm==='PM'&&hh<12) hh+=12; if (ampm==='AM'&&hh===12) hh=0; const dt = new Date(2000+Number(mdySlashAm[3]), Number(mdySlashAm[1])-1, Number(mdySlashAm[2]), hh, MM); return isNaN(dt.getTime()) ? null : dt }
+    const dmyDash = s.match(/^(\d{2})-(\d{2})-(\d{4})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?$/)
+    if (dmyDash){ const dd = Number(dmyDash[1]), mm = Number(dmyDash[2]), yyyy = Number(dmyDash[3]); const HH = dmyDash[4]?Number(dmyDash[4]):0; const MM = dmyDash[5]?Number(dmyDash[5]):0; const SS = dmyDash[6]?Number(dmyDash[6]):0; const dt = new Date(yyyy, mm-1, dd, HH, MM, SS); return isNaN(dt.getTime()) ? null : dt }
+    const ymd = s.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/)
+    if (ymd){ const dt = new Date(Number(ymd[1]), Number(ymd[2])-1, Number(ymd[3]), Number(ymd[4]), Number(ymd[5]), ymd[6]?Number(ymd[6]):0); return isNaN(dt.getTime()) ? null : dt }
     return null
   }
-
   const date = parseDate(input)
   if (!date) return input
-  const now = new Date()
-  let diffMs = now.getTime() - date.getTime()
-  if (diffMs < 0) diffMs = 0
-  const minuteMs = 60 * 1000
-  const hourMs = 60 * minuteMs
-  const dayMs = 24 * hourMs
-  if (diffMs < hourMs){
-    const mins = Math.floor(diffMs / minuteMs)
-    return `${mins}m`
-  }
-  if (diffMs < dayMs){
-    const hours = Math.floor(diffMs / hourMs)
-    return `${hours}h`
-  }
-  const days = Math.floor(diffMs / dayMs)
-  if (days < 10){
-    return `${days}d`
-  }
-  const mm = String(date.getMonth() + 1).padStart(2, '0')
-  const dd = String(date.getDate()).padStart(2, '0')
-  const yy = String(date.getFullYear() % 100).padStart(2, '0')
-  return `${mm}/${dd}/${yy}`
+  const dd = String(date.getDate()).padStart(2,'0')
+  const mm = String(date.getMonth()+1).padStart(2,'0')
+  const yyyy = String(date.getFullYear())
+  return `${dd}-${mm}-${yyyy}`
 }
 
 export default function HomeTimeline(){
