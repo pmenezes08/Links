@@ -239,7 +239,7 @@ export default function PostDetail(){
 
         <div className="mt-3 rounded-2xl border border-white/10">
           {post.replies.map(r => (
-            <ReplyNode key={r.id} reply={r} onToggle={(id, reaction)=> toggleReplyReaction(id, reaction)} onInlineReply={(id, text)=> submitInlineReply(id, text)} />
+            <ReplyNode key={r.id} reply={r} onToggle={(id, reaction)=> toggleReplyReaction(id, reaction)} onInlineReply={(id, text, file)=> submitInlineReply(id, text, file)} />
           ))}
         </div>
       </div>
@@ -282,15 +282,13 @@ export default function PostDetail(){
                     </button>
                   </div>
                 )}
-                <button
-                  type="button"
-                  className="inline-flex items-center justify-center w-10 h-10 rounded-full hover:bg-white/10" 
+                <div
+                  className="inline-flex items-center justify-center w-10 h-10 rounded-full hover:bg-white/10 cursor-pointer" 
                   aria-label="Add image"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
+                  onClick={() => {
                     console.log('Image button clicked - triggering file input');
                     if (fileInputRef.current) {
+                      console.log('File input ref found, clicking...');
                       fileInputRef.current.click();
                     } else {
                       console.error('File input ref not found');
@@ -298,7 +296,7 @@ export default function PostDetail(){
                   }}
                 >
                   <i className="fa-regular fa-image text-xl" style={{ color: file ? '#7fe7df' : '#4db6ac' }} />
-                </button>
+                </div>
                 {/(https?:\/\/[^\s]+|www\.[^\s]+)/.test(content) ? (
                   <button className="px-2.5 py-1.5 rounded-full border border-white/10 text-xs text-[#9fb0b5] hover:border-[#2a3f41] break-words" onClick={()=> {
                     const m = content.match(/(https?:\/\/[^\s]+|www\.[^\s]+)/)
@@ -311,19 +309,16 @@ export default function PostDetail(){
                     setContent(content.replace(urlText, replacement))
                   }}>Link name</button>
                 ) : null}
-                <button 
-                  type="button"
-                  className="px-2.5 py-1.5 rounded-full bg-[#4db6ac] text-white border border-[#4db6ac] hover:brightness-110" 
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    console.log('Send button clicked - submitting reply');
+                <div
+                  className="px-2.5 py-1.5 rounded-full bg-[#4db6ac] text-white border border-[#4db6ac] hover:brightness-110 cursor-pointer inline-flex items-center" 
+                  onClick={() => {
+                    console.log('Send button clicked - submitting reply with content:', content, 'and file:', file);
                     submitReply();
                   }} 
                   aria-label="Send reply"
                 >
                   <i className="fa-solid fa-paper-plane" />
-                </button>
+                </div>
               </div>
             </>
           ) : null}
@@ -394,15 +389,13 @@ function ReplyNode({ reply, depth=0, onToggle, onInlineReply }:{ reply: Reply, d
             <div className="mt-2 space-y-2">
               <div className="flex items-center gap-2">
                 <input className="flex-1 px-3 py-1.5 rounded-full bg-black border border-[#4db6ac] text-[16px] focus:outline-none focus:ring-1 focus:ring-[#4db6ac]" value={text} onChange={(e)=> setText(e.target.value)} placeholder={`Reply to @${reply.username}`} />
-                <button
-                  type="button"
-                  className="inline-flex items-center justify-center w-10 h-10 rounded-full hover:bg-white/10" 
+                <div
+                  className="inline-flex items-center justify-center w-10 h-10 rounded-full hover:bg-white/10 cursor-pointer" 
                   aria-label="Add image"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
+                  onClick={() => {
                     console.log('Inline image button clicked - triggering file input');
                     if (inlineFileRef.current) {
+                      console.log('Inline file input ref found, clicking...');
                       inlineFileRef.current.click();
                     } else {
                       console.error('Inline file input ref not found');
@@ -410,14 +403,11 @@ function ReplyNode({ reply, depth=0, onToggle, onInlineReply }:{ reply: Reply, d
                   }}
                 >
                   <i className="fa-regular fa-image text-xl" style={{ color: img ? '#7fe7df' : '#4db6ac' }} />
-                </button>
-                <button 
-                  type="button"
-                  className="px-2.5 py-1.5 rounded-full bg-[#4db6ac] text-white border border-[#4db6ac] hover:brightness-110" 
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    console.log('Inline send button clicked - submitting reply');
+                </div>
+                <div
+                  className="px-2.5 py-1.5 rounded-full bg-[#4db6ac] text-white border border-[#4db6ac] hover:brightness-110 cursor-pointer inline-flex items-center" 
+                  onClick={() => {
+                    console.log('Inline send button clicked - submitting reply with text:', text, 'and img:', img);
                     if (!text && !img) return;
                     onInlineReply(reply.id, text, img || undefined);
                     setText('');
@@ -427,7 +417,7 @@ function ReplyNode({ reply, depth=0, onToggle, onInlineReply }:{ reply: Reply, d
                   aria-label="Send reply"
                 >
                   <i className="fa-solid fa-paper-plane" />
-                </button>
+                </div>
               </div>
               {img && (
                 <div className="text-xs text-[#7fe7df] flex items-center gap-1 px-3">
