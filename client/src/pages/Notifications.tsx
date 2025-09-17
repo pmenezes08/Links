@@ -50,7 +50,10 @@ export default function Notifications(){
       setLoading(true)
       const r = await fetch('/api/notifications?all=true', { credentials:'include' })
       const j = await r.json()
-      if (j?.success){ setItems(j.notifications as Notif[]) }
+      if (j?.success){
+        const filtered = (j.notifications as Notif[]).filter(n => n?.type !== 'message')
+        setItems(filtered)
+      }
     } finally { setLoading(false) }
   }
 

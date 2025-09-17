@@ -29,11 +29,11 @@ export default function HeaderBar({ title, username, avatarUrl }: HeaderBarProps
         if (mj && typeof mj.unread_count === 'number') { msgs = mj.unread_count; setUnreadMsgs(mj.unread_count) }
       }catch{}
       try{
-        // Unread notifications
+        // Unread notifications (exclude message-type)
         const n = await fetch('/api/notifications', { credentials:'include' })
         const nj = await n.json().catch(()=>null)
         if (nj?.success && Array.isArray(nj.notifications)){
-          const cnt = nj.notifications.filter((x:any)=> x && x.is_read === false).length
+          const cnt = nj.notifications.filter((x:any)=> x && x.is_read === false && x.type !== 'message').length
           notifs = cnt
           setUnreadNotifs(cnt)
         }
