@@ -11,6 +11,9 @@ export default function EditCommunity(){
   const [error, setError] = useState<string| null>(null)
   const [allowed, setAllowed] = useState(false)
   const [isOwner, setIsOwner] = useState(false)
+  const [isChild, setIsChild] = useState(false)
+  const [parentOptions, setParentOptions] = useState<Array<{ id:number; name:string; type?:string }>>([])
+  const [selectedParentId, setSelectedParentId] = useState<string>('none')
   const formRef = useRef<HTMLFormElement|null>(null)
 
   useEffect(() => {
@@ -34,7 +37,15 @@ export default function EditCommunity(){
         if (jc?.success && jc.community){
           setName(jc.community.name || '')
           setType(jc.community.type || 'public')
+          const pid = jc.community.parent_community_id
+          if (pid){ setIsChild(true); setSelectedParentId(String(pid)) }
         }
+        // Load available parents for dropdown
+        try{
+          const pr = await fetch('/get_available_parent_communities', { credentials:'include' })
+          const pj = await pr.json().catch(()=>null)
+          if (pj?.success && Array.isArray(pj.communities)) setParentOptions(pj.communities)
+        }catch{}
         setLoading(false)
       }catch{
         if (mounted){ setError('Failed to load community'); setLoading(false) }
@@ -51,6 +62,8 @@ export default function EditCommunity(){
     fd.append('community_id', String(community_id))
     fd.append('name', name.trim())
     fd.append('type', type)
+    // Parent setting
+    fd.append('parent_community_id', isChild && selectedParentId !== 'none' ? selectedParentId : 'none')
     if (imageFile) fd.append('background_file', imageFile)
     const r = await fetch('/update_community', { method:'POST', credentials:'include', body: fd })
     const j = await r.json().catch(()=>null)
@@ -106,6 +119,28 @@ export default function EditCommunity(){
               <option value="private">Private</option>
               <option value="closed">Closed</option>
             </select>
+          </div>
+          <div>
+            <label className="block text-sm text-[#9fb0b5] mb-1">Hierarchy</label>
+            <div className="flex items-center gap-3">
+              <label className="inline-flex items-center gap-2 text-sm">
+                <input type="radio" name="hier" checked={!isChild} onChange={()=> setIsChild(false)} /> Parent community
+              </label>
+              <label className="inline-flex items-center gap-2 text-sm">
+                <input type="radio" name="hier" checked={isChild} onChange={()=> setIsChild(true)} /> Child of a parent
+              </label>
+            </div>
+            {isChild && (
+              <div className="mt-2">
+                <label className="block text-xs text-[#9fb0b5] mb-1">Select parent community</label>
+                <select className="w-full rounded-md bg-black border border-white/15 px-3 py-2 text-[16px] focus:border-[#4db6ac] outline-none" value={selectedParentId} onChange={e=> setSelectedParentId(e.target.value)}>
+                  <option value="none">None</option>
+                  {parentOptions.map(p => (
+                    <option key={p.id} value={String(p.id)}>{p.name}{p.type?` (${p.type})`:''}</option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
           <div>
             <label className="block text-sm text-[#9fb0b5] mb-1">Community image</label>
