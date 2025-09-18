@@ -452,7 +452,7 @@ def add_missing_tables():
                           created_at TEXT NOT NULL,
                           expires_at TEXT NOT NULL)''')
             
-            # Add missing columns to communities table
+            # Add missing columns to communities table (MySQL/SQLite safe)
             columns_to_add = [
                 ('description', 'TEXT'),
                 ('location', 'TEXT'),
@@ -464,16 +464,37 @@ def add_missing_tables():
                 ('card_color', 'TEXT'),
                 ('parent_community_id', 'INTEGER')
             ]
-            
+
             for column_name, column_type in columns_to_add:
                 try:
-                    c.execute(f"ALTER TABLE communities ADD COLUMN {column_name} {column_type}")
-                    logger.info(f"Added column {column_name} to communities table")
-                except sqlite3.OperationalError as e:
-                    if "duplicate column name" in str(e):
-                        logger.info(f"Column {column_name} already exists in communities table")
+                    exists = False
+                    try:
+                        if USE_MYSQL:
+                            c.execute("SHOW COLUMNS FROM communities LIKE ?", (column_name,))
+                        else:
+                            c.execute("PRAGMA table_info(communities)")
+                            exists = any(r[1] == column_name if not hasattr(r, 'keys') else r['name'] == column_name for r in c.fetchall())
+                            # Reset exists for MySQL path; below we set from fetchone
+                            if not USE_MYSQL:
+                                pass
+                        if USE_MYSQL:
+                            exists = c.fetchone() is not None
+                    except Exception:
+                        # Fallback: assume might not exist and try to add
+                        exists = False
+
+                    if not exists:
+                        c.execute(f"ALTER TABLE communities ADD COLUMN {column_name} {column_type}")
+                        logger.info(f"Added column {column_name} to communities table")
                     else:
-                        logger.warning(f"Could not add column {column_name}: {e}")
+                        logger.info(f"Column {column_name} already exists in communities table")
+                except Exception as e:
+                    # Ignore duplicate/exists errors; log others but continue
+                    msg = str(e)
+                    if 'duplicate column' in msg.lower() or '1060' in msg:
+                        logger.info(f"Column {column_name} already present (detected by error)")
+                    else:
+                        logger.warning(f"Could not ensure column {column_name} on communities: {e}")
             
             # Add parent_reply_id column to replies if missing
             try:
