@@ -161,10 +161,11 @@ export default function WorkoutTracking(){
       if (!(key in byDate) || w > byDate[key]) byDate[key] = w
     }
     // Sort dates and take most recent 15
-    const allDates = Object.keys(byDate).sort()
+    const allDates = Object.keys(byDate).sort((a,b)=> a.localeCompare(b))
     const lastDates = allDates.slice(-15)
-    const labels = lastDates.map(d => formatMonthDay(d))
-    const weights = lastDates.map(d => byDate[d])
+    const lastDatesAsc = lastDates.slice().sort((a,b)=> a.localeCompare(b))
+    const labels = lastDatesAsc.map(d => formatMonthDay(d))
+    const weights = lastDatesAsc.map(d => byDate[d])
     return {
       labels,
       datasets: [
