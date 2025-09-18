@@ -150,16 +150,7 @@ export default function Communities(){
               <div className="pt-2 whitespace-nowrap text-center">Community Management</div>
               <div className={`h-0.5 ${activeTab==='management' ? 'bg-[#4db6ac]' : 'bg-transparent'} rounded-full w-16 mx-auto mt-1`} />
             </button>
-            {showTrainingTab && (
-              <button 
-                type="button" 
-                className={`text-sm font-medium ${activeTab==='training' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`}
-                onClick={()=> setActiveTab('training')}
-              >
-                <div className="pt-2 whitespace-nowrap text-center">Your Training</div>
-                <div className={`h-0.5 ${activeTab==='training' ? 'bg-[#4db6ac]' : 'bg-transparent'} rounded-full w-16 mx-auto mt-1`} />
-              </button>
-            )}
+            {/* Your Training tab removed as requested */}
           </div>
         </div>
       </div>
