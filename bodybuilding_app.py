@@ -14465,6 +14465,52 @@ def get_user_exercises():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
+@app.route('/api/admin/get_user_exercises', methods=['GET'])
+@login_required
+def admin_get_user_exercises():
+    try:
+        username = session.get('username')
+        if not is_app_admin(username):
+            return jsonify({'success': False, 'error': 'Forbidden'}), 403
+        target = request.args.get('username', '').strip()
+        if not target:
+            return jsonify({'success': False, 'error': 'username required'}), 400
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Fetch all exercises and their sets for the target user
+        cursor.execute('''
+            SELECT e.id, e.name, e.muscle_group, es.weight, es.reps, es.created_at
+            FROM exercises e
+            LEFT JOIN exercise_sets es ON e.id = es.exercise_id
+            WHERE e.username = ?
+            ORDER BY e.muscle_group, e.name, es.created_at DESC
+        ''', (target,))
+
+        rows = cursor.fetchall()
+        conn.close()
+
+        # Group into structured list
+        exercises = []
+        current = None
+        for row in rows:
+            ex_id = get_scalar_result(row, 0, 'id')
+            ex_name = get_scalar_result(row, 1, 'name')
+            ex_group = get_scalar_result(row, 2, 'muscle_group')
+            weight_val = get_scalar_result(row, 3, 'weight')
+            reps_val = get_scalar_result(row, 4, 'reps')
+            created_at_val = get_scalar_result(row, 5, 'created_at')
+            if current is None or current['id'] != ex_id:
+                current = { 'id': ex_id, 'name': ex_name, 'muscle_group': ex_group, 'weight_history': [] }
+                exercises.append(current)
+            if weight_val is not None:
+                current['weight_history'].append({ 'weight': float(weight_val), 'reps': int(reps_val or 0), 'date': created_at_val })
+
+        return jsonify({ 'success': True, 'exercises': exercises, 'username': target })
+    except Exception as e:
+        return jsonify({ 'success': False, 'error': str(e) })
+
 
 
 

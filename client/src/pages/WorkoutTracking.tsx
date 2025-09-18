@@ -371,7 +371,7 @@ export default function WorkoutTracking(){
                             trendUp = last >= first
                           }
                           return (
-                            <button key={ex.id} className="w-full pl-6 pr-3 py-1.5 flex items-center justify-between hover:bg-white/5 text-left"
+                            <div key={ex.id} className="w-full pl-6 pr-3 py-1.5 flex items-center justify-between hover:bg-white/5"
                               onClick={()=> {
                                 setSelectedExerciseId(ex.id)
                                 setLogsExerciseName(ex.name)
@@ -381,11 +381,29 @@ export default function WorkoutTracking(){
                                 setLogsEntries(mapped)
                                 setShowLogsModal(true)
                               }}
-                              aria-label={`View logs for ${ex.name}`}
                               title="View logs">
                               <div className="text-xs text-[#cfd8dc] truncate mr-2">{ex.name}</div>
-                              <i className={`fa-solid ${trendUp ? 'fa-arrow-trend-up' : 'fa-arrow-trend-down'} text-xs`} style={{ color: trendUp ? '#4db6ac' : '#e53935' }} />
-                            </button>
+                              <div className="flex items-center gap-2">
+                                <i className={`fa-solid ${trendUp ? 'fa-arrow-trend-up' : 'fa-arrow-trend-down'} text-xs`} style={{ color: trendUp ? '#4db6ac' : '#e53935' }} />
+                                <button className="p-1 rounded hover:bg-white/5 text-red-400" title="Delete exercise" aria-label="Delete exercise"
+                                  onClick={async (ev)=>{
+                                    ev.stopPropagation()
+                                    if (!confirm('Delete this exercise and all its logs?')) return
+                                    const fd = new URLSearchParams({ exercise_id: String(ex.id) })
+                                    const r = await fetch('/delete_exercise', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
+                                    const j = await r.json().catch(()=>null)
+                                    if (j?.success){
+                                      setExercises(prev => prev.filter(e => e.id !== ex.id))
+                                      setUserExercises(prev => prev.filter(e => e.id !== ex.id))
+                                      if (selectedExerciseId === ex.id){ setSelectedExerciseId(''); if (showLogsModal) setShowLogsModal(false) }
+                                    } else {
+                                      alert(j?.error || 'Failed to delete exercise')
+                                    }
+                                  }}>
+                                  <i className="fa-solid fa-trash"/>
+                                </button>
+                              </div>
+                            </div>
                           )
                         })}
                       </div>
