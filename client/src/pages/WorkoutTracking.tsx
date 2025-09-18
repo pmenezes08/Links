@@ -524,7 +524,27 @@ export default function WorkoutTracking(){
           <div className="w-[92%] max-w-md rounded-xl border border-white/10 bg-black p-3">
             <div className="flex items-center justify-between mb-2">
               <div className="font-semibold text-sm">{logsExerciseName}</div>
-              <button className="p-1.5 rounded-md hover:bg-white/5" onClick={()=> setShowLogsModal(false)} aria-label="Close"><i className="fa-solid fa-xmark"/></button>
+              <div className="flex items-center gap-1.5">
+                <button className="px-2 py-1 rounded-md bg-red-600/80 hover:bg-red-600 text-white text-[12px]" title="Delete exercise" onClick={async()=>{
+                  if (!logsExerciseId) return
+                  if (!confirm('Delete this exercise and all its logs?')) return
+                  const fd = new URLSearchParams({ exercise_id: String(logsExerciseId) })
+                  const r = await fetch('/delete_exercise', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
+                  const j = await r.json().catch(()=>null)
+                  if (j?.success){
+                    setShowLogsModal(false)
+                    // Remove from local exercises and userExercises lists
+                    setExercises(prev => prev.filter(e => e.id !== logsExerciseId))
+                    setUserExercises(prev => prev.filter(e => e.id !== logsExerciseId))
+                    if (selectedExerciseId === logsExerciseId) setSelectedExerciseId('')
+                  } else {
+                    alert(j?.error || 'Failed to delete exercise')
+                  }
+                }}>
+                  <i className="fa-solid fa-trash mr-1"/>Delete
+                </button>
+                <button className="p-1.5 rounded-md hover:bg-white/5" onClick={()=> setShowLogsModal(false)} aria-label="Close"><i className="fa-solid fa-xmark"/></button>
+              </div>
             </div>
             <div>
               {/* Add entry row */}

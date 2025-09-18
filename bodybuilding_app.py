@@ -12829,6 +12829,51 @@ def edit_exercise():
         except Exception:
             pass
         return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/delete_exercise', methods=['POST'])
+@login_required
+def delete_exercise():
+    try:
+        username = session.get('username')
+        exercise_id = request.form.get('exercise_id')
+        if not exercise_id:
+            return jsonify({'success': False, 'error': 'Exercise ID is required'})
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Verify the exercise belongs to the current user
+        if USE_MYSQL:
+            cursor.execute('SELECT id FROM exercises WHERE id = %s AND username = %s', (exercise_id, username))
+        else:
+            cursor.execute('SELECT id FROM exercises WHERE id = ? AND username = ?', (exercise_id, username))
+        row = cursor.fetchone()
+        if not row:
+            try:
+                conn.close()
+            except Exception:
+                pass
+            return jsonify({'success': False, 'error': 'Exercise not found'})
+
+        # Delete dependent rows explicitly to be robust across SQLite/MySQL
+        if USE_MYSQL:
+            cursor.execute('DELETE FROM workout_exercises WHERE exercise_id = %s', (exercise_id,))
+            cursor.execute('DELETE FROM exercise_sets WHERE exercise_id = %s', (exercise_id,))
+            cursor.execute('DELETE FROM exercises WHERE id = %s AND username = %s', (exercise_id, username))
+        else:
+            cursor.execute('DELETE FROM workout_exercises WHERE exercise_id = ?', (exercise_id,))
+            cursor.execute('DELETE FROM exercise_sets WHERE exercise_id = ?', (exercise_id,))
+            cursor.execute('DELETE FROM exercises WHERE id = ? AND username = ?', (exercise_id, username))
+
+        conn.commit()
+        conn.close()
+        return jsonify({'success': True})
+    except Exception as e:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        return jsonify({'success': False, 'error': str(e)})
 @app.route('/compare_exercise_in_community', methods=['GET'])
 @login_required
 def compare_exercise_in_community():
