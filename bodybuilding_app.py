@@ -582,6 +582,28 @@ def add_missing_tables():
             except Exception as e:
                 logger.warning(f"Could not ensure professional columns on users: {e}")
 
+            # Ensure personal info columns (country, city, age, gender) exist on users
+            try:
+                for col, coltype in [
+                    ('country','TEXT'), ('city','TEXT'), ('age','INTEGER'), ('gender','TEXT')
+                ]:
+                    exists = False
+                    try:
+                        if USE_MYSQL:
+                            c.execute("SHOW COLUMNS FROM users LIKE ?", (col,))
+                            exists = c.fetchone() is not None
+                        else:
+                            c.execute("PRAGMA table_info(users)")
+                            exists = any(r[1] == col if not hasattr(r, 'keys') else r['name'] == col for r in c.fetchall())
+                    except Exception:
+                        exists = False
+                    if not exists:
+                        c.execute(f"ALTER TABLE users ADD COLUMN {col} {coltype}")
+                        logger.info(f"Added users.{col}")
+                conn.commit()
+            except Exception as e:
+                logger.warning(f"Could not ensure personal columns on users: {e}")
+
             conn.commit()
             logger.info("Missing tables and columns added successfully")
             
