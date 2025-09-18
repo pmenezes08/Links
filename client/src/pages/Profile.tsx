@@ -138,7 +138,11 @@ export default function Profile(){
             fd.append('experience', form.experience)
             const r = await fetch('/update_professional', { method:'POST', credentials:'include', body: fd })
             const j = await r.json().catch(()=>null)
-            if (!j?.success) alert(j?.error || 'Error updating')
+            if (j?.success) {
+              alert('Professional information updated successfully!')
+            } else {
+              alert(j?.error || 'Error updating')
+            }
           }}>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <input className="rounded-md bg-black text-white border border-white/10 px-2 py-1.5 text-[16px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]" placeholder="Role" value={form.role} onChange={e=> setForm(f=>({...f, role: e.target.value}))} />
@@ -150,7 +154,7 @@ export default function Profile(){
               <input className="rounded-md bg-black text-white border border-white/10 px-2 py-1.5 text-[16px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]" placeholder="LinkedIn" value={form.linkedin} onChange={e=> setForm(f=>({...f, linkedin: e.target.value}))} />
               <input className="rounded-md bg-black text-white border border-white/10 px-2 py-1.5 text-[16px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]" placeholder="Experience" value={form.experience} onChange={e=> setForm(f=>({...f, experience: e.target.value}))} />
             </div>
-            <button className="mt-3 px-3 py-1.5 rounded-md bg-[#4db6ac] text-black">Save Professional Info</button>
+            <button type="submit" className="mt-3 px-3 py-1.5 rounded-md bg-[#4db6ac] text-black">Save Professional Info</button>
           </form>
         </div>
 
