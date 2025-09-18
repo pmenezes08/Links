@@ -520,6 +520,29 @@ def add_missing_tables():
             except Exception as e:
                 logger.warning(f"Could not create replies indexes: {e}")
 
+            # Ensure professional info columns exist on users (MySQL-compatible)
+            try:
+                # For MySQL, use SHOW COLUMNS to check
+                for col, coltype in [
+                    ('role','TEXT'), ('company','TEXT'), ('industry','TEXT'), ('degree','TEXT'),
+                    ('school','TEXT'), ('skills','TEXT'), ('linkedin','TEXT'), ('experience','INTEGER')
+                ]:
+                    try:
+                        c.execute(f"SHOW COLUMNS FROM users LIKE '{col}'")
+                        if not c.fetchone():
+                            c.execute(f"ALTER TABLE users ADD COLUMN {col} {coltype}")
+                            logger.info(f"Added users.{col}")
+                    except Exception as ce:
+                        # Fallback attempt for SQLite (ignore if exists)
+                        try:
+                            c.execute(f"ALTER TABLE users ADD COLUMN {col} {coltype}")
+                            logger.info(f"Added users.{col} (sqlite fallback)")
+                        except Exception as ce2:
+                            logger.warning(f"Could not ensure users.{col}: {ce2}")
+                conn.commit()
+            except Exception as e:
+                logger.warning(f"Could not ensure professional columns on users: {e}")
+
             conn.commit()
             logger.info("Missing tables and columns added successfully")
             
