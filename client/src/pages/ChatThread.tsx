@@ -886,30 +886,6 @@ export default function ChatThread(){
                   if (draft.trim()) send()
                 }
               }}
-              onFocus={() => {
-                setTimeout(() => {
-                  const header = document.querySelector('.h-14.border-b') as HTMLElement
-                  if (header) {
-                    header.style.position = 'fixed'
-                    header.style.top = '3.5rem'
-                    header.style.left = '0'
-                    header.style.right = '0'
-                    header.style.zIndex = '10000'
-                    header.style.backgroundColor = 'rgb(0, 0, 0)'
-                  }
-                }, 100)
-              }}
-              onBlur={() => {
-                setTimeout(() => {
-                  const header = document.querySelector('.h-14.border-b') as HTMLElement
-                  if (header) {
-                    header.style.position = 'sticky'
-                    header.style.top = '0'
-                    header.style.left = ''
-                    header.style.right = ''
-                  }
-                }, 100)
-              }}
               style={{
                 lineHeight: '1.4',
                 scrollbarWidth: 'none',
