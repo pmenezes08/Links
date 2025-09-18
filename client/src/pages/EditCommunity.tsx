@@ -122,13 +122,23 @@ export default function EditCommunity(){
           </div>
           <div>
             <label className="block text-sm text-[#9fb0b5] mb-1">Hierarchy</label>
-            <div className="flex items-center gap-3">
-              <label className="inline-flex items-center gap-2 text-sm">
-                <input type="radio" name="hier" checked={!isChild} onChange={()=> setIsChild(false)} /> Parent community
-              </label>
-              <label className="inline-flex items-center gap-2 text-sm">
-                <input type="radio" name="hier" checked={isChild} onChange={()=> setIsChild(true)} /> Child of a parent
-              </label>
+            <div className="inline-flex rounded-full border border-white/15 overflow-hidden bg-black">
+              <button
+                type="button"
+                className={`px-4 py-2 text-sm whitespace-nowrap ${!isChild ? 'bg-[#4db6ac] text-black' : 'text-[#cfd8dc] hover:bg-white/5'}`}
+                onClick={()=> setIsChild(false)}
+                aria-pressed={!isChild}
+              >
+                Parent Community
+              </button>
+              <button
+                type="button"
+                className={`px-4 py-2 text-sm whitespace-nowrap ${isChild ? 'bg-[#4db6ac] text-black' : 'text-[#cfd8dc] hover:bg-white/5'}`}
+                onClick={()=> setIsChild(true)}
+                aria-pressed={isChild}
+              >
+                Child Community
+              </button>
             </div>
             {isChild && (
               <div className="mt-2">
