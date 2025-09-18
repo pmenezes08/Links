@@ -11,6 +11,7 @@ import logging
 import requests
 import time
 from datetime import datetime, timedelta
+from email.utils import parsedate_to_datetime
 from functools import wraps
 from markupsafe import escape
 import secrets
@@ -13442,10 +13443,25 @@ def log_weight_set():
             return jsonify({'success': False, 'error': 'Exercise not found'})
         
         # Add the set with the specified date
+        # Normalize date for MySQL: accept 'YYYY-MM-DD' or ISO; also handle RFC 2822 strings
+        date_str = date
+        try:
+            if date and isinstance(date, str):
+                if date.endswith('GMT') or ',' in date:
+                    # RFC 2822 (e.g., Wed, 03 Sep 2025 00:00:00 GMT)
+                    dt = parsedate_to_datetime(date)
+                    date_str = dt.strftime('%Y-%m-%d %H:%M:%S')
+                elif len(date) == 10 and date[4] == '-' and date[7] == '-':
+                    date_str = f"{date} 00:00:00"
+                elif 'T' in date and len(date) >= 19:
+                    date_str = date.replace('T', ' ')[:19]
+        except Exception:
+            pass
+
         cursor.execute('''
             INSERT INTO exercise_sets (exercise_id, weight, reps, created_at)
             VALUES (?, ?, ?, ?)
-        ''', (exercise_id, weight, reps, date))
+        ''', (exercise_id, weight, reps, date_str))
 
         # Cross-sync to crossfit_entries for overlapping lift names
         try:
