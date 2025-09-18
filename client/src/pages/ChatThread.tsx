@@ -562,15 +562,17 @@ export default function ChatThread(){
         paddingTop: '3.5rem'
       }}
     >
-      {/* Chat header */}
+      {/* Chat header (fixed below global header for iOS focus stability) */}
       <div 
         className="h-14 border-b border-white/10 flex items-center gap-3 px-4 flex-shrink-0"
         style={{
           backgroundColor: 'rgb(0, 0, 0)',
           borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
-          zIndex: 9999,
-          position: 'sticky',
-          top: 0,
+          zIndex: 10010,
+          position: 'fixed',
+          top: '56px',
+          left: 0,
+          right: 0,
           minHeight: '3.5rem',
           maxHeight: '3.5rem'
         }}
@@ -629,6 +631,7 @@ export default function ChatThread(){
         style={{ 
           WebkitOverflowScrolling: 'touch' as any, 
           overscrollBehavior: 'contain' as any,
+          paddingTop: '56px',
           paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 6rem)'
         }}
         onScroll={(e)=> {
@@ -770,7 +773,7 @@ export default function ChatThread(){
       </div>
 
       {/* Composer */}
-      <div className="bg-black px-3 py-2 border-t border-white/10 flex-shrink-0" style={{ marginBottom: 'calc(env(safe-area-inset-bottom, 0px) + 20px)' }}>
+      <div className="bg-black px-3 py-2 border-t border-white/10 flex-shrink-0" style={{ marginBottom: 'calc(env(safe-area-inset-bottom, 0px) + 20px)', position:'sticky', bottom:0, zIndex:10005 }}>
         {replyTo && (
           <div className="mb-2 px-3 py-2 bg-[#1a1a1a] rounded-lg border-l-4 border-[#4db6ac]">
             <div className="flex items-center justify-between mb-1">
