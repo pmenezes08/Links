@@ -14510,6 +14510,145 @@ def admin_get_user_exercises():
     except Exception as e:
         return jsonify({ 'success': False, 'error': str(e) })
 
+@app.route('/api/admin/legacy_user_exercises', methods=['GET'])
+@login_required
+def admin_legacy_user_exercises():
+    """Retrieve legacy exercise data for a user from the SQLite users.db file when current DB is MySQL."""
+    try:
+        requester = session.get('username')
+        if not is_app_admin(requester):
+            return jsonify({'success': False, 'error': 'Forbidden'}), 403
+        target = request.args.get('username', '').strip()
+        if not target:
+            return jsonify({'success': False, 'error': 'username required'}), 400
+
+        # Determine legacy source: if current is MySQL, read from SQLite file
+        legacy_exercises = []
+        try:
+            db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'users.db')
+            if os.path.exists(db_path):
+                conn = sqlite3.connect(db_path)
+                conn.row_factory = sqlite3.Row
+                c = conn.cursor()
+                # Gather exercises
+                c.execute("SELECT id, name, muscle_group FROM exercises WHERE username = ? ORDER BY muscle_group, name", (target,))
+                ex_rows = c.fetchall()
+                for ex in ex_rows:
+                    ex_id = ex['id']
+                    item = { 'id': ex_id, 'name': ex['name'], 'muscle_group': ex['muscle_group'], 'weight_history': [] }
+                    # From exercise_sets
+                    c.execute("SELECT weight, reps, created_at FROM exercise_sets WHERE exercise_id = ? ORDER BY created_at DESC", (ex_id,))
+                    for s in c.fetchall():
+                        item['weight_history'].append({ 'weight': float(s['weight']), 'reps': int(s['reps']), 'date': s['created_at'] })
+                    # Also convert workout_exercises into weight entries (if present)
+                    try:
+                        c.execute("SELECT weight, reps, created_at FROM workout_exercises WHERE exercise_id = ? ORDER BY created_at DESC", (ex_id,))
+                        for s in c.fetchall():
+                            item['weight_history'].append({ 'weight': float(s['weight'] or 0), 'reps': int(s['reps'] or 0), 'date': s['created_at'] })
+                    except Exception:
+                        pass
+                    legacy_exercises.append(item)
+                conn.close()
+        except Exception as _e:
+            # If legacy source not available, return empty
+            pass
+
+        return jsonify({ 'success': True, 'username': target, 'exercises': legacy_exercises, 'source': 'sqlite_users.db' })
+    except Exception as e:
+        return jsonify({ 'success': False, 'error': str(e) })
+
+@app.route('/api/admin/merge_legacy_user_exercises', methods=['POST'])
+@login_required
+def admin_merge_legacy_user_exercises():
+    """Merge legacy exercises from SQLite users.db into current DB for a specific user (admin-only)."""
+    try:
+        requester = session.get('username')
+        if not is_app_admin(requester):
+            return jsonify({'success': False, 'error': 'Forbidden'}), 403
+        target = request.form.get('username', '').strip()
+        if not target:
+            return jsonify({'success': False, 'error': 'username required'}), 400
+
+        db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'users.db')
+        if not os.path.exists(db_path):
+            return jsonify({'success': False, 'error': 'legacy users.db not found'}), 404
+
+        # Read legacy data first
+        legacy = []
+        s_conn = sqlite3.connect(db_path)
+        s_conn.row_factory = sqlite3.Row
+        s = s_conn.cursor()
+        s.execute("SELECT id, name, muscle_group FROM exercises WHERE username = ? ORDER BY muscle_group, name", (target,))
+        ex_rows = s.fetchall()
+        for ex in ex_rows:
+            ex_id = ex['id']
+            item = { 'name': ex['name'], 'muscle_group': ex['muscle_group'], 'sets': [] }
+            s.execute("SELECT weight, reps, created_at FROM exercise_sets WHERE exercise_id = ? ORDER BY created_at", (ex_id,))
+            for r in s.fetchall():
+                item['sets'].append((float(r['weight']), int(r['reps']), r['created_at']))
+            # Also import from workout_exercises if present
+            try:
+                s.execute("SELECT weight, reps, created_at FROM workout_exercises WHERE exercise_id = ? ORDER BY created_at", (ex_id,))
+                for r in s.fetchall():
+                    item['sets'].append((float(r['weight'] or 0), int(r['reps'] or 0), r['created_at']))
+            except Exception:
+                pass
+            legacy.append(item)
+        s_conn.close()
+
+        # Merge into current DB
+        conn = get_db_connection()
+        c = conn.cursor()
+        inserted_ex = 0
+        inserted_sets = 0
+        for ex in legacy:
+            # Check if exercise exists
+            if USE_MYSQL:
+                c.execute("SELECT id FROM exercises WHERE username = %s AND name = %s AND muscle_group = %s", (target, ex['name'], ex['muscle_group']))
+            else:
+                c.execute("SELECT id FROM exercises WHERE username = ? AND name = ? AND muscle_group = ?", (target, ex['name'], ex['muscle_group']))
+            row = c.fetchone()
+            if row:
+                ex_id = row['id'] if hasattr(row, 'keys') else row[0]
+            else:
+                # Insert exercise
+                if USE_MYSQL:
+                    c.execute("INSERT INTO exercises (username, name, muscle_group) VALUES (%s, %s, %s)", (target, ex['name'], ex['muscle_group']))
+                else:
+                    c.execute("INSERT INTO exercises (username, name, muscle_group) VALUES (?, ?, ?)", (target, ex['name'], ex['muscle_group']))
+                inserted_ex += 1
+                # Retrieve new id
+                if USE_MYSQL:
+                    c.execute("SELECT LAST_INSERT_ID()")
+                    ex_id = list(c.fetchone().values())[0]
+                else:
+                    ex_id = c.lastrowid
+
+            # Insert sets, avoid duplicates by exact match
+            for (w, rps, dt) in ex['sets']:
+                if USE_MYSQL:
+                    c.execute("SELECT 1 FROM exercise_sets WHERE exercise_id = %s AND weight = %s AND reps = %s AND created_at = %s", (ex_id, w, rps, dt))
+                else:
+                    c.execute("SELECT 1 FROM exercise_sets WHERE exercise_id = ? AND weight = ? AND reps = ? AND created_at = ?", (ex_id, w, rps, dt))
+                if c.fetchone():
+                    continue
+                if USE_MYSQL:
+                    c.execute("INSERT INTO exercise_sets (exercise_id, weight, reps, created_at) VALUES (%s, %s, %s, %s)", (ex_id, w, rps, dt))
+                else:
+                    c.execute("INSERT INTO exercise_sets (exercise_id, weight, reps, created_at) VALUES (?, ?, ?, ?)", (ex_id, w, rps, dt))
+                inserted_sets += 1
+
+        conn.commit()
+        conn.close()
+
+        return jsonify({ 'success': True, 'merged_exercises': inserted_ex, 'merged_sets': inserted_sets, 'username': target })
+    except Exception as e:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        return jsonify({ 'success': False, 'error': str(e) })
+
 
 
 
