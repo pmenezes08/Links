@@ -558,13 +558,13 @@ export default function WorkoutTracking(){
                     placeholder="Weight (kg)"
                     className="block w-36 h-9 px-3 rounded-md bg-black border border-white/15 text-base focus:outline-none focus:ring-2 focus:ring-[#4db6ac] focus:border-[#4db6ac] focus:bg-teal-900/20"
                   />
-                  <label className="sr-only">Sets</label>
+                  <label className="sr-only">Reps</label>
                   <input
                     type="number"
                     inputMode="numeric"
                     value={newLogSets}
                     onChange={e=> setNewLogSets(e.target.value)}
-                    placeholder="Sets"
+                    placeholder="Reps"
                     className="block w-36 h-9 px-3 rounded-md bg-black border border-white/15 text-base focus:outline-none focus:ring-2 focus:ring-[#4db6ac] focus:border-[#4db6ac]"
                   />
                 </div>
@@ -587,6 +587,12 @@ export default function WorkoutTracking(){
                   if (j?.success){
                     const updated = [{ date: newLogDate, weight: Number(newLogWeight), reps: Number(repsVal) }, ...logsEntries]
                     setLogsEntries(updated)
+                    // Also update main exercises state so entries persist after closing modal
+                    setExercises(prev => prev.map(ex => {
+                      if (ex.id !== logsExerciseId) return ex
+                      const newSets = updated.map(le => ({ weight: le.weight, reps: le.reps, created_at: le.date }))
+                      return { ...ex, sets_data: newSets }
+                    }))
                     setNewLogWeight('')
                     setNewLogSets('')
                     setNewLogDate(new Date().toISOString().slice(0,10))
@@ -629,6 +635,12 @@ export default function WorkoutTracking(){
                                       const updated = logsEntries.slice()
                                       updated[idx] = { ...e, weight: Number(newW) }
                                       setLogsEntries(updated)
+                                      // Sync back to main exercises state
+                                      setExercises(prev => prev.map(ex => {
+                                        if (ex.id !== logsExerciseId) return ex
+                                        const newSets = updated.map(le => ({ weight: le.weight, reps: le.reps, created_at: le.date }))
+                                        return { ...ex, sets_data: newSets }
+                                      }))
                                     } else alert(j?.error||'Failed to edit entry')
                                   }}><i className="fa-solid fa-pen"/></button>
                                   <button className="p-0.5 rounded hover:bg-white/5" title="Delete" onClick={async()=>{
@@ -638,7 +650,14 @@ export default function WorkoutTracking(){
                                     const r = await fetch('/delete_weight_entry', { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
                                     const j = await r.json().catch(()=>null)
                                     if (j?.success){
-                                      setLogsEntries(logsEntries.filter((x, i)=> !(i===idx && x.date===e.date && x.weight===e.weight && x.reps===e.reps)))
+                                      const filtered = logsEntries.filter((x, i)=> !(i===idx && x.date===e.date && x.weight===e.weight && x.reps===e.reps))
+                                      setLogsEntries(filtered)
+                                      // Sync back to main exercises state
+                                      setExercises(prev => prev.map(ex => {
+                                        if (ex.id !== logsExerciseId) return ex
+                                        const newSets = filtered.map(le => ({ weight: le.weight, reps: le.reps, created_at: le.date }))
+                                        return { ...ex, sets_data: newSets }
+                                      }))
                                     } else alert(j?.error||'Failed to delete entry')
                                   }}><i className="fa-solid fa-trash"/></button>
                                 </div>
