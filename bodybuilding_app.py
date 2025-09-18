@@ -583,6 +583,25 @@ def add_missing_tables():
             except Exception as e:
                 logger.warning(f"Could not ensure professional columns on users: {e}")
 
+            # Ensure professional_share_community_id column exists on users (controls visibility)
+            try:
+                exists = False
+                try:
+                    if USE_MYSQL:
+                        c.execute("SHOW COLUMNS FROM users LIKE 'professional_share_community_id'")
+                        exists = c.fetchone() is not None
+                    else:
+                        c.execute("PRAGMA table_info(users)")
+                        exists = any(r[1] == 'professional_share_community_id' if not hasattr(r, 'keys') else r['name'] == 'professional_share_community_id' for r in c.fetchall())
+                except Exception:
+                    exists = False
+                if not exists:
+                    c.execute("ALTER TABLE users ADD COLUMN professional_share_community_id INTEGER")
+                    logger.info("Added users.professional_share_community_id")
+                conn.commit()
+            except Exception as e:
+                logger.warning(f"Could not ensure users.professional_share_community_id: {e}")
+
             # Ensure personal info columns (country, city, age, gender) exist on users
             try:
                 for col, coltype in [
@@ -3579,6 +3598,13 @@ def api_public_profile(username):
                 except Exception:
                     return None
 
+            # Fetch user's professional info and share setting
+            try:
+                c.execute("SELECT role, company, industry, degree, school, skills, linkedin, experience, professional_share_community_id FROM users WHERE username = ?", (actual_username,))
+                urow = c.fetchone()
+            except Exception:
+                urow = None
+
             profile = {
                 'username': actual_username,
                 'subscription': get_val(row, 'subscription', 1),
@@ -3591,9 +3617,29 @@ def api_public_profile(username):
                 'profile_picture': get_val(row, 'profile_picture', 8),
                 'cover_photo': get_val(row, 'cover_photo', 9),
                 'is_public': bool(get_val(row, 'is_public', 10)),
+                'professional': None
             }
 
-            # Recent posts
+            # Include professional info if it's allowed to be public or scoped to a community, which public profile can render broadly
+            if urow:
+                def uval(idx_or_key):
+                    try:
+                        return urow[idx_or_key] if hasattr(urow, 'keys') else urow[idx_or_key]
+                    except Exception:
+                        return None
+                profile['professional'] = {
+                    'role': uval('role') if hasattr(urow, 'keys') else uval(0),
+                    'company': uval('company') if hasattr(urow, 'keys') else uval(1),
+                    'industry': uval('industry') if hasattr(urow, 'keys') else uval(2),
+                    'degree': uval('degree') if hasattr(urow, 'keys') else uval(3),
+                    'school': uval('school') if hasattr(urow, 'keys') else uval(4),
+                    'skills': uval('skills') if hasattr(urow, 'keys') else uval(5),
+                    'linkedin': uval('linkedin') if hasattr(urow, 'keys') else uval(6),
+                    'experience': uval('experience') if hasattr(urow, 'keys') else uval(7),
+                    'share_community_id': uval('professional_share_community_id') if hasattr(urow, 'keys') else uval(8)
+                }
+
+            # Recent posts (kept for potential future use; frontend may ignore)
             c.execute(f"""
                 SELECT id, content, image_path, timestamp
                 FROM posts
@@ -4065,20 +4111,36 @@ def update_professional():
     """Update professional information"""
     username = session['username']
     try:
-        role = request.form.get('role', '')
-        company = request.form.get('company', '')
-        industry = request.form.get('industry', '')
-        degree = request.form.get('degree', '')
-        school = request.form.get('school', '')
-        skills = request.form.get('skills', '')
-        linkedin = request.form.get('linkedin', '')
+        role = request.form.get('role', '').strip()
+        company = request.form.get('company', '').strip()
+        industry = request.form.get('industry', '').strip()
+        degree = request.form.get('degree', '').strip()
+        school = request.form.get('school', '').strip()
+        skills = request.form.get('skills', '').strip()
+        linkedin = request.form.get('linkedin', '').strip()
         experience = request.form.get('experience', type=int)
+        share_raw = request.form.get('share_community_id')
+        professional_share_community_id = None
+        try:
+            if share_raw not in (None, '', 'null', 'None'):
+                share_int = int(share_raw)
+                professional_share_community_id = share_int if share_int > 0 else None
+        except Exception:
+            professional_share_community_id = None
         
         with get_db_connection() as conn:
             c = conn.cursor()
-            c.execute("""UPDATE users SET role=?, company=?, industry=?, degree=?, school=?, 
-                        skills=?, linkedin=?, experience=? WHERE username=?""",
-                     (role, company, industry, degree, school, skills, linkedin, experience, username))
+            ph = get_sql_placeholder()
+            update_sql = f"""
+                UPDATE users SET 
+                    role={ph}, company={ph}, industry={ph}, degree={ph}, school={ph}, 
+                    skills={ph}, linkedin={ph}, experience={ph}, professional_share_community_id={ph}
+                WHERE username={ph}
+            """
+            c.execute(update_sql, (
+                role, company, industry, degree, school, skills, linkedin, experience,
+                professional_share_community_id, username
+            ))
             conn.commit()
         
         return jsonify({'success': True})

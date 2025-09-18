@@ -84,6 +84,27 @@ export default function PublicProfile(){
           </div>
         ) : null}
 
+        {/* Professional Info */}
+        {profile.professional ? (
+          <div className="mt-3 rounded-2xl border border-white/10 bg-black p-3">
+            <div className="font-semibold mb-2">Professional</div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
+              {profile.professional.role ? (<div><span className="text-[#9fb0b5]">Role: </span>{profile.professional.role}</div>) : null}
+              {profile.professional.company ? (<div><span className="text-[#9fb0b5]">Company: </span>{profile.professional.company}</div>) : null}
+              {profile.professional.industry ? (<div><span className="text-[#9fb0b5]">Industry: </span>{profile.professional.industry}</div>) : null}
+              {profile.professional.degree ? (<div><span className="text-[#9fb0b5]">Degree: </span>{profile.professional.degree}</div>) : null}
+              {profile.professional.school ? (<div><span className="text-[#9fb0b5]">School: </span>{profile.professional.school}</div>) : null}
+              {profile.professional.experience !== undefined && profile.professional.experience !== null && profile.professional.experience !== '' ? (
+                <div><span className="text-[#9fb0b5]">Experience: </span>{profile.professional.experience}</div>
+              ) : null}
+              {profile.professional.skills ? (<div className="sm:col-span-2"><span className="text-[#9fb0b5]">Skills: </span>{profile.professional.skills}</div>) : null}
+              {profile.professional.linkedin ? (
+                <a className="underline text-[#4db6ac] sm:col-span-2" href={profile.professional.linkedin.startsWith('http')?profile.professional.linkedin:`https://${profile.professional.linkedin}`} target="_blank" rel="noreferrer">LinkedIn</a>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+
       </div>
     </div>
   )

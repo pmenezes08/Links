@@ -22,8 +22,10 @@ export default function Profile(){
   const [form, setForm] = useState({
     display_name: '', bio: '', location: '', website: '', instagram: '', twitter: '', is_public: true,
     role: '', company: '', industry: '', degree: '', school: '', skills: '', linkedin: '', experience: '',
-    age: '', gender: '', country: '', city: ''
+    age: '', gender: '', country: '', city: '',
+    share_community_id: '' as string
   })
+  const [communities, setCommunities] = useState<Array<{id:number,name:string,type?:string}>>([])
 
   useEffect(() => {
     let mounted = true
@@ -51,6 +53,16 @@ export default function Profile(){
       } finally { if (mounted) setLoading(false) }
     }
     load()
+    // Load user's communities for sharing dropdown
+    ;(async () => {
+      try{
+        const rc = await fetch('/api/user_parent_community', { credentials:'include' })
+        const jc = await rc.json().catch(()=>null)
+        if (jc?.success && Array.isArray(jc.communities)){
+          setCommunities(jc.communities)
+        }
+      }catch{}
+    })()
     return () => { mounted = false }
   }, [])
 
@@ -136,6 +148,7 @@ export default function Profile(){
             fd.append('skills', form.skills)
             fd.append('linkedin', form.linkedin)
             fd.append('experience', form.experience)
+            if (form.share_community_id) fd.append('share_community_id', form.share_community_id)
             const r = await fetch('/update_professional', { method:'POST', credentials:'include', body: fd })
             const j = await r.json().catch(()=>null)
             if (j?.success) {
@@ -153,6 +166,15 @@ export default function Profile(){
               <input className="rounded-md bg-black text-white border border-white/10 px-2 py-1.5 text-[16px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]" placeholder="Skills" value={form.skills} onChange={e=> setForm(f=>({...f, skills: e.target.value}))} />
               <input className="rounded-md bg-black text-white border border-white/10 px-2 py-1.5 text-[16px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]" placeholder="LinkedIn" value={form.linkedin} onChange={e=> setForm(f=>({...f, linkedin: e.target.value}))} />
               <input className="rounded-md bg-black text-white border border-white/10 px-2 py-1.5 text-[16px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]" placeholder="Experience" value={form.experience} onChange={e=> setForm(f=>({...f, experience: e.target.value}))} />
+              <label className="text-sm">
+                Share Professional Info with Community
+                <select className="mt-1 w-full rounded-md bg-black text-white border border-white/10 px-2 py-1.5 text-[16px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]" value={form.share_community_id} onChange={e=> setForm(f=>({...f, share_community_id: e.target.value}))}>
+                  <option value="">Do not share</option>
+                  {communities.map(c => (
+                    <option key={c.id} value={String(c.id)}>{c.name}</option>
+                  ))}
+                </select>
+              </label>
             </div>
             <button type="submit" className="mt-3 px-3 py-1.5 rounded-md bg-[#4db6ac] text-black">Save Professional Info</button>
           </form>
