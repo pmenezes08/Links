@@ -3,7 +3,6 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
 import Avatar from '../components/Avatar'
 import ImageLoader from '../components/ImageLoader'
-import { formatSmartTime } from '../utils/time'
 
 export default function PublicProfile(){
   const { username = '' } = useParams()
@@ -12,7 +11,6 @@ export default function PublicProfile(){
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [profile, setProfile] = useState<any>(null)
-  const [posts, setPosts] = useState<any[]>([])
 
   useEffect(() => { setTitle(username ? `@${username}` : 'Profile') }, [setTitle, username])
 
@@ -26,7 +24,6 @@ export default function PublicProfile(){
         if (!mounted) return
         if (j?.success){
           setProfile(j.profile)
-          setPosts(Array.isArray(j.posts) ? j.posts : [])
           setError(null)
         } else setError(j?.error || 'Not found')
       }catch{ if (mounted) setError('Error loading') } finally { if (mounted) setLoading(false) }
@@ -66,6 +63,13 @@ export default function PublicProfile(){
           </div>
         ) : null}
 
+        {/* Location */}
+        {profile.location ? (
+          <div className="mt-3 rounded-2xl border border-white/10 bg-black p-3">
+            <div className="text-sm text-[#9fb0b5]"><i className="fa-solid fa-location-dot mr-2" />{profile.location}</div>
+          </div>
+        ) : null}
+
         {/* Links */}
         {(profile.website || profile.instagram || profile.twitter) ? (
           <div className="mt-3 rounded-2xl border border-white/10 bg-black p-3 flex flex-wrap gap-3 text-sm">
@@ -75,20 +79,6 @@ export default function PublicProfile(){
           </div>
         ) : null}
 
-        {/* Posts */}
-        <div className="mt-3 space-y-3">
-          {posts.length === 0 ? (
-            <div className="text-[#9fb0b5] text-sm">No recent posts.</div>
-          ) : posts.map(p => (
-            <div key={p.id} className="rounded-2xl border border-white/10 bg-black p-3">
-              <div className="text-xs text-[#9fb0b5] mb-1">{formatSmartTime(p.timestamp)}</div>
-              <div className="whitespace-pre-wrap leading-relaxed">{p.content}</div>
-              {p.image_path ? (
-                <img src={(p.image_path.startsWith('/uploads')||p.image_path.startsWith('/static'))?p.image_path:`/uploads/${p.image_path}`} alt="" className="mt-2 block max-w-full rounded border border-white/10" />
-              ) : null}
-            </div>
-          ))}
-        </div>
       </div>
     </div>
   )
