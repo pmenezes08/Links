@@ -14610,6 +14610,62 @@ def admin_get_user_exercises():
     except Exception as e:
         return jsonify({ 'success': False, 'error': str(e) })
 
+@app.route('/api/admin/set_parent', methods=['GET', 'POST'])
+@login_required
+def admin_set_parent():
+    """Set a community's parent by names or ids. Admin only.
+    Accepts: child_id or child_name, parent_id or parent_name (query or form)
+    """
+    try:
+        requester = session.get('username')
+        if not is_app_admin(requester):
+            return jsonify({'success': False, 'error': 'Forbidden'}), 403
+
+        # Read inputs (names or ids)
+        child_id = request.values.get('child_id') or request.args.get('child_id')
+        parent_id = request.values.get('parent_id') or request.args.get('parent_id')
+        child_name = (request.values.get('child_name') or request.args.get('child_name') or '').strip()
+        parent_name = (request.values.get('parent_name') or request.args.get('parent_name') or '').strip()
+
+        with get_db_connection() as conn:
+            c = conn.cursor()
+
+            def resolve_comm_id(name_or_id, is_parent=False):
+                # If numeric id provided, return it
+                if name_or_id and str(name_or_id).isdigit():
+                    return int(name_or_id)
+                return None
+
+            # Resolve parent id
+            pid = resolve_comm_id(parent_id, True)
+            if not pid and parent_name:
+                c.execute("SELECT id FROM communities WHERE name = ?", (parent_name,))
+                row = c.fetchone()
+                if not row:
+                    return jsonify({'success': False, 'error': f"Parent not found: {parent_name}"}), 404
+                pid = row['id'] if hasattr(row, 'keys') else row[0]
+
+            # Resolve child id
+            cid = resolve_comm_id(child_id, False)
+            if not cid and child_name:
+                c.execute("SELECT id FROM communities WHERE name = ?", (child_name,))
+                row = c.fetchone()
+                if not row:
+                    return jsonify({'success': False, 'error': f"Child not found: {child_name}"}), 404
+                cid = row['id'] if hasattr(row, 'keys') else row[0]
+
+            if not cid or not pid:
+                return jsonify({'success': False, 'error': 'child and parent are required (by id or name)'}), 400
+
+            # Update relationship
+            c.execute("UPDATE communities SET parent_community_id = ? WHERE id = ?", (pid, cid))
+            conn.commit()
+
+            return jsonify({'success': True, 'child_id': int(cid), 'parent_id': int(pid)})
+    except Exception as e:
+        logger.error(f"admin_set_parent error: {e}")
+        return jsonify({'success': False, 'error': 'server error'}), 500
+
 @app.route('/api/admin/legacy_user_exercises', methods=['GET'])
 @login_required
 def admin_legacy_user_exercises():
