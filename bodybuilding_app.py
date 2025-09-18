@@ -14557,7 +14557,7 @@ def admin_legacy_user_exercises():
     except Exception as e:
         return jsonify({ 'success': False, 'error': str(e) })
 
-@app.route('/api/admin/merge_legacy_user_exercises', methods=['POST'])
+@app.route('/api/admin/merge_legacy_user_exercises', methods=['GET', 'POST'])
 @login_required
 def admin_merge_legacy_user_exercises():
     """Merge legacy exercises from SQLite users.db into current DB for a specific user (admin-only)."""
@@ -14565,7 +14565,8 @@ def admin_merge_legacy_user_exercises():
         requester = session.get('username')
         if not is_app_admin(requester):
             return jsonify({'success': False, 'error': 'Forbidden'}), 403
-        target = request.form.get('username', '').strip()
+        # Support both POST form and GET query param
+        target = (request.form.get('username') or request.args.get('username') or '').strip()
         if not target:
             return jsonify({'success': False, 'error': 'username required'}), 400
 
