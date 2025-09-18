@@ -14,6 +14,7 @@ export default function Signup(){
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string>('')
   const [debugInfo, setDebugInfo] = useState<string[]>([])
+  const [showVerify, setShowVerify] = useState(false)
 
   function handleInputChange(field: string, value: string) {
     setFormData(prev => ({ ...prev, [field]: value }))
@@ -85,7 +86,9 @@ export default function Signup(){
           console.log('Signup JSON response:', j)
           
           if (j?.success) {
-            // Success - redirect to dashboard
+            // Show verify modal for unverified flow (mobile JSON response)
+            if (j.needs_email_verification) setShowVerify(true)
+            // Redirect to dashboard
             navigate(j.redirect || '/premium_dashboard')
           } else {
             setError(j?.error || 'Registration failed')
@@ -263,6 +266,27 @@ export default function Signup(){
             By creating an account, you agree to our Terms of Service and Privacy Policy
           </p>
         </div>
+
+        {/* Verify Email Modal */}
+        {showVerify && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+            <div className="w-[90%] max-w-md rounded-xl border border-white/10 bg-[#0b0b0b] p-4">
+              <div className="text-lg font-semibold mb-1">Verify your email</div>
+              <div className="text-sm text-white/80">We sent a verification link to your email. Please click the link to verify your account.</div>
+              <div className="mt-3 flex items-center gap-2">
+                <button className="px-3 py-2 rounded-md bg-[#4db6ac] text-black" onClick={()=> setShowVerify(false)}>OK</button>
+                <button className="px-3 py-2 rounded-md border border-white/10" onClick={async ()=>{
+                  try{
+                    const r = await fetch('/resend_verification', { method:'POST', credentials:'include' })
+                    const j = await r.json().catch(()=>null)
+                    if (!j?.success) alert(j?.error || 'Failed to resend')
+                    else alert('Verification email sent')
+                  }catch{ alert('Network error') }
+                }}>Resend email</button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

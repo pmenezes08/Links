@@ -20,6 +20,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from pywebpush import webpush, WebPushException
 from hashlib import sha256
 from redis_cache import cache, cache_result, invalidate_user_cache, invalidate_community_cache, invalidate_message_cache
+from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 try:
     from PIL import Image
     PIL_AVAILABLE = True
@@ -110,6 +111,56 @@ app.config['SESSION_COOKIE_SECURE'] = True  # Re-enabled for HTTPS
 # app.config['SESSION_COOKIE_DOMAIN'] = os.getenv('SESSION_COOKIE_DOMAIN') or None
 app.config['SESSION_COOKIE_NAME'] = 'cpoint_session'  # Changed to avoid conflicts with old cookies
 app.config['PREFERRED_URL_SCHEME'] = 'https'
+
+# Email (Resend)
+RESEND_API_KEY = os.getenv('RESEND_API_KEY')
+EMAIL_FROM = os.getenv('EMAIL_FROM', 'C-Point <no-reply@c-point.co>')
+VERIFICATION_TOKEN_SECRET = os.getenv('VERIFICATION_TOKEN_SECRET', app.secret_key or 'change-me')
+VERIFICATION_TOKEN_SALT = 'email-verify'
+VERIFICATION_TOKEN_MAX_AGE = int(os.getenv('VERIFICATION_TOKEN_MAX_AGE', '86400'))  # 24h default
+
+def _get_serializer():
+    return URLSafeTimedSerializer(VERIFICATION_TOKEN_SECRET)
+
+def generate_email_token(email: str) -> str:
+    s = _get_serializer()
+    return s.dumps({'email': email}, salt=VERIFICATION_TOKEN_SALT)
+
+def verify_email_token(token: str):
+    s = _get_serializer()
+    try:
+        data = s.loads(token, salt=VERIFICATION_TOKEN_SALT, max_age=VERIFICATION_TOKEN_MAX_AGE)
+        return data.get('email')
+    except SignatureExpired:
+        return None
+    except BadSignature:
+        return None
+
+def _send_email_via_resend(to_email: str, subject: str, html: str, text: str = None):
+    if not RESEND_API_KEY:
+        logger.warning('RESEND_API_KEY not set; skipping email send')
+        return False
+    try:
+        payload = {
+            'from': EMAIL_FROM,
+            'to': [to_email],
+            'subject': subject,
+            'html': html
+        }
+        if text:
+            payload['text'] = text
+        # Use requests to call Resend API
+        r = requests.post('https://api.resend.com/emails', headers={
+            'Authorization': f'Bearer {RESEND_API_KEY}',
+            'Content-Type': 'application/json'
+        }, data=json.dumps(payload), timeout=10)
+        if r.status_code in (200, 201):
+            return True
+        logger.error(f'Resend send failed: {r.status_code} {r.text}')
+        return False
+    except Exception as e:
+        logger.error(f'Resend send exception: {e}')
+        return False
 
 # Optional: enforce canonical host (e.g., www.c-point.co) to prevent cookie splits
 CANONICAL_HOST = os.getenv('CANONICAL_HOST')  # e.g., 'www.c-point.co'
@@ -623,6 +674,30 @@ def add_missing_tables():
                 conn.commit()
             except Exception as e:
                 logger.warning(f"Could not ensure personal columns on users: {e}")
+
+            # Ensure email verification columns exist on users
+            try:
+                for col, coltype in [
+                    ('email_verified', 'INTEGER DEFAULT 0'),
+                    ('email_verified_at', 'TEXT'),
+                    ('email_verification_sent_at', 'TEXT')
+                ]:
+                    exists = False
+                    try:
+                        if USE_MYSQL:
+                            c.execute("SHOW COLUMNS FROM users LIKE ?", (col,))
+                            exists = c.fetchone() is not None
+                        else:
+                            c.execute("PRAGMA table_info(users)")
+                            exists = any(r[1] == col if not hasattr(r, 'keys') else r['name'] == col for r in c.fetchall())
+                    except Exception:
+                        exists = False
+                    if not exists:
+                        c.execute(f"ALTER TABLE users ADD COLUMN {col} {coltype}")
+                        logger.info(f"Added users.{col}")
+                conn.commit()
+            except Exception as e:
+                logger.warning(f"Could not ensure email verification columns on users: {e}")
 
             conn.commit()
             logger.info("Missing tables and columns added successfully")
@@ -1961,6 +2036,12 @@ def signup():
             
             conn.commit()
             
+            # Initialize email verification flags
+            try:
+                c.execute("UPDATE users SET email_verified=0, email_verification_sent_at=? WHERE username=?", (datetime.now().isoformat(), username))
+            except Exception:
+                pass
+
             # Log the user in automatically and persist session
             session.permanent = True
             session['username'] = username
@@ -1972,8 +2053,49 @@ def signup():
             ua = request.headers.get('User-Agent', '')
             is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
             if is_mobile:
-                return jsonify({'success': True, 'username': username, 'redirect': '/premium_dashboard'})
+                # Send verification email asynchronously-best effort
+                try:
+                    token = generate_email_token(email)
+                    verify_url = f"{CANONICAL_SCHEME}://{CANONICAL_HOST}/verify_email?token={token}"
+                    subject = "Verify your C-Point email"
+                    html = f"""
+                        <div style='font-family:Arial,sans-serif;font-size:14px;color:#111'>
+                          <p>Welcome to C-Point!</p>
+                          <p>Please verify your email by clicking the button below:</p>
+                          <p><a href='{verify_url}' style='display:inline-block;background:#111;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none'>Verify Email</a></p>
+                          <p>Or open this link: <a href='{verify_url}'>{verify_url}</a></p>
+                          <p>This link expires in 24 hours.</p>
+                        </div>
+                    """
+                    _send_email_via_resend(email, subject, html)
+                    try:
+                        c.execute("UPDATE users SET email_verification_sent_at=? WHERE username=?", (datetime.now().isoformat(), username))
+                        conn.commit()
+                    except Exception:
+                        pass
+                except Exception as e:
+                    logger.warning(f"Could not send verification email: {e}")
+                return jsonify({'success': True, 'username': username, 'needs_email_verification': True, 'redirect': '/premium_dashboard'})
             else:
+                # Desktop: send email then redirect
+                try:
+                    token = generate_email_token(email)
+                    verify_url = f"{CANONICAL_SCHEME}://{CANONICAL_HOST}/verify_email?token={token}"
+                    subject = "Verify your C-Point email"
+                    html = f"""
+                        <div style='font-family:Arial,sans-serif;font-size:14px;color:#111'>
+                          <p>Welcome to C-Point!</p>
+                          <p>Please verify your email: <a href='{verify_url}'>{verify_url}</a></p>
+                        </div>
+                    """
+                    _send_email_via_resend(email, subject, html)
+                    try:
+                        c.execute("UPDATE users SET email_verification_sent_at=? WHERE username=?", (datetime.now().isoformat(), username))
+                        conn.commit()
+                    except Exception:
+                        pass
+                except Exception as e:
+                    logger.warning(f"Could not send verification email: {e}")
                 return redirect(url_for('dashboard'))  # HTML dashboard
             
     except Exception as e:
@@ -3760,6 +3882,66 @@ def public_profile(username):
         flash('Error loading profile', 'error')
         return redirect(url_for('feed'))
 
+@app.route('/verify_email')
+def verify_email():
+    token = request.args.get('token', '')
+    if not token:
+        return render_template('verification_result.html', success=False, message='Invalid verification link')
+    email = verify_email_token(token)
+    if not email:
+        return render_template('verification_result.html', success=False, message='Verification link is invalid or expired')
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("UPDATE users SET email_verified=1, email_verified_at=? WHERE email=?", (datetime.now().isoformat(), email))
+            conn.commit()
+        return render_template('verification_result.html', success=True, message='Your email has been verified! You can close this tab.')
+    except Exception as e:
+        logger.error(f"verify_email error: {e}")
+        return render_template('verification_result.html', success=False, message='Server error while verifying email')
+
+@app.route('/resend_verification', methods=['POST'])
+@login_required
+def resend_verification():
+    username = session['username']
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT email, email_verification_sent_at FROM users WHERE username=?", (username,))
+            row = c.fetchone()
+            if not row:
+                return jsonify({'success': False, 'error': 'User not found'}), 404
+            email = row['email'] if hasattr(row, 'keys') else row[0]
+            sent_at = row['email_verification_sent_at'] if hasattr(row, 'keys') else (row[1] if len(row) > 1 else None)
+            # Rate limit: 10 minutes
+            if sent_at:
+                try:
+                    last = parsedate_to_datetime(sent_at) if isinstance(sent_at, str) and ',' in sent_at else datetime.fromisoformat(str(sent_at))
+                    if datetime.now() - last < timedelta(minutes=10):
+                        return jsonify({'success': False, 'error': 'Please wait before resending'}), 429
+                except Exception:
+                    pass
+            token = generate_email_token(email)
+            verify_url = f"{CANONICAL_SCHEME}://{CANONICAL_HOST}/verify_email?token={token}"
+            subject = "Verify your C-Point email"
+            html = f"""
+                <div style='font-family:Arial,sans-serif;font-size:14px;color:#111'>
+                  <p>Verify your email: <a href='{verify_url}'>{verify_url}</a></p>
+                </div>
+            """
+            ok = _send_email_via_resend(email, subject, html)
+            if ok:
+                try:
+                    c.execute("UPDATE users SET email_verification_sent_at=? WHERE username=?", (datetime.now().isoformat(), username))
+                    conn.commit()
+                except Exception:
+                    pass
+                return jsonify({'success': True})
+            return jsonify({'success': False, 'error': 'Failed to send email'}), 500
+    except Exception as e:
+        logger.error(f"resend_verification error: {e}")
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
 @app.route('/account_settings')
 @login_required
 def account_settings():
@@ -3837,7 +4019,7 @@ def api_profile_me():
         with get_db_connection() as conn:
             c = conn.cursor()
             c.execute("""
-                SELECT u.username, u.email, u.subscription,
+                SELECT u.username, u.email, u.subscription, u.email_verified,
                        p.display_name, p.bio, p.location, p.website,
                        p.instagram, p.twitter, p.profile_picture, p.cover_photo
                 FROM users u
@@ -3856,14 +4038,15 @@ def api_profile_me():
                 'username': username,
                 'email': get_val('email') if isinstance(row, dict) or hasattr(row, 'keys') else row[1],
                 'subscription': get_val('subscription') if isinstance(row, dict) or hasattr(row, 'keys') else row[2],
-                'display_name': get_val('display_name') if isinstance(row, dict) or hasattr(row, 'keys') else row[3],
-                'bio': get_val('bio') if isinstance(row, dict) or hasattr(row, 'keys') else row[4],
-                'location': get_val('location') if isinstance(row, dict) or hasattr(row, 'keys') else row[5],
-                'website': get_val('website') if isinstance(row, dict) or hasattr(row, 'keys') else row[6],
-                'instagram': get_val('instagram') if isinstance(row, dict) or hasattr(row, 'keys') else row[7],
-                'twitter': get_val('twitter') if isinstance(row, dict) or hasattr(row, 'keys') else row[8],
-                'profile_picture': get_val('profile_picture') if isinstance(row, dict) or hasattr(row, 'keys') else row[9],
-                'cover_photo': get_val('cover_photo') if isinstance(row, dict) or hasattr(row, 'keys') else row[10],
+                'email_verified': bool(get_val('email_verified') if isinstance(row, dict) or hasattr(row, 'keys') else row[3]),
+                'display_name': get_val('display_name') if isinstance(row, dict) or hasattr(row, 'keys') else row[4],
+                'bio': get_val('bio') if isinstance(row, dict) or hasattr(row, 'keys') else row[5],
+                'location': get_val('location') if isinstance(row, dict) or hasattr(row, 'keys') else row[6],
+                'website': get_val('website') if isinstance(row, dict) or hasattr(row, 'keys') else row[7],
+                'instagram': get_val('instagram') if isinstance(row, dict) or hasattr(row, 'keys') else row[8],
+                'twitter': get_val('twitter') if isinstance(row, dict) or hasattr(row, 'keys') else row[9],
+                'profile_picture': get_val('profile_picture') if isinstance(row, dict) or hasattr(row, 'keys') else row[10],
+                'cover_photo': get_val('cover_photo') if isinstance(row, dict) or hasattr(row, 'keys') else row[11],
             }
             
             # Cache profile for faster future requests
