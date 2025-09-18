@@ -333,6 +333,41 @@ def get_db_connection():
         try:
             conn = sqlite3.connect(db_path)
             conn.row_factory = sqlite3.Row
+            # Wrap cursor to adapt MySQL-flavored SQL to SQLite at runtime
+            try:
+                orig_cursor = conn.cursor
+
+                def _adapt_sqlite_sql(sql: str) -> str:
+                    s = sql
+                    # Convert INSERT IGNORE -> INSERT OR IGNORE
+                    s = s.replace('INSERT IGNORE', 'INSERT OR IGNORE')
+                    # Convert AUTO_INCREMENT -> AUTOINCREMENT
+                    s = s.replace('PRIMARY KEY AUTO_INCREMENT', 'PRIMARY KEY AUTOINCREMENT')
+                    s = s.replace('AUTO_INCREMENT', 'AUTOINCREMENT')
+                    # Normalize NOW() -> datetime('now')
+                    s = s.replace('NOW()', "datetime('now')")
+                    return s
+
+                class _ProxyCursor:
+                    def __init__(self, real):
+                        self._real = real
+                    def execute(self, query, params=None):
+                        q = _adapt_sqlite_sql(query)
+                        if params is not None:
+                            return self._real.execute(q, params)
+                        return self._real.execute(q)
+                    def executemany(self, query, param_seq):
+                        q = _adapt_sqlite_sql(query)
+                        return self._real.executemany(q, param_seq)
+                    def __getattr__(self, name):
+                        return getattr(self._real, name)
+
+                def _patched_cursor(*args, **kwargs):
+                    return _ProxyCursor(orig_cursor(*args, **kwargs))
+
+                conn.cursor = _patched_cursor  # type: ignore[attr-defined]
+            except Exception as _wrap_err:
+                logger.warning(f"Could not wrap SQLite cursor for SQL adaptation: {_wrap_err}")
             return conn
         except Exception as e:
             logger.error(f"Failed to connect to database at {db_path}: {e}")
