@@ -26,6 +26,7 @@ import Messages from './pages/Messages'
 import NewMessage from './pages/NewMessage'
 import ChatThread from './pages/ChatThread'
 import Profile from './pages/Profile'
+import PublicProfile from './pages/PublicProfile'
 import AccountSettings from './pages/AccountSettings'
 import Signup from './pages/Signup'
 import Notifications from './pages/Notifications'
@@ -77,6 +78,7 @@ function AppRoutes(){
           <Route path="/user_chat/chat/:username" element={<ChatThread />} />
           <Route path="/profile" element={<Profile />} />
           <Route path="/profile_react" element={<Profile />} />
+          <Route path="/profile/:username" element={<PublicProfile />} />
           <Route path="/account_settings" element={<AccountSettings />} />
           <Route path="/account_settings_react" element={<AccountSettings />} />
           <Route path="/notifications" element={<Notifications />} />

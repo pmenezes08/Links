@@ -3462,7 +3462,79 @@ def admin_test():
 
 @app.route('/api/profile/<username>')
 def api_public_profile(username):
-    return jsonify({'success': False, 'error': 'Disabled'}), 404
+    """Public profile data for a username (JSON)."""
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            # Resolve actual username case-insensitively
+            c.execute(f"SELECT username FROM users WHERE LOWER(username) = LOWER({ph})", (username,))
+            user = c.fetchone()
+            if not user:
+                return jsonify({'success': False, 'error': 'not found'}), 404
+            actual_username = user['username'] if hasattr(user, 'keys') else user[0]
+
+            # Profile fields
+            c.execute(f"""
+                SELECT u.username, u.subscription,
+                       p.display_name, p.bio, p.location, p.website,
+                       p.instagram, p.twitter, p.profile_picture, p.cover_photo,
+                       COALESCE(p.is_public, 1)
+                FROM users u
+                LEFT JOIN user_profiles p ON u.username = p.username
+                WHERE u.username = {ph}
+            """, (actual_username,))
+            row = c.fetchone()
+            if not row:
+                return jsonify({'success': False, 'error': 'profile not found'}), 404
+
+            def get_val(r, key, idx):
+                try:
+                    return r[key] if hasattr(r, 'keys') and key in r.keys() else r[idx]
+                except Exception:
+                    return None
+
+            profile = {
+                'username': actual_username,
+                'subscription': get_val(row, 'subscription', 1),
+                'display_name': get_val(row, 'display_name', 2) or actual_username,
+                'bio': get_val(row, 'bio', 3),
+                'location': get_val(row, 'location', 4),
+                'website': get_val(row, 'website', 5),
+                'instagram': get_val(row, 'instagram', 6),
+                'twitter': get_val(row, 'twitter', 7),
+                'profile_picture': get_val(row, 'profile_picture', 8),
+                'cover_photo': get_val(row, 'cover_photo', 9),
+                'is_public': bool(get_val(row, 'is_public', 10)),
+            }
+
+            # Recent posts
+            c.execute(f"""
+                SELECT id, content, image_path, timestamp
+                FROM posts
+                WHERE username = {ph}
+                ORDER BY timestamp DESC
+                LIMIT 20
+            """, (actual_username,))
+            posts = c.fetchall()
+            posts_list = []
+            for p in posts or []:
+                def val(pv, key, idx):
+                    try:
+                        return pv[key] if hasattr(pv, 'keys') and key in pv.keys() else pv[idx]
+                    except Exception:
+                        return None
+                posts_list.append({
+                    'id': val(p, 'id', 0),
+                    'content': val(p, 'content', 1),
+                    'image_path': val(p, 'image_path', 2),
+                    'timestamp': val(p, 'timestamp', 3),
+                })
+
+            return jsonify({'success': True, 'profile': profile, 'posts': posts_list})
+    except Exception as e:
+        logger.error(f"api_public_profile error for {username}: {e}")
+        return jsonify({'success': False, 'error': 'server error'}), 500
 
 @app.route('/profile/<username>')
 def public_profile(username):
@@ -3472,6 +3544,14 @@ def public_profile(username):
     logger.info(f"Request URL: {request.url}")
     logger.info(f"Request path: {request.path}")
     try:
+        # Serve React on mobile, HTML on desktop
+        ua = request.headers.get('User-Agent', '')
+        is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
+        if is_mobile:
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            dist_dir = os.path.join(base_dir, 'client', 'dist')
+            return send_from_directory(dist_dir, 'index.html')
+
         with get_db_connection() as conn:
             c = conn.cursor()
             
