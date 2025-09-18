@@ -4680,16 +4680,14 @@ def send_message():
             except Exception as notif_e:
                 logger.warning(f"Could not create/update message notification: {notif_e}")
             
-            # Push notification to recipient (if subscribed)
+            # Push notification to recipient (if subscribed) — send on every message, using same tag to coalesce
             try:
-                # Only send push notification if this is a new notification (not an update)
-                if not existing_notif:
-                    send_push_to_user(recipient_username, {
-                        'title': f'Message from {username}',
-                        'body': f'You have new messages from {username}',
-                        'url': f'/user_chat/chat/{username}',
-                        'tag': f'message-{username}',  # This ensures only one notification per sender
-                    })
+                send_push_to_user(recipient_username, {
+                    'title': f'Message from {username}',
+                    'body': f'You have new messages from {username}',
+                    'url': f'/user_chat/chat/{username}',
+                    'tag': f'message-{username}',
+                })
             except Exception as _e:
                 logger.warning(f"push send_message warn: {_e}")
 
@@ -4803,16 +4801,14 @@ def send_photo_message():
             except Exception as notif_e:
                 logger.warning(f"Could not create/update photo message notification: {notif_e}")
             
-            # Push notification
+            # Push notification (always send; same tag coalesces)
             try:
-                # Only send push notification if this is a new notification (not an update)
-                if not existing_notif:
-                    send_push_to_user(recipient_username, {
-                        'title': f'Message from {username}',
-                        'body': f'You have new messages from {username}',
-                        'url': f'/user_chat/chat/{username}',
-                        'tag': f'message-{username}',  # This ensures only one notification per sender
-                    })
+                send_push_to_user(recipient_username, {
+                    'title': f'Message from {username}',
+                    'body': f'You have new messages from {username}',
+                    'url': f'/user_chat/chat/{username}',
+                    'tag': f'message-{username}',
+                })
             except Exception as _e:
                 logger.warning(f"push send_photo_message warn: {_e}")
 
@@ -6968,6 +6964,16 @@ def post_reply():
                     VALUES (?, ?, ?, ?, ?, ?)
                 """, (post_owner['username'], username, 'reply', post_id, community_id,
                       f"{username} replied to your post"))
+                # Also send a web push to the post owner
+                try:
+                    send_push_to_user(post_owner['username'], {
+                        'title': f'New reply from {username}',
+                        'body': 'Tap to view the conversation',
+                        'url': f'/post/{post_id}',
+                        'tag': f'post-reply-{post_id}'
+                    })
+                except Exception as _e:
+                    logger.warning(f"push post_reply warn: {_e}")
             
             conn.commit()
 
