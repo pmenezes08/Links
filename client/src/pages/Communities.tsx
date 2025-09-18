@@ -31,9 +31,8 @@ export default function Communities(){
   })
   const showTrainingTab = useMemo(() => {
     const parent = communities && communities.length > 0 ? communities[0] : null
-    if (!parent) return false
-    const parentTypeLower = ((parent as any).community_type || parent.type || parentType || '').toLowerCase()
-    return parentTypeLower === 'gym'
+    const parentTypeLower = ((parent as any)?.community_type || parent?.type || parentType || '').toLowerCase()
+    return parentTypeLower === 'gym' || parentTypeLower === 'university'
   }, [communities, parentType])
   
 
@@ -167,13 +166,32 @@ export default function Communities(){
           <div className="space-y-3">
              {(() => {
                const pid = new URLSearchParams(location.search).get('parent_id')
-               if (pid && activeTab === 'timeline') {
-                 return (
-                   <div id="parent-timeline">
-                     <ParentTimeline parentId={Number(pid)} />
-                   </div>
-                 )
-               }
+              if (pid && activeTab === 'timeline') {
+                return (
+                  <div id="parent-timeline" className="space-y-3">
+                    <ParentTimeline parentId={Number(pid)} />
+                    {showTrainingTab && (
+                      <div className="rounded-2xl border border-white/10 bg-black p-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <div className="font-semibold">Your Training</div>
+                            <div className="text-sm text-[#9fb0b5]">Track your workouts and progress</div>
+                          </div>
+                          <button
+                            className="px-3 py-2 rounded-md bg-[#4db6ac] text-black hover:brightness-110"
+                            onClick={()=> {
+                              const pid = new URLSearchParams(location.search).get('parent_id')
+                              window.location.href = pid ? `/workout_tracking?parent_id=${pid}` : '/workout_tracking'
+                            }}
+                          >
+                            Open
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )
+              }
                if (pid && activeTab === 'training' && showTrainingTab) {
                  return (
                    <div className="bg-white/5 backdrop-blur rounded-xl p-4 border border-white/10">
