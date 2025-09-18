@@ -71,7 +71,7 @@ export default function HomeTimeline(){
         ) : (
           <div className="space-y-3">
             {posts.map(p => (
-              <div key={p.id} className="rounded-2xl border border-white/10 bg-black shadow-sm shadow-black/20 cursor-pointer" onClick={() => navigate(`/post/${p.id}`)}>
+              <div key={p.id} className="rounded-2xl border border-white/10 bg-white/[0.035] shadow-sm shadow-black/20 cursor-pointer" onClick={() => navigate(`/post/${p.id}`)}>
                 <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2" onClick={(e)=> e.stopPropagation()}>
                   <Avatar username={p.username} url={p.profile_picture || undefined} size={32} />
                   <div className="min-w-0 flex-1">
