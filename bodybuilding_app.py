@@ -5844,7 +5844,7 @@ def request_password_reset():
         email = data.get('email')
         
         if not username or not email:
-            return jsonify({'success': False, 'message': 'Username and email are required'}), 400
+            return jsonify({'success': True, 'message': 'If an account exists with the provided information, a reset link has been sent.'})
         
         with get_db_connection() as conn:
             c = conn.cursor()
@@ -5859,7 +5859,18 @@ def request_password_reset():
                 token = secrets.token_urlsafe(32)
                 created_at = datetime.now().isoformat()
                 
-                # Delete any existing unused tokens for this user
+                # Rate limiting: only one active token within 10 minutes
+                try:
+                    c.execute("SELECT created_at FROM password_reset_tokens WHERE username=? AND used=0 ORDER BY id DESC LIMIT 1", (username,))
+                    last = c.fetchone()
+                    if last:
+                        last_time = datetime.fromisoformat(last['created_at'] if hasattr(last, 'keys') else last[0])
+                        if datetime.now() - last_time < timedelta(minutes=10):
+                            # Still respond success without sending a new email
+                            return jsonify({'success': True, 'message': 'If an account exists, a reset link has been sent.'})
+                except Exception:
+                    pass
+                # Delete any existing unused tokens for this user (cleanup)
                 c.execute("DELETE FROM password_reset_tokens WHERE username = ? AND used = 0", (username,))
                 
                 # Insert new token
@@ -5869,13 +5880,22 @@ def request_password_reset():
                 """, (username, email, token, created_at))
                 conn.commit()
                 
-                # In a production environment, you would send an email here
-                # For now, we'll log the reset link
-                reset_link = f"{request.host_url}reset_password/{token}"
-                logger.info(f"Password reset link for {username}: {reset_link}")
-                
-                # TODO: Implement email sending
-                # send_password_reset_email(email, username, reset_link)
+                # Build reset link using canonical host
+                base = f"{CANONICAL_SCHEME}://{CANONICAL_HOST}" if CANONICAL_HOST else request.host_url.rstrip('/')
+                reset_link = f"{base}/reset_password/{token}"
+                logger.info(f"Password reset link generated for {username}")
+
+                # Send email via Resend
+                subject = "Reset your C-Point password"
+                html = f"""
+                    <div style='font-family:Arial,sans-serif;font-size:14px;color:#111'>
+                      <p>We received a request to reset the password for your C-Point account.</p>
+                      <p><a href='{reset_link}' style='display:inline-block;background:#111;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none'>Reset Password</a></p>
+                      <p>Or open this link: <a href='{reset_link}'>{reset_link}</a></p>
+                      <p>This link expires in 24 hours. If you did not request this, you can ignore this email.</p>
+                    </div>
+                """
+                _send_email_via_resend(email, subject, html)
         
         # Always return success for security
         return jsonify({'success': True, 'message': 'If an account exists with the provided information, a reset link has been sent.'})
