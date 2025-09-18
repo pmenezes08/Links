@@ -75,6 +75,29 @@ export default function ChatThread(){
     return new Date(dateStr).toDateString()
   }
 
+  // Convert URLs in plain text into clickable links
+  function linkifyText(text: string) {
+    const nodes: any[] = []
+    const regex = /(https?:\/\/[^\s]+|www\.[^\s]+|[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}(\/[^\s]*)?)/gi
+    let lastIndex = 0
+    let match: RegExpExecArray | null
+    while ((match = regex.exec(text)) !== null) {
+      const start = match.index
+      const end = start + match[0].length
+      if (start > lastIndex) nodes.push(text.slice(lastIndex, start))
+      const raw = match[0]
+      const href = /^https?:\/\//i.test(raw) ? raw : `http://${raw}`
+      nodes.push(
+        <a key={`${start}-${end}`} href={href} target="_blank" rel="noopener noreferrer" className="underline text-[#4db6ac] hover:text-[#45a99c]">
+          {raw}
+        </a>
+      )
+      lastIndex = end
+    }
+    if (lastIndex < text.length) nodes.push(text.slice(lastIndex))
+    return nodes
+  }
+
   // Initial load of messages and other user info
   useEffect(() => {
     if (!username) return
@@ -713,8 +736,12 @@ export default function ChatThread(){
                         </div>
                       ) : null}
                       
-                      {/* Text content */}
-                      {m.text && <div>{m.text}</div>}
+                      {/* Text content with linkification */}
+                      {m.text && (
+                        <div>
+                          {linkifyText(m.text)}
+                        </div>
+                      )}
                       <div className={`text-[10px] mt-1 ${m.sent ? 'text-white/70' : 'text-white/50'} text-right`}>
                         {new Date(m.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </div>
