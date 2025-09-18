@@ -5848,9 +5848,32 @@ def request_password_reset():
         
         with get_db_connection() as conn:
             c = conn.cursor()
+            # Ensure table exists (MySQL/SQLite safe)
+            try:
+                c.execute('''CREATE TABLE IF NOT EXISTS password_reset_tokens
+                             (id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                              username TEXT NOT NULL,
+                              email TEXT NOT NULL,
+                              token TEXT NOT NULL UNIQUE,
+                              created_at TEXT NOT NULL,
+                              used TINYINT(1) DEFAULT 0,
+                              FOREIGN KEY (username) REFERENCES users (username))''')
+            except Exception:
+                try:
+                    c.execute('''CREATE TABLE IF NOT EXISTS password_reset_tokens
+                                 (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                  username TEXT NOT NULL,
+                                  email TEXT NOT NULL,
+                                  token TEXT NOT NULL UNIQUE,
+                                  created_at TEXT NOT NULL,
+                                  used INTEGER DEFAULT 0,
+                                  FOREIGN KEY (username) REFERENCES users (username))''')
+                except Exception:
+                    pass
             
             # Check if user exists with matching email
-            c.execute("SELECT email FROM users WHERE username = ?", (username,))
+            ph = get_sql_placeholder()
+            c.execute(f"SELECT email FROM users WHERE username = {ph}", (username,))
             result = c.fetchone()
             
             # For security, always return success even if user doesn't exist
@@ -5861,7 +5884,7 @@ def request_password_reset():
                 
                 # Rate limiting: only one active token within 10 minutes
                 try:
-                    c.execute("SELECT created_at FROM password_reset_tokens WHERE username=? AND used=0 ORDER BY id DESC LIMIT 1", (username,))
+                    c.execute(f"SELECT created_at FROM password_reset_tokens WHERE username={ph} AND used=0 ORDER BY id DESC LIMIT 1", (username,))
                     last = c.fetchone()
                     if last:
                         last_time = datetime.fromisoformat(last['created_at'] if hasattr(last, 'keys') else last[0])
@@ -5871,12 +5894,13 @@ def request_password_reset():
                 except Exception:
                     pass
                 # Delete any existing unused tokens for this user (cleanup)
-                c.execute("DELETE FROM password_reset_tokens WHERE username = ? AND used = 0", (username,))
+                c.execute(f"DELETE FROM password_reset_tokens WHERE username = {ph} AND used = 0", (username,))
                 
                 # Insert new token
-                c.execute("""
+                ins_ph = ', '.join([ph, ph, ph, ph])
+                c.execute(f"""
                     INSERT INTO password_reset_tokens (username, email, token, created_at)
-                    VALUES (?, ?, ?, ?)
+                    VALUES ({ins_ph})
                 """, (username, email, token, created_at))
                 conn.commit()
                 
@@ -5912,10 +5936,11 @@ def reset_password(token):
         # Verify token is valid and not expired (24 hours)
         with get_db_connection() as conn:
             c = conn.cursor()
-            c.execute("""
+            ph = get_sql_placeholder()
+            c.execute(f"""
                 SELECT username, created_at, used 
                 FROM password_reset_tokens 
-                WHERE token = ?
+                WHERE token = {ph}
             """, (token,))
             result = c.fetchone()
             
@@ -5956,10 +5981,11 @@ def reset_password(token):
                 c = conn.cursor()
                 
                 # Verify token again
-                c.execute("""
+                ph = get_sql_placeholder()
+                c.execute(f"""
                     SELECT username, created_at, used 
                     FROM password_reset_tokens 
-                    WHERE token = ?
+                    WHERE token = {ph}
                 """, (token,))
                 result = c.fetchone()
                 
@@ -5975,11 +6001,11 @@ def reset_password(token):
                 
                 # Update password
                 hashed_password = generate_password_hash(new_password)
-                c.execute("UPDATE users SET password = ? WHERE username = ?", 
+                c.execute(f"UPDATE users SET password = {ph} WHERE username = {ph}", 
                          (hashed_password, result['username']))
                 
                 # Mark token as used
-                c.execute("UPDATE password_reset_tokens SET used = 1 WHERE token = ?", (token,))
+                c.execute(f"UPDATE password_reset_tokens SET used = 1 WHERE token = {ph}", (token,))
                 conn.commit()
                 
                 flash('Your password has been successfully reset. You can now log in with your new password.', 'success')
