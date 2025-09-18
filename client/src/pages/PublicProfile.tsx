@@ -39,6 +39,11 @@ export default function PublicProfile(){
   return (
     <div className="min-h-screen pt-14 bg-black text-white">
       <div className="max-w-2xl mx-auto px-3 py-3">
+        <div className="mb-2">
+          <button className="p-2 rounded-full hover:bg-white/10" aria-label="Back" onClick={()=> navigate(-1)}>
+            <i className="fa-solid fa-arrow-left" />
+          </button>
+        </div>
         {/* Header */}
         <div className="rounded-2xl border border-white/10 overflow-hidden bg-black">
           {profile.cover_photo ? (
