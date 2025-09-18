@@ -12488,16 +12488,15 @@ def workout_generator():
 def workout_tracking():
     username = session.get('username')
     try:
-        ua = request.headers.get('User-Agent', '')
-        is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
-        if is_mobile:
-            base_dir = os.path.dirname(os.path.abspath(__file__))
-            dist_dir = os.path.join(base_dir, 'client', 'dist')
-            return send_from_directory(dist_dir, 'index.html')
-        return render_template('workout_tracking.html', username=username)
+        # Always serve the React app for this page so latest UI changes are visible
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        dist_dir = os.path.join(base_dir, 'client', 'dist')
+        return send_from_directory(dist_dir, 'index.html')
     except Exception as e:
         logger.error(f"Error in workout_tracking smart route: {e}")
-        return render_template('workout_tracking.html', username=username)
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        dist_dir = os.path.join(base_dir, 'client', 'dist')
+        return send_from_directory(dist_dir, 'index.html')
 
 # ===== WORKOUT TRACKING ROUTES =====
 
