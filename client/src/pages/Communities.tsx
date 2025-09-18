@@ -32,7 +32,7 @@ export default function Communities(){
   const showTrainingTab = useMemo(() => {
     const parent = communities && communities.length > 0 ? communities[0] : null
     const parentTypeLower = ((parent as any)?.community_type || parent?.type || parentType || '').toLowerCase()
-    return parentTypeLower === 'gym' || parentTypeLower === 'university'
+    return parentTypeLower === 'gym'
   }, [communities, parentType])
   
 
@@ -149,7 +149,16 @@ export default function Communities(){
               <div className="pt-2 whitespace-nowrap text-center">Community Management</div>
               <div className={`h-0.5 ${activeTab==='management' ? 'bg-[#4db6ac]' : 'bg-transparent'} rounded-full w-16 mx-auto mt-1`} />
             </button>
-            {/* Your Training tab removed as requested */}
+            {showTrainingTab && (
+              <button 
+                type="button" 
+                className={`text-sm font-medium ${activeTab==='training' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`}
+                onClick={()=> setActiveTab('training')}
+              >
+                <div className="pt-2 whitespace-nowrap text-center">Your Training</div>
+                <div className={`h-0.5 ${activeTab==='training' ? 'bg-[#4db6ac]' : 'bg-transparent'} rounded-full w-16 mx-auto mt-1`} />
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -168,27 +177,8 @@ export default function Communities(){
                const pid = new URLSearchParams(location.search).get('parent_id')
               if (pid && activeTab === 'timeline') {
                 return (
-                  <div id="parent-timeline" className="space-y-3">
+                  <div id="parent-timeline">
                     <ParentTimeline parentId={Number(pid)} />
-                    {showTrainingTab && (
-                      <div className="rounded-2xl border border-white/10 bg-black p-3">
-                        <div className="flex items-center justify-between gap-3">
-                          <div>
-                            <div className="font-semibold">Your Training</div>
-                            <div className="text-sm text-[#9fb0b5]">Track your workouts and progress</div>
-                          </div>
-                          <button
-                            className="px-3 py-2 rounded-md bg-[#4db6ac] text-black hover:brightness-110"
-                            onClick={()=> {
-                              const pid = new URLSearchParams(location.search).get('parent_id')
-                              window.location.href = pid ? `/workout_tracking?parent_id=${pid}` : '/workout_tracking'
-                            }}
-                          >
-                            Open
-                          </button>
-                        </div>
-                      </div>
-                    )}
                   </div>
                 )
               }
@@ -212,7 +202,19 @@ export default function Communities(){
                   {!pid && (
                     <JoinCommunity onJoined={()=>{ window.location.reload() }} />
                   )}
-                  {communities.length === 0 ? (
+                  {activeTab === 'training' && showTrainingTab ? (
+                    <div className="bg-white/5 backdrop-blur rounded-xl p-4 border border-white/10">
+                      <button
+                        className="px-4 py-2 rounded-lg bg-[#4db6ac] text-black text-sm hover:brightness-110"
+                        onClick={()=> {
+                          const pid = new URLSearchParams(location.search).get('parent_id')
+                          window.location.href = pid ? `/workout_tracking?parent_id=${pid}` : '/workout_tracking'
+                        }}
+                      >
+                        Go to Workout Tracking
+                      </button>
+                    </div>
+                  ) : communities.length === 0 ? (
                     <div className="text-[#9fb0b5]">You are not a member of any communities.</div>
                   ) : communities.map(c => (
                     <div key={c.id} className="space-y-2">
