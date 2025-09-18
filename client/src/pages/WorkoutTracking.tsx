@@ -471,7 +471,7 @@ export default function WorkoutTracking(){
             <div className="p-3 flex flex-wrap items-center gap-2">
               <select value={lbCommunityId as any} onChange={e=> setLbCommunityId(e.target.value ? Number(e.target.value) : '')} className="bg-black border border-white/15 rounded-md px-2 py-1 text-sm">
                 <option value="">Select Community</option>
-                {communities.map(c=> <option key={c.id} value={c.id}>{c.name}</option>)}
+                {communities.filter((c:any)=> (c.type||'').toLowerCase()==='gym').map(c=> <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
               <select value={lbExerciseId as any} onChange={e=> setLbExerciseId(e.target.value ? Number(e.target.value) : '')} className="bg-black border border-white/15 rounded-md px-2 py-1 text-sm">
                 <option value="">Select Exercise</option>
