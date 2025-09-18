@@ -15,6 +15,7 @@ export default function Signup(){
   const [error, setError] = useState<string>('')
   const [debugInfo, setDebugInfo] = useState<string[]>([])
   const [showVerify, setShowVerify] = useState(false)
+  const [redirectAfterVerify, setRedirectAfterVerify] = useState<string>('/premium_dashboard')
 
   function handleInputChange(field: string, value: string) {
     setFormData(prev => ({ ...prev, [field]: value }))
@@ -86,10 +87,15 @@ export default function Signup(){
           console.log('Signup JSON response:', j)
           
           if (j?.success) {
+            const dest = j.redirect || '/premium_dashboard'
             // Show verify modal for unverified flow (mobile JSON response)
-            if (j.needs_email_verification) setShowVerify(true)
-            // Redirect to dashboard
-            navigate(j.redirect || '/premium_dashboard')
+            if (j.needs_email_verification) {
+              setRedirectAfterVerify(dest)
+              setShowVerify(true)
+            } else {
+              // If no verification needed, proceed to destination
+              navigate(dest)
+            }
           } else {
             setError(j?.error || 'Registration failed')
           }
@@ -274,7 +280,7 @@ export default function Signup(){
               <div className="text-lg font-semibold mb-1">Verify your email</div>
               <div className="text-sm text-white/80">We sent a verification link to your email. Please click the link to verify your account.</div>
               <div className="mt-3 flex items-center gap-2">
-                <button className="px-3 py-2 rounded-md bg-[#4db6ac] text-black" onClick={()=> setShowVerify(false)}>OK</button>
+                <button className="px-3 py-2 rounded-md bg-[#4db6ac] text-black" onClick={()=> { setShowVerify(false); navigate(redirectAfterVerify) }}>OK</button>
                 <button className="px-3 py-2 rounded-md border border-white/10" onClick={async ()=>{
                   try{
                     const r = await fetch('/resend_verification', { method:'POST', credentials:'include' })
