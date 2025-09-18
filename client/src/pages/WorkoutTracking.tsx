@@ -152,10 +152,28 @@ export default function WorkoutTracking(){
     }
     const ex = exercises.find(e => e.id === selectedExerciseId)
     const rawSets = (ex?.sets_data || [])
-    // Group by date (YYYY-MM-DD) and take max weight per day
+    // Normalize date keys (YYYY-MM-DD) and group max weight per day
+    function normalizeDateKey(input?: string){
+      if (!input) return ''
+      try{
+        const s = String(input)
+        // If already ISO-like yyyy-mm-dd ...
+        if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10)
+        // Try Date parsing for RFC 2822/other formats
+        const d = new Date(s)
+        if (!isNaN(d.getTime())){
+          const y = d.getFullYear()
+          const m = String(d.getMonth()+1).padStart(2,'0')
+          const day = String(d.getDate()).padStart(2,'0')
+          return `${y}-${m}-${day}`
+        }
+      }catch{}
+      return ''
+    }
+    // Group by normalized date
     const byDate: Record<string, number> = {}
     for (const s of rawSets){
-      const key = String(s.created_at || s.date || '').slice(0,10)
+      const key = normalizeDateKey(String(s.created_at || s.date || ''))
       if (!key) continue
       const w = Number(s.weight || 0)
       if (!(key in byDate) || w > byDate[key]) byDate[key] = w
