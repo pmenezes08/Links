@@ -496,15 +496,33 @@ def add_missing_tables():
                     else:
                         logger.warning(f"Could not ensure column {column_name} on communities: {e}")
             
-            # Add parent_reply_id column to replies if missing
+            # Ensure parent_reply_id exists on replies (MySQL/SQLite safe)
             try:
-                c.execute("ALTER TABLE replies ADD COLUMN parent_reply_id INTEGER")
-                logger.info("Added column parent_reply_id to replies table")
-            except sqlite3.OperationalError as e:
-                if "duplicate column name" in str(e):
-                    logger.info("Column parent_reply_id already exists in replies table")
+                exists = False
+                if USE_MYSQL:
+                    try:
+                        c.execute("SHOW COLUMNS FROM replies LIKE 'parent_reply_id'")
+                        exists = c.fetchone() is not None
+                    except Exception:
+                        exists = False
                 else:
-                    logger.warning(f"Could not add column parent_reply_id: {e}")
+                    try:
+                        c.execute("PRAGMA table_info(replies)")
+                        exists = any(r[1] == 'parent_reply_id' if not hasattr(r,'keys') else r['name']=='parent_reply_id' for r in c.fetchall())
+                    except Exception:
+                        exists = False
+
+                if not exists:
+                    c.execute("ALTER TABLE replies ADD COLUMN parent_reply_id INTEGER")
+                    logger.info("Added column parent_reply_id to replies table")
+                else:
+                    logger.info("Column parent_reply_id already exists in replies table")
+            except Exception as e:
+                msg = str(e)
+                if 'duplicate column' in msg.lower() or '1060' in msg:
+                    logger.info("Column parent_reply_id already present (detected by error)")
+                else:
+                    logger.warning(f"Could not ensure parent_reply_id on replies: {e}")
 
             # Ensure messages table has is_read column
             try:
