@@ -13339,7 +13339,7 @@ def log_weight_set():
         if not all([exercise_id, weight, reps, date]):
             return jsonify({'success': False, 'error': 'All fields are required'})
         
-        conn = sqlite3.connect('users.db')
+        conn = get_db_connection()
         cursor = conn.cursor()
         
         # Verify the exercise belongs to the user
@@ -13367,23 +13367,43 @@ def log_weight_set():
                 # Only sync for known overlapping lifts
                 overlapping = {'Back Squat','Front Squat','Overhead Squat','Deadlift','Clean','Jerk','Clean & Jerk','Snatch','Bench Press','Push Press','Thruster','Overhead Press'}
                 if ex_name in overlapping:
-                    cursor.execute('''
-                        CREATE TABLE IF NOT EXISTS crossfit_entries (
-                            id INTEGER PRIMARY KEY AUTOINCREMENT,
-                            username TEXT NOT NULL,
-                            type TEXT NOT NULL,
-                            name TEXT NOT NULL,
-                            weight REAL,
-                            reps INTEGER,
-                            score TEXT,
-                            score_numeric REAL,
-                            created_at TEXT NOT NULL
-                        )
-                    ''')
-                    cursor.execute('''
-                        INSERT INTO crossfit_entries (username, type, name, weight, reps, created_at)
-                        VALUES (?, 'lift', ?, ?, ?, ?)
-                    ''', (username, ex_name, float(weight), int(reps), date))
+                    # Use MySQL-compatible DDL if needed
+                    if USE_MYSQL:
+                        cursor.execute('''
+                            CREATE TABLE IF NOT EXISTS crossfit_entries (
+                                id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                                username TEXT NOT NULL,
+                                type TEXT NOT NULL,
+                                name TEXT NOT NULL,
+                                weight REAL,
+                                reps INTEGER,
+                                score TEXT,
+                                score_numeric REAL,
+                                created_at TEXT NOT NULL
+                            )
+                        ''')
+                        cursor.execute('''
+                            INSERT INTO crossfit_entries (username, type, name, weight, reps, created_at)
+                            VALUES (?, 'lift', ?, ?, ?, ?)
+                        ''', (username, ex_name, float(weight), int(reps), date))
+                    else:
+                        cursor.execute('''
+                            CREATE TABLE IF NOT EXISTS crossfit_entries (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                username TEXT NOT NULL,
+                                type TEXT NOT NULL,
+                                name TEXT NOT NULL,
+                                weight REAL,
+                                reps INTEGER,
+                                score TEXT,
+                                score_numeric REAL,
+                                created_at TEXT NOT NULL
+                            )
+                        ''')
+                        cursor.execute('''
+                            INSERT INTO crossfit_entries (username, type, name, weight, reps, created_at)
+                            VALUES (?, 'lift', ?, ?, ?, ?)
+                        ''', (username, ex_name, float(weight), int(reps), date))
         except Exception as _e:
             pass
         
@@ -13410,7 +13430,7 @@ def edit_set():
         if not all([exercise_id, set_id, weight]):
             return jsonify({'success': False, 'error': 'All fields are required'})
         
-        conn = sqlite3.connect('users.db')
+        conn = get_db_connection()
         cursor = conn.cursor()
         
         # Verify the exercise belongs to the user
@@ -13425,7 +13445,7 @@ def edit_set():
         # Update the set
         cursor.execute('''
             UPDATE exercise_sets 
-            SET weight = ? 
+            SET weight = ?
             WHERE id = ? AND exercise_id = ?
         ''', (weight, set_id, exercise_id))
         
@@ -13487,7 +13507,7 @@ def delete_weight_entry():
         if not all([exercise_id, date, weight, reps]):
             return jsonify({'success': False, 'error': 'All fields are required'})
         
-        conn = sqlite3.connect('users.db')
+        conn = get_db_connection()
         cursor = conn.cursor()
         
         # Verify the exercise belongs to the user
