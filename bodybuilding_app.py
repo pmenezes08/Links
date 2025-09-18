@@ -13243,32 +13243,7 @@ def compare_improvement_in_community():
     except Exception as e:
         logger.error(f"Error in improvement comparison endpoint: {e}")
         return jsonify({'success': False, 'error': 'Server error'})
-@app.route('/delete_exercise', methods=['POST'])
-@login_required
-def delete_exercise():
-    try:
-        username = session.get('username')
-        exercise_id = request.form.get('exercise_id')
-        
-        if not exercise_id:
-            return jsonify({'success': False, 'error': 'Exercise ID is required'})
-        
-        conn = sqlite3.connect('users.db')
-        cursor = conn.cursor()
-        
-        # Delete the exercise (sets will be deleted automatically due to CASCADE)
-        cursor.execute('''
-            DELETE FROM exercises 
-            WHERE id = ? AND username = ?
-        ''', (exercise_id, username))
-        
-        conn.commit()
-        conn.close()
-        
-        return jsonify({'success': True})
-        
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)})
+ 
 
 @app.route('/log_weight_set', methods=['POST'])
 @login_required
