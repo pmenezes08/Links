@@ -10476,6 +10476,19 @@ def communities():
 def create_community():
     """Create a new community"""
     username = session.get('username')
+    # Enforce verified email
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT email_verified FROM users WHERE username=?", (username,))
+            row = c.fetchone()
+            verified = False
+            if row is not None:
+                verified = bool(row['email_verified'] if hasattr(row, 'keys') else row[0])
+            if not verified:
+                return jsonify({'success': False, 'error': 'please verify your email'}), 403
+    except Exception as _e:
+        pass
     name = request.form.get('name')
     community_type = request.form.get('type')
     description = request.form.get('description', '')
@@ -11170,6 +11183,19 @@ def debug_posts():
 def join_community():
     """Join a community using a community code"""
     username = session.get('username')
+    # Enforce verified email
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT email_verified FROM users WHERE username=?", (username,))
+            r = c.fetchone()
+            ver = False
+            if r is not None:
+                ver = bool(r['email_verified'] if hasattr(r, 'keys') else r[0])
+            if not ver:
+                return jsonify({'success': False, 'error': 'please verify your email'}), 403
+    except Exception as _e:
+        pass
     community_code = request.form.get('community_code', '').strip()
     
     logger.info(f"Join community request from {username} with code: {community_code}")
