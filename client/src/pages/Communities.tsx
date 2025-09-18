@@ -294,8 +294,7 @@ function ParentTimeline({ parentId }:{ parentId:number }){
   if (error) return null
 
   return (
-    <div className="bg-white/5 backdrop-blur rounded-xl p-3 border border-white/10">
-      <div className="text-sm font-semibold mb-2">Home Timeline</div>
+    <div>
       {posts.length === 0 ? (
         <div className="text-[#9fb0b5] text-sm">No posts created in the past 48h</div>
       ) : (
