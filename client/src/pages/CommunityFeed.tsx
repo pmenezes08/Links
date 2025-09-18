@@ -305,7 +305,7 @@ function PostCard({ post, currentUser, isAdmin, onOpen, onToggleReaction }: { po
     else alert(j?.error || 'Failed to update post')
   }
   return (
-    <div ref={cardRef} className="rounded-2xl border border-white/10 bg-white/[0.035] shadow-sm shadow-black/20" onClick={onOpen}>
+    <div ref={cardRef} className="rounded-2xl border border-white/10 bg-black shadow-sm shadow-black/20" onClick={onOpen}>
       <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2">
         <Avatar username={post.username} url={post.profile_picture || undefined} size={32} />
         <div className="font-medium tracking-[-0.01em]">{post.username}</div>

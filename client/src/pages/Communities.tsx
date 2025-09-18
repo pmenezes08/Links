@@ -301,7 +301,7 @@ function ParentTimeline({ parentId }:{ parentId:number }){
       ) : (
         <div className="space-y-3">
           {posts.map((p:any) => (
-            <div key={p.id} className="rounded-2xl border border-white/10 bg-white/[0.035] shadow-sm shadow-black/20 cursor-pointer"
+            <div key={p.id} className="rounded-2xl border border-white/10 bg-black shadow-sm shadow-black/20 cursor-pointer"
               onClick={() => navigate(`/post/${p.id}`)}
             >
               <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2" onClick={(e)=> e.stopPropagation()}>

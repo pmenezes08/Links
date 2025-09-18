@@ -234,7 +234,7 @@ export default function PostDetail(){
             ← Back
           </button>
         </div>
-        <div className="rounded-2xl border border-white/10 bg-white/[0.035] shadow-sm shadow-black/20">
+        <div className="rounded-2xl border border-white/10 bg-black shadow-sm shadow-black/20">
           <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2">
             <Avatar username={post.username} url={(post as any).profile_picture || undefined} size={32} />
             <div className="font-medium">{post.username}</div>
