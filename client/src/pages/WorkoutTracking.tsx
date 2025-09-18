@@ -706,26 +706,52 @@ function TabButton({ active, onClick, icon, label }:{ active:boolean; onClick:()
 function formatDate(s?:string){
   if (!s) return ''
   try{
-    const d = new Date(s)
-    return d.toLocaleDateString('en-US', { month:'short', day:'numeric' })
+    const t = String(s).slice(0,10)
+    const parts = t.split('-')
+    if (parts.length === 3){
+      const y = parseInt(parts[0], 10)
+      const m = parseInt(parts[1], 10)
+      const dnum = parseInt(parts[2], 10)
+      if (!isNaN(y) && !isNaN(m) && !isNaN(dnum) && m>=1 && m<=12){
+        const date = new Date(y, m-1, dnum)
+        return date.toLocaleDateString('en-US', { month:'short', day:'numeric' })
+      }
+    }
+    return t
   }catch{ return s }
 }
 
 function formatMonthDay(s?:string){
   if (!s) return ''
   try{
-    const d = new Date(s)
-    const month = d.toLocaleString('en-US', { month: 'short' })
-    return `${month} ${d.getDate()}`
+    const t = String(s).slice(0,10)
+    const parts = t.split('-')
+    if (parts.length === 3){
+      const y = parseInt(parts[0], 10)
+      const m = parseInt(parts[1], 10)
+      const dnum = parseInt(parts[2], 10)
+      if (!isNaN(y) && !isNaN(m) && !isNaN(dnum) && m>=1 && m<=12){
+        const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+        return `${months[m-1]} ${dnum}`
+      }
+    }
+    return t
   }catch{ return s }
 }
 
 function formatMonthYear(s?:string){
   if (!s) return ''
   try{
-    const [y, m] = s.split('-').map(Number)
-    const d = new Date(y, (m||1)-1, 1)
-    return d.toLocaleString('en-US', { month: 'short', year: 'numeric' })
+    const parts = String(s).slice(0,7).split('-')
+    if (parts.length === 2){
+      const y = parseInt(parts[0], 10)
+      const m = parseInt(parts[1], 10)
+      if (!isNaN(y) && !isNaN(m) && m>=1 && m<=12){
+        const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+        return `${months[m-1]} ${y}`
+      }
+    }
+    return String(s)
   }catch{ return s }
 }
 
