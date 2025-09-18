@@ -12521,7 +12521,7 @@ def add_exercise():
         if not all([weight, reps, date]):
             return jsonify({'success': False, 'error': 'Weight, reps, and date are required'})
         
-        conn = sqlite3.connect('users.db')
+        conn = get_db_connection()
         cursor = conn.cursor()
         
         # Check if exercise already exists for this user
@@ -12540,7 +12540,7 @@ def add_exercise():
                     id INTEGER PRIMARY KEY AUTO_INCREMENT,
                     username TEXT NOT NULL,
                     name TEXT NOT NULL,
-                    muscle_group TEXT NOT NULL DEFAULT "Other"
+                    muscle_group TEXT NOT NULL
                 )
             ''')
             cursor.execute('''
@@ -12618,19 +12618,31 @@ def add_exercise():
             ''')
         
         # Insert the exercise
-        cursor.execute('''
-            INSERT INTO exercises (username, name, muscle_group)
-            VALUES (?, ?, ?)
-        ''', (username, name, muscle_group))
+        if USE_MYSQL:
+            cursor.execute('''
+                INSERT INTO exercises (username, name, muscle_group)
+                VALUES (%s, %s, %s)
+            ''', (username, name, muscle_group))
+        else:
+            cursor.execute('''
+                INSERT INTO exercises (username, name, muscle_group)
+                VALUES (?, ?, ?)
+            ''', (username, name, muscle_group))
         
         exercise_id = cursor.lastrowid
         print(f"Debug: Inserted exercise with ID: {exercise_id}")
         
         # Insert the initial weight entry
-        cursor.execute('''
-            INSERT INTO exercise_sets (exercise_id, weight, reps, created_at)
-            VALUES (?, ?, ?, ?)
-        ''', (exercise_id, weight, reps, date))
+        if USE_MYSQL:
+            cursor.execute('''
+                INSERT INTO exercise_sets (exercise_id, weight, reps, created_at)
+                VALUES (%s, %s, %s, %s)
+            ''', (exercise_id, weight, reps, date))
+        else:
+            cursor.execute('''
+                INSERT INTO exercise_sets (exercise_id, weight, reps, created_at)
+                VALUES (?, ?, ?, ?)
+            ''', (exercise_id, weight, reps, date))
         
         print(f"Debug: Added initial weight entry: {weight}kg x {reps} reps on {date}")
         
@@ -12638,23 +12650,42 @@ def add_exercise():
         try:
             overlapping = {'Back Squat','Front Squat','Overhead Squat','Deadlift','Clean','Jerk','Clean & Jerk','Snatch','Bench Press','Push Press','Thruster','Overhead Press'}
             if name in overlapping:
-                cursor.execute('''
-                    CREATE TABLE IF NOT EXISTS crossfit_entries (
-                        id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                        username TEXT NOT NULL,
-                        type TEXT NOT NULL,
-                        name TEXT NOT NULL,
-                        weight REAL,
-                        reps INTEGER,
-                        score TEXT,
-                        score_numeric REAL,
-                        created_at TEXT NOT NULL
-                    )
-                ''')
-                cursor.execute('''
-                    INSERT INTO crossfit_entries (username, type, name, weight, reps, created_at)
-                    VALUES (?, 'lift', ?, ?, ?, ?)
-                ''', (username, name, float(weight), int(reps), date))
+                if USE_MYSQL:
+                    cursor.execute('''
+                        CREATE TABLE IF NOT EXISTS crossfit_entries (
+                            id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                            username TEXT NOT NULL,
+                            type TEXT NOT NULL,
+                            name TEXT NOT NULL,
+                            weight REAL,
+                            reps INTEGER,
+                            score TEXT,
+                            score_numeric REAL,
+                            created_at TEXT NOT NULL
+                        )
+                    ''')
+                    cursor.execute('''
+                        INSERT INTO crossfit_entries (username, type, name, weight, reps, created_at)
+                        VALUES (%s, 'lift', %s, %s, %s, %s)
+                    ''', (username, name, float(weight), int(reps), date))
+                else:
+                    cursor.execute('''
+                        CREATE TABLE IF NOT EXISTS crossfit_entries (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            username TEXT NOT NULL,
+                            type TEXT NOT NULL,
+                            name TEXT NOT NULL,
+                            weight REAL,
+                            reps INTEGER,
+                            score TEXT,
+                            score_numeric REAL,
+                            created_at TEXT NOT NULL
+                        )
+                    ''')
+                    cursor.execute('''
+                        INSERT INTO crossfit_entries (username, type, name, weight, reps, created_at)
+                        VALUES (?, 'lift', ?, ?, ?, ?)
+                    ''', (username, name, float(weight), int(reps), date))
         except Exception as _e:
             pass
         
@@ -12672,7 +12703,7 @@ def get_workout_exercises():
     try:
         username = session.get('username')
         
-        conn = sqlite3.connect('users.db')
+        conn = get_db_connection()
         cursor = conn.cursor()
         
         # Get exercises with data from both exercise_sets (Exercise Management) and workout_exercises (Workouts)
@@ -12703,9 +12734,9 @@ def get_workout_exercises():
         current_exercise = None
         
         for row in rows:
-            exercise_id = row[0]
-            exercise_name = row[1]
-            muscle_group = row[2]
+            exercise_id = get_scalar_result(row, 0, 'id')
+            exercise_name = get_scalar_result(row, 1, 'name')
+            muscle_group = get_scalar_result(row, 2, 'muscle_group')
             
             # If this is a new exercise
             if not current_exercise or current_exercise['id'] != exercise_id:
@@ -12718,12 +12749,16 @@ def get_workout_exercises():
                 exercises.append(current_exercise)
             
             # Add set data if it exists (from either Exercise Management or Workouts)
-            if row[3]:  # If there's weight data
+            set_weight = get_scalar_result(row, 3, 'set_weight')
+            set_reps = get_scalar_result(row, 4, 'set_reps')
+            created_at = get_scalar_result(row, 5, 'created_at')
+            source = get_scalar_result(row, 6, 'source')
+            if set_weight:  # If there's weight data
                 current_exercise['sets_data'].append({
-                    'weight': row[3],
-                    'reps': row[4],
-                    'created_at': row[5],
-                    'source': row[6]  # 'exercise_management' or 'workout'
+                    'weight': set_weight,
+                    'reps': set_reps,
+                    'created_at': created_at,
+                    'source': source  # 'exercise_management' or 'workout'
                 })
         
         print(f"Debug: Returning {len(exercises)} exercises for user {username}")
@@ -14056,25 +14091,42 @@ def create_workout():
             print(f"Debug: Missing required fields")
             return jsonify({'success': False, 'error': 'Missing required fields'})
         
-        conn = sqlite3.connect('users.db')
+        conn = get_db_connection()
         cursor = conn.cursor()
         
         # Create workouts table if it doesn't exist
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS workouts (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT NOT NULL,
-                name TEXT NOT NULL,
-                date TEXT NOT NULL,
-                created_at TEXT DEFAULT (datetime('now'))
-            )
-        ''')
+        if USE_MYSQL:
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS workouts (
+                    id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                    username TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    date TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+        else:
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS workouts (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    date TEXT NOT NULL,
+                    created_at TEXT DEFAULT (datetime('now'))
+                )
+            ''')
         
         # Insert workout
-        cursor.execute('''
-            INSERT INTO workouts (username, name, date)
-            VALUES (?, ?, ?)
-        ''', (session['username'], name, date))
+        if USE_MYSQL:
+            cursor.execute('''
+                INSERT INTO workouts (username, name, date)
+                VALUES (%s, %s, %s)
+            ''', (session['username'], name, date))
+        else:
+            cursor.execute('''
+                INSERT INTO workouts (username, name, date)
+                VALUES (?, ?, ?)
+            ''', (session['username'], name, date))
         
         conn.commit()
         conn.close()
@@ -14090,7 +14142,7 @@ def get_workouts():
         return jsonify({'success': False, 'error': 'Not logged in'})
     
     try:
-        conn = sqlite3.connect('users.db')
+        conn = get_db_connection()
         cursor = conn.cursor()
         
         # Get workouts
@@ -14107,11 +14159,11 @@ def get_workouts():
         workouts = []
         for row in cursor.fetchall():
             workout = {
-                'id': row[0],
-                'name': row[1],
-                'date': row[2],
-                'created_at': row[3],
-                'exercise_count': row[4]
+                'id': get_scalar_result(row, 0, 'id'),
+                'name': get_scalar_result(row, 1, 'name'),
+                'date': get_scalar_result(row, 2, 'date'),
+                'created_at': get_scalar_result(row, 3, 'created_at'),
+                'exercise_count': get_scalar_result(row, 4, 'exercise_count')
             }
             workouts.append(workout)
         
@@ -14131,7 +14183,7 @@ def get_workout_details():
         if not workout_id:
             return jsonify({'success': False, 'error': 'Missing workout ID'})
         
-        conn = sqlite3.connect('users.db')
+        conn = get_db_connection()
         cursor = conn.cursor()
         
         # Get workout details
@@ -14146,10 +14198,10 @@ def get_workout_details():
             return jsonify({'success': False, 'error': 'Workout not found'})
         
         workout = {
-            'id': workout_row[0],
-            'name': workout_row[1],
-            'date': workout_row[2],
-            'created_at': workout_row[3],
+            'id': get_scalar_result(workout_row, 0, 'id'),
+            'name': get_scalar_result(workout_row, 1, 'name'),
+            'date': get_scalar_result(workout_row, 2, 'date'),
+            'created_at': get_scalar_result(workout_row, 3, 'created_at'),
             'exercises': []
         }
         
@@ -14164,12 +14216,12 @@ def get_workout_details():
         
         for row in cursor.fetchall():
             exercise = {
-                'id': row[0],
-                'weight': row[1],
-                'sets': row[2],
-                'reps': row[3],
-                'exercise_name': row[4],
-                'muscle_group': row[5]
+                'id': get_scalar_result(row, 0, 'id'),
+                'weight': get_scalar_result(row, 1, 'weight'),
+                'sets': get_scalar_result(row, 2, 'sets'),
+                'reps': get_scalar_result(row, 3, 'reps'),
+                'exercise_name': get_scalar_result(row, 4, 'exercise_name'),
+                'muscle_group': get_scalar_result(row, 5, 'muscle_group')
             }
             workout['exercises'].append(exercise)
         
@@ -14196,23 +14248,35 @@ def add_exercise_to_workout():
         if not all([workout_id, exercise_id, weight, sets, reps]):
             return jsonify({'success': False, 'error': 'Missing required fields'})
         
-        conn = sqlite3.connect('users.db')
+        conn = get_db_connection()
         cursor = conn.cursor()
         
         # Verify workout belongs to user
-        cursor.execute('''
-            SELECT id FROM workouts 
-            WHERE id = ? AND username = ?
-        ''', (workout_id, session['username']))
+        if USE_MYSQL:
+            cursor.execute('''
+                SELECT id FROM workouts 
+                WHERE id = %s AND username = %s
+            ''', (workout_id, session['username']))
+        else:
+            cursor.execute('''
+                SELECT id FROM workouts 
+                WHERE id = ? AND username = ?
+            ''', (workout_id, session['username']))
         
         if not cursor.fetchone():
             return jsonify({'success': False, 'error': 'Workout not found'})
         
         # Add exercise to workout
-        cursor.execute('''
-            INSERT INTO workout_exercises (workout_id, exercise_id, weight, sets, reps)
-            VALUES (?, ?, ?, ?, ?)
-        ''', (workout_id, exercise_id, weight, sets, reps))
+        if USE_MYSQL:
+            cursor.execute('''
+                INSERT INTO workout_exercises (workout_id, exercise_id, weight, sets, reps)
+                VALUES (%s, %s, %s, %s, %s)
+            ''', (workout_id, exercise_id, weight, sets, reps))
+        else:
+            cursor.execute('''
+                INSERT INTO workout_exercises (workout_id, exercise_id, weight, sets, reps)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (workout_id, exercise_id, weight, sets, reps))
         
         conn.commit()
         conn.close()
@@ -14234,21 +14298,31 @@ def remove_exercise_from_workout():
         
         print(f"Debug: Removing workout exercise ID: {workout_exercise_id}")
         
-        conn = sqlite3.connect('users.db')
+        conn = get_db_connection()
         cursor = conn.cursor()
         
         # Verify workout exercise belongs to user
-        cursor.execute('''
-            SELECT we.id FROM workout_exercises we
-            JOIN workouts w ON we.workout_id = w.id
-            WHERE we.id = ? AND w.username = ?
-        ''', (workout_exercise_id, session['username']))
+        if USE_MYSQL:
+            cursor.execute('''
+                SELECT we.id FROM workout_exercises we
+                JOIN workouts w ON we.workout_id = w.id
+                WHERE we.id = %s AND w.username = %s
+            ''', (workout_exercise_id, session['username']))
+        else:
+            cursor.execute('''
+                SELECT we.id FROM workout_exercises we
+                JOIN workouts w ON we.workout_id = w.id
+                WHERE we.id = ? AND w.username = ?
+            ''', (workout_exercise_id, session['username']))
         
         if not cursor.fetchone():
             return jsonify({'success': False, 'error': 'Workout exercise not found'})
         
         # Remove exercise from workout
-        cursor.execute('DELETE FROM workout_exercises WHERE id = ?', (workout_exercise_id,))
+        if USE_MYSQL:
+            cursor.execute('DELETE FROM workout_exercises WHERE id = %s', (workout_exercise_id,))
+        else:
+            cursor.execute('DELETE FROM workout_exercises WHERE id = ?', (workout_exercise_id,))
         
         print(f"Debug: Removed workout exercise ID: {workout_exercise_id}")
         
@@ -14270,23 +14344,35 @@ def delete_workout():
         if not workout_id:
             return jsonify({'success': False, 'error': 'Missing workout ID'})
         
-        conn = sqlite3.connect('users.db')
+        conn = get_db_connection()
         cursor = conn.cursor()
         
         # Verify workout belongs to user
-        cursor.execute('''
-            SELECT id FROM workouts 
-            WHERE id = ? AND username = ?
-        ''', (workout_id, session['username']))
+        if USE_MYSQL:
+            cursor.execute('''
+                SELECT id FROM workouts 
+                WHERE id = %s AND username = %s
+            ''', (workout_id, session['username']))
+        else:
+            cursor.execute('''
+                SELECT id FROM workouts 
+                WHERE id = ? AND username = ?
+            ''', (workout_id, session['username']))
         
         if not cursor.fetchone():
             return jsonify({'success': False, 'error': 'Workout not found'})
         
         # Delete workout exercises first (due to foreign key)
-        cursor.execute('DELETE FROM workout_exercises WHERE workout_id = ?', (workout_id,))
+        if USE_MYSQL:
+            cursor.execute('DELETE FROM workout_exercises WHERE workout_id = %s', (workout_id,))
+        else:
+            cursor.execute('DELETE FROM workout_exercises WHERE workout_id = ?', (workout_id,))
         
         # Delete workout
-        cursor.execute('DELETE FROM workouts WHERE id = ?', (workout_id,))
+        if USE_MYSQL:
+            cursor.execute('DELETE FROM workouts WHERE id = %s', (workout_id,))
+        else:
+            cursor.execute('DELETE FROM workouts WHERE id = ?', (workout_id,))
         
         conn.commit()
         conn.close()
@@ -14302,7 +14388,7 @@ def get_user_exercises():
     try:
         username = session.get('username')
         
-        conn = sqlite3.connect('users.db')
+        conn = get_db_connection()
         cursor = conn.cursor()
         
         # Get all exercises with their weight history
@@ -14323,9 +14409,9 @@ def get_user_exercises():
         current_exercise = None
         
         for row in rows:
-            exercise_id = row[0]
-            exercise_name = row[1]
-            muscle_group = row[2]
+            exercise_id = get_scalar_result(row, 0, 'id')
+            exercise_name = get_scalar_result(row, 1, 'name')
+            muscle_group = get_scalar_result(row, 2, 'muscle_group')
             
             # If this is a new exercise
             if not current_exercise or current_exercise['id'] != exercise_id:
@@ -14338,11 +14424,14 @@ def get_user_exercises():
                 exercises.append(current_exercise)
             
             # Add weight data if it exists
-            if row[3]:  # If there's weight data
+            weight_val = get_scalar_result(row, 3, 'weight')
+            reps_val = get_scalar_result(row, 4, 'reps')
+            created_at_val = get_scalar_result(row, 5, 'created_at')
+            if weight_val:  # If there's weight data
                 current_exercise['weight_history'].append({
-                    'weight': row[3],
-                    'reps': row[4],
-                    'date': row[5]
+                    'weight': weight_val,
+                    'reps': reps_val,
+                    'date': created_at_val
                 })
         
         print(f"Debug: Found {len(exercises)} exercises for user {username}")
