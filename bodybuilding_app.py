@@ -1287,7 +1287,6 @@ def has_community_management_permission(username, community_id):
     return (is_app_admin(username) or 
             is_community_owner(username, community_id) or 
             is_community_admin(username, community_id))
-
 def has_post_delete_permission(username, post_username, community_id):
     """Check if user can delete a post"""
     return (is_app_admin(username) or 
@@ -2087,7 +2086,6 @@ def api_client_log():
     except Exception as e:
         logger.error(f"Error in api_client_log: {e}")
         return jsonify({'success': False}), 500
-
 @app.route('/assets/<path:filename>')
 def react_assets(filename):
     try:
@@ -2874,7 +2872,6 @@ def test_form():
     <a href="/login_password" style="color: #4db6ac;">Login Password Page</a>
     </body></html>
     """
-
 @app.route('/api/debug_communities', methods=['GET'])
 @login_required
 def debug_communities():
@@ -3670,7 +3667,6 @@ def upload_logo():
     except Exception as e:
         logger.error(f"Error uploading logo: {str(e)}")
         return jsonify({'success': False, 'error': 'Server error'})
-
 @app.route('/upload_signup_image', methods=['POST'])
 @login_required
 def upload_signup_image():
@@ -5143,7 +5139,6 @@ def add_community_member():
     except Exception as e:
         logger.error(f"Error adding community member for {username}: {str(e)}")
         return jsonify({'success': False, 'error': str(e)})
-
 @app.route('/update_member_role', methods=['POST'])
 @login_required
 def update_member_role():
@@ -12529,49 +12524,88 @@ def add_exercise():
             return jsonify({'success': False, 'error': 'Exercise already exists'})
         
         # Create tables if they don't exist
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS exercises (
-                id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                username TEXT NOT NULL,
-                name TEXT NOT NULL,
-                muscle_group TEXT NOT NULL DEFAULT "Other"
-            )
-        ''')
-        
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS exercise_sets (
-                id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                exercise_id INTEGER NOT NULL,
-                weight REAL NOT NULL,
-                reps INTEGER NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (exercise_id) REFERENCES exercises (id) ON DELETE CASCADE
-            )
-        ''')
-        
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS workouts (
-                id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                username TEXT NOT NULL,
-                name TEXT NOT NULL,
-                date TEXT NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS workout_exercises (
-                id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                workout_id INTEGER NOT NULL,
-                exercise_id INTEGER NOT NULL,
-                sets INTEGER DEFAULT 0,
-                reps INTEGER DEFAULT 0,
-                weight REAL DEFAULT 0,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (workout_id) REFERENCES workouts (id) ON DELETE CASCADE,
-                FOREIGN KEY (exercise_id) REFERENCES exercises (id) ON DELETE CASCADE
-            )
-        ''')
+        if USE_MYSQL:
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS exercises (
+                    id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                    username TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    muscle_group TEXT NOT NULL DEFAULT "Other"
+                )
+            ''')
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS exercise_sets (
+                    id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                    exercise_id INTEGER NOT NULL,
+                    weight REAL NOT NULL,
+                    reps INTEGER NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (exercise_id) REFERENCES exercises (id) ON DELETE CASCADE
+                )
+            ''')
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS workouts (
+                    id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                    username TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    date TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS workout_exercises (
+                    id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                    workout_id INTEGER NOT NULL,
+                    exercise_id INTEGER NOT NULL,
+                    sets INTEGER DEFAULT 0,
+                    reps INTEGER DEFAULT 0,
+                    weight REAL DEFAULT 0,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (workout_id) REFERENCES workouts (id) ON DELETE CASCADE,
+                    FOREIGN KEY (exercise_id) REFERENCES exercises (id) ON DELETE CASCADE
+                )
+            ''')
+        else:
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS exercises (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    muscle_group TEXT NOT NULL DEFAULT "Other"
+                )
+            ''')
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS exercise_sets (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    exercise_id INTEGER NOT NULL,
+                    weight REAL NOT NULL,
+                    reps INTEGER NOT NULL,
+                    created_at TEXT DEFAULT (datetime('now')),
+                    FOREIGN KEY (exercise_id) REFERENCES exercises (id) ON DELETE CASCADE
+                )
+            ''')
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS workouts (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    date TEXT NOT NULL,
+                    created_at TEXT DEFAULT (datetime('now'))
+                )
+            ''')
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS workout_exercises (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    workout_id INTEGER NOT NULL,
+                    exercise_id INTEGER NOT NULL,
+                    sets INTEGER DEFAULT 0,
+                    reps INTEGER DEFAULT 0,
+                    weight REAL DEFAULT 0,
+                    created_at TEXT DEFAULT (datetime('now')),
+                    FOREIGN KEY (workout_id) REFERENCES workouts (id) ON DELETE CASCADE,
+                    FOREIGN KEY (exercise_id) REFERENCES exercises (id) ON DELETE CASCADE
+                )
+            ''')
         
         # Insert the exercise
         cursor.execute('''
@@ -13191,7 +13225,7 @@ def log_weight_set():
                 if ex_name in overlapping:
                     cursor.execute('''
                         CREATE TABLE IF NOT EXISTS crossfit_entries (
-                            id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
                             username TEXT NOT NULL,
                             type TEXT NOT NULL,
                             name TEXT NOT NULL,
@@ -14018,11 +14052,11 @@ def create_workout():
         # Create workouts table if it doesn't exist
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS workouts (
-                id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
                 username TEXT NOT NULL,
                 name TEXT NOT NULL,
                 date TEXT NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                created_at TEXT DEFAULT (datetime('now'))
             )
         ''')
         
@@ -15027,7 +15061,7 @@ def seed_dummy_data():
 
             # Ensure crossfit_entries table exists
             c.execute('''CREATE TABLE IF NOT EXISTS crossfit_entries (
-                id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
                 username TEXT NOT NULL,
                 type TEXT NOT NULL,
                 name TEXT NOT NULL,
