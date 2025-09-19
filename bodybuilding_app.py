@@ -1984,6 +1984,7 @@ def signup():
     
     # Handle POST request for user registration (supports both React and HTML forms)
     # React form sends individual fields, HTML form sends full_name
+    desired_username = request.form.get('username', '').strip()
     first_name = request.form.get('first_name', '').strip()
     last_name = request.form.get('last_name', '').strip()
     full_name = request.form.get('full_name', '').strip()
@@ -2027,7 +2028,7 @@ def signup():
         else:
             return render_template('signup.html', error=error_msg, full_name=full_name, email=email, mobile=mobile)
     
-    # Username will be generated automatically
+    # Username handling: user-provided or auto-generate
     
     try:
         with get_db_connection() as conn:
@@ -2043,17 +2044,26 @@ def signup():
                 else:
                     return render_template('signup.html', error=error_msg, full_name=full_name, email=email, mobile=mobile)
             
-            # Generate a unique username based on email or name
-            base_username = (email.split('@')[0] if email else (first_name + last_name)).lower()
-            base_username = re.sub(r'[^a-z0-9_]', '', base_username) or 'user'
-            username = base_username
-            suffix = 1
-            while True:
-                c.execute("SELECT 1 FROM users WHERE username = ?", (username,))
-                if not c.fetchone():
-                    break
-                suffix += 1
-                username = f"{base_username}{suffix}"
+            # If provided, validate uniqueness and allowed chars; else auto-generate
+            if desired_username:
+                candidate = re.sub(r'[^a-z0-9_]', '', desired_username.lower())
+                if not candidate:
+                    return jsonify({'success': False, 'error': 'Invalid username'}), 400
+                c.execute("SELECT 1 FROM users WHERE username = ?", (candidate,))
+                if c.fetchone():
+                    return jsonify({'success': False, 'error': 'Username already taken'}), 400
+                username = candidate
+            else:
+                base_username = (email.split('@')[0] if email else (first_name + last_name)).lower()
+                base_username = re.sub(r'[^a-z0-9_]', '', base_username) or 'user'
+                username = base_username
+                suffix = 1
+                while True:
+                    c.execute("SELECT 1 FROM users WHERE username = ?", (username,))
+                    if not c.fetchone():
+                        break
+                    suffix += 1
+                    username = f"{base_username}{suffix}"
             
             # Hash the password
             hashed_password = generate_password_hash(password)

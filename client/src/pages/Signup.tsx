@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 export default function Signup(){
   const navigate = useNavigate()
   const [formData, setFormData] = useState({
+    username: '',
     first_name: '',
     last_name: '',
     email: '',
@@ -38,6 +39,10 @@ export default function Signup(){
       setError('Last name is required')
       return
     }
+    if (!formData.username.trim()) {
+      setError('Username is required')
+      return
+    }
     if (!formData.email.trim()) {
       setError('Email is required')
       return
@@ -59,6 +64,7 @@ export default function Signup(){
 
     // Create form data for submission
     const submitData = new FormData()
+    submitData.append('username', formData.username)
     submitData.append('first_name', formData.first_name)
     submitData.append('last_name', formData.last_name)
     submitData.append('email', formData.email)
@@ -157,6 +163,17 @@ export default function Signup(){
         <form onSubmit={handleSubmit} className="space-y-3">
           {/* Name Fields */}
           <div className="grid grid-cols-2 gap-3">
+          <div className="col-span-2">
+            <label className="block text-xs font-medium mb-1.5">Username</label>
+            <input
+              type="text"
+              value={formData.username}
+              onChange={e => handleInputChange('username', e.target.value)}
+              placeholder="Choose a unique username"
+              required
+              className="w-full px-3 py-2.5 bg-white/5 border border-white/20 rounded-lg text-sm text-white placeholder-white/50 focus:border-[#4db6ac] focus:outline-none transition-colors"
+            />
+          </div>
             <div>
               <label className="block text-xs font-medium mb-1.5">First Name</label>
               <input
