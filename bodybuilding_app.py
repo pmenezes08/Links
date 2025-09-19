@@ -5901,34 +5901,35 @@ def request_password_reset():
     """Handle password reset requests"""
     try:
         data = request.get_json(silent=True) or {}
-        username = (data.get('username') if isinstance(data, dict) else None) or request.form.get('username') or request.args.get('username')
+        username = None  # Deprecated: we now reset by email only
         email = (data.get('email') if isinstance(data, dict) else None) or request.form.get('email') or request.args.get('email')
         try:
             logger.info(f"PW reset incoming: ct={request.content_type} user={username} has_email={bool(email)}")
         except Exception:
             pass
         
-        if not username or not email:
+        if not email:
             return jsonify({'success': True, 'message': 'If an account exists with the provided information, a reset link has been sent.'})
         
         with get_db_connection() as conn:
             c = conn.cursor()
             ensure_password_reset_table(c)
             
-            # Check if user exists with matching email
+            # Find user by email
             ph = get_sql_placeholder()
-            c.execute(f"SELECT email FROM users WHERE username = {ph}", (username,))
+            c.execute(f"SELECT username FROM users WHERE email = {ph}", (email,))
             result = c.fetchone()
             
             # For security, always return success even if user doesn't exist
-            if result and result['email'] == email:
+            if result:
+                matched_username = result['username'] if hasattr(result, 'keys') else result[0]
                 # Generate secure token
                 token = secrets.token_urlsafe(32)
                 created_at = datetime.now().isoformat()
                 
                 # Rate limiting: only one active token within 10 minutes
                 try:
-                    c.execute(f"SELECT created_at FROM password_reset_tokens WHERE username={ph} AND used=0 ORDER BY id DESC LIMIT 1", (username,))
+                    c.execute(f"SELECT created_at FROM password_reset_tokens WHERE username={ph} AND used=0 ORDER BY id DESC LIMIT 1", (matched_username,))
                     last = c.fetchone()
                     if last:
                         last_time = datetime.fromisoformat(last['created_at'] if hasattr(last, 'keys') else last[0])
@@ -5938,20 +5939,20 @@ def request_password_reset():
                 except Exception:
                     pass
                 # Delete any existing unused tokens for this user (cleanup)
-                c.execute(f"DELETE FROM password_reset_tokens WHERE username = {ph} AND used = 0", (username,))
+                c.execute(f"DELETE FROM password_reset_tokens WHERE username = {ph} AND used = 0", (matched_username,))
                 
                 # Insert new token
                 ins_ph = ', '.join([ph, ph, ph, ph])
                 c.execute(f"""
                     INSERT INTO password_reset_tokens (username, email, token, created_at)
                     VALUES ({ins_ph})
-                """, (username, email, token, created_at))
+                """, (matched_username, email, token, created_at))
                 conn.commit()
                 
                 # Build reset link using canonical host
                 base = f"{CANONICAL_SCHEME}://{CANONICAL_HOST}" if CANONICAL_HOST else request.host_url.rstrip('/')
                 reset_link = f"{base}/reset_password/{token}"
-                logger.info(f"Password reset link generated for {username}")
+                logger.info(f"Password reset link generated for {matched_username}")
 
                 # Send email via Resend
                 subject = "Reset your C-Point password"

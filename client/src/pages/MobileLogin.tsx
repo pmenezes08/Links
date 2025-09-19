@@ -4,7 +4,6 @@ import { useNavigate } from 'react-router-dom'
 export default function MobileLogin() {
   const navigate = useNavigate()
   const [showForgot, setShowForgot] = useState(false)
-  const [resetUsername, setResetUsername] = useState('')
   const [resetEmail, setResetEmail] = useState('')
   const [resetSent, setResetSent] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -41,7 +40,7 @@ export default function MobileLogin() {
       await fetch('/request_password_reset', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: resetUsername, email: resetEmail })
+        body: JSON.stringify({ email: resetEmail })
       })
     } catch {}
     setResetSent(true)
@@ -105,16 +104,8 @@ export default function MobileLogin() {
             <div className="p-4">
               {!resetSent ? (
                 <>
-                  <p className="text-white/70 text-sm mb-4">Enter your username and email address. We'll send you a link to reset your password.</p>
+                  <p className="text-white/70 text-sm mb-4">Enter your email address. We'll send you a link to reset your password.</p>
                   <form onSubmit={submitReset} className="space-y-3">
-                    <input
-                      type="text"
-                      placeholder="Username"
-                      value={resetUsername}
-                      onChange={e => setResetUsername(e.target.value)}
-                      required
-                      className="w-full rounded-md border border-white/10 bg-white/10 px-3 py-2 text-sm outline-none focus:border-teal-400/70"
-                    />
                     <input
                       type="email"
                       placeholder="Email address"
