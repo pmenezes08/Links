@@ -8881,7 +8881,19 @@ def create_club(community_id):
 def join_club(club_id):
     """Join or leave a club"""
     username = session.get('username')
-    
+    # Enforce verified email (mobile join path)
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT email_verified FROM users WHERE username=?", (username,))
+            row = c.fetchone()
+            if row is not None:
+                is_verified = bool(row['email_verified'] if hasattr(row, 'keys') else row[0])
+                if not is_verified:
+                    return jsonify({'success': False, 'error': 'please verify your email'}), 403
+    except Exception:
+        pass
+
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
