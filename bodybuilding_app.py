@@ -4302,22 +4302,49 @@ def update_password():
 @login_required
 def update_email():
     username = session['username']
-    new_email = request.form.get('new_email')
+    new_email = request.form.get('new_email') or request.form.get('email')
     
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
-            
+            if not new_email:
+                return jsonify({'success': False, 'error': 'Email required'}), 400
+
             # Check if email is already taken
-            c.execute("SELECT username FROM users WHERE email=? AND username!=?", (new_email, username))
+            ph = get_sql_placeholder()
+            c.execute(f"SELECT username FROM users WHERE email={ph} AND username!={ph}", (new_email, username))
             existing_user = c.fetchone()
             if existing_user:
                 return jsonify({'success': False, 'error': 'Email is already in use'})
             
-            c.execute("UPDATE users SET email=? WHERE username=?", (new_email, username))
+            # Update email and mark as unverified
+            c.execute(f"UPDATE users SET email={ph}, email_verified=0 WHERE username={ph}", (new_email, username))
+            try:
+                c.execute(f"UPDATE users SET email_verification_sent_at={ph} WHERE username={ph}", (datetime.now().isoformat(), username))
+            except Exception:
+                pass
             conn.commit()
+
+            # Send verification email to new address
+            try:
+                token = generate_email_token(new_email)
+                verify_url = f"{CANONICAL_SCHEME}://{CANONICAL_HOST}/verify_email?token={token}"
+                subject = "Verify your new C-Point email"
+                html = f"""
+                    <div style='font-family:Arial,sans-serif;font-size:14px;color:#111'>
+                      <p>You requested to change the email on your C-Point account.</p>
+                      <p>Please verify your new email address by clicking below:</p>
+                      <p><a href='{verify_url}' style='display:inline-block;background:#111;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none'>Verify Email</a></p>
+                      <p>Or open this link: <a href='{verify_url}'>{verify_url}</a></p>
+                      <p>This link expires in 24 hours.</p>
+                    </div>
+                """
+                sent_ok = _send_email_via_resend(new_email, subject, html)
+            except Exception as e:
+                logger.warning(f"Could not send verification email for update_email: {e}")
+                sent_ok = False
             
-            return jsonify({'success': True})
+            return jsonify({'success': True, 'verification_sent': bool(sent_ok)})
     except Exception as e:
         logger.error(f"Error updating email for {username}: {str(e)}")
         return jsonify({'success': False, 'error': 'Server error'})

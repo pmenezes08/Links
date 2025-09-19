@@ -23,6 +23,7 @@ export default function AccountSettings(){
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState<{type: 'success'|'error', text: string}|null>(null)
+  const [showVerifyModal, setShowVerifyModal] = useState(false)
 
   useEffect(() => { setTitle('Account Settings') }, [setTitle])
 
@@ -54,28 +55,37 @@ export default function AccountSettings(){
     setSaving(true)
     setMessage(null)
 
-    const formData = new FormData()
-    Object.entries(profile).forEach(([key, value]) => {
-      if (value) formData.append(key, value)
+    // Save public fields
+    const pf = new FormData()
+    ;(['display_name','bio','location','website','instagram','twitter'] as const).forEach((k)=>{
+      const v = (profile as any)[k]
+      if (v !== undefined) pf.append(k, v as string)
     })
+    fetch('/update_public_profile', { method:'POST', credentials:'include', body: pf })
+      .then(()=>{})
+      .catch(()=>{})
+      .finally(()=>{})
 
-    fetch('/update_public_profile', {
-      method: 'POST',
-      credentials: 'include',
-      body: formData
-    })
-    .then(r => r.json())
-    .then(j => {
-      if (j?.success) {
-        setMessage({ type: 'success', text: 'Profile updated successfully!' })
-      } else {
-        setMessage({ type: 'error', text: j?.error || 'Failed to update profile' })
-      }
-    })
-    .catch(() => {
-      setMessage({ type: 'error', text: 'Error updating profile' })
-    })
-    .finally(() => setSaving(false))
+    // If email changed, call update_email
+    const newEmail = profile.email
+    if (newEmail) {
+      const ef = new FormData()
+      ef.append('new_email', newEmail)
+      fetch('/update_email', { method:'POST', credentials:'include', body: ef })
+        .then(r=>r.json())
+        .then(j=>{
+          if (j?.success) {
+            setShowVerifyModal(true)
+            setMessage({ type: 'success', text: 'Email updated. Please verify your new email.' })
+          } else if (j?.error) {
+            setMessage({ type: 'error', text: j.error })
+          }
+        })
+        .catch(()=> setMessage({ type:'error', text:'Error updating email' }))
+        .finally(()=> setSaving(false))
+    } else {
+      setSaving(false)
+    }
   }
 
   function handleInputChange(field: keyof ProfileData, value: string) {
@@ -307,6 +317,25 @@ export default function AccountSettings(){
             </button>
           </div>
         </form>
+        {showVerifyModal && (
+          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+            <div className="w-[90%] max-w-md rounded-xl border border-white/10 bg-[#0b0b0b] p-4">
+              <div className="text-lg font-semibold mb-1">Verify your new email</div>
+              <div className="text-sm text-white/80">We sent a verification link to your new email. Please verify to complete the change.</div>
+              <div className="mt-3 flex items-center gap-2">
+                <button className="px-3 py-2 rounded-md bg-[#4db6ac] text-black" onClick={()=> setShowVerifyModal(false)}>OK</button>
+                <button className="px-3 py-2 rounded-md border border-white/10" onClick={async ()=>{
+                  try{
+                    const r = await fetch('/resend_verification', { method:'POST', credentials:'include' })
+                    const j = await r.json().catch(()=>null)
+                    if (!j?.success) alert(j?.error || 'Failed to resend')
+                    else alert('Verification email sent')
+                  }catch{ alert('Network error') }
+                }}>Resend email</button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
