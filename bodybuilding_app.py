@@ -3492,9 +3492,52 @@ def admin_delete_user():
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
-            
-            # Delete user
-            c.execute("DELETE FROM users WHERE username = ?", (target_username,))
+            ph = get_sql_placeholder()
+
+            # Resolve user id
+            c.execute(f"SELECT id FROM users WHERE username={ph}", (target_username,))
+            row = c.fetchone()
+            user_id = (row['id'] if hasattr(row, 'keys') else (row[0] if row else None))
+            if not user_id:
+                return jsonify({'success': False, 'error': 'User not found'}), 404
+
+            # Delete dependent rows first to satisfy FK constraints
+            c.execute(f"DELETE FROM messages WHERE sender={ph} OR receiver={ph}", (target_username, target_username))
+            c.execute(f"DELETE FROM notifications WHERE user_id={ph} OR from_user={ph}", (target_username, target_username))
+            c.execute(f"DELETE FROM user_communities WHERE user_id={ph}", (user_id,))
+            try:
+                c.execute(f"DELETE FROM community_admins WHERE username={ph}", (target_username,))
+            except Exception:
+                pass
+            c.execute(f"DELETE FROM posts WHERE username={ph}", (target_username,))
+            c.execute(f"DELETE FROM replies WHERE username={ph}", (target_username,))
+            c.execute(f"DELETE FROM reactions WHERE username={ph}", (target_username,))
+            c.execute(f"DELETE FROM reply_reactions WHERE username={ph}", (target_username,))
+            try:
+                c.execute(f"DELETE FROM push_subscriptions WHERE username={ph}", (target_username,))
+            except Exception:
+                pass
+            try:
+                c.execute(f"DELETE FROM typing_status WHERE user={ph} OR peer={ph}", (target_username, target_username))
+            except Exception:
+                pass
+            try:
+                c.execute(f"DELETE FROM remember_tokens WHERE username={ph}", (target_username,))
+            except Exception:
+                pass
+            try:
+                c.execute(f"DELETE FROM user_profiles WHERE username={ph}", (target_username,))
+            except Exception:
+                pass
+            try:
+                c.execute(f"DELETE FROM exercises WHERE username={ph}", (target_username,))
+                c.execute(f"DELETE FROM workouts WHERE username={ph}", (target_username,))
+                c.execute(f"DELETE FROM crossfit_entries WHERE username={ph}", (target_username,))
+            except Exception:
+                pass
+
+            # Finally delete the user
+            c.execute(f"DELETE FROM users WHERE username={ph}", (target_username,))
             
             conn.commit()
             return jsonify({'success': True})
