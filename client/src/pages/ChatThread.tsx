@@ -32,7 +32,7 @@ export default function ChatThread(){
   const storageKey = useMemo(() => `chat_meta_${username || ''}`, [username])
   const metaRef = useRef<Record<string, { reaction?: string; replySnippet?: string }>>({})
   const [otherProfile, setOtherProfile] = useState<{ display_name:string; profile_picture?:string|null }|null>(null)
-  const [typing, setTyping] = useState(false)
+  const [, setTyping] = useState(false) // keep setter for API calls; UI label removed
   const typingTimer = useRef<any>(null)
   const pollTimer = useRef<any>(null)
   const [currentDateLabel, setCurrentDateLabel] = useState<string>('')
@@ -591,12 +591,10 @@ export default function ChatThread(){
             size={36} 
           />
           <div className="flex-1 min-w-0">
-            <div className="font-semibold truncate text-white text-lg">
+            <div className="font-semibold truncate text-white text-sm">
               {otherProfile?.display_name || username || 'Chat'}
             </div>
-            <div className="text-sm text-[#4db6ac] font-medium">
-              {typing ? 'typing...' : 'Online'}
-            </div>
+            {/* Online/typing label removed as requested */}
           </div>
           <button 
             className="p-2 rounded-full hover:bg-white/10 transition-colors" 
