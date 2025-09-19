@@ -406,7 +406,7 @@ function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDel
           ) : (
             <div className="mt-1">
               <textarea
-                className="w-full resize-none max-h-40 min-h-[60px] px-3 py-2 rounded-md bg-black border border-[#4db6ac] text-[14px] focus:outline-none focus:ring-1 focus:ring-[#4db6ac]"
+                className="w-full resize-none max-h-60 min-h-[100px] px-3 py-2 rounded-md bg-black border border-[#4db6ac] text-[14px] focus:outline-none focus:ring-1 focus:ring-[#4db6ac]"
                 value={editText}
                 onChange={(e)=> setEditText(e.target.value)}
               />
