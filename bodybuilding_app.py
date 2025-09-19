@@ -727,7 +727,7 @@ def add_missing_tables():
                     c.execute('''CREATE TABLE IF NOT EXISTS product_poll_votes (
                                     id INTEGER PRIMARY KEY AUTO_INCREMENT,
                                     poll_id INTEGER NOT NULL,
-                                    username TEXT NOT NULL,
+                                    username VARCHAR(191) NOT NULL,
                                     option_index INTEGER NOT NULL,
                                     created_at TEXT NOT NULL,
                                     UNIQUE(poll_id, username),
