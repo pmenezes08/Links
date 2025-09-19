@@ -363,6 +363,8 @@ function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDel
   const [text, setText] = useState('')
   const [img, setImg] = useState<File|null>(null)
   const inlineFileRef = useRef<HTMLInputElement|null>(null)
+  const [isEditing, setIsEditing] = useState(false)
+  const [editText, setEditText] = useState(reply.content)
   const avatarSizePx = 28
   return (
     <div className="border-b border-white/10 py-2">
@@ -381,16 +383,51 @@ function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDel
             <div className="font-medium">{reply.username}</div>
             <div className="text-[11px] text-[#9fb0b5] ml-auto">{formatSmartTime(reply.timestamp)}</div>
             {(currentUser && (currentUser === reply.username || currentUser === 'admin')) ? (
-              <button
-                className="ml-2 px-2 py-1 rounded-full text-[#6c757d] hover:text-red-400"
-                title="Delete reply"
-                onClick={()=> onDelete(reply.id)}
-              >
-                <i className="fa-regular fa-trash-can" />
-              </button>
+              <>
+                <button
+                  className="ml-2 px-2 py-1 rounded-full text-[#6c757d] hover:text-[#4db6ac]"
+                  title="Edit reply"
+                  onClick={()=> setIsEditing(v=>!v)}
+                >
+                  <i className="fa-regular fa-pen-to-square" />
+                </button>
+                <button
+                  className="ml-1 px-2 py-1 rounded-full text-[#6c757d] hover:text-red-400"
+                  title="Delete reply"
+                  onClick={()=> onDelete(reply.id)}
+                >
+                  <i className="fa-regular fa-trash-can" />
+                </button>
+              </>
             ) : null}
           </div>
-          <div className="text-[#dfe6e9] whitespace-pre-wrap mt-0.5 break-words">{renderRichText(reply.content)}</div>
+          {!isEditing ? (
+            <div className="text-[#dfe6e9] whitespace-pre-wrap mt-0.5 break-words">{renderRichText(reply.content)}</div>
+          ) : (
+            <div className="mt-1">
+              <textarea
+                className="w-full resize-none max-h-40 min-h-[60px] px-3 py-2 rounded-md bg-black border border-[#4db6ac] text-[14px] focus:outline-none focus:ring-1 focus:ring-[#4db6ac]"
+                value={editText}
+                onChange={(e)=> setEditText(e.target.value)}
+              />
+              <div className="mt-1 flex gap-2">
+                <button className="px-3 py-1.5 rounded-md bg-[#4db6ac] text-black" onClick={async ()=>{
+                  const fd = new FormData()
+                  fd.append('reply_id', String(reply.id))
+                  fd.append('content', editText)
+                  const r = await fetch('/edit_reply', { method:'POST', credentials:'include', body: fd })
+                  const j = await r.json().catch(()=>null)
+                  if (j?.success){
+                    (reply as any).content = editText
+                    setIsEditing(false)
+                  } else {
+                    alert(j?.error || 'Failed to edit')
+                  }
+                }}>Save</button>
+                <button className="px-3 py-1.5 rounded-md border border-white/10" onClick={()=> { setIsEditing(false); setEditText(reply.content) }}>Cancel</button>
+              </div>
+            </div>
+          )}
           {reply.image_path ? (
             <div className="mt-2">
               <img

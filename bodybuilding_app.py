@@ -11944,6 +11944,41 @@ def api_community_feed(community_id):
     except Exception as e:
         logger.error(f"Error in api_community_feed for {community_id}: {e}")
         return jsonify({'success': False, 'error': 'Server error'}), 500
+
+# Edit reply content
+@app.route('/edit_reply', methods=['POST'])
+@login_required
+def edit_reply():
+    username = session.get('username')
+    try:
+        reply_id = request.form.get('reply_id', type=int)
+        new_content = (request.form.get('content') or '').strip()
+        if not reply_id:
+            return jsonify({'success': False, 'error': 'reply_id required'}), 400
+        if new_content == '':
+            return jsonify({'success': False, 'error': 'content required'}), 400
+
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            # Verify ownership or admin
+            c.execute(f"SELECT username FROM replies WHERE id={ph}", (reply_id,))
+            row = c.fetchone()
+            if not row:
+                return jsonify({'success': False, 'error': 'Reply not found'}), 404
+            owner = row['username'] if hasattr(row, 'keys') else row[0]
+            if username != owner and username != 'admin':
+                return jsonify({'success': False, 'error': 'Forbidden'}), 403
+
+            # Update content
+            c.execute(f"UPDATE replies SET content={ph} WHERE id={ph}", (new_content, reply_id))
+            conn.commit()
+
+            # Return minimal updated reply
+            return jsonify({'success': True, 'reply': {'id': reply_id, 'content': new_content}})
+    except Exception as e:
+        logger.error(f"Error editing reply {username}: {e}")
+        return jsonify({'success': False, 'error': 'Server error'}), 500
 def api_home_timeline():
     """Aggregate timeline across all communities the user belongs to for the last 48 hours."""
     username = session.get('username')
