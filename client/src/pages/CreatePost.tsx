@@ -22,7 +22,7 @@ export default function CreatePost(){
   return (
     <div className="min-h-screen bg-black text-white pb-20">
       <div className="fixed left-0 right-0 top-0 h-12 border-b border-white/10 bg-black/70 backdrop-blur flex items-center px-3 z-40">
-        <button className="px-3 py-2 rounded-full text-[#cfd8dc] hover:text-[#4db6ac]" onClick={()=> navigate(-1)} aria-label="Back">
+        <button className="px-3 py-2 rounded-full text-[#cfd8dc] hover:text-[#4db6ac]" onClick={()=> communityId ? navigate(`/community_feed_react/${communityId}`) : navigate(-1)} aria-label="Back">
           <i className="fa-solid fa-arrow-left" />
         </button>
         <div className="ml-2 font-semibold">Create Post</div>
