@@ -152,6 +152,12 @@ export default function PremiumDashboard() {
               <div className="text-[#9fb0b5] text-sm px-2 py-8 text-center">No communities found.</div>
             ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {/* Shortcut: Product Development */}
+              <Card 
+                iconClass="fa-solid fa-flask"
+                title="Product Development"
+                onClick={()=> navigate('/product_development')}
+              />
               {/* Show all communities */}
               {communities.map(community => {
               const typeLower = (community.type || '').toLowerCase()
