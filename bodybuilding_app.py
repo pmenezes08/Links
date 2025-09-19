@@ -717,6 +717,22 @@ def add_missing_tables():
                                     created_at TEXT NOT NULL,
                                     FOREIGN KEY (post_id) REFERENCES product_posts(id) ON DELETE CASCADE
                                  )''')
+                    c.execute('''CREATE TABLE IF NOT EXISTS product_polls (
+                                    id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                                    username TEXT NOT NULL,
+                                    question TEXT NOT NULL,
+                                    options_json TEXT NOT NULL,
+                                    created_at TEXT NOT NULL
+                                 )''')
+                    c.execute('''CREATE TABLE IF NOT EXISTS product_poll_votes (
+                                    id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                                    poll_id INTEGER NOT NULL,
+                                    username TEXT NOT NULL,
+                                    option_index INTEGER NOT NULL,
+                                    created_at TEXT NOT NULL,
+                                    UNIQUE(poll_id, username),
+                                    FOREIGN KEY (poll_id) REFERENCES product_polls(id) ON DELETE CASCADE
+                                 )''')
                 else:
                     c.execute('''CREATE TABLE IF NOT EXISTS product_posts (
                                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -732,6 +748,22 @@ def add_missing_tables():
                                     content TEXT NOT NULL,
                                     created_at TEXT NOT NULL,
                                     FOREIGN KEY (post_id) REFERENCES product_posts(id) ON DELETE CASCADE
+                                 )''')
+                    c.execute('''CREATE TABLE IF NOT EXISTS product_polls (
+                                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                    username TEXT NOT NULL,
+                                    question TEXT NOT NULL,
+                                    options_json TEXT NOT NULL,
+                                    created_at TEXT NOT NULL
+                                 )''')
+                    c.execute('''CREATE TABLE IF NOT EXISTS product_poll_votes (
+                                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                    poll_id INTEGER NOT NULL,
+                                    username TEXT NOT NULL,
+                                    option_index INTEGER NOT NULL,
+                                    created_at TEXT NOT NULL,
+                                    UNIQUE(poll_id, username),
+                                    FOREIGN KEY (poll_id) REFERENCES product_polls(id) ON DELETE CASCADE
                                  )''')
                 conn.commit()
             except Exception as e:
@@ -12069,6 +12101,96 @@ def api_create_product_reply():
             return jsonify({'success': True, 'reply': {'id': rid, 'post_id': post_id, 'username': username, 'content': content, 'created_at': now}})
     except Exception as e:
         logger.error(f"create product reply error: {e}")
+        return jsonify({'success': False, 'error': 'server error'}), 500
+
+@app.route('/api/product_polls', methods=['GET'])
+@login_required
+def api_product_polls():
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT id, username, question, options_json, created_at FROM product_polls ORDER BY id DESC LIMIT 100")
+            polls = []
+            for r in c.fetchall() or []:
+                polls.append({
+                    'id': r['id'] if hasattr(r,'keys') else r[0],
+                    'username': r['username'] if hasattr(r,'keys') else r[1],
+                    'question': r['question'] if hasattr(r,'keys') else r[2],
+                    'options': json.loads(r['options_json'] if hasattr(r,'keys') else r[3] or '[]'),
+                    'created_at': r['created_at'] if hasattr(r,'keys') else r[4]
+                })
+            return jsonify({'success': True, 'polls': polls})
+    except Exception as e:
+        logger.error(f"product polls error: {e}")
+        return jsonify({'success': False, 'error': 'server error'}), 500
+
+@app.route('/api/product_poll', methods=['POST'])
+@login_required
+def api_create_product_poll():
+    username = session.get('username')
+    if (username or '').lower() not in ('admin','paulo'):
+        return jsonify({'success': False, 'error': 'Forbidden'}), 403
+    question = (request.form.get('question') or '').strip()
+    raw_options = request.form.getlist('options') or []
+    options = [o.strip() for o in raw_options if o and o.strip()]
+    if not question or len(options) < 2:
+        return jsonify({'success': False, 'error': 'Question and at least 2 options required'}), 400
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            c.execute("INSERT INTO product_polls (username, question, options_json, created_at) VALUES (?,?,?,?)",
+                      (username, question, json.dumps(options), now))
+            poll_id = c.lastrowid
+            conn.commit()
+        try:
+            # Send notification to all users with push subscription
+            with get_db_connection() as conn2:
+                c2 = conn2.cursor()
+                c2.execute("SELECT DISTINCT username FROM push_subscriptions")
+                for row in c2.fetchall() or []:
+                    u = row['username'] if hasattr(row,'keys') else row[0]
+                    send_push_to_user(u, {
+                        'title': 'New Product Poll',
+                        'body': question,
+                        'url': f"{CANONICAL_SCHEME}://{CANONICAL_HOST}/product_development"
+                    })
+        except Exception as ne:
+            logger.warning(f"poll notify error: {ne}")
+        return jsonify({'success': True, 'poll': { 'id': poll_id, 'username': username, 'question': question, 'options': options, 'created_at': now }})
+    except Exception as e:
+        logger.error(f"create product poll error: {e}")
+        return jsonify({'success': False, 'error': 'server error'}), 500
+
+@app.route('/api/product_poll_vote', methods=['POST'])
+@login_required
+def api_product_poll_vote():
+    username = session.get('username')
+    poll_id = request.form.get('poll_id', type=int)
+    option_index = request.form.get('option_index', type=int)
+    if poll_id is None or option_index is None:
+        return jsonify({'success': False, 'error': 'poll_id and option_index required'}), 400
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            # Ensure poll exists and option index is valid
+            c.execute("SELECT options_json FROM product_polls WHERE id=?", (poll_id,))
+            prow = c.fetchone()
+            if not prow:
+                return jsonify({'success': False, 'error': 'Poll not found'}), 404
+            opts = json.loads(prow['options_json'] if hasattr(prow,'keys') else prow[0] or '[]')
+            if option_index < 0 or option_index >= len(opts):
+                return jsonify({'success': False, 'error': 'Invalid option'}), 400
+            # Upsert vote (enforce one vote per user)
+            try:
+                c.execute("INSERT INTO product_poll_votes (poll_id, username, option_index, created_at) VALUES (?, ?, ?, ?)", (poll_id, username, option_index, now))
+            except Exception:
+                c.execute("UPDATE product_poll_votes SET option_index=?, created_at=? WHERE poll_id=? AND username=?", (option_index, now, poll_id, username))
+            conn.commit()
+            return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"poll vote error: {e}")
         return jsonify({'success': False, 'error': 'server error'}), 500
 
 # Edit reply content
