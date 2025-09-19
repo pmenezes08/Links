@@ -21,7 +21,7 @@ function renderRichText(input: string){
     }
     const label = match[1]
     const url = match[2]
-    nodes.push(<a key={`md-${match.index}`} href={url} target="_blank" rel="noopener noreferrer" className="text-[#4db6ac] underline-offset-2 hover:underline break-words break-all">{label}</a>)
+    nodes.push(<a key={`md-${match.index}`} href={url} target="_blank" rel="noopener noreferrer" className="text-[#4db6ac] underline-offset-2 hover:underline break-words">{label}</a>)
     lastIndex = markdownRe.lastIndex
   }
   const rest = input.slice(lastIndex)
@@ -35,7 +35,7 @@ function renderRichText(input: string){
     }
     const urlText = m[0]
     const href = urlText.startsWith('http') ? urlText : `https://${urlText}`
-    nodes.push(<a key={`u-${lastIndex + m.index}`} href={href} target="_blank" rel="noopener noreferrer" className="text-[#4db6ac] underline-offset-2 hover:underline break-words break-all">{urlText}</a>)
+    nodes.push(<a key={`u-${lastIndex + m.index}`} href={href} target="_blank" rel="noopener noreferrer" className="text-[#4db6ac] underline-offset-2 hover:underline break-words">{urlText}</a>)
     urlLast = urlRe.lastIndex
   }
   if (urlLast < rest.length){
@@ -241,7 +241,7 @@ export default function PostDetail(){
             <div className="text-xs text-[#9fb0b5] ml-auto">{formatSmartTime((post as any).display_timestamp || post.timestamp)}</div>
           </div>
           <div className="px-3 py-2 space-y-2">
-            <div className="whitespace-pre-wrap text-[14px] break-words break-all">{renderRichText(post.content)}</div>
+            <div className="whitespace-pre-wrap text-[14px] break-words">{renderRichText(post.content)}</div>
             {post.image_path ? (
               <img
                 src={post.image_path.startsWith('/uploads') || post.image_path.startsWith('/static') ? post.image_path : `/uploads/${post.image_path}`}
@@ -390,7 +390,7 @@ function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDel
               </button>
             ) : null}
           </div>
-          <div className="text-[#dfe6e9] whitespace-pre-wrap mt-0.5 break-words break-all">{renderRichText(reply.content)}</div>
+          <div className="text-[#dfe6e9] whitespace-pre-wrap mt-0.5 break-words">{renderRichText(reply.content)}</div>
           {reply.image_path ? (
             <div className="mt-2">
               <img
