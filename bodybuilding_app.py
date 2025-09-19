@@ -162,6 +162,31 @@ def _send_email_via_resend(to_email: str, subject: str, html: str, text: str = N
         logger.error(f'Resend send exception: {e}')
         return False
 
+def ensure_password_reset_table(c):
+    try:
+        if USE_MYSQL:
+            c.execute('''CREATE TABLE IF NOT EXISTS password_reset_tokens (
+                          id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                          username TEXT NOT NULL,
+                          email TEXT NOT NULL,
+                          token TEXT NOT NULL UNIQUE,
+                          created_at TEXT NOT NULL,
+                          used TINYINT(1) DEFAULT 0,
+                          FOREIGN KEY (username) REFERENCES users (username)
+                        )''')
+        else:
+            c.execute('''CREATE TABLE IF NOT EXISTS password_reset_tokens (
+                          id INTEGER PRIMARY KEY AUTOINCREMENT,
+                          username TEXT NOT NULL,
+                          email TEXT NOT NULL,
+                          token TEXT NOT NULL UNIQUE,
+                          created_at TEXT NOT NULL,
+                          used INTEGER DEFAULT 0,
+                          FOREIGN KEY (username) REFERENCES users (username)
+                        )''')
+    except Exception as e:
+        logger.error(f"Failed ensuring password_reset_tokens table: {e}")
+
 # Optional: enforce canonical host (e.g., www.c-point.co) to prevent cookie splits
 CANONICAL_HOST = os.getenv('CANONICAL_HOST')  # e.g., 'www.c-point.co'
 CANONICAL_SCHEME = os.getenv('CANONICAL_SCHEME', 'https')
@@ -5852,28 +5877,7 @@ def request_password_reset():
         
         with get_db_connection() as conn:
             c = conn.cursor()
-            # Ensure table exists (MySQL/SQLite safe)
-            try:
-                c.execute('''CREATE TABLE IF NOT EXISTS password_reset_tokens
-                             (id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                              username TEXT NOT NULL,
-                              email TEXT NOT NULL,
-                              token TEXT NOT NULL UNIQUE,
-                              created_at TEXT NOT NULL,
-                              used TINYINT(1) DEFAULT 0,
-                              FOREIGN KEY (username) REFERENCES users (username))''')
-            except Exception:
-                try:
-                    c.execute('''CREATE TABLE IF NOT EXISTS password_reset_tokens
-                                 (id INTEGER PRIMARY KEY AUTOINCREMENT,
-                                  username TEXT NOT NULL,
-                                  email TEXT NOT NULL,
-                                  token TEXT NOT NULL UNIQUE,
-                                  created_at TEXT NOT NULL,
-                                  used INTEGER DEFAULT 0,
-                                  FOREIGN KEY (username) REFERENCES users (username))''')
-                except Exception:
-                    pass
+            ensure_password_reset_table(c)
             
             # Check if user exists with matching email
             ph = get_sql_placeholder()
