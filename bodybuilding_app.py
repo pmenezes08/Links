@@ -547,6 +547,26 @@ def add_missing_tables():
             except Exception as e:
                 logger.warning(f"Could not ensure push_send_log table: {e}")
 
+            # Track active chat presence (suppress chat push when recipient is in the thread)
+            try:
+                if USE_MYSQL:
+                    c.execute('''CREATE TABLE IF NOT EXISTS active_chat_status (
+                                     user VARCHAR(191) NOT NULL,
+                                     peer VARCHAR(191) NOT NULL,
+                                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                                     PRIMARY KEY (user, peer)
+                                 )''')
+                else:
+                    c.execute('''CREATE TABLE IF NOT EXISTS active_chat_status (
+                                     user TEXT NOT NULL,
+                                     peer TEXT NOT NULL,
+                                     updated_at TEXT DEFAULT (datetime('now')),
+                                     PRIMARY KEY (user, peer)
+                                 )''')
+                conn.commit()
+            except Exception as e:
+                logger.warning(f"Could not ensure active_chat_status table: {e}")
+
             # Remember-me tokens for persistent login
             c.execute('''CREATE TABLE IF NOT EXISTS remember_tokens
                          (id INTEGER PRIMARY KEY AUTO_INCREMENT,
@@ -5286,14 +5306,37 @@ def send_message():
             except Exception as notif_e:
                 logger.warning(f"Could not create/update message notification: {notif_e}")
             
-            # Push notification to recipient (if subscribed) — send on every message, using same tag to coalesce
+            # Push notification to recipient (if subscribed) — skip if recipient is actively viewing this thread
             try:
-                send_push_to_user(recipient_username, {
-                    'title': f'Message from {username}',
-                    'body': f'You have new messages from {username}',
-                    'url': f'/user_chat/chat/{username}',
-                    'tag': f'message-{username}',
-                })
+                should_push = True
+                try:
+                    with get_db_connection() as conn2:
+                        c2 = conn2.cursor()
+                        # If recipient's active view is this chat, suppress push
+                        # Consider presence fresh if updated within last 20 seconds
+                        if USE_MYSQL:
+                            c2.execute("""
+                                SELECT 1 FROM active_chat_status 
+                                WHERE user=? AND peer=? AND updated_at > DATE_SUB(NOW(), INTERVAL 20 SECOND)
+                                LIMIT 1
+                            """, (recipient_username, username))
+                        else:
+                            c2.execute("""
+                                SELECT 1 FROM active_chat_status 
+                                WHERE user=? AND peer=? AND datetime(updated_at) > datetime('now','-20 seconds')
+                                LIMIT 1
+                            """, (recipient_username, username))
+                        if c2.fetchone():
+                            should_push = False
+                except Exception as pe:
+                    logger.warning(f"active chat presence check failed: {pe}")
+                if should_push:
+                    send_push_to_user(recipient_username, {
+                        'title': f'Message from {username}',
+                        'body': f'You have new messages from {username}',
+                        'url': f'/user_chat/chat/{username}',
+                        'tag': f'message-{username}',
+                    })
             except Exception as _e:
                 logger.warning(f"push send_message warn: {_e}")
 
@@ -16750,6 +16793,37 @@ def api_push_status():
     except Exception as e:
         logger.error(f"push status error: {e}")
         return jsonify({ 'success': False, 'hasSubscription': False }), 500
+
+@app.route('/api/active_chat', methods=['POST'])
+@login_required
+def api_active_chat():
+    """Record that the current user is actively viewing a chat with peer. Used to suppress push notifications."""
+    try:
+        me = session.get('username')
+        data = request.get_json(force=True, silent=True) or {}
+        peer = (data.get('peer') or '').strip()
+        if not peer:
+            return jsonify({ 'success': False, 'error': 'peer required' }), 400
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            if USE_MYSQL:
+                c.execute("""
+                    INSERT INTO active_chat_status (user, peer, updated_at)
+                    VALUES (?, ?, NOW())
+                    ON DUPLICATE KEY UPDATE updated_at=NOW()
+                """, (me, peer))
+            else:
+                c.execute("""
+                    INSERT INTO active_chat_status (user, peer, updated_at)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT(user, peer) DO UPDATE SET updated_at=excluded.updated_at
+                """, (me, peer, now))
+            conn.commit()
+        return jsonify({ 'success': True })
+    except Exception as e:
+        logger.error(f"active chat set error: {e}")
+        return jsonify({ 'success': False }), 500
 
 def send_push_to_user(target_username: str, payload: dict):
     if not VAPID_PUBLIC_KEY or not VAPID_PRIVATE_KEY:

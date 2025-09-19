@@ -307,6 +307,16 @@ export default function ChatThread(){
         const tj = await t.json().catch(()=>null)
         setTyping(!!tj?.is_typing)
       }catch{}
+
+      // Presence: tell server I'm actively viewing this chat (used to suppress pushes)
+      try{
+        await fetch('/api/active_chat', {
+          method:'POST',
+          credentials:'include',
+          headers:{ 'Content-Type':'application/json' },
+          body: JSON.stringify({ peer: username })
+        })
+      }catch{}
     }
     
     // Initial poll after a short delay to let optimistic messages show
