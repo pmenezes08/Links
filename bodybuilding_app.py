@@ -699,6 +699,44 @@ def add_missing_tables():
             except Exception as e:
                 logger.warning(f"Could not ensure personal columns on users: {e}")
 
+            # Create product development tables if not present
+            try:
+                if USE_MYSQL:
+                    c.execute('''CREATE TABLE IF NOT EXISTS product_posts (
+                                    id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                                    username TEXT NOT NULL,
+                                    section VARCHAR(32) NOT NULL,
+                                    content TEXT NOT NULL,
+                                    created_at TEXT NOT NULL
+                                 )''')
+                    c.execute('''CREATE TABLE IF NOT EXISTS product_replies (
+                                    id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                                    post_id INTEGER NOT NULL,
+                                    username TEXT NOT NULL,
+                                    content TEXT NOT NULL,
+                                    created_at TEXT NOT NULL,
+                                    FOREIGN KEY (post_id) REFERENCES product_posts(id) ON DELETE CASCADE
+                                 )''')
+                else:
+                    c.execute('''CREATE TABLE IF NOT EXISTS product_posts (
+                                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                    username TEXT NOT NULL,
+                                    section TEXT NOT NULL,
+                                    content TEXT NOT NULL,
+                                    created_at TEXT NOT NULL
+                                 )''')
+                    c.execute('''CREATE TABLE IF NOT EXISTS product_replies (
+                                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                    post_id INTEGER NOT NULL,
+                                    username TEXT NOT NULL,
+                                    content TEXT NOT NULL,
+                                    created_at TEXT NOT NULL,
+                                    FOREIGN KEY (post_id) REFERENCES product_posts(id) ON DELETE CASCADE
+                                 )''')
+                conn.commit()
+            except Exception as e:
+                logger.warning(f"Could not ensure product dev tables: {e}")
+
             # Ensure email verification columns exist on users
             try:
                 for col, coltype in [
@@ -11944,6 +11982,94 @@ def api_community_feed(community_id):
     except Exception as e:
         logger.error(f"Error in api_community_feed for {community_id}: {e}")
         return jsonify({'success': False, 'error': 'Server error'}), 500
+
+# Product Development APIs
+@app.route('/api/product_posts', methods=['GET'])
+@login_required
+def api_product_posts():
+    section = request.args.get('section', 'updates').lower()
+    if section not in ('updates','feedback'):
+        section = 'updates'
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            c.execute(f"SELECT id, username, content, created_at FROM product_posts WHERE section={ph} ORDER BY id DESC LIMIT 100", (section,))
+            posts = c.fetchall() or []
+            post_ids = [ (p['id'] if hasattr(p,'keys') else p[0]) for p in posts ]
+            replies_map = {}
+            if post_ids:
+                placeholders = ','.join([get_sql_placeholder()]*len(post_ids))
+                c.execute(f"SELECT id, post_id, username, content, created_at FROM product_replies WHERE post_id IN ({placeholders}) ORDER BY id DESC", tuple(post_ids))
+                for r in c.fetchall() or []:
+                    pid = r['post_id'] if hasattr(r,'keys') else r[1]
+                    replies_map.setdefault(pid, []).append({
+                        'id': r['id'] if hasattr(r,'keys') else r[0],
+                        'username': r['username'] if hasattr(r,'keys') else r[2],
+                        'content': r['content'] if hasattr(r,'keys') else r[3],
+                        'created_at': r['created_at'] if hasattr(r,'keys') else r[4],
+                    })
+            out = []
+            for p in posts:
+                pid = p['id'] if hasattr(p,'keys') else p[0]
+                out.append({
+                    'id': pid,
+                    'username': p['username'] if hasattr(p,'keys') else p[1],
+                    'content': p['content'] if hasattr(p,'keys') else p[2],
+                    'created_at': p['created_at'] if hasattr(p,'keys') else p[3],
+                    'replies': replies_map.get(pid, [])
+                })
+            return jsonify({'success': True, 'posts': out})
+    except Exception as e:
+        logger.error(f"product posts error: {e}")
+        return jsonify({'success': False, 'error': 'server error'}), 500
+
+@app.route('/api/product_post', methods=['POST'])
+@login_required
+def api_create_product_post():
+    username = session.get('username')
+    section = (request.form.get('section') or '').lower()
+    content = (request.form.get('content') or '').strip()
+    if section not in ('updates','feedback'):
+        return jsonify({'success': False, 'error': 'invalid section'}), 400
+    if not content:
+        return jsonify({'success': False, 'error': 'content required'}), 400
+    # Only Admin/Paulo can post to updates
+    if section == 'updates' and username not in ('admin','Paulo','paulo'):
+        return jsonify({'success': False, 'error': 'Forbidden'}), 403
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            ph = get_sql_placeholder()
+            c.execute(f"INSERT INTO product_posts (username, section, content, created_at) VALUES ({ph},{ph},{ph},{ph})", (username, section, content, now))
+            pid = c.lastrowid
+            conn.commit()
+            return jsonify({'success': True, 'post': {'id': pid, 'username': username, 'content': content, 'created_at': now, 'replies': []}})
+    except Exception as e:
+        logger.error(f"create product post error: {e}")
+        return jsonify({'success': False, 'error': 'server error'}), 500
+
+@app.route('/api/product_reply', methods=['POST'])
+@login_required
+def api_create_product_reply():
+    username = session.get('username')
+    post_id = request.form.get('post_id', type=int)
+    content = (request.form.get('content') or '').strip()
+    if not post_id or not content:
+        return jsonify({'success': False, 'error': 'post_id and content required'}), 400
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            ph = get_sql_placeholder()
+            c.execute(f"INSERT INTO product_replies (post_id, username, content, created_at) VALUES ({ph},{ph},{ph},{ph})", (post_id, username, content, now))
+            rid = c.lastrowid
+            conn.commit()
+            return jsonify({'success': True, 'reply': {'id': rid, 'post_id': post_id, 'username': username, 'content': content, 'created_at': now}})
+    except Exception as e:
+        logger.error(f"create product reply error: {e}")
+        return jsonify({'success': False, 'error': 'server error'}), 500
 
 # Edit reply content
 @app.route('/edit_reply', methods=['POST'])

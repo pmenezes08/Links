@@ -31,6 +31,7 @@ import AccountSettings from './pages/AccountSettings'
 import Signup from './pages/Signup'
 import Notifications from './pages/Notifications'
 import AdminDashboard from './pages/AdminDashboard'
+import ProductDevelopment from './pages/ProductDevelopment'
 
 const queryClient = new QueryClient()
 
@@ -95,6 +96,7 @@ function AppRoutes(){
           <Route path="/community/:community_id/edit" element={<EditCommunity />} />
           <Route path="/post/:post_id" element={<PostDetail />} />
           <Route path="/compose" element={<CreatePost />} />
+          <Route path="/product_development" element={<ProductDevelopment />} />
           <Route path="*" element={<PremiumDashboard />} />
           </Routes>
         </ErrorBoundary>
