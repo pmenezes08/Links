@@ -5839,9 +5839,13 @@ def reset_password_debug_hashed(username):
 def request_password_reset():
     """Handle password reset requests"""
     try:
-        data = request.get_json()
-        username = data.get('username')
-        email = data.get('email')
+        data = request.get_json(silent=True) or {}
+        username = (data.get('username') if isinstance(data, dict) else None) or request.form.get('username') or request.args.get('username')
+        email = (data.get('email') if isinstance(data, dict) else None) or request.form.get('email') or request.args.get('email')
+        try:
+            logger.info(f"PW reset incoming: ct={request.content_type} user={username} has_email={bool(email)}")
+        except Exception:
+            pass
         
         if not username or not email:
             return jsonify({'success': True, 'message': 'If an account exists with the provided information, a reset link has been sent.'})
@@ -5919,7 +5923,8 @@ def request_password_reset():
                       <p>This link expires in 24 hours. If you did not request this, you can ignore this email.</p>
                     </div>
                 """
-                _send_email_via_resend(email, subject, html)
+                sent_ok = _send_email_via_resend(email, subject, html)
+                logger.info(f"PW reset email send status for {username}: {sent_ok}")
         
         # Always return success for security
         return jsonify({'success': True, 'message': 'If an account exists with the provided information, a reset link has been sent.'})
