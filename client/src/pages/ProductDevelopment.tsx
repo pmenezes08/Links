@@ -68,12 +68,22 @@ export default function ProductDevelopment(){
   return (
     <div className="min-h-screen bg-black text-white">
       <div className="pt-14 max-w-2xl mx-auto px-3">
-        <div className="sticky top-14 z-10 bg-black/90 backdrop-blur border-b border-white/10">
-          <div className="flex items-center gap-3">
-            <button className={`px-3 py-2 ${tab==='updates'?'text-[#4db6ac]':''}`} onClick={()=> setTab('updates')}>Product Updates</button>
-            <button className={`px-3 py-2 ${tab==='feedback'?'text-[#4db6ac]':''}`} onClick={()=> setTab('feedback')}>Product Feedback/Requests</button>
+        {/* Secondary nav like Messages */}
+        <div className="fixed left-0 right-0 top-14 h-10 bg-black/70 backdrop-blur z-40 border-b border-white/10">
+          <div className="max-w-2xl mx-auto h-full flex items-center gap-2 px-2">
+            <div className="flex-1 h-full flex">
+              <button type="button" className={`flex-1 text-center text-[13px] font-medium ${tab==='updates' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`} onClick={()=> setTab('updates')}>
+                <div className="pt-2">Product Updates</div>
+                <div className={`h-0.5 rounded-full w-20 mx-auto mt-1 ${tab==='updates' ? 'bg-[#4db6ac]' : 'bg-transparent'}`} />
+              </button>
+              <button type="button" className={`flex-1 text-center text-[13px] font-medium ${tab==='feedback' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`} onClick={()=> setTab('feedback')}>
+                <div className="pt-2">Product Feedback/Requests</div>
+                <div className={`h-0.5 rounded-full w-20 mx-auto mt-1 ${tab==='feedback' ? 'bg-[#4db6ac]' : 'bg-transparent'}`} />
+              </button>
+            </div>
           </div>
         </div>
+        <div className="pt-10" />
 
         {/* Composer */}
         <div className="mt-3 rounded-xl border border-white/10 bg-black p-3">
@@ -82,7 +92,7 @@ export default function ProductDevelopment(){
               <div className="space-y-2">
                 <textarea className="w-full rounded-md bg-black border border-white/10 px-2 py-2 text-[15px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]" rows={3} value={composer} onChange={(e)=> setComposer(e.target.value)} placeholder="Share an update..." />
                 <div className="text-right">
-                  <button className="px-3 py-1.5 rounded-md bg-[#4db6ac] text-black" onClick={createPost}>Post Update</button>
+                  <button className="px-2.5 py-1.5 rounded-md bg-[#4db6ac] text-black text-[13px]" onClick={createPost}>Post Update</button>
                 </div>
               </div>
             ) : (
@@ -92,7 +102,7 @@ export default function ProductDevelopment(){
             <div className="space-y-2">
               <textarea className="w-full rounded-md bg-black border border-white/10 px-2 py-2 text-[15px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]" rows={3} value={composer} onChange={(e)=> setComposer(e.target.value)} placeholder="Share feedback or a request..." />
               <div className="text-right">
-                <button className="px-3 py-1.5 rounded-md bg-[#4db6ac] text-black" onClick={createPost}>Post</button>
+                <button className="px-2.5 py-1.5 rounded-md bg-[#4db6ac] text-black text-[13px]" onClick={createPost}>Post</button>
               </div>
             </div>
           )}
@@ -125,7 +135,7 @@ function PostCard({ post, onReply }:{ post:PPost; onReply:(postId:number, text:s
       <div className="px-3 pb-2">
         <div className="flex items-center gap-2">
           <input className="flex-1 px-3 py-1.5 rounded-full bg-black border border-white/10 text-[14px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]" value={replyText} onChange={(e)=> setReplyText(e.target.value)} placeholder="Reply..." />
-          <button className="px-2.5 py-1.5 rounded-full bg-[#4db6ac] text-black border border-[#4db6ac]" onClick={()=> { if (!replyText.trim()) return; onReply(post.id, replyText); setReplyText('') }}>Send</button>
+          <button className="px-2 py-1.5 rounded-full bg-[#4db6ac] text-black border border-[#4db6ac] text-[13px]" onClick={()=> { if (!replyText.trim()) return; onReply(post.id, replyText); setReplyText('') }}>Send</button>
         </div>
         {post.replies?.length ? (
           <div className="mt-2 space-y-2">
