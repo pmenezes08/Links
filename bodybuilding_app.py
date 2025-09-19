@@ -680,7 +680,7 @@ def add_missing_tables():
             # Ensure personal info columns (country, city, age, gender) exist on users
             try:
                 for col, coltype in [
-                    ('country','TEXT'), ('city','TEXT'), ('age','INTEGER'), ('gender','TEXT')
+                    ('country','TEXT'), ('city','TEXT'), ('age','INTEGER'), ('gender','TEXT'), ('mobile','TEXT')
                 ]:
                     exists = False
                     try:
@@ -733,6 +733,14 @@ def add_missing_tables():
                                     UNIQUE(poll_id, username),
                                     FOREIGN KEY (poll_id) REFERENCES product_polls(id) ON DELETE CASCADE
                                  )''')
+                    # Ensure closed column exists on product_polls
+                    try:
+                        c.execute("SHOW COLUMNS FROM product_polls LIKE 'closed'")
+                        exists = c.fetchone() is not None
+                    except Exception:
+                        exists = False
+                    if not exists:
+                        c.execute("ALTER TABLE product_polls ADD COLUMN closed TINYINT(1) NOT NULL DEFAULT 0")
                 else:
                     c.execute('''CREATE TABLE IF NOT EXISTS product_posts (
                                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -765,6 +773,15 @@ def add_missing_tables():
                                     UNIQUE(poll_id, username),
                                     FOREIGN KEY (poll_id) REFERENCES product_polls(id) ON DELETE CASCADE
                                  )''')
+                    # Ensure closed column exists on product_polls
+                    try:
+                        c.execute("PRAGMA table_info(product_polls)")
+                        cols = c.fetchall()
+                        exists = any((r[1] if not hasattr(r,'keys') else r['name']) == 'closed' for r in cols)
+                    except Exception:
+                        exists = False
+                    if not exists:
+                        c.execute("ALTER TABLE product_polls ADD COLUMN closed INTEGER NOT NULL DEFAULT 0")
                 conn.commit()
             except Exception as e:
                 logger.warning(f"Could not ensure product dev tables: {e}")
@@ -12109,7 +12126,7 @@ def api_product_polls():
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
-            c.execute("SELECT id, username, question, options_json, created_at FROM product_polls ORDER BY id DESC LIMIT 100")
+            c.execute("SELECT id, username, question, options_json, created_at, closed FROM product_polls ORDER BY id DESC LIMIT 100")
             polls = []
             for r in c.fetchall() or []:
                 polls.append({
@@ -12117,7 +12134,8 @@ def api_product_polls():
                     'username': r['username'] if hasattr(r,'keys') else r[1],
                     'question': r['question'] if hasattr(r,'keys') else r[2],
                     'options': json.loads(r['options_json'] if hasattr(r,'keys') else r[3] or '[]'),
-                    'created_at': r['created_at'] if hasattr(r,'keys') else r[4]
+                    'created_at': r['created_at'] if hasattr(r,'keys') else r[4],
+                    'closed': (r['closed'] if hasattr(r,'keys') else r[5]) in (1, '1', True)
                 })
             return jsonify({'success': True, 'polls': polls})
     except Exception as e:
@@ -12157,7 +12175,7 @@ def api_create_product_poll():
                     })
         except Exception as ne:
             logger.warning(f"poll notify error: {ne}")
-        return jsonify({'success': True, 'poll': { 'id': poll_id, 'username': username, 'question': question, 'options': options, 'created_at': now }})
+        return jsonify({'success': True, 'poll': { 'id': poll_id, 'username': username, 'question': question, 'options': options, 'created_at': now, 'closed': False }})
     except Exception as e:
         logger.error(f"create product poll error: {e}")
         return jsonify({'success': False, 'error': 'server error'}), 500
@@ -12175,11 +12193,14 @@ def api_product_poll_vote():
             c = conn.cursor()
             now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             # Ensure poll exists and option index is valid
-            c.execute("SELECT options_json FROM product_polls WHERE id=?", (poll_id,))
+            c.execute("SELECT options_json, closed FROM product_polls WHERE id=?", (poll_id,))
             prow = c.fetchone()
             if not prow:
                 return jsonify({'success': False, 'error': 'Poll not found'}), 404
             opts = json.loads(prow['options_json'] if hasattr(prow,'keys') else prow[0] or '[]')
+            closed = (prow['closed'] if hasattr(prow,'keys') else prow[1]) in (1, '1', True)
+            if closed:
+                return jsonify({'success': False, 'error': 'Poll is closed'}), 400
             if option_index < 0 or option_index >= len(opts):
                 return jsonify({'success': False, 'error': 'Invalid option'}), 400
             # Upsert vote (enforce one vote per user)
@@ -12191,6 +12212,44 @@ def api_product_poll_vote():
             return jsonify({'success': True})
     except Exception as e:
         logger.error(f"poll vote error: {e}")
+        return jsonify({'success': False, 'error': 'server error'}), 500
+
+@app.route('/api/product_poll_close', methods=['POST'])
+@login_required
+def api_product_poll_close():
+    username = (session.get('username') or '').lower()
+    if username not in ('admin','paulo'):
+        return jsonify({'success': False, 'error': 'Forbidden'}), 403
+    poll_id = request.form.get('poll_id', type=int)
+    if not poll_id:
+        return jsonify({'success': False, 'error': 'poll_id required'}), 400
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("UPDATE product_polls SET closed=1 WHERE id=?", (poll_id,))
+            conn.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"poll close error: {e}")
+        return jsonify({'success': False, 'error': 'server error'}), 500
+
+@app.route('/api/product_poll_delete', methods=['POST'])
+@login_required
+def api_product_poll_delete():
+    username = (session.get('username') or '').lower()
+    if username not in ('admin','paulo'):
+        return jsonify({'success': False, 'error': 'Forbidden'}), 403
+    poll_id = request.form.get('poll_id', type=int)
+    if not poll_id:
+        return jsonify({'success': False, 'error': 'poll_id required'}), 400
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("DELETE FROM product_polls WHERE id=?", (poll_id,))
+            conn.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"poll delete error: {e}")
         return jsonify({'success': False, 'error': 'server error'}), 500
 
 # Edit reply content

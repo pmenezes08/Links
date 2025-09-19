@@ -4,7 +4,7 @@ import { useHeader } from '../contexts/HeaderContext'
 type PReply = { id:number; post_id:number; username:string; content:string; created_at:string }
 type PPost = { id:number; username:string; content:string; created_at:string; replies:PReply[] }
 
-type Poll = { id:number; username:string; question:string; options:string[]; created_at:string }
+type Poll = { id:number; username:string; question:string; options:string[]; created_at:string, closed?: boolean }
 
 export default function ProductDevelopment(){
   const { setTitle } = useHeader()
@@ -105,6 +105,29 @@ export default function ProductDevelopment(){
     }catch{ alert('Network error') }
   }
 
+  async function closePoll(pollId:number){
+    try{
+      const fd = new FormData()
+      fd.append('poll_id', String(pollId))
+      const r = await fetch('/api/product_poll_close', { method:'POST', credentials:'include', body: fd })
+      const j = await r.json().catch(()=>null)
+      if (j?.success){ setPolls(ps => ps.map(p => p.id===pollId ? { ...p, closed: true } : p)) }
+      else alert(j?.error || 'Failed')
+    }catch{ alert('Network error') }
+  }
+
+  async function deletePoll(pollId:number){
+    if (!confirm('Delete this poll?')) return
+    try{
+      const fd = new FormData()
+      fd.append('poll_id', String(pollId))
+      const r = await fetch('/api/product_poll_delete', { method:'POST', credentials:'include', body: fd })
+      const j = await r.json().catch(()=>null)
+      if (j?.success){ setPolls(ps => ps.filter(p => p.id !== pollId)) }
+      else alert(j?.error || 'Failed')
+    }catch{ alert('Network error') }
+  }
+
   return (
     <div className="min-h-screen bg-black text-white">
       <div className="pt-14 max-w-2xl mx-auto px-3">
@@ -176,7 +199,7 @@ export default function ProductDevelopment(){
           <div className="mt-3 space-y-3">
             {loading ? (<div className="text-[#9fb0b5]">Loading…</div>) : error ? (<div className="text-red-400">{error}</div>) : (
               polls.length ? polls.map(p => (
-                <PollCard key={p.id} poll={p} onVote={votePoll} />
+                <PollCard key={p.id} poll={p} onVote={votePoll} isAdmin={canPostUpdates} onClose={closePoll} onDelete={deletePoll} />
               )) : (<div className="text-[#9fb0b5] text-sm">No polls yet.</div>)
             )}
           </div>
@@ -225,17 +248,26 @@ function PostCard({ post, onReply }:{ post:PPost; onReply:(postId:number, text:s
   )
 }
 
-function PollCard({ poll, onVote }:{ poll:Poll; onVote:(pollId:number, optionIndex:number)=>void }){
+function PollCard({ poll, onVote, isAdmin, onClose, onDelete }:{ poll:Poll; onVote:(pollId:number, optionIndex:number)=>void; isAdmin:boolean; onClose:(pollId:number)=>void; onDelete:(pollId:number)=>void }){
   return (
     <div className="rounded-2xl border border-white/10 bg-black p-3">
       <div className="flex items-center gap-2">
         <div className="font-medium">{poll.username}</div>
         <div className="text-xs text-[#9fb0b5] ml-auto">{poll.created_at}</div>
       </div>
-      <div className="mt-2 text-[15px] whitespace-pre-wrap">{poll.question}</div>
+      <div className="mt-1 flex items-center gap-2">
+        <div className="text-[15px] whitespace-pre-wrap">{poll.question}</div>
+        {poll.closed ? (<span className="ml-auto text-[12px] px-2 py-0.5 rounded-full bg-white/10 text-[#9fb0b5]">Closed</span>) : null}
+        {isAdmin ? (
+          <div className="ml-auto flex items-center gap-2">
+            {!poll.closed ? (<button className="px-2 py-1 text-[12px] rounded-md border border-white/10 hover:bg-white/5" onClick={()=> onClose(poll.id)}>Close</button>) : null}
+            <button className="px-2 py-1 text-[12px] rounded-md border border-red-400/30 text-red-300 hover:bg-red-500/10" onClick={()=> onDelete(poll.id)}>Delete</button>
+          </div>
+        ) : null}
+      </div>
       <div className="mt-2 space-y-2">
         {poll.options.map((opt, idx) => (
-          <button key={idx} className="w-full text-left px-3 py-2 rounded-md border border-white/10 hover:bg-white/5 text-[14px]" onClick={()=> onVote(poll.id, idx)}>
+          <button key={idx} className={`w-full text-left px-3 py-2 rounded-md border border-white/10 ${poll.closed ? 'opacity-50 cursor-not-allowed' : 'hover:bg-white/5'} text-[14px]`} disabled={!!poll.closed} onClick={()=> onVote(poll.id, idx)}>
             {opt}
           </button>
         ))}
