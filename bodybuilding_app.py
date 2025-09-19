@@ -169,7 +169,7 @@ def ensure_password_reset_table(c):
                           id INTEGER PRIMARY KEY AUTO_INCREMENT,
                           username TEXT NOT NULL,
                           email TEXT NOT NULL,
-                          token TEXT NOT NULL UNIQUE,
+                          token VARCHAR(191) NOT NULL UNIQUE,
                           created_at TEXT NOT NULL,
                           used TINYINT(1) DEFAULT 0,
                           FOREIGN KEY (username) REFERENCES users (username)
