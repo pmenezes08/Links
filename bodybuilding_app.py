@@ -167,12 +167,11 @@ def ensure_password_reset_table(c):
         if USE_MYSQL:
             c.execute('''CREATE TABLE IF NOT EXISTS password_reset_tokens (
                           id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                          username TEXT NOT NULL,
-                          email TEXT NOT NULL,
+                          username VARCHAR(191) NOT NULL,
+                          email VARCHAR(191) NOT NULL,
                           token VARCHAR(191) NOT NULL UNIQUE,
                           created_at TEXT NOT NULL,
-                          used TINYINT(1) DEFAULT 0,
-                          FOREIGN KEY (username) REFERENCES users (username)
+                          used TINYINT(1) DEFAULT 0
                         )''')
         else:
             c.execute('''CREATE TABLE IF NOT EXISTS password_reset_tokens (
@@ -1167,16 +1166,26 @@ def init_db():
                           FOREIGN KEY (username) REFERENCES users (username),
                           UNIQUE(issue_id, username))''')
             
-            # Create password_reset_tokens table
+            # Create password_reset_tokens table (MySQL/SQLite aware)
             logger.info("Creating password_reset_tokens table...")
-            c.execute('''CREATE TABLE IF NOT EXISTS password_reset_tokens
-                         (id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                          username TEXT NOT NULL,
-                          email TEXT NOT NULL,
-                          token TEXT NOT NULL UNIQUE,
-                          created_at TEXT NOT NULL,
-                          used TINYINT(1) DEFAULT 0,
-                          FOREIGN KEY (username) REFERENCES users (username))''')
+            if USE_MYSQL:
+                c.execute('''CREATE TABLE IF NOT EXISTS password_reset_tokens (
+                                 id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                                 username VARCHAR(191) NOT NULL,
+                                 email VARCHAR(191) NOT NULL,
+                                 token VARCHAR(191) NOT NULL UNIQUE,
+                                 created_at TEXT NOT NULL,
+                                 used TINYINT(1) DEFAULT 0
+                             )''')
+            else:
+                c.execute('''CREATE TABLE IF NOT EXISTS password_reset_tokens
+                             (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                              username TEXT NOT NULL,
+                              email TEXT NOT NULL,
+                              token TEXT NOT NULL UNIQUE,
+                              created_at TEXT NOT NULL,
+                              used INTEGER DEFAULT 0,
+                              FOREIGN KEY (username) REFERENCES users (username))''')
             
             # Create university_ads table
             logger.info("Creating university_ads table...")
