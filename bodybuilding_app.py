@@ -741,6 +741,45 @@ def add_missing_tables():
                         exists = False
                     if not exists:
                         c.execute("ALTER TABLE product_polls ADD COLUMN closed TINYINT(1) NOT NULL DEFAULT 0")
+                    # Ensure allow_multiple column exists on product_polls
+                    try:
+                        c.execute("SHOW COLUMNS FROM product_polls LIKE 'allow_multiple'")
+                        exists2 = c.fetchone() is not None
+                    except Exception:
+                        exists2 = False
+                    if not exists2:
+                        c.execute("ALTER TABLE product_polls ADD COLUMN allow_multiple TINYINT(1) NOT NULL DEFAULT 0")
+                    # Ensure unique index allows multiple options (poll_id, username, option_index)
+                    try:
+                        c.execute("SHOW INDEX FROM product_poll_votes WHERE Non_unique=0")
+                        idx_rows = c.fetchall() or []
+                        # Map index name -> ordered column list
+                        idx_cols = {}
+                        for r in idx_rows:
+                            key = r['Key_name'] if hasattr(r,'keys') else r[2]
+                            col = r['Column_name'] if hasattr(r,'keys') else r[4]
+                            seq = r['Seq_in_index'] if hasattr(r,'keys') else r[3]
+                            idx_cols.setdefault(key, {})[int(seq)] = col
+                        # Find 2-col unique on (poll_id, username)
+                        to_drop = None
+                        for name, cols_map in idx_cols.items():
+                            ordered = [cols_map[k] for k in sorted(cols_map.keys())]
+                            if ordered == ['poll_id','username']:
+                                to_drop = name
+                                break
+                        if to_drop:
+                            c.execute(f"ALTER TABLE product_poll_votes DROP INDEX {to_drop}")
+                            conn.commit()
+                    except Exception as eidx:
+                        logger.warning(f"Could not adjust unique index for poll votes: {eidx}")
+                    try:
+                        # Create composite unique if not exists
+                        c.execute("SHOW INDEX FROM product_poll_votes WHERE Key_name='ux_poll_user_option'")
+                        exists_idx = c.fetchone() is not None
+                        if not exists_idx:
+                            c.execute("ALTER TABLE product_poll_votes ADD UNIQUE KEY ux_poll_user_option (poll_id, username, option_index)")
+                    except Exception as e2:
+                        logger.warning(f"Could not ensure composite unique for poll votes: {e2}")
                 else:
                     c.execute('''CREATE TABLE IF NOT EXISTS product_posts (
                                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -782,6 +821,15 @@ def add_missing_tables():
                         exists = False
                     if not exists:
                         c.execute("ALTER TABLE product_polls ADD COLUMN closed INTEGER NOT NULL DEFAULT 0")
+                    # Ensure allow_multiple column exists on product_polls
+                    try:
+                        c.execute("PRAGMA table_info(product_polls)")
+                        cols2 = c.fetchall()
+                        exists2 = any((r[1] if not hasattr(r,'keys') else r['name']) == 'allow_multiple' for r in cols2)
+                    except Exception:
+                        exists2 = False
+                    if not exists2:
+                        c.execute("ALTER TABLE product_polls ADD COLUMN allow_multiple INTEGER NOT NULL DEFAULT 0")
                 conn.commit()
             except Exception as e:
                 logger.warning(f"Could not ensure product dev tables: {e}")
@@ -12126,17 +12174,28 @@ def api_product_polls():
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
-            c.execute("SELECT id, username, question, options_json, created_at, closed FROM product_polls ORDER BY id DESC LIMIT 100")
+            c.execute("SELECT id, username, question, options_json, created_at, closed, allow_multiple FROM product_polls ORDER BY id DESC LIMIT 100")
             polls = []
             for r in c.fetchall() or []:
-                polls.append({
+                poll = {
                     'id': r['id'] if hasattr(r,'keys') else r[0],
                     'username': r['username'] if hasattr(r,'keys') else r[1],
                     'question': r['question'] if hasattr(r,'keys') else r[2],
                     'options': json.loads(r['options_json'] if hasattr(r,'keys') else r[3] or '[]'),
                     'created_at': r['created_at'] if hasattr(r,'keys') else r[4],
-                    'closed': (r['closed'] if hasattr(r,'keys') else r[5]) in (1, '1', True)
-                })
+                    'closed': (r['closed'] if hasattr(r,'keys') else r[5]) in (1, '1', True),
+                    'allow_multiple': (r['allow_multiple'] if hasattr(r,'keys') else r[6]) in (1,'1',True)
+                }
+                # Vote counts per option
+                try:
+                    with get_db_connection() as conn2:
+                        c2 = conn2.cursor()
+                        c2.execute("SELECT option_index, COUNT(*) as cnt FROM product_poll_votes WHERE poll_id=? GROUP BY option_index", (poll['id'],))
+                        counts_map = { (row['option_index'] if hasattr(row,'keys') else row[0]): (row['cnt'] if hasattr(row,'keys') else row[1]) for row in (c2.fetchall() or []) }
+                        poll['option_counts'] = [int(counts_map.get(i, 0)) for i in range(len(poll['options']))]
+                except Exception:
+                    poll['option_counts'] = [0]*len(poll['options'])
+                polls.append(poll)
             return jsonify({'success': True, 'polls': polls})
     except Exception as e:
         logger.error(f"product polls error: {e}")
@@ -12157,25 +12216,28 @@ def api_create_product_poll():
         with get_db_connection() as conn:
             c = conn.cursor()
             now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            c.execute("INSERT INTO product_polls (username, question, options_json, created_at) VALUES (?,?,?,?)",
-                      (username, question, json.dumps(options), now))
+            allow_multiple = 1 if (request.form.get('allow_multiple') in ('1','true','on','yes')) else 0
+            notify_all = 1 if (request.form.get('notify_all') in ('1','true','on','yes')) else 0
+            c.execute("INSERT INTO product_polls (username, question, options_json, created_at, allow_multiple) VALUES (?,?,?,?,?)",
+                      (username, question, json.dumps(options), now, allow_multiple))
             poll_id = c.lastrowid
             conn.commit()
         try:
             # Send notification to all users with push subscription
-            with get_db_connection() as conn2:
-                c2 = conn2.cursor()
-                c2.execute("SELECT DISTINCT username FROM push_subscriptions")
-                for row in c2.fetchall() or []:
-                    u = row['username'] if hasattr(row,'keys') else row[0]
-                    send_push_to_user(u, {
-                        'title': 'New Product Poll',
-                        'body': question,
-                        'url': f"{CANONICAL_SCHEME}://{CANONICAL_HOST}/product_development"
-                    })
+            if notify_all:
+                with get_db_connection() as conn2:
+                    c2 = conn2.cursor()
+                    c2.execute("SELECT DISTINCT username FROM push_subscriptions")
+                    for row in c2.fetchall() or []:
+                        u = row['username'] if hasattr(row,'keys') else row[0]
+                        send_push_to_user(u, {
+                            'title': 'New Product Poll',
+                            'body': question,
+                            'url': f"{CANONICAL_SCHEME}://{CANONICAL_HOST}/product_development"
+                        })
         except Exception as ne:
             logger.warning(f"poll notify error: {ne}")
-        return jsonify({'success': True, 'poll': { 'id': poll_id, 'username': username, 'question': question, 'options': options, 'created_at': now, 'closed': False }})
+        return jsonify({'success': True, 'poll': { 'id': poll_id, 'username': username, 'question': question, 'options': options, 'created_at': now, 'closed': False, 'allow_multiple': bool(allow_multiple), 'option_counts': [0]*len(options) }})
     except Exception as e:
         logger.error(f"create product poll error: {e}")
         return jsonify({'success': False, 'error': 'server error'}), 500
@@ -12193,23 +12255,37 @@ def api_product_poll_vote():
             c = conn.cursor()
             now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             # Ensure poll exists and option index is valid
-            c.execute("SELECT options_json, closed FROM product_polls WHERE id=?", (poll_id,))
+            c.execute("SELECT options_json, closed, allow_multiple FROM product_polls WHERE id=?", (poll_id,))
             prow = c.fetchone()
             if not prow:
                 return jsonify({'success': False, 'error': 'Poll not found'}), 404
             opts = json.loads(prow['options_json'] if hasattr(prow,'keys') else prow[0] or '[]')
             closed = (prow['closed'] if hasattr(prow,'keys') else prow[1]) in (1, '1', True)
+            allow_multiple = (prow['allow_multiple'] if hasattr(prow,'keys') else prow[2]) in (1,'1',True)
             if closed:
                 return jsonify({'success': False, 'error': 'Poll is closed'}), 400
             if option_index < 0 or option_index >= len(opts):
                 return jsonify({'success': False, 'error': 'Invalid option'}), 400
-            # Upsert vote (enforce one vote per user)
-            try:
-                c.execute("INSERT INTO product_poll_votes (poll_id, username, option_index, created_at) VALUES (?, ?, ?, ?)", (poll_id, username, option_index, now))
-            except Exception:
-                c.execute("UPDATE product_poll_votes SET option_index=?, created_at=? WHERE poll_id=? AND username=?", (option_index, now, poll_id, username))
+            if allow_multiple:
+                # One vote per option per user (unique on poll_id, username, option_index)
+                try:
+                    c.execute("INSERT INTO product_poll_votes (poll_id, username, option_index, created_at) VALUES (?, ?, ?, ?)", (poll_id, username, option_index, now))
+                except Exception:
+                    # Already voted on this option, ignore
+                    pass
+            else:
+                # Single choice: ensure only one record for user per poll
+                try:
+                    c.execute("DELETE FROM product_poll_votes WHERE poll_id=? AND username=?", (poll_id, username))
+                    c.execute("INSERT INTO product_poll_votes (poll_id, username, option_index, created_at) VALUES (?, ?, ?, ?)", (poll_id, username, option_index, now))
+                except Exception:
+                    c.execute("UPDATE product_poll_votes SET option_index=?, created_at=? WHERE poll_id=? AND username=?", (option_index, now, poll_id, username))
             conn.commit()
-            return jsonify({'success': True})
+            # Return fresh counts
+            c.execute("SELECT option_index, COUNT(*) as cnt FROM product_poll_votes WHERE poll_id=? GROUP BY option_index", (poll_id,))
+            counts_map = { (row['option_index'] if hasattr(row,'keys') else row[0]): (row['cnt'] if hasattr(row,'keys') else row[1]) for row in (c.fetchall() or []) }
+            counts = [int(counts_map.get(i, 0)) for i in range(len(opts))]
+            return jsonify({'success': True, 'option_counts': counts})
     except Exception as e:
         logger.error(f"poll vote error: {e}")
         return jsonify({'success': False, 'error': 'server error'}), 500

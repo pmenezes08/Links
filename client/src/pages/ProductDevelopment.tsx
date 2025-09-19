@@ -4,7 +4,7 @@ import { useHeader } from '../contexts/HeaderContext'
 type PReply = { id:number; post_id:number; username:string; content:string; created_at:string }
 type PPost = { id:number; username:string; content:string; created_at:string; replies:PReply[] }
 
-type Poll = { id:number; username:string; question:string; options:string[]; created_at:string, closed?: boolean }
+type Poll = { id:number; username:string; question:string; options:string[]; created_at:string, closed?: boolean, allow_multiple?: boolean, option_counts?: number[] }
 
 export default function ProductDevelopment(){
   const { setTitle } = useHeader()
@@ -17,6 +17,8 @@ export default function ProductDevelopment(){
   const [composer, setComposer] = useState('')
   const [pollQ, setPollQ] = useState('')
   const [pollOpts, setPollOpts] = useState<string[]>(['',''])
+  const [notifyAll, setNotifyAll] = useState(false)
+  const [allowMultiple, setAllowMultiple] = useState(false)
   useEffect(()=> setTitle('Product Development'), [setTitle])
 
   useEffect(()=>{
@@ -86,10 +88,12 @@ export default function ProductDevelopment(){
     try{
       const fd = new FormData()
       fd.append('question', q)
+      if (notifyAll) fd.append('notify_all', '1')
+      if (allowMultiple) fd.append('allow_multiple', '1')
       options.forEach(o => fd.append('options', o))
       const r = await fetch('/api/product_poll', { method:'POST', credentials:'include', body: fd })
       const j = await r.json().catch(()=>null)
-      if (j?.success){ setPolls(p => [j.poll, ...p]); setPollQ(''); setPollOpts(['','']) }
+      if (j?.success){ setPolls(p => [j.poll, ...p]); setPollQ(''); setPollOpts(['','']); setNotifyAll(false); setAllowMultiple(false) }
       else alert(j?.error || 'Failed')
     }catch{ alert('Network error') }
   }
@@ -101,7 +105,11 @@ export default function ProductDevelopment(){
       fd.append('option_index', String(optionIndex))
       const r = await fetch('/api/product_poll_vote', { method:'POST', credentials:'include', body: fd })
       const j = await r.json().catch(()=>null)
-      if (!j?.success){ alert(j?.error || 'Failed') }
+      if (j?.success){
+        if (Array.isArray(j.option_counts)){
+          setPolls(ps => ps.map(p => p.id===pollId ? { ...p, option_counts: j.option_counts } : p))
+        }
+      } else alert(j?.error || 'Failed')
     }catch{ alert('Network error') }
   }
 
@@ -162,8 +170,10 @@ export default function ProductDevelopment(){
                   {pollOpts.map((opt, idx) => (
                     <input key={idx} className="w-full rounded-md bg-black border border-white/10 px-2 py-2 text-[14px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]" value={opt} onChange={(e)=> setPollOpts(prev => prev.map((o,i)=> i===idx ? e.target.value : o))} placeholder={`Option ${idx+1}`} />
                   ))}
-                  <div className="flex items-center justify-between">
-                    <button className="px-2 py-1.5 rounded-md border border-white/10 text-[13px]" onClick={()=> setPollOpts(prev => [...prev, ''])}>Add option</button>
+                  <div className="flex items-center gap-2 pt-1">
+                    <button type="button" className={`px-2 py-1.5 rounded-md text-[12px] border ${notifyAll ? 'bg-[#4db6ac] text-black border-[#4db6ac]' : 'border-white/10 text-[#9fb0b5] hover:text-white/90 hover:border-white/20'}`} onClick={()=> setNotifyAll(v=>!v)}>Notify all members</button>
+                    <button type="button" className={`px-2 py-1.5 rounded-md text-[12px] border ${allowMultiple ? 'bg-[#4db6ac] text-black border-[#4db6ac]' : 'border-white/10 text-[#9fb0b5] hover:text-white/90 hover:border-white/20'}`} onClick={()=> setAllowMultiple(v=>!v)}>Allow multiple votes</button>
+                    <div className="ml-auto" />
                     <button className="px-2.5 py-1.5 rounded-md bg-[#4db6ac] text-black text-[13px]" onClick={createPoll}>Create Poll</button>
                   </div>
                 </>
@@ -249,6 +259,7 @@ function PostCard({ post, onReply }:{ post:PPost; onReply:(postId:number, text:s
 }
 
 function PollCard({ poll, onVote, isAdmin, onClose, onDelete }:{ poll:Poll; onVote:(pollId:number, optionIndex:number)=>void; isAdmin:boolean; onClose:(pollId:number)=>void; onDelete:(pollId:number)=>void }){
+  const hasCounts = Array.isArray(poll.option_counts) && poll.option_counts.length === (poll.options?.length||0)
   return (
     <div className="rounded-2xl border border-white/10 bg-black p-3">
       <div className="flex items-center gap-2">
@@ -268,9 +279,13 @@ function PollCard({ poll, onVote, isAdmin, onClose, onDelete }:{ poll:Poll; onVo
       <div className="mt-2 space-y-2">
         {poll.options.map((opt, idx) => (
           <button key={idx} className={`w-full text-left px-3 py-2 rounded-md border border-white/10 ${poll.closed ? 'opacity-50 cursor-not-allowed' : 'hover:bg-white/5'} text-[14px]`} disabled={!!poll.closed} onClick={()=> onVote(poll.id, idx)}>
-            {opt}
+            <div className="flex items-center">
+              <div className="flex-1">{opt}</div>
+              {hasCounts ? (<div className="ml-2 text-[12px] text-[#9fb0b5]">{poll.option_counts![idx]}</div>) : null}
+            </div>
           </button>
         ))}
+        {poll.allow_multiple ? (<div className="text-[12px] text-[#9fb0b5]">Multiple votes allowed</div>) : null}
       </div>
     </div>
   )
