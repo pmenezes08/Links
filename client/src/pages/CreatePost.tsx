@@ -21,13 +21,12 @@ export default function CreatePost(){
 
   return (
     <div className="min-h-screen bg-black text-white pb-20">
-      <div className="fixed left-0 right-0 top-0 h-12 border-b border-white/10 bg-black/70 backdrop-blur flex items-center px-3 z-40">
+      <div className="fixed left-0 right-0 top-14 h-12 border-b border-white/10 bg-black/70 backdrop-blur flex items-center px-3 z-40">
         <button className="px-3 py-2 rounded-full text-[#cfd8dc] hover:text-[#4db6ac]" onClick={()=> communityId ? navigate(`/community_feed_react/${communityId}`) : navigate(-1)} aria-label="Back">
           <i className="fa-solid fa-arrow-left" />
         </button>
-        <div className="ml-2 font-semibold">Create Post</div>
       </div>
-      <div className="max-w-2xl mx-auto pt-14 px-3">
+      <div className="max-w-2xl mx-auto pt-24 px-3">
         <textarea className="w-full min-h-[180px] p-3 rounded-xl bg-black border border-white/10 text-sm focus:outline-none focus:ring-1 focus:ring-[#4db6ac]" placeholder="What's happening?" value={content} onChange={(e)=> setContent(e.target.value)} />
         {file ? (
           <div className="mt-3 rounded-xl overflow-hidden border border-white/10">
