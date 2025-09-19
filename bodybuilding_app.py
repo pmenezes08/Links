@@ -5450,14 +5450,35 @@ def send_photo_message():
             except Exception as notif_e:
                 logger.warning(f"Could not create/update photo message notification: {notif_e}")
             
-            # Push notification (always send; same tag coalesces)
+            # Push notification — skip if recipient is actively viewing this thread
             try:
-                send_push_to_user(recipient_username, {
-                    'title': f'Message from {username}',
-                    'body': f'You have new messages from {username}',
-                    'url': f'/user_chat/chat/{username}',
-                    'tag': f'message-{username}',
-                })
+                should_push = True
+                try:
+                    with get_db_connection() as conn2:
+                        c2 = conn2.cursor()
+                        if USE_MYSQL:
+                            c2.execute("""
+                                SELECT 1 FROM active_chat_status 
+                                WHERE user=? AND peer=? AND updated_at > DATE_SUB(NOW(), INTERVAL 20 SECOND)
+                                LIMIT 1
+                            """, (recipient_username, username))
+                        else:
+                            c2.execute("""
+                                SELECT 1 FROM active_chat_status 
+                                WHERE user=? AND peer=? AND datetime(updated_at) > datetime('now','-20 seconds')
+                                LIMIT 1
+                            """, (recipient_username, username))
+                        if c2.fetchone():
+                            should_push = False
+                except Exception as pe:
+                    logger.warning(f"active chat presence check (photo) failed: {pe}")
+                if should_push:
+                    send_push_to_user(recipient_username, {
+                        'title': f'Message from {username}',
+                        'body': f'You have new messages from {username}',
+                        'url': f'/user_chat/chat/{username}',
+                        'tag': f'message-{username}',
+                    })
             except Exception as _e:
                 logger.warning(f"push send_photo_message warn: {_e}")
 
