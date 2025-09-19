@@ -13,7 +13,7 @@ export default function PremiumDashboard() {
   const [joinCode, setJoinCode] = useState('')
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [newCommName, setNewCommName] = useState('')
-  const [newCommType, setNewCommType] = useState<'Gym'|'University'>('Gym')
+  const [newCommType, setNewCommType] = useState<'Gym'|'University'|'General'>('Gym')
   const [parentOptions, setParentOptions] = useState<Array<{ id:number; name:string; type?:string }>>([])
   const [selectedParentId, setSelectedParentId] = useState<string>('none')
   const [parentsWithChildren, setParentsWithChildren] = useState<Set<number>>(new Set())
@@ -217,6 +217,7 @@ export default function PremiumDashboard() {
                 <select value={newCommType} onChange={e=> setNewCommType(e.target.value as any)} className="w-full px-3 py-2 rounded-md bg-black border border:white/15 text-sm">
                   <option value="Gym">Gym</option>
                   <option value="University">University</option>
+                  <option value="General">General</option>
                 </select>
               </div>
               <div>
