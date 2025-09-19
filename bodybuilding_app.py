@@ -520,6 +520,33 @@ def add_missing_tables():
                           auth TEXT,
                           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
 
+            # Log of recently sent push notifications for de-duplication
+            try:
+                if USE_MYSQL:
+                    c.execute('''CREATE TABLE IF NOT EXISTS push_send_log (
+                                     id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                                     username VARCHAR(191) NOT NULL,
+                                     tag VARCHAR(191) NULL,
+                                     title TEXT,
+                                     body TEXT,
+                                     url TEXT,
+                                     sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                                     INDEX idx_user_time (username, sent_at)
+                                 )''')
+                else:
+                    c.execute('''CREATE TABLE IF NOT EXISTS push_send_log (
+                                     id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                     username TEXT NOT NULL,
+                                     tag TEXT,
+                                     title TEXT,
+                                     body TEXT,
+                                     url TEXT,
+                                     sent_at TEXT DEFAULT (datetime('now'))
+                                 )''')
+                conn.commit()
+            except Exception as e:
+                logger.warning(f"Could not ensure push_send_log table: {e}")
+
             # Remember-me tokens for persistent login
             c.execute('''CREATE TABLE IF NOT EXISTS remember_tokens
                          (id INTEGER PRIMARY KEY AUTO_INCREMENT,
@@ -7478,6 +7505,7 @@ def post_status():
                         'title': 'New community post',
                         'body': f"{username}: {content[:100]}",
                         'url': f"/community_feed_react/{community_id}",
+                        'tag': f"community-post-{community_id}"
                     })
             except Exception as _e:
                 logger.warning(f"push notify community warn: {_e}")
@@ -16728,6 +16756,35 @@ def send_push_to_user(target_username: str, payload: dict):
         logger.warning("VAPID keys missing; push disabled")
         return
     try:
+        # Simple dedupe: if same tag/title/body sent to this user in last 30 seconds, skip
+        try:
+            tag = payload.get('tag') if isinstance(payload, dict) else None
+            title = payload.get('title') if isinstance(payload, dict) else None
+            body = payload.get('body') if isinstance(payload, dict) else None
+            url = payload.get('url') if isinstance(payload, dict) else None
+            with get_db_connection() as conn_chk:
+                cchk = conn_chk.cursor()
+                if USE_MYSQL:
+                    cchk.execute("""
+                        SELECT id FROM push_send_log
+                        WHERE username=? AND IFNULL(tag,'') = IFNULL(?, '') AND IFNULL(title,'')=IFNULL(?, '') AND IFNULL(body,'')=IFNULL(?, '')
+                          AND sent_at > DATE_SUB(NOW(), INTERVAL 30 SECOND)
+                        LIMIT 1
+                    """, (target_username, tag, title, body))
+                else:
+                    # SQLite: 30-second window using datetime comparisons
+                    cchk.execute("""
+                        SELECT id FROM push_send_log
+                        WHERE username=? AND IFNULL(tag,'') = IFNULL(?, '') AND IFNULL(title,'')=IFNULL(?, '') AND IFNULL(body,'')=IFNULL(?, '')
+                          AND datetime(sent_at) > datetime('now','-30 seconds')
+                        LIMIT 1
+                    """, (target_username, tag, title, body))
+                if cchk.fetchone():
+                    logger.info(f"push dedup: skipping duplicate push to {target_username} (tag={tag})")
+                    return
+        except Exception as dedupe_e:
+            logger.warning(f"push dedupe check failed: {dedupe_e}")
+
         with get_db_connection() as conn:
             c = conn.cursor()
             c.execute("SELECT endpoint, p256dh, auth FROM push_subscriptions WHERE username=?", (target_username,))
@@ -16766,6 +16823,18 @@ def send_push_to_user(target_username: str, payload: dict):
                         logger.warning(f"failed to delete stale subscription: {de}")
             except Exception as e:
                 logger.warning(f"push error: {e}")
+        # Record that we sent this push to dedupe subsequent attempts within window
+        try:
+            with get_db_connection() as conn_log:
+                clog = conn_log.cursor()
+                clog.execute("INSERT INTO push_send_log (username, tag, title, body, url) VALUES (?,?,?,?,?)",
+                             (target_username, payload.get('tag') if isinstance(payload, dict) else None,
+                              payload.get('title') if isinstance(payload, dict) else None,
+                              payload.get('body') if isinstance(payload, dict) else None,
+                              payload.get('url') if isinstance(payload, dict) else None))
+                conn_log.commit()
+        except Exception as le:
+            logger.warning(f"push log write failed: {le}")
     except Exception as e:
         logger.error(f"send_push_to_user error: {e}")
 
