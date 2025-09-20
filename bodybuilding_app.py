@@ -193,14 +193,20 @@ CANONICAL_SCHEME = os.getenv('CANONICAL_SCHEME', 'https')
 @app.before_request
 def enforce_canonical_host():
     try:
-        if CANONICAL_HOST:
-            # Avoid redirect loops and only redirect when host differs
-            req_host = request.host.split(':')[0]
-            if req_host != CANONICAL_HOST:
-                target = f"{CANONICAL_SCHEME}://{CANONICAL_HOST}{request.full_path}"
-                if target.endswith('?'):
-                    target = target[:-1]
-                return redirect(target, code=301)
+        req_host = request.headers.get('Host', '').split(':')[0]
+        req_scheme = request.headers.get('X-Forwarded-Proto') or request.scheme
+        # Enforce host
+        if CANONICAL_HOST and req_host and req_host != CANONICAL_HOST:
+            target = f"{CANONICAL_SCHEME}://{CANONICAL_HOST}{request.full_path}"
+            if target.endswith('?'):
+                target = target[:-1]
+            return redirect(target, code=301)
+        # Enforce https if configured
+        if CANONICAL_SCHEME == 'https' and req_scheme != 'https' and req_host:
+            target = f"https://{req_host}{request.full_path}"
+            if target.endswith('?'):
+                target = target[:-1]
+            return redirect(target, code=301)
     except Exception:
         # Never block request on redirect failure
         return None
