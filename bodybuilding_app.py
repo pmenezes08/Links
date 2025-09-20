@@ -5313,33 +5313,23 @@ def send_message():
             # Invalidate message caches for faster updates
             invalidate_message_cache(username, recipient_username)
             
-            # Create or update notification for the recipient
+            # Create or update notification for the recipient (race-safe)
             try:
-                # Check for existing unread notification from this sender
+                # First try to update existing unread notification
                 c.execute("""
-                    SELECT id FROM notifications 
-                    WHERE user_id = ? AND from_user = ? AND type = 'message' 
-                    AND is_read = 0
-                    LIMIT 1
-                """, (recipient_username, username))
-                
-                existing_notif = c.fetchone()
-                
-                if existing_notif:
-                    # Update the existing notification timestamp
-                    c.execute("""
-                        UPDATE notifications 
-                        SET created_at = NOW(), 
-                            message = ?
-                        WHERE id = ?
-                    """, (f"You have new messages from {username}", existing_notif['id'] if hasattr(existing_notif, 'keys') else existing_notif[0]))
-                else:
-                    # Create new notification
+                    UPDATE notifications
+                    SET created_at = NOW(), message = ?
+                    WHERE user_id = ? AND from_user = ? AND type = 'message' AND is_read = 0
+                """, (f"You have new messages from {username}", recipient_username, username))
+                if getattr(c, 'rowcount', 0) == 0:
+                    # Insert only if no unread exists (atomic with WHERE NOT EXISTS)
                     c.execute("""
                         INSERT INTO notifications (user_id, from_user, type, message, created_at)
-                        VALUES (?, ?, 'message', ?, NOW())
-                    """, (recipient_username, username, f"You have new messages from {username}"))
-                
+                        SELECT ?, ?, 'message', ?, NOW()
+                        WHERE NOT EXISTS (
+                          SELECT 1 FROM notifications WHERE user_id=? AND from_user=? AND type='message' AND is_read=0
+                        )
+                    """, (recipient_username, username, f"You have new messages from {username}", recipient_username, username))
                 conn.commit()
             except Exception as notif_e:
                 logger.warning(f"Could not create/update message notification: {notif_e}")
@@ -5457,33 +5447,21 @@ def send_photo_message():
             
             conn.commit()
             
-            # Create or update notification for the recipient
+            # Create or update notification for the recipient (race-safe)
             try:
-                # Check for existing unread notification from this sender
                 c.execute("""
-                    SELECT id FROM notifications 
-                    WHERE user_id = ? AND from_user = ? AND type = 'message' 
-                    AND is_read = 0
-                    LIMIT 1
-                """, (recipient_username, username))
-                
-                existing_notif = c.fetchone()
-                
-                if existing_notif:
-                    # Update the existing notification timestamp
-                    c.execute("""
-                        UPDATE notifications 
-                        SET created_at = NOW(), 
-                            message = ?
-                        WHERE id = ?
-                    """, (f"You have new messages from {username}", existing_notif['id'] if hasattr(existing_notif, 'keys') else existing_notif[0]))
-                else:
-                    # Create new notification
+                    UPDATE notifications
+                    SET created_at = NOW(), message = ?
+                    WHERE user_id = ? AND from_user = ? AND type = 'message' AND is_read = 0
+                """, (f"You have new messages from {username}", recipient_username, username))
+                if getattr(c, 'rowcount', 0) == 0:
                     c.execute("""
                         INSERT INTO notifications (user_id, from_user, type, message, created_at)
-                        VALUES (?, ?, 'message', ?, NOW())
-                    """, (recipient_username, username, f"You have new messages from {username}"))
-                
+                        SELECT ?, ?, 'message', ?, NOW()
+                        WHERE NOT EXISTS (
+                          SELECT 1 FROM notifications WHERE user_id=? AND from_user=? AND type='message' AND is_read=0
+                        )
+                    """, (recipient_username, username, f"You have new messages from {username}", recipient_username, username))
                 conn.commit()
             except Exception as notif_e:
                 logger.warning(f"Could not create/update photo message notification: {notif_e}")
