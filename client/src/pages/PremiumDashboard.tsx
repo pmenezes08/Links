@@ -17,6 +17,8 @@ export default function PremiumDashboard() {
   const [parentOptions, setParentOptions] = useState<Array<{ id:number; name:string; type?:string }>>([])
   const [selectedParentId, setSelectedParentId] = useState<string>('none')
   const [parentsWithChildren, setParentsWithChildren] = useState<Set<number>>(new Set())
+  const [emailVerified, setEmailVerified] = useState<boolean|null>(null)
+  const [showVerifyFirstModal, setShowVerifyFirstModal] = useState(false)
   const { setTitle } = useHeader()
   useEffect(() => { setTitle('Dashboard') }, [setTitle])
   const navigate = useNavigate()
@@ -41,6 +43,14 @@ export default function PremiumDashboard() {
   useEffect(() => {
     async function loadUserData() {
       try {
+        // Profile (email verification status)
+        try{
+          const me = await fetchJson('/api/profile_me')
+          if (me?.success && me.profile){
+            setEmailVerified(!!me.profile.email_verified)
+          }
+        }catch{ setEmailVerified(null) }
+
         // Check gym membership
         const gymData = await fetchJson('/api/check_gym_membership')
         setHasGymAccess(gymData.hasGymAccess || false)
@@ -77,6 +87,24 @@ export default function PremiumDashboard() {
     
     loadUserData()
   }, [])
+
+  // Auto-prompt on first login: if user has no communities, show join; if not verified, show verify-first
+  useEffect(() => {
+    if (emailVerified === null) return
+    if (!Array.isArray(communities)) return
+    const hasNoCommunities = (communities || []).length === 0
+    if (!hasNoCommunities) return
+    const k = 'welcome_join_prompt_shown'
+    try{
+      if (localStorage.getItem(k)) return
+    }catch{}
+    if (emailVerified === false){
+      setShowVerifyFirstModal(true)
+    } else {
+      setShowJoinModal(true)
+    }
+    try{ localStorage.setItem(k, '1') }catch{}
+  }, [communities, emailVerified])
 
   // Load available parent communities when opening create modal
   useEffect(() => {
@@ -199,6 +227,20 @@ export default function PremiumDashboard() {
         </div>
       </div>
 
+      {/* Verify email first modal */}
+      {showVerifyFirstModal && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur flex items-center justify-center" onClick={(e)=> e.currentTarget===e.target && setShowVerifyFirstModal(false)}>
+          <div className="w-[92%] max-w-sm rounded-2xl border border-white/10 bg-[#0b0f10] p-4">
+            <div className="font-semibold text-sm mb-2">Verify your email</div>
+            <div className="text-sm text-[#9fb0b5]">Please verify your email before joining a community.</div>
+            <div className="flex items-center justify-end gap-2 mt-3">
+              <button className="px-3 py-2 rounded-md bg:white/10 hover:bg:white/15" onClick={()=> setShowVerifyFirstModal(false)}>Close</button>
+              <button className="px-3 py-2 rounded-md bg-[#4db6ac] text-black hover:brightness-110" onClick={async()=>{ try{ await fetch('/resend_verification', { method:'POST', credentials:'include' }) }catch{} alert('Verification email sent (if not rate limited).'); setShowVerifyFirstModal(false) }}>Resend email</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Communities modal removed; button links to /communities */}
       {showCreateModal && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur flex items-center justify-center" onClick={(e)=> e.currentTarget===e.target && setShowCreateModal(false)}>
@@ -271,6 +313,12 @@ export default function PremiumDashboard() {
                 <button className="px-3 py-2 rounded-md bg:white/10 hover:bg:white/15" onClick={()=> setShowJoinModal(false)}>Cancel</button>
                 <button className="px-3 py-2 rounded-md bg-[#4db6ac] text-black hover:brightness-110" onClick={async()=> {
                   if (!joinCode.trim()) { alert('Please enter a code'); return }
+                  // If not verified, gate join with verification
+                  if (emailVerified === false){
+                    setShowJoinModal(false)
+                    setShowVerifyFirstModal(true)
+                    return
+                  }
                   try{
                     const fd = new URLSearchParams({ community_code: joinCode.trim() })
                     const r = await fetch('/join_community', { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
