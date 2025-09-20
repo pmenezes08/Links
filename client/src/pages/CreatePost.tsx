@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
 export default function CreatePost(){
@@ -7,16 +7,27 @@ export default function CreatePost(){
   const communityId = params.get('community_id') || ''
   const [content, setContent] = useState('')
   const [file, setFile] = useState<File|null>(null)
+  const [submitting, setSubmitting] = useState(false)
+  const tokenRef = useRef<string>(`${Date.now()}_${Math.random().toString(36).slice(2)}`)
 
   async function submit(){
     if (!content && !file) return
-    const fd = new FormData()
-    fd.append('content', content)
-    if (communityId) fd.append('community_id', communityId)
-    if (file) fd.append('image', file)
-    await fetch('/post_status', { method: 'POST', credentials: 'include', body: fd })
-    if (communityId) navigate(`/community_feed_react/${communityId}`)
-    else navigate(-1)
+    if (submitting) return
+    setSubmitting(true)
+    try{
+      const fd = new FormData()
+      fd.append('content', content)
+      if (communityId) fd.append('community_id', communityId)
+      if (file) fd.append('image', file)
+      fd.append('dedupe_token', tokenRef.current)
+      await fetch('/post_status', { method: 'POST', credentials: 'include', body: fd })
+      // Regardless of server response, navigate back to feed to avoid double tap
+      if (communityId) navigate(`/community_feed_react/${communityId}`)
+      else navigate(-1)
+    }catch{
+      setSubmitting(false)
+      alert('Failed to post. Please try again.')
+    }
   }
 
   return (
@@ -40,7 +51,9 @@ export default function CreatePost(){
             <i className="fa-regular fa-image" style={{ color: '#4db6ac' }} />
             <input type="file" accept="image/*" onChange={(e)=> setFile(e.target.files?.[0]||null)} style={{ display: 'none' }} />
           </label>
-          <button className="px-4 py-2 rounded-full bg-[#4db6ac] text-black" onClick={submit}>Post</button>
+          <button className={`px-4 py-2 rounded-full ${submitting ? 'bg-white/20 text-white/60 cursor-not-allowed' : 'bg-[#4db6ac] text-black hover:brightness-110'}`} onClick={submit} disabled={submitting}>
+            {submitting ? 'Posting…' : 'Post'}
+          </button>
         </div>
       </div>
     </div>
