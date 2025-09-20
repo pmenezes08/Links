@@ -586,6 +586,25 @@ def add_missing_tables():
             except Exception as e:
                 logger.warning(f"Could not ensure recent_post_tokens table: {e}")
 
+            # Idempotency tokens for replies
+            try:
+                if USE_MYSQL:
+                    c.execute('''CREATE TABLE IF NOT EXISTS recent_reply_tokens (
+                                     token VARCHAR(191) PRIMARY KEY,
+                                     username VARCHAR(191) NOT NULL,
+                                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                                     INDEX idx_rrt_user_time (username, created_at)
+                                 )''')
+                else:
+                    c.execute('''CREATE TABLE IF NOT EXISTS recent_reply_tokens (
+                                     token TEXT PRIMARY KEY,
+                                     username TEXT NOT NULL,
+                                     created_at TEXT DEFAULT (datetime('now'))
+                                 )''')
+                conn.commit()
+            except Exception as e:
+                logger.warning(f"Could not ensure recent_reply_tokens table: {e}")
+
             # Remember-me tokens for persistent login
             c.execute('''CREATE TABLE IF NOT EXISTS remember_tokens
                          (id INTEGER PRIMARY KEY AUTO_INCREMENT,
@@ -7692,6 +7711,9 @@ def post_reply():
     if not content and not image_path:
         return jsonify({'success': False, 'error': 'Content or image is required!'}), 400
 
+    # Idempotency token (optional)
+    dedupe_token = (request.form.get('dedupe_token') or '').strip()
+
     # Use DB-friendly ISO for storage; frontend will format for display
     now = datetime.now()
     timestamp_db = now.strftime('%Y-%m-%d %H:%M:%S')
@@ -7710,20 +7732,89 @@ def post_reply():
             community_id = post_data['community_id'] if post_data else None
             
             parent_reply_id = request.form.get('parent_reply_id', type=int)
+
+            # Strong dedupe: token-based and content-based within window
+            try:
+                if dedupe_token:
+                    if USE_MYSQL:
+                        c.execute("""
+                            SELECT 1 FROM recent_reply_tokens
+                            WHERE token=? AND username=? AND created_at > DATE_SUB(NOW(), INTERVAL 60 SECOND)
+                            LIMIT 1
+                        """, (dedupe_token, username))
+                    else:
+                        c.execute("""
+                            SELECT 1 FROM recent_reply_tokens
+                            WHERE token=? AND username=? AND datetime(created_at) > datetime('now','-60 seconds')
+                            LIMIT 1
+                        """, (dedupe_token, username))
+                    if c.fetchone():
+                        return jsonify({'success': True, 'message': 'Duplicate suppressed'}), 200
+                if content:
+                    if USE_MYSQL:
+                        c.execute("""
+                            SELECT id FROM replies
+                            WHERE post_id=? AND username=? AND IFNULL(parent_reply_id,0)=IFNULL(?,0)
+                              AND content=? AND timestamp > DATE_SUB(NOW(), INTERVAL 30 SECOND)
+                            LIMIT 1
+                        """, (post_id, username, parent_reply_id, content))
+                    else:
+                        c.execute("""
+                            SELECT id FROM replies
+                            WHERE post_id=? AND username=? AND IFNULL(parent_reply_id,0)=IFNULL(?,0)
+                              AND content=? AND datetime(timestamp) > datetime('now','-30 seconds')
+                            LIMIT 1
+                        """, (post_id, username, parent_reply_id, content))
+                    if c.fetchone():
+                        return jsonify({'success': True, 'message': 'Duplicate suppressed'}), 200
+            except Exception as de:
+                logger.warning(f"reply dedupe check failed: {de}")
             c.execute("INSERT INTO replies (post_id, username, content, image_path, timestamp, community_id, parent_reply_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
                       (post_id, username, content, image_path, timestamp_db, community_id, parent_reply_id))
             reply_id = c.lastrowid
+
+            # Record token
+            try:
+                if dedupe_token:
+                    c.execute("INSERT IGNORE INTO recent_reply_tokens (token, username) VALUES (?, ?)", (dedupe_token, username))
+                    conn.commit()
+            except Exception:
+                try:
+                    if dedupe_token:
+                        c.execute("INSERT OR IGNORE INTO recent_reply_tokens (token, username) VALUES (?, ?)", (dedupe_token, username))
+                        conn.commit()
+                except Exception as te:
+                    logger.warning(f"reply dedupe token write failed: {te}")
             
             # Get post owner to send notification
             c.execute("SELECT username FROM posts WHERE id = ?", (post_id,))
             post_owner = c.fetchone()
             if post_owner and post_owner['username'] != username:
                 # Insert notification directly in this transaction
-                c.execute("""
-                    INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                """, (post_owner['username'], username, 'reply', post_id, community_id,
-                      f"{username} replied to your post"))
+                try:
+                    # Avoid duplicate DB notifications for rapid double-submit
+                    if USE_MYSQL:
+                        c.execute("""
+                            SELECT id FROM notifications
+                            WHERE user_id=? AND from_user=? AND type='reply' AND post_id=?
+                              AND created_at > DATE_SUB(NOW(), INTERVAL 30 SECOND)
+                            LIMIT 1
+                        """, (post_owner['username'], username, post_id))
+                    else:
+                        c.execute("""
+                            SELECT id FROM notifications
+                            WHERE user_id=? AND from_user=? AND type='reply' AND post_id=?
+                              AND datetime(created_at) > datetime('now','-30 seconds')
+                            LIMIT 1
+                        """, (post_owner['username'], username, post_id))
+                    if not c.fetchone():
+                        c.execute("""
+                            INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message)
+                            VALUES (?, ?, ?, ?, ?, ?)
+                        """, (post_owner['username'], username, 'reply', post_id, community_id,
+                              f"{username} replied to your post"))
+                except Exception as ne:
+                    logger.warning(f"reply notification dedupe failed: {ne}")
                 # Also send a web push to the post owner
                 try:
                     send_push_to_user(post_owner['username'], {

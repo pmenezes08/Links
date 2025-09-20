@@ -64,6 +64,8 @@ export default function PostDetail(){
   const [file, setFile] = useState<File|null>(null)
   const [currentUser, setCurrentUser] = useState<string | null>(null)
   const [previewSrc, setPreviewSrc] = useState<string | null>(null)
+  const [submittingReply, setSubmittingReply] = useState(false)
+  const replyTokenRef = useRef<string>(`${Date.now()}_${Math.random().toString(36).slice(2)}`)
   
   const fileInputRef = useRef<HTMLInputElement|null>(null)
 
@@ -143,13 +145,17 @@ export default function PostDetail(){
 
   async function submitReply(parentReplyId?: number){
     if (!post || (!content && !file)) return
+    if (submittingReply) return
+    setSubmittingReply(true)
     const fd = new FormData()
     fd.append('post_id', String(post.id))
     fd.append('content', content)
     if (parentReplyId) fd.append('parent_reply_id', String(parentReplyId))
     if (file) fd.append('image', file)
+    fd.append('dedupe_token', replyTokenRef.current)
     const r = await fetch('/post_reply', { method:'POST', credentials:'include', body: fd })
     const j = await r.json().catch(()=>null)
+    setSubmittingReply(false)
     if (j?.success && j.reply){
       setPost(p => {
         if (!p) return p
@@ -168,6 +174,7 @@ export default function PostDetail(){
         return { ...p, replies: [j.reply, ...p.replies] }
       })
       setContent(''); setFile(null); if (fileInputRef.current) fileInputRef.current.value = ''
+      replyTokenRef.current = `${Date.now()}_${Math.random().toString(36).slice(2)}`
     }
   }
 
@@ -178,6 +185,7 @@ export default function PostDetail(){
     fd.append('content', text || '')
     fd.append('parent_reply_id', String(parentId))
     if (file) fd.append('image', file)
+    fd.append('dedupe_token', `${Date.now()}_${Math.random().toString(36).slice(2)}`)
     const r = await fetch('/post_reply', { method:'POST', credentials:'include', body: fd })
     const j = await r.json().catch(()=>null)
     if (j?.success && j.reply){
@@ -329,9 +337,9 @@ export default function PostDetail(){
               className="px-2.5 py-1.5 rounded-full bg-[#4db6ac] text-white border border-[#4db6ac] hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed"
               onClick={()=> submitReply()}
               aria-label="Send reply"
-              disabled={!content && !file}
+              disabled={(!content && !file) || submittingReply}
             >
-              <i className="fa-solid fa-paper-plane" />
+              {submittingReply ? <i className="fa-solid fa-spinner fa-spin" /> : <i className="fa-solid fa-paper-plane" />}
             </button>
           </div>
         </div>
