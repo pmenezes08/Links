@@ -275,6 +275,8 @@ export default function PostDetail(){
             <ReplyNode key={r.id} reply={r} currentUser={currentUser} onToggle={(id, reaction)=> toggleReplyReaction(id, reaction)} onInlineReply={(id, text, file)=> submitInlineReply(id, text, file)} onDelete={(id)=> deleteReply(id)} onPreviewImage={(src)=> setPreviewSrc(src)} inlineSending={inlineSending} />
           ))}
         </div>
+        {/* Spacer to prevent fixed composer overlap with first replies */}
+        <div style={{ height: 'calc(env(safe-area-inset-bottom, 0px) + 8rem)' }} />
       </div>
 
       {/* Image preview modal */}
