@@ -1167,6 +1167,28 @@ def init_db():
                           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                           FOREIGN KEY (post_id) REFERENCES posts(id),
                           FOREIGN KEY (community_id) REFERENCES communities(id))''')
+
+            # Useful documents (PDFs)
+            logger.info("Ensuring useful_docs table...")
+            if USE_MYSQL:
+                c.execute('''CREATE TABLE IF NOT EXISTS useful_docs (
+                                 id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                                 community_id INTEGER NULL,
+                                 username TEXT NOT NULL,
+                                 file_path TEXT NOT NULL,
+                                 description TEXT,
+                                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                                 FOREIGN KEY (community_id) REFERENCES communities(id)
+                             )''')
+            else:
+                c.execute('''CREATE TABLE IF NOT EXISTS useful_docs (
+                                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                 community_id INTEGER NULL,
+                                 username TEXT NOT NULL,
+                                 file_path TEXT NOT NULL,
+                                 description TEXT,
+                                 created_at TEXT DEFAULT (datetime('now'))
+                             )''')
             
             # Create community_announcements table
             logger.info("Creating community_announcements table...")
@@ -10218,7 +10240,34 @@ def get_links():
                     'can_delete': link['username'] == username or username == 'admin'
                 })
             
-            return jsonify({'success': True, 'links': links})
+            # Also return docs (PDFs)
+            docs = []
+            try:
+                if community_id:
+                    c.execute("""
+                        SELECT id, username, file_path, description, created_at
+                        FROM useful_docs
+                        WHERE community_id = ?
+                        ORDER BY created_at DESC
+                    """, (community_id,))
+                else:
+                    c.execute("""
+                        SELECT id, username, file_path, description, created_at
+                        FROM useful_docs
+                        WHERE community_id IS NULL
+                        ORDER BY created_at DESC
+                    """)
+                for d in c.fetchall() or []:
+                    docs.append({
+                        'id': d['id'] if hasattr(d,'keys') else d[0],
+                        'username': d['username'] if hasattr(d,'keys') else d[1],
+                        'file_path': d['file_path'] if hasattr(d,'keys') else d[2],
+                        'description': d['description'] if hasattr(d,'keys') else d[3],
+                        'created_at': d['created_at'] if hasattr(d,'keys') else d[4]
+                    })
+            except Exception as de:
+                logger.warning(f"get_docs error: {de}")
+            return jsonify({'success': True, 'links': links, 'docs': docs})
             
     except Exception as e:
         logger.error(f"Error getting links: {str(e)}")
@@ -10257,6 +10306,54 @@ def add_link():
     except Exception as e:
         logger.error(f"Error adding link: {str(e)}")
         return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/upload_doc', methods=['POST'])
+@login_required
+def upload_doc():
+    """Upload a PDF document for Useful Links & Docs"""
+    try:
+        username = session['username']
+        community_id = request.form.get('community_id')
+        description = (request.form.get('description') or '').strip()
+        if 'file' not in request.files:
+            return jsonify({'success': False, 'error': 'No file provided'})
+        f = request.files['file']
+        if not f or f.filename == '':
+            return jsonify({'success': False, 'error': 'No file selected'})
+        # Only PDFs
+        if not f.filename.lower().endswith('.pdf'):
+            return jsonify({'success': False, 'error': 'Only PDF files are allowed'})
+        safe_name = f"doc_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{username}.pdf"
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        upload_dir = os.path.join(base_dir, 'uploads', 'docs')
+        os.makedirs(upload_dir, exist_ok=True)
+        file_path = os.path.join(upload_dir, safe_name)
+        f.save(file_path)
+        rel_path = f"docs/{safe_name}"
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("""
+                INSERT INTO useful_docs (community_id, username, file_path, description, created_at)
+                VALUES (?, ?, ?, ?, ?)
+            """, (community_id if community_id else None, username, rel_path, description, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+            conn.commit()
+        return jsonify({'success': True, 'message': 'Document uploaded', 'path': f"/uploads/{rel_path}"})
+    except Exception as e:
+        logger.error(f"upload_doc error: {e}")
+        return jsonify({'success': False, 'error': 'Server error'})
+
+@app.route('/uploads/docs/<path:filename>')
+@login_required
+def serve_doc(filename):
+    try:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        upload_dir = os.path.join(base_dir, 'uploads', 'docs')
+        response = send_from_directory(upload_dir, filename)
+        response.headers['Cache-Control'] = 'public, max-age=86400'
+        return response
+    except Exception as e:
+        logger.error(f"serve_doc error: {e}")
+        return 'Not found', 404
 
 @app.route('/delete_link', methods=['POST'])
 @login_required
