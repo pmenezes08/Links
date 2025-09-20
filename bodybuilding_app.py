@@ -7258,6 +7258,68 @@ def create_notification(user_id, from_user, notification_type, post_id=None, com
         logger.error(f"Error creating notification: {str(e)}")
 
 
+def notify_post_reply_recipients(*, post_id: int, from_user: str, community_id: int|None, parent_reply_id: int|None):
+    """Create in-app notifications and web push for post reply recipients.
+    Recipients: post owner and (if applicable) parent reply author; excludes sender; dedup within short window.
+    """
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            # Determine recipients
+            recipients = set()
+            c.execute("SELECT username FROM posts WHERE id=?", (post_id,))
+            row = c.fetchone()
+            post_owner = (row['username'] if hasattr(row,'keys') else row[0]) if row else None
+            if post_owner and post_owner != from_user:
+                recipients.add(post_owner)
+            parent_author = None
+            if parent_reply_id:
+                c.execute("SELECT username FROM replies WHERE id=?", (parent_reply_id,))
+                r2 = c.fetchone()
+                parent_author = (r2['username'] if hasattr(r2,'keys') else r2[0]) if r2 else None
+                if parent_author and parent_author not in (from_user, post_owner):
+                    recipients.add(parent_author)
+
+            # Insert notifications (dedupe 10s by same from_user/post/type/recipient)
+            for target in recipients:
+                try:
+                    if USE_MYSQL:
+                        c.execute("""
+                            SELECT id FROM notifications
+                            WHERE user_id=? AND from_user=? AND type='reply' AND post_id=?
+                              AND created_at > DATE_SUB(NOW(), INTERVAL 10 SECOND)
+                            LIMIT 1
+                        """, (target, from_user, post_id))
+                    else:
+                        c.execute("""
+                            SELECT id FROM notifications
+                            WHERE user_id=? AND from_user=? AND type='reply' AND post_id=?
+                              AND datetime(created_at) > datetime('now','-10 seconds')
+                            LIMIT 1
+                        """, (target, from_user, post_id))
+                    exists = c.fetchone()
+                    if not exists:
+                        c.execute("""
+                            INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message)
+                            VALUES (?, ?, 'reply', ?, ?, ?)
+                        """, (target, from_user, post_id, community_id, f"{from_user} replied") )
+                        conn.commit()
+                except Exception as ne:
+                    logger.warning(f"reply notify db error to {target}: {ne}")
+
+                # Push notify (tag per user+post to allow coalescing)
+                try:
+                    send_push_to_user(target, {
+                        'title': f'New reply from {from_user}',
+                        'body': 'Tap to view the conversation',
+                        'url': f'/post/{post_id}',
+                        'tag': f'post-reply-{post_id}-{target}'
+                    })
+                except Exception as pe:
+                    logger.warning(f"reply push error to {target}: {pe}")
+    except Exception as e:
+        logger.error(f"notify_post_reply_recipients error: {e}")
+
 @app.route('/notifications')
 @login_required
 def notifications_page():
@@ -7786,45 +7848,11 @@ def post_reply():
                 except Exception as te:
                     logger.warning(f"reply dedupe token write failed: {te}")
             
-            # Get post owner to send notification
-            c.execute("SELECT username FROM posts WHERE id = ?", (post_id,))
-            post_owner = c.fetchone()
-            if post_owner and post_owner['username'] != username:
-                # Insert notification directly in this transaction
-                try:
-                    # Avoid duplicate DB notifications for rapid double-submit
-                    if USE_MYSQL:
-                        c.execute("""
-                            SELECT id FROM notifications
-                            WHERE user_id=? AND from_user=? AND type='reply' AND post_id=?
-                              AND created_at > DATE_SUB(NOW(), INTERVAL 30 SECOND)
-                            LIMIT 1
-                        """, (post_owner['username'], username, post_id))
-                    else:
-                        c.execute("""
-                            SELECT id FROM notifications
-                            WHERE user_id=? AND from_user=? AND type='reply' AND post_id=?
-                              AND datetime(created_at) > datetime('now','-30 seconds')
-                            LIMIT 1
-                        """, (post_owner['username'], username, post_id))
-                    if not c.fetchone():
-                        c.execute("""
-                            INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message)
-                            VALUES (?, ?, ?, ?, ?, ?)
-                        """, (post_owner['username'], username, 'reply', post_id, community_id,
-                              f"{username} replied to your post"))
-                except Exception as ne:
-                    logger.warning(f"reply notification dedupe failed: {ne}")
-                # Also send a web push to the post owner
-                try:
-                    send_push_to_user(post_owner['username'], {
-                        'title': f'New reply from {username}',
-                        'body': 'Tap to view the conversation',
-                        'url': f'/post/{post_id}',
-                        'tag': f'post-reply-{post_id}'
-                    })
-                except Exception as _e:
-                    logger.warning(f"push post_reply warn: {_e}")
+            # Notify recipients (post owner and parent reply author)
+            try:
+                notify_post_reply_recipients(post_id=post_id, from_user=username, community_id=community_id, parent_reply_id=parent_reply_id)
+            except Exception as ne:
+                logger.warning(f"notify recipients failed: {ne}")
             
             conn.commit()
 
