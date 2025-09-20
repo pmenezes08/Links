@@ -567,6 +567,25 @@ def add_missing_tables():
             except Exception as e:
                 logger.warning(f"Could not ensure active_chat_status table: {e}")
 
+            # Idempotency tokens for post creation (prevent duplicate posts)
+            try:
+                if USE_MYSQL:
+                    c.execute('''CREATE TABLE IF NOT EXISTS recent_post_tokens (
+                                     token VARCHAR(191) PRIMARY KEY,
+                                     username VARCHAR(191) NOT NULL,
+                                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                                     INDEX idx_rpt_user_time (username, created_at)
+                                 )''')
+                else:
+                    c.execute('''CREATE TABLE IF NOT EXISTS recent_post_tokens (
+                                     token TEXT PRIMARY KEY,
+                                     username TEXT NOT NULL,
+                                     created_at TEXT DEFAULT (datetime('now'))
+                                 )''')
+                conn.commit()
+            except Exception as e:
+                logger.warning(f"Could not ensure recent_post_tokens table: {e}")
+
             # Remember-me tokens for persistent login
             c.execute('''CREATE TABLE IF NOT EXISTS remember_tokens
                          (id INTEGER PRIMARY KEY AUTO_INCREMENT,
@@ -5450,14 +5469,35 @@ def send_photo_message():
             except Exception as notif_e:
                 logger.warning(f"Could not create/update photo message notification: {notif_e}")
             
-            # Push notification (always send; same tag coalesces)
+            # Push notification — skip if recipient is actively viewing this thread
             try:
-                send_push_to_user(recipient_username, {
-                    'title': f'Message from {username}',
-                    'body': f'You have new messages from {username}',
-                    'url': f'/user_chat/chat/{username}',
-                    'tag': f'message-{username}',
-                })
+                should_push = True
+                try:
+                    with get_db_connection() as conn2:
+                        c2 = conn2.cursor()
+                        if USE_MYSQL:
+                            c2.execute("""
+                                SELECT 1 FROM active_chat_status 
+                                WHERE user=? AND peer=? AND updated_at > DATE_SUB(NOW(), INTERVAL 20 SECOND)
+                                LIMIT 1
+                            """, (recipient_username, username))
+                        else:
+                            c2.execute("""
+                                SELECT 1 FROM active_chat_status 
+                                WHERE user=? AND peer=? AND datetime(updated_at) > datetime('now','-20 seconds')
+                                LIMIT 1
+                            """, (recipient_username, username))
+                        if c2.fetchone():
+                            should_push = False
+                except Exception as pe:
+                    logger.warning(f"active chat presence check (photo) failed: {pe}")
+                if should_push:
+                    send_push_to_user(recipient_username, {
+                        'title': f'Message from {username}',
+                        'body': f'You have new messages from {username}',
+                        'url': f'/user_chat/chat/{username}',
+                        'tag': f'message-{username}',
+                    })
             except Exception as _e:
                 logger.warning(f"push send_photo_message warn: {_e}")
 
@@ -7451,6 +7491,7 @@ def post_status():
     content = request.form.get('content', '').strip()
     community_id_raw = request.form.get('community_id')
     community_id = int(community_id_raw) if community_id_raw else None
+    token = (request.form.get('dedupe_token') or '').strip()
     
     # If community_id is not in form, try to get it from referer URL
     if not community_id:
@@ -7498,6 +7539,31 @@ def post_status():
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
+
+            # Dedupe: if a token is provided and seen in last 60 seconds for this user, skip insert
+            if token:
+                try:
+                    if USE_MYSQL:
+                        c.execute("""
+                            SELECT 1 FROM recent_post_tokens
+                            WHERE token=? AND username=? AND created_at > DATE_SUB(NOW(), INTERVAL 60 SECOND)
+                            LIMIT 1
+                        """, (token, username))
+                    else:
+                        c.execute("""
+                            SELECT 1 FROM recent_post_tokens
+                            WHERE token=? AND username=? AND datetime(created_at) > datetime('now','-60 seconds')
+                            LIMIT 1
+                        """, (token, username))
+                    if c.fetchone():
+                        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                            return jsonify({'success': True, 'message': 'Duplicate suppressed'}), 200
+                        else:
+                            if community_id:
+                                return redirect(url_for('community_feed', community_id=community_id))
+                            return redirect(url_for('feed'))
+                except Exception as de:
+                    logger.warning(f"post dedupe check failed: {de}")
             
             # If community_id is provided, verify user is member (admin bypass)
             if community_id and username != 'admin':
@@ -7533,6 +7599,19 @@ def post_status():
             logger.info(f"Total posts in community {community_id}: {len(community_posts)}")
             for post in community_posts:
                 logger.info(f"  Post {post['id']}: {post['username']} - {post['content'][:50]}... (community_id: {post['community_id']})")
+
+            # Record token to prevent duplicates
+            try:
+                if token:
+                    c.execute("INSERT IGNORE INTO recent_post_tokens (token, username) VALUES (?, ?)", (token, username))
+                    conn.commit()
+            except Exception:
+                try:
+                    if token:
+                        c.execute("INSERT OR IGNORE INTO recent_post_tokens (token, username) VALUES (?, ?)", (token, username))
+                        conn.commit()
+                except Exception as te:
+                    logger.warning(f"post dedupe token write failed: {te}")
 
             # Notify community members (excluding creator)
             try:
