@@ -10320,15 +10320,22 @@ def upload_doc():
         f = request.files['file']
         if not f or f.filename == '':
             return jsonify({'success': False, 'error': 'No file selected'})
-        # Only PDFs
-        if not f.filename.lower().endswith('.pdf'):
+        # Only PDFs by extension
+        from werkzeug.utils import secure_filename
+        orig = secure_filename(f.filename)
+        ext = orig.rsplit('.', 1)[-1].lower() if '.' in orig else ''
+        if ext != 'pdf':
             return jsonify({'success': False, 'error': 'Only PDF files are allowed'})
         safe_name = f"doc_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{username}.pdf"
         base_dir = os.path.dirname(os.path.abspath(__file__))
         upload_dir = os.path.join(base_dir, 'uploads', 'docs')
         os.makedirs(upload_dir, exist_ok=True)
         file_path = os.path.join(upload_dir, safe_name)
-        f.save(file_path)
+        try:
+            f.save(file_path)
+        except Exception as se:
+            logger.error(f"upload save error: {se}")
+            return jsonify({'success': False, 'error': 'Could not save file on server'})
         rel_path = f"docs/{safe_name}"
         with get_db_connection() as conn:
             c = conn.cursor()
@@ -10348,7 +10355,7 @@ def serve_doc(filename):
     try:
         base_dir = os.path.dirname(os.path.abspath(__file__))
         upload_dir = os.path.join(base_dir, 'uploads', 'docs')
-        response = send_from_directory(upload_dir, filename)
+        response = send_from_directory(upload_dir, filename, as_attachment=False)
         response.headers['Cache-Control'] = 'public, max-age=86400'
         return response
     except Exception as e:
