@@ -240,7 +240,7 @@ export default function PostDetail(){
 
   return (
     <div className="min-h-screen bg-black text-white pb-24">
-      <div className="max-w-2xl mx-auto pt-14 px-3">
+      <div className="max-w-2xl mx-auto pt-14 px-3" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 14rem)' }}>
         <div className="mb-2">
           <button className="px-3 py-1.5 rounded-lg border border-white/10 bg-white/[0.03] text-sm hover:bg-white/10" onClick={()=> navigate(-1)} aria-label="Back">
             ← Back
@@ -276,7 +276,7 @@ export default function PostDetail(){
           ))}
         </div>
         {/* Spacer to prevent fixed composer overlap with first replies */}
-        <div style={{ height: 'calc(env(safe-area-inset-bottom, 0px) + 8rem)' }} />
+        <div style={{ height: 'calc(env(safe-area-inset-bottom, 0px) + 12rem)' }} />
       </div>
 
       {/* Image preview modal */}
@@ -290,7 +290,7 @@ export default function PostDetail(){
       ) : null}
 
       {/* Fixed-bottom reply composer */}
-      <div className="fixed left-0 right-0 bottom-0 z-50 bg-black/85 border-t border-white/10 backdrop-blur">
+      <div className="fixed left-0 right-0 bottom-0 z-[100] bg-black/85 border-t border-white/10 backdrop-blur pointer-events-auto">
         <div className="px-3 py-2 flex flex-col gap-1.5">
           <textarea
             className="w-full resize-none max-h-36 min-h-[30px] px-3 py-1.5 rounded-2xl bg-black border border-[#4db6ac] text-[16px] focus:outline-none focus:ring-1 focus:ring-[#4db6ac]"
