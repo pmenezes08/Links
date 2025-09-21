@@ -280,7 +280,7 @@ export default function CommunityFeed() {
             {((data?.community?.type||'').toLowerCase() !== 'general') && (
               <>
                 <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); navigate(`/community/${community_id}/resources_react`) }}>Forum</button>
-                <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); navigate(`/community/${community_id}/useful_links_react`) }}>Useful Links</button>
+                <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); navigate(`/community/${community_id}/useful_links_react`) }}>Useful Links & Docs</button>
               </>
             )}
             <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); navigate(`/community/${community_id}/members`) }}>Members</button>

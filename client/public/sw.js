@@ -18,7 +18,8 @@ self.addEventListener('push', (event) => {
       try{
         const href = client.url || ''
         const focused = client.focused || false
-        if (focused && href.includes(targetUrl)){
+        // Suppress if focused and same section (exact chat, or messages landing)
+        if (focused && (href.includes(targetUrl) || (tag && tag.startsWith('message-') && href.includes('/user_chat')))){
           // Already viewing the target; skip OS notification
           return
         }

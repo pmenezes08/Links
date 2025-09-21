@@ -193,14 +193,20 @@ CANONICAL_SCHEME = os.getenv('CANONICAL_SCHEME', 'https')
 @app.before_request
 def enforce_canonical_host():
     try:
-        if CANONICAL_HOST:
-            # Avoid redirect loops and only redirect when host differs
-            req_host = request.host.split(':')[0]
-            if req_host != CANONICAL_HOST:
-                target = f"{CANONICAL_SCHEME}://{CANONICAL_HOST}{request.full_path}"
-                if target.endswith('?'):
-                    target = target[:-1]
-                return redirect(target, code=301)
+        req_host = request.headers.get('Host', '').split(':')[0]
+        req_scheme = request.headers.get('X-Forwarded-Proto') or request.scheme
+        # Enforce host
+        if CANONICAL_HOST and req_host and req_host != CANONICAL_HOST:
+            target = f"{CANONICAL_SCHEME}://{CANONICAL_HOST}{request.full_path}"
+            if target.endswith('?'):
+                target = target[:-1]
+            return redirect(target, code=301)
+        # Enforce https if configured
+        if CANONICAL_SCHEME == 'https' and req_scheme != 'https' and req_host:
+            target = f"https://{req_host}{request.full_path}"
+            if target.endswith('?'):
+                target = target[:-1]
+            return redirect(target, code=301)
     except Exception:
         # Never block request on redirect failure
         return None
@@ -585,6 +591,25 @@ def add_missing_tables():
                 conn.commit()
             except Exception as e:
                 logger.warning(f"Could not ensure recent_post_tokens table: {e}")
+
+            # Idempotency tokens for replies
+            try:
+                if USE_MYSQL:
+                    c.execute('''CREATE TABLE IF NOT EXISTS recent_reply_tokens (
+                                     token VARCHAR(191) PRIMARY KEY,
+                                     username VARCHAR(191) NOT NULL,
+                                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                                     INDEX idx_rrt_user_time (username, created_at)
+                                 )''')
+                else:
+                    c.execute('''CREATE TABLE IF NOT EXISTS recent_reply_tokens (
+                                     token TEXT PRIMARY KEY,
+                                     username TEXT NOT NULL,
+                                     created_at TEXT DEFAULT (datetime('now'))
+                                 )''')
+                conn.commit()
+            except Exception as e:
+                logger.warning(f"Could not ensure recent_reply_tokens table: {e}")
 
             # Remember-me tokens for persistent login
             c.execute('''CREATE TABLE IF NOT EXISTS remember_tokens
@@ -1148,6 +1173,28 @@ def init_db():
                           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                           FOREIGN KEY (post_id) REFERENCES posts(id),
                           FOREIGN KEY (community_id) REFERENCES communities(id))''')
+
+            # Useful documents (PDFs)
+            logger.info("Ensuring useful_docs table...")
+            if USE_MYSQL:
+                c.execute('''CREATE TABLE IF NOT EXISTS useful_docs (
+                                 id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                                 community_id INTEGER NULL,
+                                 username TEXT NOT NULL,
+                                 file_path TEXT NOT NULL,
+                                 description TEXT,
+                                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                                 FOREIGN KEY (community_id) REFERENCES communities(id)
+                             )''')
+            else:
+                c.execute('''CREATE TABLE IF NOT EXISTS useful_docs (
+                                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                 community_id INTEGER NULL,
+                                 username TEXT NOT NULL,
+                                 file_path TEXT NOT NULL,
+                                 description TEXT,
+                                 created_at TEXT DEFAULT (datetime('now'))
+                             )''')
             
             # Create community_announcements table
             logger.info("Creating community_announcements table...")
@@ -5294,33 +5341,23 @@ def send_message():
             # Invalidate message caches for faster updates
             invalidate_message_cache(username, recipient_username)
             
-            # Create or update notification for the recipient
+            # Create or update notification for the recipient (race-safe)
             try:
-                # Check for existing unread notification from this sender
+                # First try to update existing unread notification
                 c.execute("""
-                    SELECT id FROM notifications 
-                    WHERE user_id = ? AND from_user = ? AND type = 'message' 
-                    AND is_read = 0
-                    LIMIT 1
-                """, (recipient_username, username))
-                
-                existing_notif = c.fetchone()
-                
-                if existing_notif:
-                    # Update the existing notification timestamp
-                    c.execute("""
-                        UPDATE notifications 
-                        SET created_at = NOW(), 
-                            message = ?
-                        WHERE id = ?
-                    """, (f"You have new messages from {username}", existing_notif['id'] if hasattr(existing_notif, 'keys') else existing_notif[0]))
-                else:
-                    # Create new notification
+                    UPDATE notifications
+                    SET created_at = NOW(), message = ?
+                    WHERE user_id = ? AND from_user = ? AND type = 'message' AND is_read = 0
+                """, (f"You have new messages from {username}", recipient_username, username))
+                if getattr(c, 'rowcount', 0) == 0:
+                    # Insert only if no unread exists (atomic with WHERE NOT EXISTS)
                     c.execute("""
                         INSERT INTO notifications (user_id, from_user, type, message, created_at)
-                        VALUES (?, ?, 'message', ?, NOW())
-                    """, (recipient_username, username, f"You have new messages from {username}"))
-                
+                        SELECT ?, ?, 'message', ?, NOW()
+                        WHERE NOT EXISTS (
+                          SELECT 1 FROM notifications WHERE user_id=? AND from_user=? AND type='message' AND is_read=0
+                        )
+                    """, (recipient_username, username, f"You have new messages from {username}", recipient_username, username))
                 conn.commit()
             except Exception as notif_e:
                 logger.warning(f"Could not create/update message notification: {notif_e}")
@@ -5438,33 +5475,21 @@ def send_photo_message():
             
             conn.commit()
             
-            # Create or update notification for the recipient
+            # Create or update notification for the recipient (race-safe)
             try:
-                # Check for existing unread notification from this sender
                 c.execute("""
-                    SELECT id FROM notifications 
-                    WHERE user_id = ? AND from_user = ? AND type = 'message' 
-                    AND is_read = 0
-                    LIMIT 1
-                """, (recipient_username, username))
-                
-                existing_notif = c.fetchone()
-                
-                if existing_notif:
-                    # Update the existing notification timestamp
-                    c.execute("""
-                        UPDATE notifications 
-                        SET created_at = NOW(), 
-                            message = ?
-                        WHERE id = ?
-                    """, (f"You have new messages from {username}", existing_notif['id'] if hasattr(existing_notif, 'keys') else existing_notif[0]))
-                else:
-                    # Create new notification
+                    UPDATE notifications
+                    SET created_at = NOW(), message = ?
+                    WHERE user_id = ? AND from_user = ? AND type = 'message' AND is_read = 0
+                """, (f"You have new messages from {username}", recipient_username, username))
+                if getattr(c, 'rowcount', 0) == 0:
                     c.execute("""
                         INSERT INTO notifications (user_id, from_user, type, message, created_at)
-                        VALUES (?, ?, 'message', ?, NOW())
-                    """, (recipient_username, username, f"You have new messages from {username}"))
-                
+                        SELECT ?, ?, 'message', ?, NOW()
+                        WHERE NOT EXISTS (
+                          SELECT 1 FROM notifications WHERE user_id=? AND from_user=? AND type='message' AND is_read=0
+                        )
+                    """, (recipient_username, username, f"You have new messages from {username}", recipient_username, username))
                 conn.commit()
             except Exception as notif_e:
                 logger.warning(f"Could not create/update photo message notification: {notif_e}")
@@ -7239,6 +7264,68 @@ def create_notification(user_id, from_user, notification_type, post_id=None, com
         logger.error(f"Error creating notification: {str(e)}")
 
 
+def notify_post_reply_recipients(*, post_id: int, from_user: str, community_id: int|None, parent_reply_id: int|None):
+    """Create in-app notifications and web push for post reply recipients.
+    Recipients: post owner and (if applicable) parent reply author; excludes sender; dedup within short window.
+    """
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            # Determine recipients
+            recipients = set()
+            c.execute("SELECT username FROM posts WHERE id=?", (post_id,))
+            row = c.fetchone()
+            post_owner = (row['username'] if hasattr(row,'keys') else row[0]) if row else None
+            if post_owner and post_owner != from_user:
+                recipients.add(post_owner)
+            parent_author = None
+            if parent_reply_id:
+                c.execute("SELECT username FROM replies WHERE id=?", (parent_reply_id,))
+                r2 = c.fetchone()
+                parent_author = (r2['username'] if hasattr(r2,'keys') else r2[0]) if r2 else None
+                if parent_author and parent_author not in (from_user, post_owner):
+                    recipients.add(parent_author)
+
+            # Insert notifications (dedupe 10s by same from_user/post/type/recipient)
+            for target in recipients:
+                try:
+                    if USE_MYSQL:
+                        c.execute("""
+                            SELECT id FROM notifications
+                            WHERE user_id=? AND from_user=? AND type='reply' AND post_id=?
+                              AND created_at > DATE_SUB(NOW(), INTERVAL 10 SECOND)
+                            LIMIT 1
+                        """, (target, from_user, post_id))
+                    else:
+                        c.execute("""
+                            SELECT id FROM notifications
+                            WHERE user_id=? AND from_user=? AND type='reply' AND post_id=?
+                              AND datetime(created_at) > datetime('now','-10 seconds')
+                            LIMIT 1
+                        """, (target, from_user, post_id))
+                    exists = c.fetchone()
+                    if not exists:
+                        c.execute("""
+                            INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message)
+                            VALUES (?, ?, 'reply', ?, ?, ?)
+                        """, (target, from_user, post_id, community_id, f"{from_user} replied") )
+                        conn.commit()
+                except Exception as ne:
+                    logger.warning(f"reply notify db error to {target}: {ne}")
+
+                # Push notify (tag per user+post to allow coalescing)
+                try:
+                    send_push_to_user(target, {
+                        'title': f'New reply from {from_user}',
+                        'body': 'Tap to view the conversation',
+                        'url': f'/post/{post_id}',
+                        'tag': f'post-reply-{post_id}-{target}'
+                    })
+                except Exception as pe:
+                    logger.warning(f"reply push error to {target}: {pe}")
+    except Exception as e:
+        logger.error(f"notify_post_reply_recipients error: {e}")
+
 @app.route('/notifications')
 @login_required
 def notifications_page():
@@ -7692,6 +7779,9 @@ def post_reply():
     if not content and not image_path:
         return jsonify({'success': False, 'error': 'Content or image is required!'}), 400
 
+    # Idempotency token (optional)
+    dedupe_token = (request.form.get('dedupe_token') or '').strip()
+
     # Use DB-friendly ISO for storage; frontend will format for display
     now = datetime.now()
     timestamp_db = now.strftime('%Y-%m-%d %H:%M:%S')
@@ -7710,30 +7800,65 @@ def post_reply():
             community_id = post_data['community_id'] if post_data else None
             
             parent_reply_id = request.form.get('parent_reply_id', type=int)
+
+            # Strong dedupe: token-based and content-based within window
+            try:
+                if dedupe_token:
+                    if USE_MYSQL:
+                        c.execute("""
+                            SELECT 1 FROM recent_reply_tokens
+                            WHERE token=? AND username=? AND created_at > DATE_SUB(NOW(), INTERVAL 60 SECOND)
+                            LIMIT 1
+                        """, (dedupe_token, username))
+                    else:
+                        c.execute("""
+                            SELECT 1 FROM recent_reply_tokens
+                            WHERE token=? AND username=? AND datetime(created_at) > datetime('now','-60 seconds')
+                            LIMIT 1
+                        """, (dedupe_token, username))
+                    if c.fetchone():
+                        return jsonify({'success': True, 'message': 'Duplicate suppressed'}), 200
+                if content:
+                    if USE_MYSQL:
+                        c.execute("""
+                            SELECT id FROM replies
+                            WHERE post_id=? AND username=? AND IFNULL(parent_reply_id,0)=IFNULL(?,0)
+                              AND content=? AND timestamp > DATE_SUB(NOW(), INTERVAL 30 SECOND)
+                            LIMIT 1
+                        """, (post_id, username, parent_reply_id, content))
+                    else:
+                        c.execute("""
+                            SELECT id FROM replies
+                            WHERE post_id=? AND username=? AND IFNULL(parent_reply_id,0)=IFNULL(?,0)
+                              AND content=? AND datetime(timestamp) > datetime('now','-30 seconds')
+                            LIMIT 1
+                        """, (post_id, username, parent_reply_id, content))
+                    if c.fetchone():
+                        return jsonify({'success': True, 'message': 'Duplicate suppressed'}), 200
+            except Exception as de:
+                logger.warning(f"reply dedupe check failed: {de}")
             c.execute("INSERT INTO replies (post_id, username, content, image_path, timestamp, community_id, parent_reply_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
                       (post_id, username, content, image_path, timestamp_db, community_id, parent_reply_id))
             reply_id = c.lastrowid
-            
-            # Get post owner to send notification
-            c.execute("SELECT username FROM posts WHERE id = ?", (post_id,))
-            post_owner = c.fetchone()
-            if post_owner and post_owner['username'] != username:
-                # Insert notification directly in this transaction
-                c.execute("""
-                    INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                """, (post_owner['username'], username, 'reply', post_id, community_id,
-                      f"{username} replied to your post"))
-                # Also send a web push to the post owner
+
+            # Record token
+            try:
+                if dedupe_token:
+                    c.execute("INSERT IGNORE INTO recent_reply_tokens (token, username) VALUES (?, ?)", (dedupe_token, username))
+                    conn.commit()
+            except Exception:
                 try:
-                    send_push_to_user(post_owner['username'], {
-                        'title': f'New reply from {username}',
-                        'body': 'Tap to view the conversation',
-                        'url': f'/post/{post_id}',
-                        'tag': f'post-reply-{post_id}'
-                    })
-                except Exception as _e:
-                    logger.warning(f"push post_reply warn: {_e}")
+                    if dedupe_token:
+                        c.execute("INSERT OR IGNORE INTO recent_reply_tokens (token, username) VALUES (?, ?)", (dedupe_token, username))
+                        conn.commit()
+                except Exception as te:
+                    logger.warning(f"reply dedupe token write failed: {te}")
+            
+            # Notify recipients (post owner and parent reply author)
+            try:
+                notify_post_reply_recipients(post_id=post_id, from_user=username, community_id=community_id, parent_reply_id=parent_reply_id)
+            except Exception as ne:
+                logger.warning(f"notify recipients failed: {ne}")
             
             conn.commit()
 
@@ -10121,7 +10246,34 @@ def get_links():
                     'can_delete': link['username'] == username or username == 'admin'
                 })
             
-            return jsonify({'success': True, 'links': links})
+            # Also return docs (PDFs)
+            docs = []
+            try:
+                if community_id:
+                    c.execute("""
+                        SELECT id, username, file_path, description, created_at
+                        FROM useful_docs
+                        WHERE community_id = ?
+                        ORDER BY created_at DESC
+                    """, (community_id,))
+                else:
+                    c.execute("""
+                        SELECT id, username, file_path, description, created_at
+                        FROM useful_docs
+                        WHERE community_id IS NULL
+                        ORDER BY created_at DESC
+                    """)
+                for d in c.fetchall() or []:
+                    docs.append({
+                        'id': d['id'] if hasattr(d,'keys') else d[0],
+                        'username': d['username'] if hasattr(d,'keys') else d[1],
+                        'file_path': d['file_path'] if hasattr(d,'keys') else d[2],
+                        'description': d['description'] if hasattr(d,'keys') else d[3],
+                        'created_at': d['created_at'] if hasattr(d,'keys') else d[4]
+                    })
+            except Exception as de:
+                logger.warning(f"get_docs error: {de}")
+            return jsonify({'success': True, 'links': links, 'docs': docs})
             
     except Exception as e:
         logger.error(f"Error getting links: {str(e)}")
@@ -10160,6 +10312,61 @@ def add_link():
     except Exception as e:
         logger.error(f"Error adding link: {str(e)}")
         return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/upload_doc', methods=['POST'])
+@login_required
+def upload_doc():
+    """Upload a PDF document for Useful Links & Docs"""
+    try:
+        username = session['username']
+        community_id = request.form.get('community_id')
+        description = (request.form.get('description') or '').strip()
+        if 'file' not in request.files:
+            return jsonify({'success': False, 'error': 'No file provided'})
+        f = request.files['file']
+        if not f or f.filename == '':
+            return jsonify({'success': False, 'error': 'No file selected'})
+        # Only PDFs by extension
+        from werkzeug.utils import secure_filename
+        orig = secure_filename(f.filename)
+        ext = orig.rsplit('.', 1)[-1].lower() if '.' in orig else ''
+        if ext != 'pdf':
+            return jsonify({'success': False, 'error': 'Only PDF files are allowed'})
+        safe_name = f"doc_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{username}.pdf"
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        upload_dir = os.path.join(base_dir, 'uploads', 'docs')
+        os.makedirs(upload_dir, exist_ok=True)
+        file_path = os.path.join(upload_dir, safe_name)
+        try:
+            f.save(file_path)
+        except Exception as se:
+            logger.error(f"upload save error: {se}")
+            return jsonify({'success': False, 'error': 'Could not save file on server'})
+        rel_path = f"docs/{safe_name}"
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("""
+                INSERT INTO useful_docs (community_id, username, file_path, description, created_at)
+                VALUES (?, ?, ?, ?, ?)
+            """, (community_id if community_id else None, username, rel_path, description, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+            conn.commit()
+        return jsonify({'success': True, 'message': 'Document uploaded', 'path': f"/uploads/{rel_path}"})
+    except Exception as e:
+        logger.error(f"upload_doc error: {e}")
+        return jsonify({'success': False, 'error': 'Server error'})
+
+@app.route('/uploads/docs/<path:filename>')
+@login_required
+def serve_doc(filename):
+    try:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        upload_dir = os.path.join(base_dir, 'uploads', 'docs')
+        response = send_from_directory(upload_dir, filename, as_attachment=False)
+        response.headers['Cache-Control'] = 'public, max-age=86400'
+        return response
+    except Exception as e:
+        logger.error(f"serve_doc error: {e}")
+        return 'Not found', 404
 
 @app.route('/delete_link', methods=['POST'])
 @login_required
@@ -10903,12 +11110,18 @@ def get_post():
 @app.route('/communities')
 @login_required
 def communities():
-    """Main communities page"""
+    """Main communities page: Desktop -> HTML template; Mobile -> React SPA"""
     username = session['username']
     try:
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        dist_dir = os.path.join(base_dir, 'client', 'dist')
-        return send_from_directory(dist_dir, 'index.html')
+        ua = request.headers.get('User-Agent', '')
+        is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
+        if is_mobile:
+            # Serve React SPA for mobile
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            dist_dir = os.path.join(base_dir, 'client', 'dist')
+            return send_from_directory(dist_dir, 'index.html')
+        # Desktop: render HTML template with side menu
+        return render_template('communities.html', username=username)
     except Exception as e:
         logger.error(f"Error in communities for {username}: {str(e)}")
         abort(500)

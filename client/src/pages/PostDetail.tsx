@@ -64,6 +64,9 @@ export default function PostDetail(){
   const [file, setFile] = useState<File|null>(null)
   const [currentUser, setCurrentUser] = useState<string | null>(null)
   const [previewSrc, setPreviewSrc] = useState<string | null>(null)
+  const [submittingReply, setSubmittingReply] = useState(false)
+  const replyTokenRef = useRef<string>(`${Date.now()}_${Math.random().toString(36).slice(2)}`)
+  const [inlineSending, setInlineSending] = useState<Record<number, boolean>>({})
   
   const fileInputRef = useRef<HTMLInputElement|null>(null)
 
@@ -143,13 +146,17 @@ export default function PostDetail(){
 
   async function submitReply(parentReplyId?: number){
     if (!post || (!content && !file)) return
+    if (submittingReply) return
+    setSubmittingReply(true)
     const fd = new FormData()
     fd.append('post_id', String(post.id))
     fd.append('content', content)
     if (parentReplyId) fd.append('parent_reply_id', String(parentReplyId))
     if (file) fd.append('image', file)
+    fd.append('dedupe_token', replyTokenRef.current)
     const r = await fetch('/post_reply', { method:'POST', credentials:'include', body: fd })
     const j = await r.json().catch(()=>null)
+    setSubmittingReply(false)
     if (j?.success && j.reply){
       setPost(p => {
         if (!p) return p
@@ -168,18 +175,23 @@ export default function PostDetail(){
         return { ...p, replies: [j.reply, ...p.replies] }
       })
       setContent(''); setFile(null); if (fileInputRef.current) fileInputRef.current.value = ''
+      replyTokenRef.current = `${Date.now()}_${Math.random().toString(36).slice(2)}`
     }
   }
 
   async function submitInlineReply(parentId: number, text: string, file?: File){
     if (!post || (!text && !file)) return
+    if (inlineSending[parentId]) return
+    setInlineSending(s => ({ ...s, [parentId]: true }))
     const fd = new FormData()
     fd.append('post_id', String(post.id))
     fd.append('content', text || '')
     fd.append('parent_reply_id', String(parentId))
     if (file) fd.append('image', file)
+    fd.append('dedupe_token', `${Date.now()}_${Math.random().toString(36).slice(2)}`)
     const r = await fetch('/post_reply', { method:'POST', credentials:'include', body: fd })
     const j = await r.json().catch(()=>null)
+    setInlineSending(s => ({ ...s, [parentId]: false }))
     if (j?.success && j.reply){
       setPost(p => {
         if (!p) return p
@@ -228,7 +240,7 @@ export default function PostDetail(){
 
   return (
     <div className="min-h-screen bg-black text-white pb-24">
-      <div className="max-w-2xl mx-auto pt-14 px-3">
+      <div className="max-w-2xl mx-auto pt-14 px-3" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 14rem)' }}>
         <div className="mb-2">
           <button className="px-3 py-1.5 rounded-lg border border-white/10 bg-white/[0.03] text-sm hover:bg-white/10" onClick={()=> navigate(-1)} aria-label="Back">
             ← Back
@@ -260,9 +272,11 @@ export default function PostDetail(){
 
         <div className="mt-3 rounded-2xl border border-white/10">
           {post.replies.map(r => (
-            <ReplyNode key={r.id} reply={r} currentUser={currentUser} onToggle={(id, reaction)=> toggleReplyReaction(id, reaction)} onInlineReply={(id, text, file)=> submitInlineReply(id, text, file)} onDelete={(id)=> deleteReply(id)} onPreviewImage={(src)=> setPreviewSrc(src)} />
+            <ReplyNode key={r.id} reply={r} currentUser={currentUser} onToggle={(id, reaction)=> toggleReplyReaction(id, reaction)} onInlineReply={(id, text, file)=> submitInlineReply(id, text, file)} onDelete={(id)=> deleteReply(id)} onPreviewImage={(src)=> setPreviewSrc(src)} inlineSending={inlineSending} />
           ))}
         </div>
+        {/* Spacer to prevent fixed composer overlap with first replies */}
+        <div style={{ height: 'calc(env(safe-area-inset-bottom, 0px) + 12rem)' }} />
       </div>
 
       {/* Image preview modal */}
@@ -276,7 +290,7 @@ export default function PostDetail(){
       ) : null}
 
       {/* Fixed-bottom reply composer */}
-      <div className="fixed left-0 right-0 bottom-0 z-50 bg-black/85 border-t border-white/10 backdrop-blur">
+      <div className="fixed left-0 right-0 bottom-0 z-[100] bg-black/85 border-t border-white/10 backdrop-blur pointer-events-auto">
         <div className="px-3 py-2 flex flex-col gap-1.5">
           <textarea
             className="w-full resize-none max-h-36 min-h-[30px] px-3 py-1.5 rounded-2xl bg-black border border-[#4db6ac] text-[16px] focus:outline-none focus:ring-1 focus:ring-[#4db6ac]"
@@ -329,9 +343,9 @@ export default function PostDetail(){
               className="px-2.5 py-1.5 rounded-full bg-[#4db6ac] text-white border border-[#4db6ac] hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed"
               onClick={()=> submitReply()}
               aria-label="Send reply"
-              disabled={!content && !file}
+              disabled={(!content && !file) || submittingReply}
             >
-              <i className="fa-solid fa-paper-plane" />
+              {submittingReply ? <i className="fa-solid fa-spinner fa-spin" /> : <i className="fa-solid fa-paper-plane" />}
             </button>
           </div>
         </div>
@@ -358,7 +372,7 @@ function Reaction({ icon, count, active, onClick }:{ icon: string, count: number
   )
 }
 
-function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDelete, onPreviewImage }:{ reply: Reply, depth?: number, currentUser?: string|null, onToggle: (id:number, reaction:string)=>void, onInlineReply: (id:number, text:string, file?: File)=>void, onDelete: (id:number)=>void, onPreviewImage: (src:string)=>void }){
+function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDelete, onPreviewImage, inlineSending }:{ reply: Reply, depth?: number, currentUser?: string|null, onToggle: (id:number, reaction:string)=>void, onInlineReply: (id:number, text:string, file?: File)=>void, onDelete: (id:number)=>void, onPreviewImage: (src:string)=>void, inlineSending: Record<number, boolean> }){
   const [showComposer, setShowComposer] = useState(false)
   const [text, setText] = useState('')
   const [img, setImg] = useState<File|null>(null)
@@ -448,7 +462,7 @@ function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDel
             <div className="mt-2 space-y-2">
               <div className="flex items-center gap-2">
                 <input className="flex-1 px-3 py-1.5 rounded-full bg-black border border-[#4db6ac] text-[16px] focus:outline-none focus:ring-1 focus:ring-[#4db6ac]" value={text} onChange={(e)=> setText(e.target.value)} placeholder={`Reply to @${reply.username}`} />
-                <button type="button" className="w-10 h-10 rounded-full hover:bg-white/10 grid place-items-center" aria-label="Add image" onClick={()=> inlineFileRef.current?.click()}>
+                <button type="button" className="w-10 h-10 rounded-full hover:bg:white/10 grid place-items-center" aria-label="Add image" onClick={()=> inlineFileRef.current?.click()}>
                   <i className="fa-regular fa-image text-xl" style={{ color: img ? '#7fe7df' : '#4db6ac' }} />
                 </button>
                 <input
@@ -458,8 +472,8 @@ function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDel
                   onChange={(e)=> setImg((e.target as HTMLInputElement).files?.[0]||null)}
                   className="hidden"
                 />
-                <button className="px-2.5 py-1.5 rounded-full bg-[#4db6ac] text-white border border-[#4db6ac] hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed" onClick={()=> { if (!text && !img) return; onInlineReply(reply.id, text, img || undefined); setText(''); setImg(null); if (inlineFileRef.current) inlineFileRef.current.value=''; setShowComposer(false) }} aria-label="Send reply" disabled={!text && !img}>
-                  <i className="fa-solid fa-paper-plane" />
+                <button className="px-2.5 py-1.5 rounded-full bg-[#4db6ac] text-white border border-[#4db6ac] hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed" onClick={()=> { if (!text && !img) return; onInlineReply(reply.id, text, img || undefined); setText(''); setImg(null); if (inlineFileRef.current) inlineFileRef.current.value=''; setShowComposer(false) }} aria-label="Send reply" disabled={!text && !img || !!inlineSending[reply.id]}>
+                  {inlineSending[reply.id] ? <i className="fa-solid fa-spinner fa-spin" /> : <i className="fa-solid fa-paper-plane" />}
                 </button>
               </div>
               {img && (
@@ -480,7 +494,7 @@ function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDel
         </div>
       </div>
       {reply.children && reply.children.length ? reply.children.map(ch => (
-        <ReplyNode key={ch.id} reply={ch} depth={Math.min(depth+1, 3)} currentUser={currentUser} onToggle={onToggle} onInlineReply={onInlineReply} onDelete={onDelete} onPreviewImage={onPreviewImage} />
+        <ReplyNode key={ch.id} reply={ch} depth={Math.min(depth+1, 3)} currentUser={currentUser} onToggle={onToggle} onInlineReply={onInlineReply} onDelete={onDelete} onPreviewImage={onPreviewImage} inlineSending={inlineSending} />
       )) : null}
     </div>
   )
