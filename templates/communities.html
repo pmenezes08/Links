@@ -1,6 +1,93 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Communities</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/normalize/8.0.1/normalize.min.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+  <style>
+    body { background: #0b0f10; color: #fff; font-family: system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji"; }
+    .layout { display: grid; grid-template-columns: 220px 1fr; min-height: 100vh; }
+    .sidebar { border-right: 1px solid #333; background: #1a1a1a; position: sticky; top: 0; height: 100vh; }
+    .sidebar .title { height: 56px; display: flex; align-items: center; padding: 0 12px; border-bottom: 1px solid #333; font-weight: 600; }
+    .sidebar nav a { display: block; padding: 10px 16px; color: #cfd8dc; text-decoration: none; }
+    .sidebar nav a:hover { background: rgba(0,0,0,0.2); color: #7fe7df; }
+    .content { padding: 16px; }
+    .card { background: #000; border: 1px solid rgba(255,255,255,0.1); border-radius: 14px; padding: 12px; margin-bottom: 12px; }
+    .grid { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 12px; }
+    .btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; background: #4db6ac; color: #000; border-radius: 8px; border: 1px solid #4db6ac; text-decoration: none; }
+    .btn:hover { filter: brightness(1.1); }
+    .muted { color: #9fb0b5; font-size: 13px; }
+    @media (max-width: 1024px){ .grid{ grid-template-columns: repeat(2, minmax(0,1fr)); } }
+    @media (max-width: 768px){ .grid{ grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <!-- Sidebar (reuse structure from other HTML pages) -->
+    <aside class="sidebar">
+      <div class="title">Dashboard</div>
+      <nav>
+        <a href="/dashboard"><i class="fa-solid fa-gauge-high"></i> &nbsp;Dashboard</a>
+        <a href="/profile"><i class="fa-solid fa-user"></i> &nbsp;Profile</a>
+        <a href="/user_chat"><i class="fa-solid fa-message"></i> &nbsp;Messages</a>
+        <a href="/communities" style="color:#7fe7df"><i class="fa-solid fa-people-group"></i> &nbsp;Your Communities</a>
+        <a href="/logout"><i class="fa-solid fa-right-from-bracket"></i> &nbsp;Logout</a>
+        <a href="/account_settings"><i class="fa-solid fa-cog"></i> &nbsp;Settings</a>
+      </nav>
+    </aside>
+
+    <!-- Content -->
+    <main class="content">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom: 10px;">
+        <h2 style="margin:0">Your Communities</h2>
+        <div style="display:flex; gap:8px;">
+          <form action="/communities" method="GET" onsubmit="return false" class="muted">Desktop HTML view</form>
+        </div>
+      </div>
+
+      <!-- Actions -->
+      <div class="card" style="display:flex; gap:8px; align-items:center; justify-content:space-between;">
+        <div class="muted">Create or Join a community</div>
+        <div style="display:flex; gap:8px;">
+          <a class="btn" href="/premium_dashboard"><i class="fa-solid fa-plus"></i> Create</a>
+          <a class="btn" href="/premium_dashboard"><i class="fa-solid fa-door-open"></i> Join</a>
+        </div>
+      </div>
+
+      <!-- Placeholder list (the actual list is React on mobile; here show links to main feeds) -->
+      <div class="grid">
+        <div class="card">
+          <div style="font-weight:600;">Community Feed</div>
+          <div class="muted">Open the unified communities experience</div>
+          <div style="margin-top:8px;">
+            <a class="btn" href="/communities?parent_id="><i class="fa-solid fa-arrow-right"></i> Open</a>
+          </div>
+        </div>
+        <div class="card">
+          <div style="font-weight:600;">Go to Messages</div>
+          <div class="muted">Chat with your community members</div>
+          <div style="margin-top:8px;">
+            <a class="btn" href="/user_chat"><i class="fa-solid fa-message"></i> Open</a>
+          </div>
+        </div>
+        <div class="card">
+          <div style="font-weight:600;">Product Development</div>
+          <div class="muted">Updates and feedback</div>
+          <div style="margin-top:8px;">
+            <a class="btn" href="/product_development"><i class="fa-solid fa-flask"></i> Open</a>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</body>
+</html>
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<title>Your Communities</title>
