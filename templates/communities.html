@@ -13,12 +13,15 @@
     .sidebar .title { height: 56px; display: flex; align-items: center; padding: 0 12px; border-bottom: 1px solid #333; font-weight: 600; }
     .sidebar nav a { display: block; padding: 10px 16px; color: #cfd8dc; text-decoration: none; }
     .sidebar nav a:hover { background: rgba(0,0,0,0.2); color: #7fe7df; }
-    .content { padding: 16px; }
+    .content { padding: 24px; }
     .card { background: #000; border: 1px solid rgba(255,255,255,0.1); border-radius: 14px; padding: 12px; margin-bottom: 12px; }
     .grid { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 12px; }
     .btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; background: #4db6ac; color: #000; border-radius: 8px; border: 1px solid #4db6ac; text-decoration: none; }
     .btn:hover { filter: brightness(1.1); }
     .muted { color: #9fb0b5; font-size: 13px; }
+    .tabs { position: sticky; top: 0; background: rgba(11,15,16,0.9); backdrop-filter: blur(6px); z-index: 20; display:flex; gap:10px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+    .tabs .tab { flex: 0 0 auto; padding: 10px 14px; border-radius: 12px 12px 0 0; color: #9fb0b5; cursor: pointer; border: 1px solid transparent; border-bottom: none; }
+    .tabs .tab.active { color: #fff; border-color: rgba(255,255,255,0.12); background: #0f1516; }
     @media (max-width: 1024px){ .grid{ grid-template-columns: repeat(2, minmax(0,1fr)); } }
     @media (max-width: 768px){ .grid{ grid-template-columns: 1fr; } }
   </style>
@@ -41,39 +44,56 @@
     <!-- Content -->
     <main class="content">
       <div style="max-width: 1100px; margin: 0 auto;">
-        <!-- Page title -->
-        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom: 12px;">
-          <h2 style="margin:0">Communities</h2>
-          <div class="muted">Desktop HTML view</div>
+        <h2 style="margin:0 0 8px 0">Communities</h2>
+        <!-- Top tabs -->
+        <div class="tabs">
+          <div id="tab-timeline" class="tab active" onclick="switchTab('timeline')">Home Timeline</div>
+          <div id="tab-communities" class="tab" onclick="switchTab('communities')">Community List</div>
         </div>
 
         <!-- Home Timeline section -->
-        <section class="card" style="margin-bottom: 16px;">
-          <div style="display:flex; align-items:center; justify-content:space-between;">
-            <h3 style="margin: 0; font-size: 18px;">Home Timeline</h3>
-            <a class="btn" href="/communities?parent_id="><i class="fa-solid fa-arrow-right"></i> Open React view</a>
+        <section id="section-timeline" style="margin-top: 12px;">
+          <div class="card" style="margin-bottom: 16px;">
+            <div style="display:flex; align-items:center; justify-content:space-between;">
+              <h3 style="margin: 0; font-size: 18px;">Home Timeline</h3>
+            </div>
+            <div class="muted" style="margin-top: 4px;">Most recent posts across all your communities</div>
+            <div id="timeline" style="margin-top: 10px; display: grid; gap: 10px;"></div>
           </div>
-          <div class="muted" style="margin-top: 4px;">Most recent posts across all your communities</div>
-          <div id="timeline" style="margin-top: 10px; display: grid; gap: 10px;"></div>
         </section>
 
         <!-- Communities Management section -->
-        <section class="card">
-          <div style="display:flex; align-items:center; justify-content:space-between;">
-            <h3 style="margin: 0; font-size: 18px;">Your Communities</h3>
-            <div style="display:flex; gap:8px;">
-              <a class="btn" href="/premium_dashboard"><i class="fa-solid fa-plus"></i> Create</a>
-              <a class="btn" href="/premium_dashboard"><i class="fa-solid fa-door-open"></i> Join</a>
+        <section id="section-communities" style="display:none; margin-top: 12px;">
+          <div class="card">
+            <div style="display:flex; align-items:center; justify-content:space-between;">
+              <h3 style="margin: 0; font-size: 18px;">Your Communities</h3>
+              <div style="display:flex; gap:8px;">
+                <a class="btn" href="/premium_dashboard"><i class="fa-solid fa-plus"></i> Create</a>
+                <a class="btn" href="/premium_dashboard"><i class="fa-solid fa-door-open"></i> Join</a>
+              </div>
             </div>
+            <div class="muted" style="margin-top: 4px;">Manage and access your communities</div>
+            <div id="communities" style="margin-top: 10px; display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 10px;"></div>
           </div>
-          <div class="muted" style="margin-top: 4px;">Manage and access your communities</div>
-          <div id="communities" style="margin-top: 10px; display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 10px;"></div>
         </section>
       </div>
     </main>
   </div>
 
   <script>
+    function switchTab(which){
+      const t1 = document.getElementById('tab-timeline')
+      const t2 = document.getElementById('tab-communities')
+      const s1 = document.getElementById('section-timeline')
+      const s2 = document.getElementById('section-communities')
+      if (which === 'timeline'){
+        t1.classList.add('active'); t2.classList.remove('active')
+        s1.style.display = ''; s2.style.display = 'none'
+      } else {
+        t2.classList.add('active'); t1.classList.remove('active')
+        s2.style.display = ''; s1.style.display = 'none'
+      }
+    }
     // Fetch Home Timeline (same API used by React mobile)
     async function loadTimeline(){
       const el = document.getElementById('timeline')
