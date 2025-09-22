@@ -12967,6 +12967,44 @@ def static_uploaded_file(filename):
         logger.error(f"Error serving static image {filename}: {str(e)}")
         return "Error serving image", 500
 
+@app.route('/uploads/<path:filename>')
+def uploaded_file_compat(filename):
+    """Compatibility route for uploads served under /uploads.
+    Tries static/uploads first (default save location), then root uploads for special folders.
+    """
+    try:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        static_dir = os.path.join(base_dir, 'static', 'uploads')
+        # Serve from static/uploads if present
+        candidate = os.path.join(static_dir, filename)
+        if os.path.exists(candidate):
+            resp = send_from_directory(static_dir, filename)
+            resp.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
+            return resp
+        # Fallbacks for message_photos and docs saved under root uploads/
+        root_uploads = os.path.join(base_dir, 'uploads')
+        mp_dir = os.path.join(root_uploads, 'message_photos')
+        docs_dir = os.path.join(root_uploads, 'docs')
+        if filename.startswith('message_photos/'):
+            sub = filename.split('message_photos/', 1)[1]
+            full = os.path.join(mp_dir, sub)
+            if os.path.exists(full):
+                resp = send_from_directory(mp_dir, sub)
+                resp.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
+                return resp
+        if filename.startswith('docs/'):
+            sub = filename.split('docs/', 1)[1]
+            full = os.path.join(docs_dir, sub)
+            if os.path.exists(full):
+                resp = send_from_directory(docs_dir, sub)
+                resp.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
+                return resp
+        # Not found
+        return 'Not found', 404
+    except Exception as e:
+        logger.error(f"Error in uploaded_file_compat for {filename}: {e}")
+        return 'Error', 500
+
 @app.route('/static/community_backgrounds/<path:filename>')
 def community_background_file(filename):
     """Serve community background images"""
