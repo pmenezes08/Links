@@ -11113,6 +11113,15 @@ def communities():
     """Main communities page: Desktop -> HTML template; Mobile -> React SPA"""
     username = session['username']
     try:
+        # Allow manual override via query param
+        view = (request.args.get('view') or '').lower().strip()
+        if view == 'html':
+            return render_template('communities.html', username=username)
+        if view == 'react':
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            dist_dir = os.path.join(base_dir, 'client', 'dist')
+            return send_from_directory(dist_dir, 'index.html')
+
         ua = request.headers.get('User-Agent', '')
         is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
         if is_mobile:

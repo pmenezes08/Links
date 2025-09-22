@@ -16,7 +16,7 @@ export default function PremiumDashboard() {
   const [newCommType, setNewCommType] = useState<'Gym'|'University'|'General'>('Gym')
   const [parentOptions, setParentOptions] = useState<Array<{ id:number; name:string; type?:string }>>([])
   const [selectedParentId, setSelectedParentId] = useState<string>('none')
-  const [parentsWithChildren, setParentsWithChildren] = useState<Set<number>>(new Set())
+  // Removed parentsWithChildren usage in desktop since cards now route to unified communities page
   const [emailVerified, setEmailVerified] = useState<boolean|null>(null)
   const [showVerifyFirstModal, setShowVerifyFirstModal] = useState(false)
   const { setTitle } = useHeader()
@@ -66,18 +66,7 @@ export default function PremiumDashboard() {
           setCommunities([])
         }
 
-        // Fetch hierarchical communities to detect which parents have children
-        try {
-          const hierData = await fetchJson('/api/user_communities_hierarchical')
-          const parents = new Set<number>()
-          if (hierData?.success && Array.isArray(hierData.communities)) {
-            for (const c of hierData.communities) {
-              const pid: number | null | undefined = c.parent_community_id
-              if (pid !== null && pid !== undefined) parents.add(pid as number)
-            }
-          }
-          setParentsWithChildren(parents)
-        } catch {}
+        // (No longer needed for desktop routing) Fetch of hierarchical communities removed
       } catch (error) {
         console.error('Error loading user data:', error)
         setHasGymAccess(false)
@@ -182,16 +171,9 @@ export default function PremiumDashboard() {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {/* Show all communities */}
               {communities.map(community => {
-              const typeLower = (community.type || '').toLowerCase()
-              const hasChildren = parentsWithChildren.has(community.id) || ((community.type || '').toLowerCase() === 'university')
+              // Desktop HTML communities page now provides the unified view
               const onCardClick = () => {
-                if (typeLower === 'gym') {
-                  navigate(`/communities?parent_id=${community.id}`)
-                } else if (!hasChildren) {
-                  navigate(`/community_feed_react/${community.id}`)
-                } else {
-                  navigate(`/communities?parent_id=${community.id}`)
-                }
+                navigate('/communities')
               }
               return (
                 <Card 
