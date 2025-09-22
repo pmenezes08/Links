@@ -989,6 +989,34 @@ def add_missing_tables():
             except Exception as e:
                 logger.warning(f"Could not ensure useful_links table: {e}")
 
+            # Ensure useful_docs table exists (for PDF uploads)
+            try:
+                if USE_MYSQL:
+                    c.execute("SHOW TABLES LIKE 'useful_docs'")
+                    if not c.fetchone():
+                        c.execute('''CREATE TABLE IF NOT EXISTS useful_docs (
+                                         id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                                         community_id INTEGER NULL,
+                                         username VARCHAR(191) NOT NULL,
+                                         file_path TEXT NOT NULL,
+                                         description TEXT,
+                                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                                         FOREIGN KEY (community_id) REFERENCES communities(id)
+                                     )''')
+                        conn.commit()
+                else:
+                    c.execute('''CREATE TABLE IF NOT EXISTS useful_docs (
+                                     id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                     community_id INTEGER NULL,
+                                     username TEXT NOT NULL,
+                                     file_path TEXT NOT NULL,
+                                     description TEXT,
+                                     created_at TEXT DEFAULT (datetime('now'))
+                                 )''')
+                    conn.commit()
+            except Exception as e:
+                logger.warning(f"Could not ensure useful_docs table: {e}")
+
             conn.commit()
             logger.info("Missing tables and columns added successfully")
             
