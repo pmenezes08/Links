@@ -10439,6 +10439,42 @@ def upload_doc():
         logger.error(f"upload_doc error: {e}")
         return jsonify({'success': False, 'error': 'Server error'})
 
+@app.route('/delete_doc', methods=['POST'])
+@login_required
+def delete_doc():
+    """Delete a previously uploaded PDF document"""
+    try:
+        username = session.get('username')
+        doc_id = request.form.get('doc_id')
+        if not doc_id:
+            return jsonify({'success': False, 'error': 'doc_id required'})
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            # Fetch doc owner and path
+            c.execute("SELECT username, file_path FROM useful_docs WHERE id = ?", (doc_id,))
+            row = c.fetchone()
+            if not row:
+                return jsonify({'success': False, 'error': 'Document not found'})
+            owner = row['username'] if hasattr(row, 'keys') else row[0]
+            path = row['file_path'] if hasattr(row, 'keys') else row[1]
+            if username != owner and username != 'admin':
+                return jsonify({'success': False, 'error': 'Forbidden'})
+            # Delete DB row
+            c.execute("DELETE FROM useful_docs WHERE id = ?", (doc_id,))
+            conn.commit()
+        # Attempt to delete file on disk
+        try:
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            disk_path = os.path.join(base_dir, 'uploads', path)
+            if os.path.exists(disk_path):
+                os.remove(disk_path)
+        except Exception as fe:
+            logger.warning(f"Could not remove doc file {path}: {fe}")
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"Error deleting doc: {e}")
+        return jsonify({'success': False, 'error': 'Server error'})
+
 # Docs served by web server static mapping (/uploads/docs -> uploads/docs)
 
 @app.route('/delete_link', methods=['POST'])
