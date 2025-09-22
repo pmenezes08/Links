@@ -961,6 +961,34 @@ def add_missing_tables():
             except Exception as e:
                 logger.warning(f"Could not ensure email verification columns on users: {e}")
 
+            # Ensure useful_links table exists (for Useful Links & Docs)
+            try:
+                if USE_MYSQL:
+                    c.execute("SHOW TABLES LIKE 'useful_links'")
+                    if not c.fetchone():
+                        c.execute('''CREATE TABLE IF NOT EXISTS useful_links (
+                                         id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                                         community_id INTEGER NULL,
+                                         username VARCHAR(191) NOT NULL,
+                                         url TEXT NOT NULL,
+                                         description TEXT,
+                                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                                         FOREIGN KEY (community_id) REFERENCES communities(id)
+                                     )''')
+                        conn.commit()
+                else:
+                    c.execute('''CREATE TABLE IF NOT EXISTS useful_links (
+                                     id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                     community_id INTEGER NULL,
+                                     username TEXT NOT NULL,
+                                     url TEXT NOT NULL,
+                                     description TEXT,
+                                     created_at TEXT DEFAULT (datetime('now'))
+                                 )''')
+                    conn.commit()
+            except Exception as e:
+                logger.warning(f"Could not ensure useful_links table: {e}")
+
             conn.commit()
             logger.info("Missing tables and columns added successfully")
             
@@ -1204,6 +1232,28 @@ def init_db():
                                  community_id INTEGER NULL,
                                  username TEXT NOT NULL,
                                  file_path TEXT NOT NULL,
+                                 description TEXT,
+                                 created_at TEXT DEFAULT (datetime('now'))
+                             )''')
+
+            # Useful links (URLs)
+            logger.info("Ensuring useful_links table...")
+            if USE_MYSQL:
+                c.execute('''CREATE TABLE IF NOT EXISTS useful_links (
+                                 id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                                 community_id INTEGER NULL,
+                                 username VARCHAR(191) NOT NULL,
+                                 url TEXT NOT NULL,
+                                 description TEXT,
+                                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                                 FOREIGN KEY (community_id) REFERENCES communities(id)
+                             )''')
+            else:
+                c.execute('''CREATE TABLE IF NOT EXISTS useful_links (
+                                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                 community_id INTEGER NULL,
+                                 username TEXT NOT NULL,
+                                 url TEXT NOT NULL,
                                  description TEXT,
                                  created_at TEXT DEFAULT (datetime('now'))
                              )''')
