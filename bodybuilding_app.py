@@ -2084,28 +2084,17 @@ def business_login_required(f):
 @app.route('/', methods=['GET', 'POST'])
 # @csrf.exempt
 def index():
-    print(f"=== INDEX ROUTE: Method={request.method}, Form={dict(request.form)}")
-    logger.info(f"=== INDEX ROUTE: Method={request.method}")
-    logger.info(f"Form data: {dict(request.form)}")
-    logger.info(f"Content-Type: {request.headers.get('Content-Type')}")
-    
-    # Simple test - if ANY POST comes in, log it clearly
-    if request.method == 'POST':
-        print("POST REQUEST RECEIVED IN INDEX!")
-        logger.info("POST REQUEST RECEIVED IN INDEX!")
-        logger.info(f"Raw data: {request.get_data()}")
+    # Reduce verbose logging in production for index/login flows
+    # Debug prints removed
     
     if request.method == 'POST':
         username = (request.form.get('username') or '').strip()
-        print(f"Received username: {username}")
-        logger.info(f"Received username: {username}")
 
         # Determine if request is from a mobile device
         ua = request.headers.get('User-Agent', '')
         is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
 
         if not username:
-            print("Username missing or empty")
             logger.warning("Username missing or empty")
             if is_mobile:
                 # Redirect to React mobile page with error message
@@ -2114,29 +2103,22 @@ def index():
 
         # Validate username exists in database
         try:
-            logger.info(f"Attempting to validate username: {username}")
             with get_db_connection() as conn:
-                logger.info("Database connection obtained")
                 c = conn.cursor()
                 # Use the automatic placeholder conversion
                 placeholder = get_sql_placeholder()
-                logger.info(f"Executing query for username: {username} with placeholder: {placeholder}")
                 c.execute(f"SELECT 1 FROM users WHERE username={placeholder} LIMIT 1", (username,))
                 result = c.fetchone()
                 exists = result is not None
-                logger.info(f"Username exists: {exists}, result: {result}")
         except Exception as e:
             logger.error(f"Database error validating username '{username}': {e}")
             import traceback
             logger.error(f"Traceback: {traceback.format_exc()}")
-            print(f"Database error: {e}")
-            print(traceback.format_exc())
             if is_mobile:
                 return redirect(url_for('index', error='Server error. Please try again.'))
             return render_template('index.html', error=f"Database error: {str(e)}")
 
         if not exists:
-            print("Username does not exist")
             logger.warning(f"Username not found: {username}")
             if is_mobile:
                 return redirect(url_for('index', error='Username does not exist'))
@@ -2147,15 +2129,7 @@ def index():
         session['username'] = username
         session.permanent = True  # Make session persist
         session.modified = True  # Force session to be saved
-        print(f"Session username set to: {session['username']}")
-        logger.info(f"Session username set to: {session['username']}")
-        logger.info(f"Session after setting: {dict(session)}")
-        logger.info(f"Session ID: {request.cookies.get('session', 'NO SESSION COOKIE')}")
-        logger.info(f"Request host: {request.host}")
-        logger.info(f"Request URL: {request.url}")
-        response = redirect(url_for('login_password'))
-        logger.info(f"Redirecting to login_password with session: {dict(session)}")
-        return response
+        return redirect(url_for('login_password'))
     # GET request: Desktop -> HTML template, Mobile -> React (if available)
     try:
         ua = request.headers.get('User-Agent', '')
@@ -2166,10 +2140,16 @@ def index():
                 dist_dir = os.path.join(base_dir, 'client', 'dist')
                 index_path = os.path.join(dist_dir, 'index.html')
                 if os.path.exists(index_path):
-                    return send_from_directory(dist_dir, 'index.html')
+                    resp = send_from_directory(dist_dir, 'index.html')
+                    try:
+                        resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+                        resp.headers['Pragma'] = 'no-cache'
+                        resp.headers['Expires'] = '0'
+                    except Exception:
+                        pass
+                    return resp
             except Exception as e:
                 logger.warning(f"React mobile index not available: {e}")
-        print("Rendering index.html for GET request (desktop or React missing)")
         return render_template('index.html')
     except Exception as e:
         logger.error(f"Error in / route: {str(e)}")
@@ -2473,26 +2453,13 @@ def logout():
 @app.route('/login_password', methods=['GET', 'POST'])
 # @csrf.exempt
 def login_password():
-    print("Entering login_password route")
-    logger.info(f"login_password route - Request cookies: {request.cookies}")
-    logger.info(f"login_password route - Old session cookie: {request.cookies.get('session', 'NO OLD COOKIE')}")
-    logger.info(f"login_password route - New session cookie: {request.cookies.get('cpoint_session', 'NO NEW COOKIE')}")
-    logger.info(f"login_password route - Session contents: {dict(session)}")
-    logger.info(f"login_password route - Session keys: {list(session.keys())}")
-    logger.info(f"login_password route - Request headers Host: {request.headers.get('Host')}")
+    # Quiet noisy logs in production
     if 'username' not in session:
-        print("No username in session, redirecting to /")
-        logger.error(f"No username in session! Session: {dict(session)}")
-        logger.error(f"Secret key hash: {hash(app.secret_key)}")
         return redirect(url_for('index'))
     username = session['username']
-    print(f"Username from session: {username}")
-    logger.info(f"Username from session: {username}")
     if request.method == 'POST':
         password = request.form.get('password', '')
-        print(f"Password entered: {password}")
         if username == 'admin' and password == '12345':
-            print("Hardcoded admin match, redirecting to communities")
             return redirect(url_for('communities'))
         try:
             conn = get_db_connection()
@@ -2508,7 +2475,6 @@ def login_password():
                 row = (r2[0], r2[1], 1) if r2 else None
             user = row
             conn.close()
-            print(f"DB query result: user found = {user is not None}")
             if user:
                 stored_password = user[0] if isinstance(user, (list, tuple)) else user['password']
                 subscription = user[1] if isinstance(user, (list, tuple)) else user.get('subscription')
@@ -2525,16 +2491,11 @@ def login_password():
                 if stored_password and (stored_password.startswith('$') or stored_password.startswith('scrypt:') or stored_password.startswith('pbkdf2:')):
                     # Password is hashed, use check_password_hash
                     password_correct = check_password_hash(stored_password, password)
-                    print(f"Using hashed password check, result: {password_correct}")
-                    print(f"Hash type detected: {stored_password[:10]}...")
                 else:
                     # Password is plain text (legacy), direct comparison
                     password_correct = (stored_password == password)
-                    print(f"Using plain text password check, result: {password_correct}")
                 
                 if password_correct:
-                    print(f"Password matches, subscription: {subscription}")
-                    
                     # Track login
                     try:
                         conn = get_db_connection()
@@ -2559,16 +2520,12 @@ def login_password():
                     return resp
                     
                 else:
-                    print("Password mismatch")
                     return render_template('login.html', username=username, error="Incorrect password. Please try again.")
             else:
-                print("User not found")
                 return render_template('login.html', username=username, error="Incorrect password. Please try again.")
         except Exception as e:
-            print(f"Database error: {str(e)}")
             logger.error(f"Database error in login_password for {username}: {str(e)}")
             abort(500)
-    print("Rendering login.html for GET request")
     return render_template('login.html', username=username)
 
 @app.route('/dashboard')
