@@ -1774,6 +1774,8 @@ def admin_compress_images():
     Scans posts, replies, user profile pictures, community backgrounds, message photos.
     """
     username = session.get('username')
+    if not username:
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 401
     if not is_app_admin(username):
         return jsonify({'success': False, 'error': 'Forbidden'}), 403
 
