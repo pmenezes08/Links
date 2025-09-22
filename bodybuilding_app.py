@@ -1769,7 +1769,6 @@ def is_app_admin(username):
         return False
 
 @app.route('/api/admin/compress_images', methods=['POST'])
-@login_required
 def admin_compress_images():
     """Admin-only: compress existing uploaded images on disk referenced by DB.
     Scans posts, replies, user profile pictures, community backgrounds, message photos.
