@@ -2648,9 +2648,10 @@ def react_assets(filename):
         if os.path.exists(asset_path):
             resp = send_from_directory(assets_dir, filename)
             try:
-                resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-                resp.headers['Pragma'] = 'no-cache'
-                resp.headers['Expires'] = '0'
+                # Hashed asset filenames are safe to cache long-term
+                resp.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
+                resp.headers.pop('Pragma', None)
+                resp.headers.pop('Expires', None)
             except Exception:
                 pass
             return resp
