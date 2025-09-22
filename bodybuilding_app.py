@@ -75,26 +75,38 @@ ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 def optimize_image(file_path, max_width=1920, quality=85):
-    """Optimize image for web - compress and resize if needed"""
+    """Optimize image for web - compress and resize if needed, preserving format when possible."""
     if not PIL_AVAILABLE:
         return False
-    
+
     try:
+        ext = os.path.splitext(file_path)[1].lower()
         with Image.open(file_path) as img:
-            # Convert RGBA to RGB if necessary (for JPEG compatibility)
-            if img.mode in ('RGBA', 'LA', 'P'):
-                rgb_img = Image.new('RGB', img.size, (255, 255, 255))
-                rgb_img.paste(img, mask=img.split()[-1] if img.mode == 'RGBA' else None)
-                img = rgb_img
-            
             # Resize if image is too large
             if img.width > max_width:
                 ratio = max_width / img.width
                 new_height = int(img.height * ratio)
                 img = img.resize((max_width, new_height), Image.Resampling.LANCZOS)
-            
-            # Save with optimization
-            img.save(file_path, 'JPEG', quality=quality, optimize=True, progressive=True)
+
+            if ext in ('.jpg', '.jpeg'):
+                # Convert to RGB for JPEG
+                if img.mode not in ('RGB', 'L'):
+                    img = img.convert('RGB')
+                img.save(file_path, format='JPEG', quality=quality, optimize=True, progressive=True)
+            elif ext == '.png':
+                # Preserve transparency if present
+                save_params = {'optimize': True}
+                try:
+                    # Use maximum compression level if available
+                    save_params['compress_level'] = 9
+                except Exception:
+                    pass
+                img.save(file_path, format='PNG', **save_params)
+            elif ext == '.webp':
+                img.save(file_path, format='WEBP', quality=quality, method=6)
+            else:
+                # For GIF and other formats, skip heavy processing
+                return False
             return True
     except Exception as e:
         logger.warning(f"Could not optimize image {file_path}: {e}")
@@ -1755,6 +1767,95 @@ def is_app_admin(username):
         return bool(username) and username.lower() in ('admin', 'paulo')
     except Exception:
         return False
+
+@app.route('/api/admin/compress_images', methods=['POST'])
+@login_required
+def admin_compress_images():
+    """Admin-only: compress existing uploaded images on disk referenced by DB.
+    Scans posts, replies, user profile pictures, community backgrounds, message photos.
+    """
+    username = session.get('username')
+    if not is_app_admin(username):
+        return jsonify({'success': False, 'error': 'Forbidden'}), 403
+
+    compressed = 0
+    skipped = 0
+    missing = 0
+    errored = 0
+
+    paths: set[str] = set()
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            for query in (
+                "SELECT image_path FROM posts WHERE image_path IS NOT NULL AND image_path != ''",
+                "SELECT image_path FROM replies WHERE image_path IS NOT NULL AND image_path != ''",
+                "SELECT profile_picture FROM user_profiles WHERE profile_picture IS NOT NULL AND profile_picture != ''",
+                "SELECT background_path FROM communities WHERE background_path IS NOT NULL AND background_path != ''",
+                "SELECT image_path FROM messages WHERE image_path IS NOT NULL AND image_path != ''",
+            ):
+                try:
+                    c.execute(query)
+                    for row in c.fetchall():
+                        try:
+                            val = row[0] if not hasattr(row, 'keys') else list(row.values())[0]
+                        except Exception:
+                            # Fallback: handle mapping/dict-style
+                            if hasattr(row, 'keys'):
+                                val = next(iter(row.values()))
+                            else:
+                                val = None
+                        if val:
+                            paths.add(str(val))
+                except Exception:
+                    continue
+    except Exception as e:
+        logger.error(f"Error collecting image paths: {e}")
+        return jsonify({'success': False, 'error': 'Failed to collect image paths'})
+
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    static_uploads = os.path.join(base_dir, 'static', 'uploads')
+    root_uploads = os.path.join(base_dir, 'uploads')
+
+    def resolve_path(p: str) -> str:
+        clean = (p or '').replace('\r', '').replace('\n', '').strip('/')
+        candidates = []
+        if clean.startswith('uploads/'):
+            candidates.append(os.path.join(base_dir, clean))
+            candidates.append(os.path.join(static_uploads, clean.split('uploads/',1)[1]))
+        else:
+            candidates.append(os.path.join(static_uploads, clean))
+            candidates.append(os.path.join(root_uploads, clean))
+        for c in candidates:
+            if os.path.exists(c):
+                return c
+        return candidates[0]
+
+    for p in list(paths):
+        disk_path = resolve_path(p)
+        if not os.path.exists(disk_path):
+            missing += 1
+            continue
+        try:
+            before = os.path.getsize(disk_path)
+            ok = optimize_image(disk_path, max_width=1280, quality=80)
+            if ok:
+                after = os.path.getsize(disk_path)
+                compressed += 1
+            else:
+                skipped += 1
+        except Exception as e:
+            errored += 1
+            logger.warning(f"Compress error {disk_path}: {e}")
+
+    return jsonify({
+        'success': True,
+        'total_paths': len(paths),
+        'compressed': compressed,
+        'skipped': skipped,
+        'missing': missing,
+        'errored': errored,
+    })
 
 def is_community_owner(username, community_id):
     """Check if user is the owner of a community"""
