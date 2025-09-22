@@ -2645,27 +2645,7 @@ def api_client_log():
     except Exception as e:
         logger.error(f"Error in api_client_log: {e}")
         return jsonify({'success': False}), 500
-@app.route('/assets/<path:filename>')
-def react_assets(filename):
-    try:
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        assets_dir = os.path.join(base_dir, 'client', 'dist', 'assets')
-        asset_path = os.path.join(assets_dir, filename)
-        if os.path.exists(asset_path):
-            resp = send_from_directory(assets_dir, filename)
-            try:
-                # Hashed asset filenames are safe to cache long-term
-                resp.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
-                resp.headers.pop('Pragma', None)
-                resp.headers.pop('Expires', None)
-            except Exception:
-                pass
-            return resp
-        logger.warning(f"React asset not found: {asset_path}")
-        abort(404)
-    except Exception as e:
-        logger.error(f"Error serving React asset {filename}: {str(e)}")
-        abort(404)
+# React hashed assets are served by web server static mapping (/assets -> client/dist/assets)
 @app.route('/api/community_group_feed/<int:parent_id>')
 @login_required
 def api_community_group_feed(parent_id: int):
@@ -2918,32 +2898,9 @@ def vite_svg():
         logger.error(f"Error serving vite.svg: {str(e)}")
         abort(404)
 
-@app.route('/sw.js')
-def service_worker():
-    try:
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        dist_dir = os.path.join(base_dir, 'client', 'dist')
-        resp = send_from_directory(dist_dir, 'sw.js')
-        try:
-            resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-            resp.headers['Pragma'] = 'no-cache'
-            resp.headers['Expires'] = '0'
-        except Exception:
-            pass
-        return resp
-    except Exception as e:
-        logger.error(f"Error serving sw.js: {str(e)}")
-        abort(404)
+# service worker served by web server static mapping (/sw.js -> client/dist/sw.js)
 
-@app.route('/manifest.webmanifest')
-def pwa_manifest():
-    try:
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        public_dir = os.path.join(base_dir, 'client', 'public')
-        return send_from_directory(public_dir, 'manifest.webmanifest')
-    except Exception as e:
-        logger.error(f"Error serving manifest: {str(e)}")
-        abort(404)
+# web app manifest served by web server static mapping (/manifest.webmanifest -> client/public/manifest.webmanifest)
 
 @app.route('/premium_dashboard_react')
 @login_required
@@ -5543,23 +5500,7 @@ def send_photo_message():
         logger.error(f"Error sending photo message: {str(e)}")
         return jsonify({'success': False, 'error': 'Failed to send photo'})
 
-@app.route('/uploads/message_photos/<filename>')
-@login_required
-def serve_message_photo(filename):
-    """Serve uploaded message photos with caching"""
-    try:
-        uploads_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads', 'message_photos')
-        response = send_from_directory(uploads_dir, filename)
-        
-        # Add cache headers for faster loading
-        from redis_cache import IMAGE_CACHE_TTL
-        response.headers['Cache-Control'] = f'public, max-age={IMAGE_CACHE_TTL}'
-        response.headers['ETag'] = f'"{filename}"'
-        
-        return response
-    except Exception as e:
-        logger.error(f"Error serving message photo {filename}: {e}")
-        return "Photo not found", 404
+# Message photos served by web server static mapping (/uploads/message_photos -> uploads/message_photos)
 
 @app.route('/debug/message_photos')
 @login_required
@@ -10362,18 +10303,7 @@ def upload_doc():
         logger.error(f"upload_doc error: {e}")
         return jsonify({'success': False, 'error': 'Server error'})
 
-@app.route('/uploads/docs/<path:filename>')
-@login_required
-def serve_doc(filename):
-    try:
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        upload_dir = os.path.join(base_dir, 'uploads', 'docs')
-        response = send_from_directory(upload_dir, filename, as_attachment=False)
-        response.headers['Cache-Control'] = 'public, max-age=86400'
-        return response
-    except Exception as e:
-        logger.error(f"serve_doc error: {e}")
-        return 'Not found', 404
+# Docs served by web server static mapping (/uploads/docs -> uploads/docs)
 
 @app.route('/delete_link', methods=['POST'])
 @login_required
@@ -12231,58 +12161,7 @@ def not_found_error(e):
 
 # Add this after the existing routes, before the error handlers
 
-@app.route('/uploads/<path:filename>')
-def uploaded_file(filename):
-    """Serve uploaded images with proper headers for mobile compatibility"""
-    try:
-        # Log the request for debugging
-        logger.info(f"Image request: {filename} from {request.headers.get('User-Agent', 'Unknown')}")
-        
-        # Clean the filename (remove any 'uploads/' prefix if present)
-        clean_filename = filename.replace('uploads/', '') if filename.startswith('uploads/') else filename
-        
-        # Construct the full path
-        file_path = os.path.join(app.config['UPLOAD_FOLDER'], clean_filename)
-        
-        # Check if file exists
-        if not os.path.exists(file_path):
-            logger.error(f"Image file not found: {file_path}")
-            # Try alternative paths
-            alt_paths = [
-                os.path.join(app.config['UPLOAD_FOLDER'], filename),
-                os.path.join('static', 'uploads', clean_filename),
-                os.path.join('static', 'uploads', filename)
-            ]
-            for alt_path in alt_paths:
-                if os.path.exists(alt_path):
-                    logger.info(f"Found image at alternative path: {alt_path}")
-                    return send_from_directory(os.path.dirname(alt_path), os.path.basename(alt_path))
-            
-            return "Image not found", 404
-        
-        # Get file info
-        file_size = os.path.getsize(file_path)
-        logger.info(f"Serving image: {clean_filename}, size: {file_size} bytes")
-        
-        # Set proper headers for mobile compatibility and performance
-        response = send_from_directory(app.config['UPLOAD_FOLDER'], clean_filename)
-        response.headers['Cache-Control'] = 'public, max-age=31536000, immutable'  # Cache for 1 year, immutable
-        response.headers['Access-Control-Allow-Origin'] = '*'
-        
-        # Add ETag for better caching
-        import hashlib
-        etag = hashlib.md5(f"{clean_filename}-{file_size}".encode()).hexdigest()
-        response.headers['ETag'] = f'"{etag}"'
-        
-        # Check if client has cached version
-        if request.headers.get('If-None-Match') == f'"{etag}"':
-            return '', 304  # Not Modified
-        
-        return response
-        
-    except Exception as e:
-        logger.error(f"Error serving image {filename}: {str(e)}")
-        return "Error serving image", 500
+# Uploads served by web server static mapping (/uploads -> static/uploads)
 
 @app.route('/community_feed_smart/<int:community_id>')
 @login_required
