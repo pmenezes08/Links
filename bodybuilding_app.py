@@ -1995,6 +1995,12 @@ def save_uploaded_file(file, subfolder=None):
             return_path = f"uploads/{unique_filename}"
         
         file.save(filepath)
+        # Optimize image on arrival to reduce size for subsequent loads (prod+dev)
+        try:
+            optimize_image(filepath, max_width=1280, quality=80)
+        except Exception:
+            # Never fail the request due to optimization issues
+            pass
         return return_path
     return None
 
