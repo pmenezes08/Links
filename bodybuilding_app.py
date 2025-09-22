@@ -12791,6 +12791,21 @@ def api_home_timeline():
                 post_id = post['id']
                 comm_id = post.get('community_id')
                 post['community_name'] = id_to_name.get(comm_id)
+                # Normalize image paths for client consumption
+                try:
+                    p = post.get('image_path')
+                    if p:
+                        p_str = str(p).strip()
+                        if p_str.startswith('http://') or p_str.startswith('https://'):
+                            pass
+                        elif p_str.startswith('/uploads') or p_str.startswith('/static'):
+                            post['image_path'] = p_str
+                        elif p_str.startswith('uploads/'):
+                            post['image_path'] = '/' + p_str
+                        else:
+                            post['image_path'] = f"/uploads/{p_str}"
+                except Exception:
+                    pass
                 
                 # Convert timestamp to DD-MM-YYYY format for display
                 try:
@@ -12807,7 +12822,19 @@ def api_home_timeline():
                 try:
                     c.execute("SELECT profile_picture FROM user_profiles WHERE username = ?", (post['username'],))
                     pp = c.fetchone()
-                    post['profile_picture'] = pp['profile_picture'] if pp and 'profile_picture' in pp.keys() else None
+                    _pp = pp['profile_picture'] if pp and 'profile_picture' in pp.keys() else None
+                    if _pp:
+                        _pp_str = str(_pp).strip()
+                        if _pp_str.startswith('http://') or _pp_str.startswith('https://'):
+                            post['profile_picture'] = _pp_str
+                        elif _pp_str.startswith('/uploads') or _pp_str.startswith('/static'):
+                            post['profile_picture'] = _pp_str
+                        elif _pp_str.startswith('uploads/'):
+                            post['profile_picture'] = '/' + _pp_str
+                        else:
+                            post['profile_picture'] = f"/uploads/{_pp_str}"
+                    else:
+                        post['profile_picture'] = None
                 except Exception:
                     post['profile_picture'] = None
 
