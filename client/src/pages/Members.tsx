@@ -13,6 +13,7 @@ export default function Members(){
   const [error, setError] = useState<string | null>(null)
   const [canManage, setCanManage] = useState(false)
   const [ownerUsername, setOwnerUsername] = useState<string>('')
+  const [currentUserRole, setCurrentUserRole] = useState<'member'|'admin'|'owner'|'app_admin'>('member')
 
   useEffect(() => {
     let mounted = true
@@ -27,6 +28,7 @@ export default function Members(){
           if (mounted && pj){
             const role = pj.current_user_role || 'member'
             setOwnerUsername(pj.creator_username || '')
+            setCurrentUserRole(role)
             const can = role === 'app_admin' || role === 'owner' || role === 'admin'
             setCanManage(!!can)
           }
@@ -72,6 +74,24 @@ export default function Members(){
     }
   }
 
+  async function updateRole(targetUsername: string, newRole: 'admin'|'member'|'owner'){
+    const label = newRole === 'admin' ? 'Make admin' : newRole === 'member' ? 'Remove admin' : 'Transfer ownership'
+    const ok = confirm(`${label} for @${targetUsername}?`)
+    if (!ok) return
+    const fd = new URLSearchParams({ community_id: String(community_id), target_username: targetUsername, new_role: newRole })
+    const r = await fetch('/update_member_role', { method:'POST', credentials:'include', body: fd })
+    const j = await r.json().catch(()=>null)
+    if (j?.success){
+      try{
+        const rr = await fetch(`/community/${community_id}/members/list`, { credentials: 'include' })
+        const jj = await rr.json()
+        if (jj?.success) setMembers(jj.members || [])
+      }catch{}
+    } else {
+      alert(j?.error || 'Unable to update role')
+    }
+  }
+
   return (
     <div className="min-h-screen bg-black text-white">
       <div className="fixed left-0 right-0 top-14 h-12 border-b border-white/10 bg-black/70 backdrop-blur flex items-center px-3 z-40">
@@ -97,11 +117,28 @@ export default function Members(){
                 aria-label={`View @${m.username} profile`}>
                 <Avatar username={m.username} url={m.profile_picture || undefined} size={36} />
                 <div className="font-medium">{m.username}</div>
-                {canManage && m.username !== ownerUsername ? (
-                  <button className="ml-auto p-2 rounded-full hover:bg-white/5" title="Remove member" onClick={(e)=> { e.stopPropagation(); removeMember(m.username) }}>
-                    <i className="fa-regular fa-trash-can" style={{ color:'#d9534f' }} />
-                  </button>
-                ) : null}
+                <div className="ml-auto flex items-center gap-1">
+                  {canManage && m.username !== ownerUsername ? (
+                    <>
+                      {/* Role dropdown (owner/app_admin can promote/demote; owner transfer only app_admin) */}
+                      <div className="relative group" onClick={(e)=> e.stopPropagation()}>
+                        <button className="px-2 py-1 rounded-md border border-white/10 text-xs text-[#cfd8dc] hover:bg-white/5" title="Manage role">
+                          Manage
+                        </button>
+                        <div className="hidden group-hover:block absolute right-0 mt-1 w-36 rounded-md border border-white/10 bg-black shadow-lg z-20">
+                          <button className="w-full text-left px-3 py-2 text-xs hover:bg-white/5" onClick={()=> updateRole(m.username, 'admin')}>Make admin</button>
+                          <button className="w-full text-left px-3 py-2 text-xs hover:bg-white/5" onClick={()=> updateRole(m.username, 'member')}>Remove admin</button>
+                          {currentUserRole === 'app_admin' ? (
+                            <button className="w-full text-left px-3 py-2 text-xs hover:bg-white/5" onClick={()=> updateRole(m.username, 'owner')}>Transfer ownership</button>
+                          ) : null}
+                        </div>
+                      </div>
+                      <button className="p-2 rounded-full hover:bg-white/5" title="Remove member" onClick={(e)=> { e.stopPropagation(); removeMember(m.username) }}>
+                        <i className="fa-regular fa-trash-can" style={{ color:'#d9534f' }} />
+                      </button>
+                    </>
+                  ) : null}
+                </div>
               </button>
             ))}
           </div>

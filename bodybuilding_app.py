@@ -16842,17 +16842,27 @@ def save_community_announcement():
             )
         ''')
         
-        # Check if user is admin or community creator
+        # Check if user is creator, app admin, or community admin
         cursor.execute('''
             SELECT creator_username FROM communities 
             WHERE id = ?
         ''', (community_id,))
-        
         community = cursor.fetchone()
         if not community:
             return jsonify({'success': False, 'error': 'Community not found'})
-        
-        if session['username'] != community['creator_username'] and session['username'] != 'admin':
+
+        current_user = session['username']
+        is_owner = current_user == community['creator_username']
+        is_app_admin = current_user == 'admin'
+        # community admin?
+        is_comm_admin = False
+        try:
+            cursor.execute("SELECT 1 FROM community_admins WHERE community_id = ? AND username = ?", (community_id, current_user))
+            is_comm_admin = cursor.fetchone() is not None
+        except Exception:
+            is_comm_admin = False
+
+        if not (is_owner or is_app_admin or is_comm_admin):
             return jsonify({'success': False, 'error': 'Unauthorized'})
         
         # Save announcement to database
@@ -16897,8 +16907,47 @@ def save_community_announcement():
         ''', (content, datetime.now().strftime('%m.%d.%y %H:%M'), community_id))
         
         conn.commit()
+
+        # Notify all members of this community via Web Push (best-effort)
+        try:
+            # Fetch community name for nicer title
+            community_name = None
+            try:
+                cursor.execute("SELECT name FROM communities WHERE id = ?", (community_id,))
+                rown = cursor.fetchone()
+                community_name = (rown['name'] if hasattr(rown, 'keys') else rown[0]) if rown else None
+            except Exception:
+                community_name = None
+
+            # Load all member usernames
+            cursor.execute(
+                """
+                SELECT u.username
+                FROM user_communities uc
+                JOIN users u ON uc.user_id = u.id
+                WHERE uc.community_id = ?
+                """,
+                (community_id,)
+            )
+            members = [r['username'] if hasattr(r, 'keys') else r[0] for r in (cursor.fetchall() or [])]
+            # Trim announcement body for push body
+            body_snippet = (content or '')[:120]
+            for m in members:
+                if not m or m == current_user:
+                    continue
+                try:
+                    send_push_to_user(m, {
+                        'title': f"New announcement{(' in ' + community_name) if community_name else ''}",
+                        'body': body_snippet,
+                        'url': f"/community_feed_react/{community_id}",
+                        'tag': f"community-announcement-{community_id}"
+                    })
+                except Exception as pe:
+                    logger.warning(f"announcement push warn to {m}: {pe}")
+        except Exception as ne:
+            logger.warning(f"announcement notify warn: {ne}")
+
         conn.close()
-        
         return jsonify({'success': True, 'files': uploaded_files})
         
     except Exception as e:
@@ -16972,17 +17021,25 @@ def delete_community_announcement():
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # Check if user is admin or community creator
+        # Check if user is creator, app admin, or community admin
         cursor.execute('''
             SELECT creator_username FROM communities 
             WHERE id = ?
         ''', (community_id,))
-        
         community = cursor.fetchone()
         if not community:
             return jsonify({'success': False, 'error': 'Community not found'})
-        
-        if session['username'] != community['creator_username'] and session['username'] != 'admin':
+
+        current_user = session['username']
+        is_owner = current_user == community['creator_username']
+        is_app_admin = current_user == 'admin'
+        is_comm_admin = False
+        try:
+            cursor.execute("SELECT 1 FROM community_admins WHERE community_id = ? AND username = ?", (community_id, current_user))
+            is_comm_admin = cursor.fetchone() is not None
+        except Exception:
+            is_comm_admin = False
+        if not (is_owner or is_app_admin or is_comm_admin):
             return jsonify({'success': False, 'error': 'Unauthorized'})
         
         # Delete announcement from database
