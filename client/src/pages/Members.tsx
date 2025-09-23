@@ -99,9 +99,9 @@ export default function Members(){
 
   function getRoleBadge(member: Member){
     if (member.role === 'owner' || member.is_creator) {
-      return <span className="px-2 py-0.5 text-xs font-medium bg-purple-600/20 text-purple-300 rounded-full border border-purple-500/30">Owner</span>
+      return <span className="px-2 py-0.5 text-xs font-medium bg-teal-600/20 text-teal-300 rounded-full border border-teal-500/30">Owner</span>
     } else if (member.role === 'admin') {
-      return <span className="px-2 py-0.5 text-xs font-medium bg-blue-600/20 text-blue-300 rounded-full border border-blue-500/30">Admin</span>
+      return <span className="px-2 py-0.5 text-xs font-medium bg-cyan-600/20 text-cyan-300 rounded-full border border-cyan-500/30">Admin</span>
     } else {
       return <span className="px-2 py-0.5 text-xs font-medium bg-gray-600/20 text-gray-300 rounded-full border border-gray-500/30">Member</span>
     }
