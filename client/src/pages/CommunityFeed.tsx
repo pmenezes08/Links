@@ -24,6 +24,8 @@ export default function CommunityFeed() {
   const [hasUnseenAnnouncements, setHasUnseenAnnouncements] = useState(false)
   const [showAnnouncements, _setShowAnnouncements] = useState(false)
   const [_announcements, _setAnnouncements] = useState<Array<{id:number, content:string, created_by:string, created_at:string}>>([])
+  const [newAnnouncement, setNewAnnouncement] = useState('')
+  const [savingAnn, setSavingAnn] = useState(false)
   // Ads removed
   const [moreOpen, setMoreOpen] = useState(false)
   const [showSearch, setShowSearch] = useState(false)
@@ -119,6 +121,39 @@ export default function CommunityFeed() {
           setHasUnseenAnnouncements(false)
         }catch{}
       }
+    }catch{}
+  }
+
+  async function saveAnnouncement(){
+    if (!community_id) return
+    const content = (newAnnouncement || '').trim()
+    if (!content) return
+    setSavingAnn(true)
+    try{
+      const fd = new URLSearchParams({ community_id: String(community_id), content })
+      const r = await fetch('/save_community_announcement', { method:'POST', credentials:'include', body: fd })
+      const j = await r.json().catch(()=>null)
+      if (j?.success){
+        setNewAnnouncement('')
+        fetchAnnouncements()
+      } else {
+        alert(j?.error || 'Failed to save announcement')
+      }
+    } finally {
+      setSavingAnn(false)
+    }
+  }
+
+  async function deleteAnnouncement(announcementId: number){
+    if (!community_id) return
+    const ok = confirm('Delete this announcement?')
+    if (!ok) return
+    try{
+      const fd = new URLSearchParams({ community_id: String(community_id), announcement_id: String(announcementId) })
+      const r = await fetch('/delete_community_announcement', { method:'POST', credentials:'include', body: fd })
+      const j = await r.json().catch(()=>null)
+      if (j?.success){ fetchAnnouncements() }
+      else alert(j?.error || 'Failed to delete')
     }catch{}
   }
 
@@ -258,6 +293,14 @@ export default function CommunityFeed() {
               <div className="font-semibold">Announcements</div>
               <button className="px-2 py-1 rounded-full border border-white/10" onClick={()=> _setShowAnnouncements(false)}>✕</button>
             </div>
+            {(data?.is_community_admin || data?.community?.creator_username === data?.username || data?.username === 'admin') && (
+              <div className="mb-3 p-2 rounded-xl border border-white/10 bg-white/[0.02]">
+                <textarea value={newAnnouncement} onChange={(e)=> setNewAnnouncement(e.target.value)} placeholder="Write an announcement…" className="w-full rounded-md bg-black border border-white/10 px-3 py-2 text-sm focus:border-teal-400/70 outline-none min-h-[72px]" />
+                <div className="text-right mt-2">
+                  <button disabled={savingAnn || !newAnnouncement.trim()} onClick={saveAnnouncement} className="px-3 py-1.5 rounded-md bg-[#4db6ac] disabled:opacity-50 text-black text-sm hover:brightness-110">Post</button>
+                </div>
+              </div>
+            )}
             <div className="space-y-3 max-h-[420px] overflow-y-auto">
               {_announcements.length === 0 ? (
                 <div className="text-sm text-[#9fb0b5]">No announcements.</div>
@@ -265,6 +308,11 @@ export default function CommunityFeed() {
                 <div key={a.id} className="rounded-xl border border-white/10 p-3 bg-white/[0.03]">
                   <div className="text-xs text-[#9fb0b5] mb-1">{a.created_by} • {a.created_at}</div>
                   <div className="whitespace-pre-wrap text-sm">{a.content}</div>
+                  {(data?.is_community_admin || data?.community?.creator_username === data?.username || data?.username === 'admin') && (
+                    <div className="mt-2 text-right">
+                      <button className="px-2 py-1 rounded-full border border-white/10 text-xs hover:bg-white/5" onClick={()=> deleteAnnouncement(a.id)}>Delete</button>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

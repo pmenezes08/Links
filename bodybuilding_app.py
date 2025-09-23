@@ -16499,7 +16499,7 @@ def save_community_info():
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # Check if user is admin or community creator
+        # Check if user is owner/app admin or community admin
         cursor.execute('''
             SELECT creator_username FROM communities 
             WHERE id = ?
@@ -16509,8 +16509,14 @@ def save_community_info():
         if not community:
             return jsonify({'success': False, 'error': 'Community not found'})
         
-        if session['username'] != community['creator_username'] and session['username'] != 'admin':
-            return jsonify({'success': False, 'error': 'Unauthorized'})
+        current_user = session['username']
+        if current_user != community['creator_username'] and current_user != 'admin':
+            try:
+                cursor.execute("SELECT 1 FROM community_admins WHERE community_id = ? AND username = ?", (community_id, current_user))
+                if cursor.fetchone() is None:
+                    return jsonify({'success': False, 'error': 'Unauthorized'})
+            except Exception:
+                return jsonify({'success': False, 'error': 'Unauthorized'})
         
         # Save announcement to announcements table
         cursor.execute('''
@@ -16545,7 +16551,7 @@ def upload_community_files():
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # Check if user is admin or community creator
+        # Check if user is owner/app admin or community admin
         cursor.execute('''
             SELECT creator_username FROM communities 
             WHERE id = ?
@@ -16555,8 +16561,14 @@ def upload_community_files():
         if not community:
             return jsonify({'success': False, 'error': 'Community not found'})
         
-        if session['username'] != community['creator_username'] and session['username'] != 'admin':
-            return jsonify({'success': False, 'error': 'Unauthorized'})
+        current_user = session['username']
+        if current_user != community['creator_username'] and current_user != 'admin':
+            try:
+                cursor.execute("SELECT 1 FROM community_admins WHERE community_id = ? AND username = ?", (community_id, current_user))
+                if cursor.fetchone() is None:
+                    return jsonify({'success': False, 'error': 'Unauthorized'})
+            except Exception:
+                return jsonify({'success': False, 'error': 'Unauthorized'})
         
         # Create community files directory
         community_files_dir = os.path.join('static', 'community_files', str(community_id))
