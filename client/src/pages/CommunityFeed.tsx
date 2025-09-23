@@ -293,7 +293,12 @@ export default function CommunityFeed() {
               <div className="font-semibold">Announcements</div>
               <button className="px-2 py-1 rounded-full border border-white/10" onClick={()=> _setShowAnnouncements(false)}>✕</button>
             </div>
-            {(data?.is_community_admin || data?.community?.creator_username === data?.username || data?.username === 'admin') && (
+            {(
+              data?.is_community_admin ||
+              data?.community?.creator_username === data?.username ||
+              (data?.username||'').toLowerCase() === 'admin' ||
+              (data?.username||'').toLowerCase() === 'paulo'
+            ) && (
               <div className="mb-3 p-2 rounded-xl border border-white/10 bg-white/[0.02]">
                 <textarea value={newAnnouncement} onChange={(e)=> setNewAnnouncement(e.target.value)} placeholder="Write an announcement…" className="w-full rounded-md bg-black border border-white/10 px-3 py-2 text-sm focus:border-teal-400/70 outline-none min-h-[72px]" />
                 <div className="text-right mt-2">
@@ -308,7 +313,12 @@ export default function CommunityFeed() {
                 <div key={a.id} className="rounded-xl border border-white/10 p-3 bg-white/[0.03]">
                   <div className="text-xs text-[#9fb0b5] mb-1">{a.created_by} • {a.created_at}</div>
                   <div className="whitespace-pre-wrap text-sm">{a.content}</div>
-                  {(data?.is_community_admin || data?.community?.creator_username === data?.username || data?.username === 'admin') && (
+                  {(
+                    data?.is_community_admin ||
+                    data?.community?.creator_username === data?.username ||
+                    (data?.username||'').toLowerCase() === 'admin' ||
+                    (data?.username||'').toLowerCase() === 'paulo'
+                  ) && (
                     <div className="mt-2 text-right">
                       <button className="px-2 py-1 rounded-full border border-white/10 text-xs hover:bg-white/5" onClick={()=> deleteAnnouncement(a.id)}>Delete</button>
                     </div>
