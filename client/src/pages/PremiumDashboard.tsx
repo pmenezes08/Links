@@ -173,7 +173,7 @@ export default function PremiumDashboard() {
               {communities.map(community => {
               // Desktop HTML communities page now provides the unified view
               const onCardClick = () => {
-                navigate('/communities')
+                navigate(`/communities?parent_id=${community.id}`)
               }
               return (
                 <Card 

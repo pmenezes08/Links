@@ -293,12 +293,7 @@ export default function CommunityFeed() {
               <div className="font-semibold">Announcements</div>
               <button className="px-2 py-1 rounded-full border border-white/10" onClick={()=> _setShowAnnouncements(false)}>✕</button>
             </div>
-            {(
-              data?.is_community_admin ||
-              data?.community?.creator_username === data?.username ||
-              (data?.username||'').toLowerCase() === 'admin' ||
-              (data?.username||'').toLowerCase() === 'paulo'
-            ) && (
+            {(data?.is_community_admin || data?.community?.creator_username === data?.username || data?.username === 'admin') && (
               <div className="mb-3 p-2 rounded-xl border border-white/10 bg-white/[0.02]">
                 <textarea value={newAnnouncement} onChange={(e)=> setNewAnnouncement(e.target.value)} placeholder="Write an announcement…" className="w-full rounded-md bg-black border border-white/10 px-3 py-2 text-sm focus:border-teal-400/70 outline-none min-h-[72px]" />
                 <div className="text-right mt-2">
@@ -313,12 +308,7 @@ export default function CommunityFeed() {
                 <div key={a.id} className="rounded-xl border border-white/10 p-3 bg-white/[0.03]">
                   <div className="text-xs text-[#9fb0b5] mb-1">{a.created_by} • {a.created_at}</div>
                   <div className="whitespace-pre-wrap text-sm">{a.content}</div>
-                  {(
-                    data?.is_community_admin ||
-                    data?.community?.creator_username === data?.username ||
-                    (data?.username||'').toLowerCase() === 'admin' ||
-                    (data?.username||'').toLowerCase() === 'paulo'
-                  ) && (
+                  {(data?.is_community_admin || data?.community?.creator_username === data?.username || data?.username === 'admin') && (
                     <div className="mt-2 text-right">
                       <button className="px-2 py-1 rounded-full border border-white/10 text-xs hover:bg-white/5" onClick={()=> deleteAnnouncement(a.id)}>Delete</button>
                     </div>
@@ -383,7 +373,6 @@ export default function CommunityFeed() {
           <div className="w-[75%] max-w-sm mr-2 mb-2 bg-black/80 backdrop-blur border border-white/10 rounded-2xl p-2 space-y-2 transition-transform duration-200 ease-out translate-y-0">
             <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); navigate(`/community/${community_id}/polls_react`) }}>Polls</button>
             <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); navigate(`/community/${community_id}/calendar_react`) }}>Calendar</button>
-            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); navigate(`/community/${community_id}/photos_react`) }}>Photos</button>
             {/* Hide Forum/Useful Links for General communities */}
             {((data?.community?.type||'').toLowerCase() !== 'general') && (
               <>

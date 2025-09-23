@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { formatSmartTime } from '../utils/time'
 import { useHeader } from '../contexts/HeaderContext'
 import Avatar from '../components/Avatar'
+import ImageLoader from '../components/ImageLoader'
 
 type Community = { 
   id: number; 
@@ -329,7 +330,17 @@ function ParentTimeline({ parentId }:{ parentId:number }){
               <div className="px-3 py-2 space-y-2">
                 <div className="whitespace-pre-wrap text-[14px] leading-relaxed">{p.content}</div>
                 {p.image_path ? (
-                  <img src={(p.image_path.startsWith('/uploads') || p.image_path.startsWith('/static')) ? p.image_path : `/uploads/${p.image_path}`} alt="" className="block mx-auto max-w-full max-h-[360px] rounded border border-white/10" />
+                  <ImageLoader
+                    src={(() => {
+                      const ip = String(p.image_path || '').trim()
+                      if (!ip) return ''
+                      if (ip.startsWith('http')) return ip
+                      if (ip.startsWith('/uploads') || ip.startsWith('/static')) return ip
+                      return ip.startsWith('uploads') || ip.startsWith('static') ? `/${ip}` : `/uploads/${ip}`
+                    })()}
+                    alt="Post image"
+                    className="block mx-auto max-w-full max-h-[360px] rounded border border-white/10"
+                  />
                 ) : null}
                 <div className="flex items-center gap-2 text-xs" onClick={(e)=> e.stopPropagation()}>
                   <button className="px-2 py-1 rounded transition-colors" onClick={async()=>{

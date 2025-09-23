@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
 import Avatar from '../components/Avatar'
 import { formatSmartTime } from '../utils/time'
+import ImageLoader from '../components/ImageLoader'
 
 type Post = { id:number; username:string; content:string; image_path?:string|null; timestamp:string; display_timestamp?:string; community_id?:number|null; community_name?:string; reactions:Record<string,number>; user_reaction:string|null; poll?:any|null; replies_count?:number; profile_picture?:string|null }
 
@@ -87,7 +88,17 @@ export default function HomeTimeline(){
                 <div className="px-3 py-2 space-y-2">
                   <div className="whitespace-pre-wrap text-[14px] leading-relaxed">{p.content}</div>
                   {p.image_path ? (
-                    <img src={p.image_path.startsWith('/uploads') || p.image_path.startsWith('/static') ? p.image_path : `/uploads/${p.image_path}`} alt="" className="block mx-auto max-w-full max-h-[360px] rounded border border-white/10" />
+                    <ImageLoader
+                      src={(() => {
+                        const ip = p.image_path as string
+                        if (!ip) return ''
+                        if (ip.startsWith('http')) return ip
+                        if (ip.startsWith('/uploads') || ip.startsWith('/static')) return ip
+                        return ip.startsWith('uploads') ? `/${ip}` : `/uploads/${ip}`
+                      })()}
+                      alt="Post image"
+                      className="block mx-auto max-w-full max-h-[360px] rounded border border-white/10"
+                    />
                   ) : null}
                   <div className="flex items-center gap-3 text-xs">
                     <button className="ml-auto px-2.5 py-1 rounded-full text-[#cfd8dc]" onClick={(e)=> { e.stopPropagation(); navigate(`/post/${p.id}`) }}>

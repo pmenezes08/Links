@@ -29,7 +29,7 @@ export default function Members(){
             const role = pj.current_user_role || 'member'
             setOwnerUsername(pj.creator_username || '')
             setCurrentUserRole(role)
-            const can = role === 'app_admin' || role === 'owner'
+            const can = role === 'app_admin' || role === 'owner' || role === 'admin'
             setCanManage(!!can)
           }
         }catch{}

@@ -891,12 +891,6 @@ export default function ChatThread(){
                   }).catch(()=>{})
                 }, 1200)
               }}
-              onKeyDown={e => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault()
-                  if (draft.trim()) send()
-                }
-              }}
               style={{
                 lineHeight: '1.4',
                 scrollbarWidth: 'none',

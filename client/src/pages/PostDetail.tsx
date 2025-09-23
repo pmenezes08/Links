@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type React from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import Avatar from '../components/Avatar'
+import ImageLoader from '../components/ImageLoader'
 import { formatSmartTime } from '../utils/time'
 
 type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null, parent_reply_id?: number|null, children?: Reply[], profile_picture?: string|null, image_path?: string|null }
@@ -52,6 +53,15 @@ function preserveNewlines(text: string){
     if (p) out.push(p)
   })
   return out
+}
+
+function normalizePath(p?: string | null): string {
+  const s = (p || '').trim()
+  if (!s) return ''
+  if (s.startsWith('http')) return s
+  if (s.startsWith('/uploads') || s.startsWith('/static')) return s
+  if (s.startsWith('uploads') || s.startsWith('static')) return `/${s}`
+  return `/uploads/${s}`
 }
 
 export default function PostDetail(){
@@ -255,12 +265,13 @@ export default function PostDetail(){
           <div className="px-3 py-2 space-y-2">
             <div className="whitespace-pre-wrap text-[14px] break-words">{renderRichText(post.content)}</div>
             {post.image_path ? (
-              <img
-                src={post.image_path.startsWith('/uploads') || post.image_path.startsWith('/static') ? post.image_path : `/uploads/${post.image_path}`}
-                alt=""
-                className="block mx-auto max-w-full max-h-[360px] rounded border border-white/10 cursor-zoom-in"
-                onClick={(e)=> setPreviewSrc((e.currentTarget as HTMLImageElement).src)}
-              />
+              <div onClick={()=> setPreviewSrc(normalizePath(post.image_path as string))}>
+                <ImageLoader
+                  src={normalizePath(post.image_path as string)}
+                  alt="Post image"
+                  className="block mx-auto max-w-full max-h-[360px] rounded border border-white/10 cursor-zoom-in"
+                />
+              </div>
             ) : null}
             <div className="flex items-center gap-2 text-xs">
               <Reaction icon="fa-regular fa-heart" count={post.reactions?.['heart']||0} active={post.user_reaction==='heart'} onClick={()=> toggleReaction('heart')} />
@@ -444,12 +455,13 @@ function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDel
           )}
           {reply.image_path ? (
             <div className="mt-2">
-              <img
-                src={reply.image_path.startsWith('/uploads') || reply.image_path.startsWith('/static') ? reply.image_path : `/uploads/${reply.image_path}`}
-                alt=""
-                className="block mx-auto max-w-full max-h-[300px] rounded border border-white/10 cursor-zoom-in"
-                onClick={(e)=> onPreviewImage((e.currentTarget as HTMLImageElement).src)}
-              />
+              <div onClick={()=> onPreviewImage(normalizePath(reply.image_path as string))}>
+                <ImageLoader
+                  src={normalizePath(reply.image_path as string)}
+                  alt="Reply image"
+                  className="block mx-auto max-w-full max-h-[300px] rounded border border-white/10 cursor-zoom-in"
+                />
+              </div>
             </div>
           ) : null}
           <div className="mt-1 flex items-center gap-2 text-[11px]">

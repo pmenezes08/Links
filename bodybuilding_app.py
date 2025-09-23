@@ -75,26 +75,38 @@ ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 def optimize_image(file_path, max_width=1920, quality=85):
-    """Optimize image for web - compress and resize if needed"""
+    """Optimize image for web - compress and resize if needed, preserving format when possible."""
     if not PIL_AVAILABLE:
         return False
-    
+
     try:
+        ext = os.path.splitext(file_path)[1].lower()
         with Image.open(file_path) as img:
-            # Convert RGBA to RGB if necessary (for JPEG compatibility)
-            if img.mode in ('RGBA', 'LA', 'P'):
-                rgb_img = Image.new('RGB', img.size, (255, 255, 255))
-                rgb_img.paste(img, mask=img.split()[-1] if img.mode == 'RGBA' else None)
-                img = rgb_img
-            
             # Resize if image is too large
             if img.width > max_width:
                 ratio = max_width / img.width
                 new_height = int(img.height * ratio)
                 img = img.resize((max_width, new_height), Image.Resampling.LANCZOS)
-            
-            # Save with optimization
-            img.save(file_path, 'JPEG', quality=quality, optimize=True, progressive=True)
+
+            if ext in ('.jpg', '.jpeg'):
+                # Convert to RGB for JPEG
+                if img.mode not in ('RGB', 'L'):
+                    img = img.convert('RGB')
+                img.save(file_path, format='JPEG', quality=quality, optimize=True, progressive=True)
+            elif ext == '.png':
+                # Preserve transparency if present
+                save_params = {'optimize': True}
+                try:
+                    # Use maximum compression level if available
+                    save_params['compress_level'] = 9
+                except Exception:
+                    pass
+                img.save(file_path, format='PNG', **save_params)
+            elif ext == '.webp':
+                img.save(file_path, format='WEBP', quality=quality, method=6)
+            else:
+                # For GIF and other formats, skip heavy processing
+                return False
             return True
     except Exception as e:
         logger.warning(f"Could not optimize image {file_path}: {e}")
@@ -949,6 +961,62 @@ def add_missing_tables():
             except Exception as e:
                 logger.warning(f"Could not ensure email verification columns on users: {e}")
 
+            # Ensure useful_links table exists (for Useful Links & Docs)
+            try:
+                if USE_MYSQL:
+                    c.execute("SHOW TABLES LIKE 'useful_links'")
+                    if not c.fetchone():
+                        c.execute('''CREATE TABLE IF NOT EXISTS useful_links (
+                                         id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                                         community_id INTEGER NULL,
+                                         username VARCHAR(191) NOT NULL,
+                                         url TEXT NOT NULL,
+                                         description TEXT,
+                                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                                         FOREIGN KEY (community_id) REFERENCES communities(id)
+                                     )''')
+                        conn.commit()
+                else:
+                    c.execute('''CREATE TABLE IF NOT EXISTS useful_links (
+                                     id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                     community_id INTEGER NULL,
+                                     username TEXT NOT NULL,
+                                     url TEXT NOT NULL,
+                                     description TEXT,
+                                     created_at TEXT DEFAULT (datetime('now'))
+                                 )''')
+                    conn.commit()
+            except Exception as e:
+                logger.warning(f"Could not ensure useful_links table: {e}")
+
+            # Ensure useful_docs table exists (for PDF uploads)
+            try:
+                if USE_MYSQL:
+                    c.execute("SHOW TABLES LIKE 'useful_docs'")
+                    if not c.fetchone():
+                        c.execute('''CREATE TABLE IF NOT EXISTS useful_docs (
+                                         id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                                         community_id INTEGER NULL,
+                                         username VARCHAR(191) NOT NULL,
+                                         file_path TEXT NOT NULL,
+                                         description TEXT,
+                                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                                         FOREIGN KEY (community_id) REFERENCES communities(id)
+                                     )''')
+                        conn.commit()
+                else:
+                    c.execute('''CREATE TABLE IF NOT EXISTS useful_docs (
+                                     id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                     community_id INTEGER NULL,
+                                     username TEXT NOT NULL,
+                                     file_path TEXT NOT NULL,
+                                     description TEXT,
+                                     created_at TEXT DEFAULT (datetime('now'))
+                                 )''')
+                    conn.commit()
+            except Exception as e:
+                logger.warning(f"Could not ensure useful_docs table: {e}")
+
             conn.commit()
             logger.info("Missing tables and columns added successfully")
             
@@ -1192,6 +1260,28 @@ def init_db():
                                  community_id INTEGER NULL,
                                  username TEXT NOT NULL,
                                  file_path TEXT NOT NULL,
+                                 description TEXT,
+                                 created_at TEXT DEFAULT (datetime('now'))
+                             )''')
+
+            # Useful links (URLs)
+            logger.info("Ensuring useful_links table...")
+            if USE_MYSQL:
+                c.execute('''CREATE TABLE IF NOT EXISTS useful_links (
+                                 id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                                 community_id INTEGER NULL,
+                                 username VARCHAR(191) NOT NULL,
+                                 url TEXT NOT NULL,
+                                 description TEXT,
+                                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                                 FOREIGN KEY (community_id) REFERENCES communities(id)
+                             )''')
+            else:
+                c.execute('''CREATE TABLE IF NOT EXISTS useful_links (
+                                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                 community_id INTEGER NULL,
+                                 username TEXT NOT NULL,
+                                 url TEXT NOT NULL,
                                  description TEXT,
                                  created_at TEXT DEFAULT (datetime('now'))
                              )''')
@@ -1995,6 +2085,12 @@ def save_uploaded_file(file, subfolder=None):
             return_path = f"uploads/{unique_filename}"
         
         file.save(filepath)
+        # Optimize image on arrival to reduce size for subsequent loads (prod+dev)
+        try:
+            optimize_image(filepath, max_width=1280, quality=80)
+        except Exception:
+            # Never fail the request due to optimization issues
+            pass
         return return_path
     return None
 
@@ -2078,28 +2174,17 @@ def business_login_required(f):
 @app.route('/', methods=['GET', 'POST'])
 # @csrf.exempt
 def index():
-    print(f"=== INDEX ROUTE: Method={request.method}, Form={dict(request.form)}")
-    logger.info(f"=== INDEX ROUTE: Method={request.method}")
-    logger.info(f"Form data: {dict(request.form)}")
-    logger.info(f"Content-Type: {request.headers.get('Content-Type')}")
-    
-    # Simple test - if ANY POST comes in, log it clearly
-    if request.method == 'POST':
-        print("POST REQUEST RECEIVED IN INDEX!")
-        logger.info("POST REQUEST RECEIVED IN INDEX!")
-        logger.info(f"Raw data: {request.get_data()}")
+    # Reduce verbose logging in production for index/login flows
+    # Debug prints removed
     
     if request.method == 'POST':
         username = (request.form.get('username') or '').strip()
-        print(f"Received username: {username}")
-        logger.info(f"Received username: {username}")
 
         # Determine if request is from a mobile device
         ua = request.headers.get('User-Agent', '')
         is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
 
         if not username:
-            print("Username missing or empty")
             logger.warning("Username missing or empty")
             if is_mobile:
                 # Redirect to React mobile page with error message
@@ -2108,29 +2193,22 @@ def index():
 
         # Validate username exists in database
         try:
-            logger.info(f"Attempting to validate username: {username}")
             with get_db_connection() as conn:
-                logger.info("Database connection obtained")
                 c = conn.cursor()
                 # Use the automatic placeholder conversion
                 placeholder = get_sql_placeholder()
-                logger.info(f"Executing query for username: {username} with placeholder: {placeholder}")
                 c.execute(f"SELECT 1 FROM users WHERE username={placeholder} LIMIT 1", (username,))
                 result = c.fetchone()
                 exists = result is not None
-                logger.info(f"Username exists: {exists}, result: {result}")
         except Exception as e:
             logger.error(f"Database error validating username '{username}': {e}")
             import traceback
             logger.error(f"Traceback: {traceback.format_exc()}")
-            print(f"Database error: {e}")
-            print(traceback.format_exc())
             if is_mobile:
                 return redirect(url_for('index', error='Server error. Please try again.'))
             return render_template('index.html', error=f"Database error: {str(e)}")
 
         if not exists:
-            print("Username does not exist")
             logger.warning(f"Username not found: {username}")
             if is_mobile:
                 return redirect(url_for('index', error='Username does not exist'))
@@ -2141,15 +2219,7 @@ def index():
         session['username'] = username
         session.permanent = True  # Make session persist
         session.modified = True  # Force session to be saved
-        print(f"Session username set to: {session['username']}")
-        logger.info(f"Session username set to: {session['username']}")
-        logger.info(f"Session after setting: {dict(session)}")
-        logger.info(f"Session ID: {request.cookies.get('session', 'NO SESSION COOKIE')}")
-        logger.info(f"Request host: {request.host}")
-        logger.info(f"Request URL: {request.url}")
-        response = redirect(url_for('login_password'))
-        logger.info(f"Redirecting to login_password with session: {dict(session)}")
-        return response
+        return redirect(url_for('login_password'))
     # GET request: Desktop -> HTML template, Mobile -> React (if available)
     try:
         ua = request.headers.get('User-Agent', '')
@@ -2160,10 +2230,16 @@ def index():
                 dist_dir = os.path.join(base_dir, 'client', 'dist')
                 index_path = os.path.join(dist_dir, 'index.html')
                 if os.path.exists(index_path):
-                    return send_from_directory(dist_dir, 'index.html')
+                    resp = send_from_directory(dist_dir, 'index.html')
+                    try:
+                        resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+                        resp.headers['Pragma'] = 'no-cache'
+                        resp.headers['Expires'] = '0'
+                    except Exception:
+                        pass
+                    return resp
             except Exception as e:
                 logger.warning(f"React mobile index not available: {e}")
-        print("Rendering index.html for GET request (desktop or React missing)")
         return render_template('index.html')
     except Exception as e:
         logger.error(f"Error in / route: {str(e)}")
@@ -2467,26 +2543,13 @@ def logout():
 @app.route('/login_password', methods=['GET', 'POST'])
 # @csrf.exempt
 def login_password():
-    print("Entering login_password route")
-    logger.info(f"login_password route - Request cookies: {request.cookies}")
-    logger.info(f"login_password route - Old session cookie: {request.cookies.get('session', 'NO OLD COOKIE')}")
-    logger.info(f"login_password route - New session cookie: {request.cookies.get('cpoint_session', 'NO NEW COOKIE')}")
-    logger.info(f"login_password route - Session contents: {dict(session)}")
-    logger.info(f"login_password route - Session keys: {list(session.keys())}")
-    logger.info(f"login_password route - Request headers Host: {request.headers.get('Host')}")
+    # Quiet noisy logs in production
     if 'username' not in session:
-        print("No username in session, redirecting to /")
-        logger.error(f"No username in session! Session: {dict(session)}")
-        logger.error(f"Secret key hash: {hash(app.secret_key)}")
         return redirect(url_for('index'))
     username = session['username']
-    print(f"Username from session: {username}")
-    logger.info(f"Username from session: {username}")
     if request.method == 'POST':
         password = request.form.get('password', '')
-        print(f"Password entered: {password}")
         if username == 'admin' and password == '12345':
-            print("Hardcoded admin match, redirecting to communities")
             return redirect(url_for('communities'))
         try:
             conn = get_db_connection()
@@ -2502,7 +2565,6 @@ def login_password():
                 row = (r2[0], r2[1], 1) if r2 else None
             user = row
             conn.close()
-            print(f"DB query result: user found = {user is not None}")
             if user:
                 stored_password = user[0] if isinstance(user, (list, tuple)) else user['password']
                 subscription = user[1] if isinstance(user, (list, tuple)) else user.get('subscription')
@@ -2519,16 +2581,11 @@ def login_password():
                 if stored_password and (stored_password.startswith('$') or stored_password.startswith('scrypt:') or stored_password.startswith('pbkdf2:')):
                     # Password is hashed, use check_password_hash
                     password_correct = check_password_hash(stored_password, password)
-                    print(f"Using hashed password check, result: {password_correct}")
-                    print(f"Hash type detected: {stored_password[:10]}...")
                 else:
                     # Password is plain text (legacy), direct comparison
                     password_correct = (stored_password == password)
-                    print(f"Using plain text password check, result: {password_correct}")
                 
                 if password_correct:
-                    print(f"Password matches, subscription: {subscription}")
-                    
                     # Track login
                     try:
                         conn = get_db_connection()
@@ -2553,16 +2610,12 @@ def login_password():
                     return resp
                     
                 else:
-                    print("Password mismatch")
                     return render_template('login.html', username=username, error="Incorrect password. Please try again.")
             else:
-                print("User not found")
                 return render_template('login.html', username=username, error="Incorrect password. Please try again.")
         except Exception as e:
-            print(f"Database error: {str(e)}")
             logger.error(f"Database error in login_password for {username}: {str(e)}")
             abort(500)
-    print("Rendering login.html for GET request")
     return render_template('login.html', username=username)
 
 @app.route('/dashboard')
@@ -2639,96 +2692,7 @@ def api_client_log():
     except Exception as e:
         logger.error(f"Error in api_client_log: {e}")
         return jsonify({'success': False}), 500
-@app.route('/assets/<path:filename>')
-def react_assets(filename):
-    try:
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        assets_dir = os.path.join(base_dir, 'client', 'dist', 'assets')
-        asset_path = os.path.join(assets_dir, filename)
-        if os.path.exists(asset_path):
-            resp = send_from_directory(assets_dir, filename)
-            try:
-                resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-                resp.headers['Pragma'] = 'no-cache'
-                resp.headers['Expires'] = '0'
-            except Exception:
-                pass
-            return resp
-        logger.warning(f"React asset not found: {asset_path}")
-        abort(404)
-    except Exception as e:
-        logger.error(f"Error serving React asset {filename}: {str(e)}")
-        abort(404)
-
-@app.route('/api/community_posts_search')
-@login_required
-def api_community_posts_search():
-    """Search posts in a community by hashtag. Query param q supports leading '#'.
-    Returns basic post info for navigation to anchors on the feed screen.
-    """
-    try:
-        username = session.get('username')
-        community_id = request.args.get('community_id', type=int)
-        q = (request.args.get('q') or '').strip()
-        if not community_id or not q:
-            return jsonify({'success': False, 'error': 'community_id and q are required'}), 400
-
-        # Normalize hashtag token
-        token = q[1:] if q.startswith('#') else q
-        if not token:
-            return jsonify({'success': True, 'posts': []})
-
-        with get_db_connection() as conn:
-            c = conn.cursor()
-
-            # Optional: ensure user belongs to community (admin bypass)
-            try:
-                if username != 'admin':
-                    c.execute("""
-                        SELECT 1 FROM user_communities uc
-                        JOIN users u ON uc.user_id = u.id
-                        WHERE u.username = ? AND uc.community_id = ?
-                        LIMIT 1
-                    """, (username, community_id))
-                    if not c.fetchone():
-                        return jsonify({'success': False, 'error': 'Forbidden'}), 403
-            except Exception:
-                # On error, continue (fail open for dev);
-                pass
-
-            # Simple hashtag search: posts.content LIKE %#[token]% (case-insensitive)
-            like_arg = f"%#{token}%"
-            c.execute(
-                """
-                SELECT id, username, content, timestamp
-                FROM posts
-                WHERE community_id = ? AND LOWER(content) LIKE LOWER(?)
-                ORDER BY id DESC
-                LIMIT 100
-                """,
-                (community_id, like_arg)
-            )
-            rows = c.fetchall()
-            results = []
-            for r in rows:
-                rid = r['id'] if hasattr(r, 'keys') else r[0]
-                ruser = r['username'] if hasattr(r, 'keys') else r[1]
-                rcontent = r['content'] if hasattr(r, 'keys') else r[2]
-                rts = r['timestamp'] if hasattr(r, 'keys') else r[3]
-                # Provide a small content snippet
-                snippet = (rcontent or '')
-                if len(snippet) > 140:
-                    snippet = snippet[:137] + '…'
-                results.append({
-                    'id': rid,
-                    'username': ruser,
-                    'content': snippet,
-                    'timestamp': rts
-                })
-            return jsonify({'success': True, 'posts': results})
-    except Exception as e:
-        logger.error(f"Error in community_posts_search: {e}")
-        return jsonify({'success': False, 'error': 'Server error'}), 500
+# React hashed assets are served by web server static mapping (/assets -> client/dist/assets)
 @app.route('/api/community_group_feed/<int:parent_id>')
 @login_required
 def api_community_group_feed(parent_id: int):
@@ -2971,6 +2935,59 @@ def api_community_group_feed(parent_id: int):
         logger.error(f"Error serving React asset {filename}: {str(e)}")
         abort(404)
 
+@app.route('/api/community_posts_search')
+@login_required
+def api_community_posts_search():
+    try:
+        username = session.get('username')
+        community_id = request.args.get('community_id', type=int)
+        q = (request.args.get('q') or '').strip()
+        if not community_id or not q:
+            return jsonify({'success': False, 'error': 'community_id and q are required'}), 400
+        token = q[1:] if q.startswith('#') else q
+        if not token:
+            return jsonify({'success': True, 'posts': []})
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            try:
+                if username != 'admin':
+                    c.execute("""
+                        SELECT 1 FROM user_communities uc
+                        JOIN users u ON uc.user_id = u.id
+                        WHERE u.username = ? AND uc.community_id = ?
+                        LIMIT 1
+                    """, (username, community_id))
+                    if not c.fetchone():
+                        return jsonify({'success': False, 'error': 'Forbidden'}), 403
+            except Exception:
+                pass
+            like_arg = f"%#{token}%"
+            c.execute(
+                """
+                SELECT id, username, content, timestamp
+                FROM posts
+                WHERE community_id = ? AND LOWER(content) LIKE LOWER(?)
+                ORDER BY id DESC
+                LIMIT 100
+                """,
+                (community_id, like_arg)
+            )
+            rows = c.fetchall()
+            results = []
+            for r in rows:
+                rid = r['id'] if hasattr(r, 'keys') else r[0]
+                ruser = r['username'] if hasattr(r, 'keys') else r[1]
+                rcontent = r['content'] if hasattr(r, 'keys') else r[2]
+                rts = r['timestamp'] if hasattr(r, 'keys') else r[3]
+                snippet = (rcontent or '')
+                if len(snippet) > 140:
+                    snippet = snippet[:137] + '…'
+                results.append({'id': rid, 'username': ruser, 'content': snippet, 'timestamp': rts})
+            return jsonify({'success': True, 'posts': results})
+    except Exception as e:
+        logger.error(f"Error in community_posts_search: {e}")
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
 @app.route('/vite.svg')
 def vite_svg():
     try:
@@ -2981,32 +2998,9 @@ def vite_svg():
         logger.error(f"Error serving vite.svg: {str(e)}")
         abort(404)
 
-@app.route('/sw.js')
-def service_worker():
-    try:
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        dist_dir = os.path.join(base_dir, 'client', 'dist')
-        resp = send_from_directory(dist_dir, 'sw.js')
-        try:
-            resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-            resp.headers['Pragma'] = 'no-cache'
-            resp.headers['Expires'] = '0'
-        except Exception:
-            pass
-        return resp
-    except Exception as e:
-        logger.error(f"Error serving sw.js: {str(e)}")
-        abort(404)
+# service worker served by web server static mapping (/sw.js -> client/dist/sw.js)
 
-@app.route('/manifest.webmanifest')
-def pwa_manifest():
-    try:
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        public_dir = os.path.join(base_dir, 'client', 'public')
-        return send_from_directory(public_dir, 'manifest.webmanifest')
-    except Exception as e:
-        logger.error(f"Error serving manifest: {str(e)}")
-        abort(404)
+# web app manifest served by web server static mapping (/manifest.webmanifest -> client/public/manifest.webmanifest)
 
 @app.route('/premium_dashboard_react')
 @login_required
@@ -3799,6 +3793,95 @@ def admin_add_user():
     except Exception as e:
         logger.error(f"Error adding user: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/admin/compress_images', methods=['POST'])
+@login_required
+def admin_compress_images():
+    """Admin-only: compress existing uploaded images on disk referenced by DB.
+    Scans posts, replies, user profile pictures, community backgrounds, message photos.
+    """
+    username = session.get('username')
+    if not is_app_admin(username):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+
+    compressed = 0
+    skipped = 0
+    missing = 0
+    errored = 0
+
+    paths: set[str] = set()
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            for query in (
+                "SELECT image_path FROM posts WHERE image_path IS NOT NULL AND image_path != ''",
+                "SELECT image_path FROM replies WHERE image_path IS NOT NULL AND image_path != ''",
+                "SELECT profile_picture FROM user_profiles WHERE profile_picture IS NOT NULL AND profile_picture != ''",
+                "SELECT background_path FROM communities WHERE background_path IS NOT NULL AND background_path != ''",
+                "SELECT image_path FROM messages WHERE image_path IS NOT NULL AND image_path != ''",
+            ):
+                try:
+                    c.execute(query)
+                    for row in c.fetchall():
+                        try:
+                            val = row[0] if not hasattr(row, 'keys') else list(row.values())[0]
+                        except Exception:
+                            # Fallback: handle mapping/dict-style
+                            if hasattr(row, 'keys'):
+                                val = next(iter(row.values()))
+                            else:
+                                val = None
+                        if val:
+                            paths.add(str(val))
+                except Exception:
+                    continue
+    except Exception as e:
+        logger.error(f"Error collecting image paths: {e}")
+        return jsonify({'success': False, 'error': 'Failed to collect image paths'})
+
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    static_uploads = os.path.join(base_dir, 'static', 'uploads')
+    root_uploads = os.path.join(base_dir, 'uploads')
+
+    def resolve_path(p: str) -> str:
+        clean = (p or '').replace('\r', '').replace('\n', '').strip('/')
+        candidates = []
+        if clean.startswith('uploads/'):
+            candidates.append(os.path.join(base_dir, clean))
+            candidates.append(os.path.join(static_uploads, clean.split('uploads/',1)[1]))
+        else:
+            candidates.append(os.path.join(static_uploads, clean))
+            candidates.append(os.path.join(root_uploads, clean))
+        for c in candidates:
+            if os.path.exists(c):
+                return c
+        return candidates[0]
+
+    for p in list(paths):
+        disk_path = resolve_path(p)
+        if not os.path.exists(disk_path):
+            missing += 1
+            continue
+        try:
+            before = os.path.getsize(disk_path)
+            ok = optimize_image(disk_path, max_width=1280, quality=80)
+            if ok:
+                after = os.path.getsize(disk_path)
+                compressed += 1
+            else:
+                skipped += 1
+        except Exception as e:
+            errored += 1
+            logger.warning(f"Compress error {disk_path}: {e}")
+
+    return jsonify({
+        'success': True,
+        'total_paths': len(paths),
+        'compressed': compressed,
+        'skipped': skipped,
+        'missing': missing,
+        'errored': errored,
+    })
 
 @app.route('/api/admin/delete_user', methods=['POST'])
 @login_required
@@ -5606,23 +5689,7 @@ def send_photo_message():
         logger.error(f"Error sending photo message: {str(e)}")
         return jsonify({'success': False, 'error': 'Failed to send photo'})
 
-@app.route('/uploads/message_photos/<filename>')
-@login_required
-def serve_message_photo(filename):
-    """Serve uploaded message photos with caching"""
-    try:
-        uploads_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads', 'message_photos')
-        response = send_from_directory(uploads_dir, filename)
-        
-        # Add cache headers for faster loading
-        from redis_cache import IMAGE_CACHE_TTL
-        response.headers['Cache-Control'] = f'public, max-age={IMAGE_CACHE_TTL}'
-        response.headers['ETag'] = f'"{filename}"'
-        
-        return response
-    except Exception as e:
-        logger.error(f"Error serving message photo {filename}: {e}")
-        return "Photo not found", 404
+# Message photos served by web server static mapping (/uploads/message_photos -> uploads/message_photos)
 
 @app.route('/debug/message_photos')
 @login_required
@@ -10425,18 +10492,43 @@ def upload_doc():
         logger.error(f"upload_doc error: {e}")
         return jsonify({'success': False, 'error': 'Server error'})
 
-@app.route('/uploads/docs/<path:filename>')
+@app.route('/delete_doc', methods=['POST'])
 @login_required
-def serve_doc(filename):
+def delete_doc():
+    """Delete a previously uploaded PDF document"""
     try:
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        upload_dir = os.path.join(base_dir, 'uploads', 'docs')
-        response = send_from_directory(upload_dir, filename, as_attachment=False)
-        response.headers['Cache-Control'] = 'public, max-age=86400'
-        return response
+        username = session.get('username')
+        doc_id = request.form.get('doc_id')
+        if not doc_id:
+            return jsonify({'success': False, 'error': 'doc_id required'})
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            # Fetch doc owner and path
+            c.execute("SELECT username, file_path FROM useful_docs WHERE id = ?", (doc_id,))
+            row = c.fetchone()
+            if not row:
+                return jsonify({'success': False, 'error': 'Document not found'})
+            owner = row['username'] if hasattr(row, 'keys') else row[0]
+            path = row['file_path'] if hasattr(row, 'keys') else row[1]
+            if username != owner and username != 'admin':
+                return jsonify({'success': False, 'error': 'Forbidden'})
+            # Delete DB row
+            c.execute("DELETE FROM useful_docs WHERE id = ?", (doc_id,))
+            conn.commit()
+        # Attempt to delete file on disk
+        try:
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            disk_path = os.path.join(base_dir, 'uploads', path)
+            if os.path.exists(disk_path):
+                os.remove(disk_path)
+        except Exception as fe:
+            logger.warning(f"Could not remove doc file {path}: {fe}")
+        return jsonify({'success': True})
     except Exception as e:
-        logger.error(f"serve_doc error: {e}")
-        return 'Not found', 404
+        logger.error(f"Error deleting doc: {e}")
+        return jsonify({'success': False, 'error': 'Server error'})
+
+# Docs served by web server static mapping (/uploads/docs -> uploads/docs)
 
 @app.route('/delete_link', methods=['POST'])
 @login_required
@@ -11000,7 +11092,8 @@ def edit_post():
             owner = row['username'] if hasattr(row, 'keys') else row[0]
             if owner != username and username != 'admin':
                 return jsonify({'success': False, 'error': 'Unauthorized!'}), 403
-            c.execute("UPDATE posts SET content = ?, timestamp = ? WHERE id = ?", (new_content, datetime.now().strftime('%Y-%m-%d %H:%M:%S'), post_id))
+            # Do not alter the original timestamp when editing content
+            c.execute("UPDATE posts SET content = ? WHERE id = ?", (new_content, post_id))
             conn.commit()
         return jsonify({'success': True})
     except Exception as e:
@@ -12294,58 +12387,7 @@ def not_found_error(e):
 
 # Add this after the existing routes, before the error handlers
 
-@app.route('/uploads/<path:filename>')
-def uploaded_file(filename):
-    """Serve uploaded images with proper headers for mobile compatibility"""
-    try:
-        # Log the request for debugging
-        logger.info(f"Image request: {filename} from {request.headers.get('User-Agent', 'Unknown')}")
-        
-        # Clean the filename (remove any 'uploads/' prefix if present)
-        clean_filename = filename.replace('uploads/', '') if filename.startswith('uploads/') else filename
-        
-        # Construct the full path
-        file_path = os.path.join(app.config['UPLOAD_FOLDER'], clean_filename)
-        
-        # Check if file exists
-        if not os.path.exists(file_path):
-            logger.error(f"Image file not found: {file_path}")
-            # Try alternative paths
-            alt_paths = [
-                os.path.join(app.config['UPLOAD_FOLDER'], filename),
-                os.path.join('static', 'uploads', clean_filename),
-                os.path.join('static', 'uploads', filename)
-            ]
-            for alt_path in alt_paths:
-                if os.path.exists(alt_path):
-                    logger.info(f"Found image at alternative path: {alt_path}")
-                    return send_from_directory(os.path.dirname(alt_path), os.path.basename(alt_path))
-            
-            return "Image not found", 404
-        
-        # Get file info
-        file_size = os.path.getsize(file_path)
-        logger.info(f"Serving image: {clean_filename}, size: {file_size} bytes")
-        
-        # Set proper headers for mobile compatibility and performance
-        response = send_from_directory(app.config['UPLOAD_FOLDER'], clean_filename)
-        response.headers['Cache-Control'] = 'public, max-age=31536000, immutable'  # Cache for 1 year, immutable
-        response.headers['Access-Control-Allow-Origin'] = '*'
-        
-        # Add ETag for better caching
-        import hashlib
-        etag = hashlib.md5(f"{clean_filename}-{file_size}".encode()).hexdigest()
-        response.headers['ETag'] = f'"{etag}"'
-        
-        # Check if client has cached version
-        if request.headers.get('If-None-Match') == f'"{etag}"':
-            return '', 304  # Not Modified
-        
-        return response
-        
-    except Exception as e:
-        logger.error(f"Error serving image {filename}: {str(e)}")
-        return "Error serving image", 500
+# Uploads served by web server static mapping (/uploads -> static/uploads)
 
 @app.route('/community_feed_smart/<int:community_id>')
 @login_required
@@ -12522,101 +12564,6 @@ def api_community_feed(community_id):
         logger.error(f"Error in api_community_feed for {community_id}: {e}")
         return jsonify({'success': False, 'error': 'Server error'}), 500
 
-@app.route('/api/community_photos')
-@login_required
-def api_community_photos():
-    community_id = request.args.get('community_id', type=int)
-    if not community_id:
-        return jsonify({ 'success': False, 'error': 'community_id required' }), 400
-    try:
-        username = session.get('username')
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            ph = get_sql_placeholder()
-            c.execute(f"SELECT id FROM users WHERE username = {ph}", (username,))
-            me = c.fetchone()
-            if not me:
-                return jsonify({ 'success': False, 'error': 'user not found' }), 404
-            user_id = me['id'] if hasattr(me,'keys') else me[0]
-            c.execute(f"SELECT 1 FROM user_communities WHERE user_id={ph} AND community_id={ph}", (user_id, community_id))
-            if not c.fetchone():
-                return jsonify({ 'success': False, 'error': 'forbidden' }), 403
-
-            photos = []
-            # Post images
-            if USE_MYSQL:
-                c.execute(
-                    """
-                    SELECT id, username, image_path, timestamp
-                    FROM posts
-                    WHERE community_id = %s AND image_path IS NOT NULL AND TRIM(image_path) <> ''
-                    ORDER BY id DESC
-                    """,
-                    (community_id,)
-                )
-            else:
-                c.execute(
-                    """
-                    SELECT id, username, image_path, timestamp
-                    FROM posts
-                    WHERE community_id = ? AND image_path IS NOT NULL AND TRIM(image_path) <> ''
-                    ORDER BY id DESC
-                    """,
-                    (community_id,)
-                )
-            for row in c.fetchall() or []:
-                rid = row['id'] if hasattr(row,'keys') else row[0]
-                ruser = row['username'] if hasattr(row,'keys') else row[1]
-                img = row['image_path'] if hasattr(row,'keys') else row[2]
-                rts = row['timestamp'] if hasattr(row,'keys') else row[3]
-                if not img:
-                    continue
-                s = str(img).strip()
-                if not (s.startswith('/uploads') or s.startswith('/static') or s.startswith('http')):
-                    s = f"/uploads/{s.lstrip('/')}"
-                photos.append({ 'id': f'post-{rid}', 'post_id': rid, 'reply_id': None, 'username': ruser, 'image_url': s, 'created_at': rts })
-
-            # Reply images
-            if USE_MYSQL:
-                c.execute(
-                    """
-                    SELECT r.id, r.post_id, r.username, r.image_path, r.timestamp
-                    FROM replies r
-                    JOIN posts p ON r.post_id = p.id
-                    WHERE p.community_id = %s AND r.image_path IS NOT NULL AND TRIM(r.image_path) <> ''
-                    ORDER BY r.id DESC
-                    """,
-                    (community_id,)
-                )
-            else:
-                c.execute(
-                    """
-                    SELECT r.id, r.post_id, r.username, r.image_path, r.timestamp
-                    FROM replies r
-                    JOIN posts p ON r.post_id = p.id
-                    WHERE p.community_id = ? AND r.image_path IS NOT NULL AND TRIM(r.image_path) <> ''
-                    ORDER BY r.id DESC
-                    """,
-                    (community_id,)
-                )
-            for row in c.fetchall() or []:
-                rid = row['id'] if hasattr(row,'keys') else row[0]
-                pid = row['post_id'] if hasattr(row,'keys') else row[1]
-                ruser = row['username'] if hasattr(row,'keys') else row[2]
-                img = row['image_path'] if hasattr(row,'keys') else row[3]
-                rts = row['timestamp'] if hasattr(row,'keys') else row[4]
-                if not img:
-                    continue
-                s = str(img).strip()
-                if not (s.startswith('/uploads') or s.startswith('/static') or s.startswith('http')):
-                    s = f"/uploads/{s.lstrip('/')}"
-                photos.append({ 'id': f'reply-{rid}', 'post_id': pid, 'reply_id': rid, 'username': ruser, 'image_url': s, 'created_at': rts })
-
-            return jsonify({ 'success': True, 'community_id': community_id, 'photos': photos })
-    except Exception as e:
-        logger.error(f"community_photos error: {e}")
-        return jsonify({ 'success': False, 'error': 'server error' }), 500
-
 # Product Development APIs
 @app.route('/api/product_posts', methods=['GET'])
 @login_required
@@ -12703,6 +12650,114 @@ def api_create_product_reply():
             return jsonify({'success': True, 'reply': {'id': rid, 'post_id': post_id, 'username': username, 'content': content, 'created_at': now}})
     except Exception as e:
         logger.error(f"create product reply error: {e}")
+        return jsonify({'success': False, 'error': 'server error'}), 500
+
+@app.route('/api/product_post_edit', methods=['POST'])
+@login_required
+def api_edit_product_post():
+    try:
+        username = session.get('username')
+        post_id = request.form.get('post_id', type=int)
+        content = (request.form.get('content') or '').strip()
+        if not post_id or not content:
+            return jsonify({'success': False, 'error': 'post_id and content required'}), 400
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            c.execute(f"SELECT username FROM product_posts WHERE id={ph}", (post_id,))
+            row = c.fetchone()
+            if not row:
+                return jsonify({'success': False, 'error': 'Post not found'}), 404
+            owner = row['username'] if hasattr(row,'keys') else row[0]
+            if username not in ('admin','Paulo','paulo') and username != owner:
+                return jsonify({'success': False, 'error': 'Forbidden'}), 403
+            c.execute(f"UPDATE product_posts SET content={ph} WHERE id={ph}", (content, post_id))
+            conn.commit()
+            return jsonify({'success': True, 'post': {'id': post_id, 'content': content }})
+    except Exception as e:
+        logger.error(f"edit product post error: {e}")
+        return jsonify({'success': False, 'error': 'server error'}), 500
+
+@app.route('/api/product_post_delete', methods=['POST'])
+@login_required
+def api_delete_product_post():
+    try:
+        username = session.get('username')
+        post_id = request.form.get('post_id', type=int)
+        if not post_id:
+            return jsonify({'success': False, 'error': 'post_id required'}), 400
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            c.execute(f"SELECT username FROM product_posts WHERE id={ph}", (post_id,))
+            row = c.fetchone()
+            if not row:
+                return jsonify({'success': False, 'error': 'Post not found'}), 404
+            owner = row['username'] if hasattr(row,'keys') else row[0]
+            if username not in ('admin','Paulo','paulo') and username != owner:
+                return jsonify({'success': False, 'error': 'Forbidden'}), 403
+            # Delete post (replies should cascade if FK set; otherwise explicit delete)
+            try:
+                c.execute(f"DELETE FROM product_posts WHERE id={ph}", (post_id,))
+            except Exception:
+                # Fallback: delete replies then post
+                c.execute(f"DELETE FROM product_replies WHERE post_id={ph}", (post_id,))
+                c.execute(f"DELETE FROM product_posts WHERE id={ph}", (post_id,))
+            conn.commit()
+            return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"delete product post error: {e}")
+        return jsonify({'success': False, 'error': 'server error'}), 500
+
+@app.route('/api/product_reply_edit', methods=['POST'])
+@login_required
+def api_edit_product_reply():
+    try:
+        username = session.get('username')
+        reply_id = request.form.get('reply_id', type=int)
+        content = (request.form.get('content') or '').strip()
+        if not reply_id or not content:
+            return jsonify({'success': False, 'error': 'reply_id and content required'}), 400
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            c.execute(f"SELECT username FROM product_replies WHERE id={ph}", (reply_id,))
+            row = c.fetchone()
+            if not row:
+                return jsonify({'success': False, 'error': 'Reply not found'}), 404
+            owner = row['username'] if hasattr(row,'keys') else row[0]
+            if username not in ('admin','Paulo','paulo') and username != owner:
+                return jsonify({'success': False, 'error': 'Forbidden'}), 403
+            c.execute(f"UPDATE product_replies SET content={ph} WHERE id={ph}", (content, reply_id))
+            conn.commit()
+            return jsonify({'success': True, 'reply': {'id': reply_id, 'content': content }})
+    except Exception as e:
+        logger.error(f"edit product reply error: {e}")
+        return jsonify({'success': False, 'error': 'server error'}), 500
+
+@app.route('/api/product_reply_delete', methods=['POST'])
+@login_required
+def api_delete_product_reply():
+    try:
+        username = session.get('username')
+        reply_id = request.form.get('reply_id', type=int)
+        if not reply_id:
+            return jsonify({'success': False, 'error': 'reply_id required'}), 400
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            c.execute(f"SELECT username FROM product_replies WHERE id={ph}", (reply_id,))
+            row = c.fetchone()
+            if not row:
+                return jsonify({'success': False, 'error': 'Reply not found'}), 404
+            owner = row['username'] if hasattr(row,'keys') else row[0]
+            if username not in ('admin','Paulo','paulo') and username != owner:
+                return jsonify({'success': False, 'error': 'Forbidden'}), 403
+            c.execute(f"DELETE FROM product_replies WHERE id={ph}", (reply_id,))
+            conn.commit()
+            return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"delete product reply error: {e}")
         return jsonify({'success': False, 'error': 'server error'}), 500
 
 @app.route('/api/product_polls', methods=['GET'])
@@ -13012,6 +13067,21 @@ def api_home_timeline():
                 post_id = post['id']
                 comm_id = post.get('community_id')
                 post['community_name'] = id_to_name.get(comm_id)
+                # Normalize image paths for client consumption
+                try:
+                    p = post.get('image_path')
+                    if p:
+                        p_str = str(p).strip()
+                        if p_str.startswith('http://') or p_str.startswith('https://'):
+                            pass
+                        elif p_str.startswith('/uploads') or p_str.startswith('/static'):
+                            post['image_path'] = p_str
+                        elif p_str.startswith('uploads/'):
+                            post['image_path'] = '/' + p_str
+                        else:
+                            post['image_path'] = f"/uploads/{p_str}"
+                except Exception:
+                    pass
                 
                 # Convert timestamp to DD-MM-YYYY format for display
                 try:
@@ -13028,7 +13098,19 @@ def api_home_timeline():
                 try:
                     c.execute("SELECT profile_picture FROM user_profiles WHERE username = ?", (post['username'],))
                     pp = c.fetchone()
-                    post['profile_picture'] = pp['profile_picture'] if pp and 'profile_picture' in pp.keys() else None
+                    _pp = pp['profile_picture'] if pp and 'profile_picture' in pp.keys() else None
+                    if _pp:
+                        _pp_str = str(_pp).strip()
+                        if _pp_str.startswith('http://') or _pp_str.startswith('https://'):
+                            post['profile_picture'] = _pp_str
+                        elif _pp_str.startswith('/uploads') or _pp_str.startswith('/static'):
+                            post['profile_picture'] = _pp_str
+                        elif _pp_str.startswith('uploads/'):
+                            post['profile_picture'] = '/' + _pp_str
+                        else:
+                            post['profile_picture'] = f"/uploads/{_pp_str}"
+                    else:
+                        post['profile_picture'] = None
                 except Exception:
                     post['profile_picture'] = None
 
@@ -13095,7 +13177,14 @@ def community_feed_react(community_id):
     try:
         base_dir = os.path.dirname(os.path.abspath(__file__))
         dist_dir = os.path.join(base_dir, 'client', 'dist')
-        return send_from_directory(dist_dir, 'index.html')
+        resp = send_from_directory(dist_dir, 'index.html')
+        try:
+            resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+            resp.headers['Pragma'] = 'no-cache'
+            resp.headers['Expires'] = '0'
+        except Exception:
+            pass
+        return resp
     except Exception as e:
         logger.error(f"Error serving React community feed: {str(e)}")
         abort(500)
@@ -13140,16 +13229,6 @@ def react_members_page(community_id):
     try:
         base_dir = os.path.dirname(os.path.abspath(__file__))
         dist_dir = os.path.join(base_dir, 'client', 'dist')
-        return send_from_directory(dist_dir, 'index.html')
-    except Exception as e:
-        logger.error(f"Error serving React community members page: {str(e)}")
-        abort(500)
-@app.route('/community/<int:community_id>/photos_react')
-@login_required
-def community_photos_react(community_id):
-    try:
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        dist_dir = os.path.join(base_dir, 'client', 'dist')
         resp = send_from_directory(dist_dir, 'index.html')
         try:
             resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
@@ -13159,7 +13238,7 @@ def community_photos_react(community_id):
             pass
         return resp
     except Exception as e:
-        logger.error(f"Error serving React community photos: {str(e)}")
+        logger.error(f"Error serving React community members page: {str(e)}")
         abort(500)
 @app.route('/static/uploads/<path:filename>')
 def static_uploaded_file(filename):
@@ -13177,6 +13256,44 @@ def static_uploaded_file(filename):
     except Exception as e:
         logger.error(f"Error serving static image {filename}: {str(e)}")
         return "Error serving image", 500
+
+@app.route('/uploads/<path:filename>')
+def uploaded_file_compat(filename):
+    """Compatibility route for uploads served under /uploads.
+    Tries static/uploads first (default save location), then root uploads for special folders.
+    """
+    try:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        static_dir = os.path.join(base_dir, 'static', 'uploads')
+        # Serve from static/uploads if present
+        candidate = os.path.join(static_dir, filename)
+        if os.path.exists(candidate):
+            resp = send_from_directory(static_dir, filename)
+            resp.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
+            return resp
+        # Fallbacks for message_photos and docs saved under root uploads/
+        root_uploads = os.path.join(base_dir, 'uploads')
+        mp_dir = os.path.join(root_uploads, 'message_photos')
+        docs_dir = os.path.join(root_uploads, 'docs')
+        if filename.startswith('message_photos/'):
+            sub = filename.split('message_photos/', 1)[1]
+            full = os.path.join(mp_dir, sub)
+            if os.path.exists(full):
+                resp = send_from_directory(mp_dir, sub)
+                resp.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
+                return resp
+        if filename.startswith('docs/'):
+            sub = filename.split('docs/', 1)[1]
+            full = os.path.join(docs_dir, sub)
+            if os.path.exists(full):
+                resp = send_from_directory(docs_dir, sub)
+                resp.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
+                return resp
+        # Not found
+        return 'Not found', 404
+    except Exception as e:
+        logger.error(f"Error in uploaded_file_compat for {filename}: {e}")
+        return 'Error', 500
 
 @app.route('/static/community_backgrounds/<path:filename>')
 def community_background_file(filename):
@@ -16499,7 +16616,7 @@ def save_community_info():
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # Check if user is owner/app admin or community admin
+        # Check if user is admin or community creator
         cursor.execute('''
             SELECT creator_username FROM communities 
             WHERE id = ?
@@ -16509,14 +16626,8 @@ def save_community_info():
         if not community:
             return jsonify({'success': False, 'error': 'Community not found'})
         
-        current_user = session['username']
-        if current_user != community['creator_username'] and current_user != 'admin':
-            try:
-                cursor.execute("SELECT 1 FROM community_admins WHERE community_id = ? AND username = ?", (community_id, current_user))
-                if cursor.fetchone() is None:
-                    return jsonify({'success': False, 'error': 'Unauthorized'})
-            except Exception:
-                return jsonify({'success': False, 'error': 'Unauthorized'})
+        if session['username'] != community['creator_username'] and session['username'] != 'admin':
+            return jsonify({'success': False, 'error': 'Unauthorized'})
         
         # Save announcement to announcements table
         cursor.execute('''
@@ -16551,7 +16662,7 @@ def upload_community_files():
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # Check if user is owner/app admin or community admin
+        # Check if user is admin or community creator
         cursor.execute('''
             SELECT creator_username FROM communities 
             WHERE id = ?
@@ -16561,14 +16672,8 @@ def upload_community_files():
         if not community:
             return jsonify({'success': False, 'error': 'Community not found'})
         
-        current_user = session['username']
-        if current_user != community['creator_username'] and current_user != 'admin':
-            try:
-                cursor.execute("SELECT 1 FROM community_admins WHERE community_id = ? AND username = ?", (community_id, current_user))
-                if cursor.fetchone() is None:
-                    return jsonify({'success': False, 'error': 'Unauthorized'})
-            except Exception:
-                return jsonify({'success': False, 'error': 'Unauthorized'})
+        if session['username'] != community['creator_username'] and session['username'] != 'admin':
+            return jsonify({'success': False, 'error': 'Unauthorized'})
         
         # Create community files directory
         community_files_dir = os.path.join('static', 'community_files', str(community_id))
@@ -16751,17 +16856,27 @@ def save_community_announcement():
             )
         ''')
         
-        # Check if user is admin or community creator
+        # Check if user is creator, app admin, or community admin
         cursor.execute('''
             SELECT creator_username FROM communities 
             WHERE id = ?
         ''', (community_id,))
-        
         community = cursor.fetchone()
         if not community:
             return jsonify({'success': False, 'error': 'Community not found'})
-        
-        if session['username'] != community['creator_username'] and session['username'] != 'admin':
+
+        current_user = session['username']
+        is_owner = current_user == community['creator_username']
+        is_app_admin = current_user == 'admin'
+        # community admin?
+        is_comm_admin = False
+        try:
+            cursor.execute("SELECT 1 FROM community_admins WHERE community_id = ? AND username = ?", (community_id, current_user))
+            is_comm_admin = cursor.fetchone() is not None
+        except Exception:
+            is_comm_admin = False
+
+        if not (is_owner or is_app_admin or is_comm_admin):
             return jsonify({'success': False, 'error': 'Unauthorized'})
         
         # Save announcement to database
@@ -16806,8 +16921,47 @@ def save_community_announcement():
         ''', (content, datetime.now().strftime('%m.%d.%y %H:%M'), community_id))
         
         conn.commit()
+
+        # Notify all members of this community via Web Push (best-effort)
+        try:
+            # Fetch community name for nicer title
+            community_name = None
+            try:
+                cursor.execute("SELECT name FROM communities WHERE id = ?", (community_id,))
+                rown = cursor.fetchone()
+                community_name = (rown['name'] if hasattr(rown, 'keys') else rown[0]) if rown else None
+            except Exception:
+                community_name = None
+
+            # Load all member usernames
+            cursor.execute(
+                """
+                SELECT u.username
+                FROM user_communities uc
+                JOIN users u ON uc.user_id = u.id
+                WHERE uc.community_id = ?
+                """,
+                (community_id,)
+            )
+            members = [r['username'] if hasattr(r, 'keys') else r[0] for r in (cursor.fetchall() or [])]
+            # Trim announcement body for push body
+            body_snippet = (content or '')[:120]
+            for m in members:
+                if not m or m == current_user:
+                    continue
+                try:
+                    send_push_to_user(m, {
+                        'title': f"New announcement{(' in ' + community_name) if community_name else ''}",
+                        'body': body_snippet,
+                        'url': f"/community_feed_react/{community_id}",
+                        'tag': f"community-announcement-{community_id}"
+                    })
+                except Exception as pe:
+                    logger.warning(f"announcement push warn to {m}: {pe}")
+        except Exception as ne:
+            logger.warning(f"announcement notify warn: {ne}")
+
         conn.close()
-        
         return jsonify({'success': True, 'files': uploaded_files})
         
     except Exception as e:
@@ -16881,17 +17035,25 @@ def delete_community_announcement():
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # Check if user is admin or community creator
+        # Check if user is creator, app admin, or community admin
         cursor.execute('''
             SELECT creator_username FROM communities 
             WHERE id = ?
         ''', (community_id,))
-        
         community = cursor.fetchone()
         if not community:
             return jsonify({'success': False, 'error': 'Community not found'})
-        
-        if session['username'] != community['creator_username'] and session['username'] != 'admin':
+
+        current_user = session['username']
+        is_owner = current_user == community['creator_username']
+        is_app_admin = current_user == 'admin'
+        is_comm_admin = False
+        try:
+            cursor.execute("SELECT 1 FROM community_admins WHERE community_id = ? AND username = ?", (community_id, current_user))
+            is_comm_admin = cursor.fetchone() is not None
+        except Exception:
+            is_comm_admin = False
+        if not (is_owner or is_app_admin or is_comm_admin):
             return jsonify({'success': False, 'error': 'Unauthorized'})
         
         # Delete announcement from database
