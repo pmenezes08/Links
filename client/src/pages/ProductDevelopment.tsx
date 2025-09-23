@@ -273,14 +273,13 @@ function PostCard({ post, onReply, onEditPost, onDeletePost, onEditReply, onDele
   const [replyText, setReplyText] = useState('')
   const [isEditing, setIsEditing] = useState(false)
   const [editText, setEditText] = useState(post.content)
-  const me = (window as any).currentUser || ''
-  const canEdit = true // editing allowed for post owner or admin is enforced server-side on submit
+  const allowEdit = ['admin','paulo'].includes((post.username||'').toLowerCase()) || true
   return (
     <div className="rounded-2xl border border-white/10 bg-black">
       <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2">
         <div className="font-medium">{post.username}</div>
         <div className="text-xs text-[#9fb0b5] ml-auto">{post.created_at}</div>
-        {canEdit ? (
+        {allowEdit ? (
           <>
             <button className="ml-2 px-2 py-1 rounded-full text-[#6c757d] hover:text-[#4db6ac]" title="Edit"
               onClick={()=> setIsEditing(v=>!v)}>
