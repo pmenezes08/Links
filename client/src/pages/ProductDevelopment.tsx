@@ -6,6 +6,8 @@ type PPost = { id:number; username:string; content:string; created_at:string; re
 
 type Poll = { id:number; username:string; question:string; options:string[]; created_at:string, closed?: boolean, allow_multiple?: boolean, option_counts?: number[] }
 
+// Helpers implemented below in component scope
+
 export default function ProductDevelopment(){
   const { setTitle } = useHeader()
   const [tab, setTab] = useState<'updates'|'feedback'|'polls'>('updates')
@@ -51,7 +53,7 @@ export default function ProductDevelopment(){
     return () => { mounted = false }
   }, [tab])
 
-  const canPostUpdates = useMemo(()=> ['admin','Paulo','paulo'].includes((me||'').toLowerCase()), [me])
+  const canPostUpdates = useMemo(()=> ['admin','paulo'].includes((me||'').toLowerCase()), [me])
 
   async function createPost(){
     if (!composer.trim()) return
@@ -78,6 +80,46 @@ export default function ProductDevelopment(){
         setPosts(p => p.map(pp => pp.id===postId ? { ...pp, replies: [j.reply, ...pp.replies] } : pp))
       } else alert(j?.error || 'Failed')
     }catch{ alert('Network error') }
+  }
+
+  async function editPost(postId:number, content:string){
+    const fd = new FormData()
+    fd.append('post_id', String(postId))
+    fd.append('content', content)
+    const r = await fetch('/api/product_post_edit', { method:'POST', credentials:'include', body: fd })
+    const j = await r.json().catch(()=>null)
+    if (j?.success){ setPosts(ps => ps.map(p => p.id===postId ? { ...p, content } : p)) }
+    else alert(j?.error || 'Failed')
+  }
+
+  async function deletePost(postId:number){
+    if (!confirm('Delete this post?')) return
+    const fd = new FormData()
+    fd.append('post_id', String(postId))
+    const r = await fetch('/api/product_post_delete', { method:'POST', credentials:'include', body: fd })
+    const j = await r.json().catch(()=>null)
+    if (j?.success){ setPosts(ps => ps.filter(p => p.id !== postId)) }
+    else alert(j?.error || 'Failed')
+  }
+
+  async function editReply(replyId:number, content:string){
+    const fd = new FormData()
+    fd.append('reply_id', String(replyId))
+    fd.append('content', content)
+    const r = await fetch('/api/product_reply_edit', { method:'POST', credentials:'include', body: fd })
+    const j = await r.json().catch(()=>null)
+    if (j?.success){ setPosts(ps => ps.map(p => ({ ...p, replies: p.replies.map(r => r.id===replyId ? { ...r, content } : r) }))) }
+    else alert(j?.error || 'Failed')
+  }
+
+  async function deleteReply(replyId:number){
+    if (!confirm('Delete this reply?')) return
+    const fd = new FormData()
+    fd.append('reply_id', String(replyId))
+    const r = await fetch('/api/product_reply_delete', { method:'POST', credentials:'include', body: fd })
+    const j = await r.json().catch(()=>null)
+    if (j?.success){ setPosts(ps => ps.map(p => ({ ...p, replies: p.replies.filter(r => r.id !== replyId) }))) }
+    else alert(j?.error || 'Failed')
   }
 
   async function createPoll(){
@@ -217,7 +259,7 @@ export default function ProductDevelopment(){
           <div className="mt-3 space-y-3">
             {loading ? (<div className="text-[#9fb0b5]">Loading…</div>) : error ? (<div className="text-red-400">{error}</div>) : (
               posts.length ? posts.map(p => (
-                <PostCard key={p.id} post={p} onReply={addReply} />
+                <PostCard key={p.id} post={p} onReply={addReply} onEditPost={editPost} onDeletePost={deletePost} onEditReply={editReply} onDeleteReply={deleteReply} />
               )) : (<div className="text-[#9fb0b5] text-sm">No posts yet.</div>)
             )}
           </div>
@@ -227,16 +269,42 @@ export default function ProductDevelopment(){
   )
 }
 
-function PostCard({ post, onReply }:{ post:PPost; onReply:(postId:number, text:string)=>void }){
+function PostCard({ post, onReply, onEditPost, onDeletePost, onEditReply, onDeleteReply }:{ post:PPost; onReply:(postId:number, text:string)=>void; onEditPost:(postId:number, content:string)=>void; onDeletePost:(postId:number)=>void; onEditReply:(replyId:number, content:string)=>void; onDeleteReply:(replyId:number)=>void }){
   const [replyText, setReplyText] = useState('')
+  const [isEditing, setIsEditing] = useState(false)
+  const [editText, setEditText] = useState(post.content)
+  const me = (window as any).currentUser || ''
+  const canEdit = true // editing allowed for post owner or admin is enforced server-side on submit
   return (
     <div className="rounded-2xl border border-white/10 bg-black">
       <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2">
         <div className="font-medium">{post.username}</div>
         <div className="text-xs text-[#9fb0b5] ml-auto">{post.created_at}</div>
+        {canEdit ? (
+          <>
+            <button className="ml-2 px-2 py-1 rounded-full text-[#6c757d] hover:text-[#4db6ac]" title="Edit"
+              onClick={()=> setIsEditing(v=>!v)}>
+              <i className="fa-regular fa-pen-to-square" />
+            </button>
+            <button className="ml-1 px-2 py-1 rounded-full text-red-300 hover:text-red-400" title="Delete"
+              onClick={()=> onDeletePost(post.id)}>
+              <i className="fa-regular fa-trash-can" />
+            </button>
+          </>
+        ) : null}
       </div>
       <div className="px-3 py-2">
-        <div className="whitespace-pre-wrap text-[14px] break-words">{post.content}</div>
+        {!isEditing ? (
+          <div className="whitespace-pre-wrap text-[14px] break-words">{post.content}</div>
+        ) : (
+          <div className="space-y-2">
+            <textarea className="w-full rounded-md bg-black border border-white/10 px-2 py-2 text-[15px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]" rows={3} value={editText} onChange={(e)=> setEditText(e.target.value)} />
+            <div className="text-right flex gap-2 justify-end">
+              <button className="px-2.5 py-1.5 rounded-md border border-white/10 text-[13px]" onClick={()=> { setIsEditing(false); setEditText(post.content) }}>Cancel</button>
+              <button className="px-2.5 py-1.5 rounded-md bg-[#4db6ac] text-black text-[13px]" onClick={()=> { setIsEditing(false); onEditPost(post.id, editText) }}>Save</button>
+            </div>
+          </div>
+        )}
       </div>
       <div className="px-3 pb-2">
         <div className="flex items-center gap-2">
@@ -246,14 +314,42 @@ function PostCard({ post, onReply }:{ post:PPost; onReply:(postId:number, text:s
         {post.replies?.length ? (
           <div className="mt-2 space-y-2">
             {post.replies.map(r => (
-              <div key={r.id} className="px-2 py-1.5 rounded-lg border border-white/10 bg-black/60">
-                <div className="text-xs text-[#9fb0b5]">{r.username} • {r.created_at}</div>
-                <div className="text-sm whitespace-pre-wrap break-words">{r.content}</div>
-              </div>
+              <ReplyCard key={r.id} reply={r} onEditReply={onEditReply} onDeleteReply={onDeleteReply} />
             ))}
           </div>
         ) : null}
       </div>
+    </div>
+  )
+}
+
+function ReplyCard({ reply, onEditReply, onDeleteReply }:{ reply:PReply; onEditReply:(replyId:number, content:string)=>void; onDeleteReply:(replyId:number)=>void }){
+  const [isEditing, setIsEditing] = useState(false)
+  const [editText, setEditText] = useState(reply.content)
+  return (
+    <div className="px-2 py-1.5 rounded-lg border border-white/10 bg-black/60">
+      <div className="flex items-center gap-2">
+        <div className="text-xs text-[#9fb0b5]">{reply.username} • {reply.created_at}</div>
+        <div className="ml-auto flex items-center gap-1">
+          <button className="px-2 py-1 rounded-full text-[#6c757d] hover:text-[#4db6ac]" title="Edit reply" onClick={()=> setIsEditing(v=>!v)}>
+            <i className="fa-regular fa-pen-to-square" />
+          </button>
+          <button className="px-2 py-1 rounded-full text-red-300 hover:text-red-400" title="Delete reply" onClick={()=> onDeleteReply(reply.id)}>
+            <i className="fa-regular fa-trash-can" />
+          </button>
+        </div>
+      </div>
+      {!isEditing ? (
+        <div className="text-sm whitespace-pre-wrap break-words">{reply.content}</div>
+      ) : (
+        <div className="mt-1 space-y-2">
+          <textarea className="w-full rounded-md bg-black border border-white/10 px-2 py-2 text-[14px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]" value={editText} onChange={(e)=> setEditText(e.target.value)} />
+          <div className="flex gap-2 justify-end">
+            <button className="px-2.5 py-1.5 rounded-md border border-white/10 text-[13px]" onClick={()=> { setIsEditing(false); setEditText(reply.content) }}>Cancel</button>
+            <button className="px-2.5 py-1.5 rounded-md bg-[#4db6ac] text-black text-[13px]" onClick={()=> { setIsEditing(false); onEditReply(reply.id, editText) }}>Save</button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

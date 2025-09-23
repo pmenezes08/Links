@@ -12651,6 +12651,114 @@ def api_create_product_reply():
         logger.error(f"create product reply error: {e}")
         return jsonify({'success': False, 'error': 'server error'}), 500
 
+@app.route('/api/product_post_edit', methods=['POST'])
+@login_required
+def api_edit_product_post():
+    try:
+        username = session.get('username')
+        post_id = request.form.get('post_id', type=int)
+        content = (request.form.get('content') or '').strip()
+        if not post_id or not content:
+            return jsonify({'success': False, 'error': 'post_id and content required'}), 400
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            c.execute(f"SELECT username FROM product_posts WHERE id={ph}", (post_id,))
+            row = c.fetchone()
+            if not row:
+                return jsonify({'success': False, 'error': 'Post not found'}), 404
+            owner = row['username'] if hasattr(row,'keys') else row[0]
+            if username not in ('admin','Paulo','paulo') and username != owner:
+                return jsonify({'success': False, 'error': 'Forbidden'}), 403
+            c.execute(f"UPDATE product_posts SET content={ph} WHERE id={ph}", (content, post_id))
+            conn.commit()
+            return jsonify({'success': True, 'post': {'id': post_id, 'content': content }})
+    except Exception as e:
+        logger.error(f"edit product post error: {e}")
+        return jsonify({'success': False, 'error': 'server error'}), 500
+
+@app.route('/api/product_post_delete', methods=['POST'])
+@login_required
+def api_delete_product_post():
+    try:
+        username = session.get('username')
+        post_id = request.form.get('post_id', type=int)
+        if not post_id:
+            return jsonify({'success': False, 'error': 'post_id required'}), 400
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            c.execute(f"SELECT username FROM product_posts WHERE id={ph}", (post_id,))
+            row = c.fetchone()
+            if not row:
+                return jsonify({'success': False, 'error': 'Post not found'}), 404
+            owner = row['username'] if hasattr(row,'keys') else row[0]
+            if username not in ('admin','Paulo','paulo') and username != owner:
+                return jsonify({'success': False, 'error': 'Forbidden'}), 403
+            # Delete post (replies should cascade if FK set; otherwise explicit delete)
+            try:
+                c.execute(f"DELETE FROM product_posts WHERE id={ph}", (post_id,))
+            except Exception:
+                # Fallback: delete replies then post
+                c.execute(f"DELETE FROM product_replies WHERE post_id={ph}", (post_id,))
+                c.execute(f"DELETE FROM product_posts WHERE id={ph}", (post_id,))
+            conn.commit()
+            return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"delete product post error: {e}")
+        return jsonify({'success': False, 'error': 'server error'}), 500
+
+@app.route('/api/product_reply_edit', methods=['POST'])
+@login_required
+def api_edit_product_reply():
+    try:
+        username = session.get('username')
+        reply_id = request.form.get('reply_id', type=int)
+        content = (request.form.get('content') or '').strip()
+        if not reply_id or not content:
+            return jsonify({'success': False, 'error': 'reply_id and content required'}), 400
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            c.execute(f"SELECT username FROM product_replies WHERE id={ph}", (reply_id,))
+            row = c.fetchone()
+            if not row:
+                return jsonify({'success': False, 'error': 'Reply not found'}), 404
+            owner = row['username'] if hasattr(row,'keys') else row[0]
+            if username not in ('admin','Paulo','paulo') and username != owner:
+                return jsonify({'success': False, 'error': 'Forbidden'}), 403
+            c.execute(f"UPDATE product_replies SET content={ph} WHERE id={ph}", (content, reply_id))
+            conn.commit()
+            return jsonify({'success': True, 'reply': {'id': reply_id, 'content': content }})
+    except Exception as e:
+        logger.error(f"edit product reply error: {e}")
+        return jsonify({'success': False, 'error': 'server error'}), 500
+
+@app.route('/api/product_reply_delete', methods=['POST'])
+@login_required
+def api_delete_product_reply():
+    try:
+        username = session.get('username')
+        reply_id = request.form.get('reply_id', type=int)
+        if not reply_id:
+            return jsonify({'success': False, 'error': 'reply_id required'}), 400
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            c.execute(f"SELECT username FROM product_replies WHERE id={ph}", (reply_id,))
+            row = c.fetchone()
+            if not row:
+                return jsonify({'success': False, 'error': 'Reply not found'}), 404
+            owner = row['username'] if hasattr(row,'keys') else row[0]
+            if username not in ('admin','Paulo','paulo') and username != owner:
+                return jsonify({'success': False, 'error': 'Forbidden'}), 403
+            c.execute(f"DELETE FROM product_replies WHERE id={ph}", (reply_id,))
+            conn.commit()
+            return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"delete product reply error: {e}")
+        return jsonify({'success': False, 'error': 'server error'}), 500
+
 @app.route('/api/product_polls', methods=['GET'])
 @login_required
 def api_product_polls():
