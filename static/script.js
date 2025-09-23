@@ -1,5 +1,11 @@
 // static/script.js
 
+function handleImageError(imgElement) {
+    console.log('Image failed to load:', imgElement.src);
+    imgElement.style.display = 'none';
+    imgElement.parentElement.innerHTML = '<div style="padding: 20px; text-align: center; color: #9fb0b5;">Image could not be loaded</div>';
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     console.log("script.js loaded, jQuery version:", jQuery.fn.jquery);
 
@@ -49,9 +55,8 @@ document.addEventListener('DOMContentLoaded', function() {
         });
 
         $dropdown.on('click', 'a', function() { if ($(window).width() <= 600) { $dropdown.hide(); } });
-    } else {
-        console.error("Menu elements not found:", { $menuBtn, $dropdown });
     }
+    // No error logging needed - menu elements are optional on some pages
 
     // Global go-back button: route to dashboard
     $(document).on('click', '.go-back-btn', function(e) {
@@ -213,7 +218,7 @@ document.addEventListener('DOMContentLoaded', function() {
         // Handle post submission
         $postForm.on('submit', function(e) {
             e.preventDefault();
-            const content = $(this).find('input[name="content"]').val().trim();
+            const content = $(this).find('textarea[name="content"], input[name="content"]').val().trim();
             const imageFile = $('#image-upload')[0].files[0];
             
             if (!content && !imageFile) {
@@ -225,6 +230,12 @@ document.addEventListener('DOMContentLoaded', function() {
             const formData = new FormData();
             formData.append('content', content);
             formData.append('csrf_token', $('meta[name="csrf-token"]').attr('content'));
+            
+            // Add community_id if it exists in the form
+            const communityId = $postForm.find('input[name="community_id"]').val();
+            if (communityId) {
+                formData.append('community_id', communityId);
+            }
             
             if (imageFile) {
                 formData.append('image', imageFile);
@@ -241,7 +252,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     console.log("Post submission response:", data);
                     if (data.success) {
                                     const imageHtml = data.post.image_path ?
-                `<div class="post-image"><img src="/uploads/${data.post.image_path.replace('uploads/', '')}" alt="Post image" loading="lazy" onerror="console.log('Image failed to load:', this.src); this.style.display='none'; this.parentElement.innerHTML='<div style=\'padding: 20px; text-align: center; color: #9fb0b5;\'>Image could not be loaded</div>';" onload="console.log('Image loaded successfully:', this.src);"></div>` : '';
+                `<div class="post-image"><img src="/uploads/${data.post.image_path.replace('uploads/', '')}" alt="Post image" loading="lazy" onerror="handleImageError(this)" onload="console.log('Image loaded successfully:', this.src);" style="display: block;"></div>` : '';
                         
                         const postHtml = `
                             <div class="post clickable-post" data-post-id="${data.post.id}">
@@ -254,14 +265,14 @@ document.addEventListener('DOMContentLoaded', function() {
                                         <button class="reaction-btn thumbs-up" data-reaction="thumbs-up" aria-label="Thumbs up"><i class="far fa-thumbs-up"></i> <span>0</span></button>
                                         <button class="reaction-btn thumbs-down" data-reaction="thumbs-down" aria-label="Thumbs down"><i class="far fa-thumbs-down"></i> <span>0</span></button>
                                     </div>
-                                    ${data.post.username === sessionStorage.getItem('username') ? '<button class="delete-post inline-action" data-post-id="' + data.post.id + '"><i class="far fa-trash-alt"></i> Delete</button>' : ''}
+                                    ${data.post.username === sessionStorage.getItem('username') ? '<button class="delete-post inline-action" data-post-id="' + data.post.id + '" title="Delete"><i class="far fa-trash-alt"></i></button>' : ''}
                                 </div>
                                 <div class="reply-indicator">
                                     <i class="far fa-comment"></i> 0 replies
                                 </div>
                             </div>`;
                         $postContainer.prepend(postHtml);
-                        $postForm.find('input[name="content"]').val('');
+                        $postForm.find('textarea[name="content"], input[name="content"]').val('');
                         $('#image-upload').val('');
                         $('#selected-file-name').text('');
                         $('#image-preview').remove();
@@ -284,7 +295,7 @@ document.addEventListener('DOMContentLoaded', function() {
             e.preventDefault();
             const $form = $(this);
             const postId = $form.find('input[name="post_id"]').val();
-            const content = $form.find('input[name="content"]').val().trim();
+            const content = $form.find('textarea[name="content"], input[name="content"]').val().trim();
             const imageFile = $form.find('input[type="file"]')[0]?.files[0];
             
             if (!content && !imageFile) {
@@ -311,11 +322,11 @@ document.addEventListener('DOMContentLoaded', function() {
                                         <button class="reaction-btn thumbs-up" data-reaction="thumbs-up" aria-label="Thumbs up reply"><i class="far fa-thumbs-up"></i> <span>0</span></button>
                                         <button class="reaction-btn thumbs-down" data-reaction="thumbs-down" aria-label="Thumbs down reply"><i class="far fa-thumbs-down"></i> <span>0</span></button>
                                     </div>
-                                    ${data.reply.username === sessionStorage.getItem('username') ? '<button class="delete-reply inline-action" data-reply-id="' + data.reply.id + '"><i class="far fa-trash-alt"></i> Delete</button>' : ''}
+                                    ${data.reply.username === sessionStorage.getItem('username') ? '<button class="delete-reply inline-action" data-reply-id="' + data.reply.id + '" title="Delete"><i class="far fa-trash-alt"></i></button>' : ''}
                                 </div>
                             </div>`;
                         $replies.append(replyHtml);
-                        $form.find('input[name="content"]').val('');
+                        $form.find('textarea[name="content"], input[name="content"]').val('');
                     } else {
                         $form.after(`<div class="error-message">Error: ${data.error}</div>`);
                         setTimeout(() => $('.error-message').remove(), 3000);
@@ -358,6 +369,11 @@ document.addEventListener('DOMContentLoaded', function() {
                             $reactions.find(`[data-reaction="${type}"] span`).text(data.counts[type] || 0);
                         });
                         updateReactionIconStates($reactions, data.user_reaction);
+                        
+                        // Trigger immediate notification check for the post owner
+                        if (window.triggerNotificationCheck) {
+                            window.triggerNotificationCheck();
+                        }
                     } else {
                         $button.after(`<div class="error-message">Error: ${data.error}</div>`);
                         setTimeout(() => $('.error-message').remove(), 3000);
@@ -399,6 +415,11 @@ document.addEventListener('DOMContentLoaded', function() {
                             $reactions.find(`[data-reaction="${type}"] span`).text(data.counts[type] || 0);
                         });
                         updateReactionIconStates($reactions, data.user_reaction);
+                        
+                        // Trigger notification check for the reply owner
+                        if (window.triggerNotificationCheck) {
+                            window.triggerNotificationCheck();
+                        }
                     } else {
                         $button.after(`<div class="error-message">Error: ${data.error}</div>`);
                         setTimeout(() => $('.error-message').remove(), 3000);
@@ -592,7 +613,7 @@ document.addEventListener('DOMContentLoaded', function() {
         function buildModalContent(postData) {
             const repliesHtml = postData.replies.map(reply => {
                 const replyImageHtml = (reply.image_path && reply.image_path !== 'None' && reply.image_path !== '') ? 
-                    `<div class="reply-image"><img src="/uploads/${reply.image_path.replace('uploads/', '')}" alt="Reply image" loading="lazy" onerror="console.log('Reply image failed to load:', this.src); this.style.display='none'; this.parentElement.innerHTML='<div style=\'padding: 20px; text-align: center; color: #9fb0b5;\'>Image could not be loaded</div>';" onload="console.log('Reply image loaded successfully:', this.src);"></div>` : '';
+                    `<div class="reply-image"><img src="/uploads/${reply.image_path.replace('uploads/', '')}" alt="Reply image" loading="lazy" onerror="handleImageError(this)" onload="console.log('Reply image loaded successfully:', this.src);"></div>` : '';
                 
                 console.log("Building reply HTML for:", reply.username, "Current user:", sessionStorage.getItem('username'));
                 console.log("Should show delete button:", reply.username === sessionStorage.getItem('username'));
@@ -618,14 +639,14 @@ document.addEventListener('DOMContentLoaded', function() {
                                 </button>
                             </div>
                             ${reply.username === sessionStorage.getItem('username') ? 
-                                `<button class="delete-reply inline-action modal-delete-btn" data-reply-id="${reply.id}" data-action="delete"><i class="far fa-trash-alt"></i> Delete</button>` : ''}
+                                `<button class="delete-reply inline-action modal-delete-btn" data-reply-id="${reply.id}" data-action="delete" title="Delete"><i class="far fa-trash-alt"></i></button>` : ''}
                         </div>
                     </div>
                 `;
             }).join('');
 
             const imageHtml = (postData.image_path && postData.image_path !== 'None' && postData.image_path !== '') ? 
-                `<div class="post-image"><img src="/uploads/${postData.image_path.replace('uploads/', '')}" alt="Post image" loading="lazy" onerror="console.log('Modal image failed to load:', this.src); this.style.display='none'; this.parentElement.innerHTML='<div style=\'padding: 20px; text-align: center; color: #9fb0b5;\'>Image could not be loaded</div>';" onload="console.log('Modal image loaded successfully:', this.src);"></div>` : '';
+                `<div class="post-image"><img src="/uploads/${postData.image_path.replace('uploads/', '')}" alt="Post image" loading="lazy" onerror="handleImageError(this)" onload="console.log('Modal image loaded successfully:', this.src);" style="display: block;"></div>` : '';
             
             return `
                 <div class="post" data-post-id="${postData.id}">
@@ -859,7 +880,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 e.preventDefault();
                 const $form = $(this);
                 const postId = $form.find('input[name="post_id"]').val();
-                const content = $form.find('input[name="content"]').val().trim();
+                const content = $form.find('textarea[name="content"], input[name="content"]').val().trim();
                 const imageFile = $('#modal-reply-image-upload')[0].files[0];
                 
                 if (!content && !imageFile) {
@@ -929,11 +950,11 @@ document.addEventListener('DOMContentLoaded', function() {
                                             </button>
                                         </div>
                                         ${data.reply.username === sessionStorage.getItem('username') ? 
-                                            `<button class="delete-reply inline-action" data-reply-id="${data.reply.id}"><i class="far fa-trash-alt"></i> Delete</button>` : ''}
+                                            `<button class="delete-reply inline-action" data-reply-id="${data.reply.id}" title="Delete"><i class="far fa-trash-alt"></i></button>` : ''}
                                     </div>
                                 </div>`;
                             $('#modalPostContent .replies').append(replyHtml);
-                            $form.find('input[name="content"]').val('');
+                            $form.find('textarea[name="content"], input[name="content"]').val('');
                             $('#modal-reply-image-upload').val('');
                             $('#modal-reply-selected-file-name').text('');
                             $('#modal-reply-image-preview').remove();
@@ -943,6 +964,11 @@ document.addEventListener('DOMContentLoaded', function() {
                             if ($mainPost.length) {
                                 const currentCount = parseInt($mainPost.find('.reply-indicator').text().match(/\d+/)[0]) || 0;
                                 $mainPost.find('.reply-indicator').html(`<i class="far fa-comment"></i> ${currentCount + 1} replies`);
+                            }
+                            
+                            // Trigger notification check for the post owner
+                            if (window.triggerNotificationCheck) {
+                                window.triggerNotificationCheck();
                             }
                         } else {
                             $form.after(`<div class="error-message">Error: ${data.error}</div>`);

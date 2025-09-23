@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Crossfit Workout Tracking</title>
+	<link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+	<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+	<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+	<div class="workout-container">
+		<div class="workout-header">
+			<div class="header-content">
+				<button class="back-btn" onclick="window.history.back()">
+					<i class="fas fa-arrow-left"></i> Back
+				</button>
+				<h1>Crossfit Tracking</h1>
+			</div>
+		</div>
+
+		<div class="tab-navigation">
+			<button class="tab-btn active" data-tab="cf-tracking">
+				<i class="fas fa-chart-line"></i>
+				Performance Tracking
+			</button>
+			<button class="tab-btn" data-tab="cf-management">
+				<i class="fas fa-dumbbell"></i>
+				Workout Management
+			</button>
+			<button class="tab-btn" data-tab="cf-comparison">
+				<i class="fas fa-chart-bar"></i>
+				You vs Your Box
+			</button>
+		</div>
+
+		<div id="cf-tracking" class="tab-content active">
+			<div class="performance-tracking-container">
+				<div class="header-section">
+					<h3>Your Crossfit Overview</h3>
+					<button class="add-btn" onclick="openAddCFEntryModal()">
+						<i class="fas fa-plus"></i> Add Entry
+					</button>
+				</div>
+				<div class="analytics-section">
+					<div class="analytics-header">
+						<h4>Progress Analytics</h4>
+						<div class="analytics-controls">
+							<select id="cf-exercise-select" class="analytics-select">
+								<option value="">Select Lift or WOD</option>
+							</select>
+							<select id="cf-time-range" class="analytics-select">
+								<option value="30">Last 30 days</option>
+								<option value="90">Last 90 days</option>
+								<option value="180">Last 6 months</option>
+								<option value="365">Last year</option>
+								<option value="all">All time</option>
+							</select>
+						</div>
+					</div>
+					<div class="chart-container">
+						<canvas id="cfChart"></canvas>
+					</div>
+				</div>
+
+				<div class="exercises-section">
+					<div id="cf-view" class="muscle-groups-view"></div>
+				</div>
+			</div>
+		</div>
+
+		<div id="cf-management" class="tab-content">
+			<div class="exercise-management-container">
+				<div class="header-section">
+					<h3>Manage Lifts and WODs</h3>
+					<div style="display:flex; gap:8px; align-items:center;">
+						<button class="add-btn" onclick="openAddCFEntryModal()">
+							<i class="fas fa-plus"></i> Add Entry
+						</button>
+						<button class="add-btn" onclick="toggleCFSections()" title="Hide/Show all">
+							<i class="fas fa-eye-slash"></i> Toggle
+						</button>
+					</div>
+				</div>
+				<div class="exercises-list-section">
+					<div id="cf-management-list" class="exercises-list"></div>
+				</div>
+			</div>
+		</div>
+
+		<!-- Comparison Tab -->
+		<div id="cf-comparison" class="tab-content">
+			<div class="workouts-container">
+				<div class="header-section">
+					<h3>You vs Your Box</h3>
+				</div>
+				<div class="analytics-section">
+					<div class="analytics-header">
+						<h4>Select Community and Item</h4>
+						<div class="analytics-controls">
+							<select id="cf-community-select" class="analytics-select">
+								<option value="">Select Community</option>
+							</select>
+							<select id="cf-item-type" class="analytics-select" disabled>
+								<option value="lift">Lift</option>
+								<option value="wod">WOD</option>
+							</select>
+							<select id="cf-item-select" class="analytics-select" disabled>
+								<option value="">Select Lift or WOD</option>
+							</select>
+							<button class="share-btn" id="cf-load-compare-btn" title="Load Comparison" disabled>
+								<i class="fas fa-sync"></i>
+							</button>
+						</div>
+					</div>
+					<div class="chart-container" id="cf-compare-chart-container" style="min-height:260px; display:none;">
+						<canvas id="cfCompareChart"></canvas>
+					</div>
+					<div id="cf-compare-summary" style="color:#b0b8b9; font-size:13px; margin-top:8px;"></div>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<!-- Add Entry Modal -->
+	<div id="cf-add-modal" class="modal">
+		<div class="modal-content" style="max-width: 480px;">
+			<div class="modal-header">
+				<h3>Add Crossfit Entry</h3>
+				<button class="close-btn" onclick="closeAddCFEntryModal()">
+					<i class="fas fa-times"></i>
+				</button>
+			</div>
+			<div class="modal-body">
+				<form id="cf-add-form" class="exercise-form">
+					<div class="form-group">
+						<label for="cf-type">Type</label>
+						<select id="cf-type" required>
+							<option value="lift">Lift</option>
+							<option value="wod">WOD</option>
+						</select>
+					</div>
+					<div class="form-group">
+						<label for="cf-name">Name</label>
+						<input type="text" id="cf-name" placeholder="e.g., Fran / Clean & Jerk" required>
+					</div>
+					<div class="form-group">
+						<label for="cf-weight">Weight (kg) (for lifts)</label>
+						<input type="number" id="cf-weight" min="0" step="0.1">
+					</div>
+					<div class="form-group">
+						<label for="cf-reps">Reps (for lifts) or Time/Score (for WODs)</label>
+						<input type="text" id="cf-reps" placeholder="e.g., 5x3, or 5:12">
+					</div>
+					<div class="form-group">
+						<label for="cf-date">Date</label>
+						<input type="date" id="cf-date" required>
+					</div>
+					<div class="form-actions" style="margin-top: 8px; display:flex; gap:8px; justify-content:flex-end;">
+						<button type="button" class="submit-btn" onclick="closeAddCFEntryModal()" style="background: transparent; border: 1px solid #333;">Cancel</button>
+						<button type="submit" class="submit-btn"><i class="fas fa-save"></i> Save</button>
+					</div>
+				</form>
+			</div>
+		</div>
+	</div>
+
+	<script>
+		const commonLifts = ['Back Squat','Front Squat','Overhead Squat','Deadlift','Clean','Jerk','Clean & Jerk','Snatch','Bench Press','Push Press','Thruster'];
+		const commonWODs = ['Fran','Murph','Cindy','Helen','Annie','Diane','Grace','Isabel','Angie','Kelly','Jackie','Karen'];
+
+		$(document).ready(function(){
+			$('#cf-date').val(new Date().toISOString().split('T')[0]);
+			loadCFSelections();
+			loadCFLists();
+			$('.tab-btn').click(function(){
+				$('.tab-btn').removeClass('active');
+				$(this).addClass('active');
+				const tabId = $(this).data('tab');
+				$('.tab-content').removeClass('active');
+				$('#' + tabId).addClass('active');
+			});
+			$('#cf-add-form').on('submit', function(e){ e.preventDefault(); addCFEntry(); });
+			initCFComparison();
+		});
+
+		function loadCFSelections(){
+			const select = $('#cf-exercise-select');
+			select.empty();
+			select.append('<option value="">Select Lift or WOD</option>');
+			select.append('<optgroup label="Lifts">'+ commonLifts.map(n=>`<option value="lift:${n}">${n}</option>`).join('') +'</optgroup>');
+			select.append('<optgroup label="WODs">'+ commonWODs.map(n=>`<option value="wod:${n}">${n}</option>`).join('') +'</optgroup>');
+		}
+
+		function loadCFLists(){
+			const liftsHtml = commonLifts.map(n=> cfRow('lift', n)).join('');
+			const wodsHtml = commonWODs.map(n=> cfRow('wod', n)).join('');
+			$('#cf-view').html(`
+				<div class="muscle-group-section">
+					<div class="muscle-group-title-row" style="display:flex; align-items:center; justify-content: space-between; cursor:pointer; padding: 6px 0;" onclick="toggleCFGroup('Lifts')">
+						<h3 class="muscle-group-title" style="margin:0;">Lifts</h3>
+						<i class="fas fa-chevron-down" id="cf-toggle-icon-Lifts"></i>
+					</div>
+					<div class="exercises-list" id="cf-group-Lifts" style="display:block; margin-top: 6px;">${liftsHtml}</div>
+				</div>
+				<div class="muscle-group-section">
+					<div class="muscle-group-title-row" style="display:flex; align-items:center; justify-content: space-between; cursor:pointer; padding: 6px 0;" onclick="toggleCFGroup('WODs')">
+						<h3 class="muscle-group-title" style="margin:0;">WODs</h3>
+						<i class="fas fa-chevron-down" id="cf-toggle-icon-WODs"></i>
+					</div>
+					<div class="exercises-list" id="cf-group-WODs" style="display:block; margin-top: 6px;">${wodsHtml}</div>
+				</div>
+			`);
+		}
+
+		function cfRow(type, name){
+			return `
+				<div class="exercise-row">
+					<div class="exercise-header" onclick="toggleCFHistory('${type}:${name}')">
+						<div class="exercise-info">
+							<span class="exercise-name">${name}</span>
+							<span class="exercise-count" id="cf-count-${type}-${name}">0 entries</span>
+						</div>
+						<div class="exercise-actions">
+							<button onclick="event.stopPropagation(); openAddCFEntryModal('${type}','${name}')" class="action-btn small">
+								<i class="fas fa-plus"></i> Add
+							</button>
+							<i class="fas fa-chevron-down toggle-icon" id="cf-toggle-${type}-${name}"></i>
+						</div>
+					</div>
+					<div class="weight-history-dropdown" id="cf-history-${type}-${name}" style="display: none;">
+						<div class="weight-history" id="cf-list-${type}-${name}">No entries yet</div>
+					</div>
+				</div>
+			`;
+		}
+
+		function toggleCFGroup(group){
+			const list = document.getElementById(`cf-group-${group}`);
+			const icon = document.getElementById(`cf-toggle-icon-${group}`);
+			if (!list) return;
+			const hidden = list.style.display === 'none';
+			list.style.display = hidden ? 'block' : 'none';
+			if (icon){ icon.classList.toggle('fa-chevron-right', !hidden); icon.classList.toggle('fa-chevron-down', hidden); }
+		}
+
+		function toggleCFHistory(key){
+			const [type, name] = key.split(':');
+			const dd = document.getElementById(`cf-history-${type}-${name}`);
+			const icon = document.getElementById(`cf-toggle-${type}-${name}`);
+			if (!dd) return;
+			const hidden = dd.style.display === 'none';
+			dd.style.display = hidden ? 'block' : 'none';
+			if (icon){ icon.classList.toggle('fa-chevron-right', !hidden); icon.classList.toggle('fa-chevron-down', hidden); }
+		}
+
+		function openAddCFEntryModal(type='', name=''){
+			$('#cf-add-modal').show();
+			if (type && name){
+				$('#cf-type').val(type);
+				$('#cf-name').val(name);
+			}
+		}
+		function closeAddCFEntryModal(){ $('#cf-add-modal').hide(); }
+
+		function addCFEntry(){
+			const type = $('#cf-type').val();
+			const name = $('#cf-name').val();
+			const weight = $('#cf-weight').val();
+			const reps = $('#cf-reps').val();
+			const date = $('#cf-date').val();
+			$.post('/cf_add_entry', { type, name, weight, reps, score: reps, date }, function(resp){
+				if (resp && resp.success){
+					const list = $(`#cf-list-${type}-${name}`);
+					const cur = list.html();
+					const row = `<div class="weight-entry"><span class="weight-value">${weight ? weight+' kg' : ''} ${reps || ''}</span><span class="weight-date">${date}</span></div>`;
+					list.html(cur === 'No entries yet' ? row : cur + row);
+					const countEl = $(`#cf-count-${type}-${name}`);
+					const num = (parseInt(countEl.text())||0) + 1;
+					countEl.text(num + ' entries');
+					closeAddCFEntryModal();
+				} else {
+					alert(resp && resp.error ? resp.error : 'Error adding entry');
+				}
+			});
+		}
+
+		function initCFComparison(){
+			// Load user communities
+			$.get('/get_user_communities', function(resp){
+				const select = $('#cf-community-select');
+				select.empty();
+				select.append('<option value="">Select Community</option>');
+				if (resp && resp.success && Array.isArray(resp.communities)){
+					resp.communities.forEach(c => select.append(`<option value="${c.id}">${c.name}</option>`));
+				}
+			});
+
+			$('#cf-community-select').on('change', function(){
+				const has = !!$(this).val();
+				$('#cf-item-type').prop('disabled', !has);
+				$('#cf-item-select').prop('disabled', !has);
+				$('#cf-load-compare-btn').prop('disabled', !has);
+				loadCFItemOptions();
+			});
+
+			$('#cf-item-type').on('change', function(){ loadCFItemOptions(); });
+
+			$('#cf-load-compare-btn').on('click', function(){
+				const community_id = $('#cf-community-select').val();
+				const item_sel = $('#cf-item-select').val();
+				if (!community_id || !item_sel){ alert('Select community and item'); return; }
+				const item_type = item_sel.startsWith('wod:') ? 'wod' : 'lift';
+				const item_name = item_sel.replace(/^(lift:|wod:)/,'');
+				$.get('/cf_compare_item_in_box', { community_id, item_type, item_name }, function(resp){
+					if (resp && resp.success){
+						$('#cf-compare-chart-container').show();
+						// Reset canvas to avoid Chart.js reuse issues
+						document.getElementById('cf-compare-chart-container').innerHTML = '<canvas id="cfCompareChart"></canvas>';
+						renderCFComparison(resp.data);
+						$('#cf-compare-summary').text(resp.summary || '');
+					} else {
+						alert(resp && resp.error ? resp.error : 'Failed to load comparison');
+					}
+				});
+			});
+		}
+
+		function loadCFItemOptions(){
+			const type = $('#cf-item-type').val() || 'lift';
+			const sel = $('#cf-item-select');
+			sel.empty();
+			if (type === 'lift'){
+				sel.append('<optgroup label="Lifts">'+ commonLifts.map(n=>`<option value="lift:${n}">${n}</option>`).join('') +'</optgroup>');
+			} else {
+				sel.append('<optgroup label="WODs">'+ commonWODs.map(n=>`<option value="wod:${n}">${n}</option>`).join('') +'</optgroup>');
+			}
+		}
+
+		let cfCompareChart = null;
+		function renderCFComparison(data){
+			const ctx = document.getElementById('cfCompareChart').getContext('2d');
+			if (cfCompareChart){ cfCompareChart.destroy(); }
+			cfCompareChart = new Chart(ctx, {
+				type: 'bar',
+				data: {
+					labels: data.labels,
+					datasets: [
+						{ label: `You (${data.unit})`, data: data.userValues, backgroundColor: 'rgba(77, 182, 172, 0.6)', borderColor: '#4db6ac', borderWidth: 1 },
+						{ label: `Avg (${data.unit})`, data: data.avgValues, backgroundColor: 'rgba(176, 184, 185, 0.5)', borderColor: '#9fb0b5', borderWidth: 1 }
+					]
+				},
+				options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } }, plugins: { legend: { position: 'bottom' } } }
+			});
+		}
+	</script>
+</body>
+</html>

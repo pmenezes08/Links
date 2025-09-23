@@ -47,7 +47,7 @@ def init_db():
                      (username TEXT PRIMARY KEY, subscription TEXT, password TEXT,
                       gender TEXT, weight REAL, height REAL, blood_type TEXT, muscle_mass REAL, bmi REAL,
                       nutrition_goal TEXT, nutrition_restrictions TEXT)''')
-        c.execute("INSERT OR IGNORE INTO users (username, subscription, password) VALUES (?, ?, ?)",
+        c.execute("INSERT IGNORE INTO users (username, subscription, password) VALUES (?, ?, ?)",
                   ('admin', 'premium', '12345'))
         c.execute("DROP TABLE IF EXISTS api_usage")
         c.execute('''CREATE TABLE api_usage

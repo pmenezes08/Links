@@ -6,3 +6,8 @@ requests==2.31.0  # HTTP requests (used in OAuth callback)
 requests-oauthlib>=0.6.2,<1.2.0  # OAuth support for requests (compatible with flask-oauthlib)
 stripe==7.0.0  # Stripe payments
 python-dotenv==1.0.0  # Optional: for managing env vars like API keys
+pywebpush==1.14.0  # Web Push notifications
+cryptography>=41.0.0  # Needed by pywebpush for VAPID
+redis==5.0.1  # Redis caching for performance
+PyMySQL==1.1.0  # MySQL database connector
+Pillow==10.1.0  # Image optimization and compression

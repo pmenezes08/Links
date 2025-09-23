@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Notifications - C.Point</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v='3.1') }}">
+    <style>
+        /* Standard Page Layout Styles */
+        .notifications-page { margin-left: 200px; }
+        .notifications-page .sidebar { position: fixed !important; top: 0 !important; left: 0 !important; width: 200px !important; height: 100vh !important; background: #1a1a1a !important; border-right: 1px solid #333333 !important; z-index: 1000 !important; display: flex !important; flex-direction: column !important; }
+        .notifications-page .sidebar-header { display: flex; align-items: center; padding: 10px; border-bottom: 1px solid #333333; height: 60px; box-sizing: border-box; }
+        .notifications-page .sidebar-logo { padding: 5px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+        .notifications-page .community-name { flex: 1; display: flex; align-items: center; color: #ffffff; font-size: 14px; font-weight: 600; padding-left: 10px; overflow: hidden; }
+        .notifications-page .community-name span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .notifications-page .sidebar-menu { flex: 1; padding: 10px 0; display: block !important; overflow-y: auto !important; }
+        .notifications-page .sidebar-menu a { display: block !important; padding: 10px 18px !important; color: #ffffff !important; text-decoration: none !important; transition: all 0.3s ease !important; border: none !important; font-size: 13px !important; }
+        .notifications-page .sidebar-menu a:hover { background: rgba(77, 182, 172, 0.15) !important; color: #4db6ac !important; padding-left: 22px !important; }
+        .notifications-page .sidebar-menu a.active { background: rgba(77, 182, 172, 0.1) !important; color: #4db6ac !important; border-left: 3px solid #4db6ac !important; }
+        
+        /* Header Bar */
+        .notifications-header-bar { 
+            position: fixed; 
+            top: 0; 
+            left: 200px; 
+            right: 0; 
+            height: 60px; 
+            background: #000000; 
+            border-bottom: 1px solid #333333;
+            z-index: 900;
+            box-sizing: border-box;
+            display: flex;
+            align-items: center;
+            padding: 0 20px;
+        }
+        
+        .notifications-header-bar h1 {
+            color: #ffffff;
+            font-size: 18px;
+            font-weight: 600;
+            margin: 0;
+        }
+        
+        @media (max-width: 768px) {
+            .notifications-page { margin-left: 0 !important; padding-top: 60px !important; }
+            .notifications-page .sidebar { width: 100% !important; height: 60px !important; overflow: visible !important; }
+            .notifications-page .sidebar-header { padding: 8px !important; height: 60px !important; }
+            .notifications-page .community-name { font-size: 12px !important; }
+            .notifications-page .sidebar-menu { display: none !important; position: absolute !important; top: 60px !important; left: 0 !important; right: 0 !important; background: #1a1a1a !important; border-top: 1px solid #333333 !important; max-height: calc(100vh - 60px) !important; overflow-y: auto !important; }
+            .notifications-page .sidebar:hover .sidebar-menu, .notifications-page .sidebar:focus-within .sidebar-menu { display: block !important; }
+            .notifications-header-bar { left: 0 !important; }
+        }
+        
+        body {
+            background-color: #000000;
+            color: #ffffff;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+        
+        .notifications-container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 80px 20px 20px 20px;
+        }
+        
+        .notifications-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .notifications-title {
+            font-size: 20px;
+            font-weight: 600;
+            color: #ffffff;
+        }
+        
+        .mark-all-read-btn {
+            background: rgba(77, 182, 172, 0.1);
+            color: #4db6ac;
+            border: 1px solid rgba(77, 182, 172, 0.3);
+            padding: 6px 14px;
+            border-radius: 16px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-weight: 500;
+        }
+        
+        .mark-all-read-btn:hover {
+            background: rgba(77, 182, 172, 0.2);
+            border-color: #4db6ac;
+        }
+        
+        .notifications-list {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        
+        .notification-item {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            border-radius: 6px;
+            padding: 10px 12px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: start;
+            gap: 10px;
+        }
+        
+        .notification-item:hover {
+            background: rgba(255, 255, 255, 0.04);
+            border-color: rgba(77, 182, 172, 0.4);
+        }
+        
+        .notification-item.unread {
+            background: rgba(77, 182, 172, 0.08);
+            border-left: 2px solid #4db6ac;
+        }
+        
+        .notification-icon {
+            color: #4db6ac;
+            font-size: 16px;
+            margin-top: 2px;
+        }
+        
+        .notification-content {
+            flex: 1;
+        }
+        
+        .notification-message {
+            color: #ffffff;
+            font-size: 13px;
+            margin-bottom: 3px;
+            line-height: 1.4;
+        }
+        
+        .notification-message strong {
+            color: #4db6ac;
+        }
+        
+        .notification-time {
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 11px;
+        }
+        
+        .notification-actions {
+            display: flex;
+            gap: 6px;
+            margin-top: 6px;
+        }
+        
+        .notification-action-btn {
+            background: transparent;
+            border: 1px solid rgba(77, 182, 172, 0.3);
+            color: #4db6ac;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-weight: 500;
+        }
+        
+        .notification-action-btn:hover {
+            background: #4db6ac;
+            color: #ffffff;
+        }
+        
+        .no-notifications {
+            text-align: center;
+            padding: 60px 20px;
+            color: #9fb0b5;
+        }
+        
+        .no-notifications i {
+            font-size: 48px;
+            color: #4db6ac;
+            margin-bottom: 20px;
+        }
+        
+        .no-notifications p {
+            font-size: 16px;
+            margin: 10px 0;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #9fb0b5;
+        }
+        
+        @media (max-width: 768px) {
+            .notifications-container {
+                margin-left: 0;
+                padding: 15px;
+            }
+            
+            .notifications-title {
+                font-size: 24px;
+            }
+        }
+    </style>
+</head>
+<body class="notifications-page">
+    <!-- Sidebar Menu -->
+    <div class="sidebar">
+        <div class="sidebar-header">
+            <div class="sidebar-logo" id="sidebarLogo"></div>
+            <div class="community-name">
+                <span>Notifications</span>
+            </div>
+        </div>
+        <div class="sidebar-menu">
+            {% if session['username'] == 'admin' %}
+            <a href="{{ url_for('admin_profile') }}">Admin Profile</a>
+            <a href="{{ url_for('admin') }}">Admin Dashboard</a>
+            {% endif %}
+            <a href="{{ url_for('dashboard') }}">Dashboard</a>
+            <a href="{{ url_for('profile') }}">Profile</a>
+            <a href="{{ url_for('user_chat') }}">Messages</a>
+            <a href="/notifications" class="active">Notifications</a>
+            <a href="{{ url_for('communities') }}">Communities</a>
+            <a href="{{ url_for('your_sports') }}">Your Sports</a>
+            <a href="{{ url_for('logout') }}">Logout</a>
+            <a href="{{ url_for('account_settings') }}"><i class="fas fa-cog" style="margin-right: 8px;"></i>Settings</a>
+        </div>
+    </div>
+    
+    <!-- Header Bar -->
+    <div class="notifications-header-bar">
+        <h1>Notifications</h1>
+    </div>
+    
+    <div class="notifications-container">
+        <div class="notifications-header" style="justify-content: flex-end;">
+            <div style="display: flex; gap: 8px;">
+                <button class="mark-all-read-btn" onclick="markAllAsRead()">
+                    <i class="fas fa-check" style="font-size: 10px; margin-right: 4px;"></i>Mark all read
+                </button>
+                <button class="mark-all-read-btn" onclick="cleanupReadNotifications()">
+                    <i class="fas fa-trash" style="font-size: 10px; margin-right: 4px;"></i>Clear read
+                </button>
+            </div>
+        </div>
+        
+        <div id="notificationsList" class="notifications-list">
+            <div class="loading">
+                <i class="fas fa-spinner fa-spin"></i>
+                <p>Loading notifications...</p>
+            </div>
+        </div>
+    </div>
+    
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script>
+        // Menu functionality
+        $(document).ready(function() {
+            let menuTimeout;
+            
+            $('.menu-btn').on('click', function(e) {
+                e.stopPropagation();
+                $('.dropdown-content').slideDown(200);
+            });
+            
+            $('.sidebar').on('mouseenter', function() {
+                clearTimeout(menuTimeout);
+            });
+            
+            $('.dropdown-content').on('mouseenter', function() {
+                clearTimeout(menuTimeout);
+            });
+            
+            $('.sidebar').on('mouseleave', function() {
+                menuTimeout = setTimeout(function() {
+                    $('.dropdown-content').slideUp(200);
+                }, 300);
+            });
+            
+            $('.dropdown-content').on('mouseleave', function() {
+                menuTimeout = setTimeout(function() {
+                    $('.dropdown-content').slideUp(200);
+                }, 300);
+            });
+        });
+        
+        // Load notifications
+        function loadNotifications() {
+            fetch('/api/notifications?all=true')  // Show all notifications including read ones
+                .then(response => response.json())
+                .then(data => {
+                    const notificationsList = document.getElementById('notificationsList');
+                    const markAllBtn = document.querySelector('.mark-all-read-btn');
+                    
+                    if (data.notifications && data.notifications.length > 0) {
+                        const unreadCount = data.notifications.filter(n => !n.is_read).length;
+                        
+                        // Show/hide mark all as read button
+                        if (unreadCount > 0) {
+                            markAllBtn.style.display = 'block';
+                        } else {
+                            markAllBtn.style.display = 'none';
+                        }
+                        
+                        // Render notifications
+                        notificationsList.innerHTML = data.notifications.map(notification => {
+                            const icon = getNotificationIcon(notification.type);
+                            const timeAgo = getTimeAgo(notification.created_at);
+                            
+                            return `
+                                <div class="notification-item ${!notification.is_read ? 'unread' : ''}" 
+                                     onclick="handleNotificationClick(${notification.id}, ${notification.post_id}, ${notification.community_id}, '${notification.link || ''}', '${notification.type || ''}')">
+                                    <div class="notification-icon">
+                                        <i class="${icon}"></i>
+                                    </div>
+                                    <div class="notification-content">
+                                        <div class="notification-message">
+                                            ${notification.type === 'event_invitation' ? notification.message : 
+                                             `<strong>@${notification.from_user}</strong> ${getNotificationText(notification.type)}`}
+                                        </div>
+                                        <div class="notification-time">${timeAgo}</div>
+                                    </div>
+                                </div>
+                            `;
+                        }).join('');
+                    } else {
+                        markAllBtn.style.display = 'none';
+                        notificationsList.innerHTML = `
+                            <div class="no-notifications">
+                                <i class="fas fa-bell-slash"></i>
+                                <p>No notifications yet</p>
+                                <p>When someone interacts with your posts, you'll see it here</p>
+                            </div>
+                        `;
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading notifications:', error);
+                    document.getElementById('notificationsList').innerHTML = `
+                        <div class="no-notifications">
+                            <i class="fas fa-exclamation-triangle"></i>
+                            <p>Error loading notifications</p>
+                        </div>
+                    `;
+                });
+        }
+        
+        function getNotificationIcon(type) {
+            const icons = {
+                'reaction': 'fas fa-heart',
+                'reply': 'fas fa-comment',
+                'mention': 'fas fa-at',
+                'follow': 'fas fa-user-plus',
+                'poll_vote': 'fas fa-poll-h',
+                'event_invitation': 'fas fa-calendar-check'
+            };
+            return icons[type] || 'fas fa-bell';
+        }
+        
+        function getNotificationText(type) {
+            const texts = {
+                'reaction': 'reacted to your post',
+                'reply': 'replied to your post',
+                'mention': 'mentioned you',
+                'follow': 'started following you',
+                'poll_vote': 'voted on your poll'
+            };
+            return texts[type] || 'interacted with your content';
+        }
+        
+        function getTimeAgo(timestamp) {
+            const date = new Date(timestamp);
+            const now = new Date();
+            const seconds = Math.floor((now - date) / 1000);
+            
+            if (seconds < 60) return 'just now';
+            if (seconds < 3600) return Math.floor(seconds / 60) + 'm ago';
+            if (seconds < 86400) return Math.floor(seconds / 3600) + 'h ago';
+            if (seconds < 604800) return Math.floor(seconds / 86400) + 'd ago';
+            return date.toLocaleDateString();
+        }
+        
+        function handleNotificationClick(notificationId, postId, communityId, link, type) {
+            // Mark as read
+            fetch(`/api/notifications/${notificationId}/read`, {
+                method: 'POST'
+            })
+            .then(() => {
+                // Handle different notification types
+                if (type === 'event_invitation' && link) {
+                    // Redirect to the event RSVP page
+                    window.location.href = link;
+                } else if (communityId && postId) {
+                    // Redirect to the specific post in community
+                    window.location.href = `/community/${communityId}#post-${postId}`;
+                } else if (link) {
+                    // Use the provided link
+                    window.location.href = link;
+                }
+                // Reload notifications if staying on the same page
+                if (!link && !postId) {
+                    loadNotifications();
+                }
+            });
+        }
+        
+        function markAllAsRead() {
+            fetch('/api/notifications/mark-all-read', {
+                method: 'POST'
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    loadNotifications();
+                }
+            })
+            .catch(error => {
+                console.error('Error marking notifications as read:', error);
+            });
+        }
+        
+        function cleanupReadNotifications() {
+            if (confirm('Delete all read notifications? This cannot be undone.')) {
+                fetch('/api/notifications/delete-read', { method: 'POST' })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            alert(`Deleted ${data.deleted} read notifications`);
+                            loadNotifications();
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error deleting read notifications:', error);
+                        alert('Error deleting notifications');
+                    });
+            }
+        }
+        
+        // Load notifications on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            loadNotifications();
+            
+            // Refresh notifications every 30 seconds
+            setInterval(loadNotifications, 30000);
+        });
+    </script>
+</body>
+</html>
