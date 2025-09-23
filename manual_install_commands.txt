@@ -1,0 +1,36 @@
+# Manual Node.js Installation Commands for PythonAnywhere
+# Copy and paste these commands one by one in your PythonAnywhere console
+
+# Step 1: Fix permissions
+chmod +x *.sh
+
+# Step 2: Install Node.js (try this first)
+curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+sudo apt-get install -y nodejs
+
+# Step 3: Verify installation
+node --version
+npm --version
+
+# Step 4: Navigate to client directory
+cd client
+
+# Step 5: Install React dependencies
+npm install
+
+# Step 6: Build the React app
+npm run build
+
+# If the above fails, try this alternative:
+# Step 7: Install Node.js using nvm (alternative method)
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
+source ~/.bashrc
+nvm install 18
+nvm use 18
+
+# Then repeat steps 4-6
+
+# If everything fails, use the simple fix:
+# Step 8: Run simple fix
+cd ..
+./simple_build_fix.sh

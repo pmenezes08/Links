@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Login</title>
+    <style>
+        body {
+            background: black;
+            color: white;
+            padding: 50px;
+            font-family: Arial, sans-serif;
+        }
+        input, button {
+            display: block;
+            margin: 10px 0;
+            padding: 10px;
+            width: 300px;
+        }
+        input {
+            background: #222;
+            color: white;
+            border: 1px solid #444;
+        }
+        button {
+            background: #4db6ac;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #37a69c;
+        }
+        .test-section {
+            margin: 30px 0;
+            padding: 20px;
+            border: 1px solid #444;
+        }
+    </style>
+</head>
+<body>
+    <h1>Test Login Page</h1>
+    
+    <div class="test-section">
+        <h2>Test 1: Simple Form POST to /</h2>
+        <form method="POST" action="/">
+            <input type="text" name="username" placeholder="Enter username" required>
+            <button type="submit">Submit to /</button>
+        </form>
+    </div>
+    
+    <div class="test-section">
+        <h2>Test 2: Form POST to /test_form</h2>
+        <form method="POST" action="/test_form">
+            <input type="text" name="test_field" placeholder="Enter anything" required>
+            <button type="submit">Submit to /test_form</button>
+        </form>
+    </div>
+    
+    <div class="test-section">
+        <h2>Test 3: JavaScript POST</h2>
+        <input type="text" id="jsUsername" placeholder="Enter username">
+        <button onclick="sendJsPost()">Send JS POST</button>
+        <div id="result"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>Test 4: Direct Links</h2>
+        <p><a href="/" style="color: #4db6ac;">Go to main login page</a></p>
+        <p><a href="/test_form" style="color: #4db6ac;">Go to test_form</a></p>
+        <p><a href="/health" style="color: #4db6ac;">Health check</a></p>
+        <p><a href="/api/test" style="color: #4db6ac;">API test</a></p>
+    </div>
+    
+    <script>
+        function sendJsPost() {
+            const username = document.getElementById('jsUsername').value;
+            if (!username) {
+                alert('Please enter a username');
+                return;
+            }
+            
+            // Create form data
+            const formData = new FormData();
+            formData.append('username', username);
+            
+            // Send POST request
+            fetch('/', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => {
+                console.log('Response status:', response.status);
+                return response.text();
+            })
+            .then(data => {
+                console.log('Response data:', data);
+                document.getElementById('result').innerHTML = 'POST sent! Check console for response.';
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                document.getElementById('result').innerHTML = 'Error: ' + error;
+            });
+        }
+        
+        // Log all form submissions
+        document.addEventListener('submit', function(e) {
+            console.log('Form submitting to:', e.target.action);
+            console.log('Form method:', e.target.method);
+            const formData = new FormData(e.target);
+            for (let [key, value] of formData.entries()) {
+                console.log(key + ':', value);
+            }
+        });
+    </script>
+</body>
+</html>

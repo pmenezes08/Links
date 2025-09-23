@@ -5,24 +5,48 @@
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<title>Workouts</title>
 	<link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+	<style>
+		/* Premium Dashboard Menu Styles */
+		.workouts-page { margin-left: 200px; }
+		.workouts-page .sidebar { position: fixed !important; top: 0 !important; left: 0 !important; width: 200px !important; height: 100vh !important; background: #1a1a1a !important; border-right: 1px solid #333333 !important; z-index: 1000 !important; display: flex !important; flex-direction: column !important; }
+		.workouts-page .sidebar-header { display: flex; align-items: center; padding: 10px; border-bottom: 1px solid #333333; height: 60px; box-sizing: border-box; }
+		.workouts-page .sidebar-logo { padding: 5px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+		.workouts-page .community-name { flex: 1; display: flex; align-items: center; color: #ffffff; font-size: 16px; font-weight: 600; padding-left: 10px; overflow: hidden; }
+		.workouts-page .community-name span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+		.workouts-page .sidebar-menu { flex: 1; padding: 10px 0; display: block !important; overflow-y: auto !important; }
+		.workouts-page .sidebar-menu a { display: block !important; padding: 12px 20px !important; color: #ffffff !important; text-decoration: none !important; transition: all 0.3s ease !important; border: none !important; font-size: 14px !important; }
+		.workouts-page .sidebar-menu a:hover { background: rgba(77, 182, 172, 0.2) !important; color: #4db6ac !important; padding-left: 25px !important; }
+		.workouts-page .menu-btn, .workouts-page .dropdown-content { display: none !important; }
+		.workouts-page .container { margin-left: 0; padding: 20px; }
+		@media (max-width: 768px) {
+			.workouts-page { margin-left: 0 !important; padding-top: 60px !important; }
+			.workouts-page .sidebar { width: 100% !important; height: 60px !important; overflow: visible !important; }
+			.workouts-page .sidebar-header { padding: 8px !important; height: 60px !important; }
+			.workouts-page .community-name { font-size: 14px !important; }
+			.workouts-page .sidebar-menu { display: none !important; position: absolute !important; top: 60px !important; left: 0 !important; right: 0 !important; background: #1a1a1a !important; border-top: 1px solid #333333 !important; max-height: calc(100vh - 60px) !important; overflow-y: auto !important; }
+			.workouts-page .sidebar:hover .sidebar-menu, .workouts-page .sidebar:focus-within .sidebar-menu { display: block !important; }
+		}
+	</style>
 </head>
-<body>
+<body class="workouts-page">
 	<div class="sidebar">
-		<button class="menu-btn">☰ Menu</button>
-		<div class="dropdown-content">
+		<div class="sidebar-header">
+			<div class="sidebar-logo" id="sidebarLogo"></div>
+			<div class="community-name">
+				<span>Workouts</span>
+			</div>
+		</div>
+		<div class="sidebar-menu">
 			{% if session['username'] == 'admin' %}
-			<a href="/admin">Admin Dashboard</a>
+			<a href="{{ url_for('admin_profile') }}">Admin Profile</a>
+			<a href="{{ url_for('admin') }}">Admin Dashboard</a>
 			{% endif %}
-			<a href="/profile">Profile</a>
-			<a href="/user_chat">Messages</a>
-			<a href="/premium_dashboard">Premium Dashboard</a>
-			            <a href="/feed">Social</a>
-			<a href="/nutrition">Nutrition</a>
-			<a href="/blood_test_analysis">Blood Test Analysis</a>
-			<a href="/chat">Chat with Grok</a>
-			<a href="/health_news">Health News</a>
-			<a href="/subscribe">Subscribe</a>
-			<a href="/logout">Logout</a>
+			<a href="{{ url_for('dashboard') }}">Dashboard</a>
+			<a href="{{ url_for('profile') }}">Profile</a>
+			<a href="{{ url_for('user_chat') }}">Messages</a>
+			<a href="{{ url_for('communities') }}">Your Communities</a>
+			<a href="{{ url_for('your_sports') }}">Your Sports</a>
+			<a href="{{ url_for('logout') }}">Logout</a>
 		</div>
 	</div>
 	<div class="container">

@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Workout Generator</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v='1.1') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="{{ url_for('static', filename='script.js', v='1.1') }}"></script>
+</head>
+<body>
+    <!-- Sidebar Menu -->
+    <div class="sidebar">
+        <button class="menu-btn">☰ Menu</button>
+        <div class="dropdown-content">
+            <a href="{{ url_for('dashboard') }}">Dashboard</a>
+            <a href="{{ url_for('free_workouts') }}">Free Workouts</a>
+            <a href="{{ url_for('premium_dashboard') }}">Premium Dashboard</a>
+            <a href="{{ url_for('feed') }}">Social</a>
+            <a href="{{ url_for('your_sports') }}">Your Sports</a>
+            <a href="{{ url_for('logout') }}">Logout</a>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="container">
+        <div class="page-header">
+            <button onclick="window.location.href='{{ url_for('your_sports') }}'" class="back-btn">
+                <i class="fas fa-arrow-left"></i> Back to Your Sports
+            </button>
+            <h1>Workout Generator</h1>
+        </div>
+        
+        <div class="workout-generator-content">
+            <div class="generator-card">
+                <div class="generator-icon">
+                    <i class="fas fa-magic"></i>
+                </div>
+                <h2>AI-Powered Workout Generator</h2>
+                <p>Generate personalized workout plans based on your goals, fitness level, and preferences.</p>
+                
+                <div class="generator-form">
+                    <div class="form-group">
+                        <label for="fitness-goal">Fitness Goal:</label>
+                        <select id="fitness-goal" class="form-control">
+                            <option value="">Select your goal...</option>
+                            <option value="muscle-gain">Build Muscle</option>
+                            <option value="strength">Increase Strength</option>
+                            <option value="weight-loss">Lose Weight</option>
+                            <option value="endurance">Improve Endurance</option>
+                            <option value="general-fitness">General Fitness</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="fitness-level">Fitness Level:</label>
+                        <select id="fitness-level" class="form-control">
+                            <option value="">Select your level...</option>
+                            <option value="beginner">Beginner</option>
+                            <option value="intermediate">Intermediate</option>
+                            <option value="advanced">Advanced</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="workout-duration">Workout Duration (minutes):</label>
+                        <select id="workout-duration" class="form-control">
+                            <option value="">Select duration...</option>
+                            <option value="30">30 minutes</option>
+                            <option value="45">45 minutes</option>
+                            <option value="60">60 minutes</option>
+                            <option value="90">90 minutes</option>
+                        </select>
+                    </div>
+                    
+                    <button class="generate-btn" onclick="generateWorkout()">
+                        <i class="fas fa-magic"></i> Generate Workout
+                    </button>
+                </div>
+            </div>
+            
+            <div id="workout-result" class="workout-result" style="display: none;">
+                <!-- Generated workout will appear here -->
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        function generateWorkout() {
+            const goal = document.getElementById('fitness-goal').value;
+            const level = document.getElementById('fitness-level').value;
+            const duration = document.getElementById('workout-duration').value;
+            
+            if (!goal || !level || !duration) {
+                alert('Please fill in all fields to generate a workout.');
+                return;
+            }
+            
+            // Show loading state
+            const resultDiv = document.getElementById('workout-result');
+            resultDiv.style.display = 'block';
+            resultDiv.innerHTML = '<div class="loading">Generating your personalized workout...</div>';
+            
+            // Simulate workout generation (replace with actual API call)
+            setTimeout(() => {
+                const workout = generateSampleWorkout(goal, level, duration);
+                resultDiv.innerHTML = workout;
+            }, 2000);
+        }
+        
+        function generateSampleWorkout(goal, level, duration) {
+            const workouts = {
+                'muscle-gain': {
+                    'beginner': ['Push-ups: 3 sets x 10 reps', 'Squats: 3 sets x 15 reps', 'Dumbbell Rows: 3 sets x 12 reps'],
+                    'intermediate': ['Bench Press: 4 sets x 8-10 reps', 'Deadlifts: 4 sets x 6-8 reps', 'Pull-ups: 3 sets x 8-10 reps'],
+                    'advanced': ['Weighted Bench Press: 5 sets x 6-8 reps', 'Barbell Squats: 5 sets x 5-7 reps', 'Weighted Pull-ups: 4 sets x 6-8 reps']
+                },
+                'strength': {
+                    'beginner': ['Bodyweight Squats: 3 sets x 15 reps', 'Push-ups: 3 sets x 8 reps', 'Planks: 3 sets x 30 seconds'],
+                    'intermediate': ['Barbell Squats: 4 sets x 6-8 reps', 'Deadlifts: 4 sets x 5-7 reps', 'Overhead Press: 3 sets x 8-10 reps'],
+                    'advanced': ['Heavy Squats: 5 sets x 3-5 reps', 'Heavy Deadlifts: 5 sets x 3-5 reps', 'Weighted Dips: 4 sets x 6-8 reps']
+                }
+            };
+            
+            const exercises = workouts[goal]?.[level] || workouts['muscle-gain']['beginner'];
+            
+            return `
+                <div class="generated-workout">
+                    <h3>Your Personalized Workout</h3>
+                    <div class="workout-details">
+                        <p><strong>Goal:</strong> ${goal.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())}</p>
+                        <p><strong>Level:</strong> ${level.charAt(0).toUpperCase() + level.slice(1)}</p>
+                        <p><strong>Duration:</strong> ${duration} minutes</p>
+                    </div>
+                    <div class="exercises">
+                        <h4>Exercises:</h4>
+                        <ul>
+                            ${exercises.map(exercise => `<li>${exercise}</li>`).join('')}
+                        </ul>
+                    </div>
+                    <button class="save-workout-btn" onclick="saveWorkout()">
+                        <i class="fas fa-save"></i> Save Workout
+                    </button>
+                </div>
+            `;
+        }
+        
+        function saveWorkout() {
+            alert('Workout saved! This feature will be implemented soon.');
+        }
+    </script>
+</body>
+</html>

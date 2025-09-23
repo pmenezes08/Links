@@ -1,0 +1,2677 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>Workout Tracking</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}?v=1755799275">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        // Force cache refresh
+        window.cacheVersion = '1.7';
+    </script>
+    <style>
+        /* Ensure Helvetica across comparison tab */
+        #comparison, #comparison * { font-family: Helvetica, Arial, sans-serif; }
+        #compareChart { width: 100% !important; height: 100% !important; }
+    </style>
+</head>
+<body>
+    <div class="workout-container">
+        <!-- Header -->
+        <div class="workout-header">
+            <div class="header-content">
+                <button class="back-btn" onclick="window.history.back()">
+                    <i class="fas fa-arrow-left"></i> Back
+                </button>
+                <h1>Workout Tracking</h1>
+            </div>
+        </div>
+
+        <!-- Edit Exercise (Name/Group) Modal -->
+        <div id="edit-exercise-info-modal" class="modal">
+            <div class="modal-content" style="max-width: 420px;">
+                <div class="modal-header">
+                    <h3>Edit Exercise</h3>
+                    <button class="close-btn" onclick="closeEditExerciseInfoModal()">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <form id="edit-exercise-info-form" class="exercise-form">
+                        <input type="hidden" id="edit-exercise-id">
+                        <div class="form-group">
+                            <label for="edit-exercise-name-input">Exercise Name</label>
+                            <input type="text" id="edit-exercise-name-input" placeholder="e.g., Bench Press" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="edit-muscle-group-select">Muscle Group</label>
+                            <select id="edit-muscle-group-select" required>
+                                <option value="Chest">Chest</option>
+                                <option value="Back">Back</option>
+                                <option value="Shoulders">Shoulders</option>
+                                <option value="Biceps">Biceps</option>
+                                <option value="Triceps">Triceps</option>
+                                <option value="Legs">Legs</option>
+                                <option value="Core">Core</option>
+                                <option value="Glutes">Glutes</option>
+                                <option value="Other">Other</option>
+                            </select>
+                        </div>
+                        <div class="form-actions" style="margin-top: 8px; display:flex; gap:8px; justify-content:flex-end;">
+                            <button type="button" class="submit-btn" onclick="closeEditExerciseInfoModal()" style="background: transparent; border: 1px solid #333;">Cancel</button>
+                            <button type="submit" class="submit-btn"><i class="fas fa-save"></i> Save</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Comparison Tab -->
+        <div id="comparison" class="tab-content">
+            <div class="workouts-container">
+                <div class="header-section">
+                    <h3>You vs Community</h3>
+                </div>
+                <div class="analytics-section">
+                    <div class="analytics-header">
+                        <h4>Select Community and KPI</h4>
+                        <div class="analytics-controls">
+                            <select id="compare-community-select" class="analytics-select">
+                                <option value="">Select Gym Community</option>
+                            </select>
+                            <select id="kpi-select" class="analytics-select" disabled>
+                                <option value="strength">Strength</option>
+                                <option value="attendance">Attendance</option>
+                                <option value="improvement">Improvement</option>
+                            </select>
+                            <span id="selected-community-name" style="color:#9fb0b5; margin-left:8px;"></span>
+                            <select id="compare-exercise-select" class="analytics-select" disabled>
+                                <option value="">Select Exercise</option>
+                            </select>
+                            <button class="share-btn" id="load-compare-btn" title="Load Comparison" disabled>
+                                <i class="fas fa-sync"></i>
+                            </button>
+                            {% if username == 'admin' %}
+                            <button class="add-btn" id="seed-dummy-btn" onclick="seedDummyData()" title="Generate Dummy Data" style="margin-left:8px;">
+                                <i class="fas fa-seedling"></i> Seed Data
+                            </button>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div id="compare-overview" class="overview-list" style="margin-top:8px; font-family: Helvetica, Arial, sans-serif; display:none;"></div>
+                    <div class="chart-container" id="compare-chart-container" style="min-height:260px; display:none; font-family: Helvetica, Arial, sans-serif;">
+                        <canvas id="compareChart"></canvas>
+                    </div>
+                    <div id="compare-summary" style="color:#b0b8b9; font-size:13px; margin-top:8px; font-family: Helvetica, Arial, sans-serif;"></div>
+                </div>
+            </div>
+        </div>
+        <!-- Tab Navigation -->
+        <div class="tab-navigation">
+            <button class="tab-btn active" data-tab="performance-tracking">
+                <i class="fas fa-chart-line"></i>
+                Performance Tracking
+            </button>
+            <button class="tab-btn" data-tab="exercise-management">
+                <i class="fas fa-dumbbell"></i>
+                Exercise Management
+            </button>
+            <button class="tab-btn" data-tab="workouts">
+                <i class="fas fa-calendar-alt"></i>
+                Workouts
+            </button>
+            <button class="tab-btn" data-tab="community-leaderboard">
+                <i class="fas fa-trophy"></i>
+                Community Leaderboard
+            </button>
+            <button class="tab-btn" data-tab="comparison">
+                <i class="fas fa-chart-bar"></i>
+                You vs Community
+            </button>
+        </div>
+
+        <!-- Performance Tracking Tab (Read-only View) -->
+        <div id="performance-tracking" class="tab-content active">
+            <div class="performance-tracking-container">
+                <div class="header-section">
+                    <h3>Your Performance Overview</h3>
+                    <button class="add-btn" onclick="openAddExerciseModal()">
+                        <i class="fas fa-plus"></i> Add Exercise
+                    </button>
+                </div>
+                
+                <div class="overview-section">
+                    <p class="overview-text">Your 1RM data is automatically calculated from your logged sets. Add exercises and log your performance to see your progress here.</p>
+                </div>
+
+                <!-- Analytics Section -->
+                <div class="analytics-section">
+                    <div class="analytics-header">
+                        <h4>Progress Analytics</h4>
+                        <div class="analytics-controls">
+                            <select id="exercise-select" class="analytics-select">
+                                <option value="">Select Exercise</option>
+                            </select>
+                            <select id="time-range" class="analytics-select">
+                                <option value="30">Last 30 days</option>
+                                <option value="90">Last 90 days</option>
+                                <option value="180">Last 6 months</option>
+                                <option value="365">Last year</option>
+                                <option value="all">All time</option>
+                            </select>
+                            <button class="share-btn" onclick="openShareProgressModal()" title="Share Progress Graph">
+                                <i class="fas fa-share-alt"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="progressChart"></canvas>
+                    </div>
+                </div>
+
+                <div class="exercises-section">
+                    <div id="muscle-groups-view" class="muscle-groups-view">
+                        <!-- Muscle groups will be loaded here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Exercise Management Tab -->
+        <div id="exercise-management" class="tab-content">
+            <div class="exercise-management-container">
+                <div class="header-section">
+                    <h3>Exercise Management</h3>
+                    <div style="display:flex; gap:8px; align-items:center;">
+                        <button class="add-btn" onclick="openAddExerciseModal()">
+                            <i class="fas fa-plus"></i> Add Exercise
+                        </button>
+                        <button class="add-btn" onclick="toggleExercisesVisibility()" title="Hide/Show all exercises">
+                            <i class="fas fa-eye-slash"></i> Toggle Exercises
+                        </button>
+                        <button class="add-btn" onclick="toggleGroupByDate()" title="Group by Date">
+                            <i class="fas fa-calendar"></i> Group by Date
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="exercises-list-section">
+                    <div id="exercises-management-list" class="exercises-list">
+                        <!-- Exercises will be loaded here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Workouts Tab (Optional) -->
+        <div id="workouts" class="tab-content">
+            <div class="workouts-container">
+                <div class="header-section">
+                    <h3>Your Workouts</h3>
+                    <button class="add-btn" onclick="openCreateWorkoutModal()">
+                        <i class="fas fa-plus"></i> Create Workout
+                    </button>
+                </div>
+                
+                <div class="workouts-list-section">
+                    <div id="workouts-list" class="workouts-list">
+                        <!-- Workouts will be loaded here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Community Leaderboard Tab -->
+        <div id="community-leaderboard" class="tab-content">
+            <div class="workouts-container">
+                <div class="header-section">
+                    <h3>Community Leaderboard</h3>
+                </div>
+                <div class="analytics-section">
+                    <div class="analytics-header">
+                        <h4>Choose Community and Exercise</h4>
+                        <div class="analytics-controls">
+                            <select id="lb-community-select" class="analytics-select">
+                                <option value="">Select Community</option>
+                            </select>
+                            <select id="lb-exercise-select" class="analytics-select" disabled>
+                                <option value="">Select Exercise</option>
+                            </select>
+                            <button class="share-btn" id="load-leaderboard-btn" title="Load Leaderboard" disabled>
+                                <i class="fas fa-list-ol"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div id="leaderboard-list" class="workouts-list"></div>
+                </div>
+            </div>
+        </div>
+
+
+    </div>
+
+    <!-- Exercise Detail Modal -->
+    <div id="exercise-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modal-exercise-name">Exercise Details</h3>
+                <button class="close-btn" onclick="closeExerciseModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="exercise-stats">
+                    <div class="stat-card">
+                        <h4>1 Rep Max</h4>
+                        <div class="stat-value" id="one-rep-max" title="Estimated using Epley formula">-</div>
+                        <div class="stat-formula">Estimated from your sets</div>
+                    </div>
+                    <div class="stat-card">
+                        <h4>1RM Calculator</h4>
+                        <div class="calculator">
+                            <input type="number" id="percentage" placeholder="%" min="50" max="100" step="5">
+                            <button onclick="calculateWeight()" class="calc-btn">Calculate</button>
+                            <div class="calc-result" id="calc-result">-</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="sets-history">
+                    <h4>Weight History</h4>
+                    <div id="sets-history" class="sets-list">
+                        <!-- Sets will be loaded here -->
+                    </div>
+                </div>
+                <div class="add-set-section">
+                    <h4>Add New Set</h4>
+                    <form id="add-set-form" class="set-form">
+                        <div class="form-row">
+                            <input type="number" id="set-weight" placeholder="Weight (kg)" required>
+                            <input type="number" id="set-reps" placeholder="Reps" required>
+                        </div>
+                        <button type="submit" class="submit-btn">
+                            <i class="fas fa-plus"></i> Add Set
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Exercise Modal -->
+    <div id="add-exercise-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Add New Exercise</h3>
+                <button class="close-btn" onclick="closeAddExerciseModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <form id="add-exercise-form" class="exercise-form">
+                    <div class="form-group">
+                        <label for="add-exercise-name">Exercise Name</label>
+                        <input type="text" id="add-exercise-name" placeholder="e.g., Bench Press" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="modal-muscle-group">Muscle Group</label>
+                        <select id="modal-muscle-group" required>
+                            <option value="">Select muscle group</option>
+                            <option value="Chest">Chest</option>
+                            <option value="Back">Back</option>
+                            <option value="Shoulders">Shoulders</option>
+                            <option value="Biceps">Biceps</option>
+                            <option value="Triceps">Triceps</option>
+                            <option value="Legs">Legs</option>
+                            <option value="Core">Core</option>
+                            <option value="Glutes">Glutes</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="modal-exercise-weight">Weight (kg)</label>
+                        <input type="number" id="modal-exercise-weight" placeholder="e.g., 80" min="0" step="0.1" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="modal-exercise-reps">Reps</label>
+                        <input type="number" id="modal-exercise-reps" placeholder="e.g., 8" min="1" max="50" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="modal-exercise-date">Date</label>
+                        <input type="date" id="modal-exercise-date" max="" required>
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" class="submit-btn">
+                            <i class="fas fa-plus"></i> Add Exercise
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create Workout Modal -->
+    <div id="create-workout-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Create New Workout</h3>
+                <button class="close-btn" onclick="closeCreateWorkoutModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <form id="create-workout-form" class="workout-form">
+                    <div class="form-group">
+                        <label for="modal-workout-name">Workout Name</label>
+                        <input type="text" id="modal-workout-name" placeholder="e.g., Push Day" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="modal-workout-date">Date</label>
+                        <input type="date" id="modal-workout-date" required>
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" class="submit-btn">
+                            <i class="fas fa-plus"></i> Create Workout
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Log Weight Modal -->
+    <div id="log-weight-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="log-weight-exercise-name">Log Weight</h3>
+                <button class="close-btn" onclick="closeLogWeightModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <form id="log-weight-form" class="weight-form">
+                    <div class="form-group">
+                        <label for="log-weight-value">Weight (kg)</label>
+                        <input type="number" id="log-weight-value" placeholder="e.g., 80" min="0" step="0.1" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="log-weight-reps">Reps</label>
+                        <input type="number" id="log-weight-reps" placeholder="e.g., 8" min="1" max="50" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="log-weight-date">Date</label>
+                        <input type="date" id="log-weight-date" max="" required>
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" class="submit-btn">
+                            <i class="fas fa-plus"></i> Log Weight
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Workout Detail Modal -->
+    <div id="workout-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modal-workout-name">Workout Details</h3>
+                <button class="close-btn" onclick="closeWorkoutModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="workout-exercises">
+                    <h4>Exercises</h4>
+                    <div id="workout-exercises-list" class="exercises-list">
+                        <!-- Workout exercises will be loaded here -->
+                    </div>
+                </div>
+                <div class="add-exercise-to-workout">
+                    <h4>Add Exercise to Workout</h4>
+                    <form id="add-exercise-to-workout-form" class="exercise-form">
+                        <div class="form-row">
+                            <select id="workout-exercise-select" required>
+                                <option value="">Select exercise</option>
+                            </select>
+                            <input type="number" id="workout-weight" placeholder="Weight (kg)" min="0" step="0.1" required>
+                            <input type="number" id="workout-sets" placeholder="Sets" min="1" max="10" required>
+                            <input type="number" id="workout-reps" placeholder="Reps" min="1" max="50" required>
+                        </div>
+                        <button type="submit" class="submit-btn">
+                            <i class="fas fa-plus"></i> Add to Workout
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Exercise Modal -->
+    <div id="edit-exercise-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Edit Exercise</h3>
+                <button class="close-btn" onclick="closeEditExerciseModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <form id="edit-exercise-form" class="exercise-form">
+                    <div class="form-group">
+                        <label id="edit-exercise-name">Exercise Name</label>
+                    </div>
+                    <div class="form-row">
+                        <input type="number" id="edit-weight" placeholder="Weight (kg)" min="0" step="0.1" required>
+                        <input type="number" id="edit-sets" placeholder="Sets" min="1" max="10" required>
+                        <input type="number" id="edit-reps" placeholder="Reps" min="1" max="50" required>
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" class="submit-btn">
+                            <i class="fas fa-save"></i> Update Exercise
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Share Progress Modal -->
+    <div id="share-progress-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Share Progress</h3>
+                <button class="close-btn" onclick="closeShareProgressModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="share-content">
+                    <div class="share-preview">
+                        <h4>Progress Summary</h4>
+                        <div id="progress-summary">
+                            <!-- Progress summary will be generated here -->
+                        </div>
+                    </div>
+                    <div class="share-options">
+                        <h4>Add Your Message (Optional)</h4>
+                        <textarea id="progress-message" placeholder="Add a personal message to your progress share..." rows="3" maxlength="500"></textarea>
+                        <h4>Share to Communities</h4>
+                        <div id="communities-list" class="communities-list">
+                            <!-- User's communities will be loaded here -->
+                        </div>
+                    </div>
+                    <div class="share-actions">
+                        <button class="share-submit-btn" onclick="shareProgress()">
+                            <i class="fas fa-share-alt"></i> Share Progress
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Share Workouts Modal -->
+    <div id="share-workouts-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Share Workouts</h3>
+                <button class="close-btn" onclick="closeShareWorkoutsModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="share-content">
+                    <div class="share-preview">
+                        <h4>Workout Summary</h4>
+                        <div id="workout-summary">
+                            <!-- Workout summary will be generated here -->
+                        </div>
+                    </div>
+                    <div class="share-options">
+                        <h4>Add Your Message (Optional)</h4>
+                        <textarea id="workout-message" placeholder="Add a personal message to your workout share..." rows="3" maxlength="500"></textarea>
+                        <h4>Share to Communities</h4>
+                        <div id="workout-communities-list" class="communities-list">
+                            <!-- User's communities will be loaded here -->
+                        </div>
+                    </div>
+                    <div class="share-actions">
+                        <button class="share-submit-btn" onclick="shareWorkouts()">
+                            <i class="fas fa-share-alt"></i> Share Workouts
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Cache busting
+        console.log('Workout tracking page loaded - v1755799275');
+        
+        $(document).ready(function() {
+            // Set default date to today
+            $('#log-weight-date').val(new Date().toISOString().split('T')[0]);
+            $('#modal-workout-date').val(new Date().toISOString().split('T')[0]);
+            $('#modal-exercise-date').val(new Date().toISOString().split('T')[0]);
+
+            // Load initial data
+            loadMuscleGroups();
+            loadExercisesManagement();
+            loadWorkouts();
+            loadAnalyticsData();
+
+            // Analytics event listeners
+            $('#exercise-select').off('change').on('change', function() {
+                updateProgressChart();
+            });
+
+            $('#time-range').off('change').on('change', function() {
+                updateProgressChart();
+            });
+
+            // Tab switching
+            $('.tab-btn').click(function() {
+                $('.tab-btn').removeClass('active');
+                $(this).addClass('active');
+                
+                const tabId = $(this).data('tab');
+                $('.tab-content').removeClass('active');
+                $('#' + tabId).addClass('active');
+
+                if (tabId === 'comparison') {
+                    initComparisonTab();
+                } else if (tabId === 'community-leaderboard') {
+                    initLeaderboardTab();
+                }
+            });
+
+            // Modal event handlers
+            $('#add-exercise-form').submit(function(e) {
+                e.preventDefault();
+                console.log('Form submit event triggered');
+                console.log('Form element:', this);
+                console.log('Form fields before addExercise:');
+                console.log('Name field:', $('#add-exercise-name').val());
+                console.log('Name field element:', $('#add-exercise-name')[0]);
+                addExercise();
+            });
+
+            $('#create-workout-form').submit(function(e) {
+                e.preventDefault();
+                createWorkout();
+            });
+
+            $('#log-weight-form').submit(function(e) {
+                e.preventDefault();
+                logWeight();
+            });
+
+            // Add exercise form
+            $('#add-exercise-form').submit(function(e) {
+                e.preventDefault();
+                addExercise();
+            });
+
+            // Create workout form
+            $('#create-workout-form').submit(function(e) {
+                e.preventDefault();
+                console.log('Create workout form submitted');
+                createWorkout();
+            });
+
+
+
+            // Add set form
+            $('#add-set-form').submit(function(e) {
+                e.preventDefault();
+                addSetToExercise();
+            });
+
+            // Add exercise to workout form
+            $('#add-exercise-to-workout-form').submit(function(e) {
+                e.preventDefault();
+                addExerciseToWorkout();
+            });
+
+            // Edit exercise form
+            $('#edit-exercise-form').submit(function(e) {
+                e.preventDefault();
+                updateExerciseInWorkout();
+            });
+        });
+
+        // Utility Functions
+        function formatDate(dateString) {
+            if (!dateString) return '';
+            const date = new Date(dateString);
+            const today = new Date();
+            
+            // Check if it's the current year
+            if (date.getFullYear() === today.getFullYear()) {
+                return date.toLocaleDateString('en-US', { 
+                    month: 'short', 
+                    day: 'numeric'
+                });
+            } else {
+                return date.toLocaleDateString('en-US', { 
+                    month: 'short', 
+                    day: 'numeric',
+                    year: 'numeric'
+                });
+            }
+        }
+
+        // Performance Tracking Functions (Read-only)
+        function loadMuscleGroups() {
+            console.log('Loading muscle groups...');
+            $.ajax({
+                url: '/get_workout_exercises',
+                method: 'GET',
+                success: function(response) {
+                    console.log('Load muscle groups response:', response);
+                    console.log('Response type:', typeof response);
+                    console.log('Response.success:', response.success);
+                    console.log('Response.exercises:', response.exercises);
+                    console.log('Response.exercises length:', response.exercises ? response.exercises.length : 'undefined');
+                    
+                    if (response.success && response.exercises && response.exercises.length > 0) {
+                        console.log('Found exercises, displaying muscle groups');
+                        displayMuscleGroups(response.exercises);
+                    } else if (response.success && (!response.exercises || response.exercises.length === 0)) {
+                        // No exercises found but request was successful
+                        console.log('No exercises found in database');
+                        $('#muscle-groups-view').html('<p style="color: #b0b8b9; text-align: center; padding: 20px;">No exercises found. Add exercises in the Workouts tab to see your 1RM data here!</p>');
+                    } else {
+                        console.log('Failed to load muscle groups:', response.error);
+                        $('#muscle-groups-view').html('<p style="color: #b0b8b9; text-align: center; padding: 20px;">No exercises found. Add exercises in the Workouts tab to see your 1RM data here!</p>');
+                    }
+                },
+                error: function(xhr, status, error) {
+                    console.log('Load muscle groups error:', { xhr, status, error });
+                    $('#muscle-groups-view').html('<p style="color: #b0b8b9; text-align: center; padding: 20px;">Error loading exercises. Please try again.</p>');
+                }
+            });
+        }
+
+        function displayMuscleGroups(exercises) {
+            console.log('Displaying muscle groups with exercises:', exercises);
+            
+            if (!exercises || !Array.isArray(exercises)) {
+                console.log('No exercises found or invalid data structure');
+                $('#muscle-groups-view').html('<p style="color: #b0b8b9; text-align: center; padding: 20px;">No exercises found. Add exercises in the Workouts tab to see your 1RM data here!</p>');
+                return;
+            }
+            
+            const muscleGroups = {};
+            
+            exercises.forEach(exercise => {
+                if (!muscleGroups[exercise.muscle_group]) {
+                    muscleGroups[exercise.muscle_group] = [];
+                }
+                muscleGroups[exercise.muscle_group].push(exercise);
+            });
+
+            if (Object.keys(muscleGroups).length === 0) {
+                $('#muscle-groups-view').html('<p style="color: #b0b8b9; text-align: center; padding: 20px;">No exercises found. Add exercises in the Workouts tab to see your 1RM data here!</p>');
+                return;
+            }
+
+            const html = Object.keys(muscleGroups).map(group => {
+                const exercisesInGroup = muscleGroups[group];
+                                        const maxWeight = Math.max(...exercisesInGroup.map(ex => 
+                            ex.sets_data && ex.sets_data.length > 0 ? Math.max(...ex.sets_data.map(set => set.weight || 0)) : 0
+                        ));
+                        
+                        return `
+                            <div class="muscle-group-card" onclick="showExercises('${group}')">
+                                <div class="muscle-group-header">
+                                    <h3>${group}</h3>
+                                    <span class="exercise-count">${exercisesInGroup.length} exercises</span>
+                                </div>
+                                <div class="muscle-group-stats">
+                                    <div class="stat">
+                                        <span class="stat-label">Max Weight</span>
+                                        <span class="stat-value">${maxWeight > 0 ? maxWeight + ' kg' : 'No data'}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+            }).join('');
+
+            $('#muscle-groups-view').html(html);
+        }
+
+        function showExercises(muscleGroup) {
+            $.ajax({
+                url: '/get_workout_exercises',
+                method: 'GET',
+                success: function(response) {
+                    if (response.success) {
+                        const exercises = response.exercises.filter(ex => ex.muscle_group === muscleGroup);
+                        displayExercisesForGroup(exercises, muscleGroup);
+                    }
+                }
+            });
+        }
+
+        function displayExercisesForGroup(exercises, muscleGroup) {
+            console.log('Displaying exercises for group:', muscleGroup, exercises);
+            
+            if (!exercises || !Array.isArray(exercises) || exercises.length === 0) {
+                const html = `
+                    <div class="view-header">
+                        <button class="back-btn" onclick="showMuscleGroups()">
+                            <i class="fas fa-arrow-left"></i> Back to Muscle Groups
+                        </button>
+                        <h3>${muscleGroup} Exercises</h3>
+                    </div>
+                    <div class="exercises-list">
+                        <p style="color: #b0b8b9; text-align: center; padding: 20px;">No exercises in this muscle group yet.</p>
+                    </div>
+                `;
+                $('#muscle-groups-view').html(html);
+                return;
+            }
+            
+            const html = `
+                <div class="view-header">
+                    <button class="back-btn" onclick="showMuscleGroups()">
+                        <i class="fas fa-arrow-left"></i> Back to Muscle Groups
+                    </button>
+                    <h3>${muscleGroup} Exercises</h3>
+                </div>
+                <div class="exercises-list">
+                    ${exercises.map(exercise => {
+                        const setsData = exercise.sets_data || [];
+                        const maxWeight = setsData.length > 0 ? 
+                            Math.max(...setsData.map(set => set.weight || 0)) : 0;
+                        const maxWeightSet = setsData.find(set => set.weight === maxWeight);
+                        
+                        // Calculate 1RM using Epley formula
+                        let oneRepMax = 0;
+                        if (maxWeightSet) {
+                            oneRepMax = Math.round(maxWeightSet.weight * (1 + maxWeightSet.reps / 30));
+                        }
+                        
+                        return `
+                            <div class="exercise-item" onclick="openExerciseModal(${exercise.id}, '${exercise.name}')">
+                                <div class="exercise-header">
+                                    <h4 class="exercise-name">${exercise.name}</h4>
+                                </div>
+                                <div class="exercise-stats">
+                                                            <div class="stat">
+                            <span class="stat-label">1 Rep Max</span>
+                            <span class="stat-value" title="Estimated using Epley formula">${oneRepMax > 0 ? oneRepMax + ' kg' : 'No data'}</span>
+                        </div>
+                                    <div class="stat">
+                                        <span class="stat-label">Max Weight</span>
+                                        <span class="stat-value">${maxWeight > 0 ? maxWeight + ' kg' : 'No data'}</span>
+                                    </div>
+                                    <div class="stat">
+                                        <span class="stat-label">Total Sets</span>
+                                        <span class="stat-value">${setsData.length}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            `;
+            
+            $('#muscle-groups-view').html(html);
+        }
+
+        function showMuscleGroups() {
+            loadMuscleGroups();
+        }
+
+        // Workouts Functions (Input Section) - REMOVED OLD addExercise FUNCTION
+
+        // Exercise Modal Functions
+        let currentExerciseId = null;
+
+        function openExerciseModal(exerciseId, exerciseName) {
+            currentExerciseId = exerciseId;
+            $('#modal-exercise-name').text(exerciseName);
+            loadExerciseDetails(exerciseId);
+            $('#exercise-modal').show();
+        }
+
+        function closeExerciseModal() {
+            $('#exercise-modal').hide();
+            currentExerciseId = null;
+        }
+
+        function loadExerciseDetails(exerciseId) {
+            $.ajax({
+                url: '/get_workout_exercises',
+                method: 'GET',
+                success: function(response) {
+                    if (response.success) {
+                        const exercise = response.exercises.find(ex => ex.id === exerciseId);
+                        if (exercise) {
+                            displayExerciseDetails(exercise);
+                        }
+                    }
+                }
+            });
+        }
+
+        function displayExerciseDetails(exercise) {
+            // Calculate 1RM using Epley formula
+            let oneRepMax = 0;
+            if (exercise.sets_data.length > 0) {
+                const maxWeightSet = exercise.sets_data.reduce((max, set) => 
+                    set.weight > max.weight ? set : max
+                );
+                oneRepMax = Math.round(maxWeightSet.weight * (1 + maxWeightSet.reps / 30));
+            }
+            
+            $('#one-rep-max').text(oneRepMax > 0 ? oneRepMax + ' kg' : 'No data');
+            $('#one-rep-max').attr('title', 'Estimated using Epley formula');
+            
+            // Display sets history
+            // Group sets by year/month for scalability
+            let setsHtml = '<p>No sets recorded yet</p>';
+            if (exercise.sets_data.length > 0) {
+                const groups = {};
+                exercise.sets_data.forEach(set => {
+                    const d = new Date(set.created_at || set.date);
+                    const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+                    if (!groups[key]) groups[key] = [];
+                    groups[key].push(set);
+                });
+                const sections = Object.keys(groups).sort().map(k => {
+                    const [y,m] = k.split('-');
+                    const title = `${y}-${m}`;
+                    const items = groups[k].map(set => `
+                        <div class="set-item">
+                            <div class="set-info">
+                                <span class="set-weight">${set.weight} kg</span>
+                                <span class="set-reps">${set.reps} reps</span>
+                            </div>
+                            <div class="set-actions">
+                                <button onclick="editSet(${set.id})" class="action-btn">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                <button onclick="deleteSet(${set.id})" class="action-btn">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </div>
+                        </div>
+                    `).join('');
+                    return `<div class="sets-group"><h5 style="margin:8px 0; color:#9fb0b5;">${title}</h5>${items}</div>`;
+                });
+                setsHtml = sections.join('');
+            }
+            
+            $('#sets-history').html(setsHtml);
+        }
+
+        function calculateWeight() {
+            const percentage = $('#percentage').val();
+            const oneRepMaxText = $('#one-rep-max').text();
+            const oneRepMax = parseInt(oneRepMaxText);
+            
+            if (oneRepMax > 0 && percentage > 0) {
+                const calculatedWeight = Math.round(oneRepMax * (percentage / 100));
+                                        $('#calc-result').text(calculatedWeight + ' kg');
+            } else {
+                $('#calc-result').text('Invalid input');
+            }
+        }
+
+        function addSetToExercise() {
+            if (!currentExerciseId) return;
+            
+            const weight = $('#set-weight').val();
+            const reps = $('#set-reps').val();
+            
+            $.ajax({
+                url: '/log_weight_set',
+                method: 'POST',
+                data: {
+                    exercise_id: currentExerciseId,
+                    weight: weight,
+                    reps: reps
+                },
+                success: function(response) {
+                    if (response.success) {
+                        $('#set-weight').val('');
+                        $('#set-reps').val('');
+                        loadExerciseDetails(currentExerciseId);
+                        loadMuscleGroups();
+                    }
+                }
+            });
+        }
+
+        // Workouts Functions
+        function loadWorkouts() {
+            console.log('Loading workouts...');
+            $.ajax({
+                url: '/get_workouts',
+                method: 'GET',
+                success: function(response) {
+                    console.log('Load workouts response:', response);
+                    if (response.success) {
+                        displayWorkouts(response.workouts);
+                    } else {
+                        console.log('Failed to load workouts:', response.error);
+                        $('#workouts-list').html('<p style="color: #b0b8b9; text-align: center; padding: 20px;">No workouts found. Create your first workout above!</p>');
+                    }
+                },
+                error: function(xhr, status, error) {
+                    console.log('Load workouts error:', { xhr, status, error });
+                    $('#workouts-list').html('<p style="color: #b0b8b9; text-align: center; padding: 20px;">Error loading workouts. Please try again.</p>');
+                }
+            });
+        }
+
+        function displayWorkouts(workouts) {
+            const html = workouts && workouts.length > 0 ? 
+                workouts.map(workout => `
+                    <div class="workout-item">
+                        <div class="workout-content" onclick="openWorkoutModal(${workout.id}, '${workout.name}')">
+                            <div class="workout-header">
+                                <div class="workout-title">
+                                    <h4 class="workout-name">${workout.name}</h4>
+                                    <span class="workout-date">${formatDate(workout.date)}</span>
+                                </div>
+                                <div class="workout-stats">
+                                    <div class="stat">
+                                        <span class="stat-label">Exercises</span>
+                                        <span class="stat-value">${workout.exercise_count || 0}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="workout-actions">
+                            <button class="share-btn small" onclick="event.stopPropagation(); openShareWorkoutModal(${workout.id}, '${workout.name}')" title="Share this workout">
+                                <i class="fas fa-share-alt"></i>
+                            </button>
+                        </div>
+                    </div>
+                `).join('') : '<p>No workouts found for selected date range</p>';
+            
+            $('#workouts-list').html(html);
+        }
+
+        function createWorkout() {
+            const name = $('#workout-name').val();
+            const date = $('#workout-date').val();
+            
+            console.log('Creating workout:', { name, date });
+            
+            if (!name || !date) {
+                alert('Please enter workout name and select a date');
+                return;
+            }
+            
+            $.ajax({
+                url: '/create_workout',
+                method: 'POST',
+                data: {
+                    name: name,
+                    date: date
+                },
+                success: function(response) {
+                    console.log('Create workout response:', response);
+                    if (response.success) {
+                        $('#workout-name').val('');
+                        $('#workout-date').val('');
+                        loadWorkouts();
+                        alert('Workout created successfully!');
+                    } else {
+                        alert('Error creating workout: ' + (response.error || 'Unknown error'));
+                    }
+                },
+                error: function(xhr, status, error) {
+                    console.log('Create workout error:', { xhr, status, error });
+                    alert('Error creating workout: ' + error);
+                }
+            });
+        }
+
+        function loadExercisesForWorkout() {
+            console.log('loadExercisesForWorkout called');
+            $.ajax({
+                url: '/get_user_exercises',
+                method: 'GET',
+                success: function(response) {
+                    console.log('Load exercises for workout response:', response);
+                    console.log('Response.exercises:', response.exercises);
+                    console.log('Response.exercises type:', typeof response.exercises);
+                    console.log('Response.exercises is array:', Array.isArray(response.exercises));
+                    console.log('Response.exercises length:', response.exercises ? response.exercises.length : 'undefined');
+                    
+                    if (response.success && response.exercises && Array.isArray(response.exercises) && response.exercises.length > 0) {
+                        console.log('Creating options for exercises:', response.exercises);
+                        const options = response.exercises.map(exercise => 
+                            `<option value="${exercise.id}">${exercise.name} (${exercise.muscle_group})</option>`
+                        ).join('');
+                        console.log('Generated options HTML:', options);
+                        $('#workout-exercise-select').html('<option value="">Select exercise</option>' + options);
+                        console.log('Updated workout-exercise-select dropdown');
+                    } else {
+                        console.log('No exercises available for workout');
+                        $('#workout-exercise-select').html('<option value="">No exercises available - Add exercises first</option>');
+                    }
+                },
+                error: function(xhr, status, error) {
+                    console.log('Load exercises for workout error:', { xhr, status, error });
+                    $('#workout-exercise-select').html('<option value="">Error loading exercises</option>');
+                }
+            });
+        }
+
+        // Workout Modal Functions
+        let currentWorkoutId = null;
+
+        function openWorkoutModal(workoutId, workoutName) {
+            currentWorkoutId = workoutId;
+            $('#modal-workout-name').text(workoutName);
+            loadWorkoutDetails(workoutId);
+            loadExercisesForWorkout();
+            $('#workout-modal').show();
+        }
+
+        function closeWorkoutModal() {
+            $('#workout-modal').hide();
+            currentWorkoutId = null;
+        }
+
+        function loadWorkoutDetails(workoutId) {
+            $.ajax({
+                url: '/get_workout_details',
+                method: 'GET',
+                data: { workout_id: workoutId },
+                success: function(response) {
+                    if (response.success) {
+                        displayWorkoutDetails(response.workout);
+                    }
+                }
+            });
+        }
+
+        function displayWorkoutDetails(workout) {
+            const exercisesHtml = workout.exercises && workout.exercises.length > 0 ? 
+                workout.exercises.map(exercise => `
+                    <div class="workout-exercise-item">
+                        <div class="exercise-info">
+                            <span class="exercise-name">${exercise.exercise_name}</span>
+                            <span class="exercise-sets">${exercise.weight} kg × ${exercise.sets} sets × ${exercise.reps} reps</span>
+                        </div>
+                        <div class="exercise-actions">
+                            <button onclick="editExerciseInWorkout(${exercise.id}, '${exercise.exercise_name}', ${exercise.weight}, ${exercise.sets}, ${exercise.reps})" class="action-btn edit" title="Edit exercise">
+                                <i class="fas fa-edit"></i>
+                            </button>
+                            <button onclick="removeExerciseFromWorkout(${exercise.id})" class="action-btn" title="Remove exercise">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
+                    </div>
+                `).join('') : '<p>No exercises added yet</p>';
+            
+            $('#workout-exercises-list').html(exercisesHtml);
+        }
+
+        function addExerciseToWorkout() {
+            if (!currentWorkoutId) return;
+            
+            const exerciseId = $('#workout-exercise-select').val();
+            const weight = $('#workout-weight').val();
+            const sets = $('#workout-sets').val();
+            const reps = $('#workout-reps').val();
+            
+            if (!exerciseId || !weight || !sets || !reps) {
+                alert('Please fill in all fields');
+                return;
+            }
+            
+            // Check if exercise is already in the workout
+            checkExerciseInWorkout(exerciseId, function(isDuplicate, existingExercise) {
+                console.log('Duplicate check result:', isDuplicate);
+                if (isDuplicate) {
+                    console.log('Exercise is duplicate, showing update dialog');
+                    showUpdateExerciseDialog(existingExercise, weight, sets, reps);
+                    return;
+                }
+                
+                // Check if weight exceeds current 1RM before adding to workout
+                checkAndUpdateOneRM(exerciseId, weight, reps, function(shouldProceed) {
+                    if (shouldProceed) {
+                        $.ajax({
+                            url: '/add_exercise_to_workout',
+                            method: 'POST',
+                            data: {
+                                workout_id: currentWorkoutId,
+                                exercise_id: exerciseId,
+                                weight: weight,
+                                sets: sets,
+                                reps: reps
+                            },
+                            success: function(response) {
+                                if (response.success) {
+                                    $('#workout-exercise-select').val('');
+                                    $('#workout-weight').val('');
+                                    $('#workout-sets').val('');
+                                    $('#workout-reps').val('');
+                                    loadWorkoutDetails(currentWorkoutId);
+                                    
+                                    // Refresh the workout list to update exercise count
+                                    loadWorkouts();
+                                } else {
+                                    alert('Error adding exercise to workout: ' + (response.error || 'Unknown error'));
+                                }
+                            },
+                            error: function(xhr, status, error) {
+                                alert('Error adding exercise to workout: ' + error);
+                            }
+                        });
+                    }
+                });
+            });
+        }
+
+        function checkExerciseInWorkout(exerciseId, callback) {
+            console.log('Checking if exercise', exerciseId, 'is already in workout', currentWorkoutId);
+            $.ajax({
+                url: '/check_exercise_in_workout',
+                method: 'GET',
+                data: {
+                    workout_id: currentWorkoutId,
+                    exercise_id: exerciseId
+                },
+                success: function(response) {
+                    console.log('Check exercise response:', response);
+                    if (response.success) {
+                        console.log('Exercise is duplicate:', response.is_duplicate);
+                        callback(response.is_duplicate, response.existing_exercise);
+                    } else {
+                        console.log('Error checking exercise in workout: ' + (response.error || 'Unknown error'));
+                        callback(false, null); // Allow adding if check fails
+                    }
+                },
+                error: function(xhr, status, error) {
+                    console.log('Error checking exercise in workout: ' + error);
+                    callback(false, null); // Allow adding if check fails
+                }
+            });
+        }
+
+        function editExerciseInWorkout(exerciseId, exerciseName, currentWeight, currentSets, currentReps) {
+            // Show edit modal with current values
+            $('#edit-exercise-modal').show();
+            $('#edit-exercise-name').text(exerciseName);
+            $('#edit-exercise-form').data('exercise-id', exerciseId);
+            $('#edit-weight').val(currentWeight);
+            $('#edit-sets').val(currentSets);
+            $('#edit-reps').val(currentReps);
+        }
+
+        function showUpdateExerciseDialog(existingExercise, newWeight, newSets, newReps) {
+            const message = `${existingExercise.name} is already in this workout.\n\nCurrent: ${existingExercise.weight} kg × ${existingExercise.sets} sets × ${existingExercise.reps} reps\nNew: ${newWeight} kg × ${newSets} sets × ${newReps} reps\n\nWould you like to update the existing entry?`;
+            
+            if (confirm(message)) {
+                // Update the existing exercise
+                $.ajax({
+                    url: '/update_exercise_in_workout',
+                    method: 'POST',
+                    data: {
+                        workout_exercise_id: existingExercise.id,
+                        weight: newWeight,
+                        sets: newSets,
+                        reps: newReps
+                    },
+                    success: function(response) {
+                        if (response.success) {
+                            // Clear the form
+                            $('#workout-exercise-select').val('');
+                            $('#workout-weight').val('');
+                            $('#workout-sets').val('');
+                            $('#workout-reps').val('');
+                            
+                            // Refresh the workout details
+                            loadWorkoutDetails(currentWorkoutId);
+                            loadWorkouts();
+                            
+                            alert('Exercise updated successfully!');
+                        } else {
+                            alert('Error updating exercise: ' + (response.error || 'Unknown error'));
+                        }
+                    },
+                    error: function(xhr, status, error) {
+                        alert('Error updating exercise: ' + error);
+                    }
+                });
+            }
+        }
+
+        function checkAndUpdateOneRM(exerciseId, weight, reps, callback) {
+            // Calculate 1RM for the input weight and reps
+            const inputOneRM = weight * (1 + reps / 30);
+            
+            // Get current 1RM for the exercise
+            $.ajax({
+                url: '/get_exercise_one_rm',
+                method: 'GET',
+                data: { exercise_id: exerciseId },
+                success: function(response) {
+                    if (response.success) {
+                        const currentOneRM = response.one_rm || 0;
+                        
+                        if (inputOneRM > currentOneRM) {
+                            // Show confirmation dialog
+                            const confirmMessage = `Your input weight (${weight} kg × ${reps} reps) results in a 1RM of ${inputOneRM.toFixed(1)} kg, which is higher than your current 1RM of ${currentOneRM.toFixed(1)} kg.\n\nWould you like to update your 1RM in the Exercise Management tab?`;
+                            
+                            if (confirm(confirmMessage)) {
+                                // Update the 1RM in Exercise Management
+                                $.ajax({
+                                    url: '/update_exercise_one_rm',
+                                    method: 'POST',
+                                    data: {
+                                        exercise_id: exerciseId,
+                                        weight: weight,
+                                        reps: reps
+                                    },
+                                    success: function(updateResponse) {
+                                        if (updateResponse.success) {
+                                            alert('1RM updated successfully!');
+                                            // Refresh the Exercise Management view
+                                            loadExercisesManagement();
+                                        } else {
+                                            alert('Error updating 1RM: ' + (updateResponse.error || 'Unknown error'));
+                                        }
+                                        callback(true); // Proceed with adding to workout
+                                    },
+                                    error: function(xhr, status, error) {
+                                        alert('Error updating 1RM: ' + error);
+                                        callback(true); // Proceed with adding to workout anyway
+                                    }
+                                });
+                            } else {
+                                callback(true); // Proceed with adding to workout without updating 1RM
+                            }
+                        } else {
+                            callback(true); // Weight doesn't exceed 1RM, proceed normally
+                        }
+                    } else {
+                        console.log('Error getting current 1RM: ' + (response.error || 'Unknown error'));
+                        callback(true); // Proceed with adding to workout anyway
+                    }
+                },
+                error: function(xhr, status, error) {
+                    console.log('Error getting current 1RM: ' + error);
+                    callback(true); // Proceed with adding to workout anyway
+                }
+            });
+        }
+
+        function removeExerciseFromWorkout(workoutExerciseId) {
+            if (confirm('Are you sure you want to remove this exercise from the workout?')) {
+                $.ajax({
+                    url: '/remove_exercise_from_workout',
+                    method: 'POST',
+                    data: {
+                        workout_exercise_id: workoutExerciseId
+                    },
+                    success: function(response) {
+                        if (response.success) {
+                            loadWorkoutDetails(currentWorkoutId);
+                            
+                            // Refresh the workout list to update exercise count
+                            loadWorkouts();
+                        } else {
+                            alert('Error removing exercise: ' + (response.error || 'Unknown error'));
+                        }
+                    },
+                    error: function(xhr, status, error) {
+                        alert('Error removing exercise: ' + error);
+                    }
+                });
+            }
+        }
+
+        // Modal Functions
+        function openAddExerciseModal() {
+            console.log('Opening Add Exercise Modal...');
+            $('#add-exercise-modal').show();
+            $('#add-exercise-name').val('');
+            $('#modal-muscle-group').val('');
+            $('#modal-exercise-weight').val('');
+            $('#modal-exercise-reps').val('');
+            
+            // Set max date to today and default to today
+            const today = new Date().toISOString().split('T')[0];
+            $('#modal-exercise-date').attr('max', today);
+            $('#modal-exercise-date').val(today);
+            
+            console.log('Modal should be visible now');
+            console.log('Modal HTML:', $('#add-exercise-modal').html());
+        }
+
+        function closeAddExerciseModal() {
+            $('#add-exercise-modal').hide();
+        }
+
+        function openCreateWorkoutModal() {
+            $('#create-workout-modal').show();
+            $('#modal-workout-name').val('');
+            $('#modal-workout-date').val(new Date().toISOString().split('T')[0]);
+        }
+
+        function closeCreateWorkoutModal() {
+            $('#create-workout-modal').hide();
+        }
+
+        function openLogWeightModal(exerciseId, exerciseName) {
+            $('#log-weight-modal').show();
+            $('#log-weight-exercise-name').text(exerciseName);
+            $('#log-weight-form').data('exercise-id', exerciseId);
+            $('#log-weight-value').val('');
+            $('#log-weight-reps').val('');
+            
+            // Set max date to today and default to today
+            const today = new Date().toISOString().split('T')[0];
+            $('#log-weight-date').attr('max', today);
+            $('#log-weight-date').val(today);
+        }
+
+        function closeLogWeightModal() {
+            $('#log-weight-modal').hide();
+        }
+
+        function closeEditExerciseModal() {
+            $('#edit-exercise-modal').hide();
+        }
+
+        function updateExerciseInWorkout() {
+            const exerciseId = $('#edit-exercise-form').data('exercise-id');
+            const weight = $('#edit-weight').val();
+            const sets = $('#edit-sets').val();
+            const reps = $('#edit-reps').val();
+            
+            if (!weight || !sets || !reps) {
+                alert('Please fill in all fields');
+                return;
+            }
+            
+            $.ajax({
+                url: '/update_exercise_in_workout',
+                method: 'POST',
+                data: {
+                    workout_exercise_id: exerciseId,
+                    weight: weight,
+                    sets: sets,
+                    reps: reps
+                },
+                success: function(response) {
+                    if (response.success) {
+                        closeEditExerciseModal();
+                        loadWorkoutDetails(currentWorkoutId);
+                        loadWorkouts();
+                        alert('Exercise updated successfully!');
+                    } else {
+                        alert('Error updating exercise: ' + (response.error || 'Unknown error'));
+                    }
+                },
+                error: function(xhr, status, error) {
+                    alert('Error updating exercise: ' + error);
+                }
+            });
+        }
+
+        // Share Progress Functions
+        function openShareProgressModal() {
+            $('#share-progress-modal').show();
+            generateProgressSummary();
+            loadUserCommunities('communities-list');
+            
+            // Capture the graph as an image with longer delay to ensure chart is rendered
+            setTimeout(() => {
+                captureProgressGraph();
+            }, 1500);
+        }
+
+        function closeShareProgressModal() {
+            $('#share-progress-modal').hide();
+        }
+
+        function captureProgressGraph() {
+            console.log('Attempting to capture graph...');
+            
+            // Get the chart instance
+            const chartCanvas = document.getElementById('progressChart');
+            if (chartCanvas && window.progressChart) {
+                try {
+                    // Export chart as image using Chart.js
+                    const imageData = window.progressChart.toBase64Image('image/png', 1.0);
+                    console.log('Graph exported successfully');
+                    console.log('Image data length:', imageData.length);
+                    
+                    $('#share-progress-modal').data('graph-image', imageData);
+                    console.log('Graph stored in modal data');
+                    
+                } catch (error) {
+                    console.error('Error exporting graph:', error);
+                }
+            } else {
+                console.log('No chart instance found');
+            }
+        }
+
+        function openShareWorkoutsModal() {
+            $('#share-workouts-modal').removeData('workout-id');
+            $('#share-workouts-modal').show();
+            generateWorkoutSummary();
+            loadUserCommunities('workout-communities-list');
+        }
+
+        function openShareWorkoutModal(workoutId, workoutName) {
+            console.log('Opening share workout modal for:', workoutId, workoutName);
+            $('#share-workouts-modal').data('workout-id', workoutId);
+            $('#share-workouts-modal').show();
+            
+            // Clear any previous message
+            $('#workout-message').val('');
+            
+            // Check if textarea exists
+            const textarea = $('#workout-message');
+            console.log('Textarea element:', textarea.length > 0 ? 'Found' : 'Not found');
+            console.log('Textarea HTML:', textarea.prop('outerHTML'));
+            
+            generateIndividualWorkoutSummary(workoutId, workoutName);
+            loadUserCommunities('workout-communities-list');
+        }
+
+        function closeShareWorkoutsModal() {
+            $('#share-workouts-modal').hide();
+        }
+
+        function generateProgressSummary() {
+            const exerciseId = $('#exercise-select').val();
+            const timeRange = $('#time-range').val();
+            
+            if (!exerciseId) {
+                $('#progress-summary').html('<p>Please select an exercise first to generate progress summary.</p>');
+                return;
+            }
+
+            $.ajax({
+                url: '/get_progress_summary',
+                method: 'GET',
+                data: {
+                    exercise_id: exerciseId,
+                    time_range: timeRange
+                },
+                success: function(response) {
+                    if (response.success) {
+                        const summary = response.summary;
+                        const summaryHtml = `
+                            <div class="summary-item">
+                                <strong>${summary.exercise_name}</strong>
+                                <div class="summary-stats">
+                                    <span>Current 1RM: ${summary.current_1rm} kg</span>
+                                    <span>Progress: ${summary.progress_percentage}%</span>
+                                    <span>Sets logged: ${summary.total_sets}</span>
+                                </div>
+                            </div>
+                        `;
+                        $('#progress-summary').html(summaryHtml);
+                    } else {
+                        $('#progress-summary').html('<p>Error loading progress summary.</p>');
+                    }
+                },
+                error: function() {
+                    $('#progress-summary').html('<p>Error loading progress summary.</p>');
+                }
+            });
+        }
+
+        function generateWorkoutSummary() {
+            $.ajax({
+                url: '/get_workout_summary',
+                method: 'GET',
+                success: function(response) {
+                    if (response.success) {
+                        const summary = response.summary;
+                        const summaryHtml = `
+                            <div class="summary-item">
+                                <strong>Recent Workouts</strong>
+                                <div class="summary-stats">
+                                    <span>Total workouts: ${summary.total_workouts}</span>
+                                    <span>This week: ${summary.workouts_this_week}</span>
+                                    <span>Total exercises: ${summary.total_exercises}</span>
+                                </div>
+                            </div>
+                        `;
+                        $('#workout-summary').html(summaryHtml);
+                    } else {
+                        $('#workout-summary').html('<p>Error loading workout summary.</p>');
+                    }
+                },
+                error: function() {
+                    $('#workout-summary').html('<p>Error loading workout summary.</p>');
+                }
+            });
+        }
+
+        function generateIndividualWorkoutSummary(workoutId, workoutName) {
+            $.ajax({
+                url: '/get_individual_workout_summary',
+                method: 'GET',
+                data: { workout_id: workoutId },
+                success: function(response) {
+                    if (response.success) {
+                        const summary = response.summary;
+                        const summaryHtml = `
+                            <div class="summary-item">
+                                <strong>${workoutName}</strong>
+                                <div class="summary-stats">
+                                    <span>Date: ${summary.date}</span>
+                                    <span>Exercises: ${summary.exercise_count}</span>
+                                    <span>Total sets: ${summary.total_sets}</span>
+                                </div>
+                            </div>
+                        `;
+                        $('#workout-summary').html(summaryHtml);
+                    } else {
+                        $('#workout-summary').html('<p>Error loading workout summary.</p>');
+                    }
+                },
+                error: function() {
+                    $('#workout-summary').html('<p>Error loading workout summary.</p>');
+                }
+            });
+        }
+
+        function loadUserCommunities(containerId) {
+            $.ajax({
+                url: '/get_user_communities',
+                method: 'GET',
+                success: function(response) {
+                    if (response.success && response.communities) {
+                        const communitiesHtml = response.communities.map(community => `
+                            <div class="community-option" data-community-id="${community.id}">
+                                <input type="checkbox" id="${containerId}-community-${community.id}" value="${community.id}">
+                                <label for="${containerId}-community-${community.id}">${community.name}</label>
+                            </div>
+                        `).join('');
+                        $(`#${containerId}`).html(communitiesHtml);
+                        
+                        // Add click handlers for the new button-style community options
+                        $(`#${containerId} .community-option`).click(function() {
+                            const checkbox = $(this).find('input[type="checkbox"]');
+                            const isChecked = checkbox.prop('checked');
+                            
+                            // Toggle checkbox
+                            checkbox.prop('checked', !isChecked);
+                            
+                            // Toggle selected class
+                            $(this).toggleClass('selected', !isChecked);
+                        });
+                    } else {
+                        $(`#${containerId}`).html('<p>No communities found.</p>');
+                    }
+                },
+                error: function() {
+                    $(`#${containerId}`).html('<p>Error loading communities.</p>');
+                }
+            });
+        }
+
+        // Comparison Tab Functions
+        function initComparisonTab() {
+            // Load communities into selector
+            $.ajax({
+                url: '/get_user_communities',
+                method: 'GET',
+                success: function(resp) {
+                    const select = $('#compare-community-select');
+                    select.empty();
+                    select.append('<option value="">Select Community</option>');
+                    if (resp && resp.success && Array.isArray(resp.communities)) {
+                        const allCommunities = resp.communities;
+                        const gymCommunities = allCommunities.filter(c => String(c.type || '').toLowerCase() === 'gym');
+                        const listToShow = gymCommunities.length ? gymCommunities : allCommunities;
+                        console.log('Comparison: communities returned =', allCommunities.length, '| gyms =', gymCommunities.length);
+                        listToShow.forEach(c => select.append(`<option value="${c.id}">${c.name}</option>`));
+                        // cache for name lookup
+                        window.__comparisonCommunities = listToShow.reduce((acc,c)=>{acc[c.id]=c.name;return acc;},{});
+                    } else {
+                        console.warn('Comparison: failed to load communities or empty list', resp);
+                    }
+                }
+            });
+
+            // Load exercises for selection (user's exercises)
+            $.ajax({
+                url: '/get_user_exercises',
+                method: 'GET',
+                success: function(resp) {
+                    const exSel = $('#compare-exercise-select');
+                    exSel.empty();
+                    exSel.append('<option value="">Select Exercise</option>');
+                    if (resp.success && resp.exercises) {
+                        resp.exercises.forEach(ex => exSel.append(`<option value="${ex.id}">${ex.name} (${ex.muscle_group})</option>`));
+                    }
+                    exSel.prop('disabled', false);
+                    $('#load-compare-btn').prop('disabled', false);
+                }
+            });
+
+            // Overview loads when a community is selected; enable KPI selector and show community name
+            $('#compare-community-select').off('change').on('change', function() {
+                const communityId = $(this).val();
+                $('#compare-overview').empty();
+                $('#compare-summary').empty();
+                $('#compare-chart-container').hide();
+                const name = window.__comparisonCommunities && window.__comparisonCommunities[communityId] ? window.__comparisonCommunities[communityId] : '';
+                $('#selected-community-name').text(name ? `• ${name}` : '');
+                $('#kpi-select').prop('disabled', !communityId);
+                if (communityId) {
+                    const kpi = $('#kpi-select').val() || 'strength';
+                    if (kpi === 'strength') {
+                        // Hide overview for requested simplification, wait for exercise+Load to show chart
+                        $('#compare-overview').hide();
+                    } else if (kpi === 'attendance') {
+                        $('#compare-overview').show();
+                        loadAttendanceOverview(communityId);
+                    } else if (kpi === 'improvement') {
+                        $('#compare-overview').show();
+                        loadImprovementOverview(communityId);
+                    }
+                }
+            });
+
+            // Re-load data when KPI changes
+            $('#kpi-select').off('change').on('change', function() {
+                const communityId = $('#compare-community-select').val();
+                $('#compare-overview').empty();
+                $('#compare-summary').empty();
+                $('#compare-chart-container').hide();
+                if (!communityId) return;
+                const kpi = $(this).val();
+                if (kpi === 'strength') {
+                    $('#compare-overview').hide();
+                } else if (kpi === 'attendance') {
+                    $('#compare-overview').show();
+                    loadAttendanceOverview(communityId);
+                } else if (kpi === 'improvement') {
+                    $('#compare-overview').show();
+                    loadImprovementOverview(communityId);
+                }
+            });
+
+            $('#load-compare-btn').off('click').on('click', function() {
+                const communityId = $('#compare-community-select').val();
+                const exerciseId = $('#compare-exercise-select').val();
+                if (!communityId) { alert('Please select a gym community first.'); return; }
+                if (!exerciseId) {
+                    alert('Select an exercise to view the graph. The overview above shows all your exercises.');
+                    return;
+                }
+                loadComparisonData(communityId, exerciseId);
+            });
+        }
+
+        // Leaderboard Tab
+        function initLeaderboardTab(){
+            // Load communities
+            $.get('/get_user_communities', function(resp){
+                const sel = $('#lb-community-select');
+                sel.empty();
+                sel.append('<option value="">Select Community</option>');
+                if (resp && resp.success && Array.isArray(resp.communities)){
+                    resp.communities.forEach(c => sel.append(`<option value="${c.id}">${c.name}</option>`));
+                }
+            });
+            // Load user exercises for selection
+            $.get('/get_user_exercises', function(resp){
+                const exSel = $('#lb-exercise-select');
+                exSel.empty();
+                exSel.append('<option value="">Select Exercise</option>');
+                if (resp && resp.success && Array.isArray(resp.exercises)){
+                    resp.exercises.forEach(ex => exSel.append(`<option value="${ex.id}">${ex.name} (${ex.muscle_group})</option>`));
+                }
+                exSel.prop('disabled', false);
+                $('#load-leaderboard-btn').prop('disabled', false);
+            });
+
+            $('#load-leaderboard-btn').off('click').on('click', function(){
+                const community_id = $('#lb-community-select').val();
+                const exercise_id = $('#lb-exercise-select').val();
+                if (!community_id || !exercise_id){ alert('Select community and exercise'); return; }
+                loadLeaderboard(community_id, exercise_id);
+            });
+        }
+
+        function loadLeaderboard(communityId, exerciseId){
+            $.get('/leaderboard_exercise_in_community', { community_id: communityId, exercise_id: exerciseId }, function(resp){
+                if (resp && resp.success){
+                    const rows = resp.entries.map((e, idx) => `
+                        <div class=\"workout-item\" style=\"display:flex; justify-content:space-between; align-items:center;\">
+                            <div class=\"workout-content\" style=\"flex:1;\">
+                                <div class=\"workout-header\">
+                                    <div class=\"workout-title\">
+                                        <h4 class=\"workout-name\">#${idx+1} ${e.username}</h4>
+                                    </div>
+                                </div>
+                            </div>
+                            <div style=\"color:#9fb0b5;\">${e.max} kg</div>
+                        </div>
+                    `).join('');
+                    $('#leaderboard-list').html(rows || '<p>No entries</p>');
+                } else {
+                    $('#leaderboard-list').html('<p>Error loading leaderboard</p>');
+                }
+            }).fail(function(){
+                $('#leaderboard-list').html('<p>Error loading leaderboard</p>');
+            });
+        }
+
+        function loadComparisonOverview(communityId) {
+            $.ajax({
+                url: '/compare_overview_in_community',
+                method: 'GET',
+                data: { community_id: communityId },
+                success: function(resp) {
+                    if (resp.success && Array.isArray(resp.overview)) {
+                        // Group by muscle_group
+                        const byGroup = {};
+                        resp.overview.forEach(it => {
+                            const g = it.muscle_group || 'Other';
+                            if (!byGroup[g]) byGroup[g] = [];
+                            byGroup[g].push(it);
+                        });
+
+                        const sections = Object.keys(byGroup).sort().map(group => {
+                            const items = byGroup[group]
+                                .sort((a,b)=>a.name.localeCompare(b.name))
+                                .map(item => `
+                                    <div class=\"overview-row\" style=\"display:flex; justify-content:space-between; padding:4px 2px; border-bottom:1px solid #1f2a2e; font-family: Helvetica, Arial, sans-serif;\">
+                                        <div style=\"flex:1; color:#cfd8dc;\">${item.name} <span style=\"color:#81939a; font-size:12px; margin-left:6px;\">(${item.percentile}% • Max ${item.community_max}kg)</span></div>
+                                        <div style=\"width:110px; text-align:right; color:#9fb0b5;\">You: ${item.user_max}kg</div>
+                                        <div style=\"width:130px; text-align:right; color:#9fb0b5;\">Avg: ${item.community_avg}kg</div>
+                                    </div>
+                                `).join('');
+                            return `
+                                <div class=\"muscle-group-block\" style=\"margin:8px 0;\">
+                                    <div style=\"display:flex; align-items:center; justify-content:space-between; cursor:pointer; font-weight:600; color:#9fb0b5; margin-bottom:4px; font-family: Helvetica, Arial, sans-serif;\" onclick=\"toggleStrengthGroup('${group.replace(/'/g, "&apos;")}')\">
+                                        <span>${group}</span>
+                                        <i class=\"fas fa-chevron-down\" id=\"strength-group-icon-${group}\"></i>
+                                    </div>
+                                    <div id=\"strength-group-list-${group}\">${items}</div>
+                                </div>
+                            `;
+                        }).join('');
+
+                        $('#compare-overview').html(sections || '<div style="color:#9fb0b5; font-family: Helvetica, Arial, sans-serif;">No exercises found.</div>');
+                    } else {
+                        $('#compare-overview').html('<div style="color:#9fb0b5; font-family: Helvetica, Arial, sans-serif;">No overview available.</div>');
+                    }
+                },
+                error: function() {
+                    $('#compare-overview').html('<div style="color:#9fb0b5; font-family: Helvetica, Arial, sans-serif;">Server error loading overview.</div>');
+                }
+            });
+        }
+
+        function loadComparisonData(communityId, exerciseId) {
+            $.ajax({
+                url: '/compare_exercise_in_community',
+                method: 'GET',
+                data: { community_id: communityId, exercise_id: exerciseId },
+                success: function(resp) {
+                    if (resp.success) {
+                        $('#compare-chart-container').show();
+                        // Force fresh canvas to avoid reuse issues
+                        const cont = document.getElementById('compare-chart-container');
+                        if (cont) { cont.innerHTML = '<canvas id="compareChart"></canvas>'; }
+                        // ensure canvas has size and reflow
+                        setTimeout(() => { renderComparison(resp.data); }, 50);
+                        const extra = resp.community_max ? ` • Top: ${resp.community_max} kg` : '';
+                        $('#compare-summary').text((resp.summary || '') + '');
+                    } else {
+                        alert(resp.error || 'Failed to load comparison data');
+                    }
+                },
+                error: function() {
+                    alert('Server error loading comparison data');
+                }
+            });
+        }
+
+        function loadAttendanceOverview(communityId) {
+            $.ajax({
+                url: '/compare_attendance_in_community',
+                method: 'GET',
+                data: { community_id: communityId, period_days: 30 },
+                success: function(resp) {
+                    if (resp.success) {
+                        const a = resp.attendance;
+                        const row = `
+                            <div style=\"display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid #1f2a2e;\">
+                                <div style=\"flex:1; color:#cfd8dc;\">Attendance (last ${a.period_days} days)</div>
+                                <div style=\"width:120px; text-align:right; color:#9fb0b5;\">You: ${a.user}</div>
+                                <div style=\"width:150px; text-align:right; color:#9fb0b5;\">Avg: ${a.avg}</div>
+                                <div style=\"width:110px; text-align:right; color:#9fb0b5;\">Pct: ${a.percentile}%</div>
+                                <div style=\"width:120px; text-align:right; color:#9fb0b5;\">Max: ${a.community_max}</div>
+                            </div>`;
+                        $('#compare-overview').html(row);
+                        $('#compare-summary').text(resp.summary || '');
+                    } else {
+                        $('#compare-overview').html('<div style="color:#9fb0b5;">No attendance data.</div>');
+                    }
+                },
+                error: function() {
+                    $('#compare-overview').html('<div style="color:#9fb0b5;">Server error loading attendance.</div>');
+                }
+            });
+        }
+
+        function toggleStrengthGroup(groupName) {
+            const list = document.getElementById(`strength-group-list-${groupName}`);
+            const icon = document.getElementById(`strength-group-icon-${groupName}`);
+            if (!list) return;
+            if (list.style.display === 'none') {
+                list.style.display = 'block';
+                if (icon) { icon.classList.remove('fa-chevron-right'); icon.classList.add('fa-chevron-down'); }
+            } else {
+                list.style.display = 'none';
+                if (icon) { icon.classList.remove('fa-chevron-down'); icon.classList.add('fa-chevron-right'); }
+            }
+        }
+
+        function loadImprovementOverview(communityId) {
+            $.ajax({
+                url: '/compare_improvement_in_community',
+                method: 'GET',
+                data: { community_id: communityId, months: 3 },
+                success: function(resp) {
+                    if (resp.success) {
+                        const m = resp.improvement;
+                        const row = `
+                            <div style=\"display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid #1f2a2e;\">
+                                <div style=\"flex:1; color:#cfd8dc;\">Improvement (last ${m.months} months)</div>
+                                <div style=\"width:120px; text-align:right; color:#9fb0b5;\">You: ${m.user}%</div>
+                                <div style=\"width:150px; text-align:right; color:#9fb0b5;\">Avg: ${m.avg}%</div>
+                                <div style=\"width:110px; text-align:right; color:#9fb0b5;\">Pct: ${m.percentile}%</div>
+                                <div style=\"width:120px; text-align:right; color:#9fb0b5;\">Max: ${m.community_max}%</div>
+                            </div>`;
+                        $('#compare-overview').html(row);
+                        $('#compare-summary').text(resp.summary || '');
+                    } else {
+                        $('#compare-overview').html('<div style="color:#9fb0b5;">No improvement data.</div>');
+                    }
+                },
+                error: function() {
+                    $('#compare-overview').html('<div style="color:#9fb0b5;">Server error loading improvement.</div>');
+                }
+            });
+        }
+
+        let compareChart = null;
+        function renderComparison(data) {
+            const ctx = document.getElementById('compareChart').getContext('2d');
+            if (Chart && Chart.defaults && Chart.defaults.font) {
+                Chart.defaults.font.family = 'Helvetica, Arial, sans-serif';
+            }
+            if (compareChart) { compareChart.destroy(); }
+            compareChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: data.labels,
+                    datasets: [
+                        { label: 'Your Max (kg)', data: data.userMaxWeights, backgroundColor: 'rgba(77, 182, 172, 0.6)', borderColor: '#4db6ac', borderWidth: 1 },
+                        { label: 'Avg Max Weight (kg)', data: data.avgMaxWeights, backgroundColor: 'rgba(176, 184, 185, 0.5)', borderColor: '#9fb0b5', borderWidth: 1 }
+                    ]
+                },
+                options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } }, plugins: { legend: { position: 'bottom' } } }
+            });
+        }
+
+        function seedDummyData(){
+            if (!confirm('Generate 20 demo users with 6 months of data?')) return;
+            $.post('/seed_dummy_data', {}, function(resp){
+                if (resp && resp.success){
+                    alert('Dummy data generated successfully. Users: ' + resp.users_created + ', weeks: ' + resp.dates);
+                } else {
+                    alert('Failed to seed data: ' + (resp && resp.error ? resp.error : 'Unknown error'));
+                }
+            }).fail(function(){
+                alert('Server error seeding data');
+            });
+        }
+
+        function shareProgress() {
+            const selectedCommunities = [];
+            $('#communities-list input:checked').each(function() {
+                selectedCommunities.push($(this).val());
+            });
+
+            if (selectedCommunities.length === 0) {
+                alert('Please select at least one community to share to.');
+                return;
+            }
+
+            const exerciseId = $('#exercise-select').val();
+            const timeRange = $('#time-range').val();
+
+            const formData = new FormData();
+            formData.append('exercise_id', exerciseId);
+            formData.append('time_range', timeRange);
+            const userMessage = $('#progress-message').val().trim();
+            if (userMessage) {
+                formData.append('user_message', userMessage);
+            }
+            
+            // Add graph image if available
+            const graphImage = $('#share-progress-modal').data('graph-image');
+            if (graphImage) {
+                formData.append('graph_image', graphImage);
+            }
+            
+            selectedCommunities.forEach(communityId => {
+                formData.append('communities', communityId);
+            });
+
+            $.ajax({
+                url: '/share_progress',
+                method: 'POST',
+                data: formData,
+                processData: false,
+                contentType: false,
+                success: function(response) {
+                    if (response.success) {
+                        closeShareProgressModal();
+                        alert('Progress shared successfully!');
+                    } else {
+                        alert('Error sharing progress: ' + (response.error || 'Unknown error'));
+                    }
+                },
+                error: function(xhr, status, error) {
+                    alert('Error sharing progress: ' + error);
+                }
+            });
+        }
+
+        function shareWorkouts() {
+            const selectedCommunities = [];
+            $('#workout-communities-list input:checked').each(function() {
+                selectedCommunities.push($(this).val());
+            });
+
+            if (selectedCommunities.length === 0) {
+                alert('Please select at least one community to share to.');
+                return;
+            }
+
+            // Check if this is an individual workout share
+            const workoutId = $('#share-workouts-modal').data('workout-id');
+            
+            if (workoutId) {
+                // Share individual workout
+                const formData = new FormData();
+                formData.append('workout_id', workoutId);
+                
+                // Debug: Check if textarea exists and get its value
+                const textarea = $('#workout-message');
+                console.log('Debug: Textarea found:', textarea.length > 0);
+                console.log('Debug: Textarea value:', textarea.val());
+                
+                const userMessage = $('#workout-message').val().trim();
+                console.log('Debug: userMessage =', userMessage);
+                if (userMessage) {
+                    formData.append('user_message', userMessage);
+                    console.log('Debug: Added user_message to formData');
+                } else {
+                    console.log('Debug: No user message provided');
+                }
+                selectedCommunities.forEach(communityId => {
+                    formData.append('communities', communityId);
+                });
+                
+                $.ajax({
+                    url: '/share_individual_workout',
+                    method: 'POST',
+                    data: formData,
+                    processData: false,
+                    contentType: false,
+                    success: function(response) {
+                        if (response.success) {
+                            closeShareWorkoutsModal();
+                            alert('Workout shared successfully!');
+                        } else {
+                            alert('Error sharing workout: ' + (response.error || 'Unknown error'));
+                        }
+                    },
+                    error: function(xhr, status, error) {
+                        alert('Error sharing workout: ' + error);
+                    }
+                });
+            } else {
+                // Share all workouts summary
+                const formData = new FormData();
+                const userMessage = $('#workout-message').val().trim();
+                if (userMessage) {
+                    formData.append('user_message', userMessage);
+                }
+                selectedCommunities.forEach(communityId => {
+                    formData.append('communities', communityId);
+                });
+                
+                $.ajax({
+                    url: '/share_workouts',
+                    method: 'POST',
+                    data: formData,
+                    processData: false,
+                    contentType: false,
+                    success: function(response) {
+                        if (response.success) {
+                            closeShareWorkoutsModal();
+                            alert('Workouts shared successfully!');
+                        } else {
+                            alert('Error sharing workouts: ' + (response.error || 'Unknown error'));
+                        }
+                    },
+                    error: function(xhr, status, error) {
+                        alert('Error sharing workouts: ' + error);
+                    }
+                });
+            }
+        }
+
+        // New Functions for Exercise Management
+        let viewByDate = false;
+
+        function loadExercisesManagement() {
+            $.ajax({
+                url: '/get_user_exercises',
+                method: 'GET',
+                success: function(response) {
+                    if (response.success && response.exercises) {
+                        if (viewByDate) {
+                            displayExercisesManagementByDate(response.exercises);
+                        } else {
+                            displayExercisesManagement(response.exercises);
+                        }
+                    } else {
+                        $('#exercises-management-list').html('<p style="color: #b0b8b9; text-align: center; padding: 20px;">No exercises found. Add your first exercise to get started!</p>');
+                    }
+                },
+                error: function(xhr, status, error) {
+                    $('#exercises-management-list').html('<p style="color: #b0b8b9; text-align: center; padding: 20px;">Error loading exercises. Please try again.</p>');
+                }
+            });
+        }
+
+        function toggleGroupByDate() {
+            viewByDate = !viewByDate;
+            loadExercisesManagement();
+        }
+
+        function displayExercisesManagement(exercises) {
+            // Group exercises by muscle group
+            const muscleGroups = {};
+            exercises.forEach(exercise => {
+                if (!muscleGroups[exercise.muscle_group]) {
+                    muscleGroups[exercise.muscle_group] = [];
+                }
+                muscleGroups[exercise.muscle_group].push(exercise);
+            });
+            
+            const exercisesHtml = Object.keys(muscleGroups).map(muscleGroup => {
+                const exercisesInGroup = muscleGroups[muscleGroup];
+                const exercisesList = exercisesInGroup.map(exercise => {
+                    const weightHistoryHtml = exercise.weight_history && exercise.weight_history.length > 0 
+                        ? exercise.weight_history.map(entry => `
+                            <div class="weight-entry">
+                                <span class="weight-value">${entry.weight} kg × ${entry.reps} reps</span>
+                                <span class="weight-date">${formatDate(entry.date)}</span>
+                                <button onclick="deleteWeightEntry(${exercise.id}, '${entry.date}', ${entry.weight}, ${entry.reps})" class="delete-weight-btn" title="Delete this weight entry">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </div>
+                        `).join('')
+                        : '<div class="no-weights">No weights logged yet</div>';
+                    
+                    return `
+                        <div class="exercise-row" data-exercise-id="${exercise.id}">
+                            <div class="exercise-header" onclick="toggleWeightHistory(${exercise.id})">
+                                <div class="exercise-info">
+                                    <span class="exercise-name">${exercise.name}</span>
+                                    <span class="exercise-count">${exercise.weight_history ? exercise.weight_history.length : 0} entries</span>
+                                </div>
+                                <div class="exercise-actions">
+                                    <button onclick="event.stopPropagation(); openEditExercise(${exercise.id}, '${exercise.name}', '${muscleGroup}')" class="action-btn small" title="Edit exercise">
+                                        <i class="fas fa-edit"></i> Edit
+                                    </button>
+                                    <button onclick="event.stopPropagation(); openLogWeightModal(${exercise.id}, '${exercise.name}')" class="action-btn small">
+                                        <i class="fas fa-plus"></i> Add Weight
+                                    </button>
+                                    <button onclick="event.stopPropagation(); deleteExercise(${exercise.id})" class="action-btn small delete">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                    <i class="fas fa-chevron-down toggle-icon" id="toggle-${exercise.id}"></i>
+                                </div>
+                            </div>
+                            <div class="weight-history-dropdown" id="history-${exercise.id}" style="display: none;">
+                                <div class="weight-history">
+                                    ${weightHistoryHtml}
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+                
+                return `
+                    <div class="muscle-group-section">
+                        <div class="muscle-group-title-row" style="display:flex; align-items:center; justify-content: space-between; cursor:pointer; padding: 6px 0;" onclick="toggleGroupVisibility('${muscleGroup}')">
+                            <h3 class="muscle-group-title" style="margin:0;">${muscleGroup}</h3>
+                            <i class="fas fa-chevron-down" id="group-toggle-icon-${muscleGroup}"></i>
+                        </div>
+                        <div class="exercises-list" id="group-exercises-${muscleGroup}" style="display:block; margin-top: 6px;">
+                            ${exercisesList}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            
+            $('#exercises-management-list').html(exercisesHtml);
+        }
+
+        function openEditExercise(exerciseId, currentName, currentGroup) {
+            $('#edit-exercise-id').val(exerciseId);
+            $('#edit-exercise-name-input').val(currentName);
+            $('#edit-muscle-group-select').val(currentGroup);
+            $('#edit-exercise-info-modal').show();
+        }
+
+        function closeEditExerciseInfoModal() {
+            $('#edit-exercise-info-modal').hide();
+        }
+
+        $('#edit-exercise-info-form').on('submit', function(e) {
+            e.preventDefault();
+            const exerciseId = $('#edit-exercise-id').val();
+            const newName = $('#edit-exercise-name-input').val().trim();
+            const newGroup = $('#edit-muscle-group-select').val();
+            if (!newName) { alert('Please enter a name'); return; }
+            $.post('/edit_exercise', { exercise_id: exerciseId, name: newName, muscle_group: newGroup }, function(resp) {
+                if (resp && resp.success) {
+                    closeEditExerciseInfoModal();
+                    loadMuscleGroups();
+                    loadExercisesManagement();
+                } else {
+                    alert(resp && resp.error ? resp.error : 'Error updating exercise');
+                }
+            });
+        });
+
+        function toggleGroupVisibility(groupName) {
+            const listEl = document.getElementById(`group-exercises-${groupName}`);
+            const iconEl = document.getElementById(`group-toggle-icon-${groupName}`);
+            if (!listEl) return;
+            if (listEl.style.display === 'none') {
+                listEl.style.display = 'block';
+                if (iconEl) { iconEl.classList.remove('fa-chevron-right'); iconEl.classList.add('fa-chevron-down'); }
+            } else {
+                listEl.style.display = 'none';
+                if (iconEl) { iconEl.classList.remove('fa-chevron-down'); iconEl.classList.add('fa-chevron-right'); }
+            }
+        }
+
+        function toggleExercisesVisibility() {
+            const sections = document.querySelectorAll('#exercises-management-list .exercises-list');
+            const dateSections = document.querySelectorAll('#exercises-management-list .date-group-list');
+            sections.forEach(section => {
+                const isHidden = section.style.display === 'none';
+                section.style.display = isHidden ? 'block' : 'none';
+            });
+            dateSections.forEach(section => {
+                const isHidden = section.style.display === 'none';
+                section.style.display = isHidden ? 'block' : 'none';
+            });
+            const icons = document.querySelectorAll('[id^="group-toggle-icon-"]');
+            icons.forEach(icon => {
+                if (icon.classList.contains('fa-chevron-down')) {
+                    icon.classList.remove('fa-chevron-down');
+                    icon.classList.add('fa-chevron-right');
+                } else if (icon.classList.contains('fa-chevron-right')) {
+                    icon.classList.remove('fa-chevron-right');
+                    icon.classList.add('fa-chevron-down');
+                }
+            });
+        }
+
+        function displayExercisesManagementByDate(exercises) {
+            // Group by muscle group first
+            const muscleGroups = {};
+            exercises.forEach(ex => {
+                if (!muscleGroups[ex.muscle_group]) muscleGroups[ex.muscle_group] = [];
+                muscleGroups[ex.muscle_group].push(ex);
+            });
+
+            const html = Object.keys(muscleGroups).map(group => {
+                const exInGroup = muscleGroups[group];
+                // Build date map YYYY-MM -> list of {exercise, entry}
+                const dateMap = {};
+                exInGroup.forEach(ex => {
+                    (ex.weight_history || []).forEach(entry => {
+                        const d = new Date(entry.date);
+                        const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+                        if (!dateMap[key]) dateMap[key] = {};
+                        if (!dateMap[key][ex.name]) dateMap[key][ex.name] = [];
+                        dateMap[key][ex.name].push(entry);
+                    });
+                });
+
+                const dateSections = Object.keys(dateMap).sort().map(key => {
+                    const ymTitle = formatMonthTitle(key);
+                    const entriesByExercise = dateMap[key];
+                    const inner = Object.keys(entriesByExercise).map(exName => {
+                        const entries = entriesByExercise[exName];
+                        const items = entries.map(entry => `
+                            <div class=\"weight-entry\">
+                                <span class=\"weight-value\">${entry.weight} kg × ${entry.reps} reps</span>
+                                <span class=\"weight-date\">${formatDate(entry.date)}</span>
+                            </div>
+                        `).join('');
+                        return `
+                            <div class=\"exercise-row\">
+                                <div class=\"exercise-header\" style=\"cursor:default;\">
+                                    <div class=\"exercise-info\">
+                                        <span class=\"exercise-name\">${exName}</span>
+                                    </div>
+                                    <div class=\"exercise-actions\"></div>
+                                </div>
+                                <div class=\"weight-history\">${items}</div>
+                            </div>
+                        `;
+                    }).join('');
+
+                    return `
+                        <div class=\"date-group-section\">
+                            <div class=\"muscle-group-title-row\" style=\"display:flex; align-items:center; justify-content: space-between; cursor:pointer; padding: 4px 0;\" onclick=\"toggleDateGroupVisibility('${group}','${key}')\">
+                                <h4 style=\"margin:0; color:#9fb0b5; font-size: 12px;\">${ymTitle}</h4>
+                                <i class=\"fas fa-chevron-down\" id=\"date-toggle-icon-${group}-${key}\"></i>
+                            </div>
+                            <div class=\"date-group-list\" id=\"date-group-${group}-${key}\" style=\"display:block; margin:6px 0;\">${inner}</div>
+                        </div>
+                    `;
+                }).join('');
+
+                return `
+                    <div class=\"muscle-group-section\">
+                        <div class=\"muscle-group-title-row\" style=\"display:flex; align-items:center; justify-content: space-between; cursor:pointer; padding: 6px 0;\" onclick=\"toggleGroupVisibility('${group}')\">
+                            <h3 class=\"muscle-group-title\" style=\"margin:0;\">${group}</h3>
+                            <i class=\"fas fa-chevron-down\" id=\"group-toggle-icon-${group}\"></i>
+                        </div>
+                        <div class=\"exercises-list\" id=\"group-exercises-${group}\" style=\"display:block; margin-top: 6px;\">${dateSections || '<div class=\"no-weights\">No entries</div>'}</div>
+                    </div>
+                `;
+            }).join('');
+
+            $('#exercises-management-list').html(html);
+        }
+
+        function toggleDateGroupVisibility(groupName, dateKey) {
+            const listEl = document.getElementById(`date-group-${groupName}-${dateKey}`);
+            const iconEl = document.getElementById(`date-toggle-icon-${groupName}-${dateKey}`);
+            if (!listEl) return;
+            if (listEl.style.display === 'none') {
+                listEl.style.display = 'block';
+                if (iconEl) { iconEl.classList.remove('fa-chevron-right'); iconEl.classList.add('fa-chevron-down'); }
+            } else {
+                listEl.style.display = 'none';
+                if (iconEl) { iconEl.classList.remove('fa-chevron-down'); iconEl.classList.add('fa-chevron-right'); }
+            }
+        }
+
+        function formatMonthTitle(key) {
+            const [y,m] = key.split('-');
+            const date = new Date(parseInt(y), parseInt(m)-1, 1);
+            return date.toLocaleString('en-US', { month: 'short', year: 'numeric' });
+        }
+
+        function addExercise() {
+            // Add a small delay to ensure form values are properly set
+            setTimeout(() => {
+                const name = $('#add-exercise-name').val();
+                const muscleGroup = $('#modal-muscle-group').val();
+                const weight = $('#modal-exercise-weight').val();
+                const reps = $('#modal-exercise-reps').val();
+                const date = $('#modal-exercise-date').val();
+                
+                console.log('addExercise called with values:', { name, muscleGroup, weight, reps, date });
+                console.log('Field values:', {
+                    name: $('#add-exercise-name').val(),
+                    muscleGroup: $('#modal-muscle-group').val(),
+                    weight: $('#modal-exercise-weight').val(),
+                    reps: $('#modal-exercise-reps').val(),
+                    date: $('#modal-exercise-date').val()
+                });
+                
+                if (!name || !muscleGroup || !weight || !reps || !date) {
+                    console.log('Validation failed - missing fields');
+                    console.log('Empty fields:', {
+                        name: !name,
+                        muscleGroup: !muscleGroup,
+                        weight: !weight,
+                        reps: !reps,
+                        date: !date
+                    });
+                    alert('Please fill in all fields');
+                    return;
+                }
+                
+                // Check if date is in the future
+                const selectedDate = new Date(date);
+                const today = new Date();
+                today.setHours(23, 59, 59, 999); // Set to end of today
+                
+                if (selectedDate > today) {
+                    alert('Cannot log exercises for future dates. Please select today or an earlier date.');
+                    return;
+                }
+            
+            $.ajax({
+                url: '/add_exercise',
+                method: 'POST',
+                data: {
+                    name: name,
+                    muscle_group: muscleGroup,
+                    weight: weight,
+                    reps: reps,
+                    date: date
+                },
+                success: function(response) {
+                    if (response.success) {
+                        closeAddExerciseModal();
+                        loadMuscleGroups();
+                        loadExercisesManagement();
+                        alert('Exercise added successfully!');
+                    } else {
+                        alert('Error adding exercise: ' + (response.error || 'Unknown error'));
+                    }
+                },
+                error: function(xhr, status, error) {
+                    alert('Error adding exercise: ' + error);
+                }
+            });
+            }, 100); // Close setTimeout
+        }
+
+        function logWeight() {
+            const exerciseId = $('#log-weight-form').data('exercise-id');
+            const weight = $('#log-weight-value').val();
+            const reps = $('#log-weight-reps').val();
+            const date = $('#log-weight-date').val();
+            
+            if (!weight || !reps || !date) {
+                alert('Please fill in all fields');
+                return;
+            }
+            
+            // Check if date is in the future
+            const selectedDate = new Date(date);
+            const today = new Date();
+            today.setHours(23, 59, 59, 999); // Set to end of today
+            
+            if (selectedDate > today) {
+                alert('Cannot log exercises for future dates. Please select today or an earlier date.');
+                return;
+            }
+            
+            $.ajax({
+                url: '/log_weight_set',
+                method: 'POST',
+                data: {
+                    exercise_id: exerciseId,
+                    weight: weight,
+                    reps: reps,
+                    date: date
+                },
+                success: function(response) {
+                    if (response.success) {
+                        closeLogWeightModal();
+                        loadMuscleGroups();
+                        loadExercisesManagement();
+                        alert('Weight logged successfully!');
+                    } else {
+                        alert('Error logging weight: ' + (response.error || 'Unknown error'));
+                    }
+                },
+                error: function(xhr, status, error) {
+                    alert('Error logging weight: ' + error);
+                }
+            });
+        }
+
+        function deleteExercise(exerciseId) {
+            if (confirm('Are you sure you want to delete this exercise? This will also delete all associated weight logs.')) {
+                $.ajax({
+                    url: '/delete_exercise',
+                    method: 'POST',
+                    data: {
+                        exercise_id: exerciseId
+                    },
+                    success: function(response) {
+                        if (response.success) {
+                            loadMuscleGroups();
+                            loadExercisesManagement();
+                            alert('Exercise deleted successfully!');
+                        } else {
+                            alert('Error deleting exercise: ' + (response.error || 'Unknown error'));
+                        }
+                    },
+                    error: function(xhr, status, error) {
+                        alert('Error deleting exercise: ' + error);
+                    }
+                });
+            }
+        }
+
+        function toggleWeightHistory(exerciseId) {
+            const dropdown = $(`#history-${exerciseId}`);
+            const toggleIcon = $(`#toggle-${exerciseId}`);
+            
+            if (dropdown.is(':visible')) {
+                dropdown.slideUp(200);
+                toggleIcon.removeClass('fa-chevron-up').addClass('fa-chevron-down');
+            } else {
+                dropdown.slideDown(200);
+                toggleIcon.removeClass('fa-chevron-down').addClass('fa-chevron-up');
+            }
+        }
+
+        function deleteWeightEntry(exerciseId, date, weight, reps) {
+            if (confirm(`Are you sure you want to delete this weight entry: ${weight} kg × ${reps} reps on ${formatDate(date)}?`)) {
+                $.ajax({
+                    url: '/delete_weight_entry',
+                    method: 'POST',
+                    data: {
+                        exercise_id: exerciseId,
+                        date: date,
+                        weight: weight,
+                        reps: reps
+                    },
+                    success: function(response) {
+                        if (response.success) {
+                            loadMuscleGroups();
+                            loadExercisesManagement();
+                            alert('Weight entry deleted successfully!');
+                        } else {
+                            alert('Error deleting weight entry: ' + (response.error || 'Unknown error'));
+                        }
+                    },
+                    error: function(xhr, status, error) {
+                        alert('Error deleting weight entry: ' + error);
+                    }
+                });
+            }
+        }
+
+        // Analytics Functions
+        let progressChart = null;
+
+        function loadAnalyticsData() {
+            $.ajax({
+                url: '/get_user_exercises',
+                method: 'GET',
+                success: function(response) {
+                    if (response.success && response.exercises) {
+                        populateExerciseSelect(response.exercises);
+                        updateProgressChart();
+                    }
+                }
+            });
+        }
+
+        function populateExerciseSelect(exercises) {
+            const select = $('#exercise-select');
+            select.empty();
+            select.append('<option value="">Select Exercise</option>');
+            
+            exercises.forEach(exercise => {
+                select.append(`<option value="${exercise.id}">${exercise.name} (${exercise.muscle_group})</option>`);
+            });
+        }
+
+        function updateProgressChart() {
+            const exerciseId = $('#exercise-select').val();
+            const timeRange = $('#time-range').val();
+            
+            if (!exerciseId) {
+                if (progressChart) {
+                    progressChart.destroy();
+                    progressChart = null;
+                }
+                return;
+            }
+
+            $.ajax({
+                url: '/get_exercise_progress',
+                method: 'GET',
+                data: {
+                    exercise_id: exerciseId,
+                    time_range: timeRange
+                },
+                success: function(response) {
+                    if (response.success) {
+                        // Reset canvas to avoid stale chart instance
+                        const progCanvas = document.getElementById('progressChart');
+                        if (progCanvas && progCanvas.parentElement) {
+                            progCanvas.parentElement.innerHTML = '<canvas id="progressChart"></canvas>';
+                        }
+                        renderProgressChart(response.data);
+                    }
+                },
+                error: function() {
+                    console.log('Error loading progress data');
+                }
+            });
+        }
+
+        function renderProgressChart(data) {
+            const ctx = document.getElementById('progressChart').getContext('2d');
+            
+            if (progressChart) {
+                progressChart.destroy();
+            }
+
+            window.progressChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: data.labels,
+                    datasets: [{
+                        label: 'Max Weight (kg)',
+                        data: data.maxWeights,
+                        borderColor: '#4db6ac',
+                        backgroundColor: 'rgba(77, 182, 172, 0.1)',
+                        borderWidth: 2,
+                        fill: true,
+                        tension: 0.4,
+                        pointBackgroundColor: '#4db6ac',
+                        pointBorderColor: '#ffffff',
+                        pointBorderWidth: 2,
+                        pointRadius: 4,
+                        pointHoverRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                            titleColor: '#ffffff',
+                            bodyColor: '#ffffff',
+                            borderColor: '#4db6ac',
+                            borderWidth: 1,
+                            cornerRadius: 8,
+                            displayColors: false
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.1)'
+                            },
+                            ticks: {
+                                color: 'rgba(255, 255, 255, 0.7)',
+                                font: {
+                                    size: 11
+                                }
+                            }
+                        },
+                        y: {
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.1)'
+                            },
+                            ticks: {
+                                color: 'rgba(255, 255, 255, 0.7)',
+                                font: {
+                                    size: 11
+                                }
+                            },
+                            title: {
+                                display: true,
+                                text: 'Weight (kg)',
+                                color: 'rgba(255, 255, 255, 0.8)',
+                                font: {
+                                    size: 12
+                                }
+                            }
+                        }
+                    },
+                    interaction: {
+                        intersect: false,
+                        mode: 'index'
+                    }
+                }
+            });
+        }
+
+        // Close modals when clicking outside
+        $(window).click(function(e) {
+            if (e.target.classList.contains('modal')) {
+                $('.modal').hide();
+            }
+        });
+    </script>
+</body>
+</html>

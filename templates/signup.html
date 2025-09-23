@@ -3,116 +3,96 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sign Up - Workout X</title>
+    <title>Sign Up - C.Point</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}?v=5.0">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+        .signup-split { display: grid; grid-template-columns: 1fr 1fr; height: 100vh; overflow: hidden; }
+        .signup-left { position: relative; background: #000; height: 100vh; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+        .signup-left img { max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain; object-position: center; opacity: 0.85; display: block; }
+        .signup-right { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; height: 100vh; overflow-y: auto; }
+        .signup-card { width: 100%; max-width: 420px; background: rgba(0,0,0,0.85); border: 1px solid #222; border-radius: 12px; padding: 18px; margin: 0 auto; align-self: center; justify-self: center; }
+        .signup-card { font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; }
+        .signup-card input, .signup-card label, .signup-card button, .signup-card p { font-family: "Helvetica Neue", Helvetica, Arial, sans-serif !important; }
+        .signup-card h1 { display:block; color:#ffffff; font-size:20px; margin: 0 0 24px 0; }
+        #signupForm { margin-top: 8px; }
+        .signup-card .signup-subtitle { display:none; }
+        .form-group { margin-bottom: 10px; }
+        .form-group label { display: block; margin-bottom: 4px; font-size: 12px; }
+        .form-group input { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #333; background: #0a0a0a; color: #fff; font-size: 14px; }
+        .form-actions { margin-top: 6px; display: flex; gap: 8px; justify-content: flex-end; }
+        .signup-card .sleek-btn { font-size: 13px; padding: 6px 12px; white-space: nowrap; width: auto !important; max-width: none !important; display: inline-block; }
+        .signup-card .sleek-btn.primary { background: linear-gradient(135deg, #4db6ac, #37a69c) !important; border-color: #4db6ac !important; color: #ffffff !important; }
+        .signup-card .sleek-btn.primary:hover { background: linear-gradient(135deg, #2d8a7e, #249388) !important; }
+        @media (max-width: 900px) { .signup-split { grid-template-columns: 1fr; } .signup-left { display: none; } }
+        .signup-footer { text-align: center; color: #9fb0b5; font-size: 12px; font-weight: 600; margin-top: 12px; font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; }
+    </style>
 </head>
-<body>
-    <div class="container">
-        <h1>Create Your Account</h1>
-        <p class="signup-subtitle">Join Workout X and start your fitness journey</p>
-        
-        {% if error %}
-            <p class="error-message">{{ error }}</p>
-        {% endif %}
-        
-        <form method="POST" action="/signup" class="signup-form">
-            <div class="form-section">
-                <h3>Basic Information</h3>
-                <div class="form-group">
-                    <label for="username">Username *</label>
-                    <input type="text" id="username" name="username" placeholder="Choose a username" required>
+<body id="signupPage" style="font-family: inherit;">
+    <div class="signup-split">
+        <div class="signup-left">
+            <img src="{{ url_for('static', filename='signup_side.jpg') }}" alt="Welcome" onerror="this.onerror=null;this.src='{{ url_for('static', filename='logo.jpg') }}'">
+        </div>
+        <div class="signup-right">
+            <div class="signup-card">
+                <h1>Create Account</h1>
+                <p class="signup-subtitle">Start your journey today</p>
+                {% if error %}
+                    <p class="error-message">{{ error }}</p>
+                {% endif %}
+                <form method="POST" action="/signup" id="signupForm">
+                    <div class="form-group">
+                        <label for="username">Username *</label>
+                        <input type="text" id="username" name="username" placeholder="Choose a unique username" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="full_name">Full name *</label>
+                        <input type="text" id="full_name" name="full_name" placeholder="Your full name" value="{{ full_name or '' }}" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="email">Email *</label>
+                        <input type="email" id="email" name="email" placeholder="your.email@example.com" value="{{ email or '' }}" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="mobile">Mobile</label>
+                        <input type="text" id="mobile" name="mobile" placeholder="e.g. +44 7700 900123" value="{{ mobile or '' }}">
+                    </div>
+                    <div class="form-group">
+                        <label for="password">Password *</label>
+                        <input type="password" id="password" name="password" placeholder="Create a strong password" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="confirm_password">Confirm Password *</label>
+                        <input type="password" id="confirm_password" name="confirm_password" placeholder="Confirm your password" required>
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" class="sleek-btn small primary">Create Account</button>
+                        <button type="button" onclick="location.href='/'" class="sleek-btn small secondary">Cancel</button>
+                    </div>
+                </form>
+                <div class="legal-note" style="margin-top: 10px; font-size: 12px; color: #9fb0b5;">
+                    By clicking Create account, you agreeing to our 
+                    <a href="/privacy" style="color: #4db6ac; text-decoration: none;">Privacy Policy</a> and 
+                    <a href="/terms" style="color: #4db6ac; text-decoration: none;">Terms of Use</a>
                 </div>
-                <div class="form-group">
-                    <label for="email">Email *</label>
-                    <input type="email" id="email" name="email" placeholder="your.email@example.com" required>
-                </div>
-                <div class="form-group">
-                    <label for="password">Password *</label>
-                    <input type="password" id="password" name="password" placeholder="Create a strong password" required>
-                </div>
-                <div class="form-group">
-                    <label for="confirm_password">Confirm Password *</label>
-                    <input type="password" id="confirm_password" name="confirm_password" placeholder="Confirm your password" required>
-                </div>
-            </div>
-            
-            <div class="form-section">
-                <h3>Personal Information</h3>
-                <div class="form-group">
-                    <label for="first_name">First Name *</label>
-                    <input type="text" id="first_name" name="first_name" placeholder="Your first name" required>
-                </div>
-                <div class="form-group">
-                    <label for="last_name">Last Name *</label>
-                    <input type="text" id="last_name" name="last_name" placeholder="Your last name" required>
-                </div>
-                <div class="form-group">
-                    <label for="age">Age</label>
-                    <input type="number" id="age" name="age" placeholder="Your age" min="13" max="120">
-                </div>
-                <div class="form-group">
-                    <label for="gender">Gender</label>
-                    <select id="gender" name="gender">
-                        <option value="">Select gender</option>
-                        <option value="male">Male</option>
-                        <option value="female">Female</option>
-                        <option value="other">Other</option>
-                        <option value="prefer_not_to_say">Prefer not to say</option>
-                    </select>
+                <div class="login-link" style="margin-top: 8px; font-size: 12px;">
+                    <p>Already have an account? <a href="/">Login here</a></p>
                 </div>
             </div>
-            
-            			<div class="form-section">
-				<h3>Fitness Goals</h3>
-				<div class="form-group">
-					<label for="primary_goal">Primary Goal</label>
-					<select id="primary_goal" name="primary_goal">
-						<option value="">Select your primary goal</option>
-						<option value="weight_loss">Weight Loss</option>
-						<option value="muscle_gain">Muscle Gain</option>
-						<option value="strength">Strength</option>
-						<option value="endurance">Endurance</option>
-						<option value="general_fitness">General Fitness</option>
-						<option value="sports_performance">Sports Performance</option>
-					</select>
-				</div>
-			</div>
-            
-            <div class="form-actions">
-                <button type="submit" class="sleek-btn primary">Create Account</button>
-                <button type="button" onclick="location.href='/'" class="sleek-btn secondary">Cancel</button>
-            </div>
-        </form>
-        
-        <div class="login-link">
-            <p>Already have an account? <a href="/">Login here</a></p>
+            <div class="signup-footer">© 2025 C.Point</div>
         </div>
     </div>
-    
+
     <script>
         // Password confirmation validation
-        document.getElementById('confirm_password').addEventListener('input', function() {
-            const password = document.getElementById('password').value;
-            const confirmPassword = this.value;
-            
-            if (password !== confirmPassword) {
-                this.setCustomValidity('Passwords do not match');
-            } else {
-                this.setCustomValidity('');
-            }
-        });
-        
-        // Username validation (no spaces, alphanumeric and underscores only)
-        document.getElementById('username').addEventListener('input', function() {
-            const username = this.value;
-            const usernameRegex = /^[a-zA-Z0-9_]+$/;
-            
-            if (!usernameRegex.test(username)) {
-                this.setCustomValidity('Username can only contain letters, numbers, and underscores');
-            } else if (username.length < 3) {
-                this.setCustomValidity('Username must be at least 3 characters long');
-            } else {
-                this.setCustomValidity('');
+        document.addEventListener('DOMContentLoaded', function () {
+            var confirmInput = document.getElementById('confirm_password');
+            if (confirmInput) {
+                confirmInput.addEventListener('input', function() {
+                    var password = document.getElementById('password').value;
+                    var confirmPassword = this.value;
+                    this.setCustomValidity(password !== confirmPassword ? 'Passwords do not match' : '');
+                });
             }
         });
     </script>
