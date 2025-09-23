@@ -13177,7 +13177,14 @@ def community_feed_react(community_id):
     try:
         base_dir = os.path.dirname(os.path.abspath(__file__))
         dist_dir = os.path.join(base_dir, 'client', 'dist')
-        return send_from_directory(dist_dir, 'index.html')
+        resp = send_from_directory(dist_dir, 'index.html')
+        try:
+            resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+            resp.headers['Pragma'] = 'no-cache'
+            resp.headers['Expires'] = '0'
+        except Exception:
+            pass
+        return resp
     except Exception as e:
         logger.error(f"Error serving React community feed: {str(e)}")
         abort(500)
@@ -13222,7 +13229,14 @@ def react_members_page(community_id):
     try:
         base_dir = os.path.dirname(os.path.abspath(__file__))
         dist_dir = os.path.join(base_dir, 'client', 'dist')
-        return send_from_directory(dist_dir, 'index.html')
+        resp = send_from_directory(dist_dir, 'index.html')
+        try:
+            resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+            resp.headers['Pragma'] = 'no-cache'
+            resp.headers['Expires'] = '0'
+        except Exception:
+            pass
+        return resp
     except Exception as e:
         logger.error(f"Error serving React community members page: {str(e)}")
         abort(500)

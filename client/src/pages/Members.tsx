@@ -119,24 +119,12 @@ export default function Members(){
                 <div className="font-medium">{m.username}</div>
                 <div className="ml-auto flex items-center gap-1">
                   {canManage && m.username !== ownerUsername ? (
-                    <>
-                      {/* Role dropdown (owner/app_admin can promote/demote; owner transfer only app_admin) */}
-                      <div className="relative group" onClick={(e)=> e.stopPropagation()}>
-                        <button className="px-2 py-1 rounded-md border border-white/10 text-xs text-[#cfd8dc] hover:bg-white/5" title="Manage role">
-                          Manage
-                        </button>
-                        <div className="hidden group-hover:block absolute right-0 mt-1 w-36 rounded-md border border-white/10 bg-black shadow-lg z-20">
-                          <button className="w-full text-left px-3 py-2 text-xs hover:bg-white/5" onClick={()=> updateRole(m.username, 'admin')}>Make admin</button>
-                          <button className="w-full text-left px-3 py-2 text-xs hover:bg-white/5" onClick={()=> updateRole(m.username, 'member')}>Remove admin</button>
-                          {currentUserRole === 'app_admin' ? (
-                            <button className="w-full text-left px-3 py-2 text-xs hover:bg-white/5" onClick={()=> updateRole(m.username, 'owner')}>Transfer ownership</button>
-                          ) : null}
-                        </div>
-                      </div>
-                      <button className="p-2 rounded-full hover:bg-white/5" title="Remove member" onClick={(e)=> { e.stopPropagation(); removeMember(m.username) }}>
-                        <i className="fa-regular fa-trash-can" style={{ color:'#d9534f' }} />
-                      </button>
-                    </>
+                    <MemberActions
+                      onPromote={()=> updateRole(m.username, 'admin')}
+                      onDemote={()=> updateRole(m.username, 'member')}
+                      onTransfer={currentUserRole === 'app_admin' ? ()=> updateRole(m.username, 'owner') : undefined}
+                      onRemove={()=> removeMember(m.username)}
+                    />
                   ) : null}
                 </div>
               </button>
@@ -144,6 +132,29 @@ export default function Members(){
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+
+function MemberActions({ onPromote, onDemote, onTransfer, onRemove }:{ onPromote: ()=>void, onDemote: ()=>void, onTransfer?: ()=>void, onRemove: ()=>void }){
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="relative" onClick={(e)=> e.stopPropagation()}>
+      <button className="px-2 py-1 rounded-md border border-white/10 text-xs text-[#cfd8dc] hover:bg-white/5" onClick={()=> setOpen(v=>!v)} aria-expanded={open} aria-haspopup="menu">
+        Manage
+      </button>
+      {open && (
+        <div className="absolute right-0 mt-1 w-40 rounded-md border border-white/10 bg-black shadow-lg z-20">
+          <button className="w-full text-left px-3 py-2 text-xs hover:bg-white/5" onClick={()=> { setOpen(false); onPromote() }}>Make admin</button>
+          <button className="w-full text-left px-3 py-2 text-xs hover:bg-white/5" onClick={()=> { setOpen(false); onDemote() }}>Remove admin</button>
+          {onTransfer ? (
+            <button className="w-full text-left px-3 py-2 text-xs hover:bg-white/5" onClick={()=> { setOpen(false); onTransfer() }}>Transfer ownership</button>
+          ) : null}
+          <div className="h-px bg-white/10" />
+          <button className="w-full text-left px-3 py-2 text-xs hover:bg-white/5 text-red-400" onClick={()=> { setOpen(false); onRemove() }}>Remove member</button>
+        </div>
+      )}
     </div>
   )
 }
