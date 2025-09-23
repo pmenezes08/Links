@@ -2,7 +2,12 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import Avatar from '../components/Avatar'
 
-type Member = { username: string; profile_picture?: string | null }
+type Member = {
+  username: string;
+  profile_picture?: string | null;
+  role?: 'member'|'admin'|'owner';
+  is_creator?: boolean;
+}
 
 export default function Members(){
   const { community_id } = useParams()
@@ -92,6 +97,16 @@ export default function Members(){
     }
   }
 
+  function getRoleBadge(member: Member){
+    if (member.role === 'owner' || member.is_creator) {
+      return <span className="px-2 py-0.5 text-xs font-medium bg-purple-600/20 text-purple-300 rounded-full border border-purple-500/30">Owner</span>
+    } else if (member.role === 'admin') {
+      return <span className="px-2 py-0.5 text-xs font-medium bg-blue-600/20 text-blue-300 rounded-full border border-blue-500/30">Admin</span>
+    } else {
+      return <span className="px-2 py-0.5 text-xs font-medium bg-gray-600/20 text-gray-300 rounded-full border border-gray-500/30">Member</span>
+    }
+  }
+
   return (
     <div className="min-h-screen bg-black text-white">
       <div className="fixed left-0 right-0 top-14 h-12 border-b border-white/10 bg-black/70 backdrop-blur flex items-center px-3 z-40">
@@ -116,7 +131,12 @@ export default function Members(){
                 onClick={()=> { window.location.href = `/profile/${encodeURIComponent(m.username)}` }}
                 aria-label={`View @${m.username} profile`}>
                 <Avatar username={m.username} url={m.profile_picture || undefined} size={36} />
-                <div className="font-medium">{m.username}</div>
+                <div className="flex-1">
+                  <div className="font-medium">{m.username}</div>
+                  <div className="mt-1">
+                    {getRoleBadge(m)}
+                  </div>
+                </div>
                 <div className="ml-auto flex items-center gap-1">
                   {canManage && m.username !== ownerUsername ? (
                     <MemberActions
