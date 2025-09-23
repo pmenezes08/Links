@@ -13,6 +13,7 @@ import CommunityCalendar from './pages/CommunityCalendar'
 import CommunityPolls from './pages/CommunityPolls'
 import CommunityResources from './pages/CommunityResources'
 import UsefulLinks from './pages/UsefulLinks'
+import CommunityPhotos from './pages/CommunityPhotos'
 import PostDetail from './pages/PostDetail'
 import CreatePost from './pages/CreatePost'
 import Members from './pages/Members'
@@ -92,6 +93,7 @@ function AppRoutes(){
           <Route path="/community/:community_id/polls_react" element={<CommunityPolls />} />
           <Route path="/community/:community_id/resources_react" element={<CommunityResources />} />
           <Route path="/community/:community_id/useful_links_react" element={<UsefulLinks />} />
+          <Route path="/community/:community_id/photos" element={<CommunityPhotos />} />
           <Route path="/community/:community_id/members" element={<Members />} />
           <Route path="/community/:community_id/edit" element={<EditCommunity />} />
           <Route path="/post/:post_id" element={<PostDetail />} />

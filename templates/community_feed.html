@@ -799,7 +799,6 @@
             color: {{ 'rgba(0, 0, 0, 0.5)' if community.template == 'light' else '#ffffff' }} !important;  /* White placeholder */
             opacity: {{ '1' if community.template == 'light' else '0.8' }} !important;
         }
-        
         .composer-input:focus {
             border-color: {{ community.accent_color or '#4db6ac' }} !important;  /* Turquoise on focus */
             background-color: {{ '#ffffff' if community.template == 'light' else '#000000' }} !important;  /* Stay black on focus */
@@ -1600,7 +1599,6 @@
             gap: 8px;
             margin-bottom: 10px;
         }
-        
         .poll-item-option {
             display: flex;
             justify-content: space-between;
@@ -2400,7 +2398,6 @@
         .post-image {
             text-align: center !important;
         }
-        
         .post-image img {
             width: 100%;
             height: auto;
@@ -3200,7 +3197,6 @@
             color: {{ community.accent_color or '#2d8a7e' }};
             font-size: 10px;
         }
-        
         .rsvp-summary-mini {
             display: flex;
             gap: 8px;
@@ -3992,7 +3988,6 @@
                 console.error('Error marking notifications as read:', error);
             });
         }
-        
         // Toast notification system
         function showToast(title, message, icon = 'fas fa-check-circle', duration = 5000) {
             const toastContainer = document.getElementById('toastContainer');
@@ -5183,7 +5178,6 @@
             </div>
         </div>
     </div>
-
     <script>
         // Handle background file selection
         document.addEventListener('DOMContentLoaded', function() {
@@ -5982,7 +5976,6 @@
                 notification.remove();
             }, 3000);
         }
-        
         // Invitation Functions
         let inviteAllActive = false;
         let loadedMembers = [];
@@ -6997,6 +6990,10 @@
                         <i class="fas fa-folder"></i>
                         <span>Misc</span>
                     </button>
+                    <button class="more-option-btn" onclick="window.location.href='/community/{{ community.id }}/photos';">
+                        <i class="fas fa-camera"></i>
+                        <span>Photos</span>
+                    </button>
                     <button class="more-option-btn" onclick="closeMoreOptionsModal(); showLinksModal();">
                         <i class="fas fa-link"></i>
                         <span>Useful Links</span>
@@ -7432,7 +7429,6 @@
             font-size: 14px;
         }
     </style>
-
     <script>
         // Links Modal Functions
         function showLinksModal() {
