@@ -11092,7 +11092,8 @@ def edit_post():
             owner = row['username'] if hasattr(row, 'keys') else row[0]
             if owner != username and username != 'admin':
                 return jsonify({'success': False, 'error': 'Unauthorized!'}), 403
-            c.execute("UPDATE posts SET content = ?, timestamp = ? WHERE id = ?", (new_content, datetime.now().strftime('%Y-%m-%d %H:%M:%S'), post_id))
+            # Do not alter the original timestamp when editing content
+            c.execute("UPDATE posts SET content = ? WHERE id = ?", (new_content, post_id))
             conn.commit()
         return jsonify({'success': True})
     except Exception as e:
