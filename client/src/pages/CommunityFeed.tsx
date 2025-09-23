@@ -26,6 +26,9 @@ export default function CommunityFeed() {
   const [_announcements, _setAnnouncements] = useState<Array<{id:number, content:string, created_by:string, created_at:string}>>([])
   // Ads removed
   const [moreOpen, setMoreOpen] = useState(false)
+  const [showSearch, setShowSearch] = useState(false)
+  const [q, setQ] = useState('#')
+  const [results, setResults] = useState<Array<{id:number, username:string, content:string, timestamp:string}>>([])
   const scrollRef = useRef<HTMLDivElement|null>(null)
   // Modal removed in favor of dedicated PostDetail route
 
@@ -161,13 +164,32 @@ export default function CommunityFeed() {
   if (error) return <div className="p-4 text-red-400">{error || 'Failed to load feed.'}</div>
   if (!data) return <div className="p-4 text-[#9fb0b5]">No posts yet.</div>
 
+  async function runSearch(){
+    const term = (q || '').trim()
+    if (!term || !community_id) { setResults([]); return }
+    try{
+      const r = await fetch(`/api/community_posts_search?community_id=${community_id}&q=${encodeURIComponent(term)}`, { credentials:'include' })
+      const j = await r.json().catch(()=>null)
+      if (j?.success) setResults(j.posts||[])
+      else setResults([])
+    }catch{ setResults([]) }
+  }
+
+  function scrollToPost(postId: number){
+    try{
+      const el = document.getElementById(`post-${postId}`)
+      if (el){ el.scrollIntoView({ behavior:'smooth', block:'start' }) }
+      setShowSearch(false)
+    }catch{}
+  }
+
   return (
     <div className="fixed inset-x-0 top-14 bottom-0 bg-black text-white">
       {/* Scrollable content area below fixed global header */}
       <div ref={scrollRef} className="h-full max-w-2xl mx-auto overflow-y-auto no-scrollbar pt-3 pb-20 px-3" style={{ WebkitOverflowScrolling: 'touch' as any }}>
         <div className="space-y-3">
-          {/* Back to communities (parent) */}
-          <div className="flex items-center">
+          {/* Back to communities (parent) + Search */}
+          <div className="flex items-center gap-2">
             <button className="px-3 py-1.5 rounded-lg border border-white/10 bg-white/[0.03] text-sm hover:bg-white/10"
               onClick={()=> {
                 const pid = (data?.parent_community?.id || data?.community?.parent_community_id || data?.community?.id)
@@ -176,6 +198,10 @@ export default function CommunityFeed() {
               }}
             >
               ← Back to Communities
+            </button>
+            <button className="ml-auto p-2 rounded-full border border-white/10 hover:bg-white/10" aria-label="Search"
+              onClick={()=> { setShowSearch(true); setTimeout(()=>{ try{ (document.getElementById('hashtag-input') as HTMLInputElement)?.focus() }catch{} }, 50) }}>
+              <i className="fa-solid fa-magnifying-glass" />
             </button>
           </div>
           {/* Top header image from legacy template */}
@@ -240,6 +266,29 @@ export default function CommunityFeed() {
                   <div className="text-xs text-[#9fb0b5] mb-1">{a.created_by} • {a.created_at}</div>
                   <div className="whitespace-pre-wrap text-sm">{a.content}</div>
                 </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Search modal */}
+      {showSearch && (
+        <div className="fixed inset-0 z-[90] bg-black/70 backdrop-blur flex items-center justify-center" onClick={(e)=> e.currentTarget===e.target && setShowSearch(false)}>
+          <div className="w-[92%] max-w-[560px] rounded-2xl border border-white/10 bg-black p-3">
+            <div className="flex items-center gap-2 mb-2">
+              <i className="fa-solid fa-hashtag text-[#4db6ac]" />
+              <input id="hashtag-input" value={q} onChange={(e)=> setQ(e.target.value)} placeholder="#hashtag" className="flex-1 rounded-md bg-black border border-white/10 px-3 py-2 text-sm focus:border-teal-400/70 outline-none" />
+              <button className="px-3 py-2 rounded-md bg-[#4db6ac] text-black text-sm hover:brightness-110" onClick={runSearch}>Search</button>
+            </div>
+            <div className="max-h-[320px] overflow-y-auto space-y-2">
+              {results.length === 0 ? (
+                <div className="text-[#9fb0b5] text-sm">No results</div>
+              ) : results.map(r => (
+                <button key={r.id} className="w-full text-left rounded-xl border border-white/10 p-2 hover:bg-white/5" onClick={()=> scrollToPost(r.id)}>
+                  <div className="text-sm text-white/90 truncate">{r.content}</div>
+                  <div className="text-xs text-[#9fb0b5]">{r.username} • {formatSmartTime(r.timestamp)}</div>
+                </button>
               ))}
             </div>
           </div>
@@ -315,7 +364,7 @@ function PostCard({ post, currentUser, isAdmin, onOpen, onToggleReaction }: { po
     else alert(j?.error || 'Failed to update post')
   }
   return (
-    <div ref={cardRef} className="rounded-2xl border border-white/10 bg-black shadow-sm shadow-black/20" onClick={onOpen}>
+    <div id={`post-${post.id}`} ref={cardRef} className="rounded-2xl border border-white/10 bg-black shadow-sm shadow-black/20" onClick={onOpen}>
       <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2">
         <Avatar username={post.username} url={post.profile_picture || undefined} size={32} />
         <div className="font-medium tracking-[-0.01em]">{post.username}</div>

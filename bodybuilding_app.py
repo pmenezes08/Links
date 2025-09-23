@@ -2659,6 +2659,76 @@ def react_assets(filename):
     except Exception as e:
         logger.error(f"Error serving React asset {filename}: {str(e)}")
         abort(404)
+
+@app.route('/api/community_posts_search')
+@login_required
+def api_community_posts_search():
+    """Search posts in a community by hashtag. Query param q supports leading '#'.
+    Returns basic post info for navigation to anchors on the feed screen.
+    """
+    try:
+        username = session.get('username')
+        community_id = request.args.get('community_id', type=int)
+        q = (request.args.get('q') or '').strip()
+        if not community_id or not q:
+            return jsonify({'success': False, 'error': 'community_id and q are required'}), 400
+
+        # Normalize hashtag token
+        token = q[1:] if q.startswith('#') else q
+        if not token:
+            return jsonify({'success': True, 'posts': []})
+
+        with get_db_connection() as conn:
+            c = conn.cursor()
+
+            # Optional: ensure user belongs to community (admin bypass)
+            try:
+                if username != 'admin':
+                    c.execute("""
+                        SELECT 1 FROM user_communities uc
+                        JOIN users u ON uc.user_id = u.id
+                        WHERE u.username = ? AND uc.community_id = ?
+                        LIMIT 1
+                    """, (username, community_id))
+                    if not c.fetchone():
+                        return jsonify({'success': False, 'error': 'Forbidden'}), 403
+            except Exception:
+                # On error, continue (fail open for dev);
+                pass
+
+            # Simple hashtag search: posts.content LIKE %#[token]% (case-insensitive)
+            like_arg = f"%#{token}%"
+            c.execute(
+                """
+                SELECT id, username, content, timestamp
+                FROM posts
+                WHERE community_id = ? AND LOWER(content) LIKE LOWER(?)
+                ORDER BY id DESC
+                LIMIT 100
+                """,
+                (community_id, like_arg)
+            )
+            rows = c.fetchall()
+            results = []
+            for r in rows:
+                rid = r['id'] if hasattr(r, 'keys') else r[0]
+                ruser = r['username'] if hasattr(r, 'keys') else r[1]
+                rcontent = r['content'] if hasattr(r, 'keys') else r[2]
+                rts = r['timestamp'] if hasattr(r, 'keys') else r[3]
+                # Provide a small content snippet
+                snippet = (rcontent or '')
+                if len(snippet) > 140:
+                    snippet = snippet[:137] + '…'
+                results.append({
+                    'id': rid,
+                    'username': ruser,
+                    'content': snippet,
+                    'timestamp': rts
+                })
+            return jsonify({'success': True, 'posts': results})
+    except Exception as e:
+        logger.error(f"Error in community_posts_search: {e}")
+        return jsonify({'success': False, 'error': 'Server error'}), 500
 @app.route('/api/community_group_feed/<int:parent_id>')
 @login_required
 def api_community_group_feed(parent_id: int):
