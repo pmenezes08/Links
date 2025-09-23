@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import Avatar from '../components/Avatar'
+import { formatSmartTime } from '../utils/time'
 import ImageLoader from '../components/ImageLoader'
 import { useHeader } from '../contexts/HeaderContext'
 
@@ -9,87 +10,7 @@ type Poll = { id: number; question: string; is_active: number; options: PollOpti
 type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null, profile_picture?: string|null }
 type Post = { id: number; username: string; content: string; image_path?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; poll?: Poll|null; replies: Reply[], profile_picture?: string|null }
 
-function formatTimestamp(input: string): string {
-  function parseDate(str: string): Date | null {
-    // Epoch ms
-    if (/^\d{10,13}$/.test(str.trim())){
-      const n = Number(str)
-      const d = new Date(n > 1e12 ? n : n * 1000)
-      return isNaN(d.getTime()) ? null : d
-    }
-    // ISO or browser-parseable
-    let d = new Date(str)
-    if (!isNaN(d.getTime())) return d
-    // Replace space with T
-    d = new Date(str.replace(' ', 'T'))
-    if (!isNaN(d.getTime())) return d
-    // MM.DD.YY HH:MM (24h)
-    const mdyDots = str.match(/^(\d{1,2})\.(\d{1,2})\.(\d{2}) (\d{1,2}):(\d{2})$/)
-    if (mdyDots){
-      const mm = Number(mdyDots[1])
-      const dd = Number(mdyDots[2])
-      const yy = Number(mdyDots[3])
-      const HH = Number(mdyDots[4])
-      const MM = Number(mdyDots[5])
-      const year = 2000 + yy
-      const dt = new Date(year, mm - 1, dd, HH, MM)
-      return isNaN(dt.getTime()) ? null : dt
-    }
-    // MM/DD/YY hh:MM AM/PM
-    const mdySlashAm = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2}) (\d{1,2}):(\d{2}) (AM|PM)$/i)
-    if (mdySlashAm){
-      const mm = Number(mdySlashAm[1])
-      const dd = Number(mdySlashAm[2])
-      const yy = Number(mdySlashAm[3])
-      let hh = Number(mdySlashAm[4])
-      const MM = Number(mdySlashAm[5])
-      const ampm = mdySlashAm[6].toUpperCase()
-      if (ampm === 'PM' && hh < 12) hh += 12
-      if (ampm === 'AM' && hh === 12) hh = 0
-      const year = 2000 + yy
-      const dt = new Date(year, mm - 1, dd, hh, MM)
-      return isNaN(dt.getTime()) ? null : dt
-    }
-    // YYYY-MM-DD HH:MM:SS
-    const ymd = str.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/)
-    if (ymd){
-      const year = Number(ymd[1])
-      const mm = Number(ymd[2])
-      const dd = Number(ymd[3])
-      const HH = Number(ymd[4])
-      const MM = Number(ymd[5])
-      const SS = ymd[6] ? Number(ymd[6]) : 0
-      const dt = new Date(year, mm - 1, dd, HH, MM, SS)
-      return isNaN(dt.getTime()) ? null : dt
-    }
-    return null
-  }
-
-  const date = parseDate(input)
-  if (!date) return input
-  const now = new Date()
-  let diffMs = now.getTime() - date.getTime()
-  if (diffMs < 0) diffMs = 0
-  const minuteMs = 60 * 1000
-  const hourMs = 60 * minuteMs
-  const dayMs = 24 * hourMs
-  if (diffMs < hourMs){
-    const mins = Math.floor(diffMs / minuteMs)
-    return `${mins}m`
-  }
-  if (diffMs < dayMs){
-    const hours = Math.floor(diffMs / hourMs)
-    return `${hours}h`
-  }
-  const days = Math.floor(diffMs / dayMs)
-  if (days < 10){
-    return `${days}d`
-  }
-  const mm = String(date.getMonth() + 1).padStart(2, '0')
-  const dd = String(date.getDate()).padStart(2, '0')
-  const yy = String(date.getFullYear() % 100).padStart(2, '0')
-  return `${mm}/${dd}/${yy}`
-}
+// old formatTimestamp removed; using formatSmartTime
 
 export default function CommunityFeed() {
   let { community_id } = useParams()
@@ -103,8 +24,13 @@ export default function CommunityFeed() {
   const [hasUnseenAnnouncements, setHasUnseenAnnouncements] = useState(false)
   const [showAnnouncements, _setShowAnnouncements] = useState(false)
   const [_announcements, _setAnnouncements] = useState<Array<{id:number, content:string, created_by:string, created_at:string}>>([])
-  const [ad, setAd] = useState<any>(null)
+  const [newAnnouncement, setNewAnnouncement] = useState('')
+  const [savingAnn, setSavingAnn] = useState(false)
+  // Ads removed
   const [moreOpen, setMoreOpen] = useState(false)
+  const [showSearch, setShowSearch] = useState(false)
+  const [q, setQ] = useState('#')
+  const [results, setResults] = useState<Array<{id:number, username:string, content:string, timestamp:string}>>([])
   const scrollRef = useRef<HTMLDivElement|null>(null)
   // Modal removed in favor of dedicated PostDetail route
 
@@ -159,23 +85,7 @@ export default function CommunityFeed() {
     return () => { isMounted = false }
   }, [community_id])
 
-  useEffect(() => {
-    // Pull ads from backend ads section for the community
-    async function loadAds(){
-      try{
-        const r = await fetch(`/get_university_ads?community_id=${community_id}`, { credentials: 'include' })
-        const j = await r.json()
-        if (j?.success && j.ads?.length){
-          setAd(j.ads[0])
-        } else {
-          setAd(null)
-        }
-      }catch{
-        setAd(null)
-      }
-    }
-    loadAds()
-  }, [community_id])
+  // Ads removed
 
   useEffect(() => {
     // Check for unseen announcements (highlight icon)
@@ -211,6 +121,39 @@ export default function CommunityFeed() {
           setHasUnseenAnnouncements(false)
         }catch{}
       }
+    }catch{}
+  }
+
+  async function saveAnnouncement(){
+    if (!community_id) return
+    const content = (newAnnouncement || '').trim()
+    if (!content) return
+    setSavingAnn(true)
+    try{
+      const fd = new URLSearchParams({ community_id: String(community_id), content })
+      const r = await fetch('/save_community_announcement', { method:'POST', credentials:'include', body: fd })
+      const j = await r.json().catch(()=>null)
+      if (j?.success){
+        setNewAnnouncement('')
+        fetchAnnouncements()
+      } else {
+        alert(j?.error || 'Failed to save announcement')
+      }
+    } finally {
+      setSavingAnn(false)
+    }
+  }
+
+  async function deleteAnnouncement(announcementId: number){
+    if (!community_id) return
+    const ok = confirm('Delete this announcement?')
+    if (!ok) return
+    try{
+      const fd = new URLSearchParams({ community_id: String(community_id), announcement_id: String(announcementId) })
+      const r = await fetch('/delete_community_announcement', { method:'POST', credentials:'include', body: fd })
+      const j = await r.json().catch(()=>null)
+      if (j?.success){ fetchAnnouncements() }
+      else alert(j?.error || 'Failed to delete')
     }catch{}
   }
 
@@ -250,26 +193,52 @@ export default function CommunityFeed() {
 
   // Reply reactions handled inside PostDetail page
 
-  const timeline = useMemo(() => {
-    if (!data?.posts) return []
-    const items: Array<{ type: 'post'|'ad'; post?: Post }> = []
-    data.posts.forEach((p: Post, idx: number) => {
-      if (idx === 3) items.push({ type: 'ad' })
-      items.push({ type: 'post', post: p })
-    })
-    if (items.length === 0) items.push({ type: 'ad' })
-    return items
-  }, [data])
+  const postsOnly = useMemo(() => Array.isArray(data?.posts) ? data.posts : [], [data])
 
   if (loading) return <div className="p-4 text-[#9fb0b5]">Loading…</div>
   if (error) return <div className="p-4 text-red-400">{error || 'Failed to load feed.'}</div>
   if (!data) return <div className="p-4 text-[#9fb0b5]">No posts yet.</div>
+
+  async function runSearch(){
+    const term = (q || '').trim()
+    if (!term || !community_id) { setResults([]); return }
+    try{
+      const r = await fetch(`/api/community_posts_search?community_id=${community_id}&q=${encodeURIComponent(term)}`, { credentials:'include' })
+      const j = await r.json().catch(()=>null)
+      if (j?.success) setResults(j.posts||[])
+      else setResults([])
+    }catch{ setResults([]) }
+  }
+
+  function scrollToPost(postId: number){
+    try{
+      const el = document.getElementById(`post-${postId}`)
+      if (el){ el.scrollIntoView({ behavior:'smooth', block:'start' }) }
+      setShowSearch(false)
+    }catch{}
+  }
 
   return (
     <div className="fixed inset-x-0 top-14 bottom-0 bg-black text-white">
       {/* Scrollable content area below fixed global header */}
       <div ref={scrollRef} className="h-full max-w-2xl mx-auto overflow-y-auto no-scrollbar pt-3 pb-20 px-3" style={{ WebkitOverflowScrolling: 'touch' as any }}>
         <div className="space-y-3">
+          {/* Back to communities (parent) + Search */}
+          <div className="flex items-center gap-2">
+            <button className="px-3 py-1.5 rounded-lg border border-white/10 bg-white/[0.03] text-sm hover:bg-white/10"
+              onClick={()=> {
+                const pid = (data?.parent_community?.id || data?.community?.parent_community_id || data?.community?.id)
+                if (pid) window.location.href = `/communities?parent_id=${pid}`
+                else window.location.href = '/communities'
+              }}
+            >
+              ← Back to Communities
+            </button>
+            <button className="ml-auto p-2 rounded-full border border-white/10 hover:bg-white/10" aria-label="Search"
+              onClick={()=> { setShowSearch(true); setTimeout(()=>{ try{ (document.getElementById('hashtag-input') as HTMLInputElement)?.focus() }catch{} }, 50) }}>
+              <i className="fa-solid fa-magnifying-glass" />
+            </button>
+          </div>
           {/* Top header image from legacy template */}
           {data.community?.background_path ? (
             <div className="community-header-image overflow-hidden rounded-xl border border-white/10 mb-3 relative">
@@ -308,10 +277,8 @@ export default function CommunityFeed() {
           ) : null}
 
           {/* Feed items */}
-          {timeline.map((item, i) => item.type === 'ad' ? (
-            <AdsCard key={`ad-${i}`} communityId={String(community_id)} ad={ad} />
-          ) : (
-            <PostCard key={item.post!.id} post={item.post!} currentUser={data.username} isAdmin={!!data.is_community_admin} onOpen={() => navigate(`/post/${item.post!.id}`)} onToggleReaction={handleToggleReaction} />
+          {postsOnly.map((p: Post) => (
+            <PostCard key={p.id} post={p} currentUser={data.username} isAdmin={!!data.is_community_admin} onOpen={() => navigate(`/post/${p.id}`)} onToggleReaction={handleToggleReaction} />
           ))}
         </div>
       </div>
@@ -326,6 +293,14 @@ export default function CommunityFeed() {
               <div className="font-semibold">Announcements</div>
               <button className="px-2 py-1 rounded-full border border-white/10" onClick={()=> _setShowAnnouncements(false)}>✕</button>
             </div>
+            {(data?.is_community_admin || data?.community?.creator_username === data?.username || data?.username === 'admin') && (
+              <div className="mb-3 p-2 rounded-xl border border-white/10 bg-white/[0.02]">
+                <textarea value={newAnnouncement} onChange={(e)=> setNewAnnouncement(e.target.value)} placeholder="Write an announcement…" className="w-full rounded-md bg-black border border-white/10 px-3 py-2 text-sm focus:border-teal-400/70 outline-none min-h-[72px]" />
+                <div className="text-right mt-2">
+                  <button disabled={savingAnn || !newAnnouncement.trim()} onClick={saveAnnouncement} className="px-3 py-1.5 rounded-md bg-[#4db6ac] disabled:opacity-50 text-black text-sm hover:brightness-110">Post</button>
+                </div>
+              </div>
+            )}
             <div className="space-y-3 max-h-[420px] overflow-y-auto">
               {_announcements.length === 0 ? (
                 <div className="text-sm text-[#9fb0b5]">No announcements.</div>
@@ -333,7 +308,35 @@ export default function CommunityFeed() {
                 <div key={a.id} className="rounded-xl border border-white/10 p-3 bg-white/[0.03]">
                   <div className="text-xs text-[#9fb0b5] mb-1">{a.created_by} • {a.created_at}</div>
                   <div className="whitespace-pre-wrap text-sm">{a.content}</div>
+                  {(data?.is_community_admin || data?.community?.creator_username === data?.username || data?.username === 'admin') && (
+                    <div className="mt-2 text-right">
+                      <button className="px-2 py-1 rounded-full border border-white/10 text-xs hover:bg-white/5" onClick={()=> deleteAnnouncement(a.id)}>Delete</button>
+                    </div>
+                  )}
                 </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Search modal */}
+      {showSearch && (
+        <div className="fixed inset-0 z-[90] bg-black/70 backdrop-blur flex items-center justify-center" onClick={(e)=> e.currentTarget===e.target && setShowSearch(false)}>
+          <div className="w-[92%] max-w-[560px] rounded-2xl border border-white/10 bg-black p-3">
+            <div className="flex items-center gap-2 mb-2">
+              <i className="fa-solid fa-hashtag text-[#4db6ac]" />
+              <input id="hashtag-input" value={q} onChange={(e)=> setQ(e.target.value)} placeholder="#hashtag" className="flex-1 rounded-md bg-black border border-white/10 px-3 py-2 text-sm focus:border-teal-400/70 outline-none" />
+              <button className="px-3 py-2 rounded-md bg-[#4db6ac] text-black text-sm hover:brightness-110" onClick={runSearch}>Search</button>
+            </div>
+            <div className="max-h-[320px] overflow-y-auto space-y-2">
+              {results.length === 0 ? (
+                <div className="text-[#9fb0b5] text-sm">No results</div>
+              ) : results.map(r => (
+                <button key={r.id} className="w-full text-left rounded-xl border border-white/10 p-2 hover:bg-white/5" onClick={()=> scrollToPost(r.id)}>
+                  <div className="text-sm text-white/90 truncate">{r.content}</div>
+                  <div className="text-xs text-[#9fb0b5]">{r.username} • {formatSmartTime(r.timestamp)}</div>
+                </button>
               ))}
             </div>
           </div>
@@ -370,12 +373,22 @@ export default function CommunityFeed() {
           <div className="w-[75%] max-w-sm mr-2 mb-2 bg-black/80 backdrop-blur border border-white/10 rounded-2xl p-2 space-y-2 transition-transform duration-200 ease-out translate-y-0">
             <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); navigate(`/community/${community_id}/polls_react`) }}>Polls</button>
             <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); navigate(`/community/${community_id}/calendar_react`) }}>Calendar</button>
-            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); navigate(`/community/${community_id}/resources_react`) }}>Forum</button>
-            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); navigate(`/community/${community_id}/useful_links_react`) }}>Useful Links</button>
+            {/* Hide Forum/Useful Links for General communities */}
+            {((data?.community?.type||'').toLowerCase() !== 'general') && (
+              <>
+                <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); navigate(`/community/${community_id}/resources_react`) }}>Forum</button>
+                <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); navigate(`/community/${community_id}/useful_links_react`) }}>Useful Links & Docs</button>
+              </>
+            )}
             <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); navigate(`/community/${community_id}/members`) }}>Members</button>
             <EditCommunityButton communityId={String(community_id)} onClose={()=> setMoreOpen(false)} />
-            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); window.location.href = `/issues` }}>Report Issue</button>
-            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); window.location.href = `/anonymous_feedback` }}>Anonymous feedback</button>
+            {/* Hide Report Issue and Anonymous Feedback for General */}
+            {((data?.community?.type||'').toLowerCase() !== 'general') && (
+              <>
+                <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); window.location.href = `/issues` }}>Report Issue</button>
+                <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); window.location.href = `/anonymous_feedback` }}>Anonymous feedback</button>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -385,48 +398,9 @@ export default function CommunityFeed() {
 
 // ActionPill removed from UI in this layout
 
-function AdsCard({ communityId: _communityId, ad }:{ communityId: string, ad: any }){
-  if (!ad) return null
-  const onClick = async () => {
-    try{
-      await fetch('/track_ad_click', { method: 'POST', credentials: 'include', headers: { 'Content-Type':'application/json' }, body: JSON.stringify({ ad_id: ad.id }) })
-    }catch{}
-    if (ad.link_url) window.open(ad.link_url, '_blank')
-  }
-  return (
-    <div className="rounded-xl border border-white/10 bg-white/[0.04] p-3 shadow-sm shadow-black/20">
-      <div className="flex items-center gap-3">
-        <div className="w-12 h-12 rounded bg-white/10 overflow-hidden flex items-center justify-center">
-          {ad.image_url ? (
-            <ImageLoader src={ad.image_url} alt={ad.title} className="w-full h-full object-cover" />
-          ) : (
-            <i className="fa-solid fa-store" />
-          )}
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="text-xs text-[#9fb0b5]">Sponsored • University Store</div>
-          <div className="font-medium truncate">{ad.title || 'Store'}</div>
-          <div className="text-sm text-[#9fb0b5] truncate">{ad.description || 'Explore official merch and accessories.'}</div>
-        </div>
-        <button className="px-3 py-2 rounded-full bg-[#4db6ac] text-white border border-[#4db6ac] hover:brightness-110" onClick={onClick}>Shop</button>
-      </div>
-      {ad.image_url ? (
-        <div className="mt-2 rounded-lg overflow-hidden border border-white/10">
-          <ImageLoader 
-            src={ad.image_url} 
-            alt={ad.title} 
-            className="w-full h-auto cursor-pointer" 
-            onClick={onClick}
-          />
-        </div>
-      ) : null}
-    </div>
-  )
-}
+// Ad components removed
 
-// Removed legacy toggleReaction; reactions handled inline with state
-
-function PostCard({ post, currentUser, isAdmin, onOpen, onToggleReaction }: { post: Post, currentUser: string, isAdmin: boolean, onOpen: ()=>void, onToggleReaction: (postId:number, reaction:string)=>void }) {
+function PostCard({ post, currentUser, isAdmin, onOpen, onToggleReaction }: { post: Post & { display_timestamp?: string }, currentUser: string, isAdmin: boolean, onOpen: ()=>void, onToggleReaction: (postId:number, reaction:string)=>void }) {
   const cardRef = useRef<HTMLDivElement|null>(null)
   const [isEditing, setIsEditing] = useState(false)
   const [editText, setEditText] = useState(post.content)
@@ -438,11 +412,11 @@ function PostCard({ post, currentUser, isAdmin, onOpen, onToggleReaction }: { po
     else alert(j?.error || 'Failed to update post')
   }
   return (
-    <div ref={cardRef} className="rounded-2xl border border-white/10 bg-white/[0.035] shadow-sm shadow-black/20" onClick={onOpen}>
+    <div id={`post-${post.id}`} ref={cardRef} className="rounded-2xl border border-white/10 bg-black shadow-sm shadow-black/20" onClick={onOpen}>
       <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2">
         <Avatar username={post.username} url={post.profile_picture || undefined} size={32} />
         <div className="font-medium tracking-[-0.01em]">{post.username}</div>
-        <div className="text-xs text-[#9fb0b5] ml-auto tabular-nums">{formatTimestamp(post.timestamp)}</div>
+        <div className="text-xs text-[#9fb0b5] ml-auto tabular-nums">{formatSmartTime((post as any).display_timestamp || post.timestamp)}</div>
         {(post.username === currentUser || isAdmin || currentUser === 'admin') && (
           <button className="ml-2 px-2 py-1 rounded-full text-[#6c757d] hover:text-[#4db6ac]" title="Delete"
             onClick={async(e)=> { e.stopPropagation(); const ok = confirm('Delete this post?'); if(!ok) return; const fd = new FormData(); fd.append('post_id', String(post.id)); await fetch('/delete_post', { method:'POST', credentials:'include', body: fd }); location.reload() }}>

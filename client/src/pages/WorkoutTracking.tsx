@@ -32,6 +32,9 @@ type Community = { id: number; name: string; type?: string }
 export default function WorkoutTracking(){
   const { setTitle } = useHeader()
   useEffect(() => { setTitle('Your Workouts') }, [setTitle])
+  const parentId = useMemo(()=> {
+    try{ return new URLSearchParams(window.location.search).get('parent_id') }catch{ return null }
+  }, [])
 
   const [activeTab, setActiveTab] = useState<'performance' | 'exercise' | 'workouts' | 'leaderboard' | 'generator'>('performance')
   const [showAddModal, setShowAddModal] = useState(false)
@@ -149,19 +152,38 @@ export default function WorkoutTracking(){
     }
     const ex = exercises.find(e => e.id === selectedExerciseId)
     const rawSets = (ex?.sets_data || [])
-    // Group by date (YYYY-MM-DD) and take max weight per day
+    // Normalize date keys (YYYY-MM-DD) and group max weight per day
+    function normalizeDateKey(input?: string){
+      if (!input) return ''
+      try{
+        const s = String(input)
+        // If already ISO-like yyyy-mm-dd ...
+        if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10)
+        // Try Date parsing for RFC 2822/other formats
+        const d = new Date(s)
+        if (!isNaN(d.getTime())){
+          const y = d.getFullYear()
+          const m = String(d.getMonth()+1).padStart(2,'0')
+          const day = String(d.getDate()).padStart(2,'0')
+          return `${y}-${m}-${day}`
+        }
+      }catch{}
+      return ''
+    }
+    // Group by normalized date
     const byDate: Record<string, number> = {}
     for (const s of rawSets){
-      const key = String(s.created_at || s.date || '').slice(0,10)
+      const key = normalizeDateKey(String(s.created_at || s.date || ''))
       if (!key) continue
       const w = Number(s.weight || 0)
       if (!(key in byDate) || w > byDate[key]) byDate[key] = w
     }
     // Sort dates and take most recent 15
-    const allDates = Object.keys(byDate).sort()
+    const allDates = Object.keys(byDate).sort((a,b)=> a.localeCompare(b))
     const lastDates = allDates.slice(-15)
-    const labels = lastDates.map(d => formatMonthDay(d))
-    const weights = lastDates.map(d => byDate[d])
+    const lastDatesAsc = lastDates.slice().sort((a,b)=> a.localeCompare(b))
+    const labels = lastDatesAsc.map(d => formatMonthDay(d))
+    const weights = lastDatesAsc.map(d => byDate[d])
     return {
       labels,
       datasets: [
@@ -215,9 +237,25 @@ export default function WorkoutTracking(){
 
   return (
     <div className="min-h-screen bg-black text-white pt-14">
+      <div className="fixed left-0 right-0 top-14 h-10 bg-black/70 backdrop-blur z-40">
+        <div className="max-w-3xl mx-auto h-full flex items-center px-3">
+          <button
+            type="button"
+            className="mr-2 p-2 rounded-full hover:bg-white/5"
+            onClick={()=> {
+              if (parentId) window.location.href = `/communities?parent_id=${parentId}`
+              else window.history.back()
+            }}
+            aria-label="Back"
+          >
+            <i className="fa-solid fa-arrow-left" />
+          </button>
+          <div className="text-sm text-white/90">Back</div>
+        </div>
+      </div>
       <div className="max-w-3xl mx-auto px-3 pt-0 pb-4">
         {/* Tabs */}
-        <div className="flex gap-1 border-b border-white/10 mt-0 mb-2 overflow-x-auto no-scrollbar flex-nowrap">
+        <div className="flex gap-1 border-b border-white/10 mt-12 mb-2 overflow-x-auto no-scrollbar flex-nowrap">
           <TabButton active={activeTab==='performance'} onClick={()=> setActiveTab('performance')} icon="fa-chart-line" label="Performance Tracking" />
           <TabButton active={activeTab==='exercise'} onClick={()=> setActiveTab('exercise')} icon="fa-dumbbell" label="Exercise Management" />
           <TabButton active={activeTab==='workouts'} onClick={()=> setActiveTab('workouts')} icon="fa-calendar-alt" label="Workouts" />
@@ -352,7 +390,7 @@ export default function WorkoutTracking(){
                             trendUp = last >= first
                           }
                           return (
-                            <button key={ex.id} className="w-full pl-6 pr-3 py-1.5 flex items-center justify-between hover:bg-white/5 text-left"
+                            <div key={ex.id} className="w-full pl-6 pr-3 py-1.5 flex items-center justify-between hover:bg-white/5"
                               onClick={()=> {
                                 setSelectedExerciseId(ex.id)
                                 setLogsExerciseName(ex.name)
@@ -362,11 +400,29 @@ export default function WorkoutTracking(){
                                 setLogsEntries(mapped)
                                 setShowLogsModal(true)
                               }}
-                              aria-label={`View logs for ${ex.name}`}
                               title="View logs">
                               <div className="text-xs text-[#cfd8dc] truncate mr-2">{ex.name}</div>
-                              <i className={`fa-solid ${trendUp ? 'fa-arrow-trend-up' : 'fa-arrow-trend-down'} text-xs`} style={{ color: trendUp ? '#4db6ac' : '#e53935' }} />
-                            </button>
+                              <div className="flex items-center gap-2">
+                                <i className={`fa-solid ${trendUp ? 'fa-arrow-trend-up' : 'fa-arrow-trend-down'} text-xs`} style={{ color: trendUp ? '#4db6ac' : '#e53935' }} />
+                                <button className="p-1 rounded hover:bg-white/5 text-red-400" title="Delete exercise" aria-label="Delete exercise"
+                                  onClick={async (ev)=>{
+                                    ev.stopPropagation()
+                                    if (!confirm('Delete this exercise and all its logs?')) return
+                                    const fd = new URLSearchParams({ exercise_id: String(ex.id) })
+                                    const r = await fetch('/delete_exercise', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
+                                    const j = await r.json().catch(()=>null)
+                                    if (j?.success){
+                                      setExercises(prev => prev.filter(e => e.id !== ex.id))
+                                      setUserExercises(prev => prev.filter(e => e.id !== ex.id))
+                                      if (selectedExerciseId === ex.id){ setSelectedExerciseId(''); if (showLogsModal) setShowLogsModal(false) }
+                                    } else {
+                                      alert(j?.error || 'Failed to delete exercise')
+                                    }
+                                  }}>
+                                  <i className="fa-solid fa-trash"/>
+                                </button>
+                              </div>
+                            </div>
                           )
                         })}
                       </div>
@@ -415,7 +471,7 @@ export default function WorkoutTracking(){
             <div className="p-3 flex flex-wrap items-center gap-2">
               <select value={lbCommunityId as any} onChange={e=> setLbCommunityId(e.target.value ? Number(e.target.value) : '')} className="bg-black border border-white/15 rounded-md px-2 py-1 text-sm">
                 <option value="">Select Community</option>
-                {communities.map(c=> <option key={c.id} value={c.id}>{c.name}</option>)}
+                {communities.filter((c:any)=> (c.type||'').toLowerCase()==='gym').map(c=> <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
               <select value={lbExerciseId as any} onChange={e=> setLbExerciseId(e.target.value ? Number(e.target.value) : '')} className="bg-black border border-white/15 rounded-md px-2 py-1 text-sm">
                 <option value="">Select Exercise</option>
@@ -521,13 +577,13 @@ export default function WorkoutTracking(){
                     placeholder="Weight (kg)"
                     className="block w-36 h-9 px-3 rounded-md bg-black border border-white/15 text-base focus:outline-none focus:ring-2 focus:ring-[#4db6ac] focus:border-[#4db6ac] focus:bg-teal-900/20"
                   />
-                  <label className="sr-only">Sets</label>
+                  <label className="sr-only">Reps</label>
                   <input
                     type="number"
                     inputMode="numeric"
                     value={newLogSets}
                     onChange={e=> setNewLogSets(e.target.value)}
-                    placeholder="Sets"
+                    placeholder="Reps"
                     className="block w-36 h-9 px-3 rounded-md bg-black border border-white/15 text-base focus:outline-none focus:ring-2 focus:ring-[#4db6ac] focus:border-[#4db6ac]"
                   />
                 </div>
@@ -550,6 +606,12 @@ export default function WorkoutTracking(){
                   if (j?.success){
                     const updated = [{ date: newLogDate, weight: Number(newLogWeight), reps: Number(repsVal) }, ...logsEntries]
                     setLogsEntries(updated)
+                    // Also update main exercises state so entries persist after closing modal
+                    setExercises(prev => prev.map(ex => {
+                      if (ex.id !== logsExerciseId) return ex
+                      const newSets = updated.map(le => ({ weight: le.weight, reps: le.reps, created_at: le.date }))
+                      return { ...ex, sets_data: newSets }
+                    }))
                     setNewLogWeight('')
                     setNewLogSets('')
                     setNewLogDate(new Date().toISOString().slice(0,10))
@@ -592,6 +654,12 @@ export default function WorkoutTracking(){
                                       const updated = logsEntries.slice()
                                       updated[idx] = { ...e, weight: Number(newW) }
                                       setLogsEntries(updated)
+                                      // Sync back to main exercises state
+                                      setExercises(prev => prev.map(ex => {
+                                        if (ex.id !== logsExerciseId) return ex
+                                        const newSets = updated.map(le => ({ weight: le.weight, reps: le.reps, created_at: le.date }))
+                                        return { ...ex, sets_data: newSets }
+                                      }))
                                     } else alert(j?.error||'Failed to edit entry')
                                   }}><i className="fa-solid fa-pen"/></button>
                                   <button className="p-0.5 rounded hover:bg-white/5" title="Delete" onClick={async()=>{
@@ -601,7 +669,14 @@ export default function WorkoutTracking(){
                                     const r = await fetch('/delete_weight_entry', { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
                                     const j = await r.json().catch(()=>null)
                                     if (j?.success){
-                                      setLogsEntries(logsEntries.filter((x, i)=> !(i===idx && x.date===e.date && x.weight===e.weight && x.reps===e.reps)))
+                                      const filtered = logsEntries.filter((x, i)=> !(i===idx && x.date===e.date && x.weight===e.weight && x.reps===e.reps))
+                                      setLogsEntries(filtered)
+                                      // Sync back to main exercises state
+                                      setExercises(prev => prev.map(ex => {
+                                        if (ex.id !== logsExerciseId) return ex
+                                        const newSets = filtered.map(le => ({ weight: le.weight, reps: le.reps, created_at: le.date }))
+                                        return { ...ex, sets_data: newSets }
+                                      }))
                                     } else alert(j?.error||'Failed to delete entry')
                                   }}><i className="fa-solid fa-trash"/></button>
                                 </div>
@@ -669,26 +744,52 @@ function TabButton({ active, onClick, icon, label }:{ active:boolean; onClick:()
 function formatDate(s?:string){
   if (!s) return ''
   try{
-    const d = new Date(s)
-    return d.toLocaleDateString('en-US', { month:'short', day:'numeric' })
+    const t = String(s).slice(0,10)
+    const parts = t.split('-')
+    if (parts.length === 3){
+      const y = parseInt(parts[0], 10)
+      const m = parseInt(parts[1], 10)
+      const dnum = parseInt(parts[2], 10)
+      if (!isNaN(y) && !isNaN(m) && !isNaN(dnum) && m>=1 && m<=12){
+        const date = new Date(y, m-1, dnum)
+        return date.toLocaleDateString('en-US', { month:'short', day:'numeric' })
+      }
+    }
+    return t
   }catch{ return s }
 }
 
 function formatMonthDay(s?:string){
   if (!s) return ''
   try{
-    const d = new Date(s)
-    const month = d.toLocaleString('en-US', { month: 'short' })
-    return `${month} ${d.getDate()}`
+    const t = String(s).slice(0,10)
+    const parts = t.split('-')
+    if (parts.length === 3){
+      const y = parseInt(parts[0], 10)
+      const m = parseInt(parts[1], 10)
+      const dnum = parseInt(parts[2], 10)
+      if (!isNaN(y) && !isNaN(m) && !isNaN(dnum) && m>=1 && m<=12){
+        const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+        return `${months[m-1]} ${dnum}`
+      }
+    }
+    return t
   }catch{ return s }
 }
 
 function formatMonthYear(s?:string){
   if (!s) return ''
   try{
-    const [y, m] = s.split('-').map(Number)
-    const d = new Date(y, (m||1)-1, 1)
-    return d.toLocaleString('en-US', { month: 'short', year: 'numeric' })
+    const parts = String(s).slice(0,7).split('-')
+    if (parts.length === 2){
+      const y = parseInt(parts[0], 10)
+      const m = parseInt(parts[1], 10)
+      if (!isNaN(y) && !isNaN(m) && m>=1 && m<=12){
+        const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+        return `${months[m-1]} ${y}`
+      }
+    }
+    return String(s)
   }catch{ return s }
 }
 

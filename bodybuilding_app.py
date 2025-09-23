@@ -1,4 +1,5 @@
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session, flash, abort, send_from_directory, Response
+from flask import Flask, render_template, request, jsonify, redirect, url_for, session, flash, abort, send_from_directory, Response
 # from flask_wtf.csrf import CSRFProtect, generate_csrf, validate_csrf as wtf_validate_csrf
 import os
 import sys
@@ -10,6 +11,7 @@ import logging
 import requests
 import time
 from datetime import datetime, timedelta
+from email.utils import parsedate_to_datetime
 from functools import wraps
 from markupsafe import escape
 import secrets
@@ -18,13 +20,40 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from pywebpush import webpush, WebPushException
 from hashlib import sha256
 from redis_cache import cache, cache_result, invalidate_user_cache, invalidate_community_cache, invalidate_message_cache
-
-# Load environment variables from .env file
-from dotenv import load_dotenv
-load_dotenv()
+from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
+try:
+    from PIL import Image
+    PIL_AVAILABLE = True
+except ImportError:
+    PIL_AVAILABLE = False
+    print("Warning: PIL not available, image optimization disabled")
 
 # Initialize Flask app
 app = Flask(__name__, template_folder='templates')
+
+# Add caching headers for static files (especially images)
+@app.after_request
+def add_cache_headers(response):
+    """Add aggressive caching headers for static files to improve performance"""
+    # Check if this is a static file request
+    if request.path.startswith('/static/'):
+        # Images get long cache time (7 days)
+        if any(request.path.endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.ico']):
+            response.headers['Cache-Control'] = 'public, max-age=604800, immutable'  # 7 days
+            response.headers['Expires'] = (datetime.now() + timedelta(days=7)).strftime('%a, %d %b %Y %H:%M:%S GMT')
+        # CSS and JS get medium cache time (1 day)
+        elif any(request.path.endswith(ext) for ext in ['.css', '.js']):
+            response.headers['Cache-Control'] = 'public, max-age=86400'  # 1 day
+            response.headers['Expires'] = (datetime.now() + timedelta(days=1)).strftime('%a, %d %b %Y %H:%M:%S GMT')
+        # Other static files get short cache time (1 hour)
+        else:
+            response.headers['Cache-Control'] = 'public, max-age=3600'  # 1 hour
+    
+    # Add security headers while we're at it
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'SAMEORIGIN'
+    
+    return response
 
 # Custom template filters
 @app.template_filter('nl2br')
@@ -45,13 +74,129 @@ UPLOAD_FOLDER = 'static/uploads'
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
+def optimize_image(file_path, max_width=1920, quality=85):
+    """Optimize image for web - compress and resize if needed, preserving format when possible."""
+    if not PIL_AVAILABLE:
+        return False
+
+    try:
+        ext = os.path.splitext(file_path)[1].lower()
+        with Image.open(file_path) as img:
+            # Resize if image is too large
+            if img.width > max_width:
+                ratio = max_width / img.width
+                new_height = int(img.height * ratio)
+                img = img.resize((max_width, new_height), Image.Resampling.LANCZOS)
+
+            if ext in ('.jpg', '.jpeg'):
+                # Convert to RGB for JPEG
+                if img.mode not in ('RGB', 'L'):
+                    img = img.convert('RGB')
+                img.save(file_path, format='JPEG', quality=quality, optimize=True, progressive=True)
+            elif ext == '.png':
+                # Preserve transparency if present
+                save_params = {'optimize': True}
+                try:
+                    # Use maximum compression level if available
+                    save_params['compress_level'] = 9
+                except Exception:
+                    pass
+                img.save(file_path, format='PNG', **save_params)
+            elif ext == '.webp':
+                img.save(file_path, format='WEBP', quality=quality, method=6)
+            else:
+                # For GIF and other formats, skip heavy processing
+                return False
+            return True
+    except Exception as e:
+        logger.warning(f"Could not optimize image {file_path}: {e}")
+        return False
+
 # Session configuration: persist login for 30 days
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['SESSION_COOKIE_PATH'] = '/'  # Ensure cookie is available for all paths
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)
-app.config['SESSION_COOKIE_SECURE'] = True
-app.config['SESSION_COOKIE_DOMAIN'] = os.getenv('SESSION_COOKIE_DOMAIN') or None
+# For production with HTTPS
+app.config['SESSION_COOKIE_SECURE'] = True  # Re-enabled for HTTPS
+# Don't set domain - let Flask handle it automatically
+# app.config['SESSION_COOKIE_DOMAIN'] = os.getenv('SESSION_COOKIE_DOMAIN') or None
+app.config['SESSION_COOKIE_NAME'] = 'cpoint_session'  # Changed to avoid conflicts with old cookies
 app.config['PREFERRED_URL_SCHEME'] = 'https'
+
+# Email (Resend)
+RESEND_API_KEY = os.getenv('RESEND_API_KEY')
+EMAIL_FROM = os.getenv('EMAIL_FROM', 'C-Point <no-reply@c-point.co>')
+VERIFICATION_TOKEN_SECRET = os.getenv('VERIFICATION_TOKEN_SECRET', app.secret_key or 'change-me')
+VERIFICATION_TOKEN_SALT = 'email-verify'
+VERIFICATION_TOKEN_MAX_AGE = int(os.getenv('VERIFICATION_TOKEN_MAX_AGE', '86400'))  # 24h default
+
+def _get_serializer():
+    return URLSafeTimedSerializer(VERIFICATION_TOKEN_SECRET)
+
+def generate_email_token(email: str) -> str:
+    s = _get_serializer()
+    return s.dumps({'email': email}, salt=VERIFICATION_TOKEN_SALT)
+
+def verify_email_token(token: str):
+    s = _get_serializer()
+    try:
+        data = s.loads(token, salt=VERIFICATION_TOKEN_SALT, max_age=VERIFICATION_TOKEN_MAX_AGE)
+        return data.get('email')
+    except SignatureExpired:
+        return None
+    except BadSignature:
+        return None
+
+def _send_email_via_resend(to_email: str, subject: str, html: str, text: str = None):
+    if not RESEND_API_KEY:
+        logger.warning('RESEND_API_KEY not set; skipping email send')
+        return False
+    try:
+        payload = {
+            'from': EMAIL_FROM,
+            'to': [to_email],
+            'subject': subject,
+            'html': html
+        }
+        if text:
+            payload['text'] = text
+        # Use requests to call Resend API
+        r = requests.post('https://api.resend.com/emails', headers={
+            'Authorization': f'Bearer {RESEND_API_KEY}',
+            'Content-Type': 'application/json'
+        }, data=json.dumps(payload), timeout=10)
+        if r.status_code in (200, 201):
+            return True
+        logger.error(f'Resend send failed: {r.status_code} {r.text}')
+        return False
+    except Exception as e:
+        logger.error(f'Resend send exception: {e}')
+        return False
+
+def ensure_password_reset_table(c):
+    try:
+        if USE_MYSQL:
+            c.execute('''CREATE TABLE IF NOT EXISTS password_reset_tokens (
+                          id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                          username VARCHAR(191) NOT NULL,
+                          email VARCHAR(191) NOT NULL,
+                          token VARCHAR(191) NOT NULL UNIQUE,
+                          created_at TEXT NOT NULL,
+                          used TINYINT(1) DEFAULT 0
+                        )''')
+        else:
+            c.execute('''CREATE TABLE IF NOT EXISTS password_reset_tokens (
+                          id INTEGER PRIMARY KEY AUTOINCREMENT,
+                          username TEXT NOT NULL,
+                          email TEXT NOT NULL,
+                          token TEXT NOT NULL UNIQUE,
+                          created_at TEXT NOT NULL,
+                          used INTEGER DEFAULT 0,
+                          FOREIGN KEY (username) REFERENCES users (username)
+                        )''')
+    except Exception as e:
+        logger.error(f"Failed ensuring password_reset_tokens table: {e}")
 
 # Optional: enforce canonical host (e.g., www.c-point.co) to prevent cookie splits
 CANONICAL_HOST = os.getenv('CANONICAL_HOST')  # e.g., 'www.c-point.co'
@@ -60,14 +205,20 @@ CANONICAL_SCHEME = os.getenv('CANONICAL_SCHEME', 'https')
 @app.before_request
 def enforce_canonical_host():
     try:
-        if CANONICAL_HOST:
-            # Avoid redirect loops and only redirect when host differs
-            req_host = request.host.split(':')[0]
-            if req_host != CANONICAL_HOST:
-                target = f"{CANONICAL_SCHEME}://{CANONICAL_HOST}{request.full_path}"
-                if target.endswith('?'):
-                    target = target[:-1]
-                return redirect(target, code=301)
+        req_host = request.headers.get('Host', '').split(':')[0]
+        req_scheme = request.headers.get('X-Forwarded-Proto') or request.scheme
+        # Enforce host
+        if CANONICAL_HOST and req_host and req_host != CANONICAL_HOST:
+            target = f"{CANONICAL_SCHEME}://{CANONICAL_HOST}{request.full_path}"
+            if target.endswith('?'):
+                target = target[:-1]
+            return redirect(target, code=301)
+        # Enforce https if configured
+        if CANONICAL_SCHEME == 'https' and req_scheme != 'https' and req_host:
+            target = f"https://{req_host}{request.full_path}"
+            if target.endswith('?'):
+                target = target[:-1]
+            return redirect(target, code=301)
     except Exception:
         # Never block request on redirect failure
         return None
@@ -120,13 +271,22 @@ def auto_login_from_remember_token():
         session.permanent = True
         session['username'] = username
     except Exception as e:
-        logger.warning(f"auto_login_from_remember_token failed: {e}")
+        # logger not yet defined here, use print for now
+        print(f"WARNING: auto_login_from_remember_token failed: {e}")
 
 # Create uploads directory if it doesn't exist
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 # Load secret keys from environment variables
-app.secret_key = os.getenv('FLASK_SECRET_KEY', 'temporary-secret-key-12345')
+# IMPORTANT: Must be consistent across all workers/processes
+# On PythonAnywhere, set this in your web app's environment variables
+FLASK_SECRET_KEY = os.getenv('FLASK_SECRET_KEY')
+if not FLASK_SECRET_KEY:
+    # Use a hardcoded key as fallback (not ideal for production but ensures consistency)
+    FLASK_SECRET_KEY = 'c-point-secret-key-2024-stable-across-workers'
+    print("WARNING: Using hardcoded secret key - set FLASK_SECRET_KEY env var in production")
+app.secret_key = FLASK_SECRET_KEY
+print(f"App initialized with secret key hash: {hash(app.secret_key)}")
 STRIPE_API_KEY = os.getenv('STRIPE_API_KEY', 'sk_test_your_stripe_key')
 XAI_API_KEY = os.getenv('XAI_API_KEY', 'xai-hFCxhRKITxZXsIQy5rRpRus49rxcgUPw4NECAunCgHU0BnWnbPE9Y594Nk5jba03t5FYl2wJkjcwyxRh')
 X_CONSUMER_KEY = os.getenv('X_CONSUMER_KEY', 'cjB0MmRPRFRnOG9jcTA0UGRZV006MTpjaQ')
@@ -181,6 +341,23 @@ DAILY_API_LIMIT = 10
 USE_MYSQL = (os.getenv('DB_BACKEND', 'sqlite').lower() == 'mysql')
 
 # Database connection helper: MySQL in production (if configured), SQLite locally
+def get_sql_placeholder():
+    """Get the correct SQL placeholder based on database type"""
+    return '%s' if USE_MYSQL else '?'
+
+def get_scalar_result(row, column_index=0, column_name=None):
+    """Helper to get a scalar value from a database row that could be dict or tuple"""
+    if row is None:
+        return None
+    if hasattr(row, 'keys'):  # Dict-like result (MySQL with DictCursor)
+        if column_name:
+            return row.get(column_name)
+        # If no column name provided, try to get first value
+        values = list(row.values())
+        return values[column_index] if values else None
+    else:  # Tuple/list result (SQLite)
+        return row[column_index] if len(row) > column_index else None
+
 def get_db_connection():
     if USE_MYSQL:
         try:
@@ -250,6 +427,41 @@ def get_db_connection():
         try:
             conn = sqlite3.connect(db_path)
             conn.row_factory = sqlite3.Row
+            # Wrap cursor to adapt MySQL-flavored SQL to SQLite at runtime
+            try:
+                orig_cursor = conn.cursor
+
+                def _adapt_sqlite_sql(sql: str) -> str:
+                    s = sql
+                    # Convert INSERT IGNORE -> INSERT OR IGNORE
+                    s = s.replace('INSERT IGNORE', 'INSERT OR IGNORE')
+                    # Convert AUTO_INCREMENT -> AUTOINCREMENT
+                    s = s.replace('PRIMARY KEY AUTO_INCREMENT', 'PRIMARY KEY AUTOINCREMENT')
+                    s = s.replace('AUTO_INCREMENT', 'AUTOINCREMENT')
+                    # Normalize NOW() -> datetime('now')
+                    s = s.replace('NOW()', "datetime('now')")
+                    return s
+
+                class _ProxyCursor:
+                    def __init__(self, real):
+                        self._real = real
+                    def execute(self, query, params=None):
+                        q = _adapt_sqlite_sql(query)
+                        if params is not None:
+                            return self._real.execute(q, params)
+                        return self._real.execute(q)
+                    def executemany(self, query, param_seq):
+                        q = _adapt_sqlite_sql(query)
+                        return self._real.executemany(q, param_seq)
+                    def __getattr__(self, name):
+                        return getattr(self._real, name)
+
+                def _patched_cursor(*args, **kwargs):
+                    return _ProxyCursor(orig_cursor(*args, **kwargs))
+
+                conn.cursor = _patched_cursor  # type: ignore[attr-defined]
+            except Exception as _wrap_err:
+                logger.warning(f"Could not wrap SQLite cursor for SQL adaptation: {_wrap_err}")
             return conn
         except Exception as e:
             logger.error(f"Failed to connect to database at {db_path}: {e}")
@@ -326,6 +538,91 @@ def add_missing_tables():
                           auth TEXT,
                           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
 
+            # Log of recently sent push notifications for de-duplication
+            try:
+                if USE_MYSQL:
+                    c.execute('''CREATE TABLE IF NOT EXISTS push_send_log (
+                                     id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                                     username VARCHAR(191) NOT NULL,
+                                     tag VARCHAR(191) NULL,
+                                     title TEXT,
+                                     body TEXT,
+                                     url TEXT,
+                                     sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                                     INDEX idx_user_time (username, sent_at)
+                                 )''')
+                else:
+                    c.execute('''CREATE TABLE IF NOT EXISTS push_send_log (
+                                     id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                     username TEXT NOT NULL,
+                                     tag TEXT,
+                                     title TEXT,
+                                     body TEXT,
+                                     url TEXT,
+                                     sent_at TEXT DEFAULT (datetime('now'))
+                                 )''')
+                conn.commit()
+            except Exception as e:
+                logger.warning(f"Could not ensure push_send_log table: {e}")
+
+            # Track active chat presence (suppress chat push when recipient is in the thread)
+            try:
+                if USE_MYSQL:
+                    c.execute('''CREATE TABLE IF NOT EXISTS active_chat_status (
+                                     user VARCHAR(191) NOT NULL,
+                                     peer VARCHAR(191) NOT NULL,
+                                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                                     PRIMARY KEY (user, peer)
+                                 )''')
+                else:
+                    c.execute('''CREATE TABLE IF NOT EXISTS active_chat_status (
+                                     user TEXT NOT NULL,
+                                     peer TEXT NOT NULL,
+                                     updated_at TEXT DEFAULT (datetime('now')),
+                                     PRIMARY KEY (user, peer)
+                                 )''')
+                conn.commit()
+            except Exception as e:
+                logger.warning(f"Could not ensure active_chat_status table: {e}")
+
+            # Idempotency tokens for post creation (prevent duplicate posts)
+            try:
+                if USE_MYSQL:
+                    c.execute('''CREATE TABLE IF NOT EXISTS recent_post_tokens (
+                                     token VARCHAR(191) PRIMARY KEY,
+                                     username VARCHAR(191) NOT NULL,
+                                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                                     INDEX idx_rpt_user_time (username, created_at)
+                                 )''')
+                else:
+                    c.execute('''CREATE TABLE IF NOT EXISTS recent_post_tokens (
+                                     token TEXT PRIMARY KEY,
+                                     username TEXT NOT NULL,
+                                     created_at TEXT DEFAULT (datetime('now'))
+                                 )''')
+                conn.commit()
+            except Exception as e:
+                logger.warning(f"Could not ensure recent_post_tokens table: {e}")
+
+            # Idempotency tokens for replies
+            try:
+                if USE_MYSQL:
+                    c.execute('''CREATE TABLE IF NOT EXISTS recent_reply_tokens (
+                                     token VARCHAR(191) PRIMARY KEY,
+                                     username VARCHAR(191) NOT NULL,
+                                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                                     INDEX idx_rrt_user_time (username, created_at)
+                                 )''')
+                else:
+                    c.execute('''CREATE TABLE IF NOT EXISTS recent_reply_tokens (
+                                     token TEXT PRIMARY KEY,
+                                     username TEXT NOT NULL,
+                                     created_at TEXT DEFAULT (datetime('now'))
+                                 )''')
+                conn.commit()
+            except Exception as e:
+                logger.warning(f"Could not ensure recent_reply_tokens table: {e}")
+
             # Remember-me tokens for persistent login
             c.execute('''CREATE TABLE IF NOT EXISTS remember_tokens
                          (id INTEGER PRIMARY KEY AUTO_INCREMENT,
@@ -334,7 +631,7 @@ def add_missing_tables():
                           created_at TEXT NOT NULL,
                           expires_at TEXT NOT NULL)''')
             
-            # Add missing columns to communities table
+            # Add missing columns to communities table (MySQL/SQLite safe)
             columns_to_add = [
                 ('description', 'TEXT'),
                 ('location', 'TEXT'),
@@ -346,26 +643,65 @@ def add_missing_tables():
                 ('card_color', 'TEXT'),
                 ('parent_community_id', 'INTEGER')
             ]
-            
+
             for column_name, column_type in columns_to_add:
                 try:
-                    c.execute(f"ALTER TABLE communities ADD COLUMN {column_name} {column_type}")
-                    logger.info(f"Added column {column_name} to communities table")
-                except sqlite3.OperationalError as e:
-                    if "duplicate column name" in str(e):
-                        logger.info(f"Column {column_name} already exists in communities table")
+                    exists = False
+                    try:
+                        if USE_MYSQL:
+                            c.execute("SHOW COLUMNS FROM communities LIKE ?", (column_name,))
+                        else:
+                            c.execute("PRAGMA table_info(communities)")
+                            exists = any(r[1] == column_name if not hasattr(r, 'keys') else r['name'] == column_name for r in c.fetchall())
+                            # Reset exists for MySQL path; below we set from fetchone
+                            if not USE_MYSQL:
+                                pass
+                        if USE_MYSQL:
+                            exists = c.fetchone() is not None
+                    except Exception:
+                        # Fallback: assume might not exist and try to add
+                        exists = False
+
+                    if not exists:
+                        c.execute(f"ALTER TABLE communities ADD COLUMN {column_name} {column_type}")
+                        logger.info(f"Added column {column_name} to communities table")
                     else:
-                        logger.warning(f"Could not add column {column_name}: {e}")
+                        logger.info(f"Column {column_name} already exists in communities table")
+                except Exception as e:
+                    # Ignore duplicate/exists errors; log others but continue
+                    msg = str(e)
+                    if 'duplicate column' in msg.lower() or '1060' in msg:
+                        logger.info(f"Column {column_name} already present (detected by error)")
+                    else:
+                        logger.warning(f"Could not ensure column {column_name} on communities: {e}")
             
-            # Add parent_reply_id column to replies if missing
+            # Ensure parent_reply_id exists on replies (MySQL/SQLite safe)
             try:
-                c.execute("ALTER TABLE replies ADD COLUMN parent_reply_id INTEGER")
-                logger.info("Added column parent_reply_id to replies table")
-            except sqlite3.OperationalError as e:
-                if "duplicate column name" in str(e):
-                    logger.info("Column parent_reply_id already exists in replies table")
+                exists = False
+                if USE_MYSQL:
+                    try:
+                        c.execute("SHOW COLUMNS FROM replies LIKE 'parent_reply_id'")
+                        exists = c.fetchone() is not None
+                    except Exception:
+                        exists = False
                 else:
-                    logger.warning(f"Could not add column parent_reply_id: {e}")
+                    try:
+                        c.execute("PRAGMA table_info(replies)")
+                        exists = any(r[1] == 'parent_reply_id' if not hasattr(r,'keys') else r['name']=='parent_reply_id' for r in c.fetchall())
+                    except Exception:
+                        exists = False
+
+                if not exists:
+                    c.execute("ALTER TABLE replies ADD COLUMN parent_reply_id INTEGER")
+                    logger.info("Added column parent_reply_id to replies table")
+                else:
+                    logger.info("Column parent_reply_id already exists in replies table")
+            except Exception as e:
+                msg = str(e)
+                if 'duplicate column' in msg.lower() or '1060' in msg:
+                    logger.info("Column parent_reply_id already present (detected by error)")
+                else:
+                    logger.warning(f"Could not ensure parent_reply_id on replies: {e}")
 
             # Ensure messages table has is_read column
             try:
@@ -402,13 +738,291 @@ def add_missing_tables():
             except Exception as e:
                 logger.warning(f"Could not create replies indexes: {e}")
 
+            # Ensure professional info columns exist on users (MySQL-compatible)
+            try:
+                # For MySQL, use SHOW COLUMNS to check
+                for col, coltype in [
+                    ('role','TEXT'), ('company','TEXT'), ('industry','TEXT'), ('degree','TEXT'),
+                    ('school','TEXT'), ('skills','TEXT'), ('linkedin','TEXT'), ('experience','INTEGER')
+                ]:
+                    try:
+                        c.execute(f"SHOW COLUMNS FROM users LIKE '{col}'")
+                        if not c.fetchone():
+                            c.execute(f"ALTER TABLE users ADD COLUMN {col} {coltype}")
+                            logger.info(f"Added users.{col}")
+                    except Exception as ce:
+                        # Fallback attempt for SQLite (ignore if exists)
+                        try:
+                            c.execute(f"ALTER TABLE users ADD COLUMN {col} {coltype}")
+                            logger.info(f"Added users.{col} (sqlite fallback)")
+                        except Exception as ce2:
+                            logger.warning(f"Could not ensure users.{col}: {ce2}")
+                conn.commit()
+            except Exception as e:
+                logger.warning(f"Could not ensure professional columns on users: {e}")
+
+            # Ensure professional_share_community_id column exists on users (controls visibility)
+            try:
+                exists = False
+                try:
+                    if USE_MYSQL:
+                        c.execute("SHOW COLUMNS FROM users LIKE 'professional_share_community_id'")
+                        exists = c.fetchone() is not None
+                    else:
+                        c.execute("PRAGMA table_info(users)")
+                        exists = any(r[1] == 'professional_share_community_id' if not hasattr(r, 'keys') else r['name'] == 'professional_share_community_id' for r in c.fetchall())
+                except Exception:
+                    exists = False
+                if not exists:
+                    c.execute("ALTER TABLE users ADD COLUMN professional_share_community_id INTEGER")
+                    logger.info("Added users.professional_share_community_id")
+                conn.commit()
+            except Exception as e:
+                logger.warning(f"Could not ensure users.professional_share_community_id: {e}")
+
+            # Ensure personal info columns (country, city, age, gender) exist on users
+            try:
+                for col, coltype in [
+                    ('country','TEXT'), ('city','TEXT'), ('age','INTEGER'), ('gender','TEXT'), ('mobile','TEXT')
+                ]:
+                    exists = False
+                    try:
+                        if USE_MYSQL:
+                            c.execute("SHOW COLUMNS FROM users LIKE ?", (col,))
+                            exists = c.fetchone() is not None
+                        else:
+                            c.execute("PRAGMA table_info(users)")
+                            exists = any(r[1] == col if not hasattr(r, 'keys') else r['name'] == col for r in c.fetchall())
+                    except Exception:
+                        exists = False
+                    if not exists:
+                        c.execute(f"ALTER TABLE users ADD COLUMN {col} {coltype}")
+                        logger.info(f"Added users.{col}")
+                conn.commit()
+            except Exception as e:
+                logger.warning(f"Could not ensure personal columns on users: {e}")
+
+            # Create product development tables if not present
+            try:
+                if USE_MYSQL:
+                    c.execute('''CREATE TABLE IF NOT EXISTS product_posts (
+                                    id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                                    username TEXT NOT NULL,
+                                    section VARCHAR(32) NOT NULL,
+                                    content TEXT NOT NULL,
+                                    created_at TEXT NOT NULL
+                                 )''')
+                    c.execute('''CREATE TABLE IF NOT EXISTS product_replies (
+                                    id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                                    post_id INTEGER NOT NULL,
+                                    username TEXT NOT NULL,
+                                    content TEXT NOT NULL,
+                                    created_at TEXT NOT NULL,
+                                    FOREIGN KEY (post_id) REFERENCES product_posts(id) ON DELETE CASCADE
+                                 )''')
+                    c.execute('''CREATE TABLE IF NOT EXISTS product_polls (
+                                    id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                                    username TEXT NOT NULL,
+                                    question TEXT NOT NULL,
+                                    options_json TEXT NOT NULL,
+                                    created_at TEXT NOT NULL
+                                 )''')
+                    c.execute('''CREATE TABLE IF NOT EXISTS product_poll_votes (
+                                    id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                                    poll_id INTEGER NOT NULL,
+                                    username VARCHAR(191) NOT NULL,
+                                    option_index INTEGER NOT NULL,
+                                    created_at TEXT NOT NULL,
+                                    UNIQUE(poll_id, username),
+                                    FOREIGN KEY (poll_id) REFERENCES product_polls(id) ON DELETE CASCADE
+                                 )''')
+                    # Ensure closed column exists on product_polls
+                    try:
+                        c.execute("SHOW COLUMNS FROM product_polls LIKE 'closed'")
+                        exists = c.fetchone() is not None
+                    except Exception:
+                        exists = False
+                    if not exists:
+                        c.execute("ALTER TABLE product_polls ADD COLUMN closed TINYINT(1) NOT NULL DEFAULT 0")
+                    # Ensure allow_multiple column exists on product_polls
+                    try:
+                        c.execute("SHOW COLUMNS FROM product_polls LIKE 'allow_multiple'")
+                        exists2 = c.fetchone() is not None
+                    except Exception:
+                        exists2 = False
+                    if not exists2:
+                        c.execute("ALTER TABLE product_polls ADD COLUMN allow_multiple TINYINT(1) NOT NULL DEFAULT 0")
+                    # Ensure unique index allows multiple options (poll_id, username, option_index)
+                    try:
+                        c.execute("SHOW INDEX FROM product_poll_votes WHERE Non_unique=0")
+                        idx_rows = c.fetchall() or []
+                        # Map index name -> ordered column list
+                        idx_cols = {}
+                        for r in idx_rows:
+                            key = r['Key_name'] if hasattr(r,'keys') else r[2]
+                            col = r['Column_name'] if hasattr(r,'keys') else r[4]
+                            seq = r['Seq_in_index'] if hasattr(r,'keys') else r[3]
+                            idx_cols.setdefault(key, {})[int(seq)] = col
+                        # Find 2-col unique on (poll_id, username)
+                        to_drop = None
+                        for name, cols_map in idx_cols.items():
+                            ordered = [cols_map[k] for k in sorted(cols_map.keys())]
+                            if ordered == ['poll_id','username']:
+                                to_drop = name
+                                break
+                        if to_drop:
+                            c.execute(f"ALTER TABLE product_poll_votes DROP INDEX {to_drop}")
+                            conn.commit()
+                    except Exception as eidx:
+                        logger.warning(f"Could not adjust unique index for poll votes: {eidx}")
+                    try:
+                        # Create composite unique if not exists
+                        c.execute("SHOW INDEX FROM product_poll_votes WHERE Key_name='ux_poll_user_option'")
+                        exists_idx = c.fetchone() is not None
+                        if not exists_idx:
+                            c.execute("ALTER TABLE product_poll_votes ADD UNIQUE KEY ux_poll_user_option (poll_id, username, option_index)")
+                    except Exception as e2:
+                        logger.warning(f"Could not ensure composite unique for poll votes: {e2}")
+                else:
+                    c.execute('''CREATE TABLE IF NOT EXISTS product_posts (
+                                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                    username TEXT NOT NULL,
+                                    section TEXT NOT NULL,
+                                    content TEXT NOT NULL,
+                                    created_at TEXT NOT NULL
+                                 )''')
+                    c.execute('''CREATE TABLE IF NOT EXISTS product_replies (
+                                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                    post_id INTEGER NOT NULL,
+                                    username TEXT NOT NULL,
+                                    content TEXT NOT NULL,
+                                    created_at TEXT NOT NULL,
+                                    FOREIGN KEY (post_id) REFERENCES product_posts(id) ON DELETE CASCADE
+                                 )''')
+                    c.execute('''CREATE TABLE IF NOT EXISTS product_polls (
+                                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                    username TEXT NOT NULL,
+                                    question TEXT NOT NULL,
+                                    options_json TEXT NOT NULL,
+                                    created_at TEXT NOT NULL
+                                 )''')
+                    c.execute('''CREATE TABLE IF NOT EXISTS product_poll_votes (
+                                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                    poll_id INTEGER NOT NULL,
+                                    username TEXT NOT NULL,
+                                    option_index INTEGER NOT NULL,
+                                    created_at TEXT NOT NULL,
+                                    UNIQUE(poll_id, username),
+                                    FOREIGN KEY (poll_id) REFERENCES product_polls(id) ON DELETE CASCADE
+                                 )''')
+                    # Ensure closed column exists on product_polls
+                    try:
+                        c.execute("PRAGMA table_info(product_polls)")
+                        cols = c.fetchall()
+                        exists = any((r[1] if not hasattr(r,'keys') else r['name']) == 'closed' for r in cols)
+                    except Exception:
+                        exists = False
+                    if not exists:
+                        c.execute("ALTER TABLE product_polls ADD COLUMN closed INTEGER NOT NULL DEFAULT 0")
+                    # Ensure allow_multiple column exists on product_polls
+                    try:
+                        c.execute("PRAGMA table_info(product_polls)")
+                        cols2 = c.fetchall()
+                        exists2 = any((r[1] if not hasattr(r,'keys') else r['name']) == 'allow_multiple' for r in cols2)
+                    except Exception:
+                        exists2 = False
+                    if not exists2:
+                        c.execute("ALTER TABLE product_polls ADD COLUMN allow_multiple INTEGER NOT NULL DEFAULT 0")
+                conn.commit()
+            except Exception as e:
+                logger.warning(f"Could not ensure product dev tables: {e}")
+
+            # Ensure email verification columns exist on users
+            try:
+                for col, coltype in [
+                    ('email_verified', 'INTEGER DEFAULT 0'),
+                    ('email_verified_at', 'TEXT'),
+                    ('email_verification_sent_at', 'TEXT')
+                ]:
+                    exists = False
+                    try:
+                        if USE_MYSQL:
+                            c.execute("SHOW COLUMNS FROM users LIKE ?", (col,))
+                            exists = c.fetchone() is not None
+                        else:
+                            c.execute("PRAGMA table_info(users)")
+                            exists = any(r[1] == col if not hasattr(r, 'keys') else r['name'] == col for r in c.fetchall())
+                    except Exception:
+                        exists = False
+                    if not exists:
+                        c.execute(f"ALTER TABLE users ADD COLUMN {col} {coltype}")
+                        logger.info(f"Added users.{col}")
+                conn.commit()
+            except Exception as e:
+                logger.warning(f"Could not ensure email verification columns on users: {e}")
+
+            # Ensure useful_links table exists (for Useful Links & Docs)
+            try:
+                if USE_MYSQL:
+                    c.execute("SHOW TABLES LIKE 'useful_links'")
+                    if not c.fetchone():
+                        c.execute('''CREATE TABLE IF NOT EXISTS useful_links (
+                                         id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                                         community_id INTEGER NULL,
+                                         username VARCHAR(191) NOT NULL,
+                                         url TEXT NOT NULL,
+                                         description TEXT,
+                                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                                         FOREIGN KEY (community_id) REFERENCES communities(id)
+                                     )''')
+                        conn.commit()
+                else:
+                    c.execute('''CREATE TABLE IF NOT EXISTS useful_links (
+                                     id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                     community_id INTEGER NULL,
+                                     username TEXT NOT NULL,
+                                     url TEXT NOT NULL,
+                                     description TEXT,
+                                     created_at TEXT DEFAULT (datetime('now'))
+                                 )''')
+                    conn.commit()
+            except Exception as e:
+                logger.warning(f"Could not ensure useful_links table: {e}")
+
+            # Ensure useful_docs table exists (for PDF uploads)
+            try:
+                if USE_MYSQL:
+                    c.execute("SHOW TABLES LIKE 'useful_docs'")
+                    if not c.fetchone():
+                        c.execute('''CREATE TABLE IF NOT EXISTS useful_docs (
+                                         id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                                         community_id INTEGER NULL,
+                                         username VARCHAR(191) NOT NULL,
+                                         file_path TEXT NOT NULL,
+                                         description TEXT,
+                                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                                         FOREIGN KEY (community_id) REFERENCES communities(id)
+                                     )''')
+                        conn.commit()
+                else:
+                    c.execute('''CREATE TABLE IF NOT EXISTS useful_docs (
+                                     id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                     community_id INTEGER NULL,
+                                     username TEXT NOT NULL,
+                                     file_path TEXT NOT NULL,
+                                     description TEXT,
+                                     created_at TEXT DEFAULT (datetime('now'))
+                                 )''')
+                    conn.commit()
+            except Exception as e:
+                logger.warning(f"Could not ensure useful_docs table: {e}")
+
             conn.commit()
             logger.info("Missing tables and columns added successfully")
             
     except Exception as e:
         logger.error(f"Error adding missing tables: {e}")
         raise
-
 def init_db():
     """Initialize the database with all required tables."""
     try:
@@ -425,7 +1039,7 @@ def init_db():
                           password TEXT, first_name TEXT, last_name TEXT, age INTEGER, gender TEXT, 
                           fitness_level TEXT, primary_goal TEXT, weight REAL, height REAL, blood_type TEXT, 
                           muscle_mass REAL, bmi REAL, nutrition_goal TEXT, nutrition_restrictions TEXT, 
-                          created_at TEXT)''')
+                          created_at TEXT, is_admin BOOLEAN DEFAULT 0)''')
             
             # Add id column for MySQL compatibility if it doesn't exist
             try:
@@ -627,6 +1241,50 @@ def init_db():
                           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                           FOREIGN KEY (post_id) REFERENCES posts(id),
                           FOREIGN KEY (community_id) REFERENCES communities(id))''')
+
+            # Useful documents (PDFs)
+            logger.info("Ensuring useful_docs table...")
+            if USE_MYSQL:
+                c.execute('''CREATE TABLE IF NOT EXISTS useful_docs (
+                                 id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                                 community_id INTEGER NULL,
+                                 username TEXT NOT NULL,
+                                 file_path TEXT NOT NULL,
+                                 description TEXT,
+                                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                                 FOREIGN KEY (community_id) REFERENCES communities(id)
+                             )''')
+            else:
+                c.execute('''CREATE TABLE IF NOT EXISTS useful_docs (
+                                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                 community_id INTEGER NULL,
+                                 username TEXT NOT NULL,
+                                 file_path TEXT NOT NULL,
+                                 description TEXT,
+                                 created_at TEXT DEFAULT (datetime('now'))
+                             )''')
+
+            # Useful links (URLs)
+            logger.info("Ensuring useful_links table...")
+            if USE_MYSQL:
+                c.execute('''CREATE TABLE IF NOT EXISTS useful_links (
+                                 id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                                 community_id INTEGER NULL,
+                                 username VARCHAR(191) NOT NULL,
+                                 url TEXT NOT NULL,
+                                 description TEXT,
+                                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                                 FOREIGN KEY (community_id) REFERENCES communities(id)
+                             )''')
+            else:
+                c.execute('''CREATE TABLE IF NOT EXISTS useful_links (
+                                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                 community_id INTEGER NULL,
+                                 username TEXT NOT NULL,
+                                 url TEXT NOT NULL,
+                                 description TEXT,
+                                 created_at TEXT DEFAULT (datetime('now'))
+                             )''')
             
             # Create community_announcements table
             logger.info("Creating community_announcements table...")
@@ -662,41 +1320,73 @@ def init_db():
                           FOREIGN KEY (sender) REFERENCES users(username),
                           FOREIGN KEY (receiver) REFERENCES users(username))''')
 
-            # Create workout-related tables
+            # Create workout-related tables (MySQL/SQLite compatible)
             logger.info("Creating workout tables...")
-            c.execute('''CREATE TABLE IF NOT EXISTS exercises
-                         (id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                          username TEXT NOT NULL,
-                          name TEXT NOT NULL,
-                          muscle_group TEXT NOT NULL,
-                          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
-            
-            c.execute('''CREATE TABLE IF NOT EXISTS exercise_sets
-                         (id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                          exercise_id INTEGER NOT NULL,
-                          weight REAL NOT NULL,
-                          reps INTEGER NOT NULL,
-                          created_at TEXT NOT NULL,
-                          FOREIGN KEY (exercise_id) REFERENCES exercises (id) ON DELETE CASCADE
-                         )''')
-            
-            c.execute('''CREATE TABLE IF NOT EXISTS workouts
-                         (id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                          username TEXT NOT NULL,
-                          name TEXT NOT NULL,
-                          date TEXT NOT NULL,
-                          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
-            
-            c.execute('''CREATE TABLE IF NOT EXISTS workout_exercises
-                         (id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                          workout_id INTEGER NOT NULL,
-                          exercise_id INTEGER NOT NULL,
-                          sets INTEGER DEFAULT 0,
-                          reps INTEGER DEFAULT 0,
-                          weight REAL DEFAULT 0,
-                          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                          FOREIGN KEY (workout_id) REFERENCES workouts (id) ON DELETE CASCADE,
-                          FOREIGN KEY (exercise_id) REFERENCES exercises (id) ON DELETE CASCADE)''')
+            if USE_MYSQL:
+                c.execute('''CREATE TABLE IF NOT EXISTS exercises
+                             (id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                              username TEXT NOT NULL,
+                              name TEXT NOT NULL,
+                              muscle_group TEXT NOT NULL,
+                              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
+                c.execute('''CREATE TABLE IF NOT EXISTS exercise_sets
+                             (id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                              exercise_id INTEGER NOT NULL,
+                              weight REAL NOT NULL,
+                              reps INTEGER NOT NULL,
+                              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                              FOREIGN KEY (exercise_id) REFERENCES exercises (id) ON DELETE CASCADE
+                             )''')
+                c.execute('''CREATE TABLE IF NOT EXISTS workouts
+                             (id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                              username TEXT NOT NULL,
+                              name TEXT NOT NULL,
+                              date TEXT NOT NULL,
+                              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
+                c.execute('''CREATE TABLE IF NOT EXISTS workout_exercises
+                             (id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                              workout_id INTEGER NOT NULL,
+                              exercise_id INTEGER NOT NULL,
+                              sets INTEGER DEFAULT 0,
+                              reps INTEGER DEFAULT 0,
+                              weight REAL DEFAULT 0,
+                              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                              FOREIGN KEY (workout_id) REFERENCES workouts (id) ON DELETE CASCADE,
+                              FOREIGN KEY (exercise_id) REFERENCES exercises (id) ON DELETE CASCADE)''')
+            else:
+                c.execute('''CREATE TABLE IF NOT EXISTS exercises
+                             (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                              username TEXT NOT NULL,
+                              name TEXT NOT NULL,
+                              muscle_group TEXT NOT NULL,
+                              created_at TEXT DEFAULT (datetime('now'))
+                             )''')
+                c.execute('''CREATE TABLE IF NOT EXISTS exercise_sets
+                             (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                              exercise_id INTEGER NOT NULL,
+                              weight REAL NOT NULL,
+                              reps INTEGER NOT NULL,
+                              created_at TEXT DEFAULT (datetime('now')),
+                              FOREIGN KEY (exercise_id) REFERENCES exercises (id) ON DELETE CASCADE
+                             )''')
+                c.execute('''CREATE TABLE IF NOT EXISTS workouts
+                             (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                              username TEXT NOT NULL,
+                              name TEXT NOT NULL,
+                              date TEXT NOT NULL,
+                              created_at TEXT DEFAULT (datetime('now'))
+                             )''')
+                c.execute('''CREATE TABLE IF NOT EXISTS workout_exercises
+                             (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                              workout_id INTEGER NOT NULL,
+                              exercise_id INTEGER NOT NULL,
+                              sets INTEGER DEFAULT 0,
+                              reps INTEGER DEFAULT 0,
+                              weight REAL DEFAULT 0,
+                              created_at TEXT DEFAULT (datetime('now')),
+                              FOREIGN KEY (workout_id) REFERENCES workouts (id) ON DELETE CASCADE,
+                              FOREIGN KEY (exercise_id) REFERENCES exercises (id) ON DELETE CASCADE
+                             )''')
 
             # Add info column to communities table if it doesn't exist
             try:
@@ -814,16 +1504,26 @@ def init_db():
                           FOREIGN KEY (username) REFERENCES users (username),
                           UNIQUE(issue_id, username))''')
             
-            # Create password_reset_tokens table
+            # Create password_reset_tokens table (MySQL/SQLite aware)
             logger.info("Creating password_reset_tokens table...")
-            c.execute('''CREATE TABLE IF NOT EXISTS password_reset_tokens
-                         (id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                          username TEXT NOT NULL,
-                          email TEXT NOT NULL,
-                          token TEXT NOT NULL UNIQUE,
-                          created_at TEXT NOT NULL,
-                          used TINYINT(1) DEFAULT 0,
-                          FOREIGN KEY (username) REFERENCES users (username))''')
+            if USE_MYSQL:
+                c.execute('''CREATE TABLE IF NOT EXISTS password_reset_tokens (
+                                 id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                                 username VARCHAR(191) NOT NULL,
+                                 email VARCHAR(191) NOT NULL,
+                                 token VARCHAR(191) NOT NULL UNIQUE,
+                                 created_at TEXT NOT NULL,
+                                 used TINYINT(1) DEFAULT 0
+                             )''')
+            else:
+                c.execute('''CREATE TABLE IF NOT EXISTS password_reset_tokens
+                             (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                              username TEXT NOT NULL,
+                              email TEXT NOT NULL,
+                              token TEXT NOT NULL UNIQUE,
+                              created_at TEXT NOT NULL,
+                              used INTEGER DEFAULT 0,
+                              FOREIGN KEY (username) REFERENCES users (username))''')
             
             # Create university_ads table
             logger.info("Creating university_ads table...")
@@ -1141,7 +1841,10 @@ def ensure_indexes():
 # Permission helper functions
 def is_app_admin(username):
     """Check if user is the app admin"""
-    return username == 'admin'
+    try:
+        return bool(username) and username.lower() in ('admin', 'paulo')
+    except Exception:
+        return False
 
 def is_community_owner(username, community_id):
     """Check if user is the owner of a community"""
@@ -1170,7 +1873,6 @@ def has_community_management_permission(username, community_id):
     return (is_app_admin(username) or 
             is_community_owner(username, community_id) or 
             is_community_admin(username, community_id))
-
 def has_post_delete_permission(username, post_username, community_id):
     """Check if user can delete a post"""
     return (is_app_admin(username) or 
@@ -1202,9 +1904,7 @@ def ensure_admin_member_of_all():
             conn.commit()
     except Exception as e:
         logger.error(f"ensure_admin_member_of_all error: {e}")
-
 ensure_admin_member_of_all()
-
 # Initialize database on application startup
 try:
     ensure_database_exists()
@@ -1212,6 +1912,136 @@ try:
 except Exception as e:
     logger.error(f"Failed to initialize database on startup: {e}")
     print(f"WARNING: Database initialization failed on startup: {e}")
+
+# Ensure communities table has community_type column and normalize Gym
+def ensure_community_type_column():
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            has_column = False
+            try:
+                if USE_MYSQL:
+                    c.execute("SHOW COLUMNS FROM communities LIKE 'community_type'")
+                    has_column = c.fetchone() is not None
+                else:
+                    c.execute("PRAGMA table_info(communities)")
+                    rows = c.fetchall()
+                    for r in rows:
+                        col_name = r['name'] if hasattr(r, 'keys') else r[1]
+                        if col_name == 'community_type':
+                            has_column = True
+                            break
+            except Exception as e:
+                logger.warning(f"Failed to check community_type column: {e}")
+
+            if not has_column:
+                try:
+                    if USE_MYSQL:
+                        c.execute("ALTER TABLE communities ADD COLUMN community_type VARCHAR(255) NULL")
+                    else:
+                        c.execute("ALTER TABLE communities ADD COLUMN community_type TEXT")
+                    logger.info("Added community_type column to communities table")
+                except Exception as e:
+                    logger.warning(f"Failed to add community_type column (may already exist): {e}")
+
+            # Backfill community_type from type if missing
+            try:
+                if USE_MYSQL:
+                    c.execute("UPDATE communities SET community_type = type WHERE (community_type IS NULL OR community_type = '')")
+                else:
+                    c.execute("UPDATE communities SET community_type = type WHERE community_type IS NULL")
+            except Exception as e:
+                logger.warning(f"Failed backfilling community_type from type: {e}")
+
+            # Ensure 'Gym' community row has type/community_type set to 'Gym'
+            try:
+                if USE_MYSQL:
+                    c.execute("UPDATE communities SET type='Gym', community_type='Gym' WHERE LOWER(name)='gym'")
+                else:
+                    c.execute("UPDATE communities SET type='Gym', community_type='Gym' WHERE LOWER(name)='gym'")
+            except Exception as e:
+                logger.warning(f"Failed normalizing Gym community type: {e}")
+
+            conn.commit()
+    except Exception as e:
+        logger.error(f"ensure_community_type_column error: {e}")
+
+ensure_community_type_column()
+
+def ensure_paulo_member_of_gym():
+    """Ensure user 'Paulo' is a member of the Gym community."""
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+
+            # Find Paulo (case-insensitive)
+            try:
+                if USE_MYSQL:
+                    c.execute(f"SELECT id, username FROM users WHERE LOWER(username)=LOWER({ph})", ('Paulo',))
+                else:
+                    c.execute(f"SELECT id, username FROM users WHERE LOWER(username)=LOWER({ph})", ('Paulo',))
+                urow = c.fetchone()
+                if not urow:
+                    logger.info("Paulo user not found; skipping gym membership ensure")
+                    return
+                user_id = urow['id'] if hasattr(urow, 'keys') else urow[0]
+            except Exception as e:
+                logger.warning(f"Failed to find Paulo user: {e}")
+                return
+
+            # Find Gym community by name/type/community_type
+            gym_id = None
+            try:
+                if USE_MYSQL:
+                    c.execute("""
+                        SELECT id FROM communities 
+                        WHERE LOWER(name)='gym' OR LOWER(type)='gym' OR LOWER(COALESCE(community_type, ''))='gym'
+                        ORDER BY id LIMIT 1
+                    """)
+                else:
+                    c.execute("""
+                        SELECT id FROM communities 
+                        WHERE LOWER(name)='gym' OR LOWER(type)='gym' OR LOWER(COALESCE(community_type, ''))='gym'
+                        ORDER BY id LIMIT 1
+                    """)
+                crow = c.fetchone()
+                if crow:
+                    gym_id = crow['id'] if hasattr(crow, 'keys') else crow[0]
+            except Exception as e:
+                logger.warning(f"Failed to find Gym community: {e}")
+                return
+
+            if not gym_id:
+                logger.info("Gym community not found; skipping Paulo gym membership ensure")
+                return
+
+            # Ensure membership exists
+            try:
+                c.execute(f"SELECT 1 FROM user_communities WHERE user_id={ph} AND community_id={ph}", (user_id, gym_id))
+                exists = c.fetchone() is not None
+                if not exists:
+                    if USE_MYSQL:
+                        c.execute(
+                            "INSERT IGNORE INTO user_communities (user_id, community_id, joined_at) VALUES (%s, %s, NOW())",
+                            (user_id, gym_id)
+                        )
+                    else:
+                        from datetime import datetime
+                        c.execute(
+                            "INSERT INTO user_communities (user_id, community_id, joined_at) VALUES (?, ?, ?)",
+                            (user_id, gym_id, datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+                        )
+                    conn.commit()
+                    logger.info(f"Added Paulo (user_id={user_id}) to Gym community (id={gym_id})")
+                else:
+                    logger.info("Paulo is already a member of the Gym community")
+            except Exception as e:
+                logger.error(f"Failed to ensure Paulo gym membership: {e}")
+    except Exception as e:
+        logger.error(f"ensure_paulo_member_of_gym error: {e}")
+
+ensure_paulo_member_of_gym()
 
 # Register the format_date Jinja2 filter
 @app.template_filter('format_date')
@@ -1255,6 +2085,12 @@ def save_uploaded_file(file, subfolder=None):
             return_path = f"uploads/{unique_filename}"
         
         file.save(filepath)
+        # Optimize image on arrival to reduce size for subsequent loads (prod+dev)
+        try:
+            optimize_image(filepath, max_width=1280, quality=80)
+        except Exception:
+            # Never fail the request due to optimization issues
+            pass
         return return_path
     return None
 
@@ -1338,19 +2174,17 @@ def business_login_required(f):
 @app.route('/', methods=['GET', 'POST'])
 # @csrf.exempt
 def index():
-    print("Entering index route")
-    logger.info(f"Request method: {request.method}")
+    # Reduce verbose logging in production for index/login flows
+    # Debug prints removed
+    
     if request.method == 'POST':
         username = (request.form.get('username') or '').strip()
-        print(f"Received username: {username}")
-        logger.info(f"Received username: {username}")
 
         # Determine if request is from a mobile device
         ua = request.headers.get('User-Agent', '')
         is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
 
         if not username:
-            print("Username missing or empty")
             logger.warning("Username missing or empty")
             if is_mobile:
                 # Redirect to React mobile page with error message
@@ -1361,16 +2195,20 @@ def index():
         try:
             with get_db_connection() as conn:
                 c = conn.cursor()
-                c.execute("SELECT 1 FROM users WHERE username=? LIMIT 1", (username,))
-                exists = c.fetchone() is not None
+                # Use the automatic placeholder conversion
+                placeholder = get_sql_placeholder()
+                c.execute(f"SELECT 1 FROM users WHERE username={placeholder} LIMIT 1", (username,))
+                result = c.fetchone()
+                exists = result is not None
         except Exception as e:
             logger.error(f"Database error validating username '{username}': {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
             if is_mobile:
                 return redirect(url_for('index', error='Server error. Please try again.'))
-            return render_template('index.html', error="Server error. Please try again.")
+            return render_template('index.html', error=f"Database error: {str(e)}")
 
         if not exists:
-            print("Username does not exist")
             logger.warning(f"Username not found: {username}")
             if is_mobile:
                 return redirect(url_for('index', error='Username does not exist'))
@@ -1379,8 +2217,8 @@ def index():
         # Set long-lived session on initial username step
         session.permanent = True
         session['username'] = username
-        print(f"Session username set to: {session['username']}")
-        logger.info(f"Session username set to: {session['username']}")
+        session.permanent = True  # Make session persist
+        session.modified = True  # Force session to be saved
         return redirect(url_for('login_password'))
     # GET request: Desktop -> HTML template, Mobile -> React (if available)
     try:
@@ -1392,10 +2230,16 @@ def index():
                 dist_dir = os.path.join(base_dir, 'client', 'dist')
                 index_path = os.path.join(dist_dir, 'index.html')
                 if os.path.exists(index_path):
-                    return send_from_directory(dist_dir, 'index.html')
+                    resp = send_from_directory(dist_dir, 'index.html')
+                    try:
+                        resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+                        resp.headers['Pragma'] = 'no-cache'
+                        resp.headers['Expires'] = '0'
+                    except Exception:
+                        pass
+                    return resp
             except Exception as e:
                 logger.warning(f"React mobile index not available: {e}")
-        print("Rendering index.html for GET request (desktop or React missing)")
         return render_template('index.html')
     except Exception as e:
         logger.error(f"Error in / route: {str(e)}")
@@ -1464,6 +2308,7 @@ def signup():
     
     # Handle POST request for user registration (supports both React and HTML forms)
     # React form sends individual fields, HTML form sends full_name
+    desired_username = request.form.get('username', '').strip()
     first_name = request.form.get('first_name', '').strip()
     last_name = request.form.get('last_name', '').strip()
     full_name = request.form.get('full_name', '').strip()
@@ -1507,7 +2352,7 @@ def signup():
         else:
             return render_template('signup.html', error=error_msg, full_name=full_name, email=email, mobile=mobile)
     
-    # Username will be generated automatically
+    # Username handling: user-provided or auto-generate
     
     try:
         with get_db_connection() as conn:
@@ -1523,17 +2368,26 @@ def signup():
                 else:
                     return render_template('signup.html', error=error_msg, full_name=full_name, email=email, mobile=mobile)
             
-            # Generate a unique username based on email or name
-            base_username = (email.split('@')[0] if email else (first_name + last_name)).lower()
-            base_username = re.sub(r'[^a-z0-9_]', '', base_username) or 'user'
-            username = base_username
-            suffix = 1
-            while True:
-                c.execute("SELECT 1 FROM users WHERE username = ?", (username,))
-                if not c.fetchone():
-                    break
-                suffix += 1
-                username = f"{base_username}{suffix}"
+            # If provided, validate uniqueness and allowed chars; else auto-generate
+            if desired_username:
+                candidate = re.sub(r'[^a-z0-9_]', '', desired_username.lower())
+                if not candidate:
+                    return jsonify({'success': False, 'error': 'Invalid username'}), 400
+                c.execute("SELECT 1 FROM users WHERE username = ?", (candidate,))
+                if c.fetchone():
+                    return jsonify({'success': False, 'error': 'Username already taken'}), 400
+                username = candidate
+            else:
+                base_username = (email.split('@')[0] if email else (first_name + last_name)).lower()
+                base_username = re.sub(r'[^a-z0-9_]', '', base_username) or 'user'
+                username = base_username
+                suffix = 1
+                while True:
+                    c.execute("SELECT 1 FROM users WHERE username = ?", (username,))
+                    if not c.fetchone():
+                        break
+                    suffix += 1
+                    username = f"{base_username}{suffix}"
             
             # Hash the password
             hashed_password = generate_password_hash(password)
@@ -1550,6 +2404,12 @@ def signup():
             
             conn.commit()
             
+            # Initialize email verification flags
+            try:
+                c.execute("UPDATE users SET email_verified=0, email_verification_sent_at=? WHERE username=?", (datetime.now().isoformat(), username))
+            except Exception:
+                pass
+
             # Log the user in automatically and persist session
             session.permanent = True
             session['username'] = username
@@ -1561,8 +2421,49 @@ def signup():
             ua = request.headers.get('User-Agent', '')
             is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
             if is_mobile:
-                return jsonify({'success': True, 'username': username, 'redirect': '/premium_dashboard'})
+                # Send verification email asynchronously-best effort
+                try:
+                    token = generate_email_token(email)
+                    verify_url = f"{CANONICAL_SCHEME}://{CANONICAL_HOST}/verify_email?token={token}"
+                    subject = "Verify your C-Point email"
+                    html = f"""
+                        <div style='font-family:Arial,sans-serif;font-size:14px;color:#111'>
+                          <p>Welcome to C-Point!</p>
+                          <p>Please verify your email by clicking the button below:</p>
+                          <p><a href='{verify_url}' style='display:inline-block;background:#111;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none'>Verify Email</a></p>
+                          <p>Or open this link: <a href='{verify_url}'>{verify_url}</a></p>
+                          <p>This link expires in 24 hours.</p>
+                        </div>
+                    """
+                    _send_email_via_resend(email, subject, html)
+                    try:
+                        c.execute("UPDATE users SET email_verification_sent_at=? WHERE username=?", (datetime.now().isoformat(), username))
+                        conn.commit()
+                    except Exception:
+                        pass
+                except Exception as e:
+                    logger.warning(f"Could not send verification email: {e}")
+                return jsonify({'success': True, 'username': username, 'needs_email_verification': True, 'redirect': '/premium_dashboard'})
             else:
+                # Desktop: send email then redirect
+                try:
+                    token = generate_email_token(email)
+                    verify_url = f"{CANONICAL_SCHEME}://{CANONICAL_HOST}/verify_email?token={token}"
+                    subject = "Verify your C-Point email"
+                    html = f"""
+                        <div style='font-family:Arial,sans-serif;font-size:14px;color:#111'>
+                          <p>Welcome to C-Point!</p>
+                          <p>Please verify your email: <a href='{verify_url}'>{verify_url}</a></p>
+                        </div>
+                    """
+                    _send_email_via_resend(email, subject, html)
+                    try:
+                        c.execute("UPDATE users SET email_verification_sent_at=? WHERE username=?", (datetime.now().isoformat(), username))
+                        conn.commit()
+                    except Exception:
+                        pass
+                except Exception as e:
+                    logger.warning(f"Could not send verification email: {e}")
                 return redirect(url_for('dashboard'))  # HTML dashboard
             
     except Exception as e:
@@ -1594,12 +2495,12 @@ def admin_profile():
             c = conn.cursor()
             
             # Get admin information including profile picture
-            c.execute("""
+            c.execute(f"""
                 SELECT u.username, u.email, u.first_name, u.last_name, u.subscription, u.created_at,
                        p.profile_picture
                 FROM users u
                 LEFT JOIN user_profiles p ON u.username = p.username
-                WHERE u.username = ?
+                WHERE u.username = {get_sql_placeholder()}
             """, (username,))
             admin_info = dict(c.fetchone())
             
@@ -1642,32 +2543,28 @@ def logout():
 @app.route('/login_password', methods=['GET', 'POST'])
 # @csrf.exempt
 def login_password():
-    print("Entering login_password route")
+    # Quiet noisy logs in production
     if 'username' not in session:
-        print("No username in session, redirecting to /")
         return redirect(url_for('index'))
     username = session['username']
-    print(f"Username from session: {username}")
     if request.method == 'POST':
         password = request.form.get('password', '')
-        print(f"Password entered: {password}")
         if username == 'admin' and password == '12345':
-            print("Hardcoded admin match, redirecting to communities")
             return redirect(url_for('communities'))
         try:
             conn = get_db_connection()
             c = conn.cursor()
+            placeholder = get_sql_placeholder()
             try:
-                c.execute("SELECT password, subscription, is_active FROM users WHERE username=?", (username,))
+                c.execute(f"SELECT password, subscription, is_active FROM users WHERE username={placeholder}", (username,))
                 row = c.fetchone()
             except Exception:
                 # Fallback if is_active column does not exist in MySQL
-                c.execute("SELECT password, subscription FROM users WHERE username=?", (username,))
+                c.execute(f"SELECT password, subscription FROM users WHERE username={placeholder}", (username,))
                 r2 = c.fetchone()
                 row = (r2[0], r2[1], 1) if r2 else None
             user = row
             conn.close()
-            print(f"DB query result: user found = {user is not None}")
             if user:
                 stored_password = user[0] if isinstance(user, (list, tuple)) else user['password']
                 subscription = user[1] if isinstance(user, (list, tuple)) else user.get('subscription')
@@ -1684,16 +2581,11 @@ def login_password():
                 if stored_password and (stored_password.startswith('$') or stored_password.startswith('scrypt:') or stored_password.startswith('pbkdf2:')):
                     # Password is hashed, use check_password_hash
                     password_correct = check_password_hash(stored_password, password)
-                    print(f"Using hashed password check, result: {password_correct}")
-                    print(f"Hash type detected: {stored_password[:10]}...")
                 else:
                     # Password is plain text (legacy), direct comparison
                     password_correct = (stored_password == password)
-                    print(f"Using plain text password check, result: {password_correct}")
                 
                 if password_correct:
-                    print(f"Password matches, subscription: {subscription}")
-                    
                     # Track login
                     try:
                         conn = get_db_connection()
@@ -1718,16 +2610,12 @@ def login_password():
                     return resp
                     
                 else:
-                    print("Password mismatch")
                     return render_template('login.html', username=username, error="Incorrect password. Please try again.")
             else:
-                print("User not found")
                 return render_template('login.html', username=username, error="Incorrect password. Please try again.")
         except Exception as e:
-            print(f"Database error: {str(e)}")
             logger.error(f"Database error in login_password for {username}: {str(e)}")
             abort(500)
-    print("Rendering login.html for GET request")
     return render_template('login.html', username=username)
 
 @app.route('/dashboard')
@@ -1741,12 +2629,12 @@ def dashboard():
             user = c.fetchone()
             
             # Get user's communities
-            c.execute("""
+            c.execute(f"""
                 SELECT c.id, c.name, c.type
                 FROM communities c
                 JOIN user_communities uc ON c.id = uc.community_id
                 JOIN users u ON uc.user_id = u.id
-                WHERE u.username = ?
+                WHERE u.username = {get_sql_placeholder()}
                 ORDER BY c.name
             """, (username,))
             communities = [{'id': row['id'], 'name': row['name'], 'type': row['type']} for row in c.fetchall()]
@@ -1769,38 +2657,336 @@ def free_workouts():
 @app.route('/premium_dashboard')
 @login_required
 def premium_dashboard():
-    # Smart route: Desktop -> HTML template, Mobile -> React (if available)
+    # Prefer React app if built; fallback to HTML template
     try:
-        ua = request.headers.get('User-Agent', '')
-        is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
-        if is_mobile:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        dist_dir = os.path.join(base_dir, 'client', 'dist')
+        index_path = os.path.join(dist_dir, 'index.html')
+        if os.path.exists(index_path):
+            logger.info("Serving React index.html for premium_dashboard")
+            resp = send_from_directory(dist_dir, 'index.html')
             try:
-                base_dir = os.path.dirname(os.path.abspath(__file__))
-                dist_dir = os.path.join(base_dir, 'client', 'dist')
-                index_path = os.path.join(dist_dir, 'index.html')
-                if os.path.exists(index_path):
-                    return send_from_directory(dist_dir, 'index.html')
-            except Exception as e:
-                logger.warning(f"React Premium Dashboard not available: {e}")
-        # Desktop or React missing -> HTML template
+                resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+                resp.headers['Pragma'] = 'no-cache'
+                resp.headers['Expires'] = '0'
+            except Exception:
+                pass
+            return resp
         return render_template('premium_dashboard.html', name=session.get('username',''))
     except Exception as e:
         logger.error(f"Error in premium_dashboard: {str(e)}")
         return ("Internal Server Error", 500)
 
-@app.route('/assets/<path:filename>')
-def react_assets(filename):
+@app.route('/api/client_log', methods=['POST'])
+def api_client_log():
     try:
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        assets_dir = os.path.join(base_dir, 'client', 'dist', 'assets')
-        asset_path = os.path.join(assets_dir, filename)
-        if os.path.exists(asset_path):
-            return send_from_directory(assets_dir, filename)
-        logger.warning(f"React asset not found: {asset_path}")
-        abort(404)
+        data = request.get_json(silent=True) or {}
+        level = (data.get('level') or 'error').lower()
+        prefix = 'CLIENT'
+        msg = json.dumps(data)
+        if level == 'warn':
+            logger.warning(f"{prefix}: {msg}")
+        else:
+            logger.error(f"{prefix}: {msg}")
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"Error in api_client_log: {e}")
+        return jsonify({'success': False}), 500
+# React hashed assets are served by web server static mapping (/assets -> client/dist/assets)
+@app.route('/api/community_group_feed/<int:parent_id>')
+@login_required
+def api_community_group_feed(parent_id: int):
+    """Return recent posts for a parent community and all its child communities."""
+    username = session.get('username')
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+
+            # Build list of community IDs: parent + children
+            ph = get_sql_placeholder()
+            c.execute(f"SELECT id FROM communities WHERE parent_community_id = {ph}", (parent_id,))
+            child_rows = c.fetchall()
+            community_ids = [parent_id]
+            for r in child_rows:
+                cid = r['id'] if hasattr(r, 'keys') else r[0]
+                if cid:
+                    community_ids.append(cid)
+
+            # Fetch recent posts across these communities
+            if not community_ids:
+                return jsonify({'success': True, 'posts': []})
+
+            placeholders = ','.join([ph for _ in community_ids])
+            logger.info(f"Community group feed: parent_id={parent_id}, fetching posts for communities: {community_ids}")
+            c.execute(f"""
+                SELECT *
+                FROM posts
+                WHERE community_id IN ({placeholders})
+                ORDER BY id DESC
+                LIMIT 1000
+            """, tuple(community_ids))
+
+            rows = c.fetchall()
+            logger.info(f"Community group feed: fetched {len(rows)} rows before filtering")
+            posts = []
+
+            # Lazy profile picture cache to avoid repeated lookups
+            pp_cache: dict[str, str|None] = {}
+            def get_profile_picture(u: str|None):
+                if not u:
+                    return None
+                if u in pp_cache:
+                    return pp_cache[u]
+                try:
+                    c.execute("SELECT profile_picture FROM user_profiles WHERE username = ?", (u,))
+                    rpp = c.fetchone()
+                    val = None
+                    if rpp:
+                        try:
+                            val = rpp['profile_picture'] if 'profile_picture' in rpp.keys() else rpp[0]
+                        except Exception:
+                            try:
+                                val = rpp[0]
+                            except Exception:
+                                val = None
+                    pp_cache[u] = val
+                    return val
+                except Exception:
+                    pp_cache[u] = None
+                    return None
+
+            # Optionally map community names for display
+            name_map = {}
+            for cid in community_ids:
+                c.execute(f"SELECT name FROM communities WHERE id = {ph}", (cid,))
+                nm = c.fetchone()
+                if nm:
+                    name_map[cid] = nm['name'] if hasattr(nm, 'keys') else nm[0]
+
+            from datetime import datetime, timedelta
+            cutoff = datetime.now() - timedelta(hours=48)
+
+            def parse_dt(created_at_val, timestamp_val):
+                candidates = []
+                if created_at_val:
+                    candidates.append(created_at_val)
+                if timestamp_val:
+                    candidates.append(timestamp_val)
+                for val in candidates:
+                    # If numeric epoch string
+                    try:
+                        sval = str(val).strip()
+                        # Treat MySQL zero datetime as invalid
+                        if sval.startswith('0000-00-00'):
+                            continue
+                        if sval.isdigit() and len(sval) >= 10:
+                            epoch = int(sval[:10])
+                            return datetime.fromtimestamp(epoch)
+                    except Exception:
+                        pass
+                    # Try fromisoformat
+                    try:
+                        dt = datetime.fromisoformat(str(val).replace('Z', '+00:00'))
+                        return dt
+                    except Exception:
+                        pass
+                    # Try various common formats
+                    for fmt in (
+                        '%Y-%m-%d %H:%M:%S',
+                        '%Y-%m-%d %H:%M',
+                        '%d-%m-%Y %H:%M:%S',
+                        '%d-%m-%Y %H:%M',
+                        '%m.%d.%y %H:%M',
+                        '%Y-%m-%dT%H:%M:%S',
+                        '%Y-%m-%dT%H:%M:%S.%f',
+                        '%Y-%m-%dT%H:%M:%SZ',
+                        '%Y-%m-%dT%H:%M:%S.%fZ',
+                    ):
+                        try:
+                            return datetime.strptime(str(val), fmt)
+                        except Exception:
+                            continue
+                return None
+
+            sample_logged = 0
+            for row in rows:
+                if hasattr(row, 'keys'):
+                    pid = row['id']
+                    dt = parse_dt(row.get('created_at'), row.get('timestamp'))
+                    if sample_logged < 5:
+                        logger.info(f"Group feed row id={pid}, raw_created_at={row.get('created_at')}, raw_timestamp={row.get('timestamp')}, parsed={dt}")
+                        sample_logged += 1
+                    uname = row.get('username')
+                    # Post reaction counts
+                    try:
+                        c.execute("""
+                            SELECT reaction_type, COUNT(*) as count
+                            FROM reactions
+                            WHERE post_id = ?
+                            GROUP BY reaction_type
+                        """, (pid,))
+                        rc = c.fetchall()
+                        reaction_counts = {r['reaction_type']: r['count'] for r in rc}
+                    except Exception:
+                        reaction_counts = {}
+                    # Current user's reaction
+                    try:
+                        c.execute("SELECT reaction_type FROM reactions WHERE post_id = ? AND username = ?", (pid, username))
+                        urr = c.fetchone()
+                        user_reaction_val = urr['reaction_type'] if urr else None
+                    except Exception:
+                        user_reaction_val = None
+                    # Replies count
+                    try:
+                        c.execute("SELECT COUNT(*) as cnt FROM replies WHERE post_id = ?", (pid,))
+                        rr = c.fetchone()
+                        replies_count_val = rr['cnt'] if hasattr(rr, 'keys') else (rr[0] if rr else 0)
+                    except Exception:
+                        replies_count_val = 0
+                    post_obj = {
+                        'id': pid,
+                        'username': uname,
+                        'content': row.get('content'),
+                        'community_id': row.get('community_id'),
+                        'community_name': name_map.get(row.get('community_id')),
+                        'created_at': row.get('created_at') or row.get('timestamp'),
+                        'image_path': row.get('image_path'),
+                        'profile_picture': get_profile_picture(uname),
+                        'reactions': reaction_counts,
+                        'user_reaction': user_reaction_val,
+                        'replies_count': replies_count_val
+                    }
+                    if (dt is not None) and (dt >= cutoff):
+                        posts.append(post_obj)
+                else:
+                    pid, uname, content, cid, created_at_val, timestamp_val, image_path = row
+                    dt = parse_dt(created_at_val, timestamp_val)
+                    if sample_logged < 5:
+                        logger.info(f"Group feed row id={pid}, raw_created_at={created_at_val}, raw_timestamp={timestamp_val}, parsed={dt}")
+                        sample_logged += 1
+                    # Post reaction counts
+                    try:
+                        c.execute("""
+                            SELECT reaction_type, COUNT(*) as count
+                            FROM reactions
+                            WHERE post_id = ?
+                            GROUP BY reaction_type
+                        """, (pid,))
+                        rc = c.fetchall()
+                        reaction_counts = {r['reaction_type']: r['count'] for r in rc}
+                    except Exception:
+                        reaction_counts = {}
+                    # Current user's reaction
+                    try:
+                        c.execute("SELECT reaction_type FROM reactions WHERE post_id = ? AND username = ?", (pid, username))
+                        urr = c.fetchone()
+                        user_reaction_val = urr['reaction_type'] if urr else None
+                    except Exception:
+                        user_reaction_val = None
+                    # Replies count
+                    try:
+                        c.execute("SELECT COUNT(*) as cnt FROM replies WHERE post_id = ?", (pid,))
+                        rr = c.fetchone()
+                        replies_count_val = rr['cnt'] if hasattr(rr, 'keys') else (rr[0] if rr else 0)
+                    except Exception:
+                        replies_count_val = 0
+                    post_obj = {
+                        'id': pid,
+                        'username': uname,
+                        'content': content,
+                        'community_id': cid,
+                        'community_name': name_map.get(cid),
+                        'created_at': created_at_val or timestamp_val,
+                        'image_path': image_path,
+                        'profile_picture': get_profile_picture(uname),
+                        'reactions': reaction_counts,
+                        'user_reaction': user_reaction_val,
+                        'replies_count': replies_count_val
+                    }
+                    if (dt is not None) and (dt >= cutoff):
+                        posts.append(post_obj)
+
+            # Sort by parsed datetime desc
+            def sort_key(p):
+                for fmt in (
+                    '%Y-%m-%d %H:%M:%S',
+                    '%Y-%m-%d %H:%M',
+                    '%d-%m-%Y %H:%M:%S',
+                    '%d-%m-%Y %H:%M',
+                    '%m.%d.%y %H:%M',
+                    '%Y-%m-%dT%H:%M:%S',
+                    '%Y-%m-%dT%H:%M:%S.%f',
+                    '%Y-%m-%dT%H:%M:%SZ',
+                    '%Y-%m-%dT%H:%M:%S.%fZ',
+                ):
+                    try:
+                        return datetime.strptime(str(p.get('created_at') or ''), fmt)
+                    except Exception:
+                        continue
+                return datetime.min
+            posts.sort(key=sort_key, reverse=True)
+            logger.info(f"Community group feed: returning {len(posts)} posts after 48h filter")
+
+            return jsonify({'success': True, 'posts': posts})
+    except Exception as e:
+        logger.error(f"Error in community_group_feed for parent {parent_id}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
     except Exception as e:
         logger.error(f"Error serving React asset {filename}: {str(e)}")
         abort(404)
+
+@app.route('/api/community_posts_search')
+@login_required
+def api_community_posts_search():
+    try:
+        username = session.get('username')
+        community_id = request.args.get('community_id', type=int)
+        q = (request.args.get('q') or '').strip()
+        if not community_id or not q:
+            return jsonify({'success': False, 'error': 'community_id and q are required'}), 400
+        token = q[1:] if q.startswith('#') else q
+        if not token:
+            return jsonify({'success': True, 'posts': []})
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            try:
+                if username != 'admin':
+                    c.execute("""
+                        SELECT 1 FROM user_communities uc
+                        JOIN users u ON uc.user_id = u.id
+                        WHERE u.username = ? AND uc.community_id = ?
+                        LIMIT 1
+                    """, (username, community_id))
+                    if not c.fetchone():
+                        return jsonify({'success': False, 'error': 'Forbidden'}), 403
+            except Exception:
+                pass
+            like_arg = f"%#{token}%"
+            c.execute(
+                """
+                SELECT id, username, content, timestamp
+                FROM posts
+                WHERE community_id = ? AND LOWER(content) LIKE LOWER(?)
+                ORDER BY id DESC
+                LIMIT 100
+                """,
+                (community_id, like_arg)
+            )
+            rows = c.fetchall()
+            results = []
+            for r in rows:
+                rid = r['id'] if hasattr(r, 'keys') else r[0]
+                ruser = r['username'] if hasattr(r, 'keys') else r[1]
+                rcontent = r['content'] if hasattr(r, 'keys') else r[2]
+                rts = r['timestamp'] if hasattr(r, 'keys') else r[3]
+                snippet = (rcontent or '')
+                if len(snippet) > 140:
+                    snippet = snippet[:137] + '…'
+                results.append({'id': rid, 'username': ruser, 'content': snippet, 'timestamp': rts})
+            return jsonify({'success': True, 'posts': results})
+    except Exception as e:
+        logger.error(f"Error in community_posts_search: {e}")
+        return jsonify({'success': False, 'error': 'Server error'}), 500
 
 @app.route('/vite.svg')
 def vite_svg():
@@ -1812,25 +2998,9 @@ def vite_svg():
         logger.error(f"Error serving vite.svg: {str(e)}")
         abort(404)
 
-@app.route('/sw.js')
-def service_worker():
-    try:
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        dist_dir = os.path.join(base_dir, 'client', 'dist')
-        return send_from_directory(dist_dir, 'sw.js')
-    except Exception as e:
-        logger.error(f"Error serving sw.js: {str(e)}")
-        abort(404)
+# service worker served by web server static mapping (/sw.js -> client/dist/sw.js)
 
-@app.route('/manifest.webmanifest')
-def pwa_manifest():
-    try:
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        public_dir = os.path.join(base_dir, 'client', 'public')
-        return send_from_directory(public_dir, 'manifest.webmanifest')
-    except Exception as e:
-        logger.error(f"Error serving manifest: {str(e)}")
-        abort(404)
+# web app manifest served by web server static mapping (/manifest.webmanifest -> client/public/manifest.webmanifest)
 
 @app.route('/premium_dashboard_react')
 @login_required
@@ -1838,9 +3008,39 @@ def premium_dashboard_react():
     try:
         base_dir = os.path.dirname(os.path.abspath(__file__))
         dist_dir = os.path.join(base_dir, 'client', 'dist')
-        return send_from_directory(dist_dir, 'index.html')
+        resp = send_from_directory(dist_dir, 'index.html')
+        try:
+            resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+            resp.headers['Pragma'] = 'no-cache'
+            resp.headers['Expires'] = '0'
+        except Exception:
+            pass
+        return resp
     except Exception as e:
         logger.error(f"Error serving React premium dashboard: {str(e)}")
+        abort(500)
+
+@app.route('/admin_dashboard')
+@login_required
+def admin_dashboard_react():
+    try:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        dist_dir = os.path.join(base_dir, 'client', 'dist')
+        index_path = os.path.join(dist_dir, 'index.html')
+        if os.path.exists(index_path):
+            logger.info("Serving React index.html for admin_dashboard")
+            resp = send_from_directory(dist_dir, 'index.html')
+            try:
+                resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+                resp.headers['Pragma'] = 'no-cache'
+                resp.headers['Expires'] = '0'
+            except Exception:
+                pass
+            return resp
+        # Fallback to communities page if React build not available
+        return redirect(url_for('communities'))
+    except Exception as e:
+        logger.error(f"Error serving React admin dashboard: {str(e)}")
         abort(500)
 
 @app.route('/saved_workouts')
@@ -2150,6 +3350,643 @@ def delete_weight():
     except Exception as e:
         logger.error(f"Error deleting weight for {username}: {str(e)}")
         return jsonify({'success': False, 'error': f'Unexpected error: {str(e)}'}), 500
+# Admin helper functions
+def is_app_admin(username):
+    """Check if a user is an app admin"""
+    try:
+        return bool(username) and username.lower() in ('admin', 'paulo')
+    except Exception:
+        return False
+
+def is_community_owner(username, community_id):
+    """Check if a user owns a community"""
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT creator_username FROM communities WHERE id = ?", (community_id,))
+            result = c.fetchone()
+            if result:
+                creator = result['creator_username'] if hasattr(result, 'keys') else result[0]
+                return creator == username
+    except Exception as e:
+        logger.error(f"Error checking community owner: {e}")
+    return False
+
+@app.route('/api/check_admin', methods=['GET'])
+@login_required
+def check_admin():
+    """Check if current user is admin"""
+    username = session.get('username')
+    return jsonify({'is_admin': is_app_admin(username)})
+
+@app.route('/health', methods=['GET'])
+def health_check():
+    """Simple health check endpoint"""
+    return jsonify({
+        'status': 'healthy',
+        'timestamp': datetime.now().isoformat(),
+        'version': '2025.01.15'
+    })
+
+@app.route('/api/test', methods=['GET'])
+def test_endpoint():
+    """Test endpoint to verify server is running"""
+    try:
+        # Test database connection
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT COUNT(*) as count FROM users")
+            result = c.fetchone()
+            user_count = result['count'] if hasattr(result, 'keys') else result[0]
+            
+        return jsonify({
+            'status': 'ok',
+            'database': 'MySQL' if USE_MYSQL else 'SQLite',
+            'user_count': user_count,
+            'timestamp': datetime.now().isoformat()
+        })
+    except Exception as e:
+        import traceback
+        return jsonify({
+            'status': 'error',
+            'error': str(e),
+            'traceback': traceback.format_exc()
+        }), 500
+
+@app.route('/clear_sessions')
+def clear_sessions():
+    """Clear all old session cookies"""
+    from flask import make_response
+    resp = make_response("""
+    <html>
+    <body style="background: black; color: white; padding: 50px; font-family: Arial;">
+        <h1>Session Cookies Cleared</h1>
+        <p>All old session cookies have been removed.</p>
+        <p><a href="/" style="color: #4db6ac;">Go to login page</a></p>
+    </body>
+    </html>
+    """)
+    # Clear the old 'session' cookies
+    resp.set_cookie('session', '', expires=0, path='/')
+    # Clear any potential domain-specific cookies
+    resp.set_cookie('session', '', expires=0, path='/', domain='.c-point.co')
+    resp.set_cookie('session', '', expires=0, path='/', domain='www.c-point.co')
+    # Also clear the new cookie name just in case
+    resp.set_cookie('cpoint_session', '', expires=0, path='/')
+    return resp
+
+@app.route('/test_login')
+def test_login_page():
+    """Serve the test login page"""
+    return render_template('test_login.html')
+
+@app.route('/test_form', methods=['GET', 'POST'])
+def test_form():
+    """Test form to debug POST requests"""
+    logger.info(f"Test form accessed: Method={request.method}")
+    
+    if request.method == 'POST':
+        logger.info(f"Test form POST received: {dict(request.form)}")
+        return f"""
+        <html><body style="background: black; color: white; padding: 20px;">
+        <h1>POST received successfully!</h1>
+        <p>Form data: {dict(request.form)}</p>
+        <p>Method: {request.method}</p>
+        <p>Headers: Content-Type = {request.headers.get('Content-Type')}</p>
+        <a href="/test_form" style="color: #4db6ac;">Try again</a>
+        </body></html>
+        """
+    
+    return """
+    <html><body style="background: black; color: white; padding: 20px;">
+    <h1>Test Form</h1>
+    <p style="color: yellow;">This page tests if POST requests are working</p>
+    
+    <h2>1. Simple Test</h2>
+    <form method="POST" action="/test_form">
+        <input type="text" name="test_field" placeholder="Enter anything" style="padding: 10px; margin: 10px 0; color: black;">
+        <button type="submit" style="padding: 10px 20px; background: #4db6ac; color: white; border: none; cursor: pointer;">
+            Submit Test
+        </button>
+    </form>
+    
+    <hr style="margin: 20px 0;">
+    
+    <h2>2. Test Main Login Form</h2>
+    <form method="POST" action="/">
+        <input type="text" name="username" placeholder="Enter username" required style="padding: 10px; margin: 10px 0; color: black;">
+        <button type="submit" style="padding: 10px 20px; background: #4db6ac; color: white; border: none; cursor: pointer;">
+            Submit to Main Route
+        </button>
+    </form>
+    
+    <hr style="margin: 20px 0;">
+    
+    <h2>3. Direct Link Test</h2>
+    <p>If forms don't work, try these direct links:</p>
+    <a href="/health" style="color: #4db6ac;">Health Check</a> | 
+    <a href="/api/test" style="color: #4db6ac;">API Test</a> | 
+    <a href="/login_password" style="color: #4db6ac;">Login Password Page</a>
+    </body></html>
+    """
+@app.route('/api/debug_communities', methods=['GET'])
+@login_required
+def debug_communities():
+    """Debug endpoint to check all communities in database"""
+    username = session.get('username')
+    if not is_app_admin(username):
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Get all communities
+            c.execute("""
+                SELECT id, name, type, parent_community_id, creator_username
+                FROM communities
+                ORDER BY id
+            """)
+            all_communities = c.fetchall()
+            
+            # Get user_communities count
+            c.execute("SELECT COUNT(*) as count FROM user_communities")
+            uc_count = get_scalar_result(c.fetchone(), column_name='count')
+            
+            # Get admin's communities
+            placeholder = get_sql_placeholder()
+            c.execute(f"""
+                SELECT c.id, c.name
+                FROM communities c
+                JOIN user_communities uc ON c.id = uc.community_id
+                JOIN users u ON uc.user_id = u.id
+                WHERE u.username = {placeholder}
+            """, ('admin',))
+            admin_communities = c.fetchall()
+            
+            communities_list = []
+            for comm in all_communities:
+                communities_list.append({
+                    'id': comm[0] if not hasattr(comm, 'keys') else comm['id'],
+                    'name': comm[1] if not hasattr(comm, 'keys') else comm['name'],
+                    'type': comm[2] if not hasattr(comm, 'keys') else comm['type'],
+                    'parent_id': comm[3] if not hasattr(comm, 'keys') else comm['parent_community_id'],
+                    'creator': comm[4] if not hasattr(comm, 'keys') else comm['creator_username']
+                })
+            
+            admin_comm_list = []
+            for comm in admin_communities:
+                admin_comm_list.append({
+                    'id': comm[0] if not hasattr(comm, 'keys') else comm['id'],
+                    'name': comm[1] if not hasattr(comm, 'keys') else comm['name']
+                })
+            
+            return jsonify({
+                'total_communities': len(all_communities),
+                'user_communities_entries': uc_count,
+                'all_communities': communities_list,
+                'admin_communities': admin_comm_list,
+                'database_type': 'MySQL' if USE_MYSQL else 'SQLite'
+            })
+    except Exception as e:
+        logger.error(f"Debug communities error: {e}")
+        import traceback
+        return jsonify({'error': str(e), 'traceback': traceback.format_exc()}), 500
+@app.route('/api/admin/dashboard', methods=['GET'])
+@login_required
+def admin_dashboard_api():
+    """API endpoint for admin dashboard data"""
+    username = session.get('username')
+    if not is_app_admin(username):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Get statistics
+            c.execute("SELECT COUNT(*) as count FROM users")
+            total_users = get_scalar_result(c.fetchone(), column_name='count')
+            
+            c.execute("SELECT COUNT(*) as count FROM users WHERE subscription = 'premium'")
+            premium_users = get_scalar_result(c.fetchone(), column_name='count')
+            
+            c.execute("SELECT COUNT(*) as count FROM communities")
+            total_communities = get_scalar_result(c.fetchone(), column_name='count')
+            
+            c.execute("SELECT COUNT(*) as count FROM posts")
+            total_posts = get_scalar_result(c.fetchone(), column_name='count')
+            
+            stats = {
+                'total_users': total_users,
+                'premium_users': premium_users,
+                'total_communities': total_communities,
+                'total_posts': total_posts
+            }
+            
+            # Get users list
+            c.execute("SELECT username, subscription FROM users ORDER BY username")
+            users_raw = c.fetchall()
+            users = []
+            for user in users_raw:
+                users.append({
+                    'username': user['username'] if hasattr(user, 'keys') else user[0],
+                    'subscription': user['subscription'] if hasattr(user, 'keys') else user[1],
+                    'is_active': True,  # Default for now
+                    'is_admin': is_app_admin(user['username'] if hasattr(user, 'keys') else user[0])
+                })
+            
+            # Get all communities with parent information
+            c.execute("""
+                SELECT c.id, c.name, c.type, c.creator_username, c.join_code,
+                       c.parent_community_id, COUNT(uc.user_id) as member_count
+                FROM communities c
+                LEFT JOIN user_communities uc ON c.id = uc.community_id
+                GROUP BY c.id, c.name, c.type, c.creator_username, c.join_code, c.parent_community_id
+                ORDER BY c.name
+            """)
+            communities_raw = c.fetchall()
+            logger.info(f"Admin dashboard: Found {len(communities_raw)} total communities")
+            
+            # First, create all community objects (support dict or tuple rows)
+            all_communities = {}
+            for comm in communities_raw:
+                if hasattr(comm, 'keys'):
+                    cid = comm['id']
+                    cname = comm['name']
+                    ctype = comm['type']
+                    ccreator = comm['creator_username']
+                    cjoin = comm['join_code']
+                    cparent = comm['parent_community_id']
+                    cmembers = comm['member_count']
+                else:
+                    cid = comm[0]
+                    cname = comm[1]
+                    ctype = comm[2]
+                    ccreator = comm[3]
+                    cjoin = comm[4]
+                    cparent = comm[5]
+                    cmembers = comm[6]
+
+                community_data = {
+                    'id': cid,
+                    'name': cname,
+                    'type': ctype,
+                    'creator_username': ccreator,
+                    'join_code': cjoin,
+                    'parent_community_id': cparent,
+                    'member_count': cmembers,
+                    'is_active': True,
+                    'children': []
+                }
+                all_communities[cid] = community_data
+            
+            # Now organize into parent-child structure
+            root_communities = {}
+            
+            for comm_id, comm_data in all_communities.items():
+                if comm_data['parent_community_id'] is None:
+                    # This is a root community
+                    root_communities[comm_id] = comm_data
+                else:
+                    # This is a child community - add it to its parent if parent exists
+                    parent_id = comm_data['parent_community_id']
+                    if parent_id in all_communities:
+                        all_communities[parent_id]['children'].append(comm_data)
+                    else:
+                        # Parent doesn't exist, treat this as a root community
+                        root_communities[comm_id] = comm_data
+            
+            # For any community that has children but isn't a root (nested hierarchy),
+            # we need to ensure it appears as a root if its parent isn't in our list
+            for comm_id, comm_data in all_communities.items():
+                if comm_data['children'] and comm_id not in root_communities:
+                    # Check if this community's parent is in our list
+                    if comm_data['parent_community_id'] and comm_data['parent_community_id'] not in all_communities:
+                        root_communities[comm_id] = comm_data
+            
+            # Convert to list and include all communities (even orphaned ones)
+            communities = list(root_communities.values())
+            
+            # Also include any communities that might have been missed
+            included_ids = set()
+            
+            def collect_ids(comm):
+                included_ids.add(comm['id'])
+                for child in comm['children']:
+                    collect_ids(child)
+            
+            for comm in communities:
+                collect_ids(comm)
+            
+            # Add any missing communities as root level
+            for comm_id, comm_data in all_communities.items():
+                if comm_id not in included_ids:
+                    communities.append(comm_data)
+            
+            return jsonify({
+                'success': True,
+                'stats': stats,
+                'users': users,
+                'communities': communities
+            })
+            
+    except Exception as e:
+        logger.error(f"Error in admin dashboard API: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/admin/update_user', methods=['POST'])
+@login_required
+def admin_update_user():
+    """Update user details as admin"""
+    username = session.get('username')
+    if not is_app_admin(username):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    
+    data = request.get_json()
+    target_user = data.get('username')
+    
+    if not target_user:
+        return jsonify({'success': False, 'error': 'Username required'}), 400
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            if 'subscription' in data:
+                c.execute("UPDATE users SET subscription = ? WHERE username = ?", 
+                         (data['subscription'], target_user))
+            
+            conn.commit()
+            return jsonify({'success': True})
+            
+    except Exception as e:
+        logger.error(f"Error updating user: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/admin/update_community', methods=['POST'])
+@login_required
+def admin_update_community():
+    """Update community details as admin"""
+    username = session.get('username')
+    if not is_app_admin(username):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    
+    data = request.get_json()
+    community_id = data.get('community_id')
+    
+    if not community_id:
+        return jsonify({'success': False, 'error': 'Community ID required'}), 400
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # For now just return success
+            # Add actual update logic as needed
+            
+            conn.commit()
+            return jsonify({'success': True})
+            
+    except Exception as e:
+        logger.error(f"Error updating community: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/admin/add_user', methods=['POST'])
+@login_required
+def admin_add_user():
+    """Add a new user as admin"""
+    username = session.get('username')
+    if not is_app_admin(username):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    
+    data = request.get_json()
+    new_username = data.get('username')
+    new_password = data.get('password')
+    subscription = data.get('subscription', 'free')
+    
+    if not new_username or not new_password:
+        return jsonify({'success': False, 'error': 'Username and password required'}), 400
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Check if user already exists
+            c.execute("SELECT 1 FROM users WHERE username = ?", (new_username,))
+            if c.fetchone():
+                return jsonify({'success': False, 'error': 'Username already exists'}), 400
+            
+            # Hash the password
+            from werkzeug.security import generate_password_hash
+            hashed_password = generate_password_hash(new_password)
+            
+            # Insert new user
+            c.execute("""
+                INSERT INTO users (username, password, subscription, created_at)
+                VALUES (?, ?, ?, NOW())
+            """, (new_username, hashed_password, subscription))
+            
+            conn.commit()
+            return jsonify({'success': True})
+            
+    except Exception as e:
+        logger.error(f"Error adding user: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/admin/compress_images', methods=['POST'])
+@login_required
+def admin_compress_images():
+    """Admin-only: compress existing uploaded images on disk referenced by DB.
+    Scans posts, replies, user profile pictures, community backgrounds, message photos.
+    """
+    username = session.get('username')
+    if not is_app_admin(username):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+
+    compressed = 0
+    skipped = 0
+    missing = 0
+    errored = 0
+
+    paths: set[str] = set()
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            for query in (
+                "SELECT image_path FROM posts WHERE image_path IS NOT NULL AND image_path != ''",
+                "SELECT image_path FROM replies WHERE image_path IS NOT NULL AND image_path != ''",
+                "SELECT profile_picture FROM user_profiles WHERE profile_picture IS NOT NULL AND profile_picture != ''",
+                "SELECT background_path FROM communities WHERE background_path IS NOT NULL AND background_path != ''",
+                "SELECT image_path FROM messages WHERE image_path IS NOT NULL AND image_path != ''",
+            ):
+                try:
+                    c.execute(query)
+                    for row in c.fetchall():
+                        try:
+                            val = row[0] if not hasattr(row, 'keys') else list(row.values())[0]
+                        except Exception:
+                            # Fallback: handle mapping/dict-style
+                            if hasattr(row, 'keys'):
+                                val = next(iter(row.values()))
+                            else:
+                                val = None
+                        if val:
+                            paths.add(str(val))
+                except Exception:
+                    continue
+    except Exception as e:
+        logger.error(f"Error collecting image paths: {e}")
+        return jsonify({'success': False, 'error': 'Failed to collect image paths'})
+
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    static_uploads = os.path.join(base_dir, 'static', 'uploads')
+    root_uploads = os.path.join(base_dir, 'uploads')
+
+    def resolve_path(p: str) -> str:
+        clean = (p or '').replace('\r', '').replace('\n', '').strip('/')
+        candidates = []
+        if clean.startswith('uploads/'):
+            candidates.append(os.path.join(base_dir, clean))
+            candidates.append(os.path.join(static_uploads, clean.split('uploads/',1)[1]))
+        else:
+            candidates.append(os.path.join(static_uploads, clean))
+            candidates.append(os.path.join(root_uploads, clean))
+        for c in candidates:
+            if os.path.exists(c):
+                return c
+        return candidates[0]
+
+    for p in list(paths):
+        disk_path = resolve_path(p)
+        if not os.path.exists(disk_path):
+            missing += 1
+            continue
+        try:
+            before = os.path.getsize(disk_path)
+            ok = optimize_image(disk_path, max_width=1280, quality=80)
+            if ok:
+                after = os.path.getsize(disk_path)
+                compressed += 1
+            else:
+                skipped += 1
+        except Exception as e:
+            errored += 1
+            logger.warning(f"Compress error {disk_path}: {e}")
+
+    return jsonify({
+        'success': True,
+        'total_paths': len(paths),
+        'compressed': compressed,
+        'skipped': skipped,
+        'missing': missing,
+        'errored': errored,
+    })
+
+@app.route('/api/admin/delete_user', methods=['POST'])
+@login_required
+def admin_delete_user():
+    """Delete a user as admin"""
+    username = session.get('username')
+    if not is_app_admin(username):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    
+    data = request.get_json()
+    target_username = data.get('username')
+    
+    if not target_username:
+        return jsonify({'success': False, 'error': 'Username required'}), 400
+    
+    if target_username == 'admin':
+        return jsonify({'success': False, 'error': 'Cannot delete admin user'}), 400
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+
+            # Resolve user id
+            c.execute(f"SELECT id FROM users WHERE username={ph}", (target_username,))
+            row = c.fetchone()
+            user_id = (row['id'] if hasattr(row, 'keys') else (row[0] if row else None))
+            if not user_id:
+                return jsonify({'success': False, 'error': 'User not found'}), 404
+
+            # Delete dependent rows first to satisfy FK constraints
+            c.execute(f"DELETE FROM messages WHERE sender={ph} OR receiver={ph}", (target_username, target_username))
+            c.execute(f"DELETE FROM notifications WHERE user_id={ph} OR from_user={ph}", (target_username, target_username))
+            c.execute(f"DELETE FROM user_communities WHERE user_id={ph}", (user_id,))
+            try:
+                c.execute(f"DELETE FROM community_admins WHERE username={ph}", (target_username,))
+            except Exception:
+                pass
+            c.execute(f"DELETE FROM posts WHERE username={ph}", (target_username,))
+            c.execute(f"DELETE FROM replies WHERE username={ph}", (target_username,))
+            c.execute(f"DELETE FROM reactions WHERE username={ph}", (target_username,))
+            c.execute(f"DELETE FROM reply_reactions WHERE username={ph}", (target_username,))
+            try:
+                c.execute(f"DELETE FROM push_subscriptions WHERE username={ph}", (target_username,))
+            except Exception:
+                pass
+            try:
+                c.execute(f"DELETE FROM typing_status WHERE user={ph} OR peer={ph}", (target_username, target_username))
+            except Exception:
+                pass
+            try:
+                c.execute(f"DELETE FROM remember_tokens WHERE username={ph}", (target_username,))
+            except Exception:
+                pass
+            try:
+                c.execute(f"DELETE FROM user_profiles WHERE username={ph}", (target_username,))
+            except Exception:
+                pass
+            try:
+                c.execute(f"DELETE FROM exercises WHERE username={ph}", (target_username,))
+                c.execute(f"DELETE FROM workouts WHERE username={ph}", (target_username,))
+                c.execute(f"DELETE FROM crossfit_entries WHERE username={ph}", (target_username,))
+            except Exception:
+                pass
+
+            # Finally delete the user
+            c.execute(f"DELETE FROM users WHERE username={ph}", (target_username,))
+            
+            conn.commit()
+            return jsonify({'success': True})
+            
+    except Exception as e:
+        logger.error(f"Error deleting user: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/admin/delete_community', methods=['POST'])
+@login_required
+def admin_delete_community():
+    """Delete a community as admin"""
+    username = session.get('username')
+    if not is_app_admin(username):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    
+    data = request.get_json()
+    community_id = data.get('community_id')
+    
+    if not community_id:
+        return jsonify({'success': False, 'error': 'Community ID required'}), 400
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Delete community and related data
+            c.execute("DELETE FROM user_communities WHERE community_id = ?", (community_id,))
+            c.execute("DELETE FROM posts WHERE community_id = ?", (community_id,))
+            c.execute("DELETE FROM communities WHERE id = ?", (community_id,))
+            
+            conn.commit()
+            return jsonify({'success': True})
+            
+    except Exception as e:
+        logger.error(f"Error deleting community: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @app.route('/admin', methods=['GET', 'POST'])
 @login_required
 def admin():
@@ -2159,22 +3996,30 @@ def admin():
         return redirect(url_for('index'))
     print("User is admin, proceeding")
     
+    # Check if request is from mobile and serve React
+    ua = request.headers.get('User-Agent', '')
+    is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
+    if is_mobile:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        dist_dir = os.path.join(base_dir, 'client', 'dist')
+        return send_from_directory(dist_dir, 'index.html')
+    
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
             
             # Get statistics
-            c.execute("SELECT COUNT(*) FROM users")
-            total_users = c.fetchone()[0]
+            c.execute("SELECT COUNT(*) as count FROM users")
+            total_users = get_scalar_result(c.fetchone(), column_name='count')
             
-            c.execute("SELECT COUNT(*) FROM users WHERE subscription = 'premium'")
-            premium_users = c.fetchone()[0]
+            c.execute("SELECT COUNT(*) as count FROM users WHERE subscription = 'premium'")
+            premium_users = get_scalar_result(c.fetchone(), column_name='count')
             
-            c.execute("SELECT COUNT(*) FROM communities")
-            total_communities = c.fetchone()[0]
+            c.execute("SELECT COUNT(*) as count FROM communities")
+            total_communities = get_scalar_result(c.fetchone(), column_name='count')
             
-            c.execute("SELECT COUNT(*) FROM posts")
-            total_posts = c.fetchone()[0]
+            c.execute("SELECT COUNT(*) as count FROM posts")
+            total_posts = get_scalar_result(c.fetchone(), column_name='count')
             
             stats = {
                 'total_users': total_users,
@@ -2329,6 +4174,109 @@ def admin_test():
     return "Admin test route is working!"
                     
 
+@app.route('/api/profile/<username>')
+def api_public_profile(username):
+    """Public profile data for a username (JSON)."""
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            # Resolve actual username case-insensitively
+            c.execute(f"SELECT username FROM users WHERE LOWER(username) = LOWER({ph})", (username,))
+            user = c.fetchone()
+            if not user:
+                return jsonify({'success': False, 'error': 'not found'}), 404
+            actual_username = user['username'] if hasattr(user, 'keys') else user[0]
+
+            # Profile fields
+            c.execute(f"""
+                SELECT u.username, u.subscription,
+                       p.display_name, p.bio, p.location, p.website,
+                       p.instagram, p.twitter, p.profile_picture, p.cover_photo,
+                       COALESCE(p.is_public, 1)
+                FROM users u
+                LEFT JOIN user_profiles p ON u.username = p.username
+                WHERE u.username = {ph}
+            """, (actual_username,))
+            row = c.fetchone()
+            if not row:
+                return jsonify({'success': False, 'error': 'profile not found'}), 404
+
+            def get_val(r, key, idx):
+                try:
+                    return r[key] if hasattr(r, 'keys') and key in r.keys() else r[idx]
+                except Exception:
+                    return None
+
+            # Fetch user's professional info and share setting
+            try:
+                c.execute("SELECT role, company, industry, degree, school, skills, linkedin, experience, professional_share_community_id FROM users WHERE username = ?", (actual_username,))
+                urow = c.fetchone()
+            except Exception:
+                urow = None
+
+            profile = {
+                'username': actual_username,
+                'subscription': get_val(row, 'subscription', 1),
+                'display_name': get_val(row, 'display_name', 2) or actual_username,
+                'bio': get_val(row, 'bio', 3),
+                'location': get_val(row, 'location', 4),
+                'website': get_val(row, 'website', 5),
+                'instagram': get_val(row, 'instagram', 6),
+                'twitter': get_val(row, 'twitter', 7),
+                'profile_picture': get_val(row, 'profile_picture', 8),
+                'cover_photo': get_val(row, 'cover_photo', 9),
+                'is_public': bool(get_val(row, 'is_public', 10)),
+                'professional': None
+            }
+
+            # Include professional info if it's allowed to be public or scoped to a community, which public profile can render broadly
+            if urow:
+                def uval(idx_or_key):
+                    try:
+                        return urow[idx_or_key] if hasattr(urow, 'keys') else urow[idx_or_key]
+                    except Exception:
+                        return None
+                profile['professional'] = {
+                    'role': uval('role') if hasattr(urow, 'keys') else uval(0),
+                    'company': uval('company') if hasattr(urow, 'keys') else uval(1),
+                    'industry': uval('industry') if hasattr(urow, 'keys') else uval(2),
+                    'degree': uval('degree') if hasattr(urow, 'keys') else uval(3),
+                    'school': uval('school') if hasattr(urow, 'keys') else uval(4),
+                    'skills': uval('skills') if hasattr(urow, 'keys') else uval(5),
+                    'linkedin': uval('linkedin') if hasattr(urow, 'keys') else uval(6),
+                    'experience': uval('experience') if hasattr(urow, 'keys') else uval(7),
+                    'share_community_id': uval('professional_share_community_id') if hasattr(urow, 'keys') else uval(8)
+                }
+
+            # Recent posts (kept for potential future use; frontend may ignore)
+            c.execute(f"""
+                SELECT id, content, image_path, timestamp
+                FROM posts
+                WHERE username = {ph}
+                ORDER BY timestamp DESC
+                LIMIT 20
+            """, (actual_username,))
+            posts = c.fetchall()
+            posts_list = []
+            for p in posts or []:
+                def val(pv, key, idx):
+                    try:
+                        return pv[key] if hasattr(pv, 'keys') and key in pv.keys() else pv[idx]
+                    except Exception:
+                        return None
+                posts_list.append({
+                    'id': val(p, 'id', 0),
+                    'content': val(p, 'content', 1),
+                    'image_path': val(p, 'image_path', 2),
+                    'timestamp': val(p, 'timestamp', 3),
+                })
+
+            return jsonify({'success': True, 'profile': profile, 'posts': posts_list})
+    except Exception as e:
+        logger.error(f"api_public_profile error for {username}: {e}")
+        return jsonify({'success': False, 'error': 'server error'}), 500
+
 @app.route('/profile/<username>')
 def public_profile(username):
     """Public profile page for any user"""
@@ -2337,29 +4285,37 @@ def public_profile(username):
     logger.info(f"Request URL: {request.url}")
     logger.info(f"Request path: {request.path}")
     try:
+        # Serve React on mobile, HTML on desktop
+        ua = request.headers.get('User-Agent', '')
+        is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
+        if is_mobile:
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            dist_dir = os.path.join(base_dir, 'client', 'dist')
+            return send_from_directory(dist_dir, 'index.html')
+
         with get_db_connection() as conn:
             c = conn.cursor()
             
-            # Check if user exists
-            c.execute("SELECT username FROM users WHERE username=?", (username,))
+            # Check if user exists (case-insensitive)
+            ph = get_sql_placeholder()
+            c.execute(f"SELECT username FROM users WHERE LOWER(username) = LOWER({ph})", (username,))
             user = c.fetchone()
             if not user:
                 logger.warning(f"User not found: {username}")
                 flash('User not found', 'error')
                 return redirect(url_for('feed'))
+            actual_username = user['username'] if hasattr(user, 'keys') else user[0]
             
-            # Get profile data - LEFT JOIN ensures we get user data even if no profile exists
-            c.execute("""
-                SELECT u.username, u.email, u.subscription, u.age, u.gender, 
-                       u.weight, u.height, u.blood_type, u.muscle_mass, u.bmi,
-                       u.country, u.city, u.industry,
+            # Get profile data for JSON API fallback
+            c.execute(f"""
+                SELECT u.username, u.email, u.subscription,
                        p.display_name, p.bio, p.location, p.website, 
                        p.instagram, p.twitter, p.profile_picture, p.cover_photo,
                        p.is_public
                 FROM users u
                 LEFT JOIN user_profiles p ON u.username = p.username
-                WHERE u.username = ?
-            """, (username,))
+                WHERE u.username = {ph}
+            """, (actual_username,))
             
             profile_data = c.fetchone()
             
@@ -2372,25 +4328,25 @@ def public_profile(username):
             logger.info(f"Profile data found for {username}")
             
             # Get user's posts
-            c.execute("""
+            c.execute(f"""
                 SELECT id, content, image_path, timestamp 
                 FROM posts 
-                WHERE username = ? 
+                WHERE username = {ph} 
                 ORDER BY timestamp DESC 
                 LIMIT 20
-            """, (username,))
+            """, (actual_username,))
             posts = c.fetchall()
             
             # Get user's communities
             try:
-                c.execute("""
+                c.execute(f"""
                     SELECT c.id, c.name, c.description, c.accent_color
                     FROM communities c
                     JOIN user_communities uc ON c.id = uc.community_id
                     JOIN users u ON uc.user_id = u.id
-                    WHERE u.username = ?
+                    WHERE u.username = {ph}
                     ORDER BY c.name
-                """, (username,))
+                """, (actual_username,))
                 communities = c.fetchall()
                 logger.info(f"Found {len(communities)} communities for {username}")
             except Exception as e:
@@ -2398,7 +4354,7 @@ def public_profile(username):
                 communities = []  # Continue with empty communities list instead of failing
             
             # Check if viewing own profile
-            is_own_profile = 'username' in session and session['username'] == username
+            is_own_profile = 'username' in session and session['username'] == actual_username
             
             return render_template('public_profile.html',
                                  profile=profile_data,
@@ -2413,6 +4369,66 @@ def public_profile(username):
         logger.error(f"Traceback: {traceback.format_exc()}")
         flash('Error loading profile', 'error')
         return redirect(url_for('feed'))
+
+@app.route('/verify_email')
+def verify_email():
+    token = request.args.get('token', '')
+    if not token:
+        return render_template('verification_result.html', success=False, message='Invalid verification link')
+    email = verify_email_token(token)
+    if not email:
+        return render_template('verification_result.html', success=False, message='Verification link is invalid or expired')
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("UPDATE users SET email_verified=1, email_verified_at=? WHERE email=?", (datetime.now().isoformat(), email))
+            conn.commit()
+        return render_template('verification_result.html', success=True, message='Your email has been verified! You can close this tab.')
+    except Exception as e:
+        logger.error(f"verify_email error: {e}")
+        return render_template('verification_result.html', success=False, message='Server error while verifying email')
+
+@app.route('/resend_verification', methods=['POST'])
+@login_required
+def resend_verification():
+    username = session['username']
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT email, email_verification_sent_at FROM users WHERE username=?", (username,))
+            row = c.fetchone()
+            if not row:
+                return jsonify({'success': False, 'error': 'User not found'}), 404
+            email = row['email'] if hasattr(row, 'keys') else row[0]
+            sent_at = row['email_verification_sent_at'] if hasattr(row, 'keys') else (row[1] if len(row) > 1 else None)
+            # Rate limit: 10 minutes
+            if sent_at:
+                try:
+                    last = parsedate_to_datetime(sent_at) if isinstance(sent_at, str) and ',' in sent_at else datetime.fromisoformat(str(sent_at))
+                    if datetime.now() - last < timedelta(minutes=10):
+                        return jsonify({'success': False, 'error': 'Please wait before resending'}), 429
+                except Exception:
+                    pass
+            token = generate_email_token(email)
+            verify_url = f"{CANONICAL_SCHEME}://{CANONICAL_HOST}/verify_email?token={token}"
+            subject = "Verify your C-Point email"
+            html = f"""
+                <div style='font-family:Arial,sans-serif;font-size:14px;color:#111'>
+                  <p>Verify your email: <a href='{verify_url}'>{verify_url}</a></p>
+                </div>
+            """
+            ok = _send_email_via_resend(email, subject, html)
+            if ok:
+                try:
+                    c.execute("UPDATE users SET email_verification_sent_at=? WHERE username=?", (datetime.now().isoformat(), username))
+                    conn.commit()
+                except Exception:
+                    pass
+                return jsonify({'success': True})
+            return jsonify({'success': False, 'error': 'Failed to send email'}), 500
+    except Exception as e:
+        logger.error(f"resend_verification error: {e}")
+        return jsonify({'success': False, 'error': 'Server error'}), 500
 
 @app.route('/account_settings')
 @login_required
@@ -2454,8 +4470,7 @@ def profile():
             c.execute("""
                 SELECT u.username, u.email, u.subscription,
                        p.display_name, p.bio, p.location, p.website, 
-                       p.instagram, p.twitter, p.profile_picture, p.cover_photo,
-                       p.is_public
+                       p.instagram, p.twitter, p.profile_picture, p.cover_photo
                 FROM users u
                 LEFT JOIN user_profiles p ON u.username = p.username
                 WHERE u.username = ?
@@ -2492,7 +4507,7 @@ def api_profile_me():
         with get_db_connection() as conn:
             c = conn.cursor()
             c.execute("""
-                SELECT u.username, u.email, u.subscription,
+                SELECT u.username, u.email, u.subscription, u.email_verified,
                        p.display_name, p.bio, p.location, p.website,
                        p.instagram, p.twitter, p.profile_picture, p.cover_photo
                 FROM users u
@@ -2511,14 +4526,15 @@ def api_profile_me():
                 'username': username,
                 'email': get_val('email') if isinstance(row, dict) or hasattr(row, 'keys') else row[1],
                 'subscription': get_val('subscription') if isinstance(row, dict) or hasattr(row, 'keys') else row[2],
-                'display_name': get_val('display_name') if isinstance(row, dict) or hasattr(row, 'keys') else row[3],
-                'bio': get_val('bio') if isinstance(row, dict) or hasattr(row, 'keys') else row[4],
-                'location': get_val('location') if isinstance(row, dict) or hasattr(row, 'keys') else row[5],
-                'website': get_val('website') if isinstance(row, dict) or hasattr(row, 'keys') else row[6],
-                'instagram': get_val('instagram') if isinstance(row, dict) or hasattr(row, 'keys') else row[7],
-                'twitter': get_val('twitter') if isinstance(row, dict) or hasattr(row, 'keys') else row[8],
-                'profile_picture': get_val('profile_picture') if isinstance(row, dict) or hasattr(row, 'keys') else row[9],
-                'cover_photo': get_val('cover_photo') if isinstance(row, dict) or hasattr(row, 'keys') else row[10],
+                'email_verified': bool(get_val('email_verified') if isinstance(row, dict) or hasattr(row, 'keys') else row[3]),
+                'display_name': get_val('display_name') if isinstance(row, dict) or hasattr(row, 'keys') else row[4],
+                'bio': get_val('bio') if isinstance(row, dict) or hasattr(row, 'keys') else row[5],
+                'location': get_val('location') if isinstance(row, dict) or hasattr(row, 'keys') else row[6],
+                'website': get_val('website') if isinstance(row, dict) or hasattr(row, 'keys') else row[7],
+                'instagram': get_val('instagram') if isinstance(row, dict) or hasattr(row, 'keys') else row[8],
+                'twitter': get_val('twitter') if isinstance(row, dict) or hasattr(row, 'keys') else row[9],
+                'profile_picture': get_val('profile_picture') if isinstance(row, dict) or hasattr(row, 'keys') else row[10],
+                'cover_photo': get_val('cover_photo') if isinstance(row, dict) or hasattr(row, 'keys') else row[11],
             }
             
             # Cache profile for faster future requests
@@ -2568,7 +4584,6 @@ def upload_logo():
     except Exception as e:
         logger.error(f"Error uploading logo: {str(e)}")
         return jsonify({'success': False, 'error': 'Server error'})
-
 @app.route('/upload_signup_image', methods=['POST'])
 @login_required
 def upload_signup_image():
@@ -2608,7 +4623,6 @@ def check_profile_picture():
                 return f"No profile found for {username}"
     except Exception as e:
         return f"Error: {str(e)}"
-
 @app.route('/update_public_profile', methods=['POST'])
 @login_required
 def update_public_profile():
@@ -2653,7 +4667,8 @@ def update_public_profile():
                                 logger.warning(f"Could not delete old profile picture: {e}")
             
             # Check if profile exists
-            c.execute("SELECT username FROM user_profiles WHERE username=?", (username,))
+            ph = get_sql_placeholder()
+            c.execute(f"SELECT username FROM user_profiles WHERE username = {ph}", (username,))
             exists = c.fetchone()
             
             if exists:
@@ -2741,22 +4756,49 @@ def update_password():
 @login_required
 def update_email():
     username = session['username']
-    new_email = request.form.get('new_email')
+    new_email = request.form.get('new_email') or request.form.get('email')
     
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
-            
+            if not new_email:
+                return jsonify({'success': False, 'error': 'Email required'}), 400
+
             # Check if email is already taken
-            c.execute("SELECT username FROM users WHERE email=? AND username!=?", (new_email, username))
+            ph = get_sql_placeholder()
+            c.execute(f"SELECT username FROM users WHERE email={ph} AND username!={ph}", (new_email, username))
             existing_user = c.fetchone()
             if existing_user:
                 return jsonify({'success': False, 'error': 'Email is already in use'})
             
-            c.execute("UPDATE users SET email=? WHERE username=?", (new_email, username))
+            # Update email and mark as unverified
+            c.execute(f"UPDATE users SET email={ph}, email_verified=0 WHERE username={ph}", (new_email, username))
+            try:
+                c.execute(f"UPDATE users SET email_verification_sent_at={ph} WHERE username={ph}", (datetime.now().isoformat(), username))
+            except Exception:
+                pass
             conn.commit()
+
+            # Send verification email to new address
+            try:
+                token = generate_email_token(new_email)
+                verify_url = f"{CANONICAL_SCHEME}://{CANONICAL_HOST}/verify_email?token={token}"
+                subject = "Verify your new C-Point email"
+                html = f"""
+                    <div style='font-family:Arial,sans-serif;font-size:14px;color:#111'>
+                      <p>You requested to change the email on your C-Point account.</p>
+                      <p>Please verify your new email address by clicking below:</p>
+                      <p><a href='{verify_url}' style='display:inline-block;background:#111;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none'>Verify Email</a></p>
+                      <p>Or open this link: <a href='{verify_url}'>{verify_url}</a></p>
+                      <p>This link expires in 24 hours.</p>
+                    </div>
+                """
+                sent_ok = _send_email_via_resend(new_email, subject, html)
+            except Exception as e:
+                logger.warning(f"Could not send verification email for update_email: {e}")
+                sent_ok = False
             
-            return jsonify({'success': True})
+            return jsonify({'success': True, 'verification_sent': bool(sent_ok)})
     except Exception as e:
         logger.error(f"Error updating email for {username}: {str(e)}")
         return jsonify({'success': False, 'error': 'Server error'})
@@ -2767,20 +4809,36 @@ def update_professional():
     """Update professional information"""
     username = session['username']
     try:
-        role = request.form.get('role', '')
-        company = request.form.get('company', '')
-        industry = request.form.get('industry', '')
-        degree = request.form.get('degree', '')
-        school = request.form.get('school', '')
-        skills = request.form.get('skills', '')
-        linkedin = request.form.get('linkedin', '')
+        role = request.form.get('role', '').strip()
+        company = request.form.get('company', '').strip()
+        industry = request.form.get('industry', '').strip()
+        degree = request.form.get('degree', '').strip()
+        school = request.form.get('school', '').strip()
+        skills = request.form.get('skills', '').strip()
+        linkedin = request.form.get('linkedin', '').strip()
         experience = request.form.get('experience', type=int)
+        share_raw = request.form.get('share_community_id')
+        professional_share_community_id = None
+        try:
+            if share_raw not in (None, '', 'null', 'None'):
+                share_int = int(share_raw)
+                professional_share_community_id = share_int if share_int > 0 else None
+        except Exception:
+            professional_share_community_id = None
         
         with get_db_connection() as conn:
             c = conn.cursor()
-            c.execute("""UPDATE users SET role=?, company=?, industry=?, degree=?, school=?, 
-                        skills=?, linkedin=?, experience=? WHERE username=?""",
-                     (role, company, industry, degree, school, skills, linkedin, experience, username))
+            ph = get_sql_placeholder()
+            update_sql = f"""
+                UPDATE users SET 
+                    role={ph}, company={ph}, industry={ph}, degree={ph}, school={ph}, 
+                    skills={ph}, linkedin={ph}, experience={ph}, professional_share_community_id={ph}
+                WHERE username={ph}
+            """
+            c.execute(update_sql, (
+                role, company, industry, degree, school, skills, linkedin, experience,
+                professional_share_community_id, username
+            ))
             conn.commit()
         
         return jsonify({'success': True})
@@ -3329,12 +5387,13 @@ def get_messages():
     if not other_user_id:
         return jsonify({'success': False, 'error': 'Other user ID required'})
     
-    # Check cache first for faster message loading
-    cache_key = f"messages:{username}:{other_user_id}"
-    cached_messages = cache.get(cache_key)
-    if cached_messages:
-        logger.debug(f"🚀 Cache hit: messages for {username} ↔ {other_user_id}")
-        return jsonify({'success': True, 'messages': cached_messages})
+    # Skip cache for now - it's causing issues with message synchronization
+    # TODO: Fix cache key consistency between get_messages and invalidate_message_cache
+    # cache_key = f"messages:{username}:{other_user_id}"
+    # cached_messages = cache.get(cache_key)
+    # if cached_messages:
+    #     logger.debug(f"🚀 Cache hit: messages for {username} ↔ {other_user_id}")
+    #     return jsonify({'success': True, 'messages': cached_messages})
     
     try:
         with get_db_connection() as conn:
@@ -3379,17 +5438,16 @@ def get_messages():
             c.execute("UPDATE messages SET is_read=1 WHERE sender=? AND receiver=? AND is_read=0", (other_username, username))
             conn.commit()
             
-            # Cache messages for faster future loading
-            from redis_cache import MESSAGE_CACHE_TTL
-            cache.set(cache_key, messages, MESSAGE_CACHE_TTL)  # Optimized TTL
-            logger.debug(f"💾 Cached messages for {username} ↔ {other_user_id}")
+            # Skip caching for now - disabled due to cache key inconsistency
+            # from redis_cache import MESSAGE_CACHE_TTL
+            # cache.set(cache_key, messages, MESSAGE_CACHE_TTL)  # Optimized TTL
+            # logger.debug(f"💾 Cached messages for {username} ↔ {other_user_id}")
             
             return jsonify({'success': True, 'messages': messages})
             
     except Exception as e:
         logger.error(f"Error fetching messages: {str(e)}")
         return jsonify({'success': False, 'error': 'Failed to fetch messages'})
-
 @app.route('/send_message', methods=['POST'])
 @login_required
 def send_message():
@@ -3414,82 +5472,80 @@ def send_message():
             recipient_username = recipient['username'] if hasattr(recipient, 'keys') else recipient[0]
             
             # Check for duplicate message in last 5 seconds to prevent double-sends
-            if USE_MYSQL:
-                c.execute("""
-                    SELECT id FROM messages 
-                    WHERE sender = %s AND receiver = %s AND message = %s
-                    AND timestamp > DATE_SUB(NOW(), INTERVAL 5 SECOND)
-                    LIMIT 1
-                """, (username, recipient_username, message))
-            else:
-                c.execute("""
-                    SELECT id FROM messages 
-                    WHERE sender = ? AND receiver = ? AND message = ?
-                    AND timestamp > datetime('now', '-5 seconds')
-                    LIMIT 1
-                """, (username, recipient_username, message))
+            c.execute("""
+                SELECT id FROM messages 
+                WHERE sender = ? AND receiver = ? AND message = ?
+                AND timestamp > DATE_SUB(NOW(), INTERVAL 5 SECOND)
+                LIMIT 1
+            """, (username, recipient_username, message))
             
             if c.fetchone():
                 # Duplicate message detected, return success but don't insert
                 return jsonify({'success': True, 'message': 'Message already sent'})
             
             # Insert message
-            if USE_MYSQL:
-                c.execute("""
-                    INSERT INTO messages (sender, receiver, message, timestamp)
-                    VALUES (%s, %s, %s, NOW())
-                """, (username, recipient_username, message))
-            else:
-                c.execute("""
-                    INSERT INTO messages (sender, receiver, message, timestamp)
-                    VALUES (?, ?, ?, datetime('now'))
-                """, (username, recipient_username, message))
+            c.execute("""
+                INSERT INTO messages (sender, receiver, message, timestamp)
+                VALUES (?, ?, ?, NOW())
+            """, (username, recipient_username, message))
             
             conn.commit()
             
             # Invalidate message caches for faster updates
             invalidate_message_cache(username, recipient_username)
             
-            # Create notification for the recipient (prevent duplicates)
+            # Create or update notification for the recipient (race-safe)
             try:
-                # Check for duplicate notification in last 10 seconds
-                if USE_MYSQL:
+                # First try to update existing unread notification
+                c.execute("""
+                    UPDATE notifications
+                    SET created_at = NOW(), message = ?
+                    WHERE user_id = ? AND from_user = ? AND type = 'message' AND is_read = 0
+                """, (f"You have new messages from {username}", recipient_username, username))
+                if getattr(c, 'rowcount', 0) == 0:
+                    # Insert only if no unread exists (atomic with WHERE NOT EXISTS)
                     c.execute("""
-                        SELECT id FROM notifications 
-                        WHERE user_id = %s AND from_user = %s AND type = 'message'
-                        AND created_at > DATE_SUB(NOW(), INTERVAL 10 SECOND)
-                        LIMIT 1
-                    """, (recipient_username, username))
-                else:
-                    c.execute("""
-                        SELECT id FROM notifications 
-                        WHERE user_id = ? AND from_user = ? AND type = 'message'
-                        AND created_at > datetime('now', '-10 seconds')
-                        LIMIT 1
-                    """, (recipient_username, username))
-                
-                if not c.fetchone():
-                    if USE_MYSQL:
-                        c.execute("""
-                            INSERT INTO notifications (user_id, from_user, type, message, created_at)
-                            VALUES (%s, %s, 'message', %s, NOW())
-                        """, (recipient_username, username, f"New message from {username}"))
-                    else:
-                        c.execute("""
-                            INSERT INTO notifications (user_id, from_user, type, message, created_at)
-                            VALUES (?, ?, 'message', ?, datetime('now'))
-                        """, (recipient_username, username, f"New message from {username}"))
-                    conn.commit()
+                        INSERT INTO notifications (user_id, from_user, type, message, created_at)
+                        SELECT ?, ?, 'message', ?, NOW()
+                        WHERE NOT EXISTS (
+                          SELECT 1 FROM notifications WHERE user_id=? AND from_user=? AND type='message' AND is_read=0
+                        )
+                    """, (recipient_username, username, f"You have new messages from {username}", recipient_username, username))
+                conn.commit()
             except Exception as notif_e:
-                logger.warning(f"Could not create message notification: {notif_e}")
+                logger.warning(f"Could not create/update message notification: {notif_e}")
             
-            # Push notification to recipient (if subscribed)
+            # Push notification to recipient (if subscribed) — skip if recipient is actively viewing this thread
             try:
-                send_push_to_user(recipient_username, {
-                    'title': f'New message from {username}',
-                    'body': message[:120],
-                    'url': f'/user_chat/chat/{username}',
-                })
+                should_push = True
+                try:
+                    with get_db_connection() as conn2:
+                        c2 = conn2.cursor()
+                        # If recipient's active view is this chat, suppress push
+                        # Consider presence fresh if updated within last 20 seconds
+                        if USE_MYSQL:
+                            c2.execute("""
+                                SELECT 1 FROM active_chat_status 
+                                WHERE user=? AND peer=? AND updated_at > DATE_SUB(NOW(), INTERVAL 20 SECOND)
+                                LIMIT 1
+                            """, (recipient_username, username))
+                        else:
+                            c2.execute("""
+                                SELECT 1 FROM active_chat_status 
+                                WHERE user=? AND peer=? AND datetime(updated_at) > datetime('now','-20 seconds')
+                                LIMIT 1
+                            """, (recipient_username, username))
+                        if c2.fetchone():
+                            should_push = False
+                except Exception as pe:
+                    logger.warning(f"active chat presence check failed: {pe}")
+                if should_push:
+                    send_push_to_user(recipient_username, {
+                        'title': f'Message from {username}',
+                        'body': f'You have new messages from {username}',
+                        'url': f'/user_chat/chat/{username}',
+                        'tag': f'message-{username}',
+                    })
             except Exception as _e:
                 logger.warning(f"push send_message warn: {_e}")
 
@@ -3546,6 +5602,9 @@ def send_photo_message():
             file_path = os.path.join(uploads_dir, unique_filename)
             photo.save(file_path)
             
+            # Optimize the image for faster loading
+            optimize_image(file_path, max_width=1280, quality=80)
+            
             # Store relative path for database
             relative_path = f"message_photos/{unique_filename}"
             
@@ -3569,33 +5628,54 @@ def send_photo_message():
             
             conn.commit()
             
-            # Create notification for the recipient
+            # Create or update notification for the recipient (race-safe)
             try:
                 c.execute("""
-                    SELECT id FROM notifications 
-                    WHERE user_id = ? AND from_user = ? AND type = 'message'
-                    AND created_at > DATE_SUB(NOW(), INTERVAL 10 SECOND)
-                    LIMIT 1
-                """, (recipient_username, username))
-                
-                if not c.fetchone():
-                    notification_text = f"📷 {username} sent a photo" + (f": {message}" if message else "")
+                    UPDATE notifications
+                    SET created_at = NOW(), message = ?
+                    WHERE user_id = ? AND from_user = ? AND type = 'message' AND is_read = 0
+                """, (f"You have new messages from {username}", recipient_username, username))
+                if getattr(c, 'rowcount', 0) == 0:
                     c.execute("""
                         INSERT INTO notifications (user_id, from_user, type, message, created_at)
-                        VALUES (?, ?, 'message', ?, NOW())
-                    """, (recipient_username, username, notification_text))
-                    conn.commit()
+                        SELECT ?, ?, 'message', ?, NOW()
+                        WHERE NOT EXISTS (
+                          SELECT 1 FROM notifications WHERE user_id=? AND from_user=? AND type='message' AND is_read=0
+                        )
+                    """, (recipient_username, username, f"You have new messages from {username}", recipient_username, username))
+                conn.commit()
             except Exception as notif_e:
-                logger.warning(f"Could not create photo message notification: {notif_e}")
+                logger.warning(f"Could not create/update photo message notification: {notif_e}")
             
-            # Push notification
+            # Push notification — skip if recipient is actively viewing this thread
             try:
-                notification_body = f"📷 Photo" + (f": {message}" if message else "")
-                send_push_to_user(recipient_username, {
-                    'title': f'New message from {username}',
-                    'body': notification_body,
-                    'url': f'/user_chat/chat/{username}',
-                })
+                should_push = True
+                try:
+                    with get_db_connection() as conn2:
+                        c2 = conn2.cursor()
+                        if USE_MYSQL:
+                            c2.execute("""
+                                SELECT 1 FROM active_chat_status 
+                                WHERE user=? AND peer=? AND updated_at > DATE_SUB(NOW(), INTERVAL 20 SECOND)
+                                LIMIT 1
+                            """, (recipient_username, username))
+                        else:
+                            c2.execute("""
+                                SELECT 1 FROM active_chat_status 
+                                WHERE user=? AND peer=? AND datetime(updated_at) > datetime('now','-20 seconds')
+                                LIMIT 1
+                            """, (recipient_username, username))
+                        if c2.fetchone():
+                            should_push = False
+                except Exception as pe:
+                    logger.warning(f"active chat presence check (photo) failed: {pe}")
+                if should_push:
+                    send_push_to_user(recipient_username, {
+                        'title': f'Message from {username}',
+                        'body': f'You have new messages from {username}',
+                        'url': f'/user_chat/chat/{username}',
+                        'tag': f'message-{username}',
+                    })
             except Exception as _e:
                 logger.warning(f"push send_photo_message warn: {_e}")
 
@@ -3609,23 +5689,7 @@ def send_photo_message():
         logger.error(f"Error sending photo message: {str(e)}")
         return jsonify({'success': False, 'error': 'Failed to send photo'})
 
-@app.route('/uploads/message_photos/<filename>')
-@login_required
-def serve_message_photo(filename):
-    """Serve uploaded message photos with caching"""
-    try:
-        uploads_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads', 'message_photos')
-        response = send_from_directory(uploads_dir, filename)
-        
-        # Add cache headers for faster loading
-        from redis_cache import IMAGE_CACHE_TTL
-        response.headers['Cache-Control'] = f'public, max-age={IMAGE_CACHE_TTL}'
-        response.headers['ETag'] = f'"{filename}"'
-        
-        return response
-    except Exception as e:
-        logger.error(f"Error serving message photo {filename}: {e}")
-        return "Photo not found", 404
+# Message photos served by web server static mapping (/uploads/message_photos -> uploads/message_photos)
 
 @app.route('/debug/message_photos')
 @login_required
@@ -4037,7 +6101,6 @@ def add_community_member():
     except Exception as e:
         logger.error(f"Error adding community member for {username}: {str(e)}")
         return jsonify({'success': False, 'error': str(e)})
-
 @app.route('/update_member_role', methods=['POST'])
 @login_required
 def update_member_role():
@@ -4164,7 +6227,6 @@ def remove_community_member():
     except Exception as e:
         logger.error(f"Error removing community member for {username}: {str(e)}")
         return jsonify({'success': False, 'error': str(e)})
-
 @app.route('/update_user_password', methods=['POST'])
 @login_required
 def update_user_password():
@@ -4182,7 +6244,8 @@ def update_user_password():
         with get_db_connection() as conn:
             c = conn.cursor()
             # Check if target user exists
-            c.execute("SELECT id FROM users WHERE username = ?", (target_username,))
+            ph = get_sql_placeholder()
+            c.execute(f"SELECT id FROM users WHERE username = {ph}", (target_username,))
             user = c.fetchone()
             if not user:
                 return jsonify({'success': False, 'error': 'User not found'})
@@ -4297,43 +6360,72 @@ def reset_password_debug_hashed(username):
 def request_password_reset():
     """Handle password reset requests"""
     try:
-        data = request.get_json()
-        username = data.get('username')
-        email = data.get('email')
+        data = request.get_json(silent=True) or {}
+        username = None  # Deprecated: we now reset by email only
+        email = (data.get('email') if isinstance(data, dict) else None) or request.form.get('email') or request.args.get('email')
+        try:
+            logger.info(f"PW reset incoming: ct={request.content_type} user={username} has_email={bool(email)}")
+        except Exception:
+            pass
         
-        if not username or not email:
-            return jsonify({'success': False, 'message': 'Username and email are required'}), 400
+        if not email:
+            return jsonify({'success': True, 'message': 'If an account exists with the provided information, a reset link has been sent.'})
         
         with get_db_connection() as conn:
             c = conn.cursor()
+            ensure_password_reset_table(c)
             
-            # Check if user exists with matching email
-            c.execute("SELECT email FROM users WHERE username = ?", (username,))
+            # Find user by email
+            ph = get_sql_placeholder()
+            c.execute(f"SELECT username FROM users WHERE email = {ph}", (email,))
             result = c.fetchone()
             
             # For security, always return success even if user doesn't exist
-            if result and result['email'] == email:
+            if result:
+                matched_username = result['username'] if hasattr(result, 'keys') else result[0]
                 # Generate secure token
                 token = secrets.token_urlsafe(32)
                 created_at = datetime.now().isoformat()
                 
-                # Delete any existing unused tokens for this user
-                c.execute("DELETE FROM password_reset_tokens WHERE username = ? AND used = 0", (username,))
+                # Rate limiting: only one active token within 10 minutes
+                try:
+                    c.execute(f"SELECT created_at FROM password_reset_tokens WHERE username={ph} AND used=0 ORDER BY id DESC LIMIT 1", (matched_username,))
+                    last = c.fetchone()
+                    if last:
+                        last_time = datetime.fromisoformat(last['created_at'] if hasattr(last, 'keys') else last[0])
+                        if datetime.now() - last_time < timedelta(minutes=10):
+                            # Still respond success without sending a new email
+                            return jsonify({'success': True, 'message': 'If an account exists, a reset link has been sent.'})
+                except Exception:
+                    pass
+                # Delete any existing unused tokens for this user (cleanup)
+                c.execute(f"DELETE FROM password_reset_tokens WHERE username = {ph} AND used = 0", (matched_username,))
                 
                 # Insert new token
-                c.execute("""
+                ins_ph = ', '.join([ph, ph, ph, ph])
+                c.execute(f"""
                     INSERT INTO password_reset_tokens (username, email, token, created_at)
-                    VALUES (?, ?, ?, ?)
-                """, (username, email, token, created_at))
+                    VALUES ({ins_ph})
+                """, (matched_username, email, token, created_at))
                 conn.commit()
                 
-                # In a production environment, you would send an email here
-                # For now, we'll log the reset link
-                reset_link = f"{request.host_url}reset_password/{token}"
-                logger.info(f"Password reset link for {username}: {reset_link}")
-                
-                # TODO: Implement email sending
-                # send_password_reset_email(email, username, reset_link)
+                # Build reset link using canonical host
+                base = f"{CANONICAL_SCHEME}://{CANONICAL_HOST}" if CANONICAL_HOST else request.host_url.rstrip('/')
+                reset_link = f"{base}/reset_password/{token}"
+                logger.info(f"Password reset link generated for {matched_username}")
+
+                # Send email via Resend
+                subject = "Reset your C-Point password"
+                html = f"""
+                    <div style='font-family:Arial,sans-serif;font-size:14px;color:#111'>
+                      <p>We received a request to reset the password for your C-Point account.</p>
+                      <p><a href='{reset_link}' style='display:inline-block;background:#111;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none'>Reset Password</a></p>
+                      <p>Or open this link: <a href='{reset_link}'>{reset_link}</a></p>
+                      <p>This link expires in 24 hours. If you did not request this, you can ignore this email.</p>
+                    </div>
+                """
+                sent_ok = _send_email_via_resend(email, subject, html)
+                logger.info(f"PW reset email send status for {username}: {sent_ok}")
         
         # Always return success for security
         return jsonify({'success': True, 'message': 'If an account exists with the provided information, a reset link has been sent.'})
@@ -4350,10 +6442,11 @@ def reset_password(token):
         # Verify token is valid and not expired (24 hours)
         with get_db_connection() as conn:
             c = conn.cursor()
-            c.execute("""
+            ph = get_sql_placeholder()
+            c.execute(f"""
                 SELECT username, created_at, used 
                 FROM password_reset_tokens 
-                WHERE token = ?
+                WHERE token = {ph}
             """, (token,))
             result = c.fetchone()
             
@@ -4394,10 +6487,11 @@ def reset_password(token):
                 c = conn.cursor()
                 
                 # Verify token again
-                c.execute("""
+                ph = get_sql_placeholder()
+                c.execute(f"""
                     SELECT username, created_at, used 
                     FROM password_reset_tokens 
-                    WHERE token = ?
+                    WHERE token = {ph}
                 """, (token,))
                 result = c.fetchone()
                 
@@ -4413,11 +6507,11 @@ def reset_password(token):
                 
                 # Update password
                 hashed_password = generate_password_hash(new_password)
-                c.execute("UPDATE users SET password = ? WHERE username = ?", 
+                c.execute(f"UPDATE users SET password = {ph} WHERE username = {ph}", 
                          (hashed_password, result['username']))
                 
                 # Mark token as used
-                c.execute("UPDATE password_reset_tokens SET used = 1 WHERE token = ?", (token,))
+                c.execute(f"UPDATE password_reset_tokens SET used = 1 WHERE token = {ph}", (token,))
                 conn.commit()
                 
                 flash('Your password has been successfully reset. You can now log in with your new password.', 'success')
@@ -4812,8 +6906,6 @@ def check_password_status():
     except Exception as e:
         logger.error(f"Error checking password status: {str(e)}")
         return f"Error: {str(e)}", 500
-
-@app.route('/check_duplicate_users')
 def check_duplicate_users():
     """Check for duplicate usernames in the database - ADMIN ONLY"""
     if session.get('username') != 'admin':
@@ -5309,6 +7401,68 @@ def create_notification(user_id, from_user, notification_type, post_id=None, com
         logger.error(f"Error creating notification: {str(e)}")
 
 
+def notify_post_reply_recipients(*, post_id: int, from_user: str, community_id: int|None, parent_reply_id: int|None):
+    """Create in-app notifications and web push for post reply recipients.
+    Recipients: post owner and (if applicable) parent reply author; excludes sender; dedup within short window.
+    """
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            # Determine recipients
+            recipients = set()
+            c.execute("SELECT username FROM posts WHERE id=?", (post_id,))
+            row = c.fetchone()
+            post_owner = (row['username'] if hasattr(row,'keys') else row[0]) if row else None
+            if post_owner and post_owner != from_user:
+                recipients.add(post_owner)
+            parent_author = None
+            if parent_reply_id:
+                c.execute("SELECT username FROM replies WHERE id=?", (parent_reply_id,))
+                r2 = c.fetchone()
+                parent_author = (r2['username'] if hasattr(r2,'keys') else r2[0]) if r2 else None
+                if parent_author and parent_author not in (from_user, post_owner):
+                    recipients.add(parent_author)
+
+            # Insert notifications (dedupe 10s by same from_user/post/type/recipient)
+            for target in recipients:
+                try:
+                    if USE_MYSQL:
+                        c.execute("""
+                            SELECT id FROM notifications
+                            WHERE user_id=? AND from_user=? AND type='reply' AND post_id=?
+                              AND created_at > DATE_SUB(NOW(), INTERVAL 10 SECOND)
+                            LIMIT 1
+                        """, (target, from_user, post_id))
+                    else:
+                        c.execute("""
+                            SELECT id FROM notifications
+                            WHERE user_id=? AND from_user=? AND type='reply' AND post_id=?
+                              AND datetime(created_at) > datetime('now','-10 seconds')
+                            LIMIT 1
+                        """, (target, from_user, post_id))
+                    exists = c.fetchone()
+                    if not exists:
+                        c.execute("""
+                            INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message)
+                            VALUES (?, ?, 'reply', ?, ?, ?)
+                        """, (target, from_user, post_id, community_id, f"{from_user} replied") )
+                        conn.commit()
+                except Exception as ne:
+                    logger.warning(f"reply notify db error to {target}: {ne}")
+
+                # Push notify (tag per user+post to allow coalescing)
+                try:
+                    send_push_to_user(target, {
+                        'title': f'New reply from {from_user}',
+                        'body': 'Tap to view the conversation',
+                        'url': f'/post/{post_id}',
+                        'tag': f'post-reply-{post_id}-{target}'
+                    })
+                except Exception as pe:
+                    logger.warning(f"reply push error to {target}: {pe}")
+    except Exception as e:
+        logger.error(f"notify_post_reply_recipients error: {e}")
+
 @app.route('/notifications')
 @login_required
 def notifications_page():
@@ -5554,8 +7708,6 @@ def delete_read_notifications():
     except Exception as e:
         logger.error(f"Error deleting read notifications: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
-
-
 @app.route('/post_status', methods=['POST'])
 @login_required
 def post_status():
@@ -5563,6 +7715,7 @@ def post_status():
     content = request.form.get('content', '').strip()
     community_id_raw = request.form.get('community_id')
     community_id = int(community_id_raw) if community_id_raw else None
+    token = (request.form.get('dedupe_token') or '').strip()
     
     # If community_id is not in form, try to get it from referer URL
     if not community_id:
@@ -5605,10 +7758,36 @@ def post_status():
             else:
                         return redirect(url_for('feed') + '?error=Content or image is required!')
     
-    timestamp = datetime.now().strftime('%d-%m-%Y %H:%M:%S')
+    # Store in DB-friendly ISO format to avoid MySQL zero-datetime coercion
+    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
+
+            # Dedupe: if a token is provided and seen in last 60 seconds for this user, skip insert
+            if token:
+                try:
+                    if USE_MYSQL:
+                        c.execute("""
+                            SELECT 1 FROM recent_post_tokens
+                            WHERE token=? AND username=? AND created_at > DATE_SUB(NOW(), INTERVAL 60 SECOND)
+                            LIMIT 1
+                        """, (token, username))
+                    else:
+                        c.execute("""
+                            SELECT 1 FROM recent_post_tokens
+                            WHERE token=? AND username=? AND datetime(created_at) > datetime('now','-60 seconds')
+                            LIMIT 1
+                        """, (token, username))
+                    if c.fetchone():
+                        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                            return jsonify({'success': True, 'message': 'Duplicate suppressed'}), 200
+                        else:
+                            if community_id:
+                                return redirect(url_for('community_feed', community_id=community_id))
+                            return redirect(url_for('feed'))
+                except Exception as de:
+                    logger.warning(f"post dedupe check failed: {de}")
             
             # If community_id is provided, verify user is member (admin bypass)
             if community_id and username != 'admin':
@@ -5645,6 +7824,19 @@ def post_status():
             for post in community_posts:
                 logger.info(f"  Post {post['id']}: {post['username']} - {post['content'][:50]}... (community_id: {post['community_id']})")
 
+            # Record token to prevent duplicates
+            try:
+                if token:
+                    c.execute("INSERT IGNORE INTO recent_post_tokens (token, username) VALUES (?, ?)", (token, username))
+                    conn.commit()
+            except Exception:
+                try:
+                    if token:
+                        c.execute("INSERT OR IGNORE INTO recent_post_tokens (token, username) VALUES (?, ?)", (token, username))
+                        conn.commit()
+                except Exception as te:
+                    logger.warning(f"post dedupe token write failed: {te}")
+
             # Notify community members (excluding creator)
             try:
                 c.execute("""
@@ -5659,6 +7851,7 @@ def post_status():
                         'title': 'New community post',
                         'body': f"{username}: {content[:100]}",
                         'url': f"/community_feed_react/{community_id}",
+                        'tag': f"community-post-{community_id}"
                     })
             except Exception as _e:
                 logger.warning(f"push notify community warn: {_e}")
@@ -5723,10 +7916,13 @@ def post_reply():
     if not content and not image_path:
         return jsonify({'success': False, 'error': 'Content or image is required!'}), 400
 
-    # Use a consistent timestamp format for storage and a display-friendly one for the response
+    # Idempotency token (optional)
+    dedupe_token = (request.form.get('dedupe_token') or '').strip()
+
+    # Use DB-friendly ISO for storage; frontend will format for display
     now = datetime.now()
-    timestamp_db = now.strftime('%m.%d.%y %H:%M')
-    timestamp_display = now.strftime('%m/%d/%y %I:%M %p')
+    timestamp_db = now.strftime('%Y-%m-%d %H:%M:%S')
+    timestamp_display = now.strftime('%d-%m-%Y')
 
     try:
         with get_db_connection() as conn:
@@ -5741,20 +7937,65 @@ def post_reply():
             community_id = post_data['community_id'] if post_data else None
             
             parent_reply_id = request.form.get('parent_reply_id', type=int)
+
+            # Strong dedupe: token-based and content-based within window
+            try:
+                if dedupe_token:
+                    if USE_MYSQL:
+                        c.execute("""
+                            SELECT 1 FROM recent_reply_tokens
+                            WHERE token=? AND username=? AND created_at > DATE_SUB(NOW(), INTERVAL 60 SECOND)
+                            LIMIT 1
+                        """, (dedupe_token, username))
+                    else:
+                        c.execute("""
+                            SELECT 1 FROM recent_reply_tokens
+                            WHERE token=? AND username=? AND datetime(created_at) > datetime('now','-60 seconds')
+                            LIMIT 1
+                        """, (dedupe_token, username))
+                    if c.fetchone():
+                        return jsonify({'success': True, 'message': 'Duplicate suppressed'}), 200
+                if content:
+                    if USE_MYSQL:
+                        c.execute("""
+                            SELECT id FROM replies
+                            WHERE post_id=? AND username=? AND IFNULL(parent_reply_id,0)=IFNULL(?,0)
+                              AND content=? AND timestamp > DATE_SUB(NOW(), INTERVAL 30 SECOND)
+                            LIMIT 1
+                        """, (post_id, username, parent_reply_id, content))
+                    else:
+                        c.execute("""
+                            SELECT id FROM replies
+                            WHERE post_id=? AND username=? AND IFNULL(parent_reply_id,0)=IFNULL(?,0)
+                              AND content=? AND datetime(timestamp) > datetime('now','-30 seconds')
+                            LIMIT 1
+                        """, (post_id, username, parent_reply_id, content))
+                    if c.fetchone():
+                        return jsonify({'success': True, 'message': 'Duplicate suppressed'}), 200
+            except Exception as de:
+                logger.warning(f"reply dedupe check failed: {de}")
             c.execute("INSERT INTO replies (post_id, username, content, image_path, timestamp, community_id, parent_reply_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
                       (post_id, username, content, image_path, timestamp_db, community_id, parent_reply_id))
             reply_id = c.lastrowid
+
+            # Record token
+            try:
+                if dedupe_token:
+                    c.execute("INSERT IGNORE INTO recent_reply_tokens (token, username) VALUES (?, ?)", (dedupe_token, username))
+                    conn.commit()
+            except Exception:
+                try:
+                    if dedupe_token:
+                        c.execute("INSERT OR IGNORE INTO recent_reply_tokens (token, username) VALUES (?, ?)", (dedupe_token, username))
+                        conn.commit()
+                except Exception as te:
+                    logger.warning(f"reply dedupe token write failed: {te}")
             
-            # Get post owner to send notification
-            c.execute("SELECT username FROM posts WHERE id = ?", (post_id,))
-            post_owner = c.fetchone()
-            if post_owner and post_owner['username'] != username:
-                # Insert notification directly in this transaction
-                c.execute("""
-                    INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                """, (post_owner['username'], username, 'reply', post_id, community_id,
-                      f"{username} replied to your post"))
+            # Notify recipients (post owner and parent reply author)
+            try:
+                notify_post_reply_recipients(post_id=post_id, from_user=username, community_id=community_id, parent_reply_id=parent_reply_id)
+            except Exception as ne:
+                logger.warning(f"notify recipients failed: {ne}")
             
             conn.commit()
 
@@ -5769,7 +8010,7 @@ def post_reply():
                 'username': username,
                 'content': content,
                 'image_path': image_path,
-                'timestamp': timestamp_display,  # Use the display-friendly timestamp
+                'timestamp': timestamp_db,  # Return precise timestamp for clients
                 'reactions': {},
                 'user_reaction': None,
                 'parent_reply_id': parent_reply_id
@@ -6305,9 +8546,6 @@ def report_issue():
     except Exception as e:
         logger.error(f"Error reporting issue: {str(e)}")
         return jsonify({'success': False, 'error': str(e)})
-
-@app.route('/get_community_issues')
-@login_required
 def get_community_issues():
     """Get issues for a specific community"""
     try:
@@ -6485,13 +8723,15 @@ def get_university_ads():
             ads = []
             ad_ids = []
             for row in c.fetchall():
+                img = row['image_url'] if hasattr(row, 'keys') else row[4]
+                link = row['link_url'] if hasattr(row, 'keys') else row[5]
                 ads.append({
-                    'id': row['id'],
-                    'title': row['title'],
-                    'description': row['description'],
-                    'price': row['price'],
-                    'image': row['image_url'],
-                    'link': row['link_url'] or '#'
+                    'id': row['id'] if hasattr(row, 'keys') else row[0],
+                    'title': row['title'] if hasattr(row, 'keys') else row[1],
+                    'description': row['description'] if hasattr(row, 'keys') else row[2],
+                    'price': row['price'] if hasattr(row, 'keys') else row[3],
+                    'image_url': img,
+                    'link_url': link or '#'
                 })
                 ad_ids.append(row['id'])
             
@@ -6512,24 +8752,24 @@ def get_university_ads():
                         'title': 'University Hoodie',
                         'description': 'Official university hoodie',
                         'price': '$49.99',
-                        'image': 'https://via.placeholder.com/250x180/2d8a7e/ffffff?text=University+Hoodie',
-                        'link': '#'
+                        'image_url': 'https://via.placeholder.com/800x600/2d8a7e/ffffff?text=University+Hoodie',
+                        'link_url': '#'
                     },
                     {
                         'id': 0,
                         'title': 'Campus T-Shirt',
                         'description': 'Comfortable cotton t-shirt',
                         'price': '$24.99',
-                        'image': 'https://via.placeholder.com/250x180/4db6ac/ffffff?text=Campus+Tee',
-                        'link': '#'
+                        'image_url': 'https://via.placeholder.com/800x600/4db6ac/ffffff?text=Campus+Tee',
+                        'link_url': '#'
                     },
                     {
                         'id': 0,
                         'title': 'Student Backpack',
                         'description': 'Durable laptop backpack',
                         'price': '$79.99',
-                        'image': 'https://via.placeholder.com/250x180/37a69c/ffffff?text=Backpack',
-                        'link': '#'
+                        'image_url': 'https://via.placeholder.com/800x600/37a69c/ffffff?text=Backpack',
+                        'link_url': '#'
                     }
                 ]
             
@@ -7004,7 +9244,8 @@ def appoint_community_admin(community_id):
             c = conn.cursor()
             
             # Check if user exists
-            c.execute("SELECT 1 FROM users WHERE username = ?", (new_admin,))
+            ph = get_sql_placeholder()
+            c.execute(f"SELECT username FROM users WHERE username = {ph}", (new_admin,))
             if not c.fetchone():
                 return jsonify({'success': False, 'message': 'User not found'}), 404
             
@@ -7187,7 +9428,19 @@ def create_club(community_id):
 def join_club(club_id):
     """Join or leave a club"""
     username = session.get('username')
-    
+    # Enforce verified email (mobile join path)
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT email_verified FROM users WHERE username=?", (username,))
+            row = c.fetchone()
+            if row is not None:
+                is_verified = bool(row['email_verified'] if hasattr(row, 'keys') else row[0])
+                if not is_verified:
+                    return jsonify({'success': False, 'error': 'please verify your email'}), 403
+    except Exception:
+        pass
+
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
@@ -7872,9 +10125,6 @@ def admin_ads_overview():
         logger.error(f"Error loading admin ads overview: {e}")
         flash('Error loading ads overview', 'error')
         return redirect(url_for('admin'))
-
-@app.route('/get_calendar_events')
-@login_required
 def get_calendar_events():
     """Get all calendar events"""
     try:
@@ -8133,7 +10383,34 @@ def get_links():
                     'can_delete': link['username'] == username or username == 'admin'
                 })
             
-            return jsonify({'success': True, 'links': links})
+            # Also return docs (PDFs)
+            docs = []
+            try:
+                if community_id:
+                    c.execute("""
+                        SELECT id, username, file_path, description, created_at
+                        FROM useful_docs
+                        WHERE community_id = ?
+                        ORDER BY created_at DESC
+                    """, (community_id,))
+                else:
+                    c.execute("""
+                        SELECT id, username, file_path, description, created_at
+                        FROM useful_docs
+                        WHERE community_id IS NULL
+                        ORDER BY created_at DESC
+                    """)
+                for d in c.fetchall() or []:
+                    docs.append({
+                        'id': d['id'] if hasattr(d,'keys') else d[0],
+                        'username': d['username'] if hasattr(d,'keys') else d[1],
+                        'file_path': d['file_path'] if hasattr(d,'keys') else d[2],
+                        'description': d['description'] if hasattr(d,'keys') else d[3],
+                        'created_at': d['created_at'] if hasattr(d,'keys') else d[4]
+                    })
+            except Exception as de:
+                logger.warning(f"get_docs error: {de}")
+            return jsonify({'success': True, 'links': links, 'docs': docs})
             
     except Exception as e:
         logger.error(f"Error getting links: {str(e)}")
@@ -8172,6 +10449,86 @@ def add_link():
     except Exception as e:
         logger.error(f"Error adding link: {str(e)}")
         return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/upload_doc', methods=['POST'])
+@login_required
+def upload_doc():
+    """Upload a PDF document for Useful Links & Docs"""
+    try:
+        username = session['username']
+        community_id = request.form.get('community_id')
+        description = (request.form.get('description') or '').strip()
+        if 'file' not in request.files:
+            return jsonify({'success': False, 'error': 'No file provided'})
+        f = request.files['file']
+        if not f or f.filename == '':
+            return jsonify({'success': False, 'error': 'No file selected'})
+        # Only PDFs by extension
+        from werkzeug.utils import secure_filename
+        orig = secure_filename(f.filename)
+        ext = orig.rsplit('.', 1)[-1].lower() if '.' in orig else ''
+        if ext != 'pdf':
+            return jsonify({'success': False, 'error': 'Only PDF files are allowed'})
+        safe_name = f"doc_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{username}.pdf"
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        upload_dir = os.path.join(base_dir, 'uploads', 'docs')
+        os.makedirs(upload_dir, exist_ok=True)
+        file_path = os.path.join(upload_dir, safe_name)
+        try:
+            f.save(file_path)
+        except Exception as se:
+            logger.error(f"upload save error: {se}")
+            return jsonify({'success': False, 'error': 'Could not save file on server'})
+        rel_path = f"docs/{safe_name}"
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("""
+                INSERT INTO useful_docs (community_id, username, file_path, description, created_at)
+                VALUES (?, ?, ?, ?, ?)
+            """, (community_id if community_id else None, username, rel_path, description, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+            conn.commit()
+        return jsonify({'success': True, 'message': 'Document uploaded', 'path': f"/uploads/{rel_path}"})
+    except Exception as e:
+        logger.error(f"upload_doc error: {e}")
+        return jsonify({'success': False, 'error': 'Server error'})
+
+@app.route('/delete_doc', methods=['POST'])
+@login_required
+def delete_doc():
+    """Delete a previously uploaded PDF document"""
+    try:
+        username = session.get('username')
+        doc_id = request.form.get('doc_id')
+        if not doc_id:
+            return jsonify({'success': False, 'error': 'doc_id required'})
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            # Fetch doc owner and path
+            c.execute("SELECT username, file_path FROM useful_docs WHERE id = ?", (doc_id,))
+            row = c.fetchone()
+            if not row:
+                return jsonify({'success': False, 'error': 'Document not found'})
+            owner = row['username'] if hasattr(row, 'keys') else row[0]
+            path = row['file_path'] if hasattr(row, 'keys') else row[1]
+            if username != owner and username != 'admin':
+                return jsonify({'success': False, 'error': 'Forbidden'})
+            # Delete DB row
+            c.execute("DELETE FROM useful_docs WHERE id = ?", (doc_id,))
+            conn.commit()
+        # Attempt to delete file on disk
+        try:
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            disk_path = os.path.join(base_dir, 'uploads', path)
+            if os.path.exists(disk_path):
+                os.remove(disk_path)
+        except Exception as fe:
+            logger.warning(f"Could not remove doc file {path}: {fe}")
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"Error deleting doc: {e}")
+        return jsonify({'success': False, 'error': 'Server error'})
+
+# Docs served by web server static mapping (/uploads/docs -> uploads/docs)
 
 @app.route('/delete_link', methods=['POST'])
 @login_required
@@ -8609,7 +10966,6 @@ def get_event_rsvp_details():
     except Exception as e:
         logger.error(f"Error getting RSVP details: {str(e)}")
         return jsonify({'success': False, 'message': str(e)}), 500
-
 @app.route('/delete_calendar_event', methods=['POST'])
 @login_required
 def delete_calendar_event():
@@ -8736,7 +11092,8 @@ def edit_post():
             owner = row['username'] if hasattr(row, 'keys') else row[0]
             if owner != username and username != 'admin':
                 return jsonify({'success': False, 'error': 'Unauthorized!'}), 403
-            c.execute("UPDATE posts SET content = ?, timestamp = ? WHERE id = ?", (new_content, datetime.now().strftime('%Y-%m-%d %H:%M:%S'), post_id))
+            # Do not alter the original timestamp when editing content
+            c.execute("UPDATE posts SET content = ? WHERE id = ?", (new_content, post_id))
             conn.commit()
         return jsonify({'success': True})
     except Exception as e:
@@ -8916,12 +11273,27 @@ def get_post():
 @app.route('/communities')
 @login_required
 def communities():
-    """Main communities page"""
+    """Main communities page: Desktop -> HTML template; Mobile -> React SPA"""
     username = session['username']
     try:
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        dist_dir = os.path.join(base_dir, 'client', 'dist')
-        return send_from_directory(dist_dir, 'index.html')
+        # Allow manual override via query param
+        view = (request.args.get('view') or '').lower().strip()
+        if view == 'html':
+            return render_template('communities.html', username=username)
+        if view == 'react':
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            dist_dir = os.path.join(base_dir, 'client', 'dist')
+            return send_from_directory(dist_dir, 'index.html')
+
+        ua = request.headers.get('User-Agent', '')
+        is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
+        if is_mobile:
+            # Serve React SPA for mobile
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            dist_dir = os.path.join(base_dir, 'client', 'dist')
+            return send_from_directory(dist_dir, 'index.html')
+        # Desktop: render HTML template with side menu
+        return render_template('communities.html', username=username)
     except Exception as e:
         logger.error(f"Error in communities for {username}: {str(e)}")
         abort(500)
@@ -8931,6 +11303,19 @@ def communities():
 def create_community():
     """Create a new community"""
     username = session.get('username')
+    # Enforce verified email
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT email_verified FROM users WHERE username=?", (username,))
+            row = c.fetchone()
+            verified = False
+            if row is not None:
+                verified = bool(row['email_verified'] if hasattr(row, 'keys') else row[0])
+            if not verified:
+                return jsonify({'success': False, 'error': 'please verify your email'}), 403
+    except Exception as _e:
+        pass
     name = request.form.get('name')
     community_type = request.form.get('type')
     description = request.form.get('description', '')
@@ -8968,33 +11353,36 @@ def create_community():
             join_code = generate_join_code()
             
             # Create the community (support types like 'gym', 'crossfit', etc.)
-            c.execute("""
+            placeholders = ', '.join([get_sql_placeholder()] * 14)
+            c.execute(f"""
                 INSERT INTO communities (name, type, creator_username, join_code, created_at, description, location, background_path, template, background_color, text_color, accent_color, card_color, parent_community_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES ({placeholders})
             """, (name, community_type, username, join_code, datetime.now().strftime('%m.%d.%y %H:%M'), description, location, background_path, template, background_color, text_color, accent_color, card_color, parent_community_id if parent_community_id and parent_community_id != 'none' else None))
             
             community_id = c.lastrowid
             
             # Get user's ID and add creator as member
-            c.execute("SELECT id FROM users WHERE username = ?", (username,))
+            c.execute(f"SELECT id FROM users WHERE username = {get_sql_placeholder()}", (username,))
             user_row = c.fetchone()
             if user_row:
                 user_id = user_row[0] if not hasattr(user_row, 'keys') else user_row['id']
-                c.execute("""
+                uc_ph = ', '.join([get_sql_placeholder()] * 3)
+                c.execute(f"""
                     INSERT INTO user_communities (user_id, community_id, joined_at)
-                    VALUES (?, ?, ?)
+                    VALUES ({uc_ph})
                 """, (user_id, community_id, datetime.now().strftime('%m.%d.%y %H:%M')))
             
             # Ensure admin is also a member of every community
             c.execute("SELECT id FROM users WHERE username = 'admin'")
             admin_row = c.fetchone()
             if admin_row:
-                admin_id = admin_row[0]
-                c.execute("SELECT 1 FROM user_communities WHERE user_id=? AND community_id=?", (admin_id, community_id))
+                admin_id = admin_row['id'] if hasattr(admin_row, 'keys') else admin_row[0]
+                c.execute(f"SELECT 1 FROM user_communities WHERE user_id={get_sql_placeholder()} AND community_id={get_sql_placeholder()}", (admin_id, community_id))
                 if not c.fetchone():
-                    c.execute("""
+                    uc2_ph = ', '.join([get_sql_placeholder()] * 3)
+                    c.execute(f"""
                         INSERT INTO user_communities (user_id, community_id, joined_at)
-                        VALUES (?, ?, ?)
+                        VALUES ({uc2_ph})
                     """, (admin_id, community_id, datetime.now().strftime('%m.%d.%y %H:%M')))
             
             conn.commit()
@@ -9079,14 +11467,25 @@ def get_user_communities_with_members():
             user_id = user['id'] if hasattr(user, 'keys') else user[0]
             logger.info(f"User ID: {user_id}")
             
-            # Get communities the user belongs to
-            c.execute("""
-                SELECT c.id, c.name, c.type, c.creator_username
-                FROM communities c
-                JOIN user_communities uc ON c.id = uc.community_id
-                WHERE uc.user_id = ?
-                ORDER BY c.name
-            """, (user_id,))
+            # Get communities based on admin status
+            if is_app_admin(username):
+                # Admin sees all communities
+                c.execute("""
+                    SELECT c.id, c.name, c.type, c.creator_username
+                    FROM communities c
+                    ORDER BY c.name
+                """)
+            else:
+                # Regular users see only their communities
+                # Use correct placeholder based on database type
+                placeholder = '%s' if USE_MYSQL else '?'
+                c.execute(f"""
+                    SELECT c.id, c.name, c.type, c.creator_username
+                    FROM communities c
+                    JOIN user_communities uc ON c.id = uc.community_id
+                    WHERE uc.user_id = {placeholder}
+                    ORDER BY c.name
+                """, (user_id,))
             
             communities = c.fetchall()
             logger.info(f"Found {len(communities)} communities for user {username}")
@@ -9146,15 +11545,26 @@ def get_user_communities():
         with get_db_connection() as conn:
             c = conn.cursor()
             
-            # Get user's communities with creator information and active status
-            c.execute("""
-                SELECT c.id, c.name, c.type, c.join_code, c.created_at, c.creator_username, c.is_active
-                FROM communities c
-                JOIN user_communities uc ON c.id = uc.community_id
-                JOIN users u ON uc.user_id = u.id
-                WHERE u.username = ?
-                ORDER BY c.created_at DESC
-            """, (username,))
+            # Check if user is admin
+            if is_app_admin(username):
+                # Admin sees all communities
+                c.execute("""
+                    SELECT c.id, c.name, c.type, c.join_code, c.created_at, c.creator_username, c.is_active
+                    FROM communities c
+                    ORDER BY c.created_at DESC
+                """)
+            else:
+                # Regular users see only their communities
+                # Use correct placeholder based on database type
+                placeholder = '%s' if USE_MYSQL else '?'
+                c.execute(f"""
+                    SELECT c.id, c.name, c.type, c.join_code, c.created_at, c.creator_username, c.is_active
+                    FROM communities c
+                    JOIN user_communities uc ON c.id = uc.community_id
+                    JOIN users u ON uc.user_id = u.id
+                    WHERE u.username = {placeholder}
+                    ORDER BY c.created_at DESC
+                """, (username,))
             
             communities = []
             for row in c.fetchall():
@@ -9190,7 +11600,7 @@ def edit_community():
             c = conn.cursor()
             
             # Check if user is the creator of this community
-            c.execute("SELECT creator_username FROM communities WHERE id = ?", (community_id,))
+            c.execute(f"SELECT creator_username FROM communities WHERE id = {get_sql_placeholder()} ", (community_id,))
             community = c.fetchone()
             
             if not community:
@@ -9313,13 +11723,13 @@ def delete_community():
                 return jsonify({'success': False, 'error': 'Only the community creator can delete the community'}), 403
             
             # Delete all posts in the community
-            c.execute("DELETE FROM posts WHERE community_id = ?", (community_id,))
+            c.execute(f"DELETE FROM posts WHERE community_id = {get_sql_placeholder()} ", (community_id,))
             
             # Delete all user_communities entries for this community
-            c.execute("DELETE FROM user_communities WHERE community_id = ?", (community_id,))
+            c.execute(f"DELETE FROM user_communities WHERE community_id = {get_sql_placeholder()} ", (community_id,))
             
             # Delete the community itself
-            c.execute("DELETE FROM communities WHERE id = ?", (community_id,))
+            c.execute(f"DELETE FROM communities WHERE id = {get_sql_placeholder()} ", (community_id,))
             
             conn.commit()
             
@@ -9328,7 +11738,6 @@ def delete_community():
     except Exception as e:
         logger.error(f"Error deleting community: {str(e)}")
         return jsonify({'success': False, 'error': 'Failed to delete community'}), 500
-
 @app.route('/migrate_parent_communities')
 @login_required
 def migrate_parent_communities():
@@ -9601,6 +12010,19 @@ def debug_posts():
 def join_community():
     """Join a community using a community code"""
     username = session.get('username')
+    # Enforce verified email
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT email_verified FROM users WHERE username=?", (username,))
+            r = c.fetchone()
+            ver = False
+            if r is not None:
+                ver = bool(r['email_verified'] if hasattr(r, 'keys') else r[0])
+            if not ver:
+                return jsonify({'success': False, 'error': 'please verify your email'}), 403
+    except Exception as _e:
+        pass
     community_code = request.form.get('community_code', '').strip()
     
     logger.info(f"Join community request from {username} with code: {community_code}")
@@ -9613,7 +12035,7 @@ def join_community():
             c = conn.cursor()
             
             # Get user ID
-            c.execute("SELECT id FROM users WHERE username = ?", (username,))
+            c.execute(f"SELECT id FROM users WHERE username = {get_sql_placeholder()}", (username,))
             user = c.fetchone()
             if not user:
                 return jsonify({'success': False, 'error': 'User not found'})
@@ -9621,9 +12043,9 @@ def join_community():
             user_id = user['id'] if hasattr(user, 'keys') else user[0]
             
             # Find community by join code
-            c.execute("""
+            c.execute(f"""
                 SELECT id, name, join_code FROM communities 
-                WHERE join_code = ?
+                WHERE join_code = {get_sql_placeholder()}
             """, (community_code,))
             
             community = c.fetchone()
@@ -9635,14 +12057,14 @@ def join_community():
             community_name = community['name']
             
             # Get community type
-            c.execute("SELECT type FROM communities WHERE id = ?", (community_id,))
+            c.execute(f"SELECT type FROM communities WHERE id = {get_sql_placeholder()} ", (community_id,))
             community_type_result = c.fetchone()
             community_type = community_type_result['type'] if community_type_result else 'public'
             
             # Check if user is already a member
-            c.execute("""
+            c.execute(f"""
                 SELECT id FROM user_communities 
-                WHERE user_id = ? AND community_id = ?
+                WHERE user_id = {get_sql_placeholder()} AND community_id = {get_sql_placeholder()}
             """, (user_id, community_id))
             
             existing_membership = c.fetchone()
@@ -9650,33 +12072,34 @@ def join_community():
                 return jsonify({'success': False, 'error': 'You are already a member of this community'})
             
             # Add user to community as a member
-            c.execute("""
+            c.execute(f"""
                 INSERT INTO user_communities (user_id, community_id, joined_at)
-                VALUES (?, ?, NOW())
-            """, (user_id, community_id))
+                VALUES ({get_sql_placeholder()}, {get_sql_placeholder()}, { 'NOW()' if USE_MYSQL else get_sql_placeholder() })
+            """, (user_id, community_id) if USE_MYSQL else (user_id, community_id, datetime.now().strftime('%m.%d.%y %H:%M')))
 
             # If the community has a parent, auto-add membership to the parent community as well
             try:
-                c.execute("SELECT parent_community_id FROM communities WHERE id = ?", (community_id,))
+                c.execute(f"SELECT parent_community_id FROM communities WHERE id = {get_sql_placeholder()} ", (community_id,))
                 parent_row = c.fetchone()
                 parent_id = parent_row['parent_community_id'] if parent_row else None
                 if parent_id:
                     # Check if already a member of the parent
-                    c.execute("SELECT 1 FROM user_communities WHERE user_id = ? AND community_id = ?", (user_id, parent_id))
+                    c.execute(f"SELECT 1 FROM user_communities WHERE user_id = {get_sql_placeholder()} AND community_id = {get_sql_placeholder()} ", (user_id, parent_id))
                     if not c.fetchone():
-                        c.execute("""
+                        c.execute(f"""
                             INSERT INTO user_communities (user_id, community_id, joined_at)
-                            VALUES (?, ?, NOW())
-                        """, (user_id, parent_id))
+                            VALUES ({get_sql_placeholder()}, {get_sql_placeholder()}, { 'NOW()' if USE_MYSQL else get_sql_placeholder() })
+                        """, (user_id, parent_id) if USE_MYSQL else (user_id, parent_id, datetime.now().strftime('%m.%d.%y %H:%M')))
 
                         # Notify user about parent membership
                         try:
-                            c.execute("SELECT name FROM communities WHERE id = ?", (parent_id,))
+                            c.execute(f"SELECT name FROM communities WHERE id = {get_sql_placeholder()} ", (parent_id,))
                             parent_name_row = c.fetchone()
                             parent_name = parent_name_row['name'] if parent_name_row else 'Parent Community'
-                            c.execute("""
+                            notif_ph = ', '.join([get_sql_placeholder()] * 6)
+                            c.execute(f"""
                                 INSERT INTO notifications (user_id, from_user, type, community_id, message, link)
-                                VALUES (?, ?, ?, ?, ?, ?)
+                                VALUES ({notif_ph})
                             """, (
                                 username,
                                 'system',
@@ -9964,50 +12387,7 @@ def not_found_error(e):
 
 # Add this after the existing routes, before the error handlers
 
-@app.route('/uploads/<path:filename>')
-def uploaded_file(filename):
-    """Serve uploaded images with proper headers for mobile compatibility"""
-    try:
-        # Log the request for debugging
-        logger.info(f"Image request: {filename} from {request.headers.get('User-Agent', 'Unknown')}")
-        
-        # Clean the filename (remove any 'uploads/' prefix if present)
-        clean_filename = filename.replace('uploads/', '') if filename.startswith('uploads/') else filename
-        
-        # Construct the full path
-        file_path = os.path.join(app.config['UPLOAD_FOLDER'], clean_filename)
-        
-        # Check if file exists
-        if not os.path.exists(file_path):
-            logger.error(f"Image file not found: {file_path}")
-            # Try alternative paths
-            alt_paths = [
-                os.path.join(app.config['UPLOAD_FOLDER'], filename),
-                os.path.join('static', 'uploads', clean_filename),
-                os.path.join('static', 'uploads', filename)
-            ]
-            for alt_path in alt_paths:
-                if os.path.exists(alt_path):
-                    logger.info(f"Found image at alternative path: {alt_path}")
-                    return send_from_directory(os.path.dirname(alt_path), os.path.basename(alt_path))
-            
-            return "Image not found", 404
-        
-        # Get file info
-        file_size = os.path.getsize(file_path)
-        logger.info(f"Serving image: {clean_filename}, size: {file_size} bytes")
-        
-        # Set proper headers for mobile compatibility
-        response = send_from_directory(app.config['UPLOAD_FOLDER'], clean_filename)
-        response.headers['Cache-Control'] = 'public, max-age=31536000'  # Cache for 1 year
-        response.headers['Access-Control-Allow-Origin'] = '*'
-        response.headers['Content-Type'] = 'image/jpeg'  # Will be overridden by Flask if needed
-        
-        return response
-        
-    except Exception as e:
-        logger.error(f"Error serving image {filename}: {str(e)}")
-        return "Error serving image", 500
+# Uploads served by web server static mapping (/uploads -> static/uploads)
 
 @app.route('/community_feed_smart/<int:community_id>')
 @login_required
@@ -10025,7 +12405,6 @@ def community_feed_smart(community_id):
     except Exception as e:
         logger.error(f"Error in community_feed_smart: {e}")
         abort(500)
-
 @app.route('/api/community_feed/<int:community_id>')
 @login_required
 def api_community_feed(community_id):
@@ -10075,6 +12454,26 @@ def api_community_feed(community_id):
             # Enrich posts
             for post in posts:
                 post_id = post['id']
+                # Provide a precise display_timestamp (YYYY-MM-DD HH:MM:SS) for frontend smart formatting
+                try:
+                    raw_ts = (post.get('timestamp') or post.get('created_at') or '').strip()
+                    if raw_ts and not raw_ts.startswith('0000-00-00'):
+                        from datetime import datetime as _dt
+                        dt = None
+                        try:
+                            dt = _dt.strptime(raw_ts[:19].replace('T',' '), '%Y-%m-%d %H:%M:%S')
+                        except Exception:
+                            for fmt in ('%d-%m-%Y %H:%M:%S','%d-%m-%Y %H:%M','%Y-%m-%d %H:%M','%m.%d.%y %H:%M','%Y-%m-%d','%Y-%m-%dT%H:%M:%S'):
+                                try:
+                                    dt = _dt.strptime(raw_ts.replace('T',' '), fmt)
+                                    break
+                                except Exception:
+                                    continue
+                        post['display_timestamp'] = dt.strftime('%Y-%m-%d %H:%M:%S') if dt else raw_ts[:19].replace('T',' ')
+                    else:
+                        post['display_timestamp'] = ''
+                except Exception:
+                    post['display_timestamp'] = ''
                 # Add profile picture for post author
                 try:
                     c.execute("SELECT profile_picture FROM user_profiles WHERE username = ?", (post['username'],))
@@ -10164,9 +12563,401 @@ def api_community_feed(community_id):
     except Exception as e:
         logger.error(f"Error in api_community_feed for {community_id}: {e}")
         return jsonify({'success': False, 'error': 'Server error'}), 500
+
+# Product Development APIs
+@app.route('/api/product_posts', methods=['GET'])
+@login_required
+def api_product_posts():
+    section = request.args.get('section', 'updates').lower()
+    if section not in ('updates','feedback'):
+        section = 'updates'
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            c.execute(f"SELECT id, username, content, created_at FROM product_posts WHERE section={ph} ORDER BY id DESC LIMIT 100", (section,))
+            posts = c.fetchall() or []
+            post_ids = [ (p['id'] if hasattr(p,'keys') else p[0]) for p in posts ]
+            replies_map = {}
+            if post_ids:
+                placeholders = ','.join([get_sql_placeholder()]*len(post_ids))
+                c.execute(f"SELECT id, post_id, username, content, created_at FROM product_replies WHERE post_id IN ({placeholders}) ORDER BY id DESC", tuple(post_ids))
+                for r in c.fetchall() or []:
+                    pid = r['post_id'] if hasattr(r,'keys') else r[1]
+                    replies_map.setdefault(pid, []).append({
+                        'id': r['id'] if hasattr(r,'keys') else r[0],
+                        'username': r['username'] if hasattr(r,'keys') else r[2],
+                        'content': r['content'] if hasattr(r,'keys') else r[3],
+                        'created_at': r['created_at'] if hasattr(r,'keys') else r[4],
+                    })
+            out = []
+            for p in posts:
+                pid = p['id'] if hasattr(p,'keys') else p[0]
+                out.append({
+                    'id': pid,
+                    'username': p['username'] if hasattr(p,'keys') else p[1],
+                    'content': p['content'] if hasattr(p,'keys') else p[2],
+                    'created_at': p['created_at'] if hasattr(p,'keys') else p[3],
+                    'replies': replies_map.get(pid, [])
+                })
+            return jsonify({'success': True, 'posts': out})
+    except Exception as e:
+        logger.error(f"product posts error: {e}")
+        return jsonify({'success': False, 'error': 'server error'}), 500
+
+@app.route('/api/product_post', methods=['POST'])
+@login_required
+def api_create_product_post():
+    username = session.get('username')
+    section = (request.form.get('section') or '').lower()
+    content = (request.form.get('content') or '').strip()
+    if section not in ('updates','feedback'):
+        return jsonify({'success': False, 'error': 'invalid section'}), 400
+    if not content:
+        return jsonify({'success': False, 'error': 'content required'}), 400
+    # Only Admin/Paulo can post to updates
+    if section == 'updates' and username not in ('admin','Paulo','paulo'):
+        return jsonify({'success': False, 'error': 'Forbidden'}), 403
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            ph = get_sql_placeholder()
+            c.execute(f"INSERT INTO product_posts (username, section, content, created_at) VALUES ({ph},{ph},{ph},{ph})", (username, section, content, now))
+            pid = c.lastrowid
+            conn.commit()
+            return jsonify({'success': True, 'post': {'id': pid, 'username': username, 'content': content, 'created_at': now, 'replies': []}})
+    except Exception as e:
+        logger.error(f"create product post error: {e}")
+        return jsonify({'success': False, 'error': 'server error'}), 500
+
+@app.route('/api/product_reply', methods=['POST'])
+@login_required
+def api_create_product_reply():
+    username = session.get('username')
+    post_id = request.form.get('post_id', type=int)
+    content = (request.form.get('content') or '').strip()
+    if not post_id or not content:
+        return jsonify({'success': False, 'error': 'post_id and content required'}), 400
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            ph = get_sql_placeholder()
+            c.execute(f"INSERT INTO product_replies (post_id, username, content, created_at) VALUES ({ph},{ph},{ph},{ph})", (post_id, username, content, now))
+            rid = c.lastrowid
+            conn.commit()
+            return jsonify({'success': True, 'reply': {'id': rid, 'post_id': post_id, 'username': username, 'content': content, 'created_at': now}})
+    except Exception as e:
+        logger.error(f"create product reply error: {e}")
+        return jsonify({'success': False, 'error': 'server error'}), 500
+
+@app.route('/api/product_post_edit', methods=['POST'])
+@login_required
+def api_edit_product_post():
+    try:
+        username = session.get('username')
+        post_id = request.form.get('post_id', type=int)
+        content = (request.form.get('content') or '').strip()
+        if not post_id or not content:
+            return jsonify({'success': False, 'error': 'post_id and content required'}), 400
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            c.execute(f"SELECT username FROM product_posts WHERE id={ph}", (post_id,))
+            row = c.fetchone()
+            if not row:
+                return jsonify({'success': False, 'error': 'Post not found'}), 404
+            owner = row['username'] if hasattr(row,'keys') else row[0]
+            if username not in ('admin','Paulo','paulo') and username != owner:
+                return jsonify({'success': False, 'error': 'Forbidden'}), 403
+            c.execute(f"UPDATE product_posts SET content={ph} WHERE id={ph}", (content, post_id))
+            conn.commit()
+            return jsonify({'success': True, 'post': {'id': post_id, 'content': content }})
+    except Exception as e:
+        logger.error(f"edit product post error: {e}")
+        return jsonify({'success': False, 'error': 'server error'}), 500
+
+@app.route('/api/product_post_delete', methods=['POST'])
+@login_required
+def api_delete_product_post():
+    try:
+        username = session.get('username')
+        post_id = request.form.get('post_id', type=int)
+        if not post_id:
+            return jsonify({'success': False, 'error': 'post_id required'}), 400
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            c.execute(f"SELECT username FROM product_posts WHERE id={ph}", (post_id,))
+            row = c.fetchone()
+            if not row:
+                return jsonify({'success': False, 'error': 'Post not found'}), 404
+            owner = row['username'] if hasattr(row,'keys') else row[0]
+            if username not in ('admin','Paulo','paulo') and username != owner:
+                return jsonify({'success': False, 'error': 'Forbidden'}), 403
+            # Delete post (replies should cascade if FK set; otherwise explicit delete)
+            try:
+                c.execute(f"DELETE FROM product_posts WHERE id={ph}", (post_id,))
+            except Exception:
+                # Fallback: delete replies then post
+                c.execute(f"DELETE FROM product_replies WHERE post_id={ph}", (post_id,))
+                c.execute(f"DELETE FROM product_posts WHERE id={ph}", (post_id,))
+            conn.commit()
+            return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"delete product post error: {e}")
+        return jsonify({'success': False, 'error': 'server error'}), 500
+
+@app.route('/api/product_reply_edit', methods=['POST'])
+@login_required
+def api_edit_product_reply():
+    try:
+        username = session.get('username')
+        reply_id = request.form.get('reply_id', type=int)
+        content = (request.form.get('content') or '').strip()
+        if not reply_id or not content:
+            return jsonify({'success': False, 'error': 'reply_id and content required'}), 400
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            c.execute(f"SELECT username FROM product_replies WHERE id={ph}", (reply_id,))
+            row = c.fetchone()
+            if not row:
+                return jsonify({'success': False, 'error': 'Reply not found'}), 404
+            owner = row['username'] if hasattr(row,'keys') else row[0]
+            if username not in ('admin','Paulo','paulo') and username != owner:
+                return jsonify({'success': False, 'error': 'Forbidden'}), 403
+            c.execute(f"UPDATE product_replies SET content={ph} WHERE id={ph}", (content, reply_id))
+            conn.commit()
+            return jsonify({'success': True, 'reply': {'id': reply_id, 'content': content }})
+    except Exception as e:
+        logger.error(f"edit product reply error: {e}")
+        return jsonify({'success': False, 'error': 'server error'}), 500
+
+@app.route('/api/product_reply_delete', methods=['POST'])
+@login_required
+def api_delete_product_reply():
+    try:
+        username = session.get('username')
+        reply_id = request.form.get('reply_id', type=int)
+        if not reply_id:
+            return jsonify({'success': False, 'error': 'reply_id required'}), 400
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            c.execute(f"SELECT username FROM product_replies WHERE id={ph}", (reply_id,))
+            row = c.fetchone()
+            if not row:
+                return jsonify({'success': False, 'error': 'Reply not found'}), 404
+            owner = row['username'] if hasattr(row,'keys') else row[0]
+            if username not in ('admin','Paulo','paulo') and username != owner:
+                return jsonify({'success': False, 'error': 'Forbidden'}), 403
+            c.execute(f"DELETE FROM product_replies WHERE id={ph}", (reply_id,))
+            conn.commit()
+            return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"delete product reply error: {e}")
+        return jsonify({'success': False, 'error': 'server error'}), 500
+
+@app.route('/api/product_polls', methods=['GET'])
+@login_required
+def api_product_polls():
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT id, username, question, options_json, created_at, closed, allow_multiple FROM product_polls ORDER BY id DESC LIMIT 100")
+            polls = []
+            for r in c.fetchall() or []:
+                poll = {
+                    'id': r['id'] if hasattr(r,'keys') else r[0],
+                    'username': r['username'] if hasattr(r,'keys') else r[1],
+                    'question': r['question'] if hasattr(r,'keys') else r[2],
+                    'options': json.loads(r['options_json'] if hasattr(r,'keys') else r[3] or '[]'),
+                    'created_at': r['created_at'] if hasattr(r,'keys') else r[4],
+                    'closed': (r['closed'] if hasattr(r,'keys') else r[5]) in (1, '1', True),
+                    'allow_multiple': (r['allow_multiple'] if hasattr(r,'keys') else r[6]) in (1,'1',True)
+                }
+                # Vote counts per option
+                try:
+                    with get_db_connection() as conn2:
+                        c2 = conn2.cursor()
+                        c2.execute("SELECT option_index, COUNT(*) as cnt FROM product_poll_votes WHERE poll_id=? GROUP BY option_index", (poll['id'],))
+                        counts_map = { (row['option_index'] if hasattr(row,'keys') else row[0]): (row['cnt'] if hasattr(row,'keys') else row[1]) for row in (c2.fetchall() or []) }
+                        poll['option_counts'] = [int(counts_map.get(i, 0)) for i in range(len(poll['options']))]
+                except Exception:
+                    poll['option_counts'] = [0]*len(poll['options'])
+                polls.append(poll)
+            return jsonify({'success': True, 'polls': polls})
+    except Exception as e:
+        logger.error(f"product polls error: {e}")
+        return jsonify({'success': False, 'error': 'server error'}), 500
+
+@app.route('/api/product_poll', methods=['POST'])
+@login_required
+def api_create_product_poll():
+    username = session.get('username')
+    if (username or '').lower() not in ('admin','paulo'):
+        return jsonify({'success': False, 'error': 'Forbidden'}), 403
+    question = (request.form.get('question') or '').strip()
+    raw_options = request.form.getlist('options') or []
+    options = [o.strip() for o in raw_options if o and o.strip()]
+    if not question or len(options) < 2:
+        return jsonify({'success': False, 'error': 'Question and at least 2 options required'}), 400
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            allow_multiple = 1 if (request.form.get('allow_multiple') in ('1','true','on','yes')) else 0
+            notify_all = 1 if (request.form.get('notify_all') in ('1','true','on','yes')) else 0
+            c.execute("INSERT INTO product_polls (username, question, options_json, created_at, allow_multiple) VALUES (?,?,?,?,?)",
+                      (username, question, json.dumps(options), now, allow_multiple))
+            poll_id = c.lastrowid
+            conn.commit()
+        try:
+            # Send notification to all users with push subscription
+            if notify_all:
+                with get_db_connection() as conn2:
+                    c2 = conn2.cursor()
+                    c2.execute("SELECT DISTINCT username FROM push_subscriptions")
+                    for row in c2.fetchall() or []:
+                        u = row['username'] if hasattr(row,'keys') else row[0]
+                        send_push_to_user(u, {
+                            'title': 'New Product Poll',
+                            'body': question,
+                            'url': f"{CANONICAL_SCHEME}://{CANONICAL_HOST}/product_development"
+                        })
+        except Exception as ne:
+            logger.warning(f"poll notify error: {ne}")
+        return jsonify({'success': True, 'poll': { 'id': poll_id, 'username': username, 'question': question, 'options': options, 'created_at': now, 'closed': False, 'allow_multiple': bool(allow_multiple), 'option_counts': [0]*len(options) }})
+    except Exception as e:
+        logger.error(f"create product poll error: {e}")
+        return jsonify({'success': False, 'error': 'server error'}), 500
+
+@app.route('/api/product_poll_vote', methods=['POST'])
+@login_required
+def api_product_poll_vote():
+    username = session.get('username')
+    poll_id = request.form.get('poll_id', type=int)
+    option_index = request.form.get('option_index', type=int)
+    if poll_id is None or option_index is None:
+        return jsonify({'success': False, 'error': 'poll_id and option_index required'}), 400
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            # Ensure poll exists and option index is valid
+            c.execute("SELECT options_json, closed, allow_multiple FROM product_polls WHERE id=?", (poll_id,))
+            prow = c.fetchone()
+            if not prow:
+                return jsonify({'success': False, 'error': 'Poll not found'}), 404
+            opts = json.loads(prow['options_json'] if hasattr(prow,'keys') else prow[0] or '[]')
+            closed = (prow['closed'] if hasattr(prow,'keys') else prow[1]) in (1, '1', True)
+            allow_multiple = (prow['allow_multiple'] if hasattr(prow,'keys') else prow[2]) in (1,'1',True)
+            if closed:
+                return jsonify({'success': False, 'error': 'Poll is closed'}), 400
+            if option_index < 0 or option_index >= len(opts):
+                return jsonify({'success': False, 'error': 'Invalid option'}), 400
+            if allow_multiple:
+                # One vote per option per user (unique on poll_id, username, option_index)
+                try:
+                    c.execute("INSERT INTO product_poll_votes (poll_id, username, option_index, created_at) VALUES (?, ?, ?, ?)", (poll_id, username, option_index, now))
+                except Exception:
+                    # Already voted on this option, ignore
+                    pass
+            else:
+                # Single choice: ensure only one record for user per poll
+                try:
+                    c.execute("DELETE FROM product_poll_votes WHERE poll_id=? AND username=?", (poll_id, username))
+                    c.execute("INSERT INTO product_poll_votes (poll_id, username, option_index, created_at) VALUES (?, ?, ?, ?)", (poll_id, username, option_index, now))
+                except Exception:
+                    c.execute("UPDATE product_poll_votes SET option_index=?, created_at=? WHERE poll_id=? AND username=?", (option_index, now, poll_id, username))
+            conn.commit()
+            # Return fresh counts
+            c.execute("SELECT option_index, COUNT(*) as cnt FROM product_poll_votes WHERE poll_id=? GROUP BY option_index", (poll_id,))
+            counts_map = { (row['option_index'] if hasattr(row,'keys') else row[0]): (row['cnt'] if hasattr(row,'keys') else row[1]) for row in (c.fetchall() or []) }
+            counts = [int(counts_map.get(i, 0)) for i in range(len(opts))]
+            return jsonify({'success': True, 'option_counts': counts})
+    except Exception as e:
+        logger.error(f"poll vote error: {e}")
+        return jsonify({'success': False, 'error': 'server error'}), 500
+
+@app.route('/api/product_poll_close', methods=['POST'])
+@login_required
+def api_product_poll_close():
+    username = (session.get('username') or '').lower()
+    if username not in ('admin','paulo'):
+        return jsonify({'success': False, 'error': 'Forbidden'}), 403
+    poll_id = request.form.get('poll_id', type=int)
+    if not poll_id:
+        return jsonify({'success': False, 'error': 'poll_id required'}), 400
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("UPDATE product_polls SET closed=1 WHERE id=?", (poll_id,))
+            conn.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"poll close error: {e}")
+        return jsonify({'success': False, 'error': 'server error'}), 500
+
+@app.route('/api/product_poll_delete', methods=['POST'])
+@login_required
+def api_product_poll_delete():
+    username = (session.get('username') or '').lower()
+    if username not in ('admin','paulo'):
+        return jsonify({'success': False, 'error': 'Forbidden'}), 403
+    poll_id = request.form.get('poll_id', type=int)
+    if not poll_id:
+        return jsonify({'success': False, 'error': 'poll_id required'}), 400
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("DELETE FROM product_polls WHERE id=?", (poll_id,))
+            conn.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"poll delete error: {e}")
+        return jsonify({'success': False, 'error': 'server error'}), 500
+
+# Edit reply content
+@app.route('/edit_reply', methods=['POST'])
+@login_required
+def edit_reply():
+    username = session.get('username')
+    try:
+        reply_id = request.form.get('reply_id', type=int)
+        new_content = (request.form.get('content') or '').strip()
+        if not reply_id:
+            return jsonify({'success': False, 'error': 'reply_id required'}), 400
+        if new_content == '':
+            return jsonify({'success': False, 'error': 'content required'}), 400
+
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            # Verify ownership or admin
+            c.execute(f"SELECT username FROM replies WHERE id={ph}", (reply_id,))
+            row = c.fetchone()
+            if not row:
+                return jsonify({'success': False, 'error': 'Reply not found'}), 404
+            owner = row['username'] if hasattr(row, 'keys') else row[0]
+            if username != owner and username != 'admin':
+                return jsonify({'success': False, 'error': 'Forbidden'}), 403
+
+            # Update content
+            c.execute(f"UPDATE replies SET content={ph} WHERE id={ph}", (new_content, reply_id))
+            conn.commit()
+
+            # Return minimal updated reply
+            return jsonify({'success': True, 'reply': {'id': reply_id, 'content': new_content}})
+    except Exception as e:
+        logger.error(f"Error editing reply {username}: {e}")
+        return jsonify({'success': False, 'error': 'Server error'}), 500
 def api_home_timeline():
     """Aggregate timeline across all communities the user belongs to for the last 48 hours."""
     username = session.get('username')
+    logger.info(f"api_home_timeline called for user: {username}")
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
@@ -10276,6 +13067,21 @@ def api_home_timeline():
                 post_id = post['id']
                 comm_id = post.get('community_id')
                 post['community_name'] = id_to_name.get(comm_id)
+                # Normalize image paths for client consumption
+                try:
+                    p = post.get('image_path')
+                    if p:
+                        p_str = str(p).strip()
+                        if p_str.startswith('http://') or p_str.startswith('https://'):
+                            pass
+                        elif p_str.startswith('/uploads') or p_str.startswith('/static'):
+                            post['image_path'] = p_str
+                        elif p_str.startswith('uploads/'):
+                            post['image_path'] = '/' + p_str
+                        else:
+                            post['image_path'] = f"/uploads/{p_str}"
+                except Exception:
+                    pass
                 
                 # Convert timestamp to DD-MM-YYYY format for display
                 try:
@@ -10292,7 +13098,19 @@ def api_home_timeline():
                 try:
                     c.execute("SELECT profile_picture FROM user_profiles WHERE username = ?", (post['username'],))
                     pp = c.fetchone()
-                    post['profile_picture'] = pp['profile_picture'] if pp and 'profile_picture' in pp.keys() else None
+                    _pp = pp['profile_picture'] if pp and 'profile_picture' in pp.keys() else None
+                    if _pp:
+                        _pp_str = str(_pp).strip()
+                        if _pp_str.startswith('http://') or _pp_str.startswith('https://'):
+                            post['profile_picture'] = _pp_str
+                        elif _pp_str.startswith('/uploads') or _pp_str.startswith('/static'):
+                            post['profile_picture'] = _pp_str
+                        elif _pp_str.startswith('uploads/'):
+                            post['profile_picture'] = '/' + _pp_str
+                        else:
+                            post['profile_picture'] = f"/uploads/{_pp_str}"
+                    else:
+                        post['profile_picture'] = None
                 except Exception:
                     post['profile_picture'] = None
 
@@ -10359,7 +13177,14 @@ def community_feed_react(community_id):
     try:
         base_dir = os.path.dirname(os.path.abspath(__file__))
         dist_dir = os.path.join(base_dir, 'client', 'dist')
-        return send_from_directory(dist_dir, 'index.html')
+        resp = send_from_directory(dist_dir, 'index.html')
+        try:
+            resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+            resp.headers['Pragma'] = 'no-cache'
+            resp.headers['Expires'] = '0'
+        except Exception:
+            pass
+        return resp
     except Exception as e:
         logger.error(f"Error serving React community feed: {str(e)}")
         abort(500)
@@ -10386,7 +13211,14 @@ def react_post_detail(post_id):
     try:
         base_dir = os.path.dirname(os.path.abspath(__file__))
         dist_dir = os.path.join(base_dir, 'client', 'dist')
-        return send_from_directory(dist_dir, 'index.html')
+        resp = send_from_directory(dist_dir, 'index.html')
+        try:
+            resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+            resp.headers['Pragma'] = 'no-cache'
+            resp.headers['Expires'] = '0'
+        except Exception:
+            pass
+        return resp
     except Exception as e:
         logger.error(f"Error serving React post detail: {str(e)}")
         abort(500)
@@ -10397,7 +13229,14 @@ def react_members_page(community_id):
     try:
         base_dir = os.path.dirname(os.path.abspath(__file__))
         dist_dir = os.path.join(base_dir, 'client', 'dist')
-        return send_from_directory(dist_dir, 'index.html')
+        resp = send_from_directory(dist_dir, 'index.html')
+        try:
+            resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+            resp.headers['Pragma'] = 'no-cache'
+            resp.headers['Expires'] = '0'
+        except Exception:
+            pass
+        return resp
     except Exception as e:
         logger.error(f"Error serving React community members page: {str(e)}")
         abort(500)
@@ -10417,6 +13256,44 @@ def static_uploaded_file(filename):
     except Exception as e:
         logger.error(f"Error serving static image {filename}: {str(e)}")
         return "Error serving image", 500
+
+@app.route('/uploads/<path:filename>')
+def uploaded_file_compat(filename):
+    """Compatibility route for uploads served under /uploads.
+    Tries static/uploads first (default save location), then root uploads for special folders.
+    """
+    try:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        static_dir = os.path.join(base_dir, 'static', 'uploads')
+        # Serve from static/uploads if present
+        candidate = os.path.join(static_dir, filename)
+        if os.path.exists(candidate):
+            resp = send_from_directory(static_dir, filename)
+            resp.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
+            return resp
+        # Fallbacks for message_photos and docs saved under root uploads/
+        root_uploads = os.path.join(base_dir, 'uploads')
+        mp_dir = os.path.join(root_uploads, 'message_photos')
+        docs_dir = os.path.join(root_uploads, 'docs')
+        if filename.startswith('message_photos/'):
+            sub = filename.split('message_photos/', 1)[1]
+            full = os.path.join(mp_dir, sub)
+            if os.path.exists(full):
+                resp = send_from_directory(mp_dir, sub)
+                resp.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
+                return resp
+        if filename.startswith('docs/'):
+            sub = filename.split('docs/', 1)[1]
+            full = os.path.join(docs_dir, sub)
+            if os.path.exists(full):
+                resp = send_from_directory(docs_dir, sub)
+                resp.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
+                return resp
+        # Not found
+        return 'Not found', 404
+    except Exception as e:
+        logger.error(f"Error in uploaded_file_compat for {filename}: {e}")
+        return 'Error', 500
 
 @app.route('/static/community_backgrounds/<path:filename>')
 def community_background_file(filename):
@@ -10498,6 +13375,16 @@ def your_sports():
 def check_gym_membership():
     """Check if user belongs to a gym community"""
     username = session.get('username')
+    logger.info(f"check_gym_membership called for user: {username}")
+    
+    # Special access for Paulo (case-insensitive)
+    if username and username.lower() == 'paulo':
+        logger.info(f"Paulo detected, granting gym access")
+        return jsonify({
+            'hasGymAccess': True,
+            'username': username,
+            'special_access': True
+        })
     
     try:
         with get_db_connection() as conn:
@@ -10519,54 +13406,384 @@ def check_gym_membership():
         logger.error(f"Error checking gym membership for {username}: {str(e)}")
         return jsonify({'hasGymAccess': False, 'error': str(e)}), 500
 
-@app.route('/api/user_parent_community')
+@app.route('/api/simple_test')
 @login_required
-def get_user_parent_community():
-    """Get the user's parent community information"""
+def simple_community_test():
+    """Super simple test to see what communities exist"""
     username = session.get('username')
     
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
             
-            # Get user's communities and their parent relationships
+            # Get ALL parent communities
             c.execute("""
-                SELECT DISTINCT 
-                    COALESCE(pc.id, c.id) as community_id,
-                    COALESCE(pc.name, c.name) as community_name,
-                    COALESCE(pc.type, c.type) as community_type,
-                    c.parent_community_id,
-                    CASE 
-                        WHEN c.parent_community_id IS NOT NULL THEN pc.name
-                        ELSE c.name
-                    END as display_name
+                SELECT id, name, type
+                FROM communities
+                WHERE parent_community_id IS NULL
+                ORDER BY name
+            """)
+            all_parents = c.fetchall()
+            
+            return jsonify({
+                'success': True,
+                'username': username,
+                'total_parent_communities': len(all_parents),
+                'parent_communities': [
+                    {'id': c.get('id'), 'name': c.get('name'), 'type': c.get('type')}
+                    for c in all_parents
+                ]
+            })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/dashboard_communities_test')
+@login_required
+def dashboard_communities_test():
+    """Test endpoint to show what communities should appear on dashboard"""
+    username = session.get('username')
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # First, get ALL communities to understand the structure
+            c.execute("""
+                SELECT id, name, type, parent_community_id
+                FROM communities
+                ORDER BY CASE WHEN parent_community_id IS NULL THEN 0 ELSE 1 END, name
+            """)
+            all_communities = c.fetchall()
+            
+            # Get user's memberships
+            placeholder = get_sql_placeholder()
+            c.execute(f"""
+                SELECT c.id, c.name, c.type, c.parent_community_id
                 FROM communities c
                 JOIN user_communities uc ON c.id = uc.community_id
                 JOIN users u ON uc.user_id = u.id
-                LEFT JOIN communities pc ON c.parent_community_id = pc.id
-                WHERE u.username = ?
-                ORDER BY 
-                    CASE WHEN c.parent_community_id IS NULL THEN 0 ELSE 1 END,
-                    display_name
-                LIMIT 1
+                WHERE u.username = {placeholder}
+                ORDER BY c.name
             """, (username,))
+            user_communities = c.fetchall()
             
-            community = c.fetchone()
+            # Determine what should show on dashboard
+            dashboard_communities = []
+            seen_parents = set()
             
-            if community:
-                return jsonify({
-                    'success': True,
-                    'parentCommunity': {
-                        'id': community['community_id'],
-                        'name': community['display_name'],
-                        'type': community['community_type']
-                    }
-                })
+            for comm in user_communities:
+                comm_id = comm.get('id')
+                parent_id = comm.get('parent_community_id')
+                
+                if parent_id is None:
+                    # This is a standalone/parent community - show it
+                    if comm_id not in seen_parents:
+                        dashboard_communities.append({
+                            'id': comm_id,
+                            'name': comm.get('name'),
+                            'type': comm.get('type'),
+                            'reason': 'Standalone community (no parent)'
+                        })
+                        seen_parents.add(comm_id)
+                else:
+                    # This is a child community - show its parent
+                    if parent_id not in seen_parents:
+                        # Find parent details
+                        parent = next((c for c in all_communities if c.get('id') == parent_id), None)
+                        if parent:
+                            dashboard_communities.append({
+                                'id': parent_id,
+                                'name': parent.get('name'),
+                                'type': parent.get('type'),
+                                'reason': f"Parent of {comm.get('name')}"
+                            })
+                            seen_parents.add(parent_id)
+            
+            return jsonify({
+                'success': True,
+                'username': username,
+                'all_communities_count': len(all_communities),
+                'user_communities_count': len(user_communities),
+                'dashboard_should_show': dashboard_communities,
+                'dashboard_count': len(dashboard_communities),
+                'all_communities': [
+                    {
+                        'id': c.get('id'),
+                        'name': c.get('name'),
+                        'type': c.get('type'),
+                        'parent_id': c.get('parent_community_id')
+                    } for c in all_communities
+                ],
+                'user_communities': [
+                    {
+                        'id': c.get('id'),
+                        'name': c.get('name'),
+                        'type': c.get('type'),
+                        'parent_id': c.get('parent_community_id')
+                    } for c in user_communities
+                ]
+            })
+            
+    except Exception as e:
+        logger.error(f"Dashboard communities test error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/all_communities_debug')
+@login_required
+def get_all_communities_debug():
+    """Debug endpoint to see ALL communities and user memberships"""
+    username = session.get('username')
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Get ALL communities in the database
+            c.execute("""
+                SELECT id, name, type, parent_community_id
+                FROM communities
+                ORDER BY name
+            """)
+            all_communities = c.fetchall()
+            
+            # Get user's direct community memberships
+            placeholder = get_sql_placeholder()
+            c.execute(f"""
+                SELECT c.id, c.name, c.type, c.parent_community_id
+                FROM communities c
+                JOIN user_communities uc ON c.id = uc.community_id
+                JOIN users u ON uc.user_id = u.id
+                WHERE u.username = {placeholder}
+                ORDER BY c.name
+            """, (username,))
+            user_communities = c.fetchall()
+            
+            return jsonify({
+                'success': True,
+                'username': username,
+                'all_communities_in_db': [
+                    {
+                        'id': c.get('id'),
+                        'name': c.get('name'),
+                        'type': c.get('type'),
+                        'parent_id': c.get('parent_community_id')
+                    } for c in all_communities
+                ],
+                'user_direct_memberships': [
+                    {
+                        'id': c.get('id'),
+                        'name': c.get('name'),
+                        'type': c.get('type'),
+                        'parent_id': c.get('parent_community_id')
+                    } for c in user_communities
+                ]
+            })
+    except Exception as e:
+        logger.error(f"Debug all communities error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+@app.route('/api/user_parent_community')
+@login_required
+def get_user_parent_community():
+    """Get communities to display on dashboard - SIMPLIFIED"""
+    username = session.get('username')
+    logger.info(f"Getting dashboard communities for user: {username}")
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Simple approach: Just get all parent communities (those without parent_community_id)
+            # Admins see all, regular users see only theirs
+            placeholder = get_sql_placeholder()
+
+            # Determine admin using application logic to avoid DB column dependency
+            is_admin = is_app_admin(username)
+            logger.info(f"User {username} is_admin: {is_admin}")
+
+            if is_admin:
+                # Admin: return ALL top-level parent communities
+                c.execute("""
+                    SELECT id, name, type
+                    FROM communities
+                    WHERE parent_community_id IS NULL
+                    ORDER BY name
+                """)
+                parent_rows = c.fetchall()
+                logger.info("Admin: fetched all top-level parent communities")
+                communities_list = []
+                for row in parent_rows:
+                    if hasattr(row, 'keys'):
+                        communities_list.append({'id': row['id'], 'name': row['name'], 'type': row['type']})
+                    else:
+                        communities_list.append({'id': row[0], 'name': row[1], 'type': row[2]})
             else:
-                return jsonify({
-                    'success': True,
-                    'parentCommunity': None
-                })
+                # User: gather communities by membership OR creator OR admin role (run separately for robust cross-DB behavior)
+                # 1) Memberships via user_communities
+                c.execute(f"SELECT id FROM users WHERE username = {placeholder}", (username,))
+                user_row = c.fetchone()
+                user_id = user_row['id'] if hasattr(user_row, 'keys') else (user_row[0] if user_row else None)
+                if not user_id:
+                    logger.warning(f"Dashboard: user_id not found for {username}")
+                community_ids = set()
+                if user_id:
+                    c.execute(f"SELECT community_id FROM user_communities WHERE user_id = {placeholder}", (user_id,))
+                    uc_rows = c.fetchall()
+                    for r in uc_rows:
+                        cid = r['community_id'] if hasattr(r, 'keys') else (r[0] if len(r) > 0 else None)
+                        if cid:
+                            community_ids.add(cid)
+                    logger.info(f"Dashboard: membership communities for {username}: {len(uc_rows)} rows, {len(community_ids)} unique IDs")
+
+                # 2) Communities created by user
+                c.execute(f"SELECT id FROM communities WHERE creator_username = {placeholder}", (username,))
+                created_rows = c.fetchall()
+                for r in created_rows:
+                    cid = r['id'] if hasattr(r, 'keys') else (r[0] if len(r) > 0 else None)
+                    if cid:
+                        community_ids.add(cid)
+                logger.info(f"Dashboard: created communities for {username}: {len(created_rows)} rows, total IDs now {len(community_ids)}")
+
+                # 3) Communities where user is admin
+                c.execute(f"SELECT community_id FROM community_admins WHERE username = {placeholder}", (username,))
+                admin_rows = c.fetchall()
+                for r in admin_rows:
+                    cid = r['community_id'] if hasattr(r, 'keys') else (r[0] if len(r) > 0 else None)
+                    if cid:
+                        community_ids.add(cid)
+                logger.info(f"Dashboard: admin communities for {username}: {len(admin_rows)} rows, total IDs now {len(community_ids)}")
+
+                if not community_ids:
+                    logger.info(f"Dashboard: no direct communities found for {username}")
+
+                # Fetch full rows for these community IDs
+                member_rows = []
+                if community_ids:
+                    # Build placeholder list safely
+                    ph = get_sql_placeholder()
+                    placeholders = ','.join([ph for _ in community_ids])
+                    c.execute(f"SELECT id, name, type, parent_community_id FROM communities WHERE id IN ({placeholders})", tuple(community_ids))
+                    member_rows = c.fetchall()
+                logger.info(f"Dashboard: resolved {len(member_rows)} community rows for {username}")
+
+                # Helper to fetch a community by id
+                def fetch_comm(comm_id):
+                    ph = get_sql_placeholder()
+                    c.execute(f"SELECT id, name, type, parent_community_id FROM communities WHERE id = {ph}", (comm_id,))
+                    return c.fetchone()
+
+                top_parents = {}
+                for row in member_rows:
+                    if hasattr(row, 'keys'):
+                        current_id = row['id']
+                        parent_id = row['parent_community_id']
+                        current_name = row['name']
+                        current_type = row['type']
+                    else:
+                        current_id = row[0]
+                        parent_id = row[3]
+                        current_name = row[1]
+                        current_type = row[2]
+
+                    seen_chain = set()
+                    top_name = current_name
+                    top_type = current_type
+                    # Walk up parent chain until root
+                    while parent_id is not None and parent_id not in seen_chain:
+                        seen_chain.add(parent_id)
+                        parent_row = fetch_comm(parent_id)
+                        if not parent_row:
+                            break
+                        if hasattr(parent_row, 'keys'):
+                            current_id = parent_row['id']
+                            parent_id = parent_row['parent_community_id']
+                            top_name = parent_row['name']
+                            top_type = parent_row['type']
+                        else:
+                            current_id = parent_row[0]
+                            parent_id = parent_row[3]
+                            top_name = parent_row[1]
+                            top_type = parent_row[2]
+
+                    # current_id now points to the top-most parent (or original if no parent)
+                    if current_id not in top_parents:
+                        top_parents[current_id] = {
+                            'id': current_id,
+                            'name': top_name,
+                            'type': top_type
+                        }
+
+                communities_list = list(top_parents.values())
+                communities_list.sort(key=lambda x: (x.get('name') or '').lower())
+
+                # Ensure Gym community appears for users with gym access (e.g., Paulo)
+                try:
+                    has_gym_access = (username and username.lower() == 'paulo')
+                    if not has_gym_access:
+                        ph = get_sql_placeholder()
+                        c.execute(f"""
+                            SELECT 1
+                            FROM communities c
+                            JOIN user_communities uc ON c.id = uc.community_id
+                            JOIN users u ON uc.user_id = u.id
+                            WHERE u.username = {ph} AND c.type = 'gym'
+                            LIMIT 1
+                        """, (username,))
+                        has_gym_access = c.fetchone() is not None
+
+                    if has_gym_access:
+                        # Add any gym communities by climbing to their top-level parent
+                        c.execute("""
+                            SELECT id, name, type, parent_community_id
+                            FROM communities
+                            WHERE LOWER(type) = 'gym'
+                        """)
+                        gym_rows = c.fetchall()
+                        seen_ids = {item['id'] if hasattr(item, 'keys') else item[0] for item in communities_list}
+                        added = 0
+                        for row in gym_rows:
+                            if hasattr(row, 'keys'):
+                                cid, name, gtype, parent_id = row['id'], row['name'], row['type'], row['parent_community_id']
+                            else:
+                                cid, name, gtype, parent_id = row[0], row[1], row[2], row[3]
+
+                            # climb to top parent
+                            top_id, top_name, top_type = cid, name, gtype
+                            visited = set()
+                            while parent_id is not None and parent_id not in visited:
+                                visited.add(parent_id)
+                                ph = get_sql_placeholder()
+                                c.execute(f"SELECT id, name, type, parent_community_id FROM communities WHERE id = {ph}", (parent_id,))
+                                prow = c.fetchone()
+                                if not prow:
+                                    break
+                                if hasattr(prow, 'keys'):
+                                    top_id, top_name, top_type = prow['id'], prow['name'], prow['type']
+                                    parent_id = prow['parent_community_id']
+                                else:
+                                    top_id, top_name, top_type = prow[0], prow[1], prow[2]
+                                    parent_id = prow[3]
+
+                            if top_id not in seen_ids:
+                                communities_list.append({'id': top_id, 'name': top_name, 'type': top_type})
+                                seen_ids.add(top_id)
+                                added += 1
+                        if added:
+                            logger.info(f"Dashboard: added {added} gym parent communities for {username}")
+                except Exception as gym_err:
+                    logger.warning(f"Dashboard: failed to ensure gym community for {username}: {gym_err}")
+                try:
+                    logger.info(f"Dashboard: top-level parent communities for {username} -> {len(communities_list)} items: " + 
+                                ", ".join([f"{c.get('id')}:{c.get('name')}" for c in communities_list]))
+                except Exception:
+                    pass
+            
+            logger.info(f"Returning {len(communities_list)} communities for dashboard")
+            
+            return jsonify({
+                'success': True,
+                'communities': communities_list,
+                'parentCommunity': communities_list[0] if communities_list else None  # Keep backward compatibility
+            })
                 
     except Exception as e:
         logger.error(f"Error getting parent community for {username}: {str(e)}")
@@ -10582,24 +13799,46 @@ def get_user_communities_hierarchical():
         with get_db_connection() as conn:
             c = conn.cursor()
             
-            # Get all user's communities with parent information
-            c.execute("""
-                SELECT DISTINCT 
-                    c.id,
-                    c.name,
-                    c.type,
-                    c.parent_community_id,
-                    pc.name as parent_name
-                FROM communities c
-                JOIN user_communities uc ON c.id = uc.community_id
-                JOIN users u ON uc.user_id = u.id
-                LEFT JOIN communities pc ON c.parent_community_id = pc.id
-                WHERE u.username = %s
-                ORDER BY 
-                    CASE WHEN c.parent_community_id IS NULL THEN 0 ELSE 1 END,
-                    COALESCE(pc.name, c.name),
-                    c.name
-            """, (username,))
+            # Check if user is admin
+            if is_app_admin(username):
+                # Admin sees all communities
+                c.execute("""
+                    SELECT DISTINCT 
+                        c.id,
+                        c.name,
+                        c.type,
+                        c.parent_community_id,
+                        c.creator_username,
+                        pc.name as parent_name
+                    FROM communities c
+                    LEFT JOIN communities pc ON c.parent_community_id = pc.id
+                    ORDER BY 
+                        CASE WHEN c.parent_community_id IS NULL THEN 0 ELSE 1 END,
+                        COALESCE(pc.name, c.name),
+                        c.name
+                """)
+            else:
+                # Regular users see only their communities
+                # Use correct placeholder based on database type
+                placeholder = '%s' if USE_MYSQL else '?'
+                c.execute(f"""
+                    SELECT DISTINCT 
+                        c.id,
+                        c.name,
+                        c.type,
+                        c.parent_community_id,
+                        c.creator_username,
+                        pc.name as parent_name
+                    FROM communities c
+                    JOIN user_communities uc ON c.id = uc.community_id
+                    JOIN users u ON uc.user_id = u.id
+                    LEFT JOIN communities pc ON c.parent_community_id = pc.id
+                    WHERE u.username = {placeholder}
+                    ORDER BY 
+                        CASE WHEN c.parent_community_id IS NULL THEN 0 ELSE 1 END,
+                        COALESCE(pc.name, c.name),
+                        c.name
+                """, (username,))
             
             communities = c.fetchall()
             
@@ -10612,7 +13851,8 @@ def get_user_communities_hierarchical():
                     'id': community['id'],
                     'name': community['name'],
                     'type': community['type'],
-                    'parent_community_id': community['parent_community_id']
+                    'parent_community_id': community['parent_community_id'],
+                    'creator_username': community.get('creator_username') if hasattr(community, 'get') else community['creator_username']
                 }
                 
                 if community['parent_community_id']:
@@ -10631,13 +13871,14 @@ def get_user_communities_hierarchical():
                 else:
                     # Parent not in user's communities, but child is
                     # Get parent info and add it
-                    c.execute("SELECT id, name, type FROM communities WHERE id = %s", (parent_id,))
+                    c.execute("SELECT id, name, type, creator_username FROM communities WHERE id = %s", (parent_id,))
                     parent_info = c.fetchone()
                     if parent_info:
                         parent_data = {
                             'id': parent_info['id'],
                             'name': parent_info['name'],
                             'type': parent_info['type'],
+                            'creator_username': parent_info.get('creator_username') if hasattr(parent_info, 'get') else parent_info['creator_username'],
                             'parent_community_id': None,
                             'children': [child],
                             'is_parent_only': True  # User is not directly member of parent
@@ -10935,16 +14176,15 @@ def workout_generator():
 def workout_tracking():
     username = session.get('username')
     try:
-        ua = request.headers.get('User-Agent', '')
-        is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
-        if is_mobile:
-            base_dir = os.path.dirname(os.path.abspath(__file__))
-            dist_dir = os.path.join(base_dir, 'client', 'dist')
-            return send_from_directory(dist_dir, 'index.html')
-        return render_template('workout_tracking.html', username=username)
+        # Always serve the React app for this page so latest UI changes are visible
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        dist_dir = os.path.join(base_dir, 'client', 'dist')
+        return send_from_directory(dist_dir, 'index.html')
     except Exception as e:
         logger.error(f"Error in workout_tracking smart route: {e}")
-        return render_template('workout_tracking.html', username=username)
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        dist_dir = os.path.join(base_dir, 'client', 'dist')
+        return send_from_directory(dist_dir, 'index.html')
 
 # ===== WORKOUT TRACKING ROUTES =====
 
@@ -10968,7 +14208,7 @@ def add_exercise():
         if not all([weight, reps, date]):
             return jsonify({'success': False, 'error': 'Weight, reps, and date are required'})
         
-        conn = sqlite3.connect('users.db')
+        conn = get_db_connection()
         cursor = conn.cursor()
         
         # Check if exercise already exists for this user
@@ -10981,64 +14221,115 @@ def add_exercise():
             return jsonify({'success': False, 'error': 'Exercise already exists'})
         
         # Create tables if they don't exist
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS exercises (
-                id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                username TEXT NOT NULL,
-                name TEXT NOT NULL,
-                muscle_group TEXT NOT NULL DEFAULT "Other"
-            )
-        ''')
-        
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS exercise_sets (
-                id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                exercise_id INTEGER NOT NULL,
-                weight REAL NOT NULL,
-                reps INTEGER NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (exercise_id) REFERENCES exercises (id) ON DELETE CASCADE
-            )
-        ''')
-        
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS workouts (
-                id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                username TEXT NOT NULL,
-                name TEXT NOT NULL,
-                date TEXT NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS workout_exercises (
-                id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                workout_id INTEGER NOT NULL,
-                exercise_id INTEGER NOT NULL,
-                sets INTEGER DEFAULT 0,
-                reps INTEGER DEFAULT 0,
-                weight REAL DEFAULT 0,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (workout_id) REFERENCES workouts (id) ON DELETE CASCADE,
-                FOREIGN KEY (exercise_id) REFERENCES exercises (id) ON DELETE CASCADE
-            )
-        ''')
+        if USE_MYSQL:
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS exercises (
+                    id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                    username TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    muscle_group TEXT NOT NULL
+                )
+            ''')
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS exercise_sets (
+                    id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                    exercise_id INTEGER NOT NULL,
+                    weight REAL NOT NULL,
+                    reps INTEGER NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (exercise_id) REFERENCES exercises (id) ON DELETE CASCADE
+                )
+            ''')
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS workouts (
+                    id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                    username TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    date TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS workout_exercises (
+                    id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                    workout_id INTEGER NOT NULL,
+                    exercise_id INTEGER NOT NULL,
+                    sets INTEGER DEFAULT 0,
+                    reps INTEGER DEFAULT 0,
+                    weight REAL DEFAULT 0,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (workout_id) REFERENCES workouts (id) ON DELETE CASCADE,
+                    FOREIGN KEY (exercise_id) REFERENCES exercises (id) ON DELETE CASCADE
+                )
+            ''')
+        else:
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS exercises (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    muscle_group TEXT NOT NULL DEFAULT "Other"
+                )
+            ''')
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS exercise_sets (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    exercise_id INTEGER NOT NULL,
+                    weight REAL NOT NULL,
+                    reps INTEGER NOT NULL,
+                    created_at TEXT DEFAULT (datetime('now')),
+                    FOREIGN KEY (exercise_id) REFERENCES exercises (id) ON DELETE CASCADE
+                )
+            ''')
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS workouts (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    date TEXT NOT NULL,
+                    created_at TEXT DEFAULT (datetime('now'))
+                )
+            ''')
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS workout_exercises (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    workout_id INTEGER NOT NULL,
+                    exercise_id INTEGER NOT NULL,
+                    sets INTEGER DEFAULT 0,
+                    reps INTEGER DEFAULT 0,
+                    weight REAL DEFAULT 0,
+                    created_at TEXT DEFAULT (datetime('now')),
+                    FOREIGN KEY (workout_id) REFERENCES workouts (id) ON DELETE CASCADE,
+                    FOREIGN KEY (exercise_id) REFERENCES exercises (id) ON DELETE CASCADE
+                )
+            ''')
         
         # Insert the exercise
-        cursor.execute('''
-            INSERT INTO exercises (username, name, muscle_group)
-            VALUES (?, ?, ?)
-        ''', (username, name, muscle_group))
+        if USE_MYSQL:
+            cursor.execute('''
+                INSERT INTO exercises (username, name, muscle_group)
+                VALUES (%s, %s, %s)
+            ''', (username, name, muscle_group))
+        else:
+            cursor.execute('''
+                INSERT INTO exercises (username, name, muscle_group)
+                VALUES (?, ?, ?)
+            ''', (username, name, muscle_group))
         
         exercise_id = cursor.lastrowid
         print(f"Debug: Inserted exercise with ID: {exercise_id}")
         
         # Insert the initial weight entry
-        cursor.execute('''
-            INSERT INTO exercise_sets (exercise_id, weight, reps, created_at)
-            VALUES (?, ?, ?, ?)
-        ''', (exercise_id, weight, reps, date))
+        if USE_MYSQL:
+            cursor.execute('''
+                INSERT INTO exercise_sets (exercise_id, weight, reps, created_at)
+                VALUES (%s, %s, %s, %s)
+            ''', (exercise_id, weight, reps, date))
+        else:
+            cursor.execute('''
+                INSERT INTO exercise_sets (exercise_id, weight, reps, created_at)
+                VALUES (?, ?, ?, ?)
+            ''', (exercise_id, weight, reps, date))
         
         print(f"Debug: Added initial weight entry: {weight}kg x {reps} reps on {date}")
         
@@ -11046,23 +14337,42 @@ def add_exercise():
         try:
             overlapping = {'Back Squat','Front Squat','Overhead Squat','Deadlift','Clean','Jerk','Clean & Jerk','Snatch','Bench Press','Push Press','Thruster','Overhead Press'}
             if name in overlapping:
-                cursor.execute('''
-                    CREATE TABLE IF NOT EXISTS crossfit_entries (
-                        id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                        username TEXT NOT NULL,
-                        type TEXT NOT NULL,
-                        name TEXT NOT NULL,
-                        weight REAL,
-                        reps INTEGER,
-                        score TEXT,
-                        score_numeric REAL,
-                        created_at TEXT NOT NULL
-                    )
-                ''')
-                cursor.execute('''
-                    INSERT INTO crossfit_entries (username, type, name, weight, reps, created_at)
-                    VALUES (?, 'lift', ?, ?, ?, ?)
-                ''', (username, name, float(weight), int(reps), date))
+                if USE_MYSQL:
+                    cursor.execute('''
+                        CREATE TABLE IF NOT EXISTS crossfit_entries (
+                            id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                            username TEXT NOT NULL,
+                            type TEXT NOT NULL,
+                            name TEXT NOT NULL,
+                            weight REAL,
+                            reps INTEGER,
+                            score TEXT,
+                            score_numeric REAL,
+                            created_at TEXT NOT NULL
+                        )
+                    ''')
+                    cursor.execute('''
+                        INSERT INTO crossfit_entries (username, type, name, weight, reps, created_at)
+                        VALUES (%s, 'lift', %s, %s, %s, %s)
+                    ''', (username, name, float(weight), int(reps), date))
+                else:
+                    cursor.execute('''
+                        CREATE TABLE IF NOT EXISTS crossfit_entries (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            username TEXT NOT NULL,
+                            type TEXT NOT NULL,
+                            name TEXT NOT NULL,
+                            weight REAL,
+                            reps INTEGER,
+                            score TEXT,
+                            score_numeric REAL,
+                            created_at TEXT NOT NULL
+                        )
+                    ''')
+                    cursor.execute('''
+                        INSERT INTO crossfit_entries (username, type, name, weight, reps, created_at)
+                        VALUES (?, 'lift', ?, ?, ?, ?)
+                    ''', (username, name, float(weight), int(reps), date))
         except Exception as _e:
             pass
         
@@ -11080,7 +14390,7 @@ def get_workout_exercises():
     try:
         username = session.get('username')
         
-        conn = sqlite3.connect('users.db')
+        conn = get_db_connection()
         cursor = conn.cursor()
         
         # Get exercises with data from both exercise_sets (Exercise Management) and workout_exercises (Workouts)
@@ -11111,9 +14421,9 @@ def get_workout_exercises():
         current_exercise = None
         
         for row in rows:
-            exercise_id = row[0]
-            exercise_name = row[1]
-            muscle_group = row[2]
+            exercise_id = get_scalar_result(row, 0, 'id')
+            exercise_name = get_scalar_result(row, 1, 'name')
+            muscle_group = get_scalar_result(row, 2, 'muscle_group')
             
             # If this is a new exercise
             if not current_exercise or current_exercise['id'] != exercise_id:
@@ -11126,12 +14436,16 @@ def get_workout_exercises():
                 exercises.append(current_exercise)
             
             # Add set data if it exists (from either Exercise Management or Workouts)
-            if row[3]:  # If there's weight data
+            set_weight = get_scalar_result(row, 3, 'set_weight')
+            set_reps = get_scalar_result(row, 4, 'set_reps')
+            created_at = get_scalar_result(row, 5, 'created_at')
+            source = get_scalar_result(row, 6, 'source')
+            if set_weight:  # If there's weight data
                 current_exercise['sets_data'].append({
-                    'weight': row[3],
-                    'reps': row[4],
-                    'created_at': row[5],
-                    'source': row[6]  # 'exercise_management' or 'workout'
+                    'weight': set_weight,
+                    'reps': set_reps,
+                    'created_at': created_at,
+                    'source': source  # 'exercise_management' or 'workout'
                 })
         
         print(f"Debug: Returning {len(exercises)} exercises for user {username}")
@@ -11195,6 +14509,51 @@ def edit_exercise():
         conn.commit()
         conn.close()
         
+        return jsonify({'success': True})
+    except Exception as e:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/delete_exercise', methods=['POST'])
+@login_required
+def delete_exercise():
+    try:
+        username = session.get('username')
+        exercise_id = request.form.get('exercise_id')
+        if not exercise_id:
+            return jsonify({'success': False, 'error': 'Exercise ID is required'})
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Verify the exercise belongs to the current user
+        if USE_MYSQL:
+            cursor.execute('SELECT id FROM exercises WHERE id = %s AND username = %s', (exercise_id, username))
+        else:
+            cursor.execute('SELECT id FROM exercises WHERE id = ? AND username = ?', (exercise_id, username))
+        row = cursor.fetchone()
+        if not row:
+            try:
+                conn.close()
+            except Exception:
+                pass
+            return jsonify({'success': False, 'error': 'Exercise not found'})
+
+        # Delete dependent rows explicitly to be robust across SQLite/MySQL
+        if USE_MYSQL:
+            cursor.execute('DELETE FROM workout_exercises WHERE exercise_id = %s', (exercise_id,))
+            cursor.execute('DELETE FROM exercise_sets WHERE exercise_id = %s', (exercise_id,))
+            cursor.execute('DELETE FROM exercises WHERE id = %s AND username = %s', (exercise_id, username))
+        else:
+            cursor.execute('DELETE FROM workout_exercises WHERE exercise_id = ?', (exercise_id,))
+            cursor.execute('DELETE FROM exercise_sets WHERE exercise_id = ?', (exercise_id,))
+            cursor.execute('DELETE FROM exercises WHERE id = ? AND username = ?', (exercise_id, username))
+
+        conn.commit()
+        conn.close()
         return jsonify({'success': True})
     except Exception as e:
         try:
@@ -11571,32 +14930,7 @@ def compare_improvement_in_community():
     except Exception as e:
         logger.error(f"Error in improvement comparison endpoint: {e}")
         return jsonify({'success': False, 'error': 'Server error'})
-@app.route('/delete_exercise', methods=['POST'])
-@login_required
-def delete_exercise():
-    try:
-        username = session.get('username')
-        exercise_id = request.form.get('exercise_id')
-        
-        if not exercise_id:
-            return jsonify({'success': False, 'error': 'Exercise ID is required'})
-        
-        conn = sqlite3.connect('users.db')
-        cursor = conn.cursor()
-        
-        # Delete the exercise (sets will be deleted automatically due to CASCADE)
-        cursor.execute('''
-            DELETE FROM exercises 
-            WHERE id = ? AND username = ?
-        ''', (exercise_id, username))
-        
-        conn.commit()
-        conn.close()
-        
-        return jsonify({'success': True})
-        
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)})
+ 
 
 @app.route('/log_weight_set', methods=['POST'])
 @login_required
@@ -11613,7 +14947,7 @@ def log_weight_set():
         if not all([exercise_id, weight, reps, date]):
             return jsonify({'success': False, 'error': 'All fields are required'})
         
-        conn = sqlite3.connect('users.db')
+        conn = get_db_connection()
         cursor = conn.cursor()
         
         # Verify the exercise belongs to the user
@@ -11626,10 +14960,25 @@ def log_weight_set():
             return jsonify({'success': False, 'error': 'Exercise not found'})
         
         # Add the set with the specified date
+        # Normalize date for MySQL: accept 'YYYY-MM-DD' or ISO; also handle RFC 2822 strings
+        date_str = date
+        try:
+            if date and isinstance(date, str):
+                if date.endswith('GMT') or ',' in date:
+                    # RFC 2822 (e.g., Wed, 03 Sep 2025 00:00:00 GMT)
+                    dt = parsedate_to_datetime(date)
+                    date_str = dt.strftime('%Y-%m-%d %H:%M:%S')
+                elif len(date) == 10 and date[4] == '-' and date[7] == '-':
+                    date_str = f"{date} 00:00:00"
+                elif 'T' in date and len(date) >= 19:
+                    date_str = date.replace('T', ' ')[:19]
+        except Exception:
+            pass
+
         cursor.execute('''
             INSERT INTO exercise_sets (exercise_id, weight, reps, created_at)
             VALUES (?, ?, ?, ?)
-        ''', (exercise_id, weight, reps, date))
+        ''', (exercise_id, weight, reps, date_str))
 
         # Cross-sync to crossfit_entries for overlapping lift names
         try:
@@ -11641,23 +14990,43 @@ def log_weight_set():
                 # Only sync for known overlapping lifts
                 overlapping = {'Back Squat','Front Squat','Overhead Squat','Deadlift','Clean','Jerk','Clean & Jerk','Snatch','Bench Press','Push Press','Thruster','Overhead Press'}
                 if ex_name in overlapping:
-                    cursor.execute('''
-                        CREATE TABLE IF NOT EXISTS crossfit_entries (
-                            id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                            username TEXT NOT NULL,
-                            type TEXT NOT NULL,
-                            name TEXT NOT NULL,
-                            weight REAL,
-                            reps INTEGER,
-                            score TEXT,
-                            score_numeric REAL,
-                            created_at TEXT NOT NULL
-                        )
-                    ''')
-                    cursor.execute('''
-                        INSERT INTO crossfit_entries (username, type, name, weight, reps, created_at)
-                        VALUES (?, 'lift', ?, ?, ?, ?)
-                    ''', (username, ex_name, float(weight), int(reps), date))
+                    # Use MySQL-compatible DDL if needed
+                    if USE_MYSQL:
+                        cursor.execute('''
+                            CREATE TABLE IF NOT EXISTS crossfit_entries (
+                                id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                                username TEXT NOT NULL,
+                                type TEXT NOT NULL,
+                                name TEXT NOT NULL,
+                                weight REAL,
+                                reps INTEGER,
+                                score TEXT,
+                                score_numeric REAL,
+                                created_at TEXT NOT NULL
+                            )
+                        ''')
+                        cursor.execute('''
+                            INSERT INTO crossfit_entries (username, type, name, weight, reps, created_at)
+                            VALUES (?, 'lift', ?, ?, ?, ?)
+                        ''', (username, ex_name, float(weight), int(reps), date))
+                    else:
+                        cursor.execute('''
+                            CREATE TABLE IF NOT EXISTS crossfit_entries (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                username TEXT NOT NULL,
+                                type TEXT NOT NULL,
+                                name TEXT NOT NULL,
+                                weight REAL,
+                                reps INTEGER,
+                                score TEXT,
+                                score_numeric REAL,
+                                created_at TEXT NOT NULL
+                            )
+                        ''')
+                        cursor.execute('''
+                            INSERT INTO crossfit_entries (username, type, name, weight, reps, created_at)
+                            VALUES (?, 'lift', ?, ?, ?, ?)
+                        ''', (username, ex_name, float(weight), int(reps), date))
         except Exception as _e:
             pass
         
@@ -11684,7 +15053,7 @@ def edit_set():
         if not all([exercise_id, set_id, weight]):
             return jsonify({'success': False, 'error': 'All fields are required'})
         
-        conn = sqlite3.connect('users.db')
+        conn = get_db_connection()
         cursor = conn.cursor()
         
         # Verify the exercise belongs to the user
@@ -11699,7 +15068,7 @@ def edit_set():
         # Update the set
         cursor.execute('''
             UPDATE exercise_sets 
-            SET weight = ? 
+            SET weight = ?
             WHERE id = ? AND exercise_id = ?
         ''', (weight, set_id, exercise_id))
         
@@ -11761,7 +15130,7 @@ def delete_weight_entry():
         if not all([exercise_id, date, weight, reps]):
             return jsonify({'success': False, 'error': 'All fields are required'})
         
-        conn = sqlite3.connect('users.db')
+        conn = get_db_connection()
         cursor = conn.cursor()
         
         # Verify the exercise belongs to the user
@@ -11866,7 +15235,6 @@ def get_exercise_progress():
         
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
-
 @app.route('/get_exercise_one_rm', methods=['GET'])
 @login_required
 def get_exercise_one_rm():
@@ -12465,25 +15833,42 @@ def create_workout():
             print(f"Debug: Missing required fields")
             return jsonify({'success': False, 'error': 'Missing required fields'})
         
-        conn = sqlite3.connect('users.db')
+        conn = get_db_connection()
         cursor = conn.cursor()
         
         # Create workouts table if it doesn't exist
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS workouts (
-                id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                username TEXT NOT NULL,
-                name TEXT NOT NULL,
-                date TEXT NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
+        if USE_MYSQL:
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS workouts (
+                    id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                    username TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    date TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+        else:
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS workouts (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    date TEXT NOT NULL,
+                    created_at TEXT DEFAULT (datetime('now'))
+                )
+            ''')
         
         # Insert workout
-        cursor.execute('''
-            INSERT INTO workouts (username, name, date)
-            VALUES (?, ?, ?)
-        ''', (session['username'], name, date))
+        if USE_MYSQL:
+            cursor.execute('''
+                INSERT INTO workouts (username, name, date)
+                VALUES (%s, %s, %s)
+            ''', (session['username'], name, date))
+        else:
+            cursor.execute('''
+                INSERT INTO workouts (username, name, date)
+                VALUES (?, ?, ?)
+            ''', (session['username'], name, date))
         
         conn.commit()
         conn.close()
@@ -12499,7 +15884,7 @@ def get_workouts():
         return jsonify({'success': False, 'error': 'Not logged in'})
     
     try:
-        conn = sqlite3.connect('users.db')
+        conn = get_db_connection()
         cursor = conn.cursor()
         
         # Get workouts
@@ -12516,11 +15901,11 @@ def get_workouts():
         workouts = []
         for row in cursor.fetchall():
             workout = {
-                'id': row[0],
-                'name': row[1],
-                'date': row[2],
-                'created_at': row[3],
-                'exercise_count': row[4]
+                'id': get_scalar_result(row, 0, 'id'),
+                'name': get_scalar_result(row, 1, 'name'),
+                'date': get_scalar_result(row, 2, 'date'),
+                'created_at': get_scalar_result(row, 3, 'created_at'),
+                'exercise_count': get_scalar_result(row, 4, 'exercise_count')
             }
             workouts.append(workout)
         
@@ -12540,7 +15925,7 @@ def get_workout_details():
         if not workout_id:
             return jsonify({'success': False, 'error': 'Missing workout ID'})
         
-        conn = sqlite3.connect('users.db')
+        conn = get_db_connection()
         cursor = conn.cursor()
         
         # Get workout details
@@ -12555,10 +15940,10 @@ def get_workout_details():
             return jsonify({'success': False, 'error': 'Workout not found'})
         
         workout = {
-            'id': workout_row[0],
-            'name': workout_row[1],
-            'date': workout_row[2],
-            'created_at': workout_row[3],
+            'id': get_scalar_result(workout_row, 0, 'id'),
+            'name': get_scalar_result(workout_row, 1, 'name'),
+            'date': get_scalar_result(workout_row, 2, 'date'),
+            'created_at': get_scalar_result(workout_row, 3, 'created_at'),
             'exercises': []
         }
         
@@ -12573,12 +15958,12 @@ def get_workout_details():
         
         for row in cursor.fetchall():
             exercise = {
-                'id': row[0],
-                'weight': row[1],
-                'sets': row[2],
-                'reps': row[3],
-                'exercise_name': row[4],
-                'muscle_group': row[5]
+                'id': get_scalar_result(row, 0, 'id'),
+                'weight': get_scalar_result(row, 1, 'weight'),
+                'sets': get_scalar_result(row, 2, 'sets'),
+                'reps': get_scalar_result(row, 3, 'reps'),
+                'exercise_name': get_scalar_result(row, 4, 'exercise_name'),
+                'muscle_group': get_scalar_result(row, 5, 'muscle_group')
             }
             workout['exercises'].append(exercise)
         
@@ -12605,23 +15990,35 @@ def add_exercise_to_workout():
         if not all([workout_id, exercise_id, weight, sets, reps]):
             return jsonify({'success': False, 'error': 'Missing required fields'})
         
-        conn = sqlite3.connect('users.db')
+        conn = get_db_connection()
         cursor = conn.cursor()
         
         # Verify workout belongs to user
-        cursor.execute('''
-            SELECT id FROM workouts 
-            WHERE id = ? AND username = ?
-        ''', (workout_id, session['username']))
+        if USE_MYSQL:
+            cursor.execute('''
+                SELECT id FROM workouts 
+                WHERE id = %s AND username = %s
+            ''', (workout_id, session['username']))
+        else:
+            cursor.execute('''
+                SELECT id FROM workouts 
+                WHERE id = ? AND username = ?
+            ''', (workout_id, session['username']))
         
         if not cursor.fetchone():
             return jsonify({'success': False, 'error': 'Workout not found'})
         
         # Add exercise to workout
-        cursor.execute('''
-            INSERT INTO workout_exercises (workout_id, exercise_id, weight, sets, reps)
-            VALUES (?, ?, ?, ?, ?)
-        ''', (workout_id, exercise_id, weight, sets, reps))
+        if USE_MYSQL:
+            cursor.execute('''
+                INSERT INTO workout_exercises (workout_id, exercise_id, weight, sets, reps)
+                VALUES (%s, %s, %s, %s, %s)
+            ''', (workout_id, exercise_id, weight, sets, reps))
+        else:
+            cursor.execute('''
+                INSERT INTO workout_exercises (workout_id, exercise_id, weight, sets, reps)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (workout_id, exercise_id, weight, sets, reps))
         
         conn.commit()
         conn.close()
@@ -12630,7 +16027,6 @@ def add_exercise_to_workout():
         
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
-
 @app.route('/remove_exercise_from_workout', methods=['POST'])
 def remove_exercise_from_workout():
     if 'username' not in session:
@@ -12644,21 +16040,31 @@ def remove_exercise_from_workout():
         
         print(f"Debug: Removing workout exercise ID: {workout_exercise_id}")
         
-        conn = sqlite3.connect('users.db')
+        conn = get_db_connection()
         cursor = conn.cursor()
         
         # Verify workout exercise belongs to user
-        cursor.execute('''
-            SELECT we.id FROM workout_exercises we
-            JOIN workouts w ON we.workout_id = w.id
-            WHERE we.id = ? AND w.username = ?
-        ''', (workout_exercise_id, session['username']))
+        if USE_MYSQL:
+            cursor.execute('''
+                SELECT we.id FROM workout_exercises we
+                JOIN workouts w ON we.workout_id = w.id
+                WHERE we.id = %s AND w.username = %s
+            ''', (workout_exercise_id, session['username']))
+        else:
+            cursor.execute('''
+                SELECT we.id FROM workout_exercises we
+                JOIN workouts w ON we.workout_id = w.id
+                WHERE we.id = ? AND w.username = ?
+            ''', (workout_exercise_id, session['username']))
         
         if not cursor.fetchone():
             return jsonify({'success': False, 'error': 'Workout exercise not found'})
         
         # Remove exercise from workout
-        cursor.execute('DELETE FROM workout_exercises WHERE id = ?', (workout_exercise_id,))
+        if USE_MYSQL:
+            cursor.execute('DELETE FROM workout_exercises WHERE id = %s', (workout_exercise_id,))
+        else:
+            cursor.execute('DELETE FROM workout_exercises WHERE id = ?', (workout_exercise_id,))
         
         print(f"Debug: Removed workout exercise ID: {workout_exercise_id}")
         
@@ -12669,7 +16075,6 @@ def remove_exercise_from_workout():
         
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
-
 @app.route('/delete_workout', methods=['POST'])
 def delete_workout():
     if 'username' not in session:
@@ -12681,23 +16086,35 @@ def delete_workout():
         if not workout_id:
             return jsonify({'success': False, 'error': 'Missing workout ID'})
         
-        conn = sqlite3.connect('users.db')
+        conn = get_db_connection()
         cursor = conn.cursor()
         
         # Verify workout belongs to user
-        cursor.execute('''
-            SELECT id FROM workouts 
-            WHERE id = ? AND username = ?
-        ''', (workout_id, session['username']))
+        if USE_MYSQL:
+            cursor.execute('''
+                SELECT id FROM workouts 
+                WHERE id = %s AND username = %s
+            ''', (workout_id, session['username']))
+        else:
+            cursor.execute('''
+                SELECT id FROM workouts 
+                WHERE id = ? AND username = ?
+            ''', (workout_id, session['username']))
         
         if not cursor.fetchone():
             return jsonify({'success': False, 'error': 'Workout not found'})
         
         # Delete workout exercises first (due to foreign key)
-        cursor.execute('DELETE FROM workout_exercises WHERE workout_id = ?', (workout_id,))
+        if USE_MYSQL:
+            cursor.execute('DELETE FROM workout_exercises WHERE workout_id = %s', (workout_id,))
+        else:
+            cursor.execute('DELETE FROM workout_exercises WHERE workout_id = ?', (workout_id,))
         
         # Delete workout
-        cursor.execute('DELETE FROM workouts WHERE id = ?', (workout_id,))
+        if USE_MYSQL:
+            cursor.execute('DELETE FROM workouts WHERE id = %s', (workout_id,))
+        else:
+            cursor.execute('DELETE FROM workouts WHERE id = ?', (workout_id,))
         
         conn.commit()
         conn.close()
@@ -12713,7 +16130,7 @@ def get_user_exercises():
     try:
         username = session.get('username')
         
-        conn = sqlite3.connect('users.db')
+        conn = get_db_connection()
         cursor = conn.cursor()
         
         # Get all exercises with their weight history
@@ -12734,9 +16151,9 @@ def get_user_exercises():
         current_exercise = None
         
         for row in rows:
-            exercise_id = row[0]
-            exercise_name = row[1]
-            muscle_group = row[2]
+            exercise_id = get_scalar_result(row, 0, 'id')
+            exercise_name = get_scalar_result(row, 1, 'name')
+            muscle_group = get_scalar_result(row, 2, 'muscle_group')
             
             # If this is a new exercise
             if not current_exercise or current_exercise['id'] != exercise_id:
@@ -12749,11 +16166,14 @@ def get_user_exercises():
                 exercises.append(current_exercise)
             
             # Add weight data if it exists
-            if row[3]:  # If there's weight data
+            weight_val = get_scalar_result(row, 3, 'weight')
+            reps_val = get_scalar_result(row, 4, 'reps')
+            created_at_val = get_scalar_result(row, 5, 'created_at')
+            if weight_val:  # If there's weight data
                 current_exercise['weight_history'].append({
-                    'weight': row[3],
-                    'reps': row[4],
-                    'date': row[5]
+                    'weight': weight_val,
+                    'reps': reps_val,
+                    'date': created_at_val
                 })
         
         print(f"Debug: Found {len(exercises)} exercises for user {username}")
@@ -12766,6 +16186,248 @@ def get_user_exercises():
         
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/admin/get_user_exercises', methods=['GET'])
+@login_required
+def admin_get_user_exercises():
+    try:
+        username = session.get('username')
+        if not is_app_admin(username):
+            return jsonify({'success': False, 'error': 'Forbidden'}), 403
+        target = request.args.get('username', '').strip()
+        if not target:
+            return jsonify({'success': False, 'error': 'username required'}), 400
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Fetch all exercises and their sets for the target user
+        cursor.execute('''
+            SELECT e.id, e.name, e.muscle_group, es.weight, es.reps, es.created_at
+            FROM exercises e
+            LEFT JOIN exercise_sets es ON e.id = es.exercise_id
+            WHERE e.username = ?
+            ORDER BY e.muscle_group, e.name, es.created_at DESC
+        ''', (target,))
+
+        rows = cursor.fetchall()
+        conn.close()
+
+        # Group into structured list
+        exercises = []
+        current = None
+        for row in rows:
+            ex_id = get_scalar_result(row, 0, 'id')
+            ex_name = get_scalar_result(row, 1, 'name')
+            ex_group = get_scalar_result(row, 2, 'muscle_group')
+            weight_val = get_scalar_result(row, 3, 'weight')
+            reps_val = get_scalar_result(row, 4, 'reps')
+            created_at_val = get_scalar_result(row, 5, 'created_at')
+            if current is None or current['id'] != ex_id:
+                current = { 'id': ex_id, 'name': ex_name, 'muscle_group': ex_group, 'weight_history': [] }
+                exercises.append(current)
+            if weight_val is not None:
+                current['weight_history'].append({ 'weight': float(weight_val), 'reps': int(reps_val or 0), 'date': created_at_val })
+
+        return jsonify({ 'success': True, 'exercises': exercises, 'username': target })
+    except Exception as e:
+        return jsonify({ 'success': False, 'error': str(e) })
+
+@app.route('/api/admin/set_parent', methods=['GET', 'POST'])
+@login_required
+def admin_set_parent():
+    """Set a community's parent by names or ids. Admin only.
+    Accepts: child_id or child_name, parent_id or parent_name (query or form)
+    """
+    try:
+        requester = session.get('username')
+        if not is_app_admin(requester):
+            return jsonify({'success': False, 'error': 'Forbidden'}), 403
+
+        # Read inputs (names or ids)
+        child_id = request.values.get('child_id') or request.args.get('child_id')
+        parent_id = request.values.get('parent_id') or request.args.get('parent_id')
+        child_name = (request.values.get('child_name') or request.args.get('child_name') or '').strip()
+        parent_name = (request.values.get('parent_name') or request.args.get('parent_name') or '').strip()
+
+        with get_db_connection() as conn:
+            c = conn.cursor()
+
+            def resolve_comm_id(name_or_id, is_parent=False):
+                # If numeric id provided, return it
+                if name_or_id and str(name_or_id).isdigit():
+                    return int(name_or_id)
+                return None
+
+            # Resolve parent id
+            pid = resolve_comm_id(parent_id, True)
+            if not pid and parent_name:
+                c.execute("SELECT id FROM communities WHERE name = ?", (parent_name,))
+                row = c.fetchone()
+                if not row:
+                    return jsonify({'success': False, 'error': f"Parent not found: {parent_name}"}), 404
+                pid = row['id'] if hasattr(row, 'keys') else row[0]
+
+            # Resolve child id
+            cid = resolve_comm_id(child_id, False)
+            if not cid and child_name:
+                c.execute("SELECT id FROM communities WHERE name = ?", (child_name,))
+                row = c.fetchone()
+                if not row:
+                    return jsonify({'success': False, 'error': f"Child not found: {child_name}"}), 404
+                cid = row['id'] if hasattr(row, 'keys') else row[0]
+
+            if not cid or not pid:
+                return jsonify({'success': False, 'error': 'child and parent are required (by id or name)'}), 400
+
+            # Update relationship
+            c.execute("UPDATE communities SET parent_community_id = ? WHERE id = ?", (pid, cid))
+            conn.commit()
+
+            return jsonify({'success': True, 'child_id': int(cid), 'parent_id': int(pid)})
+    except Exception as e:
+        logger.error(f"admin_set_parent error: {e}")
+        return jsonify({'success': False, 'error': 'server error'}), 500
+
+@app.route('/api/admin/legacy_user_exercises', methods=['GET'])
+@login_required
+def admin_legacy_user_exercises():
+    """Retrieve legacy exercise data for a user from the SQLite users.db file when current DB is MySQL."""
+    try:
+        requester = session.get('username')
+        if not is_app_admin(requester):
+            return jsonify({'success': False, 'error': 'Forbidden'}), 403
+        target = request.args.get('username', '').strip()
+        if not target:
+            return jsonify({'success': False, 'error': 'username required'}), 400
+
+        # Determine legacy source: if current is MySQL, read from SQLite file
+        legacy_exercises = []
+        try:
+            db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'users.db')
+            if os.path.exists(db_path):
+                conn = sqlite3.connect(db_path)
+                conn.row_factory = sqlite3.Row
+                c = conn.cursor()
+                # Gather exercises
+                c.execute("SELECT id, name, muscle_group FROM exercises WHERE username = ? ORDER BY muscle_group, name", (target,))
+                ex_rows = c.fetchall()
+                for ex in ex_rows:
+                    ex_id = ex['id']
+                    item = { 'id': ex_id, 'name': ex['name'], 'muscle_group': ex['muscle_group'], 'weight_history': [] }
+                    # From exercise_sets
+                    c.execute("SELECT weight, reps, created_at FROM exercise_sets WHERE exercise_id = ? ORDER BY created_at DESC", (ex_id,))
+                    for s in c.fetchall():
+                        item['weight_history'].append({ 'weight': float(s['weight']), 'reps': int(s['reps']), 'date': s['created_at'] })
+                    # Also convert workout_exercises into weight entries (if present)
+                    try:
+                        c.execute("SELECT weight, reps, created_at FROM workout_exercises WHERE exercise_id = ? ORDER BY created_at DESC", (ex_id,))
+                        for s in c.fetchall():
+                            item['weight_history'].append({ 'weight': float(s['weight'] or 0), 'reps': int(s['reps'] or 0), 'date': s['created_at'] })
+                    except Exception:
+                        pass
+                    legacy_exercises.append(item)
+                conn.close()
+        except Exception as _e:
+            # If legacy source not available, return empty
+            pass
+
+        return jsonify({ 'success': True, 'username': target, 'exercises': legacy_exercises, 'source': 'sqlite_users.db' })
+    except Exception as e:
+        return jsonify({ 'success': False, 'error': str(e) })
+
+@app.route('/api/admin/merge_legacy_user_exercises', methods=['GET', 'POST'])
+@login_required
+def admin_merge_legacy_user_exercises():
+    """Merge legacy exercises from SQLite users.db into current DB for a specific user (admin-only)."""
+    try:
+        requester = session.get('username')
+        if not is_app_admin(requester):
+            return jsonify({'success': False, 'error': 'Forbidden'}), 403
+        # Support both POST form and GET query param
+        target = (request.form.get('username') or request.args.get('username') or '').strip()
+        if not target:
+            return jsonify({'success': False, 'error': 'username required'}), 400
+
+        db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'users.db')
+        if not os.path.exists(db_path):
+            return jsonify({'success': False, 'error': 'legacy users.db not found'}), 404
+
+        # Read legacy data first
+        legacy = []
+        s_conn = sqlite3.connect(db_path)
+        s_conn.row_factory = sqlite3.Row
+        s = s_conn.cursor()
+        s.execute("SELECT id, name, muscle_group FROM exercises WHERE username = ? ORDER BY muscle_group, name", (target,))
+        ex_rows = s.fetchall()
+        for ex in ex_rows:
+            ex_id = ex['id']
+            item = { 'name': ex['name'], 'muscle_group': ex['muscle_group'], 'sets': [] }
+            s.execute("SELECT weight, reps, created_at FROM exercise_sets WHERE exercise_id = ? ORDER BY created_at", (ex_id,))
+            for r in s.fetchall():
+                item['sets'].append((float(r['weight']), int(r['reps']), r['created_at']))
+            # Also import from workout_exercises if present
+            try:
+                s.execute("SELECT weight, reps, created_at FROM workout_exercises WHERE exercise_id = ? ORDER BY created_at", (ex_id,))
+                for r in s.fetchall():
+                    item['sets'].append((float(r['weight'] or 0), int(r['reps'] or 0), r['created_at']))
+            except Exception:
+                pass
+            legacy.append(item)
+        s_conn.close()
+
+        # Merge into current DB
+        conn = get_db_connection()
+        c = conn.cursor()
+        inserted_ex = 0
+        inserted_sets = 0
+        for ex in legacy:
+            # Check if exercise exists
+            if USE_MYSQL:
+                c.execute("SELECT id FROM exercises WHERE username = %s AND name = %s AND muscle_group = %s", (target, ex['name'], ex['muscle_group']))
+            else:
+                c.execute("SELECT id FROM exercises WHERE username = ? AND name = ? AND muscle_group = ?", (target, ex['name'], ex['muscle_group']))
+            row = c.fetchone()
+            if row:
+                ex_id = row['id'] if hasattr(row, 'keys') else row[0]
+            else:
+                # Insert exercise
+                if USE_MYSQL:
+                    c.execute("INSERT INTO exercises (username, name, muscle_group) VALUES (%s, %s, %s)", (target, ex['name'], ex['muscle_group']))
+                else:
+                    c.execute("INSERT INTO exercises (username, name, muscle_group) VALUES (?, ?, ?)", (target, ex['name'], ex['muscle_group']))
+                inserted_ex += 1
+                # Retrieve new id
+                if USE_MYSQL:
+                    c.execute("SELECT LAST_INSERT_ID()")
+                    ex_id = list(c.fetchone().values())[0]
+                else:
+                    ex_id = c.lastrowid
+
+            # Insert sets, avoid duplicates by exact match
+            for (w, rps, dt) in ex['sets']:
+                if USE_MYSQL:
+                    c.execute("SELECT 1 FROM exercise_sets WHERE exercise_id = %s AND weight = %s AND reps = %s AND created_at = %s", (ex_id, w, rps, dt))
+                else:
+                    c.execute("SELECT 1 FROM exercise_sets WHERE exercise_id = ? AND weight = ? AND reps = ? AND created_at = ?", (ex_id, w, rps, dt))
+                if c.fetchone():
+                    continue
+                if USE_MYSQL:
+                    c.execute("INSERT INTO exercise_sets (exercise_id, weight, reps, created_at) VALUES (%s, %s, %s, %s)", (ex_id, w, rps, dt))
+                else:
+                    c.execute("INSERT INTO exercise_sets (exercise_id, weight, reps, created_at) VALUES (?, ?, ?, ?)", (ex_id, w, rps, dt))
+                inserted_sets += 1
+
+        conn.commit()
+        conn.close()
+
+        return jsonify({ 'success': True, 'merged_exercises': inserted_ex, 'merged_sets': inserted_sets, 'username': target })
+    except Exception as e:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        return jsonify({ 'success': False, 'error': str(e) })
 
 
 
@@ -12937,8 +16599,8 @@ def test_community_template():
             'traceback': traceback.format_exc()
         })
 
-@app.route('/simple_test')
-def simple_test():
+@app.route('/simple_test', endpoint='simple_test_route')
+def simple_test_route():
     """Simple test route without any decorators"""
     return jsonify({'success': True, 'message': 'Simple test route works'})
 # Community Announcements Routes
@@ -13194,17 +16856,27 @@ def save_community_announcement():
             )
         ''')
         
-        # Check if user is admin or community creator
+        # Check if user is creator, app admin, or community admin
         cursor.execute('''
             SELECT creator_username FROM communities 
             WHERE id = ?
         ''', (community_id,))
-        
         community = cursor.fetchone()
         if not community:
             return jsonify({'success': False, 'error': 'Community not found'})
-        
-        if session['username'] != community['creator_username'] and session['username'] != 'admin':
+
+        current_user = session['username']
+        is_owner = current_user == community['creator_username']
+        is_app_admin = current_user == 'admin'
+        # community admin?
+        is_comm_admin = False
+        try:
+            cursor.execute("SELECT 1 FROM community_admins WHERE community_id = ? AND username = ?", (community_id, current_user))
+            is_comm_admin = cursor.fetchone() is not None
+        except Exception:
+            is_comm_admin = False
+
+        if not (is_owner or is_app_admin or is_comm_admin):
             return jsonify({'success': False, 'error': 'Unauthorized'})
         
         # Save announcement to database
@@ -13249,8 +16921,47 @@ def save_community_announcement():
         ''', (content, datetime.now().strftime('%m.%d.%y %H:%M'), community_id))
         
         conn.commit()
+
+        # Notify all members of this community via Web Push (best-effort)
+        try:
+            # Fetch community name for nicer title
+            community_name = None
+            try:
+                cursor.execute("SELECT name FROM communities WHERE id = ?", (community_id,))
+                rown = cursor.fetchone()
+                community_name = (rown['name'] if hasattr(rown, 'keys') else rown[0]) if rown else None
+            except Exception:
+                community_name = None
+
+            # Load all member usernames
+            cursor.execute(
+                """
+                SELECT u.username
+                FROM user_communities uc
+                JOIN users u ON uc.user_id = u.id
+                WHERE uc.community_id = ?
+                """,
+                (community_id,)
+            )
+            members = [r['username'] if hasattr(r, 'keys') else r[0] for r in (cursor.fetchall() or [])]
+            # Trim announcement body for push body
+            body_snippet = (content or '')[:120]
+            for m in members:
+                if not m or m == current_user:
+                    continue
+                try:
+                    send_push_to_user(m, {
+                        'title': f"New announcement{(' in ' + community_name) if community_name else ''}",
+                        'body': body_snippet,
+                        'url': f"/community_feed_react/{community_id}",
+                        'tag': f"community-announcement-{community_id}"
+                    })
+                except Exception as pe:
+                    logger.warning(f"announcement push warn to {m}: {pe}")
+        except Exception as ne:
+            logger.warning(f"announcement notify warn: {ne}")
+
         conn.close()
-        
         return jsonify({'success': True, 'files': uploaded_files})
         
     except Exception as e:
@@ -13324,17 +17035,25 @@ def delete_community_announcement():
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # Check if user is admin or community creator
+        # Check if user is creator, app admin, or community admin
         cursor.execute('''
             SELECT creator_username FROM communities 
             WHERE id = ?
         ''', (community_id,))
-        
         community = cursor.fetchone()
         if not community:
             return jsonify({'success': False, 'error': 'Community not found'})
-        
-        if session['username'] != community['creator_username'] and session['username'] != 'admin':
+
+        current_user = session['username']
+        is_owner = current_user == community['creator_username']
+        is_app_admin = current_user == 'admin'
+        is_comm_admin = False
+        try:
+            cursor.execute("SELECT 1 FROM community_admins WHERE community_id = ? AND username = ?", (community_id, current_user))
+            is_comm_admin = cursor.fetchone() is not None
+        except Exception:
+            is_comm_admin = False
+        if not (is_owner or is_app_admin or is_comm_admin):
             return jsonify({'success': False, 'error': 'Unauthorized'})
         
         # Delete announcement from database
@@ -13427,7 +17146,6 @@ def debug_table_structure():
         
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
-
 @app.route('/cleanup_missing_images')
 @login_required
 def cleanup_missing_images():
@@ -13483,7 +17201,7 @@ def seed_dummy_data():
 
             # Ensure crossfit_entries table exists
             c.execute('''CREATE TABLE IF NOT EXISTS crossfit_entries (
-                id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
                 username TEXT NOT NULL,
                 type TEXT NOT NULL,
                 name TEXT NOT NULL,
@@ -13733,11 +17451,71 @@ def api_push_status():
         logger.error(f"push status error: {e}")
         return jsonify({ 'success': False, 'hasSubscription': False }), 500
 
+@app.route('/api/active_chat', methods=['POST'])
+@login_required
+def api_active_chat():
+    """Record that the current user is actively viewing a chat with peer. Used to suppress push notifications."""
+    try:
+        me = session.get('username')
+        data = request.get_json(force=True, silent=True) or {}
+        peer = (data.get('peer') or '').strip()
+        if not peer:
+            return jsonify({ 'success': False, 'error': 'peer required' }), 400
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            if USE_MYSQL:
+                c.execute("""
+                    INSERT INTO active_chat_status (user, peer, updated_at)
+                    VALUES (?, ?, NOW())
+                    ON DUPLICATE KEY UPDATE updated_at=NOW()
+                """, (me, peer))
+            else:
+                c.execute("""
+                    INSERT INTO active_chat_status (user, peer, updated_at)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT(user, peer) DO UPDATE SET updated_at=excluded.updated_at
+                """, (me, peer, now))
+            conn.commit()
+        return jsonify({ 'success': True })
+    except Exception as e:
+        logger.error(f"active chat set error: {e}")
+        return jsonify({ 'success': False }), 500
+
 def send_push_to_user(target_username: str, payload: dict):
     if not VAPID_PUBLIC_KEY or not VAPID_PRIVATE_KEY:
         logger.warning("VAPID keys missing; push disabled")
         return
     try:
+        # Simple dedupe: if same tag/title/body sent to this user in last 30 seconds, skip
+        try:
+            tag = payload.get('tag') if isinstance(payload, dict) else None
+            title = payload.get('title') if isinstance(payload, dict) else None
+            body = payload.get('body') if isinstance(payload, dict) else None
+            url = payload.get('url') if isinstance(payload, dict) else None
+            with get_db_connection() as conn_chk:
+                cchk = conn_chk.cursor()
+                if USE_MYSQL:
+                    cchk.execute("""
+                        SELECT id FROM push_send_log
+                        WHERE username=? AND IFNULL(tag,'') = IFNULL(?, '') AND IFNULL(title,'')=IFNULL(?, '') AND IFNULL(body,'')=IFNULL(?, '')
+                          AND sent_at > DATE_SUB(NOW(), INTERVAL 30 SECOND)
+                        LIMIT 1
+                    """, (target_username, tag, title, body))
+                else:
+                    # SQLite: 30-second window using datetime comparisons
+                    cchk.execute("""
+                        SELECT id FROM push_send_log
+                        WHERE username=? AND IFNULL(tag,'') = IFNULL(?, '') AND IFNULL(title,'')=IFNULL(?, '') AND IFNULL(body,'')=IFNULL(?, '')
+                          AND datetime(sent_at) > datetime('now','-30 seconds')
+                        LIMIT 1
+                    """, (target_username, tag, title, body))
+                if cchk.fetchone():
+                    logger.info(f"push dedup: skipping duplicate push to {target_username} (tag={tag})")
+                    return
+        except Exception as dedupe_e:
+            logger.warning(f"push dedupe check failed: {dedupe_e}")
+
         with get_db_connection() as conn:
             c = conn.cursor()
             c.execute("SELECT endpoint, p256dh, auth FROM push_subscriptions WHERE username=?", (target_username,))
@@ -13776,6 +17554,18 @@ def send_push_to_user(target_username: str, payload: dict):
                         logger.warning(f"failed to delete stale subscription: {de}")
             except Exception as e:
                 logger.warning(f"push error: {e}")
+        # Record that we sent this push to dedupe subsequent attempts within window
+        try:
+            with get_db_connection() as conn_log:
+                clog = conn_log.cursor()
+                clog.execute("INSERT INTO push_send_log (username, tag, title, body, url) VALUES (?,?,?,?,?)",
+                             (target_username, payload.get('tag') if isinstance(payload, dict) else None,
+                              payload.get('title') if isinstance(payload, dict) else None,
+                              payload.get('body') if isinstance(payload, dict) else None,
+                              payload.get('url') if isinstance(payload, dict) else None))
+                conn_log.commit()
+        except Exception as le:
+            logger.warning(f"push log write failed: {le}")
     except Exception as e:
         logger.error(f"send_push_to_user error: {e}")
 

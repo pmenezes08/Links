@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Email Verification</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        body { margin:0; background:#0b0b0b; color:#fff; font-family: Inter, system-ui, Arial, sans-serif; }
+        .wrap { min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px; }
+        .card { width:100%; max-width:520px; background:#0f0f0f; border:1px solid rgba(255,255,255,0.08); border-radius:16px; padding:24px; }
+        .title { font-size:18px; font-weight:600; margin:0 0 8px; }
+        .msg { color:#cbd5e1; font-size:14px; line-height:1.6; }
+        .ok { margin-top:16px; display:inline-block; padding:10px 14px; background:#4db6ac; color:#111; border:none; border-radius:10px; font-weight:600; cursor:pointer; }
+        .err { color:#f87171; }
+    </style>
+    <script>
+        function closeTab(){ window.close(); }
+    </script>
+ </head>
+<body>
+    <div class="wrap">
+        <div class="card">
+            {% if success %}
+                <div class="title">Email verified</div>
+                <div class="msg">{{ message or 'Your email has been verified successfully.' }}</div>
+                <button class="ok" onclick="closeTab()">Close</button>
+            {% else %}
+                <div class="title err">Verification failed</div>
+                <div class="msg">{{ message or 'The verification link is invalid or has expired.' }}</div>
+            {% endif %}
+        </div>
+    </div>
+</body>
+</html>

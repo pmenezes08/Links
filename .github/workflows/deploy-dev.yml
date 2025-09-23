@@ -1,0 +1,45 @@
+name: Deploy (PythonAnywhere Dev)
+
+on:
+  push:
+    branches: [ develop ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install sshpass
+        run: sudo apt-get update && sudo apt-get install -y sshpass
+
+      - name: Build client
+        run: |
+          cd client
+          npm ci
+          npm run build
+
+      - name: Sync repo to PythonAnywhere dev app
+        env:
+          PA_SSH_USER: ${{ secrets.PA_SSH_USER }}
+          PA_SSH_HOST: ${{ secrets.PA_SSH_HOST }}
+          PA_SSH_PASS: ${{ secrets.PA_SSH_PASS }}
+          PA_APP_PATH: ${{ secrets.PA_DEV_APP_PATH }}
+        run: |
+          rsync -az --delete -e "sshpass -p $PA_SSH_PASS ssh -o StrictHostKeyChecking=no" ./ $PA_SSH_USER@$PA_SSH_HOST:$PA_APP_PATH/
+
+      - name: Reload PythonAnywhere web app
+        env:
+          PA_API_TOKEN: ${{ secrets.PA_API_TOKEN }}
+          PA_USERNAME: ${{ secrets.PA_USERNAME }}
+          PA_DEV_DOMAIN: ${{ secrets.PA_DEV_DOMAIN }}
+        run: |
+          curl -X POST -H "Authorization: Token $PA_API_TOKEN" \
+            https://www.pythonanywhere.com/api/v0/user/$PA_USERNAME/webapps/$PA_DEV_DOMAIN/reload/
+

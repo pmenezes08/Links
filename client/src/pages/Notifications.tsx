@@ -41,6 +41,7 @@ export default function Notifications(){
   const navigate = useNavigate()
   const [items, setItems] = useState<Notif[]|null>(null)
   const [loading, setLoading] = useState(true)
+  const [clearing, setClearing] = useState(false)
 
   useEffect(() => { setTitle('Notifications') }, [setTitle])
 
@@ -49,7 +50,10 @@ export default function Notifications(){
       setLoading(true)
       const r = await fetch('/api/notifications?all=true', { credentials:'include' })
       const j = await r.json()
-      if (j?.success){ setItems(j.notifications as Notif[]) }
+      if (j?.success){
+        const filtered = (j.notifications as Notif[]).filter(n => n?.type !== 'message')
+        setItems(filtered)
+      }
     } finally { setLoading(false) }
   }
 
@@ -58,6 +62,19 @@ export default function Notifications(){
   async function markAll(){
     await fetch('/api/notifications/mark-all-read', { method:'POST', credentials:'include' })
     load()
+  }
+
+  async function clearAll(){
+    if (clearing) return
+    if (!confirm('Clear all notifications? This cannot be undone.')) return
+    try{
+      setClearing(true)
+      await fetch('/api/notifications/mark-all-read', { method:'POST', credentials:'include' })
+      await fetch('/api/notifications/delete-read', { method:'POST', credentials:'include' })
+      await load()
+    } finally {
+      setClearing(false)
+    }
   }
 
   async function onClick(n: Notif){
@@ -87,7 +104,10 @@ export default function Notifications(){
       <div className="max-w-xl mx-auto p-3">
         <div className="flex items-center justify-between mb-3 border-b border-white/10 pb-2">
           <div className="text-lg font-semibold">Notifications</div>
-          <button onClick={markAll} className="px-3 py-1.5 rounded-full text-sm border border-white/15 hover:border-[#4db6ac]">Mark all read</button>
+          <div className="flex items-center gap-2">
+            <button onClick={markAll} className="px-3 py-1.5 rounded-full text-sm border border-white/15 hover:border-[#4db6ac]">Mark all read</button>
+            <button onClick={clearAll} disabled={clearing} className="px-3 py-1.5 rounded-full text-sm border border-white/15 hover:border-[#e53935] disabled:opacity-50">Clear all</button>
+          </div>
         </div>
         {items.length === 0 ? (
           <div className="text-[#9fb0b5] py-10 text-center">

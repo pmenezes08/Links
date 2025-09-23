@@ -20,14 +20,18 @@ import EditCommunity from './pages/EditCommunity'
 import Communities from './pages/Communities'
 import HomeTimeline from './pages/HomeTimeline'
 import WorkoutTracking from './pages/WorkoutTracking'
+import Gym from './pages/Gym'
 import YourSports from './pages/YourSports'
 import Messages from './pages/Messages'
 import NewMessage from './pages/NewMessage'
 import ChatThread from './pages/ChatThread'
 import Profile from './pages/Profile'
+import PublicProfile from './pages/PublicProfile'
 import AccountSettings from './pages/AccountSettings'
 import Signup from './pages/Signup'
 import Notifications from './pages/Notifications'
+import AdminDashboard from './pages/AdminDashboard'
+import ProductDevelopment from './pages/ProductDevelopment'
 
 const queryClient = new QueryClient()
 
@@ -69,14 +73,18 @@ function AppRoutes(){
           <Route path="/crossfit_react" element={<CrossfitExact />} />
           <Route path="/communities" element={<Communities />} />
           <Route path="/your_sports" element={<YourSports />} />
+          <Route path="/gym" element={<Gym />} />
           <Route path="/user_chat" element={<Messages />} />
           <Route path="/user_chat/new" element={<NewMessage />} />
           <Route path="/user_chat/chat/:username" element={<ChatThread />} />
           <Route path="/profile" element={<Profile />} />
           <Route path="/profile_react" element={<Profile />} />
+          <Route path="/profile/:username" element={<PublicProfile />} />
           <Route path="/account_settings" element={<AccountSettings />} />
           <Route path="/account_settings_react" element={<AccountSettings />} />
           <Route path="/notifications" element={<Notifications />} />
+          <Route path="/admin" element={<AdminDashboard />} />
+          <Route path="/admin_dashboard" element={<AdminDashboard />} />
           <Route path="/home" element={<HomeTimeline />} />
           <Route path="/workout_tracking" element={<WorkoutTracking />} />
           <Route path="/community_feed_react/:community_id" element={<CommunityFeed />} />
@@ -88,6 +96,7 @@ function AppRoutes(){
           <Route path="/community/:community_id/edit" element={<EditCommunity />} />
           <Route path="/post/:post_id" element={<PostDetail />} />
           <Route path="/compose" element={<CreatePost />} />
+          <Route path="/product_development" element={<ProductDevelopment />} />
           <Route path="*" element={<PremiumDashboard />} />
           </Routes>
         </ErrorBoundary>

@@ -1,59 +1,14 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type React from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import Avatar from '../components/Avatar'
+import ImageLoader from '../components/ImageLoader'
+import { formatSmartTime } from '../utils/time'
 
-type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null, parent_reply_id?: number|null, children?: Reply[], profile_picture?: string|null }
+type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null, parent_reply_id?: number|null, children?: Reply[], profile_picture?: string|null, image_path?: string|null }
 type Post = { id: number; username: string; content: string; image_path?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; replies: Reply[] }
 
-function formatTimestamp(input: string): string {
-  function parseDate(str: string): Date | null {
-    if (/^\d{10,13}$/.test(str.trim())){
-      const n = Number(str)
-      const d = new Date(n > 1e12 ? n : n * 1000)
-      return isNaN(d.getTime()) ? null : d
-    }
-    let d = new Date(str)
-    if (!isNaN(d.getTime())) return d
-    d = new Date(str.replace(' ', 'T'))
-    if (!isNaN(d.getTime())) return d
-    const mdyDots = str.match(/^(\d{1,2})\.(\d{1,2})\.(\d{2}) (\d{1,2}):(\d{2})$/)
-    if (mdyDots){
-      const mm = Number(mdyDots[1]), dd = Number(mdyDots[2]), yy = Number(mdyDots[3])
-      const HH = Number(mdyDots[4]), MM = Number(mdyDots[5])
-      const dt = new Date(2000 + yy, mm - 1, dd, HH, MM)
-      return isNaN(dt.getTime()) ? null : dt
-    }
-    const mdySlashAm = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2}) (\d{1,2}):(\d{2}) (AM|PM)$/i)
-    if (mdySlashAm){
-      const mm = Number(mdySlashAm[1]), dd = Number(mdySlashAm[2]), yy = Number(mdySlashAm[3])
-      let hh = Number(mdySlashAm[4]); const MM = Number(mdySlashAm[5]); const ampm = mdySlashAm[6].toUpperCase()
-      if (ampm === 'PM' && hh < 12) hh += 12
-      if (ampm === 'AM' && hh === 12) hh = 0
-      const dt = new Date(2000 + yy, mm - 1, dd, hh, MM)
-      return isNaN(dt.getTime()) ? null : dt
-    }
-    const ymd = str.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/)
-    if (ymd){
-      const year = Number(ymd[1]), mm = Number(ymd[2]), dd = Number(ymd[3])
-      const HH = Number(ymd[4]), MM = Number(ymd[5]), SS = ymd[6] ? Number(ymd[6]) : 0
-      const dt = new Date(year, mm - 1, dd, HH, MM, SS)
-      return isNaN(dt.getTime()) ? null : dt
-    }
-    return null
-  }
-  const d = parseDate(input)
-  if (!d) return input
-  const now = new Date()
-  const diffMs = Math.max(0, now.getTime() - d.getTime())
-  const minuteMs = 60*1000, hourMs = 60*minuteMs, dayMs = 24*hourMs
-  if (diffMs < hourMs) return `${Math.floor(diffMs/minuteMs)}m`
-  if (diffMs < dayMs) return `${Math.floor(diffMs/hourMs)}h`
-  const days = Math.floor(diffMs/dayMs)
-  if (days < 10) return `${days}d`
-  const mm = String(d.getMonth()+1).padStart(2,'0'), dd = String(d.getDate()).padStart(2,'0'), yy = String(d.getFullYear()%100).padStart(2,'0')
-  return `${mm}/${dd}/${yy}`
-}
+// old formatTimestamp removed; using formatSmartTime
 
 function renderRichText(input: string){
   const nodes: Array<React.ReactNode> = []
@@ -67,7 +22,7 @@ function renderRichText(input: string){
     }
     const label = match[1]
     const url = match[2]
-    nodes.push(<a key={`md-${match.index}`} href={url} target="_blank" rel="noopener noreferrer" className="text-[#4db6ac] underline-offset-2 hover:underline break-words break-all">{label}</a>)
+    nodes.push(<a key={`md-${match.index}`} href={url} target="_blank" rel="noopener noreferrer" className="text-[#4db6ac] underline-offset-2 hover:underline break-words">{label}</a>)
     lastIndex = markdownRe.lastIndex
   }
   const rest = input.slice(lastIndex)
@@ -81,7 +36,7 @@ function renderRichText(input: string){
     }
     const urlText = m[0]
     const href = urlText.startsWith('http') ? urlText : `https://${urlText}`
-    nodes.push(<a key={`u-${lastIndex + m.index}`} href={href} target="_blank" rel="noopener noreferrer" className="text-[#4db6ac] underline-offset-2 hover:underline break-words break-all">{urlText}</a>)
+    nodes.push(<a key={`u-${lastIndex + m.index}`} href={href} target="_blank" rel="noopener noreferrer" className="text-[#4db6ac] underline-offset-2 hover:underline break-words">{urlText}</a>)
     urlLast = urlRe.lastIndex
   }
   if (urlLast < rest.length){
@@ -100,6 +55,15 @@ function preserveNewlines(text: string){
   return out
 }
 
+function normalizePath(p?: string | null): string {
+  const s = (p || '').trim()
+  if (!s) return ''
+  if (s.startsWith('http')) return s
+  if (s.startsWith('/uploads') || s.startsWith('/static')) return s
+  if (s.startsWith('uploads') || s.startsWith('static')) return `/${s}`
+  return `/uploads/${s}`
+}
+
 export default function PostDetail(){
   const { post_id } = useParams()
   const navigate = useNavigate()
@@ -108,7 +72,13 @@ export default function PostDetail(){
   const [error, setError] = useState<string| null>(null)
   const [content, setContent] = useState('')
   const [file, setFile] = useState<File|null>(null)
-  const [composerActive, setComposerActive] = useState(false)
+  const [currentUser, setCurrentUser] = useState<string | null>(null)
+  const [previewSrc, setPreviewSrc] = useState<string | null>(null)
+  const [submittingReply, setSubmittingReply] = useState(false)
+  const replyTokenRef = useRef<string>(`${Date.now()}_${Math.random().toString(36).slice(2)}`)
+  const [inlineSending, setInlineSending] = useState<Record<number, boolean>>({})
+  
+  const fileInputRef = useRef<HTMLInputElement|null>(null)
 
   useEffect(() => {
     let mounted = true
@@ -128,6 +98,21 @@ export default function PostDetail(){
     load()
     return () => { mounted = false }
   }, [post_id])
+
+  // Load current username for ownership checks (lightweight usage of existing endpoint)
+  useEffect(() => {
+    let mounted = true
+    async function loadUser(){
+      try{
+        const r = await fetch('/api/home_timeline', { credentials:'include' })
+        const j = await r.json().catch(()=>null)
+        if (!mounted) return
+        if (j?.success && j.username) setCurrentUser(j.username)
+      }catch{}
+    }
+    loadUser()
+    return () => { mounted = false }
+  }, [])
 
   async function toggleReaction(reaction: string){
     if (!post) return
@@ -171,13 +156,17 @@ export default function PostDetail(){
 
   async function submitReply(parentReplyId?: number){
     if (!post || (!content && !file)) return
+    if (submittingReply) return
+    setSubmittingReply(true)
     const fd = new FormData()
     fd.append('post_id', String(post.id))
     fd.append('content', content)
     if (parentReplyId) fd.append('parent_reply_id', String(parentReplyId))
     if (file) fd.append('image', file)
+    fd.append('dedupe_token', replyTokenRef.current)
     const r = await fetch('/post_reply', { method:'POST', credentials:'include', body: fd })
     const j = await r.json().catch(()=>null)
+    setSubmittingReply(false)
     if (j?.success && j.reply){
       setPost(p => {
         if (!p) return p
@@ -195,18 +184,24 @@ export default function PostDetail(){
         }
         return { ...p, replies: [j.reply, ...p.replies] }
       })
-      setContent(''); setFile(null)
+      setContent(''); setFile(null); if (fileInputRef.current) fileInputRef.current.value = ''
+      replyTokenRef.current = `${Date.now()}_${Math.random().toString(36).slice(2)}`
     }
   }
 
-  async function submitInlineReply(parentId: number, text: string){
-    if (!post || !text) return
+  async function submitInlineReply(parentId: number, text: string, file?: File){
+    if (!post || (!text && !file)) return
+    if (inlineSending[parentId]) return
+    setInlineSending(s => ({ ...s, [parentId]: true }))
     const fd = new FormData()
     fd.append('post_id', String(post.id))
-    fd.append('content', text)
+    fd.append('content', text || '')
     fd.append('parent_reply_id', String(parentId))
+    if (file) fd.append('image', file)
+    fd.append('dedupe_token', `${Date.now()}_${Math.random().toString(36).slice(2)}`)
     const r = await fetch('/post_reply', { method:'POST', credentials:'include', body: fd })
     const j = await r.json().catch(()=>null)
+    setInlineSending(s => ({ ...s, [parentId]: false }))
     if (j?.success && j.reply){
       setPost(p => {
         if (!p) return p
@@ -224,29 +219,59 @@ export default function PostDetail(){
     }
   }
 
+  async function deleteReply(replyId: number){
+    if (!post) return
+    const ok = window.confirm('Delete this reply?')
+    if (!ok) return
+    try{
+      const fd = new FormData()
+      fd.append('reply_id', String(replyId))
+      const r = await fetch('/delete_reply', { method:'POST', credentials:'include', body: fd })
+      const j = await r.json().catch(()=>null)
+      if (!j?.success) return
+      setPost(p => {
+        if (!p) return p
+        function removeById(list: Reply[]): Reply[] {
+          const out: Reply[] = []
+          for (const item of list){
+            if (item.id === replyId) continue
+            const children = item.children ? removeById(item.children) : item.children
+            out.push({ ...item, children })
+          }
+          return out
+        }
+        return { ...p, replies: removeById(p.replies) }
+      })
+    }catch{}
+  }
+
   if (loading) return <div className="p-4 text-[#9fb0b5]">Loading…</div>
   if (error || !post) return <div className="p-4 text-red-400">{error||'Error'}</div>
 
   return (
     <div className="min-h-screen bg-black text-white pb-24">
-      <div className="fixed left-0 right-0 top-0 h-12 border-b border-white/10 bg-black/70 backdrop-blur flex items-center px-3 z-40">
-        <button className="px-3 py-2 rounded-full text-[#cfd8dc] hover:text-[#4db6ac]" onClick={()=> navigate(-1)}>
-          <i className="fa-solid fa-arrow-left" />
-        </button>
-        <div className="ml-2 font-semibold">Post</div>
-      </div>
-
-      <div className="max-w-2xl mx-auto pt-14 px-3">
-        <div className="rounded-2xl border border-white/10 bg-white/[0.035] shadow-sm shadow-black/20">
+      <div className="max-w-2xl mx-auto pt-14 px-3" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 14rem)' }}>
+        <div className="mb-2">
+          <button className="px-3 py-1.5 rounded-lg border border-white/10 bg-white/[0.03] text-sm hover:bg-white/10" onClick={()=> navigate(-1)} aria-label="Back">
+            ← Back
+          </button>
+        </div>
+        <div className="rounded-2xl border border-white/10 bg-black shadow-sm shadow-black/20">
           <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2">
             <Avatar username={post.username} url={(post as any).profile_picture || undefined} size={32} />
             <div className="font-medium">{post.username}</div>
-            <div className="text-xs text-[#9fb0b5] ml-auto">{formatTimestamp(post.timestamp)}</div>
+            <div className="text-xs text-[#9fb0b5] ml-auto">{formatSmartTime((post as any).display_timestamp || post.timestamp)}</div>
           </div>
           <div className="px-3 py-2 space-y-2">
-            <div className="whitespace-pre-wrap text-[14px] break-words break-all">{renderRichText(post.content)}</div>
+            <div className="whitespace-pre-wrap text-[14px] break-words">{renderRichText(post.content)}</div>
             {post.image_path ? (
-              <img src={post.image_path.startsWith('/uploads') || post.image_path.startsWith('/static') ? post.image_path : `/uploads/${post.image_path}`} alt="" className="block mx-auto max-w-full max-h-[360px] rounded border border-white/10" />
+              <div onClick={()=> setPreviewSrc(normalizePath(post.image_path as string))}>
+                <ImageLoader
+                  src={normalizePath(post.image_path as string)}
+                  alt="Post image"
+                  className="block mx-auto max-w-full max-h-[360px] rounded border border-white/10 cursor-zoom-in"
+                />
+              </div>
             ) : null}
             <div className="flex items-center gap-2 text-xs">
               <Reaction icon="fa-regular fa-heart" count={post.reactions?.['heart']||0} active={post.user_reaction==='heart'} onClick={()=> toggleReaction('heart')} />
@@ -258,28 +283,61 @@ export default function PostDetail(){
 
         <div className="mt-3 rounded-2xl border border-white/10">
           {post.replies.map(r => (
-            <ReplyNode key={r.id} reply={r} onToggle={(id, reaction)=> toggleReplyReaction(id, reaction)} onInlineReply={(id, text)=> submitInlineReply(id, text)} />
+            <ReplyNode key={r.id} reply={r} currentUser={currentUser} onToggle={(id, reaction)=> toggleReplyReaction(id, reaction)} onInlineReply={(id, text, file)=> submitInlineReply(id, text, file)} onDelete={(id)=> deleteReply(id)} onPreviewImage={(src)=> setPreviewSrc(src)} inlineSending={inlineSending} />
           ))}
         </div>
+        {/* Spacer to prevent fixed composer overlap with first replies */}
+        <div style={{ height: 'calc(env(safe-area-inset-bottom, 0px) + 12rem)' }} />
       </div>
 
+      {/* Image preview modal */}
+      {previewSrc ? (
+        <div className="fixed inset-0 z-[100] bg-black/85 backdrop-blur flex items-center justify-center" onClick={(e)=> e.currentTarget===e.target && setPreviewSrc(null)}>
+          <button className="absolute top-3 right-3 w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 text-white flex items-center justify-center" onClick={()=> setPreviewSrc(null)} aria-label="Close preview">
+            <i className="fa-solid fa-xmark" />
+          </button>
+          <img src={previewSrc} alt="preview" className="max-w-[92vw] max-h-[85vh] rounded border border-white/10" />
+        </div>
+      ) : null}
+
       {/* Fixed-bottom reply composer */}
-      <div className="fixed left-0 right-0 bottom-0 z-50 bg-black/85 border-t border-white/10 backdrop-blur">
+      <div className="fixed left-0 right-0 bottom-0 z-[100] bg-black/85 border-t border-white/10 backdrop-blur pointer-events-auto">
         <div className="px-3 py-2 flex flex-col gap-1.5">
           <textarea
             className="w-full resize-none max-h-36 min-h-[30px] px-3 py-1.5 rounded-2xl bg-black border border-[#4db6ac] text-[16px] focus:outline-none focus:ring-1 focus:ring-[#4db6ac]"
             placeholder="Write a reply…"
             value={content}
             onChange={(e)=> setContent(e.target.value)}
-            onFocus={()=> setComposerActive(true)}
-            onBlur={()=> { if (!content && !file) setComposerActive(false) }}
           />
-          {(composerActive || !!content || !!file) ? (
-            <div className="flex items-center justify-end gap-2 flex-wrap">
-              <label className="px-2.5 py-1.5 rounded-full border border-white/10 text-xs text-[#9fb0b5] hover:border-[#2a3f41] cursor-pointer">
-                <i className="fa-regular fa-image" style={{ color: '#4db6ac' }} />
-                <input type="file" accept="image/*" onChange={(e)=> setFile(e.target.files?.[0]||null)} style={{ display: 'none' }} />
-              </label>
+          <div className="flex items-center justify-end gap-2 flex-wrap">
+            {file && (
+              <div className="flex items-center gap-2 mr-auto">
+                <div className="w-16 h-16 rounded-md overflow-hidden border border-white/10">
+                  <img src={URL.createObjectURL(file)} alt="preview" className="w-full h-full object-cover" />
+                </div>
+                <div className="text-xs text-[#7fe7df] flex items-center gap-1">
+                  <i className="fa-solid fa-image" />
+                  <span className="max-w-[160px] truncate">{file.name}</span>
+                  <button 
+                    onClick={() => { setFile(null); if (fileInputRef.current) fileInputRef.current.value = '' }}
+                    className="ml-1 text-red-400 hover:text-red-300"
+                    aria-label="Remove file"
+                  >
+                    <i className="fa-solid fa-times" />
+                  </button>
+                </div>
+              </div>
+            )}
+            <button type="button" className="w-10 h-10 rounded-full hover:bg-white/10 grid place-items-center" aria-label="Add image" onClick={()=> fileInputRef.current?.click()}>
+              <i className="fa-regular fa-image text-xl" style={{ color: file ? '#7fe7df' : '#4db6ac' }} />
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={(e)=> setFile((e.target as HTMLInputElement).files?.[0]||null)}
+              className="hidden"
+            />
               {/(https?:\/\/[^\s]+|www\.[^\s]+)/.test(content) ? (
                 <button className="px-2.5 py-1.5 rounded-full border border-white/10 text-xs text-[#9fb0b5] hover:border-[#2a3f41] break-words" onClick={()=> {
                   const m = content.match(/(https?:\/\/[^\s]+|www\.[^\s]+)/)
@@ -292,11 +350,15 @@ export default function PostDetail(){
                   setContent(content.replace(urlText, replacement))
                 }}>Link name</button>
               ) : null}
-              <button className="px-2.5 py-1.5 rounded-full bg-[#4db6ac] text-white border border-[#4db6ac] hover:brightness-110" onClick={()=> submitReply()} aria-label="Send reply">
-                <i className="fa-solid fa-paper-plane" />
-              </button>
-            </div>
-          ) : null}
+            <button
+              className="px-2.5 py-1.5 rounded-full bg-[#4db6ac] text-white border border-[#4db6ac] hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed"
+              onClick={()=> submitReply()}
+              aria-label="Send reply"
+              disabled={(!content && !file) || submittingReply}
+            >
+              {submittingReply ? <i className="fa-solid fa-spinner fa-spin" /> : <i className="fa-solid fa-paper-plane" />}
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -321,9 +383,13 @@ function Reaction({ icon, count, active, onClick }:{ icon: string, count: number
   )
 }
 
-function ReplyNode({ reply, depth=0, onToggle, onInlineReply }:{ reply: Reply, depth?: number, onToggle: (id:number, reaction:string)=>void, onInlineReply: (id:number, text:string)=>void }){
+function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDelete, onPreviewImage, inlineSending }:{ reply: Reply, depth?: number, currentUser?: string|null, onToggle: (id:number, reaction:string)=>void, onInlineReply: (id:number, text:string, file?: File)=>void, onDelete: (id:number)=>void, onPreviewImage: (src:string)=>void, inlineSending: Record<number, boolean> }){
   const [showComposer, setShowComposer] = useState(false)
   const [text, setText] = useState('')
+  const [img, setImg] = useState<File|null>(null)
+  const inlineFileRef = useRef<HTMLInputElement|null>(null)
+  const [isEditing, setIsEditing] = useState(false)
+  const [editText, setEditText] = useState(reply.content)
   const avatarSizePx = 28
   return (
     <div className="border-b border-white/10 py-2">
@@ -340,9 +406,64 @@ function ReplyNode({ reply, depth=0, onToggle, onInlineReply }:{ reply: Reply, d
         <div className="flex-1 min-w-0 pr-2">
           <div className="flex items-center gap-2">
             <div className="font-medium">{reply.username}</div>
-            <div className="text-[11px] text-[#9fb0b5] ml-auto">{formatTimestamp(reply.timestamp)}</div>
+            <div className="text-[11px] text-[#9fb0b5] ml-auto">{formatSmartTime(reply.timestamp)}</div>
+            {(currentUser && (currentUser === reply.username || currentUser === 'admin')) ? (
+              <>
+                <button
+                  className="ml-2 px-2 py-1 rounded-full text-[#6c757d] hover:text-[#4db6ac]"
+                  title="Edit reply"
+                  onClick={()=> setIsEditing(v=>!v)}
+                >
+                  <i className="fa-regular fa-pen-to-square" />
+                </button>
+                <button
+                  className="ml-1 px-2 py-1 rounded-full text-[#6c757d] hover:text-red-400"
+                  title="Delete reply"
+                  onClick={()=> onDelete(reply.id)}
+                >
+                  <i className="fa-regular fa-trash-can" />
+                </button>
+              </>
+            ) : null}
           </div>
-          <div className="text-[#dfe6e9] whitespace-pre-wrap mt-0.5 break-words break-all">{renderRichText(reply.content)}</div>
+          {!isEditing ? (
+            <div className="text-[#dfe6e9] whitespace-pre-wrap mt-0.5 break-words">{renderRichText(reply.content)}</div>
+          ) : (
+            <div className="mt-1">
+              <textarea
+                className="w-full resize-none max-h-60 min-h-[100px] px-3 py-2 rounded-md bg-black border border-[#4db6ac] text-[14px] focus:outline-none focus:ring-1 focus:ring-[#4db6ac]"
+                value={editText}
+                onChange={(e)=> setEditText(e.target.value)}
+              />
+              <div className="mt-1 flex gap-2">
+                <button className="px-3 py-1.5 rounded-md bg-[#4db6ac] text-black" onClick={async ()=>{
+                  const fd = new FormData()
+                  fd.append('reply_id', String(reply.id))
+                  fd.append('content', editText)
+                  const r = await fetch('/edit_reply', { method:'POST', credentials:'include', body: fd })
+                  const j = await r.json().catch(()=>null)
+                  if (j?.success){
+                    (reply as any).content = editText
+                    setIsEditing(false)
+                  } else {
+                    alert(j?.error || 'Failed to edit')
+                  }
+                }}>Save</button>
+                <button className="px-3 py-1.5 rounded-md border border-white/10" onClick={()=> { setIsEditing(false); setEditText(reply.content) }}>Cancel</button>
+              </div>
+            </div>
+          )}
+          {reply.image_path ? (
+            <div className="mt-2">
+              <div onClick={()=> onPreviewImage(normalizePath(reply.image_path as string))}>
+                <ImageLoader
+                  src={normalizePath(reply.image_path as string)}
+                  alt="Reply image"
+                  className="block mx-auto max-w-full max-h-[300px] rounded border border-white/10 cursor-zoom-in"
+                />
+              </div>
+            </div>
+          ) : null}
           <div className="mt-1 flex items-center gap-2 text-[11px]">
             <Reaction icon="fa-regular fa-heart" count={reply.reactions?.['heart']||0} active={reply.user_reaction==='heart'} onClick={()=> onToggle(reply.id, 'heart')} />
             <Reaction icon="fa-regular fa-thumbs-up" count={reply.reactions?.['thumbs-up']||0} active={reply.user_reaction==='thumbs-up'} onClick={()=> onToggle(reply.id, 'thumbs-up')} />
@@ -350,17 +471,42 @@ function ReplyNode({ reply, depth=0, onToggle, onInlineReply }:{ reply: Reply, d
             <button className="ml-2 px-2 py-1 rounded-full text-[#9fb0b5] hover:text-[#4db6ac]" onClick={()=> setShowComposer(v=>!v)}>Reply</button>
           </div>
           {showComposer ? (
-            <div className="mt-2 flex items-center gap-2">
-              <input className="flex-1 px-3 py-1.5 rounded-full bg-black border border-[#4db6ac] text-[16px] focus:outline-none focus:ring-1 focus:ring-[#4db6ac]" value={text} onChange={(e)=> setText(e.target.value)} placeholder={`Reply to @${reply.username}`} />
-              <button className="px-2.5 py-1.5 rounded-full bg-[#4db6ac] text-white border border-[#4db6ac] hover:brightness-110" onClick={()=> { if (!text) return; onInlineReply(reply.id, text); setText(''); setShowComposer(false) }} aria-label="Send reply">
-                <i className="fa-solid fa-paper-plane" />
-              </button>
+            <div className="mt-2 space-y-2">
+              <div className="flex items-center gap-2">
+                <input className="flex-1 px-3 py-1.5 rounded-full bg-black border border-[#4db6ac] text-[16px] focus:outline-none focus:ring-1 focus:ring-[#4db6ac]" value={text} onChange={(e)=> setText(e.target.value)} placeholder={`Reply to @${reply.username}`} />
+                <button type="button" className="w-10 h-10 rounded-full hover:bg:white/10 grid place-items-center" aria-label="Add image" onClick={()=> inlineFileRef.current?.click()}>
+                  <i className="fa-regular fa-image text-xl" style={{ color: img ? '#7fe7df' : '#4db6ac' }} />
+                </button>
+                <input
+                  ref={inlineFileRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={(e)=> setImg((e.target as HTMLInputElement).files?.[0]||null)}
+                  className="hidden"
+                />
+                <button className="px-2.5 py-1.5 rounded-full bg-[#4db6ac] text-white border border-[#4db6ac] hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed" onClick={()=> { if (!text && !img) return; onInlineReply(reply.id, text, img || undefined); setText(''); setImg(null); if (inlineFileRef.current) inlineFileRef.current.value=''; setShowComposer(false) }} aria-label="Send reply" disabled={!text && !img || !!inlineSending[reply.id]}>
+                  {inlineSending[reply.id] ? <i className="fa-solid fa-spinner fa-spin" /> : <i className="fa-solid fa-paper-plane" />}
+                </button>
+              </div>
+              {img && (
+                <div className="text-xs text-[#7fe7df] flex items-center gap-1 px-3">
+                  <i className="fa-solid fa-image" />
+                  <span className="max-w-[160px] truncate">{img.name}</span>
+                  <button 
+                    onClick={() => { setImg(null); if (inlineFileRef.current) inlineFileRef.current.value = '' }}
+                    className="ml-1 text-red-400 hover:text-red-300"
+                    aria-label="Remove file"
+                  >
+                    <i className="fa-solid fa-times" />
+                  </button>
+                </div>
+              )}
             </div>
           ) : null}
         </div>
       </div>
       {reply.children && reply.children.length ? reply.children.map(ch => (
-        <ReplyNode key={ch.id} reply={ch} depth={Math.min(depth+1, 3)} onToggle={onToggle} onInlineReply={onInlineReply} />
+        <ReplyNode key={ch.id} reply={ch} depth={Math.min(depth+1, 3)} currentUser={currentUser} onToggle={onToggle} onInlineReply={onInlineReply} onDelete={onDelete} onPreviewImage={onPreviewImage} inlineSending={inlineSending} />
       )) : null}
     </div>
   )

@@ -251,12 +251,20 @@
         </div>
         {% endif %}
 
-        <form method="POST" action="/">
+        <form method="POST" action="/" id="loginForm">
             <div class="form-group">
-                <input type="text" name="username" placeholder="Username" required>
+                <input type="text" name="username" id="username" placeholder="Username" required>
             </div>
             <button type="submit" class="btn">Sign In</button>
         </form>
+        
+        <!-- Debug: Add a simple test button -->
+        <div style="margin-top: 10px; padding: 10px; border: 1px solid #333; border-radius: 5px;">
+            <small style="color: #999;">Debug: Test POST</small><br>
+            <button onclick="testPost()" style="padding: 5px 10px; margin-top: 5px; background: #666; color: white; border: none; cursor: pointer; border-radius: 3px;">
+                Test Direct POST
+            </button>
+        </div>
         
         <div style="text-align: center; margin-top: 12px;">
             <a href="#" onclick="showForgotPassword()" style="color: #4db6ac; text-decoration: none; font-size: 13px; font-weight: 400;">Forgot Password?</a>
@@ -310,6 +318,47 @@
     </div>
     
     <script>
+        function testPost() {
+            // Create a form and submit it programmatically
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = '/';
+            
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = 'username';
+            input.value = 'testuser';
+            
+            form.appendChild(input);
+            document.body.appendChild(form);
+            form.submit();
+        }
+        
+        // Also add console logging when form submits
+        document.addEventListener('DOMContentLoaded', function() {
+            const loginForm = document.getElementById('loginForm');
+            if (loginForm) {
+                console.log('Login form found');
+                
+                // Try to force form submission on Enter key
+                document.getElementById('username').addEventListener('keypress', function(e) {
+                    if (e.key === 'Enter') {
+                        console.log('Enter key pressed, submitting form...');
+                        e.preventDefault();
+                        loginForm.submit();
+                    }
+                });
+                
+                loginForm.addEventListener('submit', function(e) {
+                    console.log('Form is submitting...');
+                    console.log('Username:', document.getElementById('username').value);
+                    console.log('Form action:', loginForm.action);
+                    console.log('Form method:', loginForm.method);
+                    // Don't prevent default - let it submit normally
+                });
+            }
+        });
+        
         function showForgotPassword() {
             document.getElementById('forgotPasswordModal').style.display = 'block';
             document.getElementById('resetForm').style.display = 'block';

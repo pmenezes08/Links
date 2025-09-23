@@ -11,17 +11,22 @@ export default function YourSports(){
   useEffect(() => { setTitle('Your Sports') }, [setTitle])
 
   useEffect(() => {
-    async function checkGymMembership() {
+    async function checkAccess() {
       try {
+        // Always check gym membership API first (it has Paulo's special access built in)
         const response = await fetch('/api/check_gym_membership', {
           method: 'GET',
           credentials: 'include'
         })
         const data = await response.json()
+        console.log('YourSports: gym membership check result:', data)
         
         if (data.hasGymAccess) {
+          console.log('YourSports: Access granted (hasGymAccess=true)')
           setHasGymAccess(true)
+          setLoading(false)
         } else {
+          console.log('YourSports: Access denied, redirecting to dashboard')
           // Redirect to premium dashboard if no gym access
           navigate('/premium_dashboard')
           return
@@ -32,10 +37,9 @@ export default function YourSports(){
         navigate('/premium_dashboard')
         return
       }
-      setLoading(false)
     }
     
-    checkGymMembership()
+    checkAccess()
   }, [navigate])
 
   if (loading) {

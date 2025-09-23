@@ -56,6 +56,17 @@ export default function CrossfitExact() {
     if (json?.success) {
       setCompareSummary(json.summary || '')
       const d = json.data
+      // Sort labels asc if they look like dates YYYY-MM-DD
+      let labels = d.labels as string[]
+      let userValues = d.userValues as number[]
+      let avgValues = d.avgValues as number[]
+      if (Array.isArray(labels) && labels.length && /\d{4}-\d{2}-\d{2}/.test(labels[0])){
+        const pairs = labels.map((lbl, idx)=> ({ lbl, u: userValues[idx], a: avgValues[idx] }))
+        pairs.sort((p,q)=> p.lbl.localeCompare(q.lbl))
+        labels = pairs.map(p=> p.lbl)
+        userValues = pairs.map(p=> p.u)
+        avgValues = pairs.map(p=> p.a)
+      }
       // Reset chart instance
       if (compareChartRef.current) { compareChartRef.current.destroy(); compareChartRef.current = null }
       const ctx = compareCanvasRef.current?.getContext('2d')
@@ -63,10 +74,10 @@ export default function CrossfitExact() {
       compareChartRef.current = new Chart(ctx, {
         type: 'bar',
         data: {
-          labels: d.labels,
+          labels,
           datasets: [
-            { label: `You (${d.unit})`, data: d.userValues, backgroundColor: 'rgba(77, 182, 172, 0.6)', borderColor: '#4db6ac', borderWidth: 1 },
-            { label: `Avg (${d.unit})`, data: d.avgValues, backgroundColor: 'rgba(176, 184, 185, 0.5)', borderColor: '#9fb0b5', borderWidth: 1 },
+            { label: `You (${d.unit})`, data: userValues, backgroundColor: 'rgba(77, 182, 172, 0.6)', borderColor: '#4db6ac', borderWidth: 1 },
+            { label: `Avg (${d.unit})`, data: avgValues, backgroundColor: 'rgba(176, 184, 185, 0.5)', borderColor: '#9fb0b5', borderWidth: 1 },
           ]
         },
         options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } }, plugins: { legend: { position: 'bottom' } } }
@@ -192,7 +203,7 @@ export default function CrossfitExact() {
                   </select>
                   <select id="cf-item-select" className="analytics-select" value={cfItemSel} onChange={e=> setCfItemSel(e.target.value)} disabled={!cfCommunityId}>
                     <option value="">Select Lift or WOD</option>
-                    <optgroup label="Lifts">{commonLifts.map(n => <option key={n} value={`lift:${n}`}>{n}</option>)}</optgroup>
+                    <optgroup label="Lifts">{commonLifts.map(n => <option key={n} value={`wod:${n}`.replace('wod:','lift:')}>{n}</option>)}</optgroup>
                     <optgroup label="WODs">{commonWODs.map(n => <option key={n} value={`wod:${n}`}>{n}</option>)}</optgroup>
                   </select>
                   <button className="share-btn" id="cf-load-compare-btn" title="Load Comparison" disabled={!canCompare} onClick={loadComparison}>

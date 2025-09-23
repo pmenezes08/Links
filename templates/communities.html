@@ -1,6 +1,167 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Communities</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/normalize/8.0.1/normalize.min.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+  <style>
+    body { background: #0b0f10; color: #fff; font-family: system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji"; }
+    .layout { display: grid; grid-template-columns: 220px 1fr; min-height: 100vh; }
+    .sidebar { border-right: 1px solid #333; background: #1a1a1a; position: sticky; top: 0; height: 100vh; }
+    .sidebar .title { height: 56px; display: flex; align-items: center; padding: 0 12px; border-bottom: 1px solid #333; font-weight: 600; }
+    .sidebar nav a { display: block; padding: 10px 16px; color: #cfd8dc; text-decoration: none; }
+    .sidebar nav a:hover { background: rgba(0,0,0,0.2); color: #7fe7df; }
+    .content { padding: 24px; }
+    .card { background: #000; border: 1px solid rgba(255,255,255,0.1); border-radius: 14px; padding: 12px; margin-bottom: 12px; }
+    .grid { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 12px; }
+    .btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; background: #4db6ac; color: #000; border-radius: 8px; border: 1px solid #4db6ac; text-decoration: none; }
+    .btn:hover { filter: brightness(1.1); }
+    .muted { color: #9fb0b5; font-size: 13px; }
+    .tabs { position: sticky; top: 0; background: rgba(11,15,16,0.9); backdrop-filter: blur(6px); z-index: 20; display:flex; gap:10px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+    .tabs .tab { flex: 0 0 auto; padding: 10px 14px; border-radius: 12px 12px 0 0; color: #9fb0b5; cursor: pointer; border: 1px solid transparent; border-bottom: none; }
+    .tabs .tab.active { color: #fff; border-color: rgba(255,255,255,0.12); background: #0f1516; }
+    @media (max-width: 1024px){ .grid{ grid-template-columns: repeat(2, minmax(0,1fr)); } }
+    @media (max-width: 768px){ .grid{ grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <!-- Sidebar (reuse structure from other HTML pages) -->
+    <aside class="sidebar">
+      <div class="title">Dashboard</div>
+      <nav>
+        <a href="/dashboard"><i class="fa-solid fa-gauge-high"></i> &nbsp;Dashboard</a>
+        <a href="/profile"><i class="fa-solid fa-user"></i> &nbsp;Profile</a>
+        <a href="/user_chat"><i class="fa-solid fa-message"></i> &nbsp;Messages</a>
+        <a href="/communities" style="color:#7fe7df"><i class="fa-solid fa-people-group"></i> &nbsp;Your Communities</a>
+        <a href="/logout"><i class="fa-solid fa-right-from-bracket"></i> &nbsp;Logout</a>
+        <a href="/account_settings"><i class="fa-solid fa-cog"></i> &nbsp;Settings</a>
+      </nav>
+    </aside>
+
+    <!-- Content -->
+    <main class="content">
+      <div style="max-width: 1100px; margin: 0 auto;">
+        <h2 style="margin:0 0 8px 0">Communities</h2>
+        <!-- Top tabs -->
+        <div class="tabs">
+          <div id="tab-timeline" class="tab active" onclick="switchTab('timeline')">Home Timeline</div>
+          <div id="tab-communities" class="tab" onclick="switchTab('communities')">Community List</div>
+        </div>
+
+        <!-- Home Timeline section -->
+        <section id="section-timeline" style="margin-top: 12px;">
+          <div class="card" style="margin-bottom: 16px;">
+            <div style="display:flex; align-items:center; justify-content:space-between;">
+              <h3 style="margin: 0; font-size: 18px;">Home Timeline</h3>
+            </div>
+            <div class="muted" style="margin-top: 4px;">Most recent posts across all your communities</div>
+            <div id="timeline" style="margin-top: 10px; display: grid; gap: 10px;"></div>
+          </div>
+        </section>
+
+        <!-- Communities Management section -->
+        <section id="section-communities" style="display:none; margin-top: 12px;">
+          <div class="card">
+            <div style="display:flex; align-items:center; justify-content:space-between;">
+              <h3 style="margin: 0; font-size: 18px;">Your Communities</h3>
+              <div style="display:flex; gap:8px;">
+                <a class="btn" href="/premium_dashboard"><i class="fa-solid fa-plus"></i> Create</a>
+                <a class="btn" href="/premium_dashboard"><i class="fa-solid fa-door-open"></i> Join</a>
+              </div>
+            </div>
+            <div class="muted" style="margin-top: 4px;">Manage and access your communities</div>
+            <div id="communities" style="margin-top: 10px; display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 10px;"></div>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    function switchTab(which){
+      const t1 = document.getElementById('tab-timeline')
+      const t2 = document.getElementById('tab-communities')
+      const s1 = document.getElementById('section-timeline')
+      const s2 = document.getElementById('section-communities')
+      if (which === 'timeline'){
+        t1.classList.add('active'); t2.classList.remove('active')
+        s1.style.display = ''; s2.style.display = 'none'
+      } else {
+        t2.classList.add('active'); t1.classList.remove('active')
+        s2.style.display = ''; s1.style.display = 'none'
+      }
+    }
+    // Fetch Home Timeline (same API used by React mobile)
+    async function loadTimeline(){
+      const el = document.getElementById('timeline')
+      el.innerHTML = '<div class="muted">Loading…</div>'
+      try{
+        const r = await fetch('/api/home_timeline', { credentials:'include' })
+        const j = await r.json()
+        if (!j || !j.success){ el.innerHTML = '<div class="muted">Failed to load timeline.</div>'; return }
+        const posts = Array.isArray(j.posts) ? j.posts.slice(0, 8) : []
+        if (posts.length === 0){ el.innerHTML = '<div class="muted">No recent posts.</div>'; return }
+        el.innerHTML = ''
+        posts.forEach(p => {
+          const card = document.createElement('div')
+          card.className = 'card'
+          card.innerHTML = `
+            <div style="display:flex; align-items:center; gap:8px;">
+              <div style="font-weight:600;">${p.username || ''}</div>
+              <div class="muted" style="margin-left:auto; font-size:12px;">${(p.timestamp||'').replace('T',' ').slice(0,16)}</div>
+            </div>
+            <div style="margin-top:6px; white-space:pre-wrap;">${(p.content||'').replace(/</g,'&lt;')}</div>
+            ${p.image_path ? `<div style="margin-top:8px;"><img src="${p.image_path.startsWith('/uploads')||p.image_path.startsWith('/static')?p.image_path:'/uploads/'+p.image_path}" alt="" style="max-width:100%; max-height:360px; border:1px solid rgba(255,255,255,0.1); border-radius:8px;"/></div>` : ''}
+            <div style="margin-top:8px; display:flex; gap:10px; font-size:12px; color:#9fb0b5;">
+              <div><i class="fa-regular fa-heart"></i> ${(p.reactions && (p.reactions['heart']||0))}</div>
+              <div><i class="fa-regular fa-comment"></i> ${(p.replies_count || (p.replies?p.replies.length:0) || 0)}</div>
+            </div>
+          `
+          el.appendChild(card)
+        })
+      }catch(e){ el.innerHTML = '<div class="muted">Failed to load timeline.</div>' }
+    }
+
+    // Fetch user's communities for management grid
+    async function loadCommunities(){
+      const el = document.getElementById('communities')
+      el.innerHTML = '<div class="muted">Loading…</div>'
+      try{
+        const r = await fetch('/api/user_parent_community', { credentials:'include' })
+        const j = await r.json()
+        if (!j || !j.success || !Array.isArray(j.communities) || j.communities.length === 0){
+          el.innerHTML = '<div class="muted">No communities found.</div>'
+          return
+        }
+        el.innerHTML = ''
+        j.communities.forEach(c => {
+          const item = document.createElement('div')
+          item.className = 'card'
+          const link = `/community_feed_react/${c.id}`
+          item.innerHTML = `
+            <div style="font-weight:600;">${c.name}</div>
+            <div class="muted">${c.type || ''}</div>
+            <div style="margin-top:8px;">
+              <a class="btn" href="${link}"><i class="fa-solid fa-arrow-right"></i> Open</a>
+            </div>
+          `
+          el.appendChild(item)
+        })
+      }catch(e){ el.innerHTML = '<div class="muted">Failed to load communities.</div>' }
+    }
+
+    loadTimeline();
+    loadCommunities();
+  </script>
+</body>
+</html>
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<title>Your Communities</title>

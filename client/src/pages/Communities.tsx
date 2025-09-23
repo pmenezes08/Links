@@ -1,6 +1,9 @@
-import { useEffect, useState, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useState, useRef, useMemo } from 'react'
+import { useNavigate, useLocation } from 'react-router-dom'
+import { formatSmartTime } from '../utils/time'
 import { useHeader } from '../contexts/HeaderContext'
+import Avatar from '../components/Avatar'
+import ImageLoader from '../components/ImageLoader'
 
 type Community = { 
   id: number; 
@@ -9,16 +12,29 @@ type Community = {
   is_active?: boolean;
   parent_community_id?: number;
   children?: Community[];
+  creator_username?: string;
 }
 
 export default function Communities(){
   const navigate = useNavigate()
+  const location = useLocation()
   const { setTitle } = useHeader()
   const [_data, setData] = useState<{ username:string; current_user_profile_picture?:string|null; community_name?:string }|null>(null)
   const [communities, setCommunities] = useState<Community[]>([])
+  const [parentName, setParentName] = useState<string>('')
+  const [parentType, setParentType] = useState<string>('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string|null>(null)
   const [swipedCommunity, setSwipedCommunity] = useState<number|null>(null)
+  const [activeTab, setActiveTab] = useState<'timeline'|'management'|'training'>(() => {
+    const qs = new URLSearchParams(location.search)
+    return qs.get('parent_id') ? 'timeline' : 'management'
+  })
+  const showTrainingTab = useMemo(() => {
+    const parent = communities && communities.length > 0 ? communities[0] : null
+    const parentTypeLower = ((parent as any)?.community_type || parent?.type || parentType || '').toLowerCase()
+    return parentTypeLower === 'gym'
+  }, [communities, parentType])
   
 
   useEffect(() => {
@@ -50,7 +66,33 @@ export default function Communities(){
         const jc = await rc.json()
         if (!mounted) return
         if (jc?.success){
-          setCommunities(jc.communities || [])
+          // Optional filtering by parent_id
+          const qs = new URLSearchParams(location.search)
+          const parentIdParam = qs.get('parent_id')
+          const all: Community[] = jc.communities || []
+          if (parentIdParam) {
+            const pid = Number(parentIdParam)
+            const parent = all.find(c => c.id === pid)
+            if (parent) {
+              const subset: Community[] = [{ ...parent, children: parent.children || [] }]
+              setCommunities(subset)
+              setParentName(parent.name)
+              setParentType(parent.type || '')
+            } else {
+              setCommunities(all)
+              setParentName('')
+              try {
+                // If navigated without parent_id but only one parent root is in view, capture its type
+                const roots = all.filter(c => !c.parent_community_id)
+                if (roots.length === 1) setParentType(roots[0].type || '')
+                else setParentType('')
+              } catch { setParentType('') }
+            }
+          } else {
+            setCommunities(all)
+            setParentName('')
+            setParentType('')
+          }
           setError(null)
         } else {
           setError(jc?.error || 'Error loading communities')
@@ -65,7 +107,10 @@ export default function Communities(){
     return () => { mounted = false }
   }, [])
 
-  useEffect(() => { setTitle('Community Management') }, [setTitle])
+  useEffect(() => { 
+    if (parentName) setTitle(`Community: ${parentName}`)
+    else setTitle('Community Management')
+  }, [setTitle, parentName])
 
   return (
     <div className="h-screen overflow-hidden bg-black text-white">
@@ -73,15 +118,49 @@ export default function Communities(){
 
       {/* Secondary nav like X */}
       <div className="fixed left-0 right-0 top-14 h-10 bg-black/70 backdrop-blur z-40">
-        <div className="max-w-2xl mx-auto h-full flex">
-          <button type="button" className="flex-1 text-center text-sm font-medium text-[#9fb0b5] hover:text-white/90" onClick={()=> navigate('/home')}>
-            <div className="pt-2">Home Timeline</div>
-            <div className="h-0.5 bg-transparent rounded-full w-16 mx-auto mt-1" />
+        <div className="max-w-2xl mx-auto h-full flex items-center">
+          <button
+            type="button"
+            className="mr-2 p-2 rounded-full hover:bg-white/5"
+            onClick={()=> navigate('/premium_dashboard')}
+            aria-label="Back"
+          >
+            <i className="fa-solid fa-arrow-left" />
           </button>
-          <button type="button" className="flex-1 text-center text-sm font-medium text-white/95">
-            <div className="pt-2">Community Management</div>
-            <div className="h-0.5 bg-[#4db6ac] rounded-full w-16 mx-auto mt-1" />
-          </button>
+          <div className="flex-1 flex items-center justify-center gap-8 overflow-x-auto no-scrollbar" style={{ WebkitOverflowScrolling: 'touch' as any }}>
+            <button 
+              type="button" 
+              className={`text-sm font-medium ${activeTab==='timeline' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`} 
+              onClick={()=> {
+                const pid = new URLSearchParams(location.search).get('parent_id')
+                if (!pid) { navigate('/home'); return }
+                setActiveTab('timeline')
+                const el = document.getElementById('parent-timeline')
+                if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+              }}
+            >
+              <div className="pt-2 whitespace-nowrap text-center">Home Timeline</div>
+              <div className={`h-0.5 ${activeTab==='timeline' ? 'bg-[#4db6ac]' : 'bg-transparent'} rounded-full w-16 mx-auto mt-1`} />
+            </button>
+            <button 
+              type="button" 
+              className={`text-sm font-medium ${activeTab==='management' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`}
+              onClick={()=> setActiveTab('management')}
+            >
+              <div className="pt-2 whitespace-nowrap text-center">Community Management</div>
+              <div className={`h-0.5 ${activeTab==='management' ? 'bg-[#4db6ac]' : 'bg-transparent'} rounded-full w-16 mx-auto mt-1`} />
+            </button>
+            {showTrainingTab && (
+              <button 
+                type="button" 
+                className={`text-sm font-medium ${activeTab==='training' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`}
+                onClick={()=> setActiveTab('training')}
+              >
+                <div className="pt-2 whitespace-nowrap text-center">Your Training</div>
+                <div className={`h-0.5 ${activeTab==='training' ? 'bg-[#4db6ac]' : 'bg-transparent'} rounded-full w-16 mx-auto mt-1`} />
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -95,66 +174,243 @@ export default function Communities(){
           <div className="text-red-400">{error}</div>
         ) : (
           <div className="space-y-3">
-            {/* Join new community */}
-            <JoinCommunity onJoined={()=>{
-              // reload
-              window.location.reload()
-            }} />
-            {/* Divider removed per request */}
-            {communities.length === 0 ? (
-              <div className="text-[#9fb0b5]">You are not a member of any communities.</div>
-            ) : communities.map(c => (
-              <div key={c.id} className="space-y-2">
-                {/* Parent Community */}
-                <CommunityItem 
-                  community={c} 
-                  isSwipedOpen={swipedCommunity === c.id}
-                  onSwipe={(isOpen) => setSwipedCommunity(isOpen ? c.id : null)}
-                  onEnter={() => {
-                    const ua = navigator.userAgent || ''
-                    const isMobile = /Mobi|Android|iPhone|iPad/i.test(ua) || window.innerWidth < 768
-                    if (isMobile) navigate(`/community_feed_react/${c.id}`); else window.location.href = `/community_feed/${c.id}`
-                  }}
-                  onLeave={async () => {
-                    const fd = new URLSearchParams({ community_id: String(c.id) })
-                    const r = await fetch('/leave_community', { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
-                    const j = await r.json().catch(()=>null)
-                    if (j?.success) window.location.reload()
-                    else alert(j?.error||'Error leaving community')
-                  }}
-                />
-                
-                {/* Child Communities - Always Visible */}
-                {c.children && c.children.length > 0 && (
-                  <div className="ml-6 space-y-2">
-                    {c.children.map(child => (
+             {(() => {
+               const pid = new URLSearchParams(location.search).get('parent_id')
+              if (pid && activeTab === 'timeline') {
+                return (
+                  <div id="parent-timeline">
+                    <ParentTimeline parentId={Number(pid)} />
+                  </div>
+                )
+              }
+               if (pid && activeTab === 'training' && showTrainingTab) {
+                 return (
+                   <div className="bg-white/5 backdrop-blur rounded-xl p-4 border border-white/10">
+                     <button
+                       className="px-4 py-2 rounded-lg bg-[#4db6ac] text-black text-sm hover:brightness-110"
+                       onClick={()=> {
+                         const pid = new URLSearchParams(location.search).get('parent_id')
+                         window.location.href = pid ? `/workout_tracking?parent_id=${pid}` : '/workout_tracking'
+                       }}
+                     >
+                       Go to Workout Tracking
+                     </button>
+                   </div>
+                 )
+               }
+              return (
+                <>
+                  {!pid && (
+                    <JoinCommunity onJoined={()=>{ window.location.reload() }} />
+                  )}
+                  {activeTab === 'training' && showTrainingTab ? (
+                    <div className="bg-white/5 backdrop-blur rounded-xl p-4 border border-white/10">
+                      <button
+                        className="px-4 py-2 rounded-lg bg-[#4db6ac] text-black text-sm hover:brightness-110"
+                        onClick={()=> {
+                          const pid = new URLSearchParams(location.search).get('parent_id')
+                          window.location.href = pid ? `/workout_tracking?parent_id=${pid}` : '/workout_tracking'
+                        }}
+                      >
+                        Go to Workout Tracking
+                      </button>
+                    </div>
+                  ) : communities.length === 0 ? (
+                    <div className="text-[#9fb0b5]">You are not a member of any communities.</div>
+                  ) : communities.map(c => (
+                    <div key={c.id} className="space-y-2">
                       <CommunityItem 
-                        key={child.id}
-                        community={child} 
-                        isSwipedOpen={swipedCommunity === child.id}
-                        onSwipe={(isOpen) => setSwipedCommunity(isOpen ? child.id : null)}
+                        community={c} 
+                        isSwipedOpen={swipedCommunity === c.id}
+                        onSwipe={(isOpen) => setSwipedCommunity(isOpen ? c.id : null)}
                         onEnter={() => {
                           const ua = navigator.userAgent || ''
                           const isMobile = /Mobi|Android|iPhone|iPad/i.test(ua) || window.innerWidth < 768
-                          if (isMobile) navigate(`/community_feed_react/${child.id}`); else window.location.href = `/community_feed/${child.id}`
+                          if (isMobile) navigate(`/community_feed_react/${c.id}`); else window.location.href = `/community_feed/${c.id}`
                         }}
-                        onLeave={async () => {
-                          const fd = new URLSearchParams({ community_id: String(child.id) })
-                          const r = await fetch('/leave_community', { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
+                        onDeleteOrLeave={async (asDelete:boolean) => {
+                          const fd = new URLSearchParams({ community_id: String(c.id) })
+                          const url = asDelete ? '/delete_community' : '/leave_community'
+                          const r = await fetch(url, { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
                           const j = await r.json().catch(()=>null)
                           if (j?.success) window.location.reload()
-                          else alert(j?.error||'Error leaving community')
+                          else alert(j?.error||`Error ${asDelete?'deleting':'leaving'} community`)
                         }}
-                        isChild={true}
+                        currentUsername={_data?.username || ''}
                       />
-                    ))}
-                  </div>
-                )}
-              </div>
-            ))}
+                      {c.children && c.children.length > 0 && (
+                        <div className="ml-6 space-y-2">
+                          {c.children.map(child => (
+                            <CommunityItem 
+                              key={child.id}
+                              community={child} 
+                              isSwipedOpen={swipedCommunity === child.id}
+                              onSwipe={(isOpen) => setSwipedCommunity(isOpen ? child.id : null)}
+                              onEnter={() => {
+                                const ua = navigator.userAgent || ''
+                                const isMobile = /Mobi|Android|iPhone|iPad/i.test(ua) || window.innerWidth < 768
+                                if (isMobile) navigate(`/community_feed_react/${child.id}`); else window.location.href = `/community_feed/${child.id}`
+                              }}
+                              onDeleteOrLeave={async (asDelete:boolean) => {
+                                const fd = new URLSearchParams({ community_id: String(child.id) })
+                                const url = asDelete ? '/delete_community' : '/leave_community'
+                                const r = await fetch(url, { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
+                                const j = await r.json().catch(()=>null)
+                                if (j?.success) window.location.reload()
+                                else alert(j?.error||`Error ${asDelete?'deleting':'leaving'} community`)
+                              }}
+                              isChild={true}
+                              currentUsername={_data?.username || ''}
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </>
+              )
+            })()}
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+function ParentTimeline({ parentId }:{ parentId:number }){
+  const navigate = useNavigate()
+  const [posts, setPosts] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string|undefined>()
+  useEffect(() => {
+    let ok = true
+    async function load(){
+      setLoading(true)
+      try{
+        const r = await fetch(`/api/community_group_feed/${parentId}`, { credentials:'include' })
+        const j = await r.json()
+        if (!ok) return
+        if (j?.success) setPosts(j.posts || [])
+        else setError(j?.error || 'Error loading timeline')
+      }catch{
+        if (ok) setError('Error loading timeline')
+      }finally{
+        if (ok) setLoading(false)
+      }
+    }
+    load()
+    return ()=>{ ok = false }
+  }, [parentId])
+
+  if (loading) return null
+  if (error) return null
+
+  return (
+    <div>
+      {posts.length === 0 ? (
+        <div className="text-[#9fb0b5] text-sm">No posts created in the past 48h</div>
+      ) : (
+        <div className="space-y-3">
+          {posts.map((p:any) => (
+            <div key={p.id} className="rounded-2xl border border-white/10 bg-black shadow-sm shadow-black/20 cursor-pointer"
+              onClick={() => navigate(`/post/${p.id}`)}
+            >
+              <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2" onClick={(e)=> e.stopPropagation()}>
+                <Avatar username={p.username || ''} url={p.profile_picture || undefined} size={28} />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-baseline gap-2 min-w-0">
+                    <div className="font-medium truncate">{p.username}</div>
+                    {p.community_name ? (
+                      <div className="text-xs text-[#9fb0b5] truncate">in {p.community_name}</div>
+                    ) : null}
+                  </div>
+                </div>
+                <div className="text-xs text-[#9fb0b5] ml-auto tabular-nums">{formatSmartTime(p.created_at)}</div>
+              </div>
+              <div className="px-3 py-2 space-y-2">
+                <div className="whitespace-pre-wrap text-[14px] leading-relaxed">{p.content}</div>
+                {p.image_path ? (
+                  <ImageLoader
+                    src={(() => {
+                      const ip = String(p.image_path || '').trim()
+                      if (!ip) return ''
+                      if (ip.startsWith('http')) return ip
+                      if (ip.startsWith('/uploads') || ip.startsWith('/static')) return ip
+                      return ip.startsWith('uploads') || ip.startsWith('static') ? `/${ip}` : `/uploads/${ip}`
+                    })()}
+                    alt="Post image"
+                    className="block mx-auto max-w-full max-h-[360px] rounded border border-white/10"
+                  />
+                ) : null}
+                <div className="flex items-center gap-2 text-xs" onClick={(e)=> e.stopPropagation()}>
+                  <button className="px-2 py-1 rounded transition-colors" onClick={async()=>{
+                    // Optimistic toggle
+                    const prev = p.user_reaction
+                    const next = prev === 'heart' ? null : 'heart'
+                    const counts = { ...(p.reactions||{}) }
+                    if (prev) counts[prev] = Math.max(0, (counts[prev]||0)-1)
+                    if (next) counts[next] = (counts[next]||0)+1
+                    setPosts(list => list.map(it => it.id===p.id ? ({ ...it, user_reaction: next, reactions: counts }) : it))
+                    try{
+                      const fd = new URLSearchParams({ post_id: String(p.id), reaction: 'heart' })
+                      const r = await fetch('/add_reaction', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
+                      const j = await r.json().catch(()=>null)
+                      if (j?.success){
+                        setPosts(list => list.map(it => it.id===p.id ? ({ ...it, reactions: { ...(it.reactions||{}), ...j.counts }, user_reaction: j.user_reaction }) : it))
+                      }
+                    }catch{}
+                  }}>
+                    <i className={`fa-regular fa-heart ${p.user_reaction==='heart' ? '' : ''}`} style={{ color: p.user_reaction==='heart' ? '#4db6ac' : '#6c757d', WebkitTextStroke: p.user_reaction==='heart' ? '1px #4db6ac' : undefined }} />
+                    <span className="ml-1" style={{ color: p.user_reaction==='heart' ? '#cfe9e7' : '#9fb0b5' }}>{(p.reactions?.['heart'])||0}</span>
+                  </button>
+                  <button className="px-2 py-1 rounded transition-colors" onClick={async()=>{
+                    const prev = p.user_reaction
+                    const next = prev === 'thumbs-up' ? null : 'thumbs-up'
+                    const counts = { ...(p.reactions||{}) }
+                    if (prev) counts[prev] = Math.max(0, (counts[prev]||0)-1)
+                    if (next) counts[next] = (counts[next]||0)+1
+                    setPosts(list => list.map(it => it.id===p.id ? ({ ...it, user_reaction: next, reactions: counts }) : it))
+                    try{
+                      const fd = new URLSearchParams({ post_id: String(p.id), reaction: 'thumbs-up' })
+                      const r = await fetch('/add_reaction', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
+                      const j = await r.json().catch(()=>null)
+                      if (j?.success){
+                        setPosts(list => list.map(it => it.id===p.id ? ({ ...it, reactions: { ...(it.reactions||{}), ...j.counts }, user_reaction: j.user_reaction }) : it))
+                      }
+                    }catch{}
+                  }}>
+                    <i className="fa-regular fa-thumbs-up" style={{ color: p.user_reaction==='thumbs-up' ? '#4db6ac' : '#6c757d', WebkitTextStroke: p.user_reaction==='thumbs-up' ? '1px #4db6ac' : undefined }} />
+                    <span className="ml-1" style={{ color: p.user_reaction==='thumbs-up' ? '#cfe9e7' : '#9fb0b5' }}>{(p.reactions?.['thumbs-up'])||0}</span>
+                  </button>
+                  <button className="px-2 py-1 rounded transition-colors" onClick={async()=>{
+                    const prev = p.user_reaction
+                    const next = prev === 'thumbs-down' ? null : 'thumbs-down'
+                    const counts = { ...(p.reactions||{}) }
+                    if (prev) counts[prev] = Math.max(0, (counts[prev]||0)-1)
+                    if (next) counts[next] = (counts[next]||0)+1
+                    setPosts(list => list.map(it => it.id===p.id ? ({ ...it, user_reaction: next, reactions: counts }) : it))
+                    try{
+                      const fd = new URLSearchParams({ post_id: String(p.id), reaction: 'thumbs-down' })
+                      const r = await fetch('/add_reaction', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
+                      const j = await r.json().catch(()=>null)
+                      if (j?.success){
+                        setPosts(list => list.map(it => it.id===p.id ? ({ ...it, reactions: { ...(it.reactions||{}), ...j.counts }, user_reaction: j.user_reaction }) : it))
+                      }
+                    }catch{}
+                  }}>
+                    <i className="fa-regular fa-thumbs-down" style={{ color: p.user_reaction==='thumbs-down' ? '#4db6ac' : '#6c757d', WebkitTextStroke: p.user_reaction==='thumbs-down' ? '1px #4db6ac' : undefined }} />
+                    <span className="ml-1" style={{ color: p.user_reaction==='thumbs-down' ? '#cfe9e7' : '#9fb0b5' }}>{(p.reactions?.['thumbs-down'])||0}</span>
+                  </button>
+                  <button className="ml-auto px-2.5 py-1 rounded-full text-[#cfd8dc]" onClick={()=> navigate(`/post/${p.id}`)}>
+                    <i className="fa-regular fa-comment" />
+                    <span className="ml-1">{p.replies_count||0}</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -164,15 +420,17 @@ function CommunityItem({
   isSwipedOpen, 
   onSwipe, 
   onEnter, 
-  onLeave,
-  isChild = false
+  onDeleteOrLeave,
+  isChild = false,
+  currentUsername
 }: { 
   community: Community
   isSwipedOpen: boolean
   onSwipe: (isOpen: boolean) => void
   onEnter: () => void
-  onLeave: () => void
+  onDeleteOrLeave: (asDelete:boolean) => void
   isChild?: boolean
+  currentUsername: string
 }) {
   const [dragX, setDragX] = useState(0)
   const [isDragging, setIsDragging] = useState(false)
@@ -213,10 +471,22 @@ function CommunityItem({
     e.stopPropagation()
     if (window.confirm(`Are you sure you want to leave ${community.name}?`)) {
       try {
-        await onLeave()
+        await onDeleteOrLeave(false)
       } catch (error) {
         console.error('Error leaving community:', error)
         alert('Failed to leave community. Please try again.')
+      }
+    }
+  }
+
+  const handleDeleteClick = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (window.confirm(`Delete "${community.name}"? This cannot be undone.`)){
+      try{
+        await onDeleteOrLeave(true)
+      }catch(err){
+        console.error('Error deleting community:', err)
+        alert('Failed to delete community. Please try again.')
       }
     }
   }
@@ -229,22 +499,39 @@ function CommunityItem({
           : 'border border-white/10'
       }`}
     >
-      {/* Leave button (revealed on swipe) - fully integrated */}
+      {/* Action button (Leave or Delete depending on ownership) */}
       <div className="absolute inset-y-0 right-0 flex items-center">
-        <button
-          className="h-full w-20 bg-red-500/20 text-red-400 flex items-center justify-center hover:bg-red-500/30 transition-all duration-200 rounded-r-2xl"
-          onClick={handleLeaveClick}
-          style={{
-            opacity: isSwipedOpen || dragX < -20 ? 1 : 0,
-            transform: `translateX(${isSwipedOpen ? '0' : '100%'})`,
-            transition: isDragging ? 'none' : 'all 0.2s ease-out'
-          }}
-        >
-          <div className="flex flex-col items-center gap-1">
-            <i className="fa-solid fa-user-minus text-sm" />
-            <span className="text-xs font-medium">Leave</span>
-          </div>
-        </button>
+        {community.creator_username && currentUsername === community.creator_username ? (
+          <button
+            className="h-full w-20 bg-red-500/20 text-red-400 flex items-center justify-center hover:bg-red-500/30 transition-all duration-200 rounded-r-2xl"
+            onClick={handleDeleteClick}
+            style={{
+              opacity: isSwipedOpen || dragX < -20 ? 1 : 0,
+              transform: `translateX(${isSwipedOpen ? '0' : '100%'})`,
+              transition: isDragging ? 'none' : 'all 0.2s ease-out'
+            }}
+          >
+            <div className="flex flex-col items-center gap-1">
+              <i className="fa-solid fa-trash text-sm" />
+              <span className="text-xs font-medium">Delete</span>
+            </div>
+          </button>
+        ) : (
+          <button
+            className="h-full w-20 bg-red-500/20 text-red-400 flex items-center justify-center hover:bg-red-500/30 transition-all duration-200 rounded-r-2xl"
+            onClick={handleLeaveClick}
+            style={{
+              opacity: isSwipedOpen || dragX < -20 ? 1 : 0,
+              transform: `translateX(${isSwipedOpen ? '0' : '100%'})`,
+              transition: isDragging ? 'none' : 'all 0.2s ease-out'
+            }}
+          >
+            <div className="flex flex-col items-center gap-1">
+              <i className="fa-solid fa-user-minus text-sm" />
+              <span className="text-xs font-medium">Leave</span>
+            </div>
+          </button>
+        )}
       </div>
 
       {/* Swipeable community content */}

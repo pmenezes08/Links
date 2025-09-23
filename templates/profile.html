@@ -594,6 +594,15 @@
                     </div>
                 </div>
                 
+                <div class="form-row">
+                    <div class="form-group" style="flex: 2;">
+                        <label class="form-label">Share Professional Info with Community</label>
+                        <select id="prof_share_community" class="form-select">
+                            <option value="">Do not share</option>
+                        </select>
+                    </div>
+                </div>
+
                 <button type="submit" class="btn btn-compact">
                     <i class="fas fa-save"></i>
                     Save Professional Info
@@ -734,6 +743,7 @@
             formData.append('skills', document.getElementById('skills').value);
             formData.append('linkedin', document.getElementById('linkedin').value);
             formData.append('experience', document.getElementById('experience').value);
+            formData.append('share_community_id', document.getElementById('prof_share_community').value);
             
             fetch('/update_professional', {
                 method: 'POST',
@@ -751,6 +761,23 @@
                 showStatus('professionalStatus', 'Error updating information', 'error');
             });
         });
+
+        // Populate professional share community dropdown
+        (function(){
+            fetch('/api/user_parent_community', { credentials: 'include' })
+            .then(r => r.json())
+            .then(j => {
+                if (j && j.success && Array.isArray(j.communities)){
+                    const sel = document.getElementById('prof_share_community');
+                    j.communities.forEach(c => {
+                        const opt = document.createElement('option');
+                        opt.value = String(c.id);
+                        opt.textContent = c.name;
+                        sel.appendChild(opt);
+                    });
+                }
+            }).catch(()=>{});
+        })();
 
         // Personal Information Update
         document.getElementById('personalForm').addEventListener('submit', function(e) {

@@ -51,11 +51,22 @@ export default function Crossfit() {
   const chartData = useMemo(() => {
     const d = comparisonQuery.data?.data
     if (!d) return null
+    // Sort labels asc if they look like dates YYYY-MM-DD
+    let labels: string[] = d.labels
+    let userValues: number[] = d.userValues
+    let avgValues: number[] = d.avgValues
+    if (Array.isArray(labels) && labels.length && /\d{4}-\d{2}-\d{2}/.test(labels[0])){
+      const pairs = labels.map((lbl, idx)=> ({ lbl, u: userValues[idx], a: avgValues[idx] }))
+      pairs.sort((p,q)=> p.lbl.localeCompare(q.lbl))
+      labels = pairs.map(p=> p.lbl)
+      userValues = pairs.map(p=> p.u)
+      avgValues = pairs.map(p=> p.a)
+    }
     return {
-      labels: d.labels,
+      labels,
       datasets: [
-        { label: `You (${d.unit})`, data: d.userValues, backgroundColor: 'rgba(77, 182, 172, 0.6)', borderColor: '#4db6ac', borderWidth: 1 },
-        { label: `Avg (${d.unit})`, data: d.avgValues, backgroundColor: 'rgba(176, 184, 185, 0.5)', borderColor: '#9fb0b5', borderWidth: 1 },
+        { label: `You (${d.unit})`, data: userValues, backgroundColor: 'rgba(77, 182, 172, 0.6)', borderColor: '#4db6ac', borderWidth: 1 },
+        { label: `Avg (${d.unit})`, data: avgValues, backgroundColor: 'rgba(176, 184, 185, 0.5)', borderColor: '#9fb0b5', borderWidth: 1 },
       ],
     }
   }, [comparisonQuery.data])
