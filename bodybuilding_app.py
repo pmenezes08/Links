@@ -1059,12 +1059,25 @@ def init_db():
                                  (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                                   user_id INTEGER NOT NULL,
                                   community_id INTEGER NOT NULL,
+                                  role TEXT DEFAULT 'member',
                                   joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                                   FOREIGN KEY (user_id) REFERENCES users(id),
                                   FOREIGN KEY (community_id) REFERENCES communities(id),
                                   UNIQUE(user_id, community_id))''')
                     conn.commit()
                     logger.info("Created user_communities table")
+
+                    # Add role column if it doesn't exist (migration for existing installations)
+                    try:
+                        c.execute("SHOW COLUMNS FROM user_communities LIKE 'role'")
+                        if not c.fetchone():
+                            logger.info("Adding role column to user_communities table...")
+                            c.execute("ALTER TABLE user_communities ADD COLUMN role TEXT DEFAULT 'member'")
+                            conn.commit()
+                            logger.info("Added role column to user_communities table")
+                    except Exception as e:
+                        logger.warning(f"Could not add role column: {e}")
+
                 else:
                     # Table exists, check if it has user_id column
                     c.execute("SHOW COLUMNS FROM user_communities LIKE 'user_id'")
@@ -1075,12 +1088,24 @@ def init_db():
                                      (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                                       user_id INTEGER NOT NULL,
                                       community_id INTEGER NOT NULL,
+                                      role TEXT DEFAULT 'member',
                                       joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                                       FOREIGN KEY (user_id) REFERENCES users(id),
                                       FOREIGN KEY (community_id) REFERENCES communities(id),
                                       UNIQUE(user_id, community_id))''')
                         conn.commit()
                         logger.info("Recreated user_communities table with correct schema")
+
+                        # Add role column if it doesn't exist (migration for existing installations)
+                        try:
+                            c.execute("SHOW COLUMNS FROM user_communities LIKE 'role'")
+                            if not c.fetchone():
+                                logger.info("Adding role column to user_communities table...")
+                                c.execute("ALTER TABLE user_communities ADD COLUMN role TEXT DEFAULT 'member'")
+                                conn.commit()
+                                logger.info("Added role column to user_communities table")
+                        except Exception as e:
+                            logger.warning(f"Could not add role column: {e}")
             except Exception as e:
                 logger.error(f"Failed to ensure user_communities table: {e}")
             
@@ -1210,10 +1235,22 @@ def init_db():
                          (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                           user_id INTEGER NOT NULL,
                           community_id INTEGER NOT NULL,
+                          role TEXT DEFAULT 'member',
                           joined_at TEXT NOT NULL,
                           FOREIGN KEY (user_id) REFERENCES users(id),
                           FOREIGN KEY (community_id) REFERENCES communities(id),
                           UNIQUE(user_id, community_id))''')
+
+            # Add role column if it doesn't exist (migration for existing installations)
+            try:
+                c.execute("SHOW COLUMNS FROM user_communities LIKE 'role'")
+                if not c.fetchone():
+                    logger.info("Adding role column to user_communities table...")
+                    c.execute("ALTER TABLE user_communities ADD COLUMN role TEXT DEFAULT 'member'")
+                    conn.commit()
+                    logger.info("Added role column to user_communities table")
+            except Exception as e:
+                logger.warning(f"Could not add role column: {e}")
 
             # Create community_files table
             logger.info("Creating community_files table...")
@@ -9542,25 +9579,80 @@ def get_community_members_list(community_id):
                 logger.info(f"User {username} attempted to view members of community {community_id} without membership")
                 return jsonify({'success': False, 'message': 'Forbidden: not a member of this community'}), 403
             
-            # Get community members with profile pictures
-            c.execute("""
-                SELECT DISTINCT u.username, up.profile_picture
-                FROM user_communities uc
-                JOIN users u ON uc.user_id = u.id
-                LEFT JOIN user_profiles up ON u.username = up.username
-                WHERE uc.community_id = ?
-                ORDER BY u.username
-            """, (community_id,))
-            
+            # Get community members with profile pictures and roles
+            # Check if role column exists first
+            try:
+                c.execute("SHOW COLUMNS FROM user_communities LIKE 'role'")
+                role_column_exists = c.fetchone() is not None
+            except:
+                role_column_exists = False
+
+            if role_column_exists:
+                # Use the full query with role information
+                c.execute("""
+                    SELECT DISTINCT
+                        u.username,
+                        up.profile_picture,
+                        c.creator_username,
+                        COALESCE(uc.role, 'member') as role,
+                        CASE WHEN c.creator_username = u.username THEN 1 ELSE 0 END as is_creator
+                    FROM user_communities uc
+                    JOIN users u ON uc.user_id = u.id
+                    LEFT JOIN user_profiles up ON u.username = up.username
+                    JOIN communities c ON c.id = uc.community_id
+                    WHERE uc.community_id = ?
+                    ORDER BY
+                        CASE WHEN c.creator_username = u.username THEN 0 ELSE 1 END,
+                        CASE WHEN COALESCE(uc.role, 'member') = 'admin' THEN 0
+                             WHEN COALESCE(uc.role, 'member') = 'owner' THEN 1
+                             ELSE 2 END,
+                        u.username
+                """, (community_id,))
+            else:
+                # Fallback query without role information for backward compatibility
+                logger.warning("Role column doesn't exist in user_communities table, using fallback query")
+                c.execute("""
+                    SELECT DISTINCT
+                        u.username,
+                        up.profile_picture,
+                        c.creator_username,
+                        'member' as role,
+                        CASE WHEN c.creator_username = u.username THEN 1 ELSE 0 END as is_creator
+                    FROM user_communities uc
+                    JOIN users u ON uc.user_id = u.id
+                    LEFT JOIN user_profiles up ON u.username = up.username
+                    JOIN communities c ON c.id = uc.community_id
+                    WHERE uc.community_id = ?
+                    ORDER BY
+                        CASE WHEN c.creator_username = u.username THEN 0 ELSE 1 END,
+                        u.username
+                """, (community_id,))
+
             members = []
             rows = c.fetchall()
             logger.info(f"Found {len(rows)} members in community {community_id}")
-            
+
             for row in rows:
+                # Handle different database cursor types (dict vs tuple)
+                if hasattr(row, 'keys'):
+                    username_val = row['username']
+                    profile_picture_val = row['profile_picture']
+                    creator_username = row['creator_username']
+                    role_val = row['role']
+                    is_creator_val = row['is_creator']
+                else:
+                    username_val = row[0]
+                    profile_picture_val = row[1]
+                    creator_username = row[2]
+                    role_val = row[3]
+                    is_creator_val = row[4]
+
                 members.append({
-                    'username': row['username'],
-                    'profile_picture': row['profile_picture'],
-                    'is_current_user': row['username'] == username
+                    'username': username_val,
+                    'profile_picture': profile_picture_val,
+                    'role': role_val,
+                    'is_creator': bool(is_creator_val),
+                    'is_current_user': username_val == username
                 })
             
             # Fetch community join code

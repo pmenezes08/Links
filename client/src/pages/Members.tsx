@@ -44,10 +44,12 @@ export default function Members(){
         const j = await r.json()
         if (!mounted) return
         if (j?.success){
+          console.log('API Response:', j)
           setMembers(j.members || [])
           if (j.community_code) setCommunityCode(j.community_code)
           setError(null)
         } else {
+          console.error('API Error:', j)
           setError(j?.message || j?.error || 'Error loading members')
         }
       }catch{
@@ -98,7 +100,10 @@ export default function Members(){
   }
 
   function getRoleBadge(member: Member){
-    if (member.role === 'owner' || member.is_creator) {
+    // Debug logging to see what data we're getting
+    console.log('Member data:', member)
+
+    if (member.role === 'owner' || member.is_creator || member.role === 'creator') {
       return <span className="px-2 py-0.5 text-xs font-medium bg-teal-600/20 text-teal-300 rounded-full border border-teal-500/30">Owner</span>
     } else if (member.role === 'admin') {
       return <span className="px-2 py-0.5 text-xs font-medium bg-cyan-600/20 text-cyan-300 rounded-full border border-cyan-500/30">Admin</span>
