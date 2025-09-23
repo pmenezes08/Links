@@ -32,6 +32,7 @@ import Signup from './pages/Signup'
 import Notifications from './pages/Notifications'
 import AdminDashboard from './pages/AdminDashboard'
 import ProductDevelopment from './pages/ProductDevelopment'
+import CommunityPhotos from './pages/CommunityPhotos'
 
 const queryClient = new QueryClient()
 
@@ -92,6 +93,7 @@ function AppRoutes(){
           <Route path="/community/:community_id/polls_react" element={<CommunityPolls />} />
           <Route path="/community/:community_id/resources_react" element={<CommunityResources />} />
           <Route path="/community/:community_id/useful_links_react" element={<UsefulLinks />} />
+          <Route path="/community/:community_id/photos_react" element={<CommunityPhotos />} />
           <Route path="/community/:community_id/members" element={<Members />} />
           <Route path="/community/:community_id/edit" element={<EditCommunity />} />
           <Route path="/post/:post_id" element={<PostDetail />} />

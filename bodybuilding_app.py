@@ -12522,6 +12522,101 @@ def api_community_feed(community_id):
         logger.error(f"Error in api_community_feed for {community_id}: {e}")
         return jsonify({'success': False, 'error': 'Server error'}), 500
 
+@app.route('/api/community_photos')
+@login_required
+def api_community_photos():
+    community_id = request.args.get('community_id', type=int)
+    if not community_id:
+        return jsonify({ 'success': False, 'error': 'community_id required' }), 400
+    try:
+        username = session.get('username')
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            c.execute(f"SELECT id FROM users WHERE username = {ph}", (username,))
+            me = c.fetchone()
+            if not me:
+                return jsonify({ 'success': False, 'error': 'user not found' }), 404
+            user_id = me['id'] if hasattr(me,'keys') else me[0]
+            c.execute(f"SELECT 1 FROM user_communities WHERE user_id={ph} AND community_id={ph}", (user_id, community_id))
+            if not c.fetchone():
+                return jsonify({ 'success': False, 'error': 'forbidden' }), 403
+
+            photos = []
+            # Post images
+            if USE_MYSQL:
+                c.execute(
+                    """
+                    SELECT id, username, image_path, timestamp
+                    FROM posts
+                    WHERE community_id = %s AND image_path IS NOT NULL AND TRIM(image_path) <> ''
+                    ORDER BY id DESC
+                    """,
+                    (community_id,)
+                )
+            else:
+                c.execute(
+                    """
+                    SELECT id, username, image_path, timestamp
+                    FROM posts
+                    WHERE community_id = ? AND image_path IS NOT NULL AND TRIM(image_path) <> ''
+                    ORDER BY id DESC
+                    """,
+                    (community_id,)
+                )
+            for row in c.fetchall() or []:
+                rid = row['id'] if hasattr(row,'keys') else row[0]
+                ruser = row['username'] if hasattr(row,'keys') else row[1]
+                img = row['image_path'] if hasattr(row,'keys') else row[2]
+                rts = row['timestamp'] if hasattr(row,'keys') else row[3]
+                if not img:
+                    continue
+                s = str(img).strip()
+                if not (s.startswith('/uploads') or s.startswith('/static') or s.startswith('http')):
+                    s = f"/uploads/{s.lstrip('/')}"
+                photos.append({ 'id': f'post-{rid}', 'post_id': rid, 'reply_id': None, 'username': ruser, 'image_url': s, 'created_at': rts })
+
+            # Reply images
+            if USE_MYSQL:
+                c.execute(
+                    """
+                    SELECT r.id, r.post_id, r.username, r.image_path, r.timestamp
+                    FROM replies r
+                    JOIN posts p ON r.post_id = p.id
+                    WHERE p.community_id = %s AND r.image_path IS NOT NULL AND TRIM(r.image_path) <> ''
+                    ORDER BY r.id DESC
+                    """,
+                    (community_id,)
+                )
+            else:
+                c.execute(
+                    """
+                    SELECT r.id, r.post_id, r.username, r.image_path, r.timestamp
+                    FROM replies r
+                    JOIN posts p ON r.post_id = p.id
+                    WHERE p.community_id = ? AND r.image_path IS NOT NULL AND TRIM(r.image_path) <> ''
+                    ORDER BY r.id DESC
+                    """,
+                    (community_id,)
+                )
+            for row in c.fetchall() or []:
+                rid = row['id'] if hasattr(row,'keys') else row[0]
+                pid = row['post_id'] if hasattr(row,'keys') else row[1]
+                ruser = row['username'] if hasattr(row,'keys') else row[2]
+                img = row['image_path'] if hasattr(row,'keys') else row[3]
+                rts = row['timestamp'] if hasattr(row,'keys') else row[4]
+                if not img:
+                    continue
+                s = str(img).strip()
+                if not (s.startswith('/uploads') or s.startswith('/static') or s.startswith('http')):
+                    s = f"/uploads/{s.lstrip('/')}"
+                photos.append({ 'id': f'reply-{rid}', 'post_id': pid, 'reply_id': rid, 'username': ruser, 'image_url': s, 'created_at': rts })
+
+            return jsonify({ 'success': True, 'community_id': community_id, 'photos': photos })
+    except Exception as e:
+        logger.error(f"community_photos error: {e}")
+        return jsonify({ 'success': False, 'error': 'server error' }), 500
+
 # Product Development APIs
 @app.route('/api/product_posts', methods=['GET'])
 @login_required
@@ -13048,6 +13143,23 @@ def react_members_page(community_id):
         return send_from_directory(dist_dir, 'index.html')
     except Exception as e:
         logger.error(f"Error serving React community members page: {str(e)}")
+        abort(500)
+@app.route('/community/<int:community_id>/photos_react')
+@login_required
+def community_photos_react(community_id):
+    try:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        dist_dir = os.path.join(base_dir, 'client', 'dist')
+        resp = send_from_directory(dist_dir, 'index.html')
+        try:
+            resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+            resp.headers['Pragma'] = 'no-cache'
+            resp.headers['Expires'] = '0'
+        except Exception:
+            pass
+        return resp
+    except Exception as e:
+        logger.error(f"Error serving React community photos: {str(e)}")
         abort(500)
 @app.route('/static/uploads/<path:filename>')
 def static_uploaded_file(filename):
