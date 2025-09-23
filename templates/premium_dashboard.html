@@ -2,70 +2,132 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Premium Dashboard</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Premium - WorkoutX</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
-    <style>
-      body { background:#000; color:#fff; margin:0; font-family: Helvetica, Arial, sans-serif; }
-      /* Sidebar/menu copied style from profile */
-      .sidebar { position: fixed; top:0; left:0; width:200px; height:100vh; background:#1a1a1a; border-right:1px solid #333333; z-index:1000; display:flex; flex-direction:column; }
-      .sidebar-header { display:flex; align-items:center; padding:10px; border-bottom:1px solid #333333; height:60px; box-sizing:border-box; }
-      .sidebar-logo { padding:5px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
-      .community-name { flex:1; display:flex; align-items:center; color:#ffffff; font-size:16px; font-weight:600; padding-left:10px; overflow:hidden; }
-      .community-name span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-      .sidebar-menu { flex:1; padding:10px 0; display:block; overflow-y:auto; }
-      .sidebar-menu a { display:block; padding:12px 20px; color:#ffffff; text-decoration:none; transition:all .3s; border:none; font-size:14px; }
-      .sidebar-menu a:hover { background: rgba(77, 182, 172, 0.2); color:#4db6ac; padding-left:25px; }
-      @media (max-width: 768px) {
-        .sidebar { width:100%; height:60px; overflow:visible; }
-        .sidebar-menu { display:none; position:absolute; top:60px; left:0; right:0; background:#1a1a1a; border-top:1px solid #333333; max-height:calc(100vh - 60px); overflow-y:auto; }
-        .sidebar:hover .sidebar-menu, .sidebar:focus-within .sidebar-menu { display:block; }
-      }
-      .content { margin-left:200px; padding-top:80px; min-height:100vh; display:flex; align-items:center; justify-content:center; }
-      @media (max-width: 768px) { .content { margin-left:0; padding-top:80px; } }
-      .cta-stack { display:flex; gap:16px; width:92%; max-width:820px; }
-      .cta { flex:1; border-radius:12px; background:#000; border:1px solid #4db6ac; color:#fff; text-decoration:none; display:flex; flex-direction:column; align-items:center; justify-content:center; height:144px; box-shadow:0 6px 30px rgba(0,0,0,0.35); transition: background .2s; }
-      .cta:hover { background:#0b0b0b; }
-      .cta .icon { width:56px; height:56px; border-radius:9999px; background:#000; display:flex; align-items:center; justify-content:center; margin-bottom:10px; }
-    </style>
-  </head>
-  <body>
-    <aside class="sidebar" tabindex="0">
-      <div class="sidebar-header">
-        <div class="sidebar-logo"><i class="fa-solid fa-user" style="color:#fff"></i></div>
-        <div class="community-name"><span>{{ session['username'] }}</span></div>
-      </div>
-      <nav class="sidebar-menu">
-        {% if session['username'] == 'admin' %}
-        <a href="/admin_profile">Admin Profile</a>
-        <a href="/admin">Admin Dashboard</a>
-        {% endif %}
-        <a href="/dashboard">Dashboard</a>
-        <a href="/profile">Profile</a>
-        <a href="/user_chat">Messages</a>
-        <a href="/communities">Your Communities</a>
-        <a href="/your_sports">Your Sports</a>
-        <a href="/logout">Logout</a>
-        <a href="/account_settings">Settings</a>
-      </nav>
-    </aside>
+</head>
+<body>
+    <!-- Navigation Bar -->
+    <nav class="nav">
+        <div class="nav-left">
+            <a href="{{ url_for('logout') }}" class="text-muted">Sign Out</a>
+        </div>
+        <div class="nav-title">WorkoutX Premium</div>
+        <div class="nav-right">
+            <a href="{{ url_for('profile') }}">Profile</a>
+        </div>
+    </nav>
 
-    <main class="content">
-      <div class="cta-stack">
-        <a class="cta" href="/communities">
-          <div class="icon"><i class="fa-solid fa-plus" style="color:#4db6ac; font-size:22px;"></i></div>
-          <div>Create/Join a Community</div>
-        </a>
-        <a class="cta" href="/home">
-          <div class="icon"><i class="fa-solid fa-house" style="color:#4db6ac; font-size:22px;"></i></div>
-          <div>Your Communities</div>
-        </a>
-        <a class="cta" href="/your_sports">
-          <div class="icon"><i class="fa-solid fa-person-snowboarding" style="color:#4db6ac; font-size:22px;"></i></div>
-          <div>Your Sports</div>
-        </a>
-      </div>
+    <!-- Main Content -->
+    <main class="main">
+        <div class="container">
+            <!-- Welcome Section -->
+            <div class="text-center mb-xl fade-in">
+                <h1>Welcome back, {{ username }}</h1>
+                <p class="text-muted">Premium Member ⭐</p>
+            </div>
+
+            <!-- Premium Features Grid -->
+            <h2 class="mb-md">Premium Features</h2>
+            <div class="dashboard-grid mb-xl slide-up">
+                <div class="workout-card" onclick="location.href='{{ url_for('generate_workout_page') }}'">
+                    <div class="workout-title">AI Coach</div>
+                    <p class="text-muted">Personalized workout generation</p>
+                </div>
+                <div class="workout-card" onclick="location.href='{{ url_for('blood_test_analysis') }}'">
+                    <div class="workout-title">Health Analysis</div>
+                    <p class="text-muted">Blood test insights</p>
+                </div>
+                <div class="workout-card" onclick="location.href='{{ url_for('nutrition') }}'">
+                    <div class="workout-title">Nutrition AI</div>
+                    <p class="text-muted">Custom meal planning</p>
+                </div>
+                <div class="workout-card" onclick="location.href='{{ url_for('workout_tracking') }}'">
+                    <div class="workout-title">Progress Tracking</div>
+                    <p class="text-muted">Advanced analytics</p>
+                </div>
+            </div>
+
+            <!-- Quick Actions -->
+            <h2 class="mb-md">All Features</h2>
+            <div class="list card">
+                <div class="list-item" onclick="location.href='{{ url_for('generate_workout_page') }}'">
+                    <div class="list-item-content">
+                        <div class="list-item-title">Generate Custom Workout</div>
+                        <div class="list-item-subtitle">AI-powered personalized routine</div>
+                    </div>
+                    <div class="list-item-action">→</div>
+                </div>
+                <div class="list-item" onclick="location.href='{{ url_for('saved_workouts') }}'">
+                    <div class="list-item-content">
+                        <div class="list-item-title">Saved Workouts</div>
+                        <div class="list-item-subtitle">Your custom workout library</div>
+                    </div>
+                    <div class="list-item-action">→</div>
+                </div>
+                <div class="list-item" onclick="location.href='{{ url_for('workout_tracking') }}'">
+                    <div class="list-item-content">
+                        <div class="list-item-title">Track Progress</div>
+                        <div class="list-item-subtitle">Monitor your fitness journey</div>
+                    </div>
+                    <div class="list-item-action">→</div>
+                </div>
+                <div class="list-item" onclick="location.href='{{ url_for('blood_test_analysis') }}'">
+                    <div class="list-item-content">
+                        <div class="list-item-title">Blood Test Analysis</div>
+                        <div class="list-item-subtitle">Health insights from lab results</div>
+                    </div>
+                    <div class="list-item-action">→</div>
+                </div>
+                <div class="list-item" onclick="location.href='{{ url_for('chat') }}'">
+                    <div class="list-item-content">
+                        <div class="list-item-title">AI Health Coach</div>
+                        <div class="list-item-subtitle">Chat with your personal trainer</div>
+                    </div>
+                    <div class="list-item-action">→</div>
+                </div>
+                <div class="list-item" onclick="location.href='{{ url_for('communities') }}'">
+                    <div class="list-item-content">
+                        <div class="list-item-title">Premium Communities</div>
+                        <div class="list-item-subtitle">Exclusive member groups</div>
+                    </div>
+                    <div class="list-item-action">→</div>
+                </div>
+                {% if username == 'admin' %}
+                <div class="list-item" onclick="location.href='{{ url_for('admin') }}'">
+                    <div class="list-item-content">
+                        <div class="list-item-title">Admin Dashboard</div>
+                        <div class="list-item-subtitle">System management</div>
+                    </div>
+                    <div class="list-item-action">→</div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
     </main>
-  </body>
+
+    <!-- Tab Bar -->
+    <div class="tab-bar">
+        <div class="tab-item active">
+            <div class="tab-icon">⭐</div>
+            <span>Premium</span>
+        </div>
+        <div class="tab-item" onclick="location.href='{{ url_for('free_workouts') }}'">
+            <div class="tab-icon">💪</div>
+            <span>Workouts</span>
+        </div>
+        <div class="tab-item" onclick="location.href='{{ url_for('nutrition') }}'">
+            <div class="tab-icon">🥗</div>
+            <span>Nutrition</span>
+        </div>
+        <div class="tab-item" onclick="location.href='{{ url_for('feed') }}'">
+            <div class="tab-icon">👥</div>
+            <span>Community</span>
+        </div>
+        <div class="tab-item" onclick="location.href='{{ url_for('profile') }}'">
+            <div class="tab-icon">👤</div>
+            <span>Profile</span>
+        </div>
+    </div>
+</body>
 </html>
