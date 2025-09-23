@@ -170,15 +170,17 @@ export default function UsefulLinks(){
         )}
       </div>
 
-      {/* Preview overlay; click outside closes */}
+      {/* Preview overlay; click outside closes (styled like image preview) */}
       {previewDoc && (
-        <div className="fixed inset-0 z-[100] bg_black/70 backdrop_blur flex items_center justify_center" onClick={(e)=> e.currentTarget===e.target && setPreviewDoc(null)}>
-          <div className="w-[96%] max_w-[900px] h-[90vh] bg_black rounded-xl border border_white/10 overflow_hidden relative">
-            <div className="absolute top-2 right-2 z_10">
-              <button className="px-3 py-1.5 rounded-md border border_white/10 hover:bg_white/5 text_sm" onClick={()=> setPreviewDoc(null)}>Close</button>
-            </div>
-            <iframe title="doc" src={`/uploads/${previewDoc.file_path}`} className="w_full h_full" />
-          </div>
+        <div className="fixed inset-0 z-[100] bg-black/85 backdrop-blur flex items-center justify-center" onClick={(e)=> e.currentTarget===e.target && setPreviewDoc(null)}>
+          <button className="absolute top-3 right-3 w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 text-white flex items-center justify-center" onClick={()=> setPreviewDoc(null)} aria-label="Close preview">
+            <i className="fa-solid fa-xmark" />
+          </button>
+          <iframe
+            title="Document preview"
+            src={`/uploads/${previewDoc.file_path}`}
+            className="w-[92vw] h-[85vh] rounded border border-white/10 bg-black"
+          />
         </div>
       )}
 
