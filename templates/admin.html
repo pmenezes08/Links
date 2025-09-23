@@ -2,1156 +2,220 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin Dashboard</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    <meta name="csrf-token" content="disabled">
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <style>
-        /* Premium Dashboard Menu Styles */
-        .admin-page { margin-left: 200px; overflow: hidden; height: 100vh; }
-        .admin-page .sidebar { position: fixed !important; top: 0 !important; left: 0 !important; width: 200px !important; height: 100vh !important; background: #1a1a1a !important; border-right: 1px solid #333333 !important; z-index: 1000 !important; display: flex !important; flex-direction: column !important; }
-        .admin-page .sidebar-header { display: flex; align-items: center; padding: 10px; border-bottom: 1px solid #333333; height: 60px; box-sizing: border-box; }
-        .admin-page .sidebar-logo { padding: 5px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-        .admin-page .community-name { flex: 1; display: flex; align-items: center; color: #ffffff; font-size: 16px; font-weight: 600; padding-left: 10px; overflow: hidden; }
-        .admin-page .community-name span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .admin-page .sidebar-menu { flex: 1; padding: 10px 0; display: block !important; overflow-y: auto !important; }
-        .admin-page .sidebar-menu a { display: block !important; padding: 12px 20px !important; color: #ffffff !important; text-decoration: none !important; transition: all 0.3s ease !important; border: none !important; font-size: 14px !important; }
-        .admin-page .sidebar-menu a:hover { background: rgba(77, 182, 172, 0.2) !important; color: #4db6ac !important; padding-left: 25px !important; }
-        .admin-page .menu-btn, .admin-page .dropdown-content { display: none !important; }
-        @media (max-width: 768px) {
-            .admin-page { margin-left: 0 !important; padding-top: 60px !important; }
-            .admin-page .sidebar { width: 100% !important; height: 60px !important; overflow: visible !important; }
-            .admin-page .sidebar-header { padding: 8px !important; height: 60px !important; }
-            .admin-page .community-name { font-size: 14px !important; }
-            .admin-page .sidebar-menu { display: none !important; position: absolute !important; top: 60px !important; left: 0 !important; right: 0 !important; background: #1a1a1a !important; border-top: 1px solid #333333 !important; max-height: calc(100vh - 60px) !important; overflow-y: auto !important; }
-            .admin-page .sidebar:hover .sidebar-menu, .admin-page .sidebar:focus-within .sidebar-menu { display: block !important; }
-        }
-        
-        /* Admin Header */
-        .admin-header-bar { 
-            position: fixed; 
-            top: 0; 
-            left: 200px; 
-            right: 0; 
-            height: 60px; 
-            padding: 10px;
-            background: transparent; 
-            border-bottom: 1px solid #333333; 
-            z-index: 900;
-            box-sizing: border-box;
-            display: flex;
-            align-items: center;
-        }
-        @media (max-width: 768px) {
-            .admin-header-bar { left: 0 !important; }
-        }
-        
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #000000;
-            color: #ffffff;
-            min-height: 100vh;
-        }
-
-        /* Old sidebar styles removed - using premium dashboard menu */
-
-        .admin-dashboard {
-            margin-left: 0;
-            padding: 80px 24px 24px 24px;
-            max-width: 800px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            min-height: calc(100vh - 48px);
-            margin: 0 auto;
-            position: relative;
-        }
-
-        .admin-header {
-            margin-bottom: 32px;
-            text-align: center;
-        }
-
-        .admin-header h1 {
-            font-size: 24px;
-            font-weight: 600;
-            color: #ffffff;
-            margin-bottom: 8px;
-            letter-spacing: -0.3px;
-        }
-
-        .admin-header p {
-            font-size: 14px;
-            color: rgba(255, 255, 255, 0.6);
-            font-weight: 400;
-        }
-
-        .admin-actions {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 20px;
-            max-width: 600px;
-            margin: 0 auto;
-        }
-
-        .admin-action-btn {
-            background: rgba(255, 255, 255, 0.03);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 12px;
-            padding: 24px 20px;
-            color: #ffffff;
-            font-size: 16px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 12px;
-            text-decoration: none;
-        }
-
-        .admin-action-btn:hover {
-            background: rgba(255, 255, 255, 0.08);
-            border-color: #4db6ac;
-            transform: translateY(-2px);
-        }
-
-        .admin-action-btn i {
-            font-size: 24px;
-            color: #4db6ac;
-        }
-
-        .admin-action-btn span {
-            font-size: 14px;
-            font-weight: 500;
-        }
-
-        .stats-grid {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
-            margin-bottom: 16px;
-        }
-
-        .stat-card {
-            background: rgba(255, 255, 255, 0.02);
-            border: 1px solid rgba(255, 255, 255, 0.03);
-            border-radius: 6px;
-            padding: 8px 12px;
-            text-align: center;
-            flex: 1;
-            min-width: 100px;
-        }
-
-        .stat-card:hover {
-            background: rgba(255, 255, 255, 0.03);
-        }
-
-        .stat-card h3 {
-            font-size: 16px;
-            font-weight: 600;
-            color: #ffffff;
-            margin-bottom: 2px;
-        }
-
-        .stat-card p {
-            font-size: 10px;
-            color: rgba(255, 255, 255, 0.4);
-            font-weight: 400;
-        }
-
-        .admin-section {
-            margin-bottom: 24px;
-        }
-
-        .section-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 16px;
-            padding-bottom: 12px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-        }
-
-        .section-header h2 {
-            font-size: 18px;
-            font-weight: 600;
-            color: #ffffff;
-            letter-spacing: -0.2px;
-        }
-
-        .search-input {
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            padding: 8px 12px;
-            border-radius: 6px;
-            font-size: 13px;
-            color: #ffffff;
-            width: 160px;
-            transition: all 0.2s ease;
-        }
-
-        .search-input:focus {
-            outline: none;
-            border-color: #4db6ac;
-            background: rgba(255, 255, 255, 0.05);
-        }
-
-        .filter-select {
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            padding: 8px 12px;
-            border-radius: 6px;
-            font-size: 13px;
-            color: #ffffff;
-            margin-left: 10px;
-            transition: all 0.2s ease;
-        }
-
-        .filter-select:focus {
-            outline: none;
-            border-color: #4db6ac;
-            background: rgba(255, 255, 255, 0.05);
-        }
-
-        .users-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-            gap: 12px;
-            margin-top: 16px;
-        }
-
-        .user-card {
-            background: rgba(255, 255, 255, 0.03);
-            border: 1px solid rgba(255, 255, 255, 0.05);
-            border-radius: 8px;
-            padding: 12px;
-            transition: all 0.2s ease;
-        }
-
-        .user-card:hover {
-            background: rgba(255, 255, 255, 0.05);
-            border-color: rgba(255, 255, 255, 0.1);
-        }
-
-        .user-header {
-            display: flex;
-            align-items: center;
-            margin-bottom: 10px;
-        }
-
-        .user-avatar {
-            width: 32px;
-            height: 32px;
-            background: #4db6ac;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin-right: 12px;
-            font-size: 14px;
-            color: #ffffff;
-            font-weight: 600;
-        }
-
-        .user-info h4 {
-            font-size: 14px;
-            font-weight: 500;
-            color: #ffffff;
-            flex: 1;
-            margin: 0;
-        }
-
-        .subscription-badge {
-            font-size: 11px;
-            padding: 3px 8px;
-            border-radius: 4px;
-            text-transform: uppercase;
-            font-weight: 500;
-        }
-
-        .subscription-badge.premium {
-            background: #4db6ac;
-            color: #ffffff;
-        }
-
-        .subscription-badge.free {
-            background: rgba(255, 255, 255, 0.08);
-            color: #ffffff;
-            border: 1px solid rgba(255, 255, 255, 0.15);
-        }
-
-        .user-actions {
-            display: flex;
-            gap: 6px;
-        }
-
-        .action-btn {
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            padding: 6px 8px;
-            border-radius: 4px;
-            font-size: 11px;
-            color: #ffffff;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            font-weight: 500;
-        }
-
-        .action-btn:hover {
-            background: rgba(255, 255, 255, 0.08);
-            border-color: #4db6ac;
-        }
-
-        .action-btn.danger {
-            background: rgba(255, 59, 48, 0.08);
-            border-color: rgba(255, 59, 48, 0.3);
-            color: #FF3B30;
-        }
-
-        .action-btn.danger:hover {
-            background: rgba(255, 59, 48, 0.15);
-        }
-        
-        .action-btn.warning {
-            background: rgba(255, 165, 0, 0.08);
-            border-color: rgba(255, 165, 0, 0.3);
-            color: #ffa500;
-        }
-        
-        .action-btn.warning:hover {
-            background: rgba(255, 165, 0, 0.15);
-        }
-        
-        .action-btn.success {
-            background: rgba(77, 182, 172, 0.08);
-            border-color: rgba(77, 182, 172, 0.3);
-            color: #4db6ac;
-        }
-        
-        .action-btn.success:hover {
-            background: rgba(77, 182, 172, 0.15);
-        }
-
-        .communities-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-            gap: 20px;
-        }
-
-        .community-card {
-            background: rgba(255, 255, 255, 0.03);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 16px;
-            padding: 20px;
-            backdrop-filter: blur(20px);
-            transition: all 0.3s ease;
-        }
-
-        .community-card:hover {
-            background: rgba(255, 255, 255, 0.05);
-            transform: translateY(-2px);
-        }
-
-        .community-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 16px;
-        }
-
-        .community-name {
-            font-size: 16px;
-            font-weight: 600;
-            color: #ffffff;
-        }
-
-        .community-type {
-            font-size: 12px;
-            color: rgba(255, 255, 255, 0.6);
-            font-weight: 400;
-        }
-
-        .community-details {
-            font-size: 14px;
-            color: rgba(255, 255, 255, 0.6);
-            margin-bottom: 16px;
-            font-weight: 400;
-        }
-
-        .community-actions {
-            display: flex;
-            gap: 8px;
-        }
-
-        /* Compact Modal Styles for Communities */
-        .compact-modal {
-            max-width: 95%;
-            width: 1400px;
-            max-height: 85vh;
-            display: flex;
-            flex-direction: column;
-        }
-
-        .compact-header {
-            padding: 15px 20px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-        }
-
-        .compact-header h3 {
-            font-size: 18px;
-            margin: 0;
-        }
-
-        .modal-body-compact {
-            flex: 1;
-            overflow: hidden;
-            display: flex;
-            flex-direction: column;
-            padding: 0;
-        }
-
-        .communities-summary {
-            padding: 12px 20px;
-            background: rgba(77, 182, 172, 0.05);
-            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-            display: flex;
-            gap: 20px;
-            font-size: 13px;
-            color: rgba(255, 255, 255, 0.8);
-        }
-
-        .communities-summary span {
-            padding: 4px 8px;
-            background: rgba(255, 255, 255, 0.05);
-            border-radius: 4px;
-        }
-
-        .communities-table-container {
-            flex: 1;
-            overflow-y: auto;
-            overflow-x: auto;
-            padding: 0;
-        }
-
-        .communities-table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 13px;
-        }
-
-        .communities-table thead {
-            background: rgba(255, 255, 255, 0.03);
-            position: sticky;
-            top: 0;
-            z-index: 10;
-        }
-
-        .communities-table th {
-            padding: 10px 12px;
-            text-align: left;
-            font-weight: 600;
-            color: #4db6ac;
-            border-bottom: 2px solid rgba(77, 182, 172, 0.3);
-            white-space: nowrap;
-        }
-        
-        .communities-table th:last-child {
-            min-width: 140px;
-            text-align: center;
-        }
-
-        .communities-table tbody tr {
-            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-            transition: background 0.2s;
-        }
-
-        .communities-table tbody tr:hover {
-            background: rgba(255, 255, 255, 0.02);
-        }
-
-        .communities-table tbody tr.deactivated {
-            opacity: 0.7;
-            background: rgba(255, 68, 68, 0.02);
-        }
-
-        .communities-table td {
-            padding: 8px 12px;
-            vertical-align: middle;
-        }
-
-        .community-name-cell {
-            min-width: 150px;
-        }
-
-        .deactivated-badge-compact {
-            display: inline-block;
-            margin-left: 8px;
-            padding: 1px 6px;
-            background: rgba(255, 68, 68, 0.15);
-            color: #ff4444;
-            border-radius: 3px;
-            font-size: 10px;
-            font-weight: normal;
-        }
-
-        .type-badge {
-            padding: 2px 8px;
-            background: rgba(77, 182, 172, 0.1);
-            color: #4db6ac;
-            border-radius: 4px;
-            font-size: 11px;
-        }
-
-        .code-cell code {
-            padding: 2px 6px;
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 3px;
-            font-family: monospace;
-            font-size: 11px;
-            color: #ffa500;
-        }
-
-        .status-indicator {
-            padding: 2px 8px;
-            border-radius: 4px;
-            font-size: 11px;
-            font-weight: 500;
-        }
-
-        .status-indicator.active {
-            background: rgba(77, 182, 172, 0.15);
-            color: #4db6ac;
-        }
-
-        .status-indicator.inactive {
-            background: rgba(255, 68, 68, 0.15);
-            color: #ff4444;
-        }
-
-        .compact-actions {
-            display: flex;
-            gap: 6px;
-            justify-content: center;
-        }
-        
-        .actions-cell {
-            text-align: center;
-            white-space: nowrap;
-        }
-        
-        .action-btn-compact {
-            padding: 5px 10px;
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 4px;
-            color: rgba(255, 255, 255, 0.7);
-            cursor: pointer;
-            transition: all 0.2s;
-            font-size: 13px;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            min-width: 32px;
-        }
-
-        .action-btn-compact:hover {
-            background: rgba(255, 255, 255, 0.08);
-            color: #ffffff;
-            transform: translateY(-1px);
-        }
-
-        .action-btn-compact.danger {
-            color: #ff4444;
-            border-color: rgba(255, 68, 68, 0.3);
-        }
-
-        .action-btn-compact.danger:hover {
-            background: rgba(255, 68, 68, 0.15);
-        }
-
-        .action-btn-compact.warning {
-            color: #ffa500;
-            border-color: rgba(255, 165, 0, 0.3);
-        }
-
-        .action-btn-compact.warning:hover {
-            background: rgba(255, 165, 0, 0.15);
-        }
-
-        .action-btn-compact.success {
-            color: #4db6ac;
-            border-color: rgba(77, 182, 172, 0.3);
-        }
-
-        .action-btn-compact.success:hover {
-            background: rgba(77, 182, 172, 0.15);
-        }
-
-        .modal-actions.compact-actions {
-            padding: 12px 20px;
-            border-top: 1px solid rgba(255, 255, 255, 0.1);
-        }
-
-        .text-center {
-            text-align: center;
-        }
-        
-        /* Users Table Styles */
-        .users-controls {
-            padding: 12px 20px;
-            background: rgba(255, 255, 255, 0.02);
-            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-        }
-        
-        .search-filter-container {
-            display: flex;
-            gap: 12px;
-            margin-bottom: 12px;
-        }
-        
-        .search-input-compact {
-            flex: 1;
-            padding: 8px 12px;
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 6px;
-            color: #ffffff;
-            font-size: 13px;
-        }
-        
-        .filter-select-compact {
-            padding: 8px 12px;
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 6px;
-            color: #ffffff;
-            font-size: 13px;
-            cursor: pointer;
-        }
-        
-        .users-summary {
-            display: flex;
-            gap: 20px;
-            font-size: 13px;
-            color: rgba(255, 255, 255, 0.8);
-        }
-        
-        .users-summary span {
-            padding: 4px 8px;
-            background: rgba(77, 182, 172, 0.05);
-            border-radius: 4px;
-        }
-        
-        .users-table-container {
-            flex: 1;
-            overflow-y: auto;
-            overflow-x: auto;
-            padding: 0;
-        }
-        
-        .users-table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 13px;
-        }
-        
-        .users-table thead {
-            background: rgba(255, 255, 255, 0.03);
-            position: sticky;
-            top: 0;
-            z-index: 10;
-        }
-        
-        .users-table th {
-            padding: 10px 12px;
-            text-align: left;
-            font-weight: 600;
-            color: #4db6ac;
-            border-bottom: 2px solid rgba(77, 182, 172, 0.3);
-            white-space: nowrap;
-        }
-        
-        .users-table th:last-child {
-            min-width: 200px;
-            text-align: center;
-        }
-        
-        .users-table tbody tr {
-            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-            transition: background 0.2s;
-        }
-        
-        .users-table tbody tr:hover {
-            background: rgba(255, 255, 255, 0.02);
-        }
-        
-        .users-table tbody tr.deactivated {
-            opacity: 0.7;
-            background: rgba(255, 68, 68, 0.02);
-        }
-        
-        .users-table td {
-            padding: 8px 12px;
-            vertical-align: middle;
-        }
-        
-        .user-display {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        
-        .user-icon-small {
-            font-size: 14px;
-            color: rgba(255, 255, 255, 0.5);
-        }
-        
-        .admin-badge {
-            padding: 2px 6px;
-            background: linear-gradient(135deg, #ffa500, #ff6b6b);
-            color: white;
-            border-radius: 4px;
-            font-size: 10px;
-            font-weight: bold;
-            text-transform: uppercase;
-        }
-        
-        .subscription-badge-compact {
-            padding: 3px 8px;
-            border-radius: 4px;
-            font-size: 11px;
-            font-weight: 500;
-            text-transform: uppercase;
-        }
-        
-        .subscription-badge-compact.premium {
-            background: linear-gradient(135deg, #FFD700, #FFA500);
-            color: #000000;
-        }
-        
-        .subscription-badge-compact.free {
-            background: rgba(255, 255, 255, 0.1);
-            color: rgba(255, 255, 255, 0.7);
-        }
-        
-        /* Responsive adjustments for compact modal */
-        @media (max-width: 1500px) {
-            .compact-modal {
-                max-width: 98%;
-            }
-        }
-        
-        @media (max-width: 768px) {
-            .compact-modal {
-                width: 100%;
-                max-width: 100%;
-                max-height: 95vh;
-            }
-            
-            .communities-table {
-                font-size: 11px;
-            }
-            
-            .action-btn-compact {
-                padding: 4px 6px;
-                font-size: 11px;
-                min-width: 28px;
-            }
-            
-            .compact-actions {
-                gap: 3px;
-            }
-        }
-
-        .error-message {
-            background: rgba(255, 59, 48, 0.1);
-            border: 1px solid rgba(255, 59, 48, 0.3);
-            color: #FF3B30;
-            padding: 16px;
-            border-radius: 12px;
-            font-size: 14px;
-            margin-bottom: 24px;
-            text-align: center;
-        }
-
-        .modal {
-            display: none;
-            position: fixed;
-            z-index: 1000;
-            left: 0;
-            top: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0, 0, 0, 0.8);
-            backdrop-filter: blur(10px);
-        }
-
-        .modal-content {
-            background: rgba(0, 0, 0, 0.95);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            margin: 3% auto;
-            padding: 24px;
-            border-radius: 16px;
-            width: 95%;
-            max-width: 800px;
-            max-height: 85vh;
-            overflow-y: auto;
-            backdrop-filter: blur(20px);
-        }
-
-        .modal-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 24px;
-        }
-
-        .modal-header h3 {
-            font-size: 20px;
-            font-weight: 600;
-            color: #ffffff;
-            letter-spacing: -0.3px;
-        }
-
-        .close {
-            color: rgba(255, 255, 255, 0.6);
-            font-size: 24px;
-            font-weight: 400;
-            cursor: pointer;
-            transition: all 0.3s ease;
-        }
-
-        .close:hover {
-            color: #ffffff;
-        }
-
-        .form-group {
-            margin-bottom: 20px;
-        }
-
-        .form-group label {
-            display: block;
-            font-size: 14px;
-            margin-bottom: 8px;
-            color: #ffffff;
-            font-weight: 500;
-        }
-
-        .form-group input, .form-group select {
-            width: 100%;
-            padding: 12px 16px;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 10px;
-            background: rgba(255, 255, 255, 0.05);
-            color: #ffffff;
-            font-size: 14px;
-            transition: all 0.3s ease;
-        }
-
-        .form-group input:focus, .form-group select:focus {
-            outline: none;
-            border-color: #007AFF;
-            background: rgba(255, 255, 255, 0.08);
-        }
-
-        .modal-actions {
-            display: flex;
-            gap: 12px;
-            justify-content: flex-end;
-            margin-top: 24px;
-        }
-
-        .btn {
-            padding: 12px 20px;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 10px;
-            font-size: 14px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: all 0.3s ease;
-        }
-
-        .btn-primary {
-            background: #4db6ac;
-            color: #ffffff;
-            border-color: #4db6ac;
-        }
-
-        .btn-primary:hover {
-            background: #37a69c;
-            transform: translateY(-1px);
-        }
-
-        .btn-secondary {
-            background: rgba(255, 255, 255, 0.05);
-            color: #ffffff;
-        }
-
-        .btn-secondary:hover {
-            background: rgba(255, 255, 255, 0.1);
-            transform: translateY(-1px);
-        }
-
-        @media (max-width: 768px) {
-            .admin-dashboard {
-                margin-left: 0;
-                padding: 16px;
-                max-width: 100%;
-                left: 0;
-                margin: 0;
-            }
-
-            .sidebar {
-                width: 100%;
-                height: 60px;
-                top: 0;
-            }
-
-            .menu-btn {
-                margin: 10px;
-            }
-
-            .dropdown-content {
-                left: 0;
-                top: 70px;
-                width: 100%;
-                border-radius: 0;
-            }
-
-            .stats-grid {
-                grid-template-columns: 1fr;
-            }
-
-            .users-grid, .communities-grid {
-                grid-template-columns: 1fr;
-                gap: 8px;
-            }
-
-            .user-card {
-                padding: 10px;
-            }
-
-            .section-header {
-                flex-direction: column;
-                align-items: stretch;
-                gap: 12px;
-            }
-
-            .search-input, .filter-select {
-                width: 100%;
-                margin-left: 0;
-            }
-
-            .modal-content {
-                width: 95%;
-                margin: 2% auto;
-                padding: 16px;
-                max-height: 90vh;
-            }
-        }
-        
-        /* Notification Styles */
-        .notification {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            padding: 15px 20px;
-            border-radius: 8px;
-            background: #1a2526;
-            border: 1px solid #333;
-            color: #ffffff;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            z-index: 10000;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-            animation: slideIn 0.3s ease;
-            max-width: 400px;
-        }
-        
-        @keyframes slideIn {
-            from {
-                transform: translateX(100%);
-                opacity: 0;
-            }
-            to {
-                transform: translateX(0);
-                opacity: 1;
-            }
-        }
-        
-        .notification.success {
-            border-color: #4db6ac;
-            background: linear-gradient(135deg, rgba(77, 182, 172, 0.1), rgba(45, 138, 126, 0.1));
-        }
-        
-        .notification.success i {
-            color: #4db6ac;
-        }
-        
-        .notification.error {
-            border-color: #e74c3c;
-            background: linear-gradient(135deg, rgba(231, 76, 60, 0.1), rgba(192, 57, 43, 0.1));
-        }
-        
-        .notification.error i {
-            color: #e74c3c;
-        }
-        
-        .notification-close {
-            background: none;
-            border: none;
-            color: #999;
-            font-size: 20px;
-            cursor: pointer;
-            padding: 0;
-            margin-left: auto;
-            line-height: 1;
-        }
-        
-        .notification-close:hover {
-            color: #fff;
-        }
-    </style>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Admin Dashboard - Workout X</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='apple-design.css') }}">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
 </head>
-<body class="admin-page">
-    <div class="sidebar">
-        <div class="sidebar-header">
-            <div class="sidebar-logo" id="sidebarLogo"></div>
-            <div class="community-name">
-                <span>Admin</span>
+<body>
+    <div class="page-container">
+        <!-- Navigation -->
+        <nav class="navbar">
+            <div class="navbar-container">
+                <a href="{{ url_for('dashboard') }}" class="navbar-brand">Workout X</a>
+                <div class="navbar-nav">
+                    <a href="{{ url_for('admin') }}" class="nav-link active">Admin</a>
+                    <a href="{{ url_for('admin_profile') }}" class="nav-link">Profile</a>
+                    <a href="{{ url_for('feed') }}" class="nav-link">Social</a>
+                    <a href="{{ url_for('communities') }}" class="nav-link">Communities</a>
+                    <a href="{{ url_for('logout') }}" class="nav-link">Logout</a>
+                </div>
             </div>
-        </div>
-        <div class="sidebar-menu">
-			{% if session['username'] == 'admin' %}
-			<a href="{{ url_for('admin_profile') }}">Admin Profile</a>
-			<a href="{{ url_for('admin') }}">Admin Dashboard</a>
-			{% endif %}
-			<a href="{{ url_for('dashboard') }}">Dashboard</a>
-			<a href="{{ url_for('profile') }}">Profile</a>
-			<a href="{{ url_for('user_chat') }}">Messages</a>
-			<a href="{{ url_for('communities') }}">Your Communities</a>
-			<a href="{{ url_for('your_sports') }}">Your Sports</a>
-			<a href="{{ url_for('logout') }}">Logout</a>
-		</div>
-    </div>
-    
-    <div class="admin-header-bar"></div>
-    
-    <div class="container admin-dashboard">
-        <div class="admin-header">
-            <h1><i class="fas fa-shield-alt"></i> Admin Dashboard</h1>
-            <p>Manage users, communities, and monitor platform statistics</p>
-        </div>
+        </nav>
 
-        {% if error %}
-            <div class="error-message">
-                <i class="fas fa-exclamation-triangle"></i> {{ error }}
-            </div>
-        {% endif %}
+        <!-- Main Content -->
+        <main class="main-content">
+            <div class="container">
+                <!-- Page Header -->
+                <div class="text-center mb-6">
+                    <h1>Admin Dashboard</h1>
+                    <p class="text-secondary">Manage users, communities, and monitor platform statistics</p>
+                </div>
 
-        <div class="admin-actions">
-            <button class="admin-action-btn" onclick="showStatsModal()">
-                <i class="fas fa-chart-bar"></i>
-                <span>View Statistics</span>
-            </button>
-            <button class="admin-action-btn" onclick="showUserActivityModal()">
-                <i class="fas fa-user-clock"></i>
-                <span>User Activity</span>
-            </button>
-            <button class="admin-action-btn" onclick="showUsersModal()">
-                <i class="fas fa-users"></i>
-                <span>Manage Users ({{ users|length }})</span>
-            </button>
-            <button class="admin-action-btn" onclick="showCommunitiesModal()">
-                <i class="fas fa-users-cog"></i>
-                <span>Manage Communities ({{ communities|length }})</span>
-            </button>
-            <button class="admin-action-btn" onclick="showLogoModal()">
-                <i class="fas fa-image"></i>
-                <span>Change Site Logo</span>
-            </button>
-            <button class="admin-action-btn" onclick="showSignupImageModal()">
-                <i class="fas fa-photo-video"></i>
-                <span>Update Signup Image</span>
-            </button>
-            <button class="admin-action-btn" onclick="window.location.href='{{ url_for('admin_ads_overview') }}'">
-                <i class="fas fa-ad"></i>
-                <span>Ads Performance</span>
-            </button>
-        </div>
-    </div>
-
-    <!-- Signup Image Upload Modal -->
-    <div id="signupImageModal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3>Update Signup Side Image</h3>
-                <span class="close" onclick="closeSignupImageModal()">&times;</span>
-            </div>
-            <div class="modal-body">
-                <form id="signupImageUploadForm" enctype="multipart/form-data">
-                    <div class="form-group">
-                        <label for="signupImageFile">Select Image (PNG, JPG, GIF, WEBP):</label>
-                        <input type="file" id="signupImageFile" name="image" accept="image/*" required>
+                {% if error %}
+                    <div class="alert alert-error mb-6">
+                        {{ error }}
                     </div>
-                    <div id="signupImagePreviewWrap" style="display:none; margin: 20px 0; text-align: center;">
-                        <h4>Preview:</h4>
-                        <div style="background: #1a1a1a; padding: 20px; border-radius: 8px;">
-                            <img id="signupPreviewImage" style="max-width: 100%; max-height: 260px; width: auto; height: auto;" />
+                {% endif %}
+
+                <!-- Quick Actions -->
+                <div class="card mb-6">
+                    <div class="card-header">
+                        <h2 class="card-title">Quick Actions</h2>
+                        <p class="card-subtitle">Common administrative tasks</p>
+                    </div>
+                    <div class="card-body">
+                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                            <button onclick="showStatsModal()" class="btn btn-secondary flex-col h-20">
+                                <span class="text-lg mb-1">Statistics</span>
+                                <span class="text-sm text-secondary">View Metrics</span>
+                            </button>
+                            <button onclick="showAddUserModal()" class="btn btn-secondary flex-col h-20">
+                                <span class="text-lg mb-1">Add User</span>
+                                <span class="text-sm text-secondary">Create Account</span>
+                            </button>
+                            <button onclick="showAddCommunityModal()" class="btn btn-secondary flex-col h-20">
+                                <span class="text-lg mb-1">Create Community</span>
+                                <span class="text-sm text-secondary">New Group</span>
+                            </button>
+                            <button onclick="exportData()" class="btn btn-secondary flex-col h-20">
+                                <span class="text-lg mb-1">Export Data</span>
+                                <span class="text-sm text-secondary">Download</span>
+                            </button>
                         </div>
-                    </div>
-                    <div class="form-actions">
-                        <button type="submit" class="submit-btn">Upload Image</button>
-                        <button type="button" class="cancel-btn" onclick="closeSignupImageModal()">Cancel</button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
-    <!-- Logo Upload Modal -->
-    <div id="logoModal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3>Change Site Logo</h3>
-                <span class="close" onclick="closeLogoModal()">&times;</span>
-            </div>
-            <div class="modal-body">
-                <div class="logo-preview-section">
-                    <h4>Current Logo:</h4>
-                    <div id="currentLogoPreview" style="background: #1a1a1a; padding: 20px; border-radius: 8px; text-align: center; margin-bottom: 20px;">
-                        <div id="currentLogoDisplay" style="color: #4db6ac; font-size: 24px; font-weight: bold;">C.Point</div>
                     </div>
                 </div>
-                <div class="logo-upload-section">
-                    <h4>Upload New Logo:</h4>
-                    <form id="logoUploadForm" enctype="multipart/form-data">
-                        <div class="form-group">
-                            <label for="logoFile">Select Image (PNG, JPG, GIF, SVG, WEBP):</label>
-                            <input type="file" id="logoFile" name="logo" accept="image/*" required>
-                        </div>
-                        <div id="newLogoPreview" style="display: none; margin: 20px 0; text-align: center;">
-                            <h4>Preview:</h4>
-                            <div style="background: #1a1a1a; padding: 20px; border-radius: 8px;">
-                                <img id="previewImage" style="max-width: 200px; max-height: 100px; width: auto; height: auto;" />
+
+                <!-- User Management -->
+                <div class="card mb-6">
+                    <div class="card-header">
+                        <h2 class="card-title">User Management</h2>
+                        <p class="card-subtitle">Manage platform users and accounts</p>
+                    </div>
+                    <div class="card-body">
+                        <div class="flex flex-col md:flex-row gap-4 mb-6">
+                            <div class="flex-1">
+                                <input type="text" id="userSearch" placeholder="Search users..." class="form-input">
+                            </div>
+                            <div class="w-full md:w-48">
+                                <select id="userFilter" class="form-input form-select">
+                                    <option value="all">All Users</option>
+                                    <option value="premium">Premium Only</option>
+                                    <option value="free">Free Only</option>
+                                </select>
                             </div>
                         </div>
-                        <div class="form-actions">
-                            <button type="submit" class="submit-btn">Upload Logo</button>
-                            <button type="button" class="remove-btn" onclick="removeLogo()" style="background: #ff4444; border-color: #ff4444;">Remove Logo</button>
-                            <button type="button" class="cancel-btn" onclick="closeLogoModal()">Cancel</button>
+                        
+                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" id="usersGrid">
+                            {% for user in users %}
+                            <div class="card bg-tertiary" data-username="{{ user[0] }}" data-subscription="{{ user[1] }}">
+                                <div class="card-body">
+                                    <div class="flex items-center justify-between mb-4">
+                                        <div class="flex items-center gap-3">
+                                            <div class="w-10 h-10 bg-accent-blue rounded-full flex items-center justify-center text-white font-medium">
+                                                {{ user[0][0].upper() }}
+                                            </div>
+                                            <div>
+                                                <h4 class="font-medium">{{ user[0] }}</h4>
+                                                <span class="px-2 py-1 text-xs rounded-full {{ 'bg-accent-green text-white' if user[1] == 'premium' else 'bg-secondary text-secondary' }}">
+                                                    {{ user[1]|title }}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="flex gap-2">
+                                        <button onclick="showPasswordModal('{{ user[0] }}')" class="btn btn-sm btn-secondary flex-1">
+                                            Password
+                                        </button>
+                                        <button onclick="showUserDetails('{{ user[0] }}')" class="btn btn-sm btn-secondary flex-1">
+                                            Details
+                                        </button>
+                                        {% if user[0] != 'admin' %}
+                                        <button onclick="deleteUser('{{ user[0] }}')" class="btn btn-sm btn-danger">
+                                            Delete
+                                        </button>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Community Management -->
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="card-title">Community Management</h2>
+                        <p class="card-subtitle">Manage platform communities and groups</p>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-6">
+                            <input type="text" id="communitySearch" placeholder="Search communities..." class="form-input">
+                        </div>
+                        
+                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" id="communitiesGrid">
+                            {% for community in communities %}
+                            <div class="card bg-tertiary" data-name="{{ community.name }}">
+                                <div class="card-body">
+                                    <div class="flex items-center justify-between mb-4">
+                                        <div class="flex items-center gap-3">
+                                            <div class="w-10 h-10 bg-accent-orange rounded-full flex items-center justify-center text-white font-medium">
+                                                {{ community.name[0].upper() }}
+                                            </div>
+                                            <div>
+                                                <h4 class="font-medium">{{ community.name }}</h4>
+                                                <p class="text-sm text-secondary">{{ community.type }}</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="space-y-2 mb-4">
+                                        <div class="flex justify-between text-sm">
+                                            <span class="text-secondary">Creator:</span>
+                                            <span>{{ community.creator_username }}</span>
+                                        </div>
+                                        <div class="flex justify-between text-sm">
+                                            <span class="text-secondary">Members:</span>
+                                            <span>{{ community.member_count }}</span>
+                                        </div>
+                                        <div class="flex justify-between text-sm items-center">
+                                            <span class="text-secondary">Join Code:</span>
+                                            <div class="flex items-center gap-2">
+                                                <span class="font-mono text-xs">{{ community.join_code }}</span>
+                                                <button onclick="copyJoinCode('{{ community.join_code }}')" class="btn btn-sm btn-secondary">
+                                                    Copy
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="flex gap-2">
+                                        <a href="/community_feed/{{ community.id }}" class="btn btn-sm btn-secondary flex-1">
+                                            View
+                                        </a>
+                                        <button onclick="showCommunityMembers('{{ community.id }}', '{{ community.name }}')" class="btn btn-sm btn-secondary flex-1">
+                                            Members
+                                        </button>
+                                        <button onclick="deleteCommunity({{ community.id }}, '{{ community.name }}')" class="btn btn-sm btn-danger">
+                                            Delete
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Password Update Modal -->
+    <div id="passwordModal" class="modal">
+        <div class="modal-content">
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">Update Password</h3>
+                    <button onclick="closePasswordModal()" class="btn btn-sm btn-secondary">Close</button>
+                </div>
+                <div class="card-body">
+                    <form id="passwordForm" class="space-y-4">
+                        <div class="form-group">
+                            <label for="targetUsername" class="form-label">Username</label>
+                            <input type="text" id="targetUsername" class="form-input" readonly>
+                        </div>
+                        <div class="form-group">
+                            <label for="newPassword" class="form-label">New Password</label>
+                            <input type="password" id="newPassword" class="form-input" required minlength="6">
+                        </div>
+                        <div class="form-group">
+                            <label for="confirmPassword" class="form-label">Confirm Password</label>
+                            <input type="password" id="confirmPassword" class="form-input" required minlength="6">
+                        </div>
+                        <div class="flex gap-3">
+                            <button type="button" onclick="closePasswordModal()" class="btn btn-secondary flex-1">Cancel</button>
+                            <button type="submit" class="btn btn-primary flex-1">Update Password</button>
                         </div>
                     </form>
                 </div>
@@ -1162,882 +226,368 @@
     <!-- Add User Modal -->
     <div id="addUserModal" class="modal">
         <div class="modal-content">
-            <div class="modal-header">
-                <h3>Add New User</h3>
-                <span class="close" onclick="closeAddUserModal()">&times;</span>
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">Add New User</h3>
+                    <button onclick="closeAddUserModal()" class="btn btn-sm btn-secondary">Close</button>
+                </div>
+                <div class="card-body">
+                    <form id="addUserForm" method="POST" class="space-y-4">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <div class="form-group">
+                            <label for="newUsername" class="form-label">Username</label>
+                            <input type="text" name="new_username" id="newUsername" class="form-input" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="newUserPassword" class="form-label">Password</label>
+                            <input type="password" name="new_password" id="newUserPassword" class="form-input" required minlength="6">
+                        </div>
+                        <div class="form-group">
+                            <label for="newUserSubscription" class="form-label">Subscription</label>
+                            <select name="new_subscription" id="newUserSubscription" class="form-input form-select">
+                                <option value="free">Free</option>
+                                <option value="premium">Premium</option>
+                            </select>
+                        </div>
+                        <div class="flex gap-3">
+                            <button type="button" onclick="closeAddUserModal()" class="btn btn-secondary flex-1">Cancel</button>
+                            <button type="submit" name="add_user" class="btn btn-primary flex-1">Add User</button>
+                        </div>
+                    </form>
+                </div>
             </div>
-            <form id="addUserForm" method="POST">
-                <input type="hidden" name="csrf_token" value="disabled">
-                <div class="form-group">
-                    <label for="newUsername">Username:</label>
-                    <input type="text" name="new_username" id="newUsername" required>
-                </div>
-                <div class="form-group">
-                    <label for="newPassword">Password:</label>
-                    <input type="password" name="new_password" id="newPassword" required>
-                </div>
-                <div class="form-group">
-                    <label for="newSubscription">Subscription:</label>
-                    <select name="new_subscription" id="newSubscription" required>
-                        <option value="free">Free</option>
-                        <option value="premium">Premium</option>
-                    </select>
-                </div>
-                <div class="modal-actions">
-                    <button type="button" class="btn btn-secondary" onclick="closeAddUserModal()">Cancel</button>
-                    <button type="submit" name="add_user" class="btn btn-primary">Add User</button>
-                </div>
-            </form>
         </div>
     </div>
 
     <!-- Statistics Modal -->
     <div id="statsModal" class="modal">
         <div class="modal-content">
-            <div class="modal-header">
-                <h3>Platform Statistics</h3>
-                <span class="close" onclick="closeStatsModal()">&times;</span>
-            </div>
-            <div class="stats-grid">
-                <div class="stat-card">
-                    <h3>{{ stats.total_users }}</h3>
-                    <p>Total Users</p>
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">Platform Statistics</h3>
+                    <button onclick="closeStatsModal()" class="btn btn-sm btn-secondary">Close</button>
                 </div>
-                <div class="stat-card">
-                    <h3>{{ stats.premium_users }}</h3>
-                    <p>Premium Users</p>
-                </div>
-                <div class="stat-card">
-                    <h3>{{ stats.total_communities }}</h3>
-                    <p>Communities</p>
-                </div>
-                <div class="stat-card">
-                    <h3>{{ stats.total_posts }}</h3>
-                    <p>Total Posts</p>
-                </div>
-            </div>
-            <div class="modal-actions">
-                <button type="button" class="btn btn-secondary" onclick="closeStatsModal()">Close</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- User Activity Modal -->
-    <div id="userActivityModal" class="modal">
-        <div class="modal-content" style="max-width: 900px;">
-            <div class="modal-header">
-                <h3>User Activity Statistics</h3>
-                <span class="close" onclick="closeUserActivityModal()">&times;</span>
-            </div>
-            <div class="modal-body" style="max-height: 600px; overflow-y: auto;">
-                <div id="userActivityContent">
-                    <div style="text-align: center; padding: 20px;">
-                        <i class="fas fa-spinner fa-spin" style="font-size: 24px; color: #4db6ac;"></i>
-                        <p>Loading user statistics...</p>
+                <div class="card-body">
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="text-center p-4 bg-tertiary rounded-lg">
+                            <div class="text-2xl font-bold text-accent-blue mb-1">{{ stats.total_users }}</div>
+                            <div class="text-sm text-secondary">Total Users</div>
+                        </div>
+                        <div class="text-center p-4 bg-tertiary rounded-lg">
+                            <div class="text-2xl font-bold text-accent-orange mb-1">{{ stats.total_communities }}</div>
+                            <div class="text-sm text-secondary">Communities</div>
+                        </div>
+                        <div class="text-center p-4 bg-tertiary rounded-lg">
+                            <div class="text-2xl font-bold text-accent-green mb-1">{{ stats.premium_users }}</div>
+                            <div class="text-sm text-secondary">Premium Users</div>
+                        </div>
+                        <div class="text-center p-4 bg-tertiary rounded-lg">
+                            <div class="text-2xl font-bold text-accent-purple mb-1">{{ stats.total_posts }}</div>
+                            <div class="text-sm text-secondary">Total Posts</div>
+                        </div>
                     </div>
                 </div>
             </div>
-            <div class="modal-actions">
-                <button type="button" class="btn btn-secondary" onclick="closeUserActivityModal()">Close</button>
-            </div>
         </div>
     </div>
 
-    <!-- Users Modal -->
-    <div id="usersModal" class="modal">
-        <div class="modal-content compact-modal">
-            <div class="modal-header compact-header">
-                <h3>User Management</h3>
-                <span class="close" onclick="closeUsersModal()">&times;</span>
-            </div>
-            <div class="modal-body-compact">
-                <div class="users-controls">
-                    <div class="search-filter-container">
-                        <input type="text" id="userSearch" placeholder="Search users..." class="search-input-compact">
-                        <select id="userFilter" class="filter-select-compact">
-                            <option value="all">All Users</option>
-                            <option value="premium">Premium</option>
-                            <option value="free">Free</option>
-                            <option value="active">Active</option>
-                            <option value="deactivated">Deactivated</option>
-                        </select>
-                    </div>
-                    <div class="users-summary">
-                        <span>Total: {{ users|length }} users</span>
-                        {% set active_users = users|selectattr('2')|list|length %}
-                        {% set inactive_users = users|length - active_users %}
-                        <span>Active: {{ active_users }}</span>
-                        <span>Deactivated: {{ inactive_users }}</span>
-                    </div>
-                </div>
-                <div class="users-table-container">
-                    <table class="users-table">
-                        <thead>
-                            <tr>
-                                <th>Username</th>
-                                <th>Subscription</th>
-                                <th>Status</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody id="usersTableBody">
-                            {% for user in users %}
-                            <tr class="user-row {{ 'deactivated' if not user[2]|default(true) else '' }}" 
-                                data-username="{{ user[0] }}" 
-                                data-subscription="{{ user[1] }}"
-                                data-active="{{ user[2]|default(true) }}">
-                                <td class="username-cell">
-                                    <div class="user-display">
-                                        <i class="fas fa-user user-icon-small"></i>
-                                        <strong>{{ user[0] }}</strong>
-                                        {% if user[0] == 'admin' %}
-                                        <span class="admin-badge">Admin</span>
-                                        {% endif %}
-                                        {% if not user[2]|default(true) %}
-                                        <span class="deactivated-badge-compact">Deactivated</span>
-                                        {% endif %}
-                                    </div>
-                                </td>
-                                <td>
-                                    <span class="subscription-badge-compact {{ user[1] }}">
-                                        {{ user[1]|title }}
-                                    </span>
-                                </td>
-                                <td>
-                                    <span class="status-indicator {{ 'active' if user[2]|default(true) else 'inactive' }}">
-                                        {{ 'Active' if user[2]|default(true) else 'Inactive' }}
-                                    </span>
-                                </td>
-                                <td class="actions-cell">
-                                    <div class="compact-actions">
-                                        <button onclick="showPasswordModal('{{ user[0] }}')" 
-                                                class="action-btn-compact" title="Update Password">
-                                            <i class="fas fa-key"></i>
-                                        </button>
-                                        <button onclick="showSubscriptionModal('{{ user[0] }}', '{{ user[1] }}')" 
-                                                class="action-btn-compact" title="Change Subscription">
-                                            <i class="fas fa-crown"></i>
-                                        </button>
-                                        <button onclick="showUserDetails('{{ user[0] }}')" 
-                                                class="action-btn-compact" title="View Details">
-                                            <i class="fas fa-eye"></i>
-                                        </button>
-                                        {% if user[0] != 'admin' %}
-                                        <button onclick="toggleUserStatus('{{ user[0] }}', {{ 'false' if user[2]|default(true) else 'true' }})" 
-                                                class="action-btn-compact {{ 'warning' if user[2]|default(true) else 'success' }}" 
-                                                title="{{ 'Deactivate' if user[2]|default(true) else 'Activate' }}">
-                                            <i class="fas fa-{{ 'ban' if user[2]|default(true) else 'check-circle' }}"></i>
-                                        </button>
-                                        <button onclick="deleteUser('{{ user[0] }}')" 
-                                                class="action-btn-compact danger" title="Delete">
-                                            <i class="fas fa-trash"></i>
-                                        </button>
-                                        {% endif %}
-                                    </div>
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-            <div class="modal-actions compact-actions">
-                <button type="button" class="btn btn-secondary" onclick="closeUsersModal()">Close</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Communities Modal -->
-    <div id="communitiesModal" class="modal">
-        <div class="modal-content compact-modal">
-            <div class="modal-header compact-header">
-                <h3>Community Management</h3>
-                <span class="close" onclick="closeCommunitiesModal()">&times;</span>
-            </div>
-            <div class="modal-body-compact">
-                <div class="communities-summary">
-                    <span>Total: {{ communities|length }} communities</span>
-                    {% set active_count = communities|selectattr('is_active')|list|length %}
-                    {% set inactive_count = communities|length - active_count %}
-                    <span>Active: {{ active_count }}</span>
-                    <span>Deactivated: {{ inactive_count }}</span>
-                </div>
-                <div class="communities-table-container">
-                    <table class="communities-table">
-                        <thead>
-                            <tr>
-                                <th>Name</th>
-                                <th>Type</th>
-                                <th>Owner</th>
-                                <th>Members</th>
-                                <th>Code</th>
-                                <th>Status</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for community in communities %}
-                            <tr class="community-row {{ 'deactivated' if not community.is_active|default(true) else '' }}" 
-                                data-community-id="{{ community.id }}" 
-                                data-active="{{ community.is_active|default(true) }}">
-                                <td class="community-name-cell">
-                                    <strong>{{ community.name }}</strong>
-                                    {% if not community.is_active|default(true) %}
-                                    <span class="deactivated-badge-compact">Deactivated</span>
-                                    {% endif %}
-                                </td>
-                                <td><span class="type-badge">{{ community.type }}</span></td>
-                                <td>{{ community.creator_username }}</td>
-                                <td class="text-center">{{ community.member_count }}</td>
-                                <td class="code-cell">
-                                    <code>{{ community.join_code }}</code>
-                                </td>
-                                <td>
-                                    <span class="status-indicator {{ 'active' if community.is_active|default(true) else 'inactive' }}">
-                                        {{ 'Active' if community.is_active|default(true) else 'Inactive' }}
-                                    </span>
-                                </td>
-                                <td class="actions-cell">
-                                    <div class="compact-actions">
-                                        <button onclick="showCommunityMembers('{{ community.id }}')" 
-                                                class="action-btn-compact" title="View Members">
-                                            <i class="fas fa-users"></i>
-                                        </button>
-                                        <button onclick="toggleCommunityStatus('{{ community.id }}', {{ 'false' if community.is_active|default(true) else 'true' }})" 
-                                                class="action-btn-compact {{ 'warning' if community.is_active|default(true) else 'success' }}" 
-                                                title="{{ 'Deactivate' if community.is_active|default(true) else 'Activate' }}">
-                                            <i class="fas fa-{{ 'ban' if community.is_active|default(true) else 'check-circle' }}"></i>
-                                        </button>
-                                        <button onclick="deleteCommunity('{{ community.id }}')" 
-                                                class="action-btn-compact danger" title="Delete">
-                                            <i class="fas fa-trash"></i>
-                                        </button>
-                                    </div>
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-            <div class="modal-actions compact-actions">
-                <button type="button" class="btn btn-secondary" onclick="closeCommunitiesModal()">Close</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Update Password Modal -->
-    <div id="passwordModal" class="modal">
+    <!-- Community Members Modal -->
+    <div id="membersModal" class="modal">
         <div class="modal-content">
-            <div class="modal-header">
-                <h3>Update Password for <span id="passwordModalUsername"></span></h3>
-                <span class="close" onclick="closePasswordModal()">&times;</span>
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">Community Members</h3>
+                    <button onclick="closeMembersModal()" class="btn btn-sm btn-secondary">Close</button>
+                </div>
+                <div class="card-body">
+                    <div id="membersList" class="space-y-3">
+                        <!-- Members will be loaded here -->
+                    </div>
+                </div>
             </div>
-            <form id="passwordForm" method="POST">
-                <input type="hidden" name="csrf_token" value="disabled">
-                <input type="hidden" name="username" id="passwordUsername" value="">
-                <div class="form-group">
-                    <label for="updatePassword">New Password:</label>
-                    <input type="password" name="new_password" id="updatePassword" required>
-                </div>
-                <div class="modal-actions">
-                    <button type="button" class="btn btn-secondary" onclick="closePasswordModal()">Cancel</button>
-                    <button type="submit" name="update_password" class="btn btn-primary">Update Password</button>
-                </div>
-            </form>
         </div>
     </div>
 
-    <!-- Update Subscription Modal -->
-    <div id="subscriptionModal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3>Change Subscription</h3>
-                <span class="close" onclick="closeSubscriptionModal()">&times;</span>
-            </div>
-            <form id="subscriptionForm" method="POST">
-                <input type="hidden" name="csrf_token" value="disabled">
-                <input type="hidden" name="username" id="subscriptionUsername">
-                <div class="form-group">
-                    <label for="newSubscription">Subscription Type:</label>
-                    <select name="new_subscription" id="newSubscription" required>
-                        <option value="free">Free</option>
-                        <option value="premium">Premium</option>
-                    </select>
-                </div>
-                <div class="modal-actions">
-                    <button type="button" class="btn btn-secondary" onclick="closeSubscriptionModal()">Cancel</button>
-                    <button type="submit" name="update_subscription" class="btn btn-primary">Update Subscription</button>
-                </div>
-            </form>
-        </div>
-    </div>
-
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script>
-        // Premium dashboard menu doesn't need dropdown logic
-        $(document).ready(function() {
-        });
-
-        // Modal functions
+        // Modal Functions
         function showStatsModal() {
-            $('#statsModal').show();
+            document.getElementById('statsModal').style.display = 'block';
         }
-        
+
         function closeStatsModal() {
-            $('#statsModal').hide();
-        }
-        
-        function showUserActivityModal() {
-            $('#userActivityModal').show();
-            loadUserActivityData();
-        }
-        
-        function closeUserActivityModal() {
-            $('#userActivityModal').hide();
-        }
-        
-        function loadUserActivityData() {
-            fetch('/admin/user_statistics')
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        displayUserActivityData(data.user_stats, data.community_visits);
-                    } else {
-                        document.getElementById('userActivityContent').innerHTML = 
-                            '<p style="color: red; text-align: center;">Error loading statistics</p>';
-                    }
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                    document.getElementById('userActivityContent').innerHTML = 
-                        '<p style="color: red; text-align: center;">Error loading statistics</p>';
-                });
-        }
-        
-        function displayUserActivityData(userStats, communityVisits) {
-            let html = `
-                <style>
-                    .activity-table {
-                        width: 100%;
-                        border-collapse: collapse;
-                        margin-top: 10px;
-                    }
-                    .activity-table th {
-                        background: rgba(77, 182, 172, 0.1);
-                        padding: 10px;
-                        text-align: left;
-                        font-size: 12px;
-                        font-weight: 600;
-                        border-bottom: 2px solid rgba(255, 255, 255, 0.1);
-                    }
-                    .activity-table td {
-                        padding: 8px 10px;
-                        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-                        font-size: 13px;
-                    }
-                    .activity-table tr:hover {
-                        background: rgba(255, 255, 255, 0.02);
-                    }
-                    .subscription-badge {
-                        display: inline-block;
-                        padding: 2px 8px;
-                        border-radius: 12px;
-                        font-size: 11px;
-                        font-weight: 600;
-                    }
-                    .subscription-badge.premium {
-                        background: rgba(255, 215, 0, 0.2);
-                        color: #ffd700;
-                    }
-                    .subscription-badge.free {
-                        background: rgba(255, 255, 255, 0.1);
-                        color: rgba(255, 255, 255, 0.6);
-                    }
-                    .community-visits {
-                        font-size: 11px;
-                        color: rgba(255, 255, 255, 0.7);
-                        max-width: 300px;
-                    }
-                    .community-tag {
-                        display: inline-block;
-                        background: rgba(77, 182, 172, 0.2);
-                        padding: 2px 6px;
-                        border-radius: 4px;
-                        margin: 2px;
-                        font-size: 10px;
-                    }
-                </style>
-                <table class="activity-table">
-                    <thead>
-                        <tr>
-                            <th>Username</th>
-                            <th>Type</th>
-                            <th>Logins</th>
-                            <th>Total Visits</th>
-                            <th>Communities</th>
-                            <th>Last Login</th>
-                            <th>Top Communities</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-            `;
-            
-            userStats.forEach(user => {
-                const userVisits = communityVisits[user.username] || [];
-                const topCommunities = userVisits.slice(0, 3).map(v => 
-                    `<span class="community-tag">${v.community} (${v.visits})</span>`
-                ).join('');
-                
-                const lastLogin = user.last_login !== 'Never' ? 
-                    new Date(user.last_login).toLocaleDateString() : 'Never';
-                
-                html += `
-                    <tr>
-                        <td><strong>${user.username}</strong></td>
-                        <td>
-                            <span class="subscription-badge ${user.subscription}">
-                                ${user.subscription}
-                            </span>
-                        </td>
-                        <td>${user.login_count}</td>
-                        <td>${user.total_visits}</td>
-                        <td>${user.unique_communities}</td>
-                        <td>${lastLogin}</td>
-                        <td class="community-visits">${topCommunities || 'None'}</td>
-                    </tr>
-                `;
-            });
-            
-            html += `
-                    </tbody>
-                </table>
-            `;
-            
-            document.getElementById('userActivityContent').innerHTML = html;
-        }
-        
-        function showUsersModal() {
-            $('#usersModal').show();
-            // Initialize search and filter
-            filterUsers();
-        }
-        
-        function closeUsersModal() {
-            $('#usersModal').hide();
-        }
-        
-        // User search and filter functionality
-        function filterUsers() {
-            const searchTerm = $('#userSearch').val().toLowerCase();
-            const filterType = $('#userFilter').val();
-            
-            $('#usersTableBody tr').each(function() {
-                const $row = $(this);
-                const username = $row.data('username').toLowerCase();
-                const subscription = $row.data('subscription');
-                const isActive = $row.data('active');
-                
-                let showRow = true;
-                
-                // Apply search filter
-                if (searchTerm && !username.includes(searchTerm)) {
-                    showRow = false;
-                }
-                
-                // Apply type filter
-                if (filterType !== 'all') {
-                    if (filterType === 'premium' && subscription !== 'premium') {
-                        showRow = false;
-                    } else if (filterType === 'free' && subscription !== 'free') {
-                        showRow = false;
-                    } else if (filterType === 'active' && !isActive) {
-                        showRow = false;
-                    } else if (filterType === 'deactivated' && isActive) {
-                        showRow = false;
-                    }
-                }
-                
-                $row.toggle(showRow);
-            });
-        }
-        
-        // Attach event listeners for search and filter
-        $(document).ready(function() {
-            $('#userSearch').on('keyup', filterUsers);
-            $('#userFilter').on('change', filterUsers);
-        });
-        
-        function showCommunitiesModal() {
-            $('#communitiesModal').show();
-        }
-        
-        function closeCommunitiesModal() {
-            $('#communitiesModal').hide();
+            document.getElementById('statsModal').style.display = 'none';
         }
 
-        // User search and filter
-        $('#userSearch').on('input', function() {
-            const searchTerm = $(this).val().toLowerCase();
-            const filter = $('#userFilter').val();
-            
-            $('.user-card').each(function() {
-                const username = $(this).data('username').toLowerCase();
-                const subscription = $(this).data('subscription');
-                
-                const matchesSearch = username.includes(searchTerm);
-                const matchesFilter = filter === 'all' || subscription === filter;
-                
-                $(this).toggle(matchesSearch && matchesFilter);
-            });
-        });
-        
-        $('#userFilter').on('change', function() {
-            $('#userSearch').trigger('input');
-        });
-        
-        // Modal functions
         function showPasswordModal(username) {
-            console.log('Opening password modal for:', username);
-            $('#passwordUsername').val(username);
-            $('#passwordModalUsername').text(username);
-            $('#passwordModal').show();
-            // Focus on password field
-            setTimeout(() => $('#updatePassword').focus(), 100);
+            document.getElementById('targetUsername').value = username;
+            document.getElementById('passwordModal').style.display = 'block';
         }
-        
+
         function closePasswordModal() {
-            $('#passwordModal').hide();
-            $('#passwordForm')[0].reset();
-            $('#passwordUsername').val('');
-            $('#passwordModalUsername').text('');
+            document.getElementById('passwordModal').style.display = 'none';
+            document.getElementById('passwordForm').reset();
         }
-        
-        function showSubscriptionModal(username, currentSubscription) {
-            $('#subscriptionUsername').val(username);
-            $('#newSubscription').val(currentSubscription);
-            $('#subscriptionModal').show();
+
+        function showAddUserModal() {
+            document.getElementById('addUserModal').style.display = 'block';
         }
-        
-        function closeSubscriptionModal() {
-            $('#subscriptionModal').hide();
-        }
-        
+
         function closeAddUserModal() {
-            $('#addUserModal').hide();
-        }
-        
-        // Logo Modal Functions
-        function showLogoModal() {
-            document.getElementById('logoModal').style.display = 'block';
-            loadCurrentLogo();
-        }
-        
-        function closeLogoModal() {
-            document.getElementById('logoModal').style.display = 'none';
-            document.getElementById('logoFile').value = '';
-            document.getElementById('newLogoPreview').style.display = 'none';
+            document.getElementById('addUserModal').style.display = 'none';
+            document.getElementById('addUserForm').reset();
         }
 
-        function showSignupImageModal() {
-            document.getElementById('signupImageModal').style.display = 'block';
-        }
-
-        function closeSignupImageModal() {
-            document.getElementById('signupImageModal').style.display = 'none';
-            document.getElementById('signupImageFile').value = '';
-            document.getElementById('signupImagePreviewWrap').style.display = 'none';
-        }
-        
-        function loadCurrentLogo() {
-            fetch('/get_logo')
-                .then(response => response.json())
-                .then(data => {
-                    const currentLogoDisplay = document.getElementById('currentLogoDisplay');
-                    if (data.success && data.logo_path) {
-                        currentLogoDisplay.innerHTML = `<img src="/static/${data.logo_path}" style="max-width: 200px; max-height: 100px; width: auto; height: auto;" alt="Current Logo">`;
-                    } else {
-                        currentLogoDisplay.innerHTML = '<span style="color: #999; font-style: italic;">No logo uploaded</span>';
-                    }
+        function showCommunityMembers(communityId, communityName) {
+            document.getElementById('membersModal').style.display = 'block';
+            // Load members via AJAX
+            $.get(`/get_community_members/${communityId}`, function(data) {
+                const membersList = document.getElementById('membersList');
+                membersList.innerHTML = '';
+                
+                data.members.forEach(member => {
+                    const memberDiv = document.createElement('div');
+                    memberDiv.className = 'flex items-center justify-between p-3 bg-tertiary rounded-lg';
+                    memberDiv.innerHTML = `
+                        <div class="flex items-center gap-3">
+                            <div class="w-8 h-8 bg-accent-blue rounded-full flex items-center justify-center text-white text-sm font-medium">
+                                ${member.username[0].toUpperCase()}
+                            </div>
+                            <span class="font-medium">${member.username}</span>
+                        </div>
+                        <span class="text-sm text-secondary">${member.joined_date}</span>
+                    `;
+                    membersList.appendChild(memberDiv);
                 });
+            });
         }
-        
-        function removeLogo() {
-            if (confirm('Are you sure you want to remove the logo?')) {
-                fetch('/remove_logo', {
-                    method: 'POST'
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        alert('Logo removed successfully!');
-                        closeLogoModal();
-                        setTimeout(() => {
-                            window.location.reload();
-                        }, 1000);
+
+        function closeMembersModal() {
+            document.getElementById('membersModal').style.display = 'none';
+        }
+
+        // User Management Functions
+        function deleteUser(username) {
+            if (confirm(`Are you sure you want to delete user "${username}"?`)) {
+                $.post('/delete_user', {
+                    username: username,
+                    csrf_token: $('meta[name="csrf-token"]').attr('content')
+                }, function(response) {
+                    if (response.success) {
+                        location.reload();
                     } else {
-                        alert('Error removing logo: ' + data.error);
+                        alert('Error deleting user: ' + response.error);
                     }
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                    alert('Error removing logo');
                 });
             }
         }
-        
-        // Preview image before upload
-        $(document).ready(function() {
-            $('#logoFile').on('change', function(e) {
-                const file = e.target.files[0];
-                if (file) {
-                    const reader = new FileReader();
-                    reader.onload = function(e) {
-                        $('#previewImage').attr('src', e.target.result);
-                        $('#newLogoPreview').show();
-                    };
-                    reader.readAsDataURL(file);
-                }
-            });
 
-            // Preview signup image before upload
-            $('#signupImageFile').on('change', function(e) {
-                const file = e.target.files[0];
-                if (file) {
-                    const reader = new FileReader();
-                    reader.onload = function(e) {
-                        $('#signupPreviewImage').attr('src', e.target.result);
-                        $('#signupImagePreviewWrap').show();
-                    };
-                    reader.readAsDataURL(file);
-                }
-            });
-            
-            // Handle logo upload
-            $('#logoUploadForm').on('submit', function(e) {
-                e.preventDefault();
-                
-                const formData = new FormData();
-                const fileInput = document.getElementById('logoFile');
-                formData.append('logo', fileInput.files[0]);
-                
-                $.ajax({
-                    url: '/upload_logo',
-                    method: 'POST',
-                    data: formData,
-                    processData: false,
-                    contentType: false,
-                    success: function(data) {
-                        if (data.success) {
-                            alert('Logo uploaded successfully! The site will update shortly.');
-                            closeLogoModal();
-                            // Reload to show new logo
-                            setTimeout(() => {
-                                window.location.reload();
-                            }, 1000);
-                        } else {
-                            alert('Error uploading logo: ' + data.error);
-                        }
-                    },
-                    error: function(error) {
-                        console.error('Error:', error);
-                        alert('Error uploading logo');
-                    }
-                });
-            });
-
-            // Handle signup image upload
-            $('#signupImageUploadForm').on('submit', function(e) {
-                e.preventDefault();
-                const formData = new FormData();
-                const fileInput = document.getElementById('signupImageFile');
-                if (!fileInput.files[0]) { return; }
-                formData.append('image', fileInput.files[0]);
-                $.ajax({
-                    url: '/upload_signup_image',
-                    method: 'POST',
-                    data: formData,
-                    processData: false,
-                    contentType: false,
-                    success: function(data) {
-                        if (data.success) {
-                            alert('Signup image uploaded successfully!');
-                            closeSignupImageModal();
-                        } else {
-                            alert('Error uploading image: ' + data.error);
-                        }
-                    },
-                    error: function(err) {
-                        console.error('Error:', err);
-                        alert('Server error while uploading image');
-                    }
-                });
-            });
-        });
-        
         function showUserDetails(username) {
+            // Implement user details view
             alert('User details for: ' + username);
         }
-        
-        function deleteUser(username) {
-            if (confirm('Are you sure you want to delete user: ' + username + '?')) {
-                const form = $('<form method="POST"></form>');
-                form.append('<input type="hidden" name="username" value="' + username + '">');
-                form.append('<input type="hidden" name="delete_user" value="1">');
-                form.append('<input type="hidden" name="csrf_token" value="disabled">');
-                $('body').append(form);
-                form.submit();
-            }
-        }
-        
-        function toggleCommunityStatus(communityId, activate) {
-            const action = activate ? 'activate' : 'deactivate';
-            const confirmMsg = `Are you sure you want to ${action} this community?`;
-            
-            if (confirm(confirmMsg)) {
-                fetch(`/admin/deactivate_community/${communityId}`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    }
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        alert(data.message);
-                        location.reload(); // Reload to show updated status
+
+        // Community Management Functions
+        function deleteCommunity(communityId, communityName) {
+            if (confirm(`Are you sure you want to delete community "${communityName}"?`)) {
+                $.post('/delete_community', {
+                    community_id: communityId,
+                    csrf_token: $('meta[name="csrf-token"]').attr('content')
+                }, function(response) {
+                    if (response.success) {
+                        location.reload();
                     } else {
-                        alert('Error: ' + data.message);
+                        alert('Error deleting community: ' + response.error);
                     }
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                    alert('Error toggling community status');
                 });
             }
         }
-        
-        function deleteCommunity(communityId) {
-            if (confirm('Are you sure you want to PERMANENTLY delete this community? This cannot be undone. Consider deactivating instead.')) {
-                const form = $('<form method="POST"></form>');
-                form.append('<input type="hidden" name="community_id" value="' + communityId + '">');
-                form.append('<input type="hidden" name="delete_community" value="1">');
-                form.append('<input type="hidden" name="csrf_token" value="disabled">');
-                $('body').append(form);
-                form.submit();
-            }
+
+        function copyJoinCode(code) {
+            navigator.clipboard.writeText(code).then(function() {
+                alert('Join code copied to clipboard: ' + code);
+            });
         }
-        
-        function showCommunityMembers(communityId) {
-            alert('Community members for ID: ' + communityId);
-        }
-        
-        function toggleUserStatus(username, activate) {
-            const action = activate ? 'activate' : 'deactivate';
-            const confirmMsg = `Are you sure you want to ${action} user ${username}?`;
+
+        // Search and Filter Functions
+        $('#userSearch').on('input', function() {
+            const searchTerm = $(this).val().toLowerCase();
+            $('.card[data-username]').each(function() {
+                const username = $(this).data('username').toLowerCase();
+                $(this).toggle(username.includes(searchTerm));
+            });
+        });
+
+        $('#userFilter').on('change', function() {
+            const filter = $(this).val();
+            $('.card[data-username]').each(function() {
+                const subscription = $(this).data('subscription');
+                if (filter === 'all' || subscription === filter) {
+                    $(this).show();
+                } else {
+                    $(this).hide();
+                }
+            });
+        });
+
+        $('#communitySearch').on('input', function() {
+            const searchTerm = $(this).val().toLowerCase();
+            $('.card[data-name]').each(function() {
+                const name = $(this).data('name').toLowerCase();
+                $(this).toggle(name.includes(searchTerm));
+            });
+        });
+
+        // Form Submissions
+        $('#passwordForm').on('submit', function(e) {
+            e.preventDefault();
+            const newPassword = $('#newPassword').val();
+            const confirmPassword = $('#confirmPassword').val();
             
-            if (confirm(confirmMsg)) {
-                fetch(`/admin/deactivate_user/${username}`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    }
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        alert(data.message);
-                        location.reload(); // Reload to show updated status
-                    } else {
-                        alert('Error: ' + data.message);
-                    }
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                    alert('Error toggling user status');
-                });
+            if (newPassword !== confirmPassword) {
+                alert('Passwords do not match');
+                return;
             }
-        }
-        
+            
+            $.post('/update_user_password', {
+                username: $('#targetUsername').val(),
+                new_password: newPassword,
+                csrf_token: $('meta[name="csrf-token"]').attr('content')
+            }, function(response) {
+                if (response.success) {
+                    alert('Password updated successfully');
+                    closePasswordModal();
+                } else {
+                    alert('Error updating password: ' + response.error);
+                }
+            });
+        });
+
         // Close modals when clicking outside
-        $(window).click(function(event) {
-            if ($(event.target).hasClass('modal')) {
+        $(window).on('click', function(e) {
+            if (e.target.classList.contains('modal')) {
+                e.target.style.display = 'none';
+            }
+        });
+
+        // Close modals with Escape key
+        $(document).on('keydown', function(e) {
+            if (e.key === 'Escape') {
                 $('.modal').hide();
             }
         });
-        
-        // Handle password form submission
-        $('#passwordForm').on('submit', function(e) {
-            e.preventDefault();
-            
-            const username = $('#passwordUsername').val();
-            const newPassword = $('#updatePassword').val();
-            
-            console.log('Form submission - Username:', username);
-            console.log('Form submission - Password length:', newPassword ? newPassword.length : 0);
-            
-            if (!username) {
-                showNotification('error', 'Username is missing. Please close and reopen the modal.');
-                return;
-            }
-            
-            if (!newPassword) {
-                showNotification('error', 'Please enter a new password.');
-                return;
-            }
-            
-            // Show loading state
-            const submitBtn = $(this).find('button[type="submit"]');
-            const originalText = submitBtn.html();
-            submitBtn.html('<i class="fas fa-spinner fa-spin"></i> Updating...').prop('disabled', true);
-            
-            $.ajax({
-                url: '/update_user_password',
-                method: 'POST',
-                data: {
-                    username: username,
-                    new_password: newPassword
-                },
-                success: function(response) {
-                    if (response.success) {
-                        // Show success notification
-                        showNotification('success', `Password updated successfully for ${username}!`);
-                        closePasswordModal();
-                    } else {
-                        showNotification('error', response.error || 'Failed to update password');
-                    }
-                },
-                error: function(xhr) {
-                    showNotification('error', 'Server error. Please try again.');
-                },
-                complete: function() {
-                    // Restore button state
-                    submitBtn.html(originalText).prop('disabled', false);
-                }
-            });
-        });
-        
-        // Notification function
-        function showNotification(type, message) {
-            // Remove any existing notifications
-            $('.notification').remove();
-            
-            const notificationHtml = `
-                <div class="notification ${type}">
-                    <i class="fas fa-${type === 'success' ? 'check-circle' : 'exclamation-circle'}"></i>
-                    <span>${message}</span>
-                    <button class="notification-close" onclick="$(this).parent().fadeOut()">&times;</button>
-                </div>
-            `;
-            
-            $('body').append(notificationHtml);
-            
-            // Auto-hide after 5 seconds
-            setTimeout(function() {
-                $('.notification').fadeOut(function() {
-                    $(this).remove();
-                });
-            }, 5000);
+
+        // Export data function
+        function exportData() {
+            alert('Export functionality would be implemented here');
+        }
+
+        // Show add community modal function
+        function showAddCommunityModal() {
+            alert('Add community functionality would be implemented here');
         }
     </script>
+
+    <style>
+        /* Additional styles for admin dashboard */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(4px);
+        }
+
+        .modal-content {
+            position: relative;
+            margin: 5% auto;
+            width: 90%;
+            max-width: 500px;
+        }
+
+        .bg-tertiary {
+            background: var(--bg-tertiary);
+        }
+
+        .text-accent-blue {
+            color: var(--accent-blue);
+        }
+
+        .text-accent-green {
+            color: var(--accent-green);
+        }
+
+        .text-accent-orange {
+            color: var(--accent-orange);
+        }
+
+        .text-accent-purple {
+            color: var(--accent-purple);
+        }
+
+        .bg-accent-blue {
+            background: var(--accent-blue);
+        }
+
+        .bg-accent-orange {
+            background: var(--accent-orange);
+        }
+
+        .bg-accent-green {
+            background: var(--accent-green);
+        }
+
+        .bg-secondary {
+            background: var(--bg-secondary);
+        }
+
+        .text-secondary {
+            color: var(--text-secondary);
+        }
+
+        .font-mono {
+            font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+        }
+
+        .text-xs {
+            font-size: var(--font-size-xs);
+        }
+
+        .h-20 {
+            height: 5rem;
+        }
+
+        .space-y-2 > * + * {
+            margin-top: var(--space-2);
+        }
+
+        .space-y-3 > * + * {
+            margin-top: var(--space-3);
+        }
+
+        .space-y-4 > * + * {
+            margin-top: var(--space-4);
+        }
+
+        .flex-1 {
+            flex: 1;
+        }
+
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            .modal-content {
+                margin: 10% auto;
+                width: 95%;
+            }
+            
+            .grid-cols-2 {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
 </body>
 </html>

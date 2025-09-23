@@ -986,1021 +986,318 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
-// ===== MOBILE OPTIMIZATION =====
-
-// Mobile-specific enhancements
-function initMobileOptimizations() {
-    const isMobile = window.innerWidth <= 768;
-    const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+// Mobile-specific improvements
+(function() {
+    'use strict';
     
-    if (isMobile || isTouch) {
-        console.log('Mobile optimizations enabled');
-        
-        // Prevent zoom on double tap
-        let lastTouchEnd = 0;
-        document.addEventListener('touchend', function (event) {
-            const now = (new Date()).getTime();
-            if (now - lastTouchEnd <= 300) {
-                event.preventDefault();
-            }
-            lastTouchEnd = now;
-        }, false);
-        
-        // Better touch feedback for buttons
-        const touchButtons = document.querySelectorAll('.sleek-btn, .menu-btn, .reaction-btn');
-        touchButtons.forEach(button => {
-            button.addEventListener('touchstart', function() {
-                this.style.transform = 'scale(0.95)';
-            });
-            
-            button.addEventListener('touchend', function() {
-                this.style.transform = 'scale(1)';
-            });
-        });
-        
-        // Swipe gestures for mobile navigation
-        let startX = 0;
-        let startY = 0;
-        
-        document.addEventListener('touchstart', function(e) {
-            startX = e.touches[0].clientX;
-            startY = e.touches[0].clientY;
-        });
-        
-        document.addEventListener('touchend', function(e) {
-            if (!startX || !startY) return;
-            
-            const endX = e.changedTouches[0].clientX;
-            const endY = e.changedTouches[0].clientY;
-            
-            const diffX = startX - endX;
-            const diffY = startY - endY;
-            
-            // Swipe left to right (show menu)
-            if (diffX < -50 && Math.abs(diffY) < 50) {
-                const menuBtn = document.querySelector('.menu-btn');
-                if (menuBtn) {
-                    menuBtn.click();
-                }
-            }
-            
-            // Swipe right to left (hide menu)
-            if (diffX > 50 && Math.abs(diffY) < 50) {
-                const dropdown = document.querySelector('.dropdown-content');
-                if (dropdown && dropdown.style.display === 'block') {
-                    dropdown.style.display = 'none';
-                }
-            }
-            
-            startX = 0;
-            startY = 0;
-        });
-        
-        // Better modal handling for mobile
-        const modals = document.querySelectorAll('.modal');
-        modals.forEach(modal => {
-            modal.addEventListener('touchmove', function(e) {
-                e.preventDefault();
-            }, { passive: false });
-        });
-        
-        // Close modals with swipe down
-        modals.forEach(modal => {
-            let startY = 0;
-            let currentY = 0;
-            
-            modal.addEventListener('touchstart', function(e) {
-                startY = e.touches[0].clientY;
-            });
-            
-            modal.addEventListener('touchmove', function(e) {
-                currentY = e.touches[0].clientY;
-                const diffY = currentY - startY;
-                
-                if (diffY > 50) {
-                    this.style.transform = `translateY(${diffY}px)`;
-                }
-            });
-            
-            modal.addEventListener('touchend', function(e) {
-                const diffY = currentY - startY;
-                if (diffY > 100) {
-                    this.style.display = 'none';
-                } else {
-                    this.style.transform = 'translateY(0)';
-                }
-            });
-        });
-    }
-}
-
-// Responsive image handling
-function initResponsiveImages() {
-    const images = document.querySelectorAll('img');
-    images.forEach(img => {
-        img.addEventListener('load', function() {
-            this.style.opacity = '1';
-        });
-        
-        // Lazy loading for images
-        if ('IntersectionObserver' in window) {
-            const imageObserver = new IntersectionObserver((entries, observer) => {
-                entries.forEach(entry => {
-                    if (entry.isIntersecting) {
-                        const img = entry.target;
-                        if (img.dataset.src && img.dataset.src !== 'undefined') {
-                            img.src = img.dataset.src;
-                        }
-                        img.classList.remove('lazy');
-                        imageObserver.unobserve(img);
-                    }
-                });
-            });
-            
-            imageObserver.observe(img);
-        }
-    });
-}
-
-// Better form handling for mobile
-function initMobileForms() {
-    const forms = document.querySelectorAll('form');
-    forms.forEach(form => {
-        // Prevent zoom on input focus (iOS)
-        const inputs = form.querySelectorAll('input, select, textarea');
-        inputs.forEach(input => {
-            input.addEventListener('focus', function() {
-                if (this.type !== 'file') {
-                    this.style.fontSize = '16px';
-                }
-            });
-            
-            input.addEventListener('blur', function() {
-                if (this.type !== 'file') {
-                    this.style.fontSize = '';
-                }
-            });
-        });
-        
-        // Better form validation for mobile
-        form.addEventListener('submit', function(e) {
-            const requiredFields = form.querySelectorAll('[required]');
-            let isValid = true;
-            
-            requiredFields.forEach(field => {
-                if (!field.value.trim()) {
-                    isValid = false;
-                    field.style.borderColor = '#ff4444';
-                    
-                    // Show error message
-                    let errorMsg = field.parentNode.querySelector('.error-message');
-                    if (!errorMsg) {
-                        errorMsg = document.createElement('div');
-                        errorMsg.className = 'error-message';
-                        errorMsg.style.color = '#ff4444';
-                        errorMsg.style.fontSize = '12px';
-                        errorMsg.style.marginTop = '5px';
-                        field.parentNode.appendChild(errorMsg);
-                    }
-                    errorMsg.textContent = 'This field is required';
-                } else {
-                    field.style.borderColor = '';
-                    const errorMsg = field.parentNode.querySelector('.error-message');
-                    if (errorMsg) {
-                        errorMsg.remove();
-                    }
-                }
-            });
-            
-            if (!isValid) {
-                e.preventDefault();
-                // Scroll to first error
-                const firstError = form.querySelector('[style*="border-color: rgb(255, 68, 68)"]');
-                if (firstError) {
-                    firstError.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                }
-            }
-        });
-    });
-}
-
-// Performance optimizations
-function initPerformanceOptimizations() {
-    // Debounce scroll events
-    let scrollTimeout;
-    window.addEventListener('scroll', function() {
-        if (scrollTimeout) {
-            clearTimeout(scrollTimeout);
-        }
-        scrollTimeout = setTimeout(function() {
-            // Handle scroll-based actions here
-        }, 100);
-    });
+    // Check if device is mobile
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth <= 768;
     
-    // Optimize animations for mobile
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-        document.body.style.setProperty('--transition-duration', '0.01ms');
-    }
-    
-    // Better memory management
-    window.addEventListener('beforeunload', function() {
-        // Clean up any intervals or timeouts
-        const intervals = window.intervals || [];
-        intervals.forEach(clearInterval);
-    });
-}
-
-// Initialize all mobile optimizations
-document.addEventListener('DOMContentLoaded', function() {
-    initMobileOptimizations();
-    initResponsiveImages();
-    initMobileForms();
-    initPerformanceOptimizations();
-    
-    // Handle orientation changes
-    window.addEventListener('orientationchange', function() {
-        setTimeout(function() {
-            // Recalculate layouts after orientation change
-            window.dispatchEvent(new Event('resize'));
-        }, 100);
-    });
-    
-    // Handle viewport changes
-    let viewport = document.querySelector('meta[name="viewport"]');
-    if (viewport) {
-        // Ensure proper viewport for mobile
-        if (window.innerWidth <= 768) {
-            viewport.setAttribute('content', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no');
-        }
-    }
-});
-
-// Service Worker for offline support (if needed)
-if ('serviceWorker' in navigator) {
-    window.addEventListener('load', function() {
-        navigator.serviceWorker.register('/sw.js')
-            .then(function(registration) {
-                console.log('SW registered: ', registration);
-            })
-            .catch(function(registrationError) {
-                console.log('SW registration failed: ', registrationError);
-            });
-    });
-}
-
-// ===== ENHANCED FEED & MESSAGING FUNCTIONALITY =====
-
-// Enhanced Feed Interactions
-function initEnhancedFeedFeatures() {
-    // Auto-resize composer input
-    const composerInput = document.querySelector('.composer-input');
-    if (composerInput) {
-        composerInput.addEventListener('input', function() {
-            this.style.height = 'auto';
-            this.style.height = Math.min(this.scrollHeight, 120) + 'px';
-        });
+    // Mobile menu improvements
+    if (isMobile) {
+        // Prevent body scroll when menu is open on mobile
+        const $menuBtn = $('.menu-btn');
+        const $dropdown = $('.dropdown-content');
+        const $body = $('body');
         
-        // Focus management
-        composerInput.addEventListener('focus', function() {
-            this.parentElement.parentElement.style.borderColor = '#4db6ac';
-        });
-        
-        composerInput.addEventListener('blur', function() {
-            this.parentElement.parentElement.style.borderColor = 'rgba(255, 255, 255, 0.08)';
-        });
-    }
-    
-    // Enhanced file upload
-    const fileUpload = document.getElementById('image-upload');
-    const selectedFileName = document.getElementById('selected-file-name');
-    
-    if (fileUpload && selectedFileName) {
-        fileUpload.addEventListener('change', function(e) {
-            const file = e.target.files[0];
-            if (file) {
-                // Show file name with size
-                const fileSize = (file.size / 1024 / 1024).toFixed(2);
-                selectedFileName.textContent = `${file.name} (${fileSize}MB)`;
-                selectedFileName.style.display = 'block';
-                
-                // Preview image if it's an image
-                if (file.type.startsWith('image/')) {
-                    const reader = new FileReader();
-                    reader.onload = function(e) {
-                        // Create preview
-                        let preview = document.querySelector('.image-preview');
-                        if (!preview) {
-                            preview = document.createElement('div');
-                            preview.className = 'image-preview';
-                            preview.style.cssText = `
-                                margin: 8px 0;
-                                border-radius: 8px;
-                                overflow: hidden;
-                                position: relative;
-                            `;
-                            fileUpload.parentElement.parentElement.appendChild(preview);
-                        }
-                        preview.innerHTML = `
-                            <img src="${e.target.result}" style="width: 100%; max-height: 200px; object-fit: cover;">
-                            <button type="button" class="remove-image" style="
-                                position: absolute; top: 8px; right: 8px;
-                                background: rgba(0,0,0,0.7); color: white;
-                                border: none; border-radius: 50%; width: 24px; height: 24px;
-                                cursor: pointer; font-size: 12px;
-                            ">×</button>
-                        `;
-                        
-                        // Remove image functionality
-                        preview.querySelector('.remove-image').addEventListener('click', function() {
-                            fileUpload.value = '';
-                            selectedFileName.textContent = '';
-                            selectedFileName.style.display = 'none';
-                            preview.remove();
-                        });
-                    };
-                    reader.readAsDataURL(file);
-                }
+        $menuBtn.on('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            if ($dropdown.is(':visible')) {
+                $dropdown.slideUp(200);
+                $body.removeClass('menu-open');
             } else {
-                selectedFileName.textContent = '';
-                selectedFileName.style.display = 'none';
-                const preview = document.querySelector('.image-preview');
-                if (preview) preview.remove();
-            }
-        });
-    }
-    
-    // Enhanced post interactions
-    const posts = document.querySelectorAll('.post');
-    posts.forEach(post => {
-        // Double tap to like
-        let lastTap = 0;
-        post.addEventListener('touchend', function(e) {
-            const currentTime = new Date().getTime();
-            const tapLength = currentTime - lastTap;
-            if (tapLength < 500 && tapLength > 0) {
-                // Double tap detected
-                const heartBtn = this.querySelector('.reaction-btn[data-reaction="heart"]');
-                if (heartBtn) {
-                    heartBtn.click();
-                    // Visual feedback
-                    this.style.transform = 'scale(1.05)';
-                    setTimeout(() => {
-                        this.style.transform = '';
-                    }, 200);
-                }
-                e.preventDefault();
-            }
-            lastTap = currentTime;
-        });
-        
-        // Long press for options (mobile)
-        let pressTimer;
-        post.addEventListener('touchstart', function(e) {
-            pressTimer = setTimeout(() => {
-                showPostOptions(this, e);
-            }, 500);
-        });
-        
-        post.addEventListener('touchend', function() {
-            clearTimeout(pressTimer);
-        });
-        
-        post.addEventListener('touchmove', function() {
-            clearTimeout(pressTimer);
-        });
-    });
-}
-
-// Enhanced Messaging Features
-function initEnhancedMessaging() {
-    // Auto-resize chat input
-    const chatInput = document.querySelector('.chat-input');
-    if (chatInput) {
-        chatInput.addEventListener('input', function() {
-            this.style.height = 'auto';
-            this.style.height = Math.min(this.scrollHeight, 120) + 'px';
-        });
-        
-        // Send on Enter (Shift+Enter for new line)
-        chatInput.addEventListener('keydown', function(e) {
-            if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                const sendBtn = document.querySelector('.send-btn');
-                if (sendBtn) sendBtn.click();
-            }
-        });
-    }
-    
-    // Enhanced user selection
-    const userItems = document.querySelectorAll('.user-item, .member-item');
-    userItems.forEach(item => {
-        item.addEventListener('click', function() {
-            // Remove active class from all items
-            userItems.forEach(i => i.classList.remove('active'));
-            // Add active class to clicked item
-            this.classList.add('active');
-            
-            // Show typing indicator
-            showTypingIndicator();
-        });
-        
-        // Hover effects for desktop
-        item.addEventListener('mouseenter', function() {
-            if (window.innerWidth > 768) {
-                this.style.transform = 'translateX(8px)';
+                $dropdown.slideDown(200);
+                $body.addClass('menu-open');
             }
         });
         
-        item.addEventListener('mouseleave', function() {
-            if (window.innerWidth > 768) {
-                this.style.transform = 'translateX(0)';
+        // Close menu when clicking outside
+        $(document).on('click', function(e) {
+            const $target = $(e.target);
+            if (!$target.closest('.sidebar').length && $dropdown.is(':visible')) {
+                $dropdown.slideUp(200);
+                $body.removeClass('menu-open');
             }
-        });
-    });
-    
-    // Mobile menu toggle for messaging
-    const mobileMenuBtn = document.getElementById('mobileMenuBtn');
-    const userSelectionPanel = document.querySelector('.user-selection-panel');
-    
-    if (mobileMenuBtn && userSelectionPanel) {
-        mobileMenuBtn.addEventListener('click', function() {
-            userSelectionPanel.classList.toggle('show');
         });
         
-        // Close panel when clicking outside
-        document.addEventListener('click', function(e) {
-            if (!userSelectionPanel.contains(e.target) && !mobileMenuBtn.contains(e.target)) {
-                userSelectionPanel.classList.remove('show');
+        // Close menu on escape key
+        $(document).on('keydown', function(e) {
+            if (e.key === 'Escape' && $dropdown.is(':visible')) {
+                $dropdown.slideUp(200);
+                $body.removeClass('menu-open');
             }
         });
-    }
-    
-    // Tab switching with smooth transitions
-    const tabBtns = document.querySelectorAll('.tab-btn');
-    const tabContents = document.querySelectorAll('.tab-content');
-    
-    tabBtns.forEach(btn => {
-        btn.addEventListener('click', function() {
-            const targetTab = this.getAttribute('data-tab');
-            
-            // Update active states
-            tabBtns.forEach(b => b.classList.remove('active'));
-            tabContents.forEach(c => c.classList.remove('active'));
-            
-            this.classList.add('active');
-            document.getElementById(targetTab + '-tab').classList.add('active');
-            
-            // Smooth transition
-            const activeContent = document.getElementById(targetTab + '-tab');
-            activeContent.style.opacity = '0';
-            activeContent.style.transform = 'translateY(10px)';
-            
+        
+        // Add touch feedback to buttons
+        $('.sleek-btn, .menu-btn, .dropdown-content a').on('touchstart', function() {
+            $(this).addClass('touch-active');
+        }).on('touchend touchcancel', function() {
+            $(this).removeClass('touch-active');
+        });
+        
+        // Improve form interactions on mobile
+        $('input, select, textarea').on('focus', function() {
+            // Scroll to input on focus to prevent keyboard covering it
             setTimeout(() => {
-                activeContent.style.transition = 'all 0.3s ease';
-                activeContent.style.opacity = '1';
-                activeContent.style.transform = 'translateY(0)';
-            }, 50);
+                $(this).get(0).scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }, 300);
         });
-    });
-}
-
-// Enhanced Post Options
-function showPostOptions(post, event) {
-    const options = document.createElement('div');
-    options.className = 'post-options';
-    options.style.cssText = `
-        position: fixed;
-        top: ${event.touches ? event.touches[0].clientY : event.clientY}px;
-        left: ${event.touches ? event.touches[0].clientX : event.clientX}px;
-        background: #2d3839;
-        border: 1px solid rgba(255,255,255,0.1);
-        border-radius: 8px;
-        padding: 8px;
-        z-index: 1000;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-        min-width: 120px;
-    `;
-    
-    const postId = post.getAttribute('data-post-id');
-    const username = post.querySelector('.post-header strong').textContent.replace('@', '');
-    const currentUser = sessionStorage.getItem('username');
-    
-    options.innerHTML = `
-        <button class="option-btn" data-action="like" style="
-            display: block; width: 100%; text-align: left; padding: 8px 12px;
-            background: none; border: none; color: white; cursor: pointer;
-            border-radius: 4px; font-size: 14px;
-        ">❤️ Like</button>
-        <button class="option-btn" data-action="reply" style="
-            display: block; width: 100%; text-align: left; padding: 8px 12px;
-            background: none; border: none; color: white; cursor: pointer;
-            border-radius: 4px; font-size: 14px;
-        ">💬 Reply</button>
-        ${username === currentUser ? `
-        <button class="option-btn" data-action="delete" style="
-            display: block; width: 100%; text-align: left; padding: 8px 12px;
-            background: none; border: none; color: #ff6f61; cursor: pointer;
-            border-radius: 4px; font-size: 14px;
-        ">🗑️ Delete</button>
-        ` : ''}
-    `;
-    
-    document.body.appendChild(options);
-    
-    // Handle option clicks
-    options.addEventListener('click', function(e) {
-        const action = e.target.getAttribute('data-action');
-        if (action === 'like') {
-            const heartBtn = post.querySelector('.reaction-btn[data-reaction="heart"]');
-            if (heartBtn) heartBtn.click();
-        } else if (action === 'reply') {
-            post.click(); // Open post modal
-        } else if (action === 'delete') {
-            if (confirm('Are you sure you want to delete this post?')) {
-                const deleteBtn = post.querySelector('.delete-post');
-                if (deleteBtn) deleteBtn.click();
+        
+        // Prevent zoom on input focus (iOS)
+        $('input, select, textarea').on('focus', function() {
+            if (this.type !== 'file') {
+                $(this).css('font-size', '16px');
             }
-        }
-        options.remove();
-    });
-    
-    // Remove options when clicking outside
-    setTimeout(() => {
-        document.addEventListener('click', function removeOptions() {
-            options.remove();
-            document.removeEventListener('click', removeOptions);
         });
-    }, 100);
-}
-
-// Typing Indicator
-function showTypingIndicator() {
-    const chatMessages = document.querySelector('.chat-messages');
-    if (!chatMessages) return;
-    
-    const typingIndicator = document.createElement('div');
-    typingIndicator.className = 'typing-indicator message received';
-    typingIndicator.innerHTML = `
-        <div class="message-content" style="background: #2d3839; padding: 8px 12px; border-radius: 18px;">
-            <div class="typing-dots">
-                <span></span>
-                <span></span>
-                <span></span>
-            </div>
-        </div>
-    `;
-    
-    // Add typing indicator styles
-    const style = document.createElement('style');
-    style.textContent = `
-        .typing-dots {
-            display: flex;
-            gap: 4px;
-            align-items: center;
+        
+        // Optimize modal interactions
+        $('.modal, .popup').on('show.bs.modal', function() {
+            $body.addClass('modal-open');
+        }).on('hidden.bs.modal', function() {
+            $body.removeClass('modal-open');
+        });
+        
+        // Improve chat scrolling
+        const $chatMessages = $('.chat-messages');
+        if ($chatMessages.length) {
+            // Auto-scroll to bottom on new messages
+            const scrollToBottom = () => {
+                $chatMessages.scrollTop($chatMessages[0].scrollHeight);
+            };
+            
+            // Scroll to bottom initially
+            setTimeout(scrollToBottom, 100);
+            
+            // Observe for new messages
+            const observer = new MutationObserver(scrollToBottom);
+            observer.observe($chatMessages[0], { childList: true, subtree: true });
         }
-        .typing-dots span {
-            width: 6px;
-            height: 6px;
-            background: #9fb0b5;
-            border-radius: 50%;
-            animation: typing 1.4s infinite ease-in-out;
-        }
-        .typing-dots span:nth-child(1) { animation-delay: -0.32s; }
-        .typing-dots span:nth-child(2) { animation-delay: -0.16s; }
-        @keyframes typing {
-            0%, 80%, 100% { transform: scale(0.8); opacity: 0.5; }
-            40% { transform: scale(1); opacity: 1; }
-        }
-    `;
-    document.head.appendChild(style);
-    
-    chatMessages.appendChild(typingIndicator);
-    chatMessages.scrollTop = chatMessages.scrollHeight;
-    
-    // Remove after 3 seconds
-    setTimeout(() => {
-        typingIndicator.remove();
-    }, 3000);
-}
-
-// Enhanced Scroll Behavior
-function initEnhancedScroll() {
-    // Smooth scroll to top for feeds
-    const feedContainer = document.querySelector('.feed');
-    if (feedContainer) {
-        let scrollTimeout;
-        feedContainer.addEventListener('scroll', function() {
-            clearTimeout(scrollTimeout);
-            scrollTimeout = setTimeout(() => {
-                // Show/hide scroll to top button
-                const scrollTop = this.scrollTop;
-                let scrollBtn = document.querySelector('.scroll-to-top');
-                
-                if (scrollTop > 300) {
-                    if (!scrollBtn) {
-                        scrollBtn = document.createElement('button');
-                        scrollBtn.className = 'scroll-to-top';
-                        scrollBtn.innerHTML = '↑';
-                        scrollBtn.style.cssText = `
-                            position: fixed; bottom: 20px; right: 20px;
-                            width: 50px; height: 50px; border-radius: 50%;
-                            background: #4db6ac; color: white; border: none;
-                            cursor: pointer; z-index: 1000; font-size: 20px;
-                            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-                            transition: all 0.3s ease;
-                        `;
-                        document.body.appendChild(scrollBtn);
-                        
-                        scrollBtn.addEventListener('click', function() {
-                            feedContainer.scrollTo({
-                                top: 0,
-                                behavior: 'smooth'
-                            });
-                        });
-                    }
-                    scrollBtn.style.opacity = '1';
-                } else if (scrollBtn) {
-                    scrollBtn.style.opacity = '0';
-                    setTimeout(() => scrollBtn.remove(), 300);
+        
+        // Improve user selection panel on mobile
+        const $userSelectionPanel = $('.user-selection-panel');
+        const $mobileMenuBtn = $('.mobile-menu-btn');
+        
+        if ($userSelectionPanel.length && $mobileMenuBtn.length) {
+            $mobileMenuBtn.on('click', function(e) {
+                e.preventDefault();
+                $userSelectionPanel.toggleClass('show');
+            });
+            
+            // Close panel when clicking outside
+            $(document).on('click', function(e) {
+                const $target = $(e.target);
+                if (!$target.closest('.user-selection-panel').length && 
+                    !$target.closest('.mobile-menu-btn').length && 
+                    $userSelectionPanel.hasClass('show')) {
+                    $userSelectionPanel.removeClass('show');
                 }
+            });
+        }
+        
+        // Improve tab navigation on mobile
+        $('.tab-btn').on('click', function() {
+            const $this = $(this);
+            const target = $this.data('target');
+            
+            // Remove active class from all tabs
+            $('.tab-btn').removeClass('active');
+            $('.tab-content').removeClass('active');
+            
+            // Add active class to clicked tab
+            $this.addClass('active');
+            $('#' + target).addClass('active');
+        });
+        
+        // Add pull-to-refresh functionality for feeds
+        let startY = 0;
+        let currentY = 0;
+        let pullDistance = 0;
+        const pullThreshold = 80;
+        
+        $('.posts, .feed-content').on('touchstart', function(e) {
+            if ($(this).scrollTop() === 0) {
+                startY = e.originalEvent.touches[0].clientY;
+            }
+        }).on('touchmove', function(e) {
+            if ($(this).scrollTop() === 0) {
+                currentY = e.originalEvent.touches[0].clientY;
+                pullDistance = currentY - startY;
+                
+                if (pullDistance > 0 && pullDistance < pullThreshold) {
+                    e.preventDefault();
+                    $(this).css('transform', `translateY(${pullDistance}px)`);
+                }
+            }
+        }).on('touchend', function(e) {
+            if (pullDistance > pullThreshold) {
+                // Trigger refresh
+                location.reload();
+            } else {
+                $(this).css('transform', 'translateY(0)');
+            }
+            pullDistance = 0;
+        });
+        
+        // Improve image loading on mobile
+        $('img').on('load', function() {
+            $(this).addClass('loaded');
+        }).on('error', function() {
+            $(this).addClass('error');
+        });
+        
+        // Add loading states for better UX
+        $('form').on('submit', function() {
+            const $submitBtn = $(this).find('button[type="submit"]');
+            if ($submitBtn.length) {
+                $submitBtn.prop('disabled', true).text('Loading...');
+            }
+        });
+        
+        // Improve accessibility on mobile
+        $('button, a').on('focus', function() {
+            $(this).addClass('focus-visible');
+        }).on('blur', function() {
+            $(this).removeClass('focus-visible');
+        });
+        
+        // Add haptic feedback for important actions (if supported)
+        if ('vibrate' in navigator) {
+            $('.sleek-btn, .menu-btn').on('click', function() {
+                navigator.vibrate(50);
+            });
+        }
+        
+        // Optimize performance on mobile
+        let resizeTimeout;
+        $(window).on('resize', function() {
+            clearTimeout(resizeTimeout);
+            resizeTimeout = setTimeout(function() {
+                // Recalculate layouts after resize
+                $('.container').each(function() {
+                    $(this).css('min-height', `calc(100vh - ${$('.sidebar').outerHeight()}px)`);
+                });
+            }, 250);
+        });
+        
+        // Improve keyboard navigation
+        $(document).on('keydown', function(e) {
+            // Tab navigation improvements
+            if (e.key === 'Tab') {
+                $('body').addClass('keyboard-navigation');
+            }
+        });
+        
+        $(document).on('mousedown touchstart', function() {
+            $('body').removeClass('keyboard-navigation');
+        });
+        
+        // Add CSS classes for mobile-specific styling
+        $('body').addClass('mobile-device');
+        
+        // Handle orientation changes
+        window.addEventListener('orientationchange', function() {
+            setTimeout(function() {
+                // Recalculate viewport heights
+                const vh = window.innerHeight * 0.01;
+                document.documentElement.style.setProperty('--vh', `${vh}px`);
+                
+                // Recalculate container heights
+                $('.container, .chat-container, .messages-container').each(function() {
+                    const sidebarHeight = $('.sidebar').outerHeight();
+                    $(this).css('height', `calc(100vh - ${sidebarHeight}px)`);
+                });
             }, 100);
         });
+        
+        // Initialize viewport height variable
+        const vh = window.innerHeight * 0.01;
+        document.documentElement.style.setProperty('--vh', `${vh}px`);
     }
     
-    // Infinite scroll for messages
-    const chatMessages = document.querySelector('.chat-messages');
-    if (chatMessages) {
-        chatMessages.addEventListener('scroll', function() {
-            if (this.scrollTop === 0) {
-                // Load more messages when scrolling to top
-                loadMoreMessages();
-            }
-        });
-    }
-}
-
-// Load More Messages (placeholder)
-function loadMoreMessages() {
-    // This would typically make an AJAX call to load older messages
-    console.log('Loading more messages...');
-}
-
-// Enhanced Touch Interactions
-function initTouchInteractions() {
-    // Swipe to delete posts (mobile)
-    let startX = 0;
-    let currentX = 0;
-    
-    document.addEventListener('touchstart', function(e) {
-        const post = e.target.closest('.post');
-        if (post) {
-            startX = e.touches[0].clientX;
-            currentX = startX;
-        }
-    });
-    
-    document.addEventListener('touchmove', function(e) {
-        const post = e.target.closest('.post');
-        if (post && startX > 0) {
-            currentX = e.touches[0].clientX;
-            const diffX = currentX - startX;
-            
-            if (diffX < -50) {
-                post.style.transform = `translateX(${diffX}px)`;
-                post.style.opacity = Math.max(0.5, 1 + diffX / 200);
-            }
-        }
-    });
-    
-    document.addEventListener('touchend', function(e) {
-        const post = e.target.closest('.post');
-        if (post && startX > 0) {
-            const diffX = currentX - startX;
-            
-            if (diffX < -100) {
-                // Swipe to delete
-                if (confirm('Delete this post?')) {
-                    const deleteBtn = post.querySelector('.delete-post');
-                    if (deleteBtn) deleteBtn.click();
-                } else {
-                    post.style.transform = '';
-                    post.style.opacity = '';
-                }
-            } else {
-                // Reset position
-                post.style.transform = '';
-                post.style.opacity = '';
-            }
-            
-            startX = 0;
-            currentX = 0;
-        }
-    });
-}
-
-// Initialize all enhanced features
-document.addEventListener('DOMContentLoaded', function() {
-    initEnhancedFeedFeatures();
-    initEnhancedMessaging();
-    initEnhancedScroll();
-    initTouchInteractions();
-    
-    // Performance optimization: Lazy load images
-    if ('IntersectionObserver' in window) {
-        const imageObserver = new IntersectionObserver((entries, observer) => {
-            entries.forEach(entry => {
-                if (entry.isIntersecting) {
-                    const img = entry.target;
-                    if (img.dataset.src && img.dataset.src !== 'undefined') {
-                        img.src = img.dataset.src;
-                    }
-                    img.classList.remove('lazy');
-                    imageObserver.unobserve(img);
-                }
-            });
+    // Desktop-specific improvements
+    if (!isMobile) {
+        // Hover effects for desktop
+        $('.sleek-btn, .menu-btn').on('mouseenter', function() {
+            $(this).addClass('hover');
+        }).on('mouseleave', function() {
+            $(this).removeClass('hover');
         });
         
-        document.querySelectorAll('img[data-src]').forEach(img => {
-            imageObserver.observe(img);
+        // Desktop menu hover behavior
+        $('.sidebar').on('mouseenter', function() {
+            $('.dropdown-content').slideDown(200);
+        }).on('mouseleave', function() {
+            $('.dropdown-content').slideUp(200);
         });
     }
     
-    // Keyboard shortcuts
-    document.addEventListener('keydown', function(e) {
-        // Ctrl/Cmd + Enter to submit post
-        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-            const composerForm = document.querySelector('.composer-form');
-            if (composerForm && document.activeElement.classList.contains('composer-input')) {
-                composerForm.submit();
+    // Universal improvements for all devices
+    // Prevent double-tap zoom on buttons
+    $('button, a').on('touchend', function(e) {
+        e.preventDefault();
+        $(this).click();
+    });
+    
+    // Improve form validation feedback
+    $('form').on('submit', function(e) {
+        const $form = $(this);
+        const $inputs = $form.find('input[required], select[required], textarea[required]');
+        let isValid = true;
+        
+        $inputs.each(function() {
+            if (!$(this).val().trim()) {
+                isValid = false;
+                $(this).addClass('error');
+            } else {
+                $(this).removeClass('error');
             }
+        });
+        
+        if (!isValid) {
+            e.preventDefault();
+            // Show error message
+            if (!$('.form-error').length) {
+                $form.prepend('<div class="form-error">Please fill in all required fields.</div>');
+            }
+        }
+    });
+    
+    // Remove error class on input
+    $('input, select, textarea').on('input change', function() {
+        $(this).removeClass('error');
+        $('.form-error').remove();
+    });
+    
+    // Add loading states
+    $(document).on('click', '.sleek-btn', function() {
+        const $btn = $(this);
+        if (!$btn.prop('disabled')) {
+            $btn.addClass('loading');
+            setTimeout(() => {
+                $btn.removeClass('loading');
+            }, 2000);
+        }
+    });
+    
+    // Improve accessibility
+    $('button, a').attr('tabindex', '0');
+    
+    // Add keyboard shortcuts
+    $(document).on('keydown', function(e) {
+        // Ctrl/Cmd + K to focus search
+        if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+            e.preventDefault();
+            $('input[type="search"], input[placeholder*="search"]').first().focus();
         }
         
         // Escape to close modals
         if (e.key === 'Escape') {
-            const modals = document.querySelectorAll('.modal');
-            modals.forEach(modal => {
-                if (modal.style.display === 'block') {
-                    modal.style.display = 'none';
-                }
-            });
+            $('.modal, .popup').hide();
+            $('.dropdown-content').hide();
         }
     });
-});
-
-// ===== MOBILE IMAGE LOADING FIXES =====
-
-// Enhanced mobile image loading
-function initMobileImageLoading() {
-    const isMobile = window.innerWidth <= 768;
     
-    if (isMobile) {
-        console.log('Mobile image loading optimizations enabled');
-        
-        // Handle image loading errors
-        const images = document.querySelectorAll('img');
-        console.log(`Found ${images.length} images on page`);
-        
-        images.forEach((img, index) => {
-            console.log(`Image ${index + 1}:`, {
-                src: img.src,
-                alt: img.alt,
-                className: img.className,
-                parentElement: img.parentElement.className
-            });
-            
-            // Add loading error handler
-            img.addEventListener('error', function() {
-                console.log('Image failed to load:', this.src);
-                console.log('Image element:', this);
-                console.log('Parent element:', this.parentElement);
-                // Show a placeholder or retry
-                this.style.display = 'none';
-                this.parentElement.style.background = '#2d3839';
-                this.parentElement.innerHTML = '<div style="padding: 20px; text-align: center; color: #9fb0b5;">Image could not be loaded</div>';
-            });
-            
-            // Add loading success handler
-            img.addEventListener('load', function() {
-                console.log('Image loaded successfully:', this.src);
-                this.style.opacity = '1';
-                this.style.transition = 'opacity 0.3s ease';
-            });
-            
-            // Set initial opacity for smooth loading
-            img.style.opacity = '0';
-            
-            // Force image loading for mobile
-            if (img.dataset.src && img.dataset.src !== 'undefined') {
-                img.src = img.dataset.src;
-            }
-            
-            // Log the current src to see what path is being used
-            console.log(`Image ${index + 1} current src:`, img.src);
-        });
-        
-        // Retry failed images
-        function retryFailedImages() {
-            const failedImages = document.querySelectorAll('img[style*="display: none"]');
-            console.log(`Retrying ${failedImages.length} failed images`);
-            failedImages.forEach(img => {
-                const originalSrc = img.src;
-                console.log('Retrying image:', originalSrc);
-                img.src = '';
-                setTimeout(() => {
-                    img.src = originalSrc;
-                    img.style.display = 'block';
-                }, 1000);
-            });
-        }
-        
-        // Retry after 3 seconds
-        setTimeout(retryFailedImages, 3000);
-        
-        // Handle orientation changes
-        window.addEventListener('orientationchange', function() {
-            setTimeout(() => {
-                // Reload images after orientation change
-                const images = document.querySelectorAll('img');
-                images.forEach(img => {
-                    const src = img.src;
-                    img.src = '';
-                    setTimeout(() => {
-                        img.src = src;
-                    }, 100);
-                });
-            }, 500);
-        });
-    }
-}
-
-// Enhanced image preloading for mobile
-function preloadImages() {
-    const isMobile = window.innerWidth <= 768;
-    
-    if (isMobile) {
-        const images = document.querySelectorAll('img[src]');
-        images.forEach(img => {
-            // Create a new image object to preload
-            const preloadImg = new Image();
-            preloadImg.onload = function() {
-                // Image preloaded successfully
-                console.log('Image preloaded:', img.src);
-            };
-            preloadImg.onerror = function() {
-                console.log('Image preload failed:', img.src);
-            };
-            preloadImg.src = img.src;
-        });
-    }
-}
-
-// Initialize mobile image loading
-document.addEventListener('DOMContentLoaded', function() {
-    initMobileImageLoading();
-    preloadImages();
-    
-    // Handle dynamic content (for posts loaded via AJAX)
-    const observer = new MutationObserver(function(mutations) {
-        mutations.forEach(function(mutation) {
-            if (mutation.type === 'childList') {
-                const newImages = mutation.target.querySelectorAll('img');
-                if (newImages.length > 0) {
-                    initMobileImageLoading();
-                }
-            }
-        });
-    });
-    
-    // Observe the posts container for new images
-    const postsContainer = document.querySelector('.posts');
-    if (postsContainer) {
-        observer.observe(postsContainer, {
-            childList: true,
-            subtree: true
-        });
-    }
-});
-
-// ===== MOBILE MODAL IMPROVEMENTS =====
-
-// Enhanced modal handling for mobile
-function initMobileModalImprovements() {
-    const isMobile = window.innerWidth <= 768;
-    
-    if (isMobile) {
-        console.log('Mobile modal improvements enabled');
-        
-        // Handle modal opening
-        $(document).on('click', '.clickable-post', function(e) {
-            // Don't open modal if clicking on navigation buttons, community buttons, or other interactive elements
-            if ($(e.target).closest('.community-btn, .edit-community-btn, .delete-community-btn, .go-back-btn, .sleek-btn, .action-btn, .reaction-btn, .delete-post, .reply-form, .reply-btn, .reply-input, .menu-btn, .dropdown-content a').length) {
-                return;
-            }
-            
-            // Add show class for animation
-            setTimeout(() => {
-                $('#postModal').addClass('show');
-            }, 10);
-            
-            // Ensure modal content is properly structured
-            const modalContent = document.querySelector('.modal-content');
-            const closeBtn = document.querySelector('.modal .close');
-            
-            if (modalContent && closeBtn) {
-                // Ensure close button is positioned correctly within modal
-                closeBtn.style.position = 'absolute';
-                closeBtn.style.zIndex = '10';
-                
-                // Add modal header if it doesn't exist
-                if (!document.querySelector('.modal-header')) {
-                    const header = document.createElement('div');
-                    header.className = 'modal-header';
-                    header.innerHTML = '<h2>Post Details</h2>';
-                    modalContent.insertBefore(header, modalContent.firstChild);
-                }
-                
-                // Ensure modal body exists
-                if (!document.querySelector('.modal-body')) {
-                    const body = document.createElement('div');
-                    body.className = 'modal-body';
-                    
-                    // Move all content except header to body
-                    const content = Array.from(modalContent.children);
-                    content.forEach(child => {
-                        if (!child.classList.contains('modal-header') && !child.classList.contains('close')) {
-                            body.appendChild(child);
-                        }
-                    });
-                    
-                    modalContent.appendChild(body);
-                }
-            }
-        });
-        
-        // Handle modal closing
-        $(document).on('click', '.modal .close', function() {
-            $('#postModal').removeClass('show');
-            setTimeout(() => {
-                $('#postModal').hide();
-            }, 300);
-        });
-        
-        // Close modal when clicking outside
-        $(document).on('click', '.modal', function(e) {
-            if (e.target === this) {
-                $('#postModal').removeClass('show');
-                setTimeout(() => {
-                    $('#postModal').hide();
-                }, 300);
-            }
-        });
-        
-        // Close modal on escape key
-        $(document).on('keydown', function(e) {
-            if (e.key === 'Escape' && $('#postModal').is(':visible')) {
-                $('#postModal').removeClass('show');
-                setTimeout(() => {
-                    $('#postModal').hide();
-                }, 300);
-            }
-        });
-        
-        // Handle orientation changes
-        window.addEventListener('orientationchange', function() {
-            setTimeout(() => {
-                // Recalculate modal position and size
-                const modal = document.querySelector('.modal');
-                const modalContent = document.querySelector('.modal-content');
-                const modalBody = document.querySelector('.modal-body');
-                
-                if (modal && modalContent && modalBody) {
-                    // Ensure modal content fits in viewport
-                    const viewportHeight = window.innerHeight;
-                    const headerHeight = 60; // Approximate header height
-                    const maxBodyHeight = viewportHeight - headerHeight - 20; // 20px for padding
-                    
-                    modalBody.style.maxHeight = maxBodyHeight + 'px';
-                }
-            }, 500);
-        });
-        
-        // Handle window resize
-        window.addEventListener('resize', function() {
-            if ($('#postModal').is(':visible')) {
-                const modalBody = document.querySelector('.modal-body');
-                const viewportHeight = window.innerHeight;
-                const headerHeight = 60;
-                const maxBodyHeight = viewportHeight - headerHeight - 20;
-                
-                if (modalBody) {
-                    modalBody.style.maxHeight = maxBodyHeight + 'px';
-                }
-            }
-        });
-    }
-}
-
-// Initialize mobile modal improvements
-document.addEventListener('DOMContentLoaded', function() {
-    initMobileModalImprovements();
-});
+    console.log('Mobile optimizations loaded. Device type:', isMobile ? 'Mobile' : 'Desktop');
+})();
