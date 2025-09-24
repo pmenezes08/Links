@@ -4751,6 +4751,69 @@ def update_public_profile():
     
     return redirect(url_for('profile'))
 
+@app.route('/upload_profile_picture', methods=['POST'])
+@login_required
+def upload_profile_picture():
+    """Upload profile picture"""
+    username = session['username']
+
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+
+            # Handle profile picture upload
+            profile_picture_path = None
+            if 'profile_picture' in request.files:
+                file = request.files['profile_picture']
+                logger.info(f"Profile picture upload attempt for {username}: {file.filename if file else 'No file'}")
+
+                if file and file.filename != '' and allowed_file(file.filename):
+                    # Save the uploaded file
+                    profile_picture_path = save_uploaded_file(file, subfolder='profile_pictures')
+                    logger.info(f"Profile picture saved for {username}: {profile_picture_path}")
+
+                    # Get current profile picture to delete old one if exists
+                    c.execute("SELECT profile_picture FROM user_profiles WHERE username=?", (username,))
+                    old_profile = c.fetchone()
+                    if old_profile and old_profile['profile_picture']:
+                        old_path = os.path.join(app.root_path, 'static', old_profile['profile_picture'].lstrip('/'))
+                        try:
+                            os.remove(old_path)
+                            logger.info(f"Deleted old profile picture: {old_path}")
+                        except Exception as e:
+                            logger.warning(f"Could not delete old profile picture: {e}")
+
+            if profile_picture_path:
+                # Check if profile exists
+                c.execute("SELECT username FROM user_profiles WHERE username=?", (username,))
+                exists = c.fetchone()
+
+                if exists:
+                    # Update existing profile
+                    c.execute("""
+                        UPDATE user_profiles
+                        SET profile_picture=?, updated_at=CURRENT_TIMESTAMP
+                        WHERE username=?
+                    """, (profile_picture_path, username))
+                    logger.info(f"Updated profile picture for {username}: {profile_picture_path}")
+                else:
+                    # Create new profile with just the picture
+                    c.execute("""
+                        INSERT INTO user_profiles (username, profile_picture)
+                        VALUES (?, ?)
+                    """, (username, profile_picture_path))
+                    logger.info(f"Created new profile with picture for {username}: {profile_picture_path}")
+
+                conn.commit()
+                logger.info(f"Profile picture committed to database for {username}")
+                return jsonify({'success': True, 'profile_picture': profile_picture_path})
+            else:
+                return jsonify({'success': False, 'error': 'No file uploaded'}), 400
+
+    except Exception as e:
+        logger.error(f"Error uploading profile picture: {str(e)}")
+        return jsonify({'success': False, 'error': 'Upload failed'}), 500
+
 @app.route('/update_password', methods=['POST'])
 @login_required
 def update_password():

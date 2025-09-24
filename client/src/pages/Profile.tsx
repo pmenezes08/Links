@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import Avatar from '../components/Avatar'
 
 type Profile = {
@@ -26,6 +26,11 @@ export default function Profile(){
     share_community_id: '' as string
   })
   const [communities, setCommunities] = useState<Array<{id:number,name:string,type?:string}>>([])
+  const [showPhotoModal, setShowPhotoModal] = useState(false)
+  const [selectedPhoto, setSelectedPhoto] = useState<File | null>(null)
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null)
+  const [uploadingPhoto, setUploadingPhoto] = useState(false)
+  const fileInputRef = React.useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     let mounted = true
@@ -66,6 +71,74 @@ export default function Profile(){
     return () => { mounted = false }
   }, [])
 
+  function handlePhotoSelect(event: React.ChangeEvent<HTMLInputElement>){
+    const file = event.target.files?.[0]
+    if (file){
+      setSelectedPhoto(file)
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        setPhotoPreview(e.target?.result as string)
+      }
+      reader.readAsDataURL(file)
+    }
+  }
+
+  async function handleCameraCapture(){
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true })
+      const video = document.createElement('video')
+      video.srcObject = stream
+      video.play()
+
+      const canvas = document.createElement('canvas')
+      canvas.width = 300
+      canvas.height = 300
+      const ctx = canvas.getContext('2d')
+
+      // Wait for video to load
+      await new Promise((resolve) => {
+        video.onloadeddata = resolve
+      })
+
+      ctx?.drawImage(video, 0, 0, 300, 300)
+      canvas.toBlob((blob) => {
+        if (blob) {
+          const file = new File([blob], 'camera-photo.jpg', { type: 'image/jpeg' })
+          setSelectedPhoto(file)
+          setPhotoPreview(canvas.toDataURL())
+        }
+      }, 'image/jpeg', 0.8)
+
+      stream.getTracks().forEach(track => track.stop())
+    } catch (error) {
+      alert('Camera access denied or not available')
+    }
+  }
+
+  async function uploadProfilePicture(){
+    if (!selectedPhoto) return
+
+    setUploadingPhoto(true)
+    try {
+      const fd = new FormData()
+      fd.append('profile_picture', selectedPhoto)
+      const r = await fetch('/upload_profile_picture', { method: 'POST', credentials: 'include', body: fd })
+      const j = await r.json()
+      if (j?.success) {
+        setData(d => d ? { ...d, profile_picture: j.profile_picture } : d)
+        setShowPhotoModal(false)
+        setSelectedPhoto(null)
+        setPhotoPreview(null)
+      } else {
+        alert(j?.error || 'Upload failed')
+      }
+    } catch (error) {
+      alert('Upload failed')
+    } finally {
+      setUploadingPhoto(false)
+    }
+  }
+
   if (loading) return <div className="p-4 text-[#9fb0b5]">Loading…</div>
   if (error || !data) return <div className="p-4 text-red-400">{error||'Error'}</div>
 
@@ -78,7 +151,19 @@ export default function Profile(){
           </div>
         ) : null}
         <div className="flex items-center gap-3">
-          <Avatar username={data.username} url={data.profile_picture || undefined} size={56} />
+          <button
+            className="relative group cursor-pointer"
+            onClick={() => setShowPhotoModal(true)}
+            aria-label="Change profile picture"
+          >
+            <Avatar username={data.username} url={data.profile_picture || undefined} size={56} />
+            <div className="absolute inset-0 rounded-full bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+              <i className="fa-solid fa-camera text-white text-lg" />
+            </div>
+            <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-[#4db6ac] rounded-full flex items-center justify-center">
+              <i className="fa-solid fa-plus text-xs text-white" />
+            </div>
+          </button>
           <div>
             <div className="text-lg font-semibold">{data.display_name || data.username}</div>
             <div className="text-sm text-[#9fb0b5]">@{data.username} • {data.subscription||'free'}</div>
@@ -210,6 +295,76 @@ export default function Profile(){
           {data.twitter ? (<a className="text-[#9fb0b5] hover:text-teal-300" href={`https://x.com/${data.twitter}`} target="_blank" rel="noreferrer"><i className="fa-brands fa-x-twitter mr-2" />@{data.twitter}</a>) : null}
         </div>
       </div>
+
+      {/* Photo Upload Modal */}
+      {showPhotoModal && (
+        <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur flex items-center justify-center" onClick={(e)=> e.currentTarget===e.target && setShowPhotoModal(false)}>
+          <div className="w-[90%] max-w-md rounded-2xl border border-white/10 bg-black p-4">
+            <div className="flex items-center justify-between mb-4">
+              <div className="font-semibold">Change Profile Picture</div>
+              <button className="px-2 py-1 rounded-full border border-white/10" onClick={()=> setShowPhotoModal(false)}>✕</button>
+            </div>
+
+            {/* Photo Preview */}
+            {photoPreview ? (
+              <div className="mb-4">
+                <div className="relative w-32 h-32 mx-auto mb-2">
+                  <img src={photoPreview} alt="Preview" className="w-full h-full rounded-full object-cover border-2 border-white/20" />
+                </div>
+                <div className="text-center">
+                  <button
+                    onClick={uploadProfilePicture}
+                    disabled={uploadingPhoto}
+                    className="px-4 py-2 rounded-md bg-[#4db6ac] text-black text-sm hover:brightness-110 disabled:opacity-50"
+                  >
+                    {uploadingPhoto ? 'Uploading...' : 'Update Profile Picture'}
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
+            {/* Photo Selection Options */}
+            <div className="space-y-3">
+              <button
+                className="w-full flex items-center gap-3 p-3 rounded-xl border border-white/10 hover:bg-white/5"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <i className="fa-solid fa-file-image text-[#4db6ac]" />
+                <span>Choose from gallery</span>
+              </button>
+
+              <button
+                className="w-full flex items-center gap-3 p-3 rounded-xl border border-white/10 hover:bg-white/5"
+                onClick={handleCameraCapture}
+              >
+                <i className="fa-solid fa-camera text-[#4db6ac]" />
+                <span>Take photo</span>
+              </button>
+
+              <button
+                className="w-full flex items-center gap-3 p-3 rounded-xl border border-white/10 hover:bg-white/5 text-red-400"
+                onClick={() => {
+                  setShowPhotoModal(false)
+                  setSelectedPhoto(null)
+                  setPhotoPreview(null)
+                }}
+              >
+                <i className="fa-solid fa-times" />
+                <span>Cancel</span>
+              </button>
+            </div>
+
+            {/* Hidden file input */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handlePhotoSelect}
+              className="hidden"
+            />
+          </div>
+        </div>
+      )}
     </div>
   )
 }
