@@ -4873,6 +4873,71 @@ def upload_signup_image():
         logger.error(f"Error uploading signup image: {str(e)}")
         return jsonify({'success': False, 'error': 'Server error'})
 
+@app.route('/admin/regenerate_app_icons', methods=['POST'])
+@login_required
+def regenerate_app_icons():
+    """Regenerate PWA icons from current logo - ADMIN ONLY"""
+    username = session.get('username')
+    if username != 'admin':
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    try:
+        logo_path = os.path.join('static', 'logo.png')
+        if not os.path.exists(logo_path):
+            return jsonify({'success': False, 'error': 'logo.png not found. Upload a logo first.'}), 400
+        # Best-effort icon generation
+        try:
+            from PIL import Image
+            icons_dir = os.path.join('static', 'icons')
+            os.makedirs(icons_dir, exist_ok=True)
+            src = Image.open(logo_path).convert('RGBA')
+
+            def make_icon(size: int, out_name: str):
+                canvas = Image.new('RGBA', (size, size), (0, 0, 0, 0))
+                img = src.copy()
+                img.thumbnail((size, size), Image.LANCZOS)
+                ox = max(0, (size - img.width) // 2)
+                oy = max(0, (size - img.height) // 2)
+                canvas.paste(img, (ox, oy), img)
+                out_path = os.path.join(icons_dir, out_name)
+                canvas.save(out_path, format='PNG')
+
+            make_icon(192, 'app-icon-192.png')
+            make_icon(512, 'app-icon-512.png')
+            # Apple touch icon common size
+            make_icon(180, 'apple-touch-icon-180.png')
+        except Exception as gen_err:
+            logger.warning(f"Icon generation skipped: {gen_err}")
+
+        # Bump a version based on mtime for clients to cache-bust
+        try:
+            v = int(time.time())
+        except Exception:
+            v = 0
+        return jsonify({'success': True, 'message': 'App icons regenerated', 'version': v})
+    except Exception as e:
+        logger.error(f"regenerate_app_icons error: {e}")
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
+@app.route('/apple-touch-icon.png')
+def apple_touch_icon_route():
+    """Serve iOS touch icon with minimal caching."""
+    try:
+        preferred = os.path.join('static', 'icons', 'apple-touch-icon-180.png')
+        fallback = os.path.join('static', 'logo.png')
+        path = preferred if os.path.exists(preferred) else fallback
+        from flask import send_file
+        resp = send_file(path, mimetype='image/png')
+        try:
+            resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+            resp.headers['Pragma'] = 'no-cache'
+            resp.headers['Expires'] = '0'
+        except Exception:
+            pass
+        return resp
+    except Exception as e:
+        logger.error(f"apple-touch-icon route error: {e}")
+        abort(404)
+
 @app.route('/check_profile_picture')
 @login_required
 def check_profile_picture():

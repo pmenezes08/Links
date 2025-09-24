@@ -1168,6 +1168,10 @@
                     <i class="fas fa-ad"></i>
                     <span>Ads Performance</span>
                 </button>
+                <button class="admin-action-btn" onclick="regenerateIcons()">
+                    <i class="fas fa-refresh"></i>
+                    <span>Regenerate App Icons</span>
+                </button>
             </div>
         </div>
     </div>
@@ -1563,6 +1567,19 @@
                 });
             }catch(e){}
         });
+        async function regenerateIcons(){
+            try{
+                const r = await fetch('/admin/regenerate_app_icons', { method:'POST' });
+                const j = await r.json();
+                if (j && j.success){
+                    showNotification('success', 'App icons regenerated. Re-add the app to Home Screen to update.');
+                } else {
+                    showNotification('error', j && j.error ? j.error : 'Failed to regenerate icons');
+                }
+            }catch(e){
+                showNotification('error', 'Server error');
+            }
+        }
          // Premium dashboard menu doesn't need dropdown logic
          $(document).ready(function() {
          });
