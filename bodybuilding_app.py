@@ -1072,7 +1072,9 @@ def init_db():
                         c.execute("SHOW COLUMNS FROM user_communities LIKE 'role'")
                         if not c.fetchone():
                             logger.info("Adding role column to user_communities table...")
-                            c.execute("ALTER TABLE user_communities ADD COLUMN role TEXT DEFAULT 'member'")
+                            # TEXT columns can't have default values in MySQL
+                            c.execute("ALTER TABLE user_communities ADD COLUMN role TEXT")
+                            c.execute("UPDATE user_communities SET role = 'member' WHERE role IS NULL")
                             conn.commit()
                             logger.info("Added role column to user_communities table")
                     except Exception as e:
@@ -1101,7 +1103,9 @@ def init_db():
                             c.execute("SHOW COLUMNS FROM user_communities LIKE 'role'")
                             if not c.fetchone():
                                 logger.info("Adding role column to user_communities table...")
-                                c.execute("ALTER TABLE user_communities ADD COLUMN role TEXT DEFAULT 'member'")
+                                # TEXT columns can't have default values in MySQL
+                                c.execute("ALTER TABLE user_communities ADD COLUMN role TEXT")
+                                c.execute("UPDATE user_communities SET role = 'member' WHERE role IS NULL")
                                 conn.commit()
                                 logger.info("Added role column to user_communities table")
                         except Exception as e:
@@ -1246,7 +1250,9 @@ def init_db():
                 c.execute("SHOW COLUMNS FROM user_communities LIKE 'role'")
                 if not c.fetchone():
                     logger.info("Adding role column to user_communities table...")
-                    c.execute("ALTER TABLE user_communities ADD COLUMN role TEXT DEFAULT 'member'")
+                    # TEXT columns can't have default values in MySQL
+                    c.execute("ALTER TABLE user_communities ADD COLUMN role TEXT")
+                    c.execute("UPDATE user_communities SET role = 'member' WHERE role IS NULL")
                     conn.commit()
                     logger.info("Added role column to user_communities table")
             except Exception as e:
@@ -1254,7 +1260,8 @@ def init_db():
 
             # Force add role column with explicit error handling
             try:
-                c.execute("ALTER TABLE user_communities ADD COLUMN role TEXT DEFAULT 'member'")
+                c.execute("ALTER TABLE user_communities ADD COLUMN role TEXT")
+                c.execute("UPDATE user_communities SET role = 'member' WHERE role IS NULL")
                 logger.info("Force added role column to user_communities table")
             except Exception as e:
                 logger.info(f"Role column already exists or couldn't be added: {e}")
@@ -9534,7 +9541,10 @@ def migrate_user_communities_role():
             c.execute("SHOW COLUMNS FROM user_communities LIKE 'role'")
             if not c.fetchone():
                 logger.info("Adding role column to user_communities table...")
-                c.execute("ALTER TABLE user_communities ADD COLUMN role TEXT DEFAULT 'member'")
+                # TEXT columns can't have default values in MySQL
+                c.execute("ALTER TABLE user_communities ADD COLUMN role TEXT")
+                # Set default value for existing rows
+                c.execute("UPDATE user_communities SET role = 'member' WHERE role IS NULL")
                 conn.commit()
                 logger.info("Added role column to user_communities table")
                 return jsonify({'success': True, 'message': 'Role column added successfully'})
