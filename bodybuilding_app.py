@@ -7831,11 +7831,25 @@ def get_logo():
             # Quote `key` to avoid reserved word issues on MySQL
             c.execute("SELECT value FROM site_settings WHERE `key` = 'logo_path'")
             result = c.fetchone()
-            
-            if result:
-                return jsonify({'success': True, 'logo_path': result['value']})
-            else:
-                return jsonify({'success': True, 'logo_path': None})
+        # Normalize row to filename string
+        try:
+            filename = get_scalar_result(result, column_index=0, column_name='value')
+        except Exception:
+            try:
+                filename = result['value'] if hasattr(result, 'keys') else (result[0] if result else None)
+            except Exception:
+                filename = None
+
+        if not filename:
+            return jsonify({'success': True, 'logo_path': None})
+
+        # Append a cache-busting query using file mtime (or current time fallback)
+        try:
+            static_path = os.path.join('static', filename)
+            version = int(os.path.getmtime(static_path))
+        except Exception:
+            version = int(time.time())
+        return jsonify({'success': True, 'logo_path': f"{filename}?v={version}"})
     except:
         return jsonify({'success': True, 'logo_path': None})
 
