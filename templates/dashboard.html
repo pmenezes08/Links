@@ -276,7 +276,10 @@
 			<!-- Logo Section Above Buttons -->
 			<div class="logo-section" style="margin-bottom: 20px; text-align: center;">
 				<div class="logo-container" style="position: relative; display: inline-block;">
-					<img id="dashboardLogo" src="{{ url_for('static', filename='logo.png') }}" alt="Logo" 
+					<img id="dashboardLogo" src="/static/logo.png" alt="Logo" 
+					     style="max-height: 160px; max-width: 480px; width: auto; height: auto; opacity: 0.9; transition: opacity 0.3s;"
+					     onerror="this.style.display='none'; document.getElementById('logoPlaceholder').style.display='block';">
+					<img id="dashboardLogo" src="/static/logo.png" alt="Logo" 
 					     style="max-height: 160px; max-width: 480px; width: auto; height: auto; opacity: 0.9; transition: opacity 0.3s;"
 					     onerror="this.style.display='none'; document.getElementById('logoPlaceholder').style.display='block';">
 					<div id="logoPlaceholder" style="display: none; color: #9fb0b5; font-size: 16px;">
@@ -374,6 +377,22 @@
 	<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 	<script src="{{ url_for('static', filename='script.js') }}"></script>
 	<script>
+		// Ensure latest logo loads (desktop and mobile) by using /get_logo cache-busting response
+		function refreshDashboardLogo(){
+			try{
+				fetch('/get_logo').then(r=>r.json()).then(j=>{
+					if (j && j.success && j.logo_path){
+						var el = document.getElementById('dashboardLogo');
+						if (el){ el.src = '/static/' + j.logo_path; }
+					}
+				});
+			}catch(e){}
+		}
+		if (document.readyState === 'complete' || document.readyState === 'interactive'){
+			setTimeout(refreshDashboardLogo, 0);
+		}else{
+			document.addEventListener('DOMContentLoaded', refreshDashboardLogo);
+		}
 		$(document).ready(function() {
 			console.log('Dashboard script loaded');
 			

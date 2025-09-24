@@ -476,7 +476,7 @@
         <div class="sidebar-header">
             <div class="sidebar-logo" id="sidebarLogo"></div>
             <div class="community-name">
-                <span>Ads Overview</span>
+                <span>Admin</span>
             </div>
         </div>
         <div class="sidebar-menu">
@@ -724,6 +724,17 @@
             // Ensure initial tab state is correct
             document.getElementById('communities-tab').style.display = 'block';
             document.getElementById('ads-tab').style.display = 'none';
+        });
+
+        document.addEventListener('DOMContentLoaded', function(){
+            try{
+                fetch('/get_logo').then(r=>r.json()).then(j=>{
+                    var el = document.getElementById('sidebarLogo');
+                    if (el && j && j.success && j.logo_path){
+                        el.innerHTML = '<img src="/static/' + j.logo_path + '" style="max-width: 160px; max-height: 40px; width: auto; height: auto;" alt="Site Logo">';
+                    }
+                });
+            }catch(e){}
         });
 
         function toggleGroup(index) {

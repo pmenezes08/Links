@@ -5193,10 +5193,18 @@
                     }
                 });
             }
-        });
-
-        // Ensure members modal is hidden by default
-        document.addEventListener('DOMContentLoaded', function() {
+            
+            // Load latest site logo with cache-busting for desktop/mobile
+            try{
+                fetch('/get_logo').then(r=>r.json()).then(j=>{
+                    var el = document.getElementById('sidebarLogo');
+                    if (el && j && j.success && j.logo_path){
+                        el.innerHTML = '<img src="/static/' + j.logo_path + '" style="max-width: 160px; max-height: 40px; width: auto; height: auto;" alt="Site Logo">';
+                    }
+                });
+            }catch(e){}
+            
+            // Ensure members modal is hidden by default
             const membersModal = document.getElementById('membersModal');
             if (membersModal) {
                 membersModal.style.display = 'none';
