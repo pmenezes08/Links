@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { formatSmartTime } from '../utils/time'
+import { formatSmartTime, parseFlexibleDate } from '../utils/time'
 
 type PhotoItem = {
   id: string
@@ -8,7 +8,7 @@ type PhotoItem = {
   reply_id: number | null
   username: string
   image_url: string
-  created_at: string
+  created_at: string | number | Date
 }
 
 export default function CommunityPhotos(){
@@ -42,21 +42,44 @@ export default function CommunityPhotos(){
   const groups = useMemo(() => {
     const map: Record<string, PhotoItem[]> = {}
     for (const it of items){
-      const d = (it.created_at || '').slice(0,10)
-      if (!map[d]) map[d] = []
-      map[d].push(it)
+      const parsedDate = parseFlexibleDate(it.created_at)
+      let dateKey = 'Unknown Date'
+
+      if (parsedDate && !isNaN(parsedDate.getTime())) {
+        dateKey = parsedDate.toISOString().split('T')[0] // YYYY-MM-DD format
+      }
+
+      if (!map[dateKey]) map[dateKey] = []
+      map[dateKey].push(it)
     }
 
     // Sort groups by date desc, items by time desc
-    const keys = Object.keys(map).sort((a,b) => (a < b ? 1 : -1))
+    const keys = Object.keys(map).sort((a,b) => {
+      if (a === 'Unknown Date') return 1
+      if (b === 'Unknown Date') return -1
+      return a < b ? 1 : -1
+    })
+
     for (const k of keys){
-      map[k].sort((a,b) => (a.created_at < b.created_at ? 1 : -1))
+      if (k !== 'Unknown Date') {
+        map[k].sort((a,b) => {
+          const dateA = parseFlexibleDate(a.created_at)
+          const dateB = parseFlexibleDate(b.created_at)
+          if (!dateA && !dateB) return 0
+          if (!dateA) return 1
+          if (!dateB) return -1
+          return dateA.getTime() - dateB.getTime()
+        })
+      }
     }
 
     // Format date keys to be more user-friendly
     const formattedKeys = keys.map(key => {
-      if (!key) return 'Unknown Date'
-      const date = new Date(key)
+      if (key === 'Unknown Date') return key
+
+      const date = parseFlexibleDate(key)
+      if (!date || isNaN(date.getTime())) return 'Unknown Date'
+
       const today = new Date()
       const yesterday = new Date(today)
       yesterday.setDate(yesterday.getDate() - 1)
