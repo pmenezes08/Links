@@ -5,7 +5,7 @@ import Avatar from '../components/Avatar'
 type Member = {
   username: string;
   profile_picture?: string | null;
-  role?: 'member'|'admin'|'owner';
+  role?: 'member'|'admin'|'owner'|'creator';
   is_creator?: boolean;
 }
 

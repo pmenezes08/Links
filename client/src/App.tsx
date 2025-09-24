@@ -33,7 +33,6 @@ import Signup from './pages/Signup'
 import Notifications from './pages/Notifications'
 import AdminDashboard from './pages/AdminDashboard'
 import ProductDevelopment from './pages/ProductDevelopment'
-import CommunityPhotos from './pages/CommunityPhotos'
 
 const queryClient = new QueryClient()
 
