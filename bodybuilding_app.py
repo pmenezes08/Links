@@ -1252,6 +1252,13 @@ def init_db():
             except Exception as e:
                 logger.warning(f"Could not add role column: {e}")
 
+            # Force add role column with explicit error handling
+            try:
+                c.execute("ALTER TABLE user_communities ADD COLUMN role TEXT DEFAULT 'member'")
+                logger.info("Force added role column to user_communities table")
+            except Exception as e:
+                logger.info(f"Role column already exists or couldn't be added: {e}")
+
             # Create community_files table
             logger.info("Creating community_files table...")
             c.execute('''CREATE TABLE IF NOT EXISTS community_files
@@ -9515,6 +9522,28 @@ def appoint_community_admin(community_id):
     except Exception as e:
         logger.error(f"Error appointing admin: {e}")
         return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/migrate_user_communities_role', methods=['POST'])
+@login_required
+def migrate_user_communities_role():
+    """Migrate user_communities table to add role column"""
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+
+            # Check if role column exists
+            c.execute("SHOW COLUMNS FROM user_communities LIKE 'role'")
+            if not c.fetchone():
+                logger.info("Adding role column to user_communities table...")
+                c.execute("ALTER TABLE user_communities ADD COLUMN role TEXT DEFAULT 'member'")
+                conn.commit()
+                logger.info("Added role column to user_communities table")
+                return jsonify({'success': True, 'message': 'Role column added successfully'})
+            else:
+                return jsonify({'success': True, 'message': 'Role column already exists'})
+    except Exception as e:
+        logger.error(f"Error adding role column: {e}")
+        return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/community/<int:community_id>/remove_admin', methods=['POST'])
 @login_required
