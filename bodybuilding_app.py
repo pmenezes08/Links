@@ -4802,10 +4802,42 @@ def upload_logo():
                 filepath = os.path.join('static', filename)
                 file.save(filepath)
 
-                # Update database with logo path
-                c.execute("INSERT OR REPLACE INTO site_settings (key, value) VALUES ('logo_path', ?)",
-                         (filename,))
-                conn.commit()
+                # Ensure site_settings table exists and upsert logo path (SQLite vs MySQL)
+                try:
+                    if USE_MYSQL:
+                        # Create table if missing (MySQL)
+                        c.execute(
+                            """
+                            CREATE TABLE IF NOT EXISTS site_settings (
+                                `key` VARCHAR(191) PRIMARY KEY,
+                                `value` TEXT
+                            )
+                            """
+                        )
+                        # Upsert using ON DUPLICATE KEY UPDATE
+                        c.execute(
+                            "INSERT INTO site_settings (`key`, `value`) VALUES (%s, %s) ON DUPLICATE KEY UPDATE `value`=VALUES(`value`)",
+                            ('logo_path', filename)
+                        )
+                    else:
+                        # Create table if missing (SQLite)
+                        c.execute(
+                            """
+                            CREATE TABLE IF NOT EXISTS site_settings (
+                                key TEXT PRIMARY KEY,
+                                value TEXT
+                            )
+                            """
+                        )
+                        # Upsert using SQLite syntax
+                        c.execute(
+                            "INSERT INTO site_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                            ('logo_path', filename)
+                        )
+                    conn.commit()
+                except Exception as db_err:
+                    logger.error(f"Logo upsert error: {db_err}")
+                    raise
 
                 return jsonify({
                     'success': True,
@@ -7796,7 +7828,8 @@ def get_logo():
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
-            c.execute("SELECT value FROM site_settings WHERE key = 'logo_path'")
+            # Quote `key` to avoid reserved word issues on MySQL
+            c.execute("SELECT value FROM site_settings WHERE `key` = 'logo_path'")
             result = c.fetchone()
             
             if result:
@@ -7819,7 +7852,7 @@ def remove_logo():
             c = conn.cursor()
             
             # Get current logo path to delete file
-            c.execute("SELECT value FROM site_settings WHERE key = 'logo_path'")
+            c.execute("SELECT value FROM site_settings WHERE `key` = 'logo_path'")
             result = c.fetchone()
             
             if result and result['value']:
@@ -7828,8 +7861,8 @@ def remove_logo():
                 if os.path.exists(logo_path):
                     os.remove(logo_path)
             
-            # Remove from database
-            c.execute("DELETE FROM site_settings WHERE key = 'logo_path'")
+            # Remove from database (quote column in case of MySQL)
+            c.execute("DELETE FROM site_settings WHERE `key` = 'logo_path'")
             conn.commit()
         
         return jsonify({'success': True, 'message': 'Logo removed successfully'})
