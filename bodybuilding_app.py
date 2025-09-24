@@ -1277,7 +1277,19 @@ def init_db():
                           is_read INTEGER DEFAULT 0,
                           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                           FOREIGN KEY (post_id) REFERENCES posts(id),
-                          FOREIGN KEY (community_id) REFERENCES communities(id))''')
+                          FOREIGN KEY (community_id) REFERENCES communities(id),
+                          UNIQUE KEY unique_notification (user_id, from_user, type, post_id))''')
+
+            # Add unique constraint for existing installations (migration)
+            try:
+                c.execute("SHOW INDEX FROM notifications WHERE Key_name = 'unique_notification'")
+                if not c.fetchone():
+                    logger.info("Adding unique constraint to notifications table...")
+                    c.execute("ALTER TABLE notifications ADD UNIQUE KEY unique_notification (user_id, from_user, type, post_id)")
+                    conn.commit()
+                    logger.info("Added unique constraint to notifications table")
+            except Exception as e:
+                logger.warning(f"Could not add unique constraint to notifications: {e}")
 
             # Useful documents (PDFs)
             logger.info("Ensuring useful_docs table...")
@@ -5727,23 +5739,16 @@ def send_message():
             # Invalidate message caches for faster updates
             invalidate_message_cache(username, recipient_username)
             
-            # Create or update notification for the recipient (race-safe)
+            # Create or update notification for the recipient (truly atomic)
             try:
-                # First try to update existing unread notification
                 c.execute("""
-                    UPDATE notifications
-                    SET created_at = NOW(), message = ?
-                    WHERE user_id = ? AND from_user = ? AND type = 'message' AND is_read = 0
-                """, (f"You have new messages from {username}", recipient_username, username))
-                if getattr(c, 'rowcount', 0) == 0:
-                    # Insert only if no unread exists (atomic with WHERE NOT EXISTS)
-                    c.execute("""
-                        INSERT INTO notifications (user_id, from_user, type, message, created_at)
-                        SELECT ?, ?, 'message', ?, NOW()
-                        WHERE NOT EXISTS (
-                          SELECT 1 FROM notifications WHERE user_id=? AND from_user=? AND type='message' AND is_read=0
-                        )
-                    """, (recipient_username, username, f"You have new messages from {username}", recipient_username, username))
+                    INSERT INTO notifications (user_id, from_user, type, message, created_at, is_read)
+                    VALUES (?, ?, 'message', ?, NOW(), 0)
+                    ON DUPLICATE KEY UPDATE
+                        created_at = NOW(),
+                        message = VALUES(message),
+                        is_read = 0
+                """, (recipient_username, username, f"You have new messages from {username}"))
                 conn.commit()
             except Exception as notif_e:
                 logger.warning(f"Could not create/update message notification: {notif_e}")
@@ -5861,21 +5866,16 @@ def send_photo_message():
             
             conn.commit()
             
-            # Create or update notification for the recipient (race-safe)
+            # Create or update notification for the recipient (truly atomic)
             try:
                 c.execute("""
-                    UPDATE notifications
-                    SET created_at = NOW(), message = ?
-                    WHERE user_id = ? AND from_user = ? AND type = 'message' AND is_read = 0
-                """, (f"You have new messages from {username}", recipient_username, username))
-                if getattr(c, 'rowcount', 0) == 0:
-                    c.execute("""
-                        INSERT INTO notifications (user_id, from_user, type, message, created_at)
-                        SELECT ?, ?, 'message', ?, NOW()
-                        WHERE NOT EXISTS (
-                          SELECT 1 FROM notifications WHERE user_id=? AND from_user=? AND type='message' AND is_read=0
-                        )
-                    """, (recipient_username, username, f"You have new messages from {username}", recipient_username, username))
+                    INSERT INTO notifications (user_id, from_user, type, message, created_at, is_read)
+                    VALUES (?, ?, 'message', ?, NOW(), 0)
+                    ON DUPLICATE KEY UPDATE
+                        created_at = NOW(),
+                        message = VALUES(message),
+                        is_read = 0
+                """, (recipient_username, username, f"You have new messages from {username}"))
                 conn.commit()
             except Exception as notif_e:
                 logger.warning(f"Could not create/update photo message notification: {notif_e}")
