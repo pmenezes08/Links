@@ -4191,7 +4191,7 @@ def admin():
         print("User is not admin, redirecting")
         return redirect(url_for('index'))
     print("User is admin, proceeding")
-    
+
     # Check if request is from mobile and serve React
     ua = request.headers.get('User-Agent', '')
     is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
@@ -4199,58 +4199,76 @@ def admin():
         base_dir = os.path.dirname(os.path.abspath(__file__))
         dist_dir = os.path.join(base_dir, 'client', 'dist')
         return send_from_directory(dist_dir, 'index.html')
-    
+
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
+
+            # Get statistics with error handling
+            try:
+                c.execute("SELECT COUNT(*) as count FROM users")
+                total_users = get_scalar_result(c.fetchone(), column_name='count') or 0
+
+                c.execute("SELECT COUNT(*) as count FROM users WHERE subscription = 'premium'")
+                premium_users = get_scalar_result(c.fetchone(), column_name='count') or 0
+
+                c.execute("SELECT COUNT(*) as count FROM communities")
+                total_communities = get_scalar_result(c.fetchone(), column_name='count') or 0
+
+                c.execute("SELECT COUNT(*) as count FROM posts")
+                total_posts = get_scalar_result(c.fetchone(), column_name='count') or 0
+            except Exception as stat_error:
+                logger.error(f"Error getting statistics: {stat_error}")
+                # Provide fallback values
+                total_users = 0
+                premium_users = 0
+                total_communities = 0
+                total_posts = 0
             
-            # Get statistics
-            c.execute("SELECT COUNT(*) as count FROM users")
-            total_users = get_scalar_result(c.fetchone(), column_name='count')
-            
-            c.execute("SELECT COUNT(*) as count FROM users WHERE subscription = 'premium'")
-            premium_users = get_scalar_result(c.fetchone(), column_name='count')
-            
-            c.execute("SELECT COUNT(*) as count FROM communities")
-            total_communities = get_scalar_result(c.fetchone(), column_name='count')
-            
-            c.execute("SELECT COUNT(*) as count FROM posts")
-            total_posts = get_scalar_result(c.fetchone(), column_name='count')
-            
+            # Initialize default values
             stats = {
                 'total_users': total_users,
                 'premium_users': premium_users,
                 'total_communities': total_communities,
                 'total_posts': total_posts
             }
-            
-            # Get users list with is_active status
-            c.execute("SELECT username, subscription, is_active FROM users ORDER BY username")
-            users = c.fetchall()
-            
-            # Get all communities with member counts and is_active status
-            c.execute("""
-                SELECT c.id, c.name, c.type, c.creator_username, c.join_code,
-                       COUNT(uc.user_id) as member_count, c.is_active
-                FROM communities c
-                LEFT JOIN user_communities uc ON c.id = uc.community_id
-                GROUP BY c.id, c.name, c.type, c.creator_username, c.join_code, c.is_active
-                ORDER BY c.name
-            """)
-            communities_raw = c.fetchall()
-            
-            # Convert to list of dictionaries for easier template access
+
+            users = []
             communities = []
-            for community in communities_raw:
-                communities.append({
-                    'id': community[0],
-                    'name': community[1],
-                    'type': community[2],
-                    'creator_username': community[3],
-                    'join_code': community[4],
-                    'member_count': community[5],
-                    'is_active': community[6] if len(community) > 6 else True
-                })
+
+            # Get users list with is_active status
+            try:
+                c.execute("SELECT username, subscription, is_active FROM users ORDER BY username")
+                users = c.fetchall()
+            except Exception as users_error:
+                logger.error(f"Error getting users list: {users_error}")
+
+            # Get all communities with member counts and is_active status
+            try:
+                c.execute("""
+                    SELECT c.id, c.name, c.type, c.creator_username, c.join_code,
+                           COUNT(uc.user_id) as member_count, c.is_active
+                    FROM communities c
+                    LEFT JOIN user_communities uc ON c.id = uc.community_id
+                    GROUP BY c.id, c.name, c.type, c.creator_username, c.join_code, c.is_active
+                    ORDER BY c.name
+                """)
+                communities_raw = c.fetchall()
+
+                # Convert to list of dictionaries for easier template access
+                for community in communities_raw:
+                    communities.append({
+                        'id': community[0],
+                        'name': community[1],
+                        'type': community[2],
+                        'creator_username': community[3],
+                        'join_code': community[4],
+                        'member_count': community[5],
+                        'is_active': community[6] if len(community) > 6 else True
+                    })
+            except Exception as communities_error:
+                logger.error(f"Error getting communities list: {communities_error}")
+                communities = []
             
             if request.method == 'POST':
                 if 'add_user' in request.form:
@@ -4364,10 +4382,14 @@ def admin():
                         return render_template('admin.html', users=users, communities=communities, stats=stats, error=f"Error deleting community: {str(delete_error)}")
             
         return render_template('admin.html', users=users, communities=communities, stats=stats)
-        
+
     except Exception as e:
         logger.error(f"Error in admin route: {str(e)}")
-        abort(500)
+        # Provide fallback values for template
+        stats = {'total_users': 0, 'premium_users': 0, 'total_communities': 0, 'total_posts': 0}
+        users = []
+        communities = []
+        return render_template('admin.html', users=users, communities=communities, stats=stats, error=f"Error loading admin data: {str(e)}")
 
 @app.route('/admin_test')
 @login_required
