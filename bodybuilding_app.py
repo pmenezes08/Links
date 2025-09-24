@@ -1292,14 +1292,16 @@ def init_db():
                           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                           FOREIGN KEY (post_id) REFERENCES posts(id),
                           FOREIGN KEY (community_id) REFERENCES communities(id),
-                          UNIQUE KEY unique_notification (user_id, from_user, type, post_id))''')
+                          UNIQUE KEY unique_notification (user_id, from_user, type, post_id, community_id))''')
 
             # Add unique constraint for existing installations (migration)
             try:
                 c.execute("SHOW INDEX FROM notifications WHERE Key_name = 'unique_notification'")
                 if not c.fetchone():
                     logger.info("Adding unique constraint to notifications table...")
-                    c.execute("ALTER TABLE notifications ADD UNIQUE KEY unique_notification (user_id, from_user, type, post_id)")
+                    # First, drop the old constraint if it exists
+                    c.execute("ALTER TABLE notifications DROP INDEX IF EXISTS unique_notification")
+                    c.execute("ALTER TABLE notifications ADD UNIQUE KEY unique_notification (user_id, from_user, type, post_id, community_id)")
                     conn.commit()
                     logger.info("Added unique constraint to notifications table")
             except Exception as e:
@@ -7654,13 +7656,18 @@ def add_reaction():
 
 
 def create_notification(user_id, from_user, notification_type, post_id=None, community_id=None, message=None):
-    """Helper function to create a notification"""
+    """Helper function to create a notification with duplicate prevention"""
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
+            # Use ON DUPLICATE KEY UPDATE to prevent duplicates
             c.execute("""
-                INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message)
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read)
+                VALUES (?, ?, ?, ?, ?, ?, NOW(), 0)
+                ON DUPLICATE KEY UPDATE
+                    created_at = NOW(),
+                    message = VALUES(message),
+                    is_read = 0
             """, (user_id, from_user, notification_type, post_id, community_id, message))
             conn.commit()
     except Exception as e:
@@ -7709,9 +7716,13 @@ def notify_post_reply_recipients(*, post_id: int, from_user: str, community_id: 
                     exists = c.fetchone()
                     if not exists:
                         c.execute("""
-                            INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message)
-                            VALUES (?, ?, 'reply', ?, ?, ?)
-                        """, (target, from_user, post_id, community_id, f"{from_user} replied") )
+                            INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read)
+                            VALUES (?, ?, 'reply', ?, ?, ?, NOW(), 0)
+                            ON DUPLICATE KEY UPDATE
+                                created_at = NOW(),
+                                message = VALUES(message),
+                                is_read = 0
+                        """, (target, from_user, post_id, community_id, f"{from_user} replied"))
                         conn.commit()
                 except Exception as ne:
                     logger.warning(f"reply notify db error to {target}: {ne}")
