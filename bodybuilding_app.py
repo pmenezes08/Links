@@ -4781,8 +4781,8 @@ def upload_logo():
                     'message': 'Logo uploaded successfully',
                     'logo_url': url_for('static', filename=filename)
                 })
-        else:
-            return jsonify({'success': False, 'error': 'Invalid file type'})
+            else:
+                return jsonify({'success': False, 'error': 'Invalid file type'})
             
     except Exception as e:
         logger.error(f"Error uploading logo: {str(e)}")
