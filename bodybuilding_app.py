@@ -4264,8 +4264,12 @@ def admin():
                         # Refresh users list
                         c.execute("SELECT username, subscription, is_active FROM users ORDER BY username")
                         users = c.fetchall()
-                    except sqlite3.IntegrityError:
-                        return render_template('admin.html', users=users, communities=communities, stats=stats, error=f"Username {new_username} already exists!")
+                    except Exception as db_error:
+                        # Handle both SQLite IntegrityError and MySQL IntegrityError
+                        if 'UNIQUE constraint failed' in str(db_error) or 'Duplicate entry' in str(db_error) or 'Integrity constraint violation' in str(db_error):
+                            return render_template('admin.html', users=users, communities=communities, stats=stats, error=f"Username {new_username} already exists!")
+                        else:
+                            raise db_error
                         
                 elif 'update_user' in request.form:
                     user_to_update = request.form.get('username')
@@ -4298,7 +4302,10 @@ def admin():
                         c.execute("DELETE FROM replies WHERE username=?", (user_to_delete,))
                         c.execute("DELETE FROM reactions WHERE username=?", (user_to_delete,))
                         c.execute("DELETE FROM reply_reactions WHERE username=?", (user_to_delete,))
-                        c.execute("DELETE FROM user_communities WHERE user_id=(SELECT rowid FROM users WHERE username=?)", (user_to_delete,))
+                        if USE_MYSQL:
+                            c.execute("DELETE FROM user_communities WHERE user_id=(SELECT id FROM users WHERE username=?)", (user_to_delete,))
+                        else:
+                            c.execute("DELETE FROM user_communities WHERE user_id=(SELECT rowid FROM users WHERE username=?)", (user_to_delete,))
                         c.execute("DELETE FROM saved_data WHERE username=?", (user_to_delete,))
                         c.execute("DELETE FROM messages WHERE sender=?", (user_to_delete,))
                         c.execute("DELETE FROM messages WHERE receiver=?", (user_to_delete,))
