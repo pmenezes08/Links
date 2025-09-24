@@ -3035,6 +3035,30 @@ def vite_svg():
         logger.error(f"Error serving vite.svg: {str(e)}")
         abort(404)
 
+@app.route('/favicon.svg')
+def favicon():
+    try:
+        return send_from_directory('static', 'favicon.svg')
+    except Exception as e:
+        logger.error(f"Error serving favicon.svg: {str(e)}")
+        abort(404)
+
+@app.route('/manifest.webmanifest')
+def manifest():
+    try:
+        return send_from_directory('static', 'manifest.webmanifest')
+    except Exception as e:
+        logger.error(f"Error serving manifest.webmanifest: {str(e)}")
+        abort(404)
+
+@app.route('/icons/<path:filename>')
+def icons(filename):
+    try:
+        return send_from_directory('static/icons', filename)
+    except Exception as e:
+        logger.error(f"Error serving icon {filename}: {str(e)}")
+        abort(404)
+
 # service worker served by web server static mapping (/sw.js -> client/dist/sw.js)
 
 # web app manifest served by web server static mapping (/manifest.webmanifest -> client/public/manifest.webmanifest)
