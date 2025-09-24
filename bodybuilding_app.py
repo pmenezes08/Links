@@ -9524,9 +9524,8 @@ def appoint_community_admin(community_id):
         return jsonify({'success': False, 'message': str(e)}), 500
 
 @app.route('/migrate_user_communities_role', methods=['POST'])
-@login_required
 def migrate_user_communities_role():
-    """Migrate user_communities table to add role column"""
+    """Migrate user_communities table to add role column - no login required for setup"""
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
