@@ -3044,7 +3044,7 @@ def api_community_photos():
             for post in posts:
                 # Handle different database cursor types
                 if hasattr(post, 'keys'):
-                    post_id = post['id']
+                    post_id = post['post_id']
                     username_val = post['username']
                     content = post['content'] or ''
                     image_path = post['image_path']
@@ -6360,10 +6360,13 @@ def update_member_role():
             is_app_admin = username == 'admin'
             is_owner = username == current_owner
             
-            # Check if current user is community admin
-            c.execute("SELECT 1 FROM community_admins WHERE community_id = ? AND username = ?",
-                     (community_id, username))
-            is_community_admin = c.fetchone() is not None
+            # Get current user's role in user_communities table
+            c.execute("""
+                SELECT role FROM user_communities
+                WHERE user_id = (SELECT id FROM users WHERE username = ?) AND community_id = ?
+            """, (username, community_id))
+            current_user_role_row = c.fetchone()
+            is_community_admin = current_user_role_row and (current_user_role_row['role'] == 'admin' if hasattr(current_user_role_row, 'keys') else current_user_role_row[0] == 'admin')
             
             # Permission checks based on action
             if new_role == 'owner':
@@ -6375,40 +6378,49 @@ def update_member_role():
                 c.execute("UPDATE communities SET creator_username = ? WHERE id = ?",
                          (target_username, community_id))
                 
-                # Remove new owner from admins if they were one
-                c.execute("DELETE FROM community_admins WHERE community_id = ? AND username = ?",
-                         (community_id, target_username))
-                
+                # Update new owner's role in user_communities
+                c.execute("""
+                    INSERT INTO user_communities (user_id, community_id, role, joined_at)
+                    VALUES ((SELECT id FROM users WHERE username = ?), ?, 'owner', NOW())
+                    ON DUPLICATE KEY UPDATE role = 'owner'
+                """, (target_username, community_id))
+
                 # Make old owner an admin (unless they're the app admin)
                 if current_owner != 'admin' and current_owner != target_username:
-                    c.execute("""INSERT IGNORE INTO community_admins 
-                               (community_id, username, appointed_by, appointed_at)
-                               VALUES (?, ?, ?, ?)""",
-                             (community_id, current_owner, username, datetime.now().isoformat()))
+                    c.execute("""
+                        INSERT INTO user_communities (user_id, community_id, role, joined_at)
+                        VALUES ((SELECT id FROM users WHERE username = ?), ?, 'admin', NOW())
+                        ON DUPLICATE KEY UPDATE role = 'admin'
+                    """, (current_owner, community_id))
                 
             elif new_role == 'admin':
                 # Owner or app admin can make admins
                 if not (is_owner or is_app_admin):
                     return jsonify({'success': False, 'error': 'Only owner or app admin can appoint admins'})
-                
+
                 # Can't make owner an admin
                 if target_username == current_owner:
                     return jsonify({'success': False, 'error': 'Owner cannot be made an admin'})
-                
-                # Add as admin
-                c.execute("""INSERT IGNORE INTO community_admins 
-                           (community_id, username, appointed_by, appointed_at)
-                           VALUES (?, ?, ?, ?)""",
-                         (community_id, target_username, username, datetime.now().isoformat()))
+
+                # Update user's role to admin
+                c.execute("""
+                    INSERT INTO user_communities (user_id, community_id, role, joined_at)
+                    VALUES ((SELECT id FROM users WHERE username = ?), ?, 'admin', NOW())
+                    ON DUPLICATE KEY UPDATE role = 'admin'
+                """, (target_username, community_id))
                 
             elif new_role == 'member':
                 # Remove admin role
                 # Owner or app admin can remove admins
                 if not (is_owner or is_app_admin):
                     return jsonify({'success': False, 'error': 'Only owner or app admin can remove admins'})
-                
-                c.execute("DELETE FROM community_admins WHERE community_id = ? AND username = ?",
-                         (community_id, target_username))
+
+                # Update user's role to member
+                c.execute("""
+                    INSERT INTO user_communities (user_id, community_id, role, joined_at)
+                    VALUES ((SELECT id FROM users WHERE username = ?), ?, 'member', NOW())
+                    ON DUPLICATE KEY UPDATE role = 'member'
+                """, (target_username, community_id))
             
             else:
                 return jsonify({'success': False, 'error': 'Invalid role specified'})
@@ -9481,16 +9493,20 @@ def appoint_community_admin(community_id):
                 return jsonify({'success': False, 'message': 'User not found'}), 404
             
             # Check if already an admin
-            c.execute("SELECT 1 FROM community_admins WHERE community_id = ? AND username = ?", 
-                     (community_id, new_admin))
-            if c.fetchone():
-                return jsonify({'success': False, 'message': 'User is already an admin'}), 400
-            
-            # Appoint as admin
             c.execute("""
-                INSERT INTO community_admins (community_id, username, appointed_by, appointed_at)
-                VALUES (?, ?, ?, ?)
-            """, (community_id, new_admin, username, datetime.now().isoformat()))
+                SELECT role FROM user_communities
+                WHERE user_id = (SELECT id FROM users WHERE username = ?) AND community_id = ?
+            """, (new_admin, community_id))
+            existing_role = c.fetchone()
+            if existing_role and (existing_role['role'] == 'admin' if hasattr(existing_role, 'keys') else existing_role[0] == 'admin'):
+                return jsonify({'success': False, 'message': 'User is already an admin'}), 400
+
+            # Appoint as admin using user_communities table
+            c.execute("""
+                INSERT INTO user_communities (user_id, community_id, role, joined_at)
+                VALUES ((SELECT id FROM users WHERE username = ?), ?, 'admin', NOW())
+                ON DUPLICATE KEY UPDATE role = 'admin'
+            """, (new_admin, community_id))
             
             conn.commit()
             
@@ -9520,10 +9536,13 @@ def remove_community_admin(community_id):
         with get_db_connection() as conn:
             c = conn.cursor()
             
-            # Remove admin
-            c.execute("DELETE FROM community_admins WHERE community_id = ? AND username = ?", 
-                     (community_id, admin_to_remove))
-            
+            # Remove admin role using user_communities table
+            c.execute("""
+                INSERT INTO user_communities (user_id, community_id, role, joined_at)
+                VALUES ((SELECT id FROM users WHERE username = ?), ?, 'member', NOW())
+                ON DUPLICATE KEY UPDATE role = 'member'
+            """, (admin_to_remove, community_id))
+
             if c.rowcount == 0:
                 return jsonify({'success': False, 'message': 'User is not an admin'}), 404
             
