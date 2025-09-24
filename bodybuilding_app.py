@@ -4755,23 +4755,32 @@ def upload_logo():
         return jsonify({'success': False, 'error': 'Unauthorized'}), 403
     
     try:
-        if 'logo' not in request.files:
-            return jsonify({'success': False, 'error': 'No file provided'})
-        
-        file = request.files['logo']
-        if file.filename == '':
-            return jsonify({'success': False, 'error': 'No file selected'})
-        
-        if file and allowed_file(file.filename):
-            # Save the logo file
-            filename = 'logo.png'  # Always save as logo.png
-            filepath = os.path.join('static', filename)
-            file.save(filepath)
-            
-            return jsonify({
-                'success': True,
-                'logo_url': url_for('static', filename=filename)
-            })
+        with get_db_connection() as conn:
+            c = conn.cursor()
+
+            if 'logo' not in request.files:
+                return jsonify({'success': False, 'error': 'No file provided'})
+
+            file = request.files['logo']
+            if file.filename == '':
+                return jsonify({'success': False, 'error': 'No file selected'})
+
+            if file and allowed_file(file.filename):
+                # Save the logo file
+                filename = 'logo.png'  # Always save as logo.png
+                filepath = os.path.join('static', filename)
+                file.save(filepath)
+
+                # Update database with logo path
+                c.execute("INSERT OR REPLACE INTO site_settings (key, value) VALUES ('logo_path', ?)",
+                         (filename,))
+                conn.commit()
+
+                return jsonify({
+                    'success': True,
+                    'message': 'Logo uploaded successfully',
+                    'logo_url': url_for('static', filename=filename)
+                })
         else:
             return jsonify({'success': False, 'error': 'Invalid file type'})
             
