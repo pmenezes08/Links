@@ -38,7 +38,7 @@ export default function CommunityPhotos(){
     return () => { mounted = false }
   }, [community_id])
 
-  // Group by date (YYYY-MM-DD)
+  // Group by date and format dates nicely
   const groups = useMemo(() => {
     const map: Record<string, PhotoItem[]> = {}
     for (const it of items){
@@ -46,10 +46,35 @@ export default function CommunityPhotos(){
       if (!map[d]) map[d] = []
       map[d].push(it)
     }
+
     // Sort groups by date desc, items by time desc
     const keys = Object.keys(map).sort((a,b) => (a < b ? 1 : -1))
-    for (const k of keys){ map[k].sort((a,b) => (a.created_at < b.created_at ? 1 : -1)) }
-    return { keys, map }
+    for (const k of keys){
+      map[k].sort((a,b) => (a.created_at < b.created_at ? 1 : -1))
+    }
+
+    // Format date keys to be more user-friendly
+    const formattedKeys = keys.map(key => {
+      if (!key) return 'Unknown Date'
+      const date = new Date(key)
+      const today = new Date()
+      const yesterday = new Date(today)
+      yesterday.setDate(yesterday.getDate() - 1)
+
+      if (date.toDateString() === today.toDateString()) {
+        return 'Today'
+      } else if (date.toDateString() === yesterday.toDateString()) {
+        return 'Yesterday'
+      } else {
+        return date.toLocaleDateString('en-US', {
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric'
+        })
+      }
+    })
+
+    return { keys: formattedKeys, map, originalKeys: keys }
   }, [items])
 
   if (loading) return <div className="p-4 text-[#9fb0b5]">Loading…</div>
@@ -58,26 +83,56 @@ export default function CommunityPhotos(){
   return (
     <div className="min-h-screen bg-black text-white">
       <div className="max-w-2xl mx-auto px-3 pt-4 pb-24">
-        {groups.keys.length === 0 ? (
-          <div className="text-[#9fb0b5]">No photos yet.</div>
-        ) : groups.keys.map(dateKey => (
-          <div key={dateKey} className="mb-6">
-            <div className="text-xs text-[#9fb0b5] mb-2">{dateKey}</div>
-            <div className="grid grid-cols-3 gap-2">
-              {(groups.map[dateKey] || []).map(p => (
-                <div key={p.id} className="relative group">
-                  <img src={p.image_url} alt="Community photo" className="w-full h-28 object-cover rounded-md border border-white/10 cursor-pointer" onClick={()=> navigate(`/post/${p.post_id}`)} />
-                  <div className="absolute bottom-1 left-1 text-[10px] px-1 py-0.5 rounded bg-black/60 border border-white/10">
-                    {formatSmartTime(p.created_at)}
-                  </div>
-                  <button className="absolute top-1 right-1 text-[10px] px-1 py-0.5 rounded bg-black/60 border border-white/10 hover:bg-black/80" onClick={(e)=> { e.stopPropagation(); navigate(`/post/${p.post_id}`) }}>
-                    View post
-                  </button>
-                </div>
-              ))}
+        {items.length === 0 ? (
+          <div className="text-center py-12">
+            <div className="text-[#9fb0b5] mb-4">
+              <i className="fa-solid fa-camera text-4xl mb-3 block opacity-50"></i>
+              <p className="text-lg font-medium">No photos yet</p>
+              <p className="text-sm">Photos from community posts will appear here</p>
             </div>
           </div>
-        ))}
+        ) : (
+          <div className="space-y-8">
+            {groups.keys.map((formattedDateKey, index) => {
+              const originalDateKey = groups.originalKeys[index]
+              const photosForDate = groups.map[originalDateKey] || []
+
+              return (
+                <div key={formattedDateKey} className="space-y-3">
+                  <div className="text-sm text-[#9fb0b5] font-medium border-b border-white/10 pb-2">
+                    {formattedDateKey} ({photosForDate.length} photo{photosForDate.length !== 1 ? 's' : ''})
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    {photosForDate.map(p => (
+                      <div key={p.id} className="relative group aspect-square">
+                        <img
+                          src={p.image_url}
+                          alt="Community photo"
+                          className="w-full h-full object-cover rounded-lg border border-white/10 cursor-pointer hover:border-white/20 transition-colors"
+                          onClick={() => navigate(`/post/${p.post_id}`)}
+                        />
+                        <div className="absolute bottom-2 left-2 text-xs px-2 py-1 rounded bg-black/70 border border-white/10 text-white">
+                          {formatSmartTime(p.created_at)}
+                        </div>
+                        <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button
+                            className="px-2 py-1 text-xs rounded bg-black/60 border border-white/10 hover:bg-black/80"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              navigate(`/post/${p.post_id}`)
+                            }}
+                          >
+                            View
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
       </div>
     </div>
   )

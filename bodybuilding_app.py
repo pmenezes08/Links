@@ -2972,6 +2972,115 @@ def api_community_group_feed(parent_id: int):
         logger.error(f"Error serving React asset {filename}: {str(e)}")
         abort(404)
 
+@app.route('/api/community_photos')
+@login_required
+def api_community_photos():
+    """Get all photos from a community feed, grouped by date."""
+    username = session.get('username')
+    community_id = request.args.get('community_id', type=int)
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+
+            # Check if user is a member of the community
+            if username != 'admin':
+                c.execute("""
+                    SELECT 1 FROM user_communities
+                    JOIN users u ON user_communities.user_id = u.id
+                    WHERE u.username = ? AND user_communities.community_id = ?
+                    LIMIT 1
+                """, (username, community_id))
+                if not c.fetchone():
+                    return jsonify({'success': False, 'error': 'Forbidden'}), 403
+
+            # Get all posts and replies with images from this community
+            c.execute("""
+                SELECT
+                    p.id as post_id,
+                    NULL as reply_id,
+                    p.username,
+                    p.content,
+                    p.image_path,
+                    p.timestamp,
+                    p.created_at,
+                    up.profile_picture
+                FROM posts p
+                LEFT JOIN user_profiles up ON p.username = up.username
+                WHERE p.community_id = ? AND p.image_path IS NOT NULL AND p.image_path != ''
+
+                UNION ALL
+
+                SELECT
+                    p.id as post_id,
+                    r.id as reply_id,
+                    r.username,
+                    r.content,
+                    r.image_path,
+                    r.timestamp,
+                    r.created_at,
+                    up.profile_picture
+                FROM posts p
+                JOIN replies r ON p.id = r.post_id
+                LEFT JOIN user_profiles up ON r.username = up.username
+                WHERE p.community_id = ? AND r.image_path IS NOT NULL AND r.image_path != ''
+                ORDER BY timestamp DESC
+            """, (community_id, community_id))
+
+            posts_raw = c.fetchall()
+            posts = [dict(row) for row in posts_raw]
+
+            # Format posts as photos
+            photos = []
+            for post in posts:
+                # Handle different database cursor types
+                if hasattr(post, 'keys'):
+                    post_id = post['id']
+                    username_val = post['username']
+                    content = post['content'] or ''
+                    image_path = post['image_path']
+                    timestamp = post['timestamp'] or post['created_at'] or ''
+                    profile_picture = post['profile_picture']
+                else:
+                    post_id = post[0]
+                    username_val = post[1]
+                    content = post[2] or ''
+                    image_path = post[3]
+                    timestamp = post[4] or post[5] or ''
+                    profile_picture = post[6]
+
+                # Skip if no image
+                if not image_path:
+                    continue
+
+                # Format image URL
+                if image_path.startswith('http'):
+                    image_url = image_path
+                elif image_path.startswith('/static') or image_path.startswith('/uploads'):
+                    image_url = image_path
+                elif image_path.startswith('uploads/'):
+                    image_url = '/' + image_path
+                else:
+                    image_url = f"/uploads/{image_path}"
+
+                photos.append({
+                    'id': str(post_id),
+                    'post_id': post_id,
+                    'reply_id': None,
+                    'username': username_val,
+                    'image_url': image_url,
+                    'created_at': timestamp,
+                    'profile_picture': profile_picture
+                })
+
+            # Sort photos by creation date (newest first)
+            photos.sort(key=lambda x: x['created_at'] or '', reverse=True)
+
+            return jsonify({'success': True, 'photos': photos})
+
+    except Exception as e:
+        logger.error(f"Error in community_photos: {e}")
+        return jsonify({'success': False, 'error': 'Failed to load photos'}), 500
+
 @app.route('/api/community_posts_search')
 @login_required
 def api_community_posts_search():
