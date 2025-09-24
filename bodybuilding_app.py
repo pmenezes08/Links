@@ -3014,7 +3014,6 @@ def api_community_photos():
                     p.content,
                     p.image_path,
                     p.timestamp,
-                    p.created_at,
                     up.profile_picture
                 FROM posts p
                 LEFT JOIN user_profiles up ON p.username = up.username
@@ -3029,7 +3028,6 @@ def api_community_photos():
                     r.content,
                     r.image_path,
                     r.timestamp,
-                    r.created_at,
                     up.profile_picture
                 FROM posts p
                 JOIN replies r ON p.id = r.post_id
@@ -3050,15 +3048,15 @@ def api_community_photos():
                     username_val = post['username']
                     content = post['content'] or ''
                     image_path = post['image_path']
-                    timestamp = post['timestamp'] or post['created_at'] or ''
+                    timestamp = post['timestamp'] or ''
                     profile_picture = post['profile_picture']
                 else:
                     post_id = post[0]
                     username_val = post[1]
                     content = post[2] or ''
                     image_path = post[3]
-                    timestamp = post[4] or post[5] or ''
-                    profile_picture = post[6]
+                    timestamp = post[4] or ''
+                    profile_picture = post[5]
 
                 # Skip if no image
                 if not image_path:
