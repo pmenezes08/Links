@@ -4802,6 +4802,33 @@ def upload_logo():
                 filepath = os.path.join('static', filename)
                 file.save(filepath)
 
+            # Generate PWA/app icons from uploaded logo (both new and legacy names)
+            try:
+                from PIL import Image
+                icons_dir = os.path.join('static', 'icons')
+                os.makedirs(icons_dir, exist_ok=True)
+                src = Image.open(filepath).convert('RGBA')
+
+                def make_icon(size: int, out_name: str):
+                    canvas = Image.new('RGBA', (size, size), (0, 0, 0, 0))
+                    img = src.copy()
+                    img.thumbnail((size, size), Image.LANCZOS)
+                    ox = max(0, (size - img.width) // 2)
+                    oy = max(0, (size - img.height) // 2)
+                    canvas.paste(img, (ox, oy), img)
+                    canvas.save(os.path.join(icons_dir, out_name), format='PNG')
+
+                # New names
+                make_icon(192, 'app-icon-192.png')
+                make_icon(512, 'app-icon-512.png')
+                # Legacy names referenced by some manifests
+                make_icon(192, 'icon-192.png')
+                make_icon(512, 'icon-512.png')
+                # Apple touch icon
+                make_icon(180, 'apple-touch-icon-180.png')
+            except Exception as _gen_err:
+                logger.warning(f"Icon generation skipped on upload: {_gen_err}")
+
                 # Ensure site_settings table exists and upsert logo path (SQLite vs MySQL)
                 try:
                     if USE_MYSQL:
@@ -4901,8 +4928,11 @@ def regenerate_app_icons():
                 out_path = os.path.join(icons_dir, out_name)
                 canvas.save(out_path, format='PNG')
 
+            # New and legacy names to satisfy various manifests
             make_icon(192, 'app-icon-192.png')
             make_icon(512, 'app-icon-512.png')
+            make_icon(192, 'icon-192.png')
+            make_icon(512, 'icon-512.png')
             # Apple touch icon common size
             make_icon(180, 'apple-touch-icon-180.png')
         except Exception as gen_err:
