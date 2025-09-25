@@ -20,8 +20,8 @@ export default function Profile(){
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string|null>(null)
   const [form, setForm] = useState({
-    display_name: '', bio: '', location: '', website: '', instagram: '', twitter: '', is_public: true,
-    role: '', company: '', industry: '', degree: '', school: '', skills: '', linkedin: '', experience: '',
+    display_name: '', bio: '', location: '', is_public: true,
+    role: '', company: '', industry: '', linkedin: '',
     age: '', gender: '', country: '', city: '',
     share_community_id: '' as string
   })
@@ -46,10 +46,7 @@ export default function Profile(){
             ...f,
             display_name: j.profile.display_name || '',
             bio: j.profile.bio || '',
-            location: j.profile.location || '',
-            website: j.profile.website || '',
-            instagram: j.profile.instagram || '',
-            twitter: j.profile.twitter || ''
+            location: j.profile.location || ''
           }))
         }
         else setError(j?.error || 'Error')
@@ -179,9 +176,6 @@ export default function Profile(){
             fd.append('display_name', form.display_name)
             fd.append('bio', form.bio)
             fd.append('location', form.location)
-            fd.append('website', form.website)
-            fd.append('instagram', form.instagram)
-            fd.append('twitter', form.twitter)
             fd.append('is_public', form.is_public ? 'on' : '')
             const r = await fetch('/update_public_profile', { method:'POST', credentials:'include', body: fd })
             const j = await r.json().catch(()=>null)
@@ -194,18 +188,15 @@ export default function Profile(){
               <label className="text-sm">Location
                 <input className="mt-1 w-full rounded-md bg-black text-white border border-white/10 px-2 py-1.5 text-[16px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]" value={form.location} onChange={e=> setForm(f=>({...f, location: e.target.value}))} />
               </label>
-              <label className="text-sm">Website
-                <input className="mt-1 w-full rounded-md bg-black text-white border border-white/10 px-2 py-1.5 text-[16px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]" value={form.website} onChange={e=> setForm(f=>({...f, website: e.target.value}))} />
-              </label>
-              <label className="text-sm">Instagram
-                <input className="mt-1 w-full rounded-md bg-black text-white border border-white/10 px-2 py-1.5 text-[16px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]" value={form.instagram} onChange={e=> setForm(f=>({...f, instagram: e.target.value}))} />
-              </label>
-              <label className="text-sm">Twitter
-                <input className="mt-1 w-full rounded-md bg-black text-white border border-white/10 px-2 py-1.5 text-[16px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]" value={form.twitter} onChange={e=> setForm(f=>({...f, twitter: e.target.value}))} />
-              </label>
             </div>
             <label className="block text-sm mt-3">Bio
-              <textarea className="mt-1 w-full rounded-md bg-black text-white border border-white/10 px-2 py-1.5 text-[16px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]" rows={3} value={form.bio} onChange={e=> setForm(f=>({...f, bio: e.target.value}))} />
+              <textarea
+                className="mt-1 w-full rounded-md bg-black text-white border border-white/10 px-2 py-1.5 text-[16px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]"
+                rows={3}
+                placeholder="Write a short bio (e.g., your interests, goals, or what you're studying)"
+                value={form.bio}
+                onChange={e=> setForm(f=>({...f, bio: e.target.value}))}
+              />
             </label>
             <label className="inline-flex items-center gap-2 mt-2 text-sm">
               <input type="checkbox" checked={form.is_public} onChange={e=> setForm(f=>({...f, is_public: e.target.checked}))} /> Public
@@ -228,11 +219,7 @@ export default function Profile(){
             fd.append('role', form.role)
             fd.append('company', form.company)
             fd.append('industry', form.industry)
-            fd.append('degree', form.degree)
-            fd.append('school', form.school)
-            fd.append('skills', form.skills)
             fd.append('linkedin', form.linkedin)
-            fd.append('experience', form.experience)
             if (form.share_community_id) fd.append('share_community_id', form.share_community_id)
             const r = await fetch('/update_professional', { method:'POST', credentials:'include', body: fd })
             const j = await r.json().catch(()=>null)
@@ -246,11 +233,7 @@ export default function Profile(){
               <input className="rounded-md bg-black text-white border border-white/10 px-2 py-1.5 text-[16px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]" placeholder="Role" value={form.role} onChange={e=> setForm(f=>({...f, role: e.target.value}))} />
               <input className="rounded-md bg-black text-white border border-white/10 px-2 py-1.5 text-[16px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]" placeholder="Company" value={form.company} onChange={e=> setForm(f=>({...f, company: e.target.value}))} />
               <input className="rounded-md bg-black text-white border border-white/10 px-2 py-1.5 text-[16px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]" placeholder="Industry" value={form.industry} onChange={e=> setForm(f=>({...f, industry: e.target.value}))} />
-              <input className="rounded-md bg-black text-white border border-white/10 px-2 py-1.5 text-[16px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]" placeholder="Degree" value={form.degree} onChange={e=> setForm(f=>({...f, degree: e.target.value}))} />
-              <input className="rounded-md bg-black text-white border border-white/10 px-2 py-1.5 text-[16px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]" placeholder="School" value={form.school} onChange={e=> setForm(f=>({...f, school: e.target.value}))} />
-              <input className="rounded-md bg-black text-white border border-white/10 px-2 py-1.5 text-[16px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]" placeholder="Skills" value={form.skills} onChange={e=> setForm(f=>({...f, skills: e.target.value}))} />
               <input className="rounded-md bg-black text-white border border-white/10 px-2 py-1.5 text-[16px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]" placeholder="LinkedIn" value={form.linkedin} onChange={e=> setForm(f=>({...f, linkedin: e.target.value}))} />
-              <input className="rounded-md bg-black text-white border border-white/10 px-2 py-1.5 text-[16px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]" placeholder="Experience" value={form.experience} onChange={e=> setForm(f=>({...f, experience: e.target.value}))} />
               <label className="text-sm">
                 Share Professional Info with Community
                 <select className="mt-1 w-full rounded-md bg-black text-white border border-white/10 px-2 py-1.5 text-[16px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]" value={form.share_community_id} onChange={e=> setForm(f=>({...f, share_community_id: e.target.value}))}>
