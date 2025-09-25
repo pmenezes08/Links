@@ -3183,7 +3183,14 @@ def favicon():
 @app.route('/manifest.webmanifest')
 def manifest():
     try:
-        return send_from_directory('static', 'manifest.webmanifest')
+        resp = send_from_directory('static', 'manifest.webmanifest')
+        try:
+            resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+            resp.headers['Pragma'] = 'no-cache'
+            resp.headers['Expires'] = '0'
+        except Exception:
+            pass
+        return resp
     except Exception as e:
         logger.error(f"Error serving manifest.webmanifest: {str(e)}")
         abort(404)
