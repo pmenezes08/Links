@@ -8239,15 +8239,30 @@ def post_status():
                 except Exception as de:
                     logger.warning(f"post dedupe check failed: {de}")
             
-            # If community_id is provided, verify user is member (admin bypass)
+            # If community_id is provided, verify user is member (admin bypass). Allow parent posting if user belongs to any child community.
             if community_id and username != 'admin':
                 c.execute("""
                     SELECT 1 FROM user_communities uc
                     JOIN users u ON uc.user_id = u.id
                     WHERE u.username = ? AND uc.community_id = ?
                 """, (username, community_id))
-                
-                if not c.fetchone():
+                allowed = c.fetchone() is not None
+                if not allowed:
+                    # Check membership in any child community of this parent
+                    try:
+                        ph = get_sql_placeholder()
+                        c.execute(f"""
+                            SELECT 1
+                            FROM user_communities uc
+                            JOIN users u ON uc.user_id = u.id
+                            WHERE u.username = {ph}
+                              AND uc.community_id IN (SELECT id FROM communities WHERE parent_community_id = {ph})
+                            LIMIT 1
+                        """, (username, community_id))
+                        allowed = c.fetchone() is not None
+                    except Exception as me:
+                        logger.warning(f"parent/child membership check failed: {me}")
+                if not allowed:
                     if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
                         return jsonify({'success': False, 'error': 'You are not a member of this community'}), 403
                     else:
