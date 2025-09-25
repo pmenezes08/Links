@@ -3552,7 +3552,8 @@ def delete_weight():
 def is_app_admin(username):
     """Check if a user is an app admin"""
     try:
-        return bool(username) and username.lower() in ('admin', 'paulo')
+        # Only the 'admin' account is treated as app admin
+        return bool(username) and username.lower() == 'admin'
     except Exception:
         return False
 
@@ -8239,30 +8240,14 @@ def post_status():
                 except Exception as de:
                     logger.warning(f"post dedupe check failed: {de}")
             
-            # If community_id is provided, verify user is member (admin bypass). Allow parent posting if user belongs to any child community.
+            # If community_id is provided, verify user is member (admin bypass)
             if community_id and username != 'admin':
                 c.execute("""
                     SELECT 1 FROM user_communities uc
                     JOIN users u ON uc.user_id = u.id
                     WHERE u.username = ? AND uc.community_id = ?
                 """, (username, community_id))
-                allowed = c.fetchone() is not None
-                if not allowed:
-                    # Check membership in any child community of this parent
-                    try:
-                        ph = get_sql_placeholder()
-                        c.execute(f"""
-                            SELECT 1
-                            FROM user_communities uc
-                            JOIN users u ON uc.user_id = u.id
-                            WHERE u.username = {ph}
-                              AND uc.community_id IN (SELECT id FROM communities WHERE parent_community_id = {ph})
-                            LIMIT 1
-                        """, (username, community_id))
-                        allowed = c.fetchone() is not None
-                    except Exception as me:
-                        logger.warning(f"parent/child membership check failed: {me}")
-                if not allowed:
+                if not c.fetchone():
                     if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
                         return jsonify({'success': False, 'error': 'You are not a member of this community'}), 403
                     else:
@@ -12995,6 +12980,20 @@ def api_community_feed(community_id):
             except Exception:
                 current_user_profile_picture = None
                 current_user_display_name = username
+
+            # Enforce membership to view this community (admin or owner bypass)
+            try:
+                if username != 'admin' and username != community.get('creator_username'):
+                    c.execute("""
+                        SELECT 1 FROM user_communities uc
+                        JOIN users u ON uc.user_id = u.id
+                        WHERE u.username = ? AND uc.community_id = ?
+                        LIMIT 1
+                    """, (username, community_id))
+                    if not c.fetchone():
+                        return jsonify({'success': False, 'error': 'Forbidden'}), 403
+            except Exception as me:
+                logger.warning(f"membership check failed on api_community_feed: {me}")
 
             # Posts
             c.execute(
