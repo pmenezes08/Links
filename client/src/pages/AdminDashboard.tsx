@@ -374,6 +374,24 @@ export default function AdminDashboard() {
                       <div className="text-xs text-white/60">Max 200×100px</div>
                     </div>
                   </div>
+                  <div className="mt-3">
+                    <button
+                      onClick={async () => {
+                        try{
+                          const r = await fetch('/admin/regenerate_app_icons', { method:'POST', credentials:'include' })
+                          const j = await r.json()
+                          if (j?.success) {
+                            alert('App icons regenerated. Remove and re-add the PWA to update the home screen icon.')
+                          } else {
+                            alert('Failed to regenerate icons: ' + (j?.error || 'Unknown error'))
+                          }
+                        }catch(e){ alert('Server error') }
+                      }}
+                      className="px-3 py-1.5 bg-white/10 border border-white/20 rounded-lg text-sm hover:bg-white/15"
+                    >
+                      Regenerate App Icons
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
