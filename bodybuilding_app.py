@@ -2921,7 +2921,8 @@ def api_community_group_feed(parent_id: int):
                         'user_reaction': user_reaction_val,
                         'replies_count': replies_count_val
                     }
-                    if (dt is not None) and (dt >= cutoff):
+                    # Include posts missing a parsable datetime as a fallback
+                    if (dt is None) or (dt >= cutoff):
                         posts.append(post_obj)
                 else:
                     pid, uname, content, cid, created_at_val, timestamp_val, image_path = row
@@ -2968,7 +2969,8 @@ def api_community_group_feed(parent_id: int):
                         'user_reaction': user_reaction_val,
                         'replies_count': replies_count_val
                     }
-                    if (dt is not None) and (dt >= cutoff):
+                    # Include posts missing a parsable datetime as a fallback
+                    if (dt is None) or (dt >= cutoff):
                         posts.append(post_obj)
 
             # Sort by parsed datetime desc
@@ -8259,6 +8261,12 @@ def post_status():
             conn.commit()
             post_id = c.lastrowid
             logger.info(f"Post added successfully for {username} with ID: {post_id} in community: {community_id}")
+            # Also set created_at to match timestamp for feeds that rely on created_at
+            try:
+                c.execute("UPDATE posts SET created_at = ? WHERE id = ?", (timestamp, post_id))
+                conn.commit()
+            except Exception as ua:
+                logger.warning(f"could not set created_at for post {post_id}: {ua}")
             
             # Verify the post was saved with correct community_id
             c.execute("SELECT community_id FROM posts WHERE id = ?", (post_id,))
