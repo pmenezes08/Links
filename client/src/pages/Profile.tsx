@@ -20,7 +20,7 @@ export default function Profile(){
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string|null>(null)
   const [form, setForm] = useState({
-    display_name: '', bio: '', location: '', is_public: true,
+    display_name: '', location: '', is_public: true,
     role: '', company: '', industry: '', linkedin: '',
     age: '', gender: '', country: '', city: '',
     share_community_id: '' as string
@@ -45,7 +45,6 @@ export default function Profile(){
           setForm(f => ({
             ...f,
             display_name: j.profile.display_name || '',
-            bio: j.profile.bio || '',
             location: j.profile.location || ''
           }))
         }
@@ -166,7 +165,7 @@ export default function Profile(){
             <div className="text-sm text-[#9fb0b5]">@{data.username} • {data.subscription||'free'}</div>
           </div>
         </div>
-        {data.bio ? (<div className="text-sm whitespace-pre-wrap text-white/90">{data.bio}</div>) : null}
+        {/* Bio display removed */}
         {/* Public Profile form */}
         <div className="rounded-xl border border-white/10 p-3">
           <div className="font-semibold mb-2">Public Profile</div>
@@ -174,7 +173,6 @@ export default function Profile(){
             e.preventDefault()
             const fd = new FormData()
             fd.append('display_name', form.display_name)
-            fd.append('bio', form.bio)
             fd.append('location', form.location)
             fd.append('is_public', form.is_public ? 'on' : '')
             const r = await fetch('/update_public_profile', { method:'POST', credentials:'include', body: fd })
@@ -189,15 +187,7 @@ export default function Profile(){
                 <input className="mt-1 w-full rounded-md bg-black text-white border border-white/10 px-2 py-1.5 text-[16px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]" value={form.location} onChange={e=> setForm(f=>({...f, location: e.target.value}))} />
               </label>
             </div>
-            <label className="block text-sm mt-3">Bio
-              <textarea
-                className="mt-1 w-full rounded-md bg-black text-white border border-white/10 px-2 py-1.5 text-[16px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]"
-                rows={3}
-                placeholder="Write a short bio (e.g., your interests, goals, or what you're studying)"
-                value={form.bio}
-                onChange={e=> setForm(f=>({...f, bio: e.target.value}))}
-              />
-            </label>
+            {/* Bio input removed */}
             <label className="inline-flex items-center gap-2 mt-2 text-sm">
               <input type="checkbox" checked={form.is_public} onChange={e=> setForm(f=>({...f, is_public: e.target.checked}))} /> Public
             </label>
