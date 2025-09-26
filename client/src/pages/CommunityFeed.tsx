@@ -8,7 +8,7 @@ import { useHeader } from '../contexts/HeaderContext'
 type PollOption = { id: number; text: string; votes: number }
 type Poll = { id: number; question: string; is_active: number; options: PollOption[]; user_vote: number|null; total_votes: number }
 type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null, profile_picture?: string|null }
-type Post = { id: number; username: string; content: string; image_path?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; poll?: Poll|null; replies: Reply[], profile_picture?: string|null }
+type Post = { id: number; username: string; content: string; image_path?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; poll?: Poll|null; replies: Reply[], profile_picture?: string|null, is_starred?: boolean }
 
 // old formatTimestamp removed; using formatSmartTime
 
@@ -371,6 +371,7 @@ export default function CommunityFeed() {
       {moreOpen && (
         <div className="fixed inset-0 z-[95] bg-black/30 flex items-end justify-end" onClick={(e)=> e.currentTarget===e.target && setMoreOpen(false)}>
           <div className="w-[75%] max-w-sm mr-2 mb-2 bg-black/80 backdrop-blur border border-white/10 rounded-2xl p-2 space-y-2 transition-transform duration-200 ease-out translate-y-0">
+            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); navigate(`/community/${community_id}/key_posts`) }}>Key Posts</button>
             <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); navigate(`/community/${community_id}/polls_react`) }}>Polls</button>
             <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); navigate(`/community/${community_id}/calendar_react`) }}>Calendar</button>
             {/* Hide Forum/Useful Links for General communities */}
@@ -404,6 +405,28 @@ function PostCard({ post, currentUser, isAdmin, onOpen, onToggleReaction }: { po
   const cardRef = useRef<HTMLDivElement|null>(null)
   const [isEditing, setIsEditing] = useState(false)
   const [editText, setEditText] = useState(post.content)
+  const [starring, setStarring] = useState(false)
+  async function toggleStar(e: React.MouseEvent){
+    e.stopPropagation()
+    if (starring) return
+    setStarring(true)
+    try{
+      // Optimistic flip
+      const prev = post.is_starred
+      ;(post as any).is_starred = !prev
+      const fd = new URLSearchParams({ post_id: String(post.id) })
+      const r = await fetch('/api/toggle_key_post', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
+      const j = await r.json().catch(()=>null)
+      if (!j?.success){
+        ;(post as any).is_starred = prev
+        alert(j?.error || 'Failed to update')
+      } else {
+        ;(post as any).is_starred = !!j.starred
+      }
+    } finally {
+      setStarring(false)
+    }
+  }
   async function saveEdit(){
     const fd = new URLSearchParams({ post_id: String(post.id), content: editText })
     const r = await fetch('/edit_post', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
@@ -417,6 +440,9 @@ function PostCard({ post, currentUser, isAdmin, onOpen, onToggleReaction }: { po
         <Avatar username={post.username} url={post.profile_picture || undefined} size={32} />
         <div className="font-medium tracking-[-0.01em]">{post.username}</div>
         <div className="text-xs text-[#9fb0b5] ml-auto tabular-nums">{formatSmartTime((post as any).display_timestamp || post.timestamp)}</div>
+        <button className="ml-2 px-2 py-1 rounded-full" title={post.is_starred ? 'Unstar' : 'Star'} onClick={toggleStar} aria-label="Star post">
+          <i className={`${post.is_starred ? 'fa-solid' : 'fa-regular'} fa-star`} style={{ color: post.is_starred ? '#ffd54f' : '#6c757d' }} />
+        </button>
         {(post.username === currentUser || isAdmin || currentUser === 'admin') && (
           <button className="ml-2 px-2 py-1 rounded-full text-[#6c757d] hover:text-[#4db6ac]" title="Delete"
             onClick={async(e)=> { e.stopPropagation(); const ok = confirm('Delete this post?'); if(!ok) return; const fd = new FormData(); fd.append('post_id', String(post.id)); await fetch('/delete_post', { method:'POST', credentials:'include', body: fd }); location.reload() }}>

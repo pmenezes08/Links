@@ -1181,6 +1181,19 @@ def init_db():
                           FOREIGN KEY (username) REFERENCES users(username),
                           UNIQUE(reply_id, username))''')
 
+            # Create key_posts table (user-starred posts within communities)
+            logger.info("Creating key_posts table...")
+            c.execute('''CREATE TABLE IF NOT EXISTS key_posts
+                         (id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                          username TEXT NOT NULL,
+                          post_id INTEGER NOT NULL,
+                          community_id INTEGER NOT NULL,
+                          created_at TEXT NOT NULL,
+                          FOREIGN KEY (post_id) REFERENCES posts(id),
+                          FOREIGN KEY (username) REFERENCES users(username),
+                          FOREIGN KEY (community_id) REFERENCES communities(id),
+                          UNIQUE(username, post_id))''')
+
             # Create communities table
             logger.info("Creating communities table...")
             c.execute('''CREATE TABLE IF NOT EXISTS communities
@@ -12498,6 +12511,13 @@ def api_community_feed(community_id):
                 r = c.fetchone()
                 post['user_reaction'] = r['reaction_type'] if r else None
 
+                # Is starred by current user
+                try:
+                    c.execute("SELECT 1 FROM key_posts WHERE post_id = ? AND username = ?", (post_id, username))
+                    post['is_starred'] = True if c.fetchone() else False
+                except Exception:
+                    post['is_starred'] = False
+
                 # Active poll on this post (if any)
                 c.execute("SELECT * FROM polls WHERE post_id = ? AND is_active = 1", (post_id,))
                 poll_raw = c.fetchone()
@@ -12563,6 +12583,83 @@ def api_community_feed(community_id):
     except Exception as e:
         logger.error(f"Error in api_community_feed for {community_id}: {e}")
         return jsonify({'success': False, 'error': 'Server error'}), 500
+
+# Toggle key post (star/unstar)
+@app.route('/api/toggle_key_post', methods=['POST'])
+@login_required
+def api_toggle_key_post():
+    try:
+        username = session.get('username')
+        post_id = request.form.get('post_id', type=int)
+        if not post_id:
+            return jsonify({'success': False, 'error': 'post_id required'}), 400
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            # Determine community_id from post
+            c.execute("SELECT community_id FROM posts WHERE id = ?", (post_id,))
+            row = c.fetchone()
+            if not row:
+                return jsonify({'success': False, 'error': 'Post not found'}), 404
+            community_id = row['community_id'] if hasattr(row, 'keys') else row[0]
+            if community_id is None:
+                # Only allow starring community posts to scope Key Posts
+                community_id = -1
+            # Toggle
+            c.execute("SELECT id FROM key_posts WHERE username = ? AND post_id = ?", (username, post_id))
+            existing = c.fetchone()
+            if existing:
+                c.execute("DELETE FROM key_posts WHERE username = ? AND post_id = ?", (username, post_id))
+                conn.commit()
+                return jsonify({'success': True, 'starred': False})
+            else:
+                now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                c.execute("INSERT INTO key_posts (username, post_id, community_id, created_at) VALUES (?, ?, ?, ?)", (username, post_id, community_id, now))
+                conn.commit()
+                return jsonify({'success': True, 'starred': True})
+    except Exception as e:
+        logger.error(f"toggle key post error: {e}")
+        return jsonify({'success': False, 'error': 'server error'}), 500
+
+# List current user's key posts for a community
+@app.route('/api/key_posts', methods=['GET'])
+@login_required
+def api_key_posts():
+    try:
+        username = session.get('username')
+        community_id = request.args.get('community_id', type=int)
+        if not community_id:
+            return jsonify({'success': False, 'error': 'community_id required'}), 400
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            # Get starred post ids for this user/community
+            c.execute("SELECT post_id FROM key_posts WHERE username = ? AND community_id = ? ORDER BY id DESC", (username, community_id))
+            rows = c.fetchall() or []
+            post_ids = [ (r['post_id'] if hasattr(r, 'keys') else r[0]) for r in rows ]
+            if not post_ids:
+                return jsonify({'success': True, 'posts': []})
+            placeholders = ",".join(["?"] * len(post_ids))
+            c.execute(f"SELECT * FROM posts WHERE id IN ({placeholders}) ORDER BY id DESC", tuple(post_ids))
+            posts = [dict(r) for r in (c.fetchall() or [])]
+            for post in posts:
+                pid = post['id']
+                # Author picture
+                try:
+                    c.execute("SELECT profile_picture FROM user_profiles WHERE username = ?", (post['username'],))
+                    pp = c.fetchone()
+                    post['profile_picture'] = pp['profile_picture'] if pp and 'profile_picture' in pp.keys() else None
+                except Exception:
+                    post['profile_picture'] = None
+                # Reactions
+                c.execute("SELECT reaction_type, COUNT(*) as count FROM reactions WHERE post_id = ? GROUP BY reaction_type", (pid,))
+                post['reactions'] = {row['reaction_type']: row['count'] for row in (c.fetchall() or [])}
+                c.execute("SELECT reaction_type FROM reactions WHERE post_id = ? AND username = ?", (pid, username))
+                ur = c.fetchone()
+                post['user_reaction'] = ur['reaction_type'] if ur else None
+                post['is_starred'] = True
+            return jsonify({'success': True, 'posts': posts})
+    except Exception as e:
+        logger.error(f"key posts error: {e}")
+        return jsonify({'success': False, 'error': 'server error'}), 500
 
 # Product Development APIs
 @app.route('/api/product_posts', methods=['GET'])
