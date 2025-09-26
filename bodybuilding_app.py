@@ -533,7 +533,7 @@ def add_missing_tables():
             # Create key_posts table (user-starred posts within communities)
             c.execute('''CREATE TABLE IF NOT EXISTS key_posts
                          (id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                          username TEXT NOT NULL,
+                          username VARCHAR(191) NOT NULL,
                           post_id INTEGER NOT NULL,
                           community_id INTEGER NOT NULL,
                           created_at TEXT NOT NULL,
@@ -1225,7 +1225,7 @@ def init_db():
             logger.info("Creating key_posts table...")
             c.execute('''CREATE TABLE IF NOT EXISTS key_posts
                          (id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                          username TEXT NOT NULL,
+                          username VARCHAR(191) NOT NULL,
                           post_id INTEGER NOT NULL,
                           community_id INTEGER NOT NULL,
                           created_at TEXT NOT NULL,
@@ -12035,7 +12035,7 @@ def migrate_key_posts():
                 logger.info("Creating key_posts table...")
                 c.execute('''CREATE TABLE IF NOT EXISTS key_posts
                              (id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                              username TEXT NOT NULL,
+                              username VARCHAR(191) NOT NULL,
                               post_id INTEGER NOT NULL,
                               community_id INTEGER NOT NULL,
                               created_at TEXT NOT NULL,
