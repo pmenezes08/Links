@@ -529,6 +529,18 @@ def add_missing_tables():
             # Create saved_data table if it doesn't exist
             c.execute('''CREATE TABLE IF NOT EXISTS saved_data
                          (id INTEGER PRIMARY KEY AUTO_INCREMENT, username TEXT, type TEXT, data TEXT, timestamp TEXT)''')
+
+            # Create key_posts table (user-starred posts within communities)
+            c.execute('''CREATE TABLE IF NOT EXISTS key_posts
+                         (id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                          username TEXT NOT NULL,
+                          post_id INTEGER NOT NULL,
+                          community_id INTEGER NOT NULL,
+                          created_at TEXT NOT NULL,
+                          FOREIGN KEY (post_id) REFERENCES posts(id),
+                          FOREIGN KEY (username) REFERENCES users(username),
+                          FOREIGN KEY (community_id) REFERENCES communities(id),
+                          UNIQUE(username, post_id))''')
             # Store web push subscriptions
             c.execute('''CREATE TABLE IF NOT EXISTS push_subscriptions
                          (id INTEGER PRIMARY KEY AUTO_INCREMENT,
@@ -1938,6 +1950,9 @@ def has_post_delete_permission(username, post_username, community_id):
 if not USE_MYSQL:
     init_db()
     ensure_indexes()
+
+# Always ensure missing tables are added for both SQLite and MySQL
+add_missing_tables()
 
 def ensure_admin_member_of_all():
     try:
@@ -12000,6 +12015,42 @@ def migrate_database():
     except Exception as e:
         logger.error(f"Database migration failed: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/migrate_key_posts', methods=['POST'])
+def migrate_key_posts():
+    """Create key_posts table if it doesn't exist - no login required for setup"""
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+
+            # Check if table exists
+            if USE_MYSQL:
+                c.execute("SHOW TABLES LIKE 'key_posts'")
+                table_exists = c.fetchone() is not None
+            else:
+                c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='key_posts'")
+                table_exists = c.fetchone() is not None
+
+            if not table_exists:
+                logger.info("Creating key_posts table...")
+                c.execute('''CREATE TABLE IF NOT EXISTS key_posts
+                             (id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                              username TEXT NOT NULL,
+                              post_id INTEGER NOT NULL,
+                              community_id INTEGER NOT NULL,
+                              created_at TEXT NOT NULL,
+                              FOREIGN KEY (post_id) REFERENCES posts(id),
+                              FOREIGN KEY (username) REFERENCES users(username),
+                              FOREIGN KEY (community_id) REFERENCES communities(id),
+                              UNIQUE(username, post_id))''')
+                conn.commit()
+                logger.info("Created key_posts table successfully")
+                return jsonify({'success': True, 'message': 'Key Posts table created successfully'})
+            else:
+                return jsonify({'success': True, 'message': 'Key Posts table already exists'})
+    except Exception as e:
+        logger.error(f"Error creating key_posts table: {e}")
+        return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/debug_community/<int:community_id>')
 @login_required
