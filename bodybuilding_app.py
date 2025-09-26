@@ -188,7 +188,7 @@ def ensure_password_reset_table(c):
         else:
             c.execute('''CREATE TABLE IF NOT EXISTS password_reset_tokens (
                           id INTEGER PRIMARY KEY AUTOINCREMENT,
-                          username TEXT NOT NULL,
+                          username VARCHAR(191) NOT NULL,
                           email TEXT NOT NULL,
                           token TEXT NOT NULL UNIQUE,
                           created_at TEXT NOT NULL,
@@ -513,8 +513,8 @@ def add_missing_tables():
             # Create messages table
             c.execute('''CREATE TABLE IF NOT EXISTS messages
                          (id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                          sender TEXT NOT NULL,
-                          receiver TEXT NOT NULL,
+                          sender VARCHAR(191) NOT NULL,
+                          receiver VARCHAR(191) NOT NULL,
                           message TEXT NOT NULL,
                           timestamp TEXT NOT NULL,
                           is_read INTEGER DEFAULT 0,
@@ -523,12 +523,12 @@ def add_missing_tables():
             
             # Create api_usage table if it doesn't exist
             c.execute('''CREATE TABLE IF NOT EXISTS api_usage
-                         (username TEXT, date TEXT, count INTEGER,
+                         (username VARCHAR(191), date TEXT, count INTEGER,
                           PRIMARY KEY (username, date))''')
             
             # Create saved_data table if it doesn't exist
             c.execute('''CREATE TABLE IF NOT EXISTS saved_data
-                         (id INTEGER PRIMARY KEY AUTO_INCREMENT, username TEXT, type TEXT, data TEXT, timestamp TEXT)''')
+                         (id INTEGER PRIMARY KEY AUTO_INCREMENT, username VARCHAR(191), type TEXT, data TEXT, timestamp TEXT)''')
 
             # Create key_posts table (user-starred posts within communities)
             c.execute('''CREATE TABLE IF NOT EXISTS key_posts
@@ -544,7 +544,7 @@ def add_missing_tables():
             # Store web push subscriptions
             c.execute('''CREATE TABLE IF NOT EXISTS push_subscriptions
                          (id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                          username TEXT NOT NULL,
+                          username VARCHAR(191) NOT NULL,
                           endpoint TEXT NOT NULL UNIQUE,
                           p256dh TEXT,
                           auth TEXT,
@@ -566,7 +566,7 @@ def add_missing_tables():
                 else:
                     c.execute('''CREATE TABLE IF NOT EXISTS push_send_log (
                                      id INTEGER PRIMARY KEY AUTOINCREMENT,
-                                     username TEXT NOT NULL,
+                                     username VARCHAR(191) NOT NULL,
                                      tag TEXT,
                                      title TEXT,
                                      body TEXT,
@@ -609,7 +609,7 @@ def add_missing_tables():
                 else:
                     c.execute('''CREATE TABLE IF NOT EXISTS recent_post_tokens (
                                      token TEXT PRIMARY KEY,
-                                     username TEXT NOT NULL,
+                                     username VARCHAR(191) NOT NULL,
                                      created_at TEXT DEFAULT (datetime('now'))
                                  )''')
                 conn.commit()
@@ -628,7 +628,7 @@ def add_missing_tables():
                 else:
                     c.execute('''CREATE TABLE IF NOT EXISTS recent_reply_tokens (
                                      token TEXT PRIMARY KEY,
-                                     username TEXT NOT NULL,
+                                     username VARCHAR(191) NOT NULL,
                                      created_at TEXT DEFAULT (datetime('now'))
                                  )''')
                 conn.commit()
@@ -638,7 +638,7 @@ def add_missing_tables():
             # Remember-me tokens for persistent login
             c.execute('''CREATE TABLE IF NOT EXISTS remember_tokens
                          (id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                          username TEXT NOT NULL,
+                          username VARCHAR(191) NOT NULL,
                           token_hash TEXT NOT NULL,
                           created_at TEXT NOT NULL,
                           expires_at TEXT NOT NULL)''')
@@ -819,7 +819,7 @@ def add_missing_tables():
                 if USE_MYSQL:
                     c.execute('''CREATE TABLE IF NOT EXISTS product_posts (
                                     id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                                    username TEXT NOT NULL,
+                                    username VARCHAR(191) NOT NULL,
                                     section VARCHAR(32) NOT NULL,
                                     content TEXT NOT NULL,
                                     created_at TEXT NOT NULL
@@ -827,14 +827,14 @@ def add_missing_tables():
                     c.execute('''CREATE TABLE IF NOT EXISTS product_replies (
                                     id INTEGER PRIMARY KEY AUTO_INCREMENT,
                                     post_id INTEGER NOT NULL,
-                                    username TEXT NOT NULL,
+                                    username VARCHAR(191) NOT NULL,
                                     content TEXT NOT NULL,
                                     created_at TEXT NOT NULL,
                                     FOREIGN KEY (post_id) REFERENCES product_posts(id) ON DELETE CASCADE
                                  )''')
                     c.execute('''CREATE TABLE IF NOT EXISTS product_polls (
                                     id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                                    username TEXT NOT NULL,
+                                    username VARCHAR(191) NOT NULL,
                                     question TEXT NOT NULL,
                                     options_json TEXT NOT NULL,
                                     created_at TEXT NOT NULL
@@ -898,7 +898,7 @@ def add_missing_tables():
                 else:
                     c.execute('''CREATE TABLE IF NOT EXISTS product_posts (
                                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                                    username TEXT NOT NULL,
+                                    username VARCHAR(191) NOT NULL,
                                     section TEXT NOT NULL,
                                     content TEXT NOT NULL,
                                     created_at TEXT NOT NULL
@@ -906,14 +906,14 @@ def add_missing_tables():
                     c.execute('''CREATE TABLE IF NOT EXISTS product_replies (
                                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                                     post_id INTEGER NOT NULL,
-                                    username TEXT NOT NULL,
+                                    username VARCHAR(191) NOT NULL,
                                     content TEXT NOT NULL,
                                     created_at TEXT NOT NULL,
                                     FOREIGN KEY (post_id) REFERENCES product_posts(id) ON DELETE CASCADE
                                  )''')
                     c.execute('''CREATE TABLE IF NOT EXISTS product_polls (
                                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                                    username TEXT NOT NULL,
+                                    username VARCHAR(191) NOT NULL,
                                     question TEXT NOT NULL,
                                     options_json TEXT NOT NULL,
                                     created_at TEXT NOT NULL
@@ -921,7 +921,7 @@ def add_missing_tables():
                     c.execute('''CREATE TABLE IF NOT EXISTS product_poll_votes (
                                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                                     poll_id INTEGER NOT NULL,
-                                    username TEXT NOT NULL,
+                                    username VARCHAR(191) NOT NULL,
                                     option_index INTEGER NOT NULL,
                                     created_at TEXT NOT NULL,
                                     UNIQUE(poll_id, username),
@@ -992,7 +992,7 @@ def add_missing_tables():
                     c.execute('''CREATE TABLE IF NOT EXISTS useful_links (
                                      id INTEGER PRIMARY KEY AUTOINCREMENT,
                                      community_id INTEGER NULL,
-                                     username TEXT NOT NULL,
+                                     username VARCHAR(191) NOT NULL,
                                      url TEXT NOT NULL,
                                      description TEXT,
                                      created_at TEXT DEFAULT (datetime('now'))
@@ -1020,7 +1020,7 @@ def add_missing_tables():
                     c.execute('''CREATE TABLE IF NOT EXISTS useful_docs (
                                      id INTEGER PRIMARY KEY AUTOINCREMENT,
                                      community_id INTEGER NULL,
-                                     username TEXT NOT NULL,
+                                     username VARCHAR(191) NOT NULL,
                                      file_path TEXT NOT NULL,
                                      description TEXT,
                                      created_at TEXT DEFAULT (datetime('now'))
@@ -1047,10 +1047,10 @@ def init_db():
             logger.info("Creating users table...")
             c.execute('''CREATE TABLE IF NOT EXISTS users
                          (id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                          username TEXT UNIQUE NOT NULL, email TEXT UNIQUE, subscription TEXT DEFAULT 'free', 
-                          password TEXT, first_name TEXT, last_name TEXT, age INTEGER, gender TEXT, 
-                          fitness_level TEXT, primary_goal TEXT, weight REAL, height REAL, blood_type TEXT, 
-                          muscle_mass REAL, bmi REAL, nutrition_goal TEXT, nutrition_restrictions TEXT, 
+                          username VARCHAR(191) UNIQUE NOT NULL, email TEXT UNIQUE, subscription TEXT DEFAULT 'free',
+                          password TEXT, first_name TEXT, last_name TEXT, age INTEGER, gender TEXT,
+                          fitness_level TEXT, primary_goal TEXT, weight REAL, height REAL, blood_type TEXT,
+                          muscle_mass REAL, bmi REAL, nutrition_goal TEXT, nutrition_restrictions TEXT,
                           created_at TEXT, is_admin BOOLEAN DEFAULT 0)''')
             
             # Add id column for MySQL compatibility if it doesn't exist
@@ -1168,7 +1168,7 @@ def init_db():
             logger.info("Creating crossfit entries table...")
             c.execute('''CREATE TABLE IF NOT EXISTS crossfit_entries (
                 id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                username TEXT NOT NULL,
+                username VARCHAR(191) NOT NULL,
                 type TEXT NOT NULL,
                 name TEXT NOT NULL,
                 weight REAL,
@@ -1179,7 +1179,7 @@ def init_db():
             )''')
             c.execute('''CREATE TABLE IF NOT EXISTS posts
                          (id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                          username TEXT NOT NULL,
+                          username VARCHAR(191) NOT NULL,
                           content TEXT NOT NULL,
                           image_path TEXT,
                           timestamp TEXT NOT NULL,
@@ -1191,7 +1191,7 @@ def init_db():
             c.execute('''CREATE TABLE IF NOT EXISTS replies
                          (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                           post_id INTEGER NOT NULL,
-                          username TEXT NOT NULL,
+                          username VARCHAR(191) NOT NULL,
                           content TEXT NOT NULL,
                           image_path TEXT,
                           timestamp TEXT NOT NULL,
@@ -1204,7 +1204,7 @@ def init_db():
             c.execute('''CREATE TABLE IF NOT EXISTS reactions
                          (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                           post_id INTEGER NOT NULL,
-                          username TEXT NOT NULL,
+                          username VARCHAR(191) NOT NULL,
                           reaction_type TEXT NOT NULL,
                           FOREIGN KEY (post_id) REFERENCES posts(id),
                           FOREIGN KEY (username) REFERENCES users(username),
@@ -1215,7 +1215,7 @@ def init_db():
             c.execute('''CREATE TABLE IF NOT EXISTS reply_reactions
                          (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                           reply_id INTEGER NOT NULL,
-                          username TEXT NOT NULL,
+                          username VARCHAR(191) NOT NULL,
                           reaction_type TEXT NOT NULL,
                           FOREIGN KEY (reply_id) REFERENCES replies(id),
                           FOREIGN KEY (username) REFERENCES users(username),
@@ -1240,7 +1240,7 @@ def init_db():
                          (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                           name TEXT NOT NULL,
                           type TEXT NOT NULL,
-                          creator_username TEXT NOT NULL,
+                          creator_username VARCHAR(191) NOT NULL,
                           join_code TEXT UNIQUE NOT NULL,
                           created_at TEXT NOT NULL,
                           description TEXT,
@@ -1315,7 +1315,7 @@ def init_db():
                 c.execute('''CREATE TABLE IF NOT EXISTS useful_docs (
                                  id INTEGER PRIMARY KEY AUTO_INCREMENT,
                                  community_id INTEGER NULL,
-                                 username TEXT NOT NULL,
+                                 username VARCHAR(191) NOT NULL,
                                  file_path TEXT NOT NULL,
                                  description TEXT,
                                  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -1325,7 +1325,7 @@ def init_db():
                 c.execute('''CREATE TABLE IF NOT EXISTS useful_docs (
                                  id INTEGER PRIMARY KEY AUTOINCREMENT,
                                  community_id INTEGER NULL,
-                                 username TEXT NOT NULL,
+                                 username VARCHAR(191) NOT NULL,
                                  file_path TEXT NOT NULL,
                                  description TEXT,
                                  created_at TEXT DEFAULT (datetime('now'))
@@ -1347,7 +1347,7 @@ def init_db():
                 c.execute('''CREATE TABLE IF NOT EXISTS useful_links (
                                  id INTEGER PRIMARY KEY AUTOINCREMENT,
                                  community_id INTEGER NULL,
-                                 username TEXT NOT NULL,
+                                 username VARCHAR(191) NOT NULL,
                                  url TEXT NOT NULL,
                                  description TEXT,
                                  created_at TEXT DEFAULT (datetime('now'))
@@ -1367,13 +1367,13 @@ def init_db():
             # Create api_usage table
             logger.info("Creating api_usage table...")
             c.execute('''CREATE TABLE IF NOT EXISTS api_usage
-                         (username TEXT, date TEXT, count INTEGER,
+                         (username VARCHAR(191), date TEXT, count INTEGER,
                           PRIMARY KEY (username, date))''')
             
             # Create saved_data table
             logger.info("Creating saved_data table...")
             c.execute('''CREATE TABLE IF NOT EXISTS saved_data
-                         (id INTEGER PRIMARY KEY AUTO_INCREMENT, username TEXT, type TEXT, data TEXT, timestamp TEXT)''')
+                         (id INTEGER PRIMARY KEY AUTO_INCREMENT, username VARCHAR(191), type TEXT, data TEXT, timestamp TEXT)''')
             
             # Create messages table
             logger.info("Creating messages table...")
@@ -1392,7 +1392,7 @@ def init_db():
             if USE_MYSQL:
                 c.execute('''CREATE TABLE IF NOT EXISTS exercises
                              (id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                              username TEXT NOT NULL,
+                              username VARCHAR(191) NOT NULL,
                               name TEXT NOT NULL,
                               muscle_group TEXT NOT NULL,
                               created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
@@ -1406,7 +1406,7 @@ def init_db():
                              )''')
                 c.execute('''CREATE TABLE IF NOT EXISTS workouts
                              (id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                              username TEXT NOT NULL,
+                              username VARCHAR(191) NOT NULL,
                               name TEXT NOT NULL,
                               date TEXT NOT NULL,
                               created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
@@ -1423,7 +1423,7 @@ def init_db():
             else:
                 c.execute('''CREATE TABLE IF NOT EXISTS exercises
                              (id INTEGER PRIMARY KEY AUTOINCREMENT,
-                              username TEXT NOT NULL,
+                              username VARCHAR(191) NOT NULL,
                               name TEXT NOT NULL,
                               muscle_group TEXT NOT NULL,
                               created_at TEXT DEFAULT (datetime('now'))
@@ -1438,7 +1438,7 @@ def init_db():
                              )''')
                 c.execute('''CREATE TABLE IF NOT EXISTS workouts
                              (id INTEGER PRIMARY KEY AUTOINCREMENT,
-                              username TEXT NOT NULL,
+                              username VARCHAR(191) NOT NULL,
                               name TEXT NOT NULL,
                               date TEXT NOT NULL,
                               created_at TEXT DEFAULT (datetime('now'))
@@ -1511,7 +1511,7 @@ def init_db():
                          (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                           poll_id INTEGER NOT NULL,
                           option_id INTEGER NOT NULL,
-                          username TEXT NOT NULL,
+                          username VARCHAR(191) NOT NULL,
                           voted_at TEXT NOT NULL,
                           FOREIGN KEY (poll_id) REFERENCES polls (id) ON DELETE CASCADE,
                           FOREIGN KEY (option_id) REFERENCES poll_options (id) ON DELETE CASCADE,
@@ -1528,7 +1528,7 @@ def init_db():
                         id INTEGER PRIMARY KEY AUTO_INCREMENT,
                         poll_id INTEGER NOT NULL,
                         option_id INTEGER NOT NULL,
-                        username TEXT NOT NULL,
+                        username VARCHAR(191) NOT NULL,
                         voted_at TEXT NOT NULL,
                         FOREIGN KEY (poll_id) REFERENCES polls (id) ON DELETE CASCADE,
                         FOREIGN KEY (option_id) REFERENCES poll_options (id) ON DELETE CASCADE,
@@ -1565,7 +1565,7 @@ def init_db():
             c.execute('''CREATE TABLE IF NOT EXISTS issue_upvotes
                          (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                           issue_id INTEGER NOT NULL,
-                          username TEXT NOT NULL,
+                          username VARCHAR(191) NOT NULL,
                           upvoted_at TEXT NOT NULL,
                           FOREIGN KEY (issue_id) REFERENCES community_issues (id) ON DELETE CASCADE,
                           FOREIGN KEY (username) REFERENCES users (username),
@@ -1585,7 +1585,7 @@ def init_db():
             else:
                 c.execute('''CREATE TABLE IF NOT EXISTS password_reset_tokens
                              (id INTEGER PRIMARY KEY AUTOINCREMENT,
-                              username TEXT NOT NULL,
+                              username VARCHAR(191) NOT NULL,
                               email TEXT NOT NULL,
                               token TEXT NOT NULL UNIQUE,
                               created_at TEXT NOT NULL,
@@ -1651,7 +1651,7 @@ def init_db():
             # Community visit history table
             c.execute('''CREATE TABLE IF NOT EXISTS community_visit_history
                          (id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                          username TEXT NOT NULL,
+                          username VARCHAR(191) NOT NULL,
                           community_id INTEGER NOT NULL,
                           visit_time TEXT NOT NULL,
                           FOREIGN KEY (username) REFERENCES users (username),
@@ -1671,7 +1671,7 @@ def init_db():
             c.execute('''CREATE TABLE IF NOT EXISTS resource_posts
                          (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                           community_id INTEGER NOT NULL,
-                          username TEXT NOT NULL,
+                          username VARCHAR(191) NOT NULL,
                           title TEXT NOT NULL,
                           content TEXT NOT NULL,
                           category TEXT,
@@ -1688,7 +1688,7 @@ def init_db():
             c.execute('''CREATE TABLE IF NOT EXISTS resource_comments
                          (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                           post_id INTEGER NOT NULL,
-                          username TEXT NOT NULL,
+                          username VARCHAR(191) NOT NULL,
                           content TEXT NOT NULL,
                           created_at TEXT NOT NULL,
                           upvotes INTEGER DEFAULT 0,
@@ -1700,7 +1700,7 @@ def init_db():
                          (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                           post_id INTEGER,
                           comment_id INTEGER,
-                          username TEXT NOT NULL,
+                          username VARCHAR(191) NOT NULL,
                           created_at TEXT NOT NULL,
                           FOREIGN KEY (post_id) REFERENCES resource_posts (id) ON DELETE CASCADE,
                           FOREIGN KEY (comment_id) REFERENCES resource_comments (id) ON DELETE CASCADE,
@@ -1742,7 +1742,7 @@ def init_db():
             c.execute('''CREATE TABLE IF NOT EXISTS club_members
                          (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                           club_id INTEGER NOT NULL,
-                          username TEXT NOT NULL,
+                          username VARCHAR(191) NOT NULL,
                           role TEXT DEFAULT 'member',
                           joined_at TEXT NOT NULL,
                           FOREIGN KEY (club_id) REFERENCES clubs (id) ON DELETE CASCADE,
@@ -1774,7 +1774,7 @@ def init_db():
             c.execute('''CREATE TABLE IF NOT EXISTS community_admins
                          (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                           community_id INTEGER NOT NULL,
-                          username TEXT NOT NULL,
+                          username VARCHAR(191) NOT NULL,
                           appointed_by TEXT NOT NULL,
                           appointed_at TEXT NOT NULL,
                           FOREIGN KEY (community_id) REFERENCES communities (id) ON DELETE CASCADE,
@@ -1840,7 +1840,7 @@ def init_db():
             c.execute('''CREATE TABLE IF NOT EXISTS event_rsvps
                          (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                           event_id INTEGER NOT NULL,
-                          username TEXT NOT NULL,
+                          username VARCHAR(191) NOT NULL,
                           response TEXT NOT NULL CHECK(response IN ('going', 'maybe', 'not_going')),
                           responded_at TEXT NOT NULL,
                           note TEXT,
@@ -1858,7 +1858,7 @@ def init_db():
             c.execute('''CREATE TABLE IF NOT EXISTS event_invitations
                          (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                           event_id INTEGER NOT NULL,
-                          invited_username TEXT NOT NULL,
+                          invited_username VARCHAR(191) NOT NULL,
                           invited_by TEXT NOT NULL,
                           invited_at TEXT NOT NULL,
                           viewed TINYINT(1) DEFAULT 0,
@@ -14140,7 +14140,7 @@ def cf_add_entry():
             c.execute('''
                 CREATE TABLE IF NOT EXISTS crossfit_entries (
                     id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                    username TEXT NOT NULL,
+                    username VARCHAR(191) NOT NULL,
                     type TEXT NOT NULL,
                     name TEXT NOT NULL,
                     weight REAL,
@@ -14206,7 +14206,7 @@ def sync_gym_to_crossfit():
 
             c.execute('''CREATE TABLE IF NOT EXISTS crossfit_entries (
                 id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                username TEXT NOT NULL,
+                username VARCHAR(191) NOT NULL,
                 type TEXT NOT NULL,
                 name TEXT NOT NULL,
                 weight REAL,
@@ -14415,7 +14415,7 @@ def add_exercise():
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS exercises (
                     id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                    username TEXT NOT NULL,
+                    username VARCHAR(191) NOT NULL,
                     name TEXT NOT NULL,
                     muscle_group TEXT NOT NULL
                 )
@@ -14433,7 +14433,7 @@ def add_exercise():
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS workouts (
                     id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                    username TEXT NOT NULL,
+                    username VARCHAR(191) NOT NULL,
                     name TEXT NOT NULL,
                     date TEXT NOT NULL,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -14456,7 +14456,7 @@ def add_exercise():
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS exercises (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    username TEXT NOT NULL,
+                    username VARCHAR(191) NOT NULL,
                     name TEXT NOT NULL,
                     muscle_group TEXT NOT NULL DEFAULT "Other"
                 )
@@ -14474,7 +14474,7 @@ def add_exercise():
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS workouts (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    username TEXT NOT NULL,
+                    username VARCHAR(191) NOT NULL,
                     name TEXT NOT NULL,
                     date TEXT NOT NULL,
                     created_at TEXT DEFAULT (datetime('now'))
@@ -14531,7 +14531,7 @@ def add_exercise():
                     cursor.execute('''
                         CREATE TABLE IF NOT EXISTS crossfit_entries (
                             id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                            username TEXT NOT NULL,
+                            username VARCHAR(191) NOT NULL,
                             type TEXT NOT NULL,
                             name TEXT NOT NULL,
                             weight REAL,
@@ -14549,7 +14549,7 @@ def add_exercise():
                     cursor.execute('''
                         CREATE TABLE IF NOT EXISTS crossfit_entries (
                             id INTEGER PRIMARY KEY AUTOINCREMENT,
-                            username TEXT NOT NULL,
+                            username VARCHAR(191) NOT NULL,
                             type TEXT NOT NULL,
                             name TEXT NOT NULL,
                             weight REAL,
@@ -15185,7 +15185,7 @@ def log_weight_set():
                         cursor.execute('''
                             CREATE TABLE IF NOT EXISTS crossfit_entries (
                                 id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                                username TEXT NOT NULL,
+                                username VARCHAR(191) NOT NULL,
                                 type TEXT NOT NULL,
                                 name TEXT NOT NULL,
                                 weight REAL,
@@ -15203,7 +15203,7 @@ def log_weight_set():
                         cursor.execute('''
                             CREATE TABLE IF NOT EXISTS crossfit_entries (
                                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                                username TEXT NOT NULL,
+                                username VARCHAR(191) NOT NULL,
                                 type TEXT NOT NULL,
                                 name TEXT NOT NULL,
                                 weight REAL,
@@ -16031,7 +16031,7 @@ def create_workout():
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS workouts (
                     id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                    username TEXT NOT NULL,
+                    username VARCHAR(191) NOT NULL,
                     name TEXT NOT NULL,
                     date TEXT NOT NULL,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -16041,7 +16041,7 @@ def create_workout():
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS workouts (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    username TEXT NOT NULL,
+                    username VARCHAR(191) NOT NULL,
                     name TEXT NOT NULL,
                     date TEXT NOT NULL,
                     created_at TEXT DEFAULT (datetime('now'))
@@ -17392,7 +17392,7 @@ def seed_dummy_data():
             # Ensure crossfit_entries table exists
             c.execute('''CREATE TABLE IF NOT EXISTS crossfit_entries (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT NOT NULL,
+                username VARCHAR(191) NOT NULL,
                 type TEXT NOT NULL,
                 name TEXT NOT NULL,
                 weight REAL,
