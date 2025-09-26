@@ -12052,6 +12052,159 @@ def migrate_key_posts():
         logger.error(f"Error creating key_posts table: {e}")
         return jsonify({'success': False, 'error': str(e)})
 
+@app.route('/migrate_username_types', methods=['POST'])
+def migrate_username_types():
+    """Migrate username columns from TEXT to VARCHAR(191) for MySQL compatibility - no login required"""
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+
+            # Check current username column types
+            try:
+                if USE_MYSQL:
+                    # Check users table username type
+                    c.execute("SHOW COLUMNS FROM users WHERE Field='username'")
+                    users_col = c.fetchone()
+                    users_username_type = users_col['Type'] if users_col else None
+
+                    # Check messages table sender type
+                    c.execute("SHOW COLUMNS FROM messages WHERE Field='sender'")
+                    messages_col = c.fetchone()
+                    messages_sender_type = messages_col['Type'] if messages_col else None
+
+                    # Check if key_posts table exists
+                    c.execute("SHOW TABLES LIKE 'key_posts'")
+                    key_posts_exists = c.fetchone() is not None
+
+                    logger.info(f"Current username types - Users: {users_username_type}, Messages sender: {messages_sender_type}, Key Posts exists: {key_posts_exists}")
+
+                    needs_migration = False
+                    if users_username_type and 'text' in users_username_type.lower():
+                        needs_migration = True
+                        logger.info("Found TEXT username in users table, migration needed")
+
+                    if messages_sender_type and 'text' in messages_sender_type.lower():
+                        needs_migration = True
+                        logger.info("Found TEXT username in messages table, migration needed")
+
+                    if needs_migration:
+                        logger.info("Starting username column migration...")
+
+                        # Step 1: Drop key_posts table if it exists (we'll recreate it)
+                        if key_posts_exists:
+                            logger.info("Dropping existing key_posts table...")
+                            c.execute("DROP TABLE key_posts")
+                            logger.info("key_posts table dropped")
+
+                        # Step 2: Drop foreign key constraints temporarily
+                        logger.info("Dropping foreign key constraints...")
+                        try:
+                            c.execute("ALTER TABLE messages DROP FOREIGN KEY messages_ibfk_1")
+                        except:
+                            logger.info("messages_ibfk_1 constraint not found or already dropped")
+
+                        try:
+                            c.execute("ALTER TABLE messages DROP FOREIGN KEY messages_ibfk_2")
+                        except:
+                            logger.info("messages_ibfk_2 constraint not found or already dropped")
+
+                        try:
+                            c.execute("ALTER TABLE password_reset_tokens DROP FOREIGN KEY password_reset_tokens_ibfk_1")
+                        except:
+                            logger.info("password_reset_tokens_ibfk_1 constraint not found or already dropped")
+
+                        # Step 3: Alter username columns to VARCHAR(191)
+                        logger.info("Altering username columns to VARCHAR(191)...")
+
+                        # Alter users table
+                        if users_username_type and 'text' in users_username_type.lower():
+                            c.execute("ALTER TABLE users MODIFY COLUMN username VARCHAR(191) NOT NULL")
+
+                        # Alter messages table
+                        if messages_sender_type and 'text' in messages_sender_type.lower():
+                            c.execute("ALTER TABLE messages MODIFY COLUMN sender VARCHAR(191) NOT NULL")
+                            c.execute("ALTER TABLE messages MODIFY COLUMN receiver VARCHAR(191) NOT NULL")
+
+                        # Alter other tables
+                        c.execute("ALTER TABLE api_usage MODIFY COLUMN username VARCHAR(191)")
+                        c.execute("ALTER TABLE saved_data MODIFY COLUMN username VARCHAR(191)")
+                        c.execute("ALTER TABLE push_subscriptions MODIFY COLUMN username VARCHAR(191) NOT NULL")
+                        c.execute("ALTER TABLE remember_tokens MODIFY COLUMN username VARCHAR(191) NOT NULL")
+                        c.execute("ALTER TABLE password_reset_tokens MODIFY COLUMN username VARCHAR(191) NOT NULL")
+
+                        # Step 4: Recreate foreign key constraints
+                        logger.info("Recreating foreign key constraints...")
+                        c.execute("ALTER TABLE messages ADD CONSTRAINT messages_ibfk_1 FOREIGN KEY (sender) REFERENCES users(username)")
+                        c.execute("ALTER TABLE messages ADD CONSTRAINT messages_ibfk_2 FOREIGN KEY (receiver) REFERENCES users(username)")
+                        c.execute("ALTER TABLE password_reset_tokens ADD CONSTRAINT password_reset_tokens_ibfk_1 FOREIGN KEY (username) REFERENCES users(username)")
+
+                        # Step 5: Recreate key_posts table
+                        logger.info("Recreating key_posts table...")
+                        c.execute('''CREATE TABLE key_posts
+                                     (id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                                      username VARCHAR(191) NOT NULL,
+                                      post_id INTEGER NOT NULL,
+                                      community_id INTEGER NOT NULL,
+                                      created_at TEXT NOT NULL,
+                                      FOREIGN KEY (post_id) REFERENCES posts(id),
+                                      FOREIGN KEY (username) REFERENCES users(username),
+                                      FOREIGN KEY (community_id) REFERENCES communities(id),
+                                      UNIQUE(username, post_id))''')
+
+                        conn.commit()
+                        logger.info("Username column migration completed successfully")
+                        return jsonify({'success': True, 'message': 'Username columns migrated and key_posts table recreated successfully'})
+
+                    else:
+                        # Check if we need to create key_posts table
+                        if not key_posts_exists:
+                            logger.info("Creating key_posts table...")
+                            c.execute('''CREATE TABLE key_posts
+                                         (id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                                          username VARCHAR(191) NOT NULL,
+                                          post_id INTEGER NOT NULL,
+                                          community_id INTEGER NOT NULL,
+                                          created_at TEXT NOT NULL,
+                                          FOREIGN KEY (post_id) REFERENCES posts(id),
+                                          FOREIGN KEY (username) REFERENCES users(username),
+                                          FOREIGN KEY (community_id) REFERENCES communities(id),
+                                          UNIQUE(username, post_id))''')
+                            conn.commit()
+                            logger.info("key_posts table created successfully")
+                            return jsonify({'success': True, 'message': 'Key Posts table created successfully'})
+
+                        return jsonify({'success': True, 'message': 'All username columns are already VARCHAR(191) and tables are properly configured'})
+
+                else:
+                    logger.info("Using SQLite - no migration needed for username types")
+                    # For SQLite, just create key_posts table if it doesn't exist
+                    c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='key_posts'")
+                    if not c.fetchone():
+                        logger.info("Creating key_posts table for SQLite...")
+                        c.execute('''CREATE TABLE key_posts
+                                     (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                      username VARCHAR(191) NOT NULL,
+                                      post_id INTEGER NOT NULL,
+                                      community_id INTEGER NOT NULL,
+                                      created_at TEXT NOT NULL,
+                                      FOREIGN KEY (post_id) REFERENCES posts(id),
+                                      FOREIGN KEY (username) REFERENCES users(username),
+                                      FOREIGN KEY (community_id) REFERENCES communities(id),
+                                      UNIQUE(username, post_id))''')
+                        conn.commit()
+                        logger.info("key_posts table created successfully")
+                        return jsonify({'success': True, 'message': 'Key Posts table created for SQLite'})
+
+                    return jsonify({'success': True, 'message': 'Key Posts table already exists in SQLite'})
+
+            except Exception as inner_e:
+                logger.error(f"Error during username migration: {inner_e}")
+                return jsonify({'success': False, 'error': str(inner_e)})
+
+    except Exception as e:
+        logger.error(f"Error in username migration: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
 @app.route('/debug_community/<int:community_id>')
 @login_required
 def debug_community(community_id):
