@@ -1090,10 +1090,7 @@ def init_db():
                             logger.info("Added role column to user_communities table")
                     except Exception as e:
                         logger.warning(f"Could not add role column: {e}")
-<<<<<<< HEAD
-
-=======
->>>>>>> develop
+                    
                 else:
                     # Table exists, check if it has user_id column
                     c.execute("SHOW COLUMNS FROM user_communities LIKE 'user_id'")
@@ -1104,11 +1101,7 @@ def init_db():
                                      (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                                       user_id INTEGER NOT NULL,
                                       community_id INTEGER NOT NULL,
-<<<<<<< HEAD
-                                      role TEXT DEFAULT 'member',
-=======
                                       role TEXT,
->>>>>>> develop
                                       joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                                       FOREIGN KEY (user_id) REFERENCES users(id),
                                       FOREIGN KEY (community_id) REFERENCES communities(id),
