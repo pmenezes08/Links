@@ -538,7 +538,6 @@ def add_missing_tables():
                           community_id INTEGER NOT NULL,
                           created_at TEXT NOT NULL,
                           FOREIGN KEY (post_id) REFERENCES posts(id),
-                          FOREIGN KEY (username) REFERENCES users(username),
                           FOREIGN KEY (community_id) REFERENCES communities(id),
                           UNIQUE(username, post_id))''')
             # Store web push subscriptions
