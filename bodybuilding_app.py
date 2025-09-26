@@ -188,7 +188,7 @@ def ensure_password_reset_table(c):
         else:
             c.execute('''CREATE TABLE IF NOT EXISTS password_reset_tokens (
                           id INTEGER PRIMARY KEY AUTOINCREMENT,
-                          username TEXT NOT NULL,
+                          username VARCHAR(191) NOT NULL,
                           email TEXT NOT NULL,
                           token TEXT NOT NULL UNIQUE,
                           created_at TEXT NOT NULL,
@@ -513,8 +513,8 @@ def add_missing_tables():
             # Create messages table
             c.execute('''CREATE TABLE IF NOT EXISTS messages
                          (id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                          sender TEXT NOT NULL,
-                          receiver TEXT NOT NULL,
+                          sender VARCHAR(191) NOT NULL,
+                          receiver VARCHAR(191) NOT NULL,
                           message TEXT NOT NULL,
                           timestamp TEXT NOT NULL,
                           is_read INTEGER DEFAULT 0,
@@ -523,16 +523,27 @@ def add_missing_tables():
             
             # Create api_usage table if it doesn't exist
             c.execute('''CREATE TABLE IF NOT EXISTS api_usage
-                         (username TEXT, date TEXT, count INTEGER,
+                         (username VARCHAR(191), date TEXT, count INTEGER,
                           PRIMARY KEY (username, date))''')
             
             # Create saved_data table if it doesn't exist
             c.execute('''CREATE TABLE IF NOT EXISTS saved_data
-                         (id INTEGER PRIMARY KEY AUTO_INCREMENT, username TEXT, type TEXT, data TEXT, timestamp TEXT)''')
+                         (id INTEGER PRIMARY KEY AUTO_INCREMENT, username VARCHAR(191), type TEXT, data TEXT, timestamp TEXT)''')
+
+            # Create key_posts table (user-starred posts within communities)
+            c.execute('''CREATE TABLE IF NOT EXISTS key_posts
+                         (id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                          username VARCHAR(191) NOT NULL,
+                          post_id INTEGER NOT NULL,
+                          community_id INTEGER NOT NULL,
+                          created_at TEXT NOT NULL,
+                          FOREIGN KEY (post_id) REFERENCES posts(id),
+                          FOREIGN KEY (community_id) REFERENCES communities(id),
+                          UNIQUE(username, post_id))''')
             # Store web push subscriptions
             c.execute('''CREATE TABLE IF NOT EXISTS push_subscriptions
                          (id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                          username TEXT NOT NULL,
+                          username VARCHAR(191) NOT NULL,
                           endpoint TEXT NOT NULL UNIQUE,
                           p256dh TEXT,
                           auth TEXT,
@@ -554,7 +565,7 @@ def add_missing_tables():
                 else:
                     c.execute('''CREATE TABLE IF NOT EXISTS push_send_log (
                                      id INTEGER PRIMARY KEY AUTOINCREMENT,
-                                     username TEXT NOT NULL,
+                                     username VARCHAR(191) NOT NULL,
                                      tag TEXT,
                                      title TEXT,
                                      body TEXT,
@@ -597,7 +608,7 @@ def add_missing_tables():
                 else:
                     c.execute('''CREATE TABLE IF NOT EXISTS recent_post_tokens (
                                      token TEXT PRIMARY KEY,
-                                     username TEXT NOT NULL,
+                                     username VARCHAR(191) NOT NULL,
                                      created_at TEXT DEFAULT (datetime('now'))
                                  )''')
                 conn.commit()
@@ -616,7 +627,7 @@ def add_missing_tables():
                 else:
                     c.execute('''CREATE TABLE IF NOT EXISTS recent_reply_tokens (
                                      token TEXT PRIMARY KEY,
-                                     username TEXT NOT NULL,
+                                     username VARCHAR(191) NOT NULL,
                                      created_at TEXT DEFAULT (datetime('now'))
                                  )''')
                 conn.commit()
@@ -626,7 +637,7 @@ def add_missing_tables():
             # Remember-me tokens for persistent login
             c.execute('''CREATE TABLE IF NOT EXISTS remember_tokens
                          (id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                          username TEXT NOT NULL,
+                          username VARCHAR(191) NOT NULL,
                           token_hash TEXT NOT NULL,
                           created_at TEXT NOT NULL,
                           expires_at TEXT NOT NULL)''')
@@ -807,7 +818,7 @@ def add_missing_tables():
                 if USE_MYSQL:
                     c.execute('''CREATE TABLE IF NOT EXISTS product_posts (
                                     id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                                    username TEXT NOT NULL,
+                                    username VARCHAR(191) NOT NULL,
                                     section VARCHAR(32) NOT NULL,
                                     content TEXT NOT NULL,
                                     created_at TEXT NOT NULL
@@ -815,14 +826,14 @@ def add_missing_tables():
                     c.execute('''CREATE TABLE IF NOT EXISTS product_replies (
                                     id INTEGER PRIMARY KEY AUTO_INCREMENT,
                                     post_id INTEGER NOT NULL,
-                                    username TEXT NOT NULL,
+                                    username VARCHAR(191) NOT NULL,
                                     content TEXT NOT NULL,
                                     created_at TEXT NOT NULL,
                                     FOREIGN KEY (post_id) REFERENCES product_posts(id) ON DELETE CASCADE
                                  )''')
                     c.execute('''CREATE TABLE IF NOT EXISTS product_polls (
                                     id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                                    username TEXT NOT NULL,
+                                    username VARCHAR(191) NOT NULL,
                                     question TEXT NOT NULL,
                                     options_json TEXT NOT NULL,
                                     created_at TEXT NOT NULL
@@ -886,7 +897,7 @@ def add_missing_tables():
                 else:
                     c.execute('''CREATE TABLE IF NOT EXISTS product_posts (
                                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                                    username TEXT NOT NULL,
+                                    username VARCHAR(191) NOT NULL,
                                     section TEXT NOT NULL,
                                     content TEXT NOT NULL,
                                     created_at TEXT NOT NULL
@@ -894,14 +905,14 @@ def add_missing_tables():
                     c.execute('''CREATE TABLE IF NOT EXISTS product_replies (
                                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                                     post_id INTEGER NOT NULL,
-                                    username TEXT NOT NULL,
+                                    username VARCHAR(191) NOT NULL,
                                     content TEXT NOT NULL,
                                     created_at TEXT NOT NULL,
                                     FOREIGN KEY (post_id) REFERENCES product_posts(id) ON DELETE CASCADE
                                  )''')
                     c.execute('''CREATE TABLE IF NOT EXISTS product_polls (
                                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                                    username TEXT NOT NULL,
+                                    username VARCHAR(191) NOT NULL,
                                     question TEXT NOT NULL,
                                     options_json TEXT NOT NULL,
                                     created_at TEXT NOT NULL
@@ -909,7 +920,7 @@ def add_missing_tables():
                     c.execute('''CREATE TABLE IF NOT EXISTS product_poll_votes (
                                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                                     poll_id INTEGER NOT NULL,
-                                    username TEXT NOT NULL,
+                                    username VARCHAR(191) NOT NULL,
                                     option_index INTEGER NOT NULL,
                                     created_at TEXT NOT NULL,
                                     UNIQUE(poll_id, username),
@@ -980,7 +991,7 @@ def add_missing_tables():
                     c.execute('''CREATE TABLE IF NOT EXISTS useful_links (
                                      id INTEGER PRIMARY KEY AUTOINCREMENT,
                                      community_id INTEGER NULL,
-                                     username TEXT NOT NULL,
+                                     username VARCHAR(191) NOT NULL,
                                      url TEXT NOT NULL,
                                      description TEXT,
                                      created_at TEXT DEFAULT (datetime('now'))
@@ -1008,7 +1019,7 @@ def add_missing_tables():
                     c.execute('''CREATE TABLE IF NOT EXISTS useful_docs (
                                      id INTEGER PRIMARY KEY AUTOINCREMENT,
                                      community_id INTEGER NULL,
-                                     username TEXT NOT NULL,
+                                     username VARCHAR(191) NOT NULL,
                                      file_path TEXT NOT NULL,
                                      description TEXT,
                                      created_at TEXT DEFAULT (datetime('now'))
@@ -1035,10 +1046,10 @@ def init_db():
             logger.info("Creating users table...")
             c.execute('''CREATE TABLE IF NOT EXISTS users
                          (id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                          username TEXT UNIQUE NOT NULL, email TEXT UNIQUE, subscription TEXT DEFAULT 'free', 
-                          password TEXT, first_name TEXT, last_name TEXT, age INTEGER, gender TEXT, 
-                          fitness_level TEXT, primary_goal TEXT, weight REAL, height REAL, blood_type TEXT, 
-                          muscle_mass REAL, bmi REAL, nutrition_goal TEXT, nutrition_restrictions TEXT, 
+                          username VARCHAR(191) UNIQUE NOT NULL, email TEXT UNIQUE, subscription TEXT DEFAULT 'free',
+                          password TEXT, first_name TEXT, last_name TEXT, age INTEGER, gender TEXT,
+                          fitness_level TEXT, primary_goal TEXT, weight REAL, height REAL, blood_type TEXT,
+                          muscle_mass REAL, bmi REAL, nutrition_goal TEXT, nutrition_restrictions TEXT,
                           created_at TEXT, is_admin BOOLEAN DEFAULT 0)''')
             
             # Add id column for MySQL compatibility if it doesn't exist
@@ -1059,7 +1070,7 @@ def init_db():
                                  (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                                   user_id INTEGER NOT NULL,
                                   community_id INTEGER NOT NULL,
-                                  role TEXT DEFAULT 'member',
+                                  role TEXT,
                                   joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                                   FOREIGN KEY (user_id) REFERENCES users(id),
                                   FOREIGN KEY (community_id) REFERENCES communities(id),
@@ -1079,7 +1090,10 @@ def init_db():
                             logger.info("Added role column to user_communities table")
                     except Exception as e:
                         logger.warning(f"Could not add role column: {e}")
+<<<<<<< HEAD
 
+=======
+>>>>>>> develop
                 else:
                     # Table exists, check if it has user_id column
                     c.execute("SHOW COLUMNS FROM user_communities LIKE 'user_id'")
@@ -1090,7 +1104,11 @@ def init_db():
                                      (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                                       user_id INTEGER NOT NULL,
                                       community_id INTEGER NOT NULL,
+<<<<<<< HEAD
                                       role TEXT DEFAULT 'member',
+=======
+                                      role TEXT,
+>>>>>>> develop
                                       joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                                       FOREIGN KEY (user_id) REFERENCES users(id),
                                       FOREIGN KEY (community_id) REFERENCES communities(id),
@@ -1157,7 +1175,7 @@ def init_db():
             logger.info("Creating crossfit entries table...")
             c.execute('''CREATE TABLE IF NOT EXISTS crossfit_entries (
                 id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                username TEXT NOT NULL,
+                username VARCHAR(191) NOT NULL,
                 type TEXT NOT NULL,
                 name TEXT NOT NULL,
                 weight REAL,
@@ -1168,7 +1186,7 @@ def init_db():
             )''')
             c.execute('''CREATE TABLE IF NOT EXISTS posts
                          (id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                          username TEXT NOT NULL,
+                          username VARCHAR(191) NOT NULL,
                           content TEXT NOT NULL,
                           image_path TEXT,
                           timestamp TEXT NOT NULL,
@@ -1180,7 +1198,7 @@ def init_db():
             c.execute('''CREATE TABLE IF NOT EXISTS replies
                          (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                           post_id INTEGER NOT NULL,
-                          username TEXT NOT NULL,
+                          username VARCHAR(191) NOT NULL,
                           content TEXT NOT NULL,
                           image_path TEXT,
                           timestamp TEXT NOT NULL,
@@ -1193,7 +1211,7 @@ def init_db():
             c.execute('''CREATE TABLE IF NOT EXISTS reactions
                          (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                           post_id INTEGER NOT NULL,
-                          username TEXT NOT NULL,
+                          username VARCHAR(191) NOT NULL,
                           reaction_type TEXT NOT NULL,
                           FOREIGN KEY (post_id) REFERENCES posts(id),
                           FOREIGN KEY (username) REFERENCES users(username),
@@ -1204,11 +1222,23 @@ def init_db():
             c.execute('''CREATE TABLE IF NOT EXISTS reply_reactions
                          (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                           reply_id INTEGER NOT NULL,
-                          username TEXT NOT NULL,
+                          username VARCHAR(191) NOT NULL,
                           reaction_type TEXT NOT NULL,
                           FOREIGN KEY (reply_id) REFERENCES replies(id),
                           FOREIGN KEY (username) REFERENCES users(username),
                           UNIQUE(reply_id, username))''')
+
+            # Create key_posts table (user-starred posts within communities)
+            logger.info("Creating key_posts table...")
+            c.execute('''CREATE TABLE IF NOT EXISTS key_posts
+                         (id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                          username VARCHAR(191) NOT NULL,
+                          post_id INTEGER NOT NULL,
+                          community_id INTEGER NOT NULL,
+                          created_at TEXT NOT NULL,
+                          FOREIGN KEY (post_id) REFERENCES posts(id),
+                          FOREIGN KEY (community_id) REFERENCES communities(id),
+                          UNIQUE(username, post_id))''')
 
             # Create communities table
             logger.info("Creating communities table...")
@@ -1216,7 +1246,7 @@ def init_db():
                          (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                           name TEXT NOT NULL,
                           type TEXT NOT NULL,
-                          creator_username TEXT NOT NULL,
+                          creator_username VARCHAR(191) NOT NULL,
                           join_code TEXT UNIQUE NOT NULL,
                           created_at TEXT NOT NULL,
                           description TEXT,
@@ -1239,7 +1269,7 @@ def init_db():
                          (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                           user_id INTEGER NOT NULL,
                           community_id INTEGER NOT NULL,
-                          role TEXT DEFAULT 'member',
+                          role TEXT,
                           joined_at TEXT NOT NULL,
                           FOREIGN KEY (user_id) REFERENCES users(id),
                           FOREIGN KEY (community_id) REFERENCES communities(id),
@@ -1258,14 +1288,7 @@ def init_db():
             except Exception as e:
                 logger.warning(f"Could not add role column: {e}")
 
-            # Force add role column with explicit error handling
-            try:
-                c.execute("ALTER TABLE user_communities ADD COLUMN role TEXT")
-                c.execute("UPDATE user_communities SET role = 'member' WHERE role IS NULL")
-                logger.info("Force added role column to user_communities table")
-            except Exception as e:
-                logger.info(f"Role column already exists or couldn't be added: {e}")
-
+            
             # Create community_files table
             logger.info("Creating community_files table...")
             c.execute('''CREATE TABLE IF NOT EXISTS community_files
@@ -1313,7 +1336,7 @@ def init_db():
                 c.execute('''CREATE TABLE IF NOT EXISTS useful_docs (
                                  id INTEGER PRIMARY KEY AUTO_INCREMENT,
                                  community_id INTEGER NULL,
-                                 username TEXT NOT NULL,
+                                 username VARCHAR(191) NOT NULL,
                                  file_path TEXT NOT NULL,
                                  description TEXT,
                                  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -1323,7 +1346,7 @@ def init_db():
                 c.execute('''CREATE TABLE IF NOT EXISTS useful_docs (
                                  id INTEGER PRIMARY KEY AUTOINCREMENT,
                                  community_id INTEGER NULL,
-                                 username TEXT NOT NULL,
+                                 username VARCHAR(191) NOT NULL,
                                  file_path TEXT NOT NULL,
                                  description TEXT,
                                  created_at TEXT DEFAULT (datetime('now'))
@@ -1345,7 +1368,7 @@ def init_db():
                 c.execute('''CREATE TABLE IF NOT EXISTS useful_links (
                                  id INTEGER PRIMARY KEY AUTOINCREMENT,
                                  community_id INTEGER NULL,
-                                 username TEXT NOT NULL,
+                                 username VARCHAR(191) NOT NULL,
                                  url TEXT NOT NULL,
                                  description TEXT,
                                  created_at TEXT DEFAULT (datetime('now'))
@@ -1365,13 +1388,13 @@ def init_db():
             # Create api_usage table
             logger.info("Creating api_usage table...")
             c.execute('''CREATE TABLE IF NOT EXISTS api_usage
-                         (username TEXT, date TEXT, count INTEGER,
+                         (username VARCHAR(191), date TEXT, count INTEGER,
                           PRIMARY KEY (username, date))''')
             
             # Create saved_data table
             logger.info("Creating saved_data table...")
             c.execute('''CREATE TABLE IF NOT EXISTS saved_data
-                         (id INTEGER PRIMARY KEY AUTO_INCREMENT, username TEXT, type TEXT, data TEXT, timestamp TEXT)''')
+                         (id INTEGER PRIMARY KEY AUTO_INCREMENT, username VARCHAR(191), type TEXT, data TEXT, timestamp TEXT)''')
             
             # Create messages table
             logger.info("Creating messages table...")
@@ -1390,7 +1413,7 @@ def init_db():
             if USE_MYSQL:
                 c.execute('''CREATE TABLE IF NOT EXISTS exercises
                              (id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                              username TEXT NOT NULL,
+                              username VARCHAR(191) NOT NULL,
                               name TEXT NOT NULL,
                               muscle_group TEXT NOT NULL,
                               created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
@@ -1404,7 +1427,7 @@ def init_db():
                              )''')
                 c.execute('''CREATE TABLE IF NOT EXISTS workouts
                              (id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                              username TEXT NOT NULL,
+                              username VARCHAR(191) NOT NULL,
                               name TEXT NOT NULL,
                               date TEXT NOT NULL,
                               created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
@@ -1421,7 +1444,7 @@ def init_db():
             else:
                 c.execute('''CREATE TABLE IF NOT EXISTS exercises
                              (id INTEGER PRIMARY KEY AUTOINCREMENT,
-                              username TEXT NOT NULL,
+                              username VARCHAR(191) NOT NULL,
                               name TEXT NOT NULL,
                               muscle_group TEXT NOT NULL,
                               created_at TEXT DEFAULT (datetime('now'))
@@ -1436,7 +1459,7 @@ def init_db():
                              )''')
                 c.execute('''CREATE TABLE IF NOT EXISTS workouts
                              (id INTEGER PRIMARY KEY AUTOINCREMENT,
-                              username TEXT NOT NULL,
+                              username VARCHAR(191) NOT NULL,
                               name TEXT NOT NULL,
                               date TEXT NOT NULL,
                               created_at TEXT DEFAULT (datetime('now'))
@@ -1509,7 +1532,7 @@ def init_db():
                          (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                           poll_id INTEGER NOT NULL,
                           option_id INTEGER NOT NULL,
-                          username TEXT NOT NULL,
+                          username VARCHAR(191) NOT NULL,
                           voted_at TEXT NOT NULL,
                           FOREIGN KEY (poll_id) REFERENCES polls (id) ON DELETE CASCADE,
                           FOREIGN KEY (option_id) REFERENCES poll_options (id) ON DELETE CASCADE,
@@ -1526,7 +1549,7 @@ def init_db():
                         id INTEGER PRIMARY KEY AUTO_INCREMENT,
                         poll_id INTEGER NOT NULL,
                         option_id INTEGER NOT NULL,
-                        username TEXT NOT NULL,
+                        username VARCHAR(191) NOT NULL,
                         voted_at TEXT NOT NULL,
                         FOREIGN KEY (poll_id) REFERENCES polls (id) ON DELETE CASCADE,
                         FOREIGN KEY (option_id) REFERENCES poll_options (id) ON DELETE CASCADE,
@@ -1563,7 +1586,7 @@ def init_db():
             c.execute('''CREATE TABLE IF NOT EXISTS issue_upvotes
                          (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                           issue_id INTEGER NOT NULL,
-                          username TEXT NOT NULL,
+                          username VARCHAR(191) NOT NULL,
                           upvoted_at TEXT NOT NULL,
                           FOREIGN KEY (issue_id) REFERENCES community_issues (id) ON DELETE CASCADE,
                           FOREIGN KEY (username) REFERENCES users (username),
@@ -1583,7 +1606,7 @@ def init_db():
             else:
                 c.execute('''CREATE TABLE IF NOT EXISTS password_reset_tokens
                              (id INTEGER PRIMARY KEY AUTOINCREMENT,
-                              username TEXT NOT NULL,
+                              username VARCHAR(191) NOT NULL,
                               email TEXT NOT NULL,
                               token TEXT NOT NULL UNIQUE,
                               created_at TEXT NOT NULL,
@@ -1649,7 +1672,7 @@ def init_db():
             # Community visit history table
             c.execute('''CREATE TABLE IF NOT EXISTS community_visit_history
                          (id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                          username TEXT NOT NULL,
+                          username VARCHAR(191) NOT NULL,
                           community_id INTEGER NOT NULL,
                           visit_time TEXT NOT NULL,
                           FOREIGN KEY (username) REFERENCES users (username),
@@ -1669,7 +1692,7 @@ def init_db():
             c.execute('''CREATE TABLE IF NOT EXISTS resource_posts
                          (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                           community_id INTEGER NOT NULL,
-                          username TEXT NOT NULL,
+                          username VARCHAR(191) NOT NULL,
                           title TEXT NOT NULL,
                           content TEXT NOT NULL,
                           category TEXT,
@@ -1686,7 +1709,7 @@ def init_db():
             c.execute('''CREATE TABLE IF NOT EXISTS resource_comments
                          (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                           post_id INTEGER NOT NULL,
-                          username TEXT NOT NULL,
+                          username VARCHAR(191) NOT NULL,
                           content TEXT NOT NULL,
                           created_at TEXT NOT NULL,
                           upvotes INTEGER DEFAULT 0,
@@ -1698,7 +1721,7 @@ def init_db():
                          (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                           post_id INTEGER,
                           comment_id INTEGER,
-                          username TEXT NOT NULL,
+                          username VARCHAR(191) NOT NULL,
                           created_at TEXT NOT NULL,
                           FOREIGN KEY (post_id) REFERENCES resource_posts (id) ON DELETE CASCADE,
                           FOREIGN KEY (comment_id) REFERENCES resource_comments (id) ON DELETE CASCADE,
@@ -1740,7 +1763,7 @@ def init_db():
             c.execute('''CREATE TABLE IF NOT EXISTS club_members
                          (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                           club_id INTEGER NOT NULL,
-                          username TEXT NOT NULL,
+                          username VARCHAR(191) NOT NULL,
                           role TEXT DEFAULT 'member',
                           joined_at TEXT NOT NULL,
                           FOREIGN KEY (club_id) REFERENCES clubs (id) ON DELETE CASCADE,
@@ -1772,7 +1795,7 @@ def init_db():
             c.execute('''CREATE TABLE IF NOT EXISTS community_admins
                          (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                           community_id INTEGER NOT NULL,
-                          username TEXT NOT NULL,
+                          username VARCHAR(191) NOT NULL,
                           appointed_by TEXT NOT NULL,
                           appointed_at TEXT NOT NULL,
                           FOREIGN KEY (community_id) REFERENCES communities (id) ON DELETE CASCADE,
@@ -1838,7 +1861,7 @@ def init_db():
             c.execute('''CREATE TABLE IF NOT EXISTS event_rsvps
                          (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                           event_id INTEGER NOT NULL,
-                          username TEXT NOT NULL,
+                          username VARCHAR(191) NOT NULL,
                           response TEXT NOT NULL CHECK(response IN ('going', 'maybe', 'not_going')),
                           responded_at TEXT NOT NULL,
                           note TEXT,
@@ -1856,7 +1879,7 @@ def init_db():
             c.execute('''CREATE TABLE IF NOT EXISTS event_invitations
                          (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                           event_id INTEGER NOT NULL,
-                          invited_username TEXT NOT NULL,
+                          invited_username VARCHAR(191) NOT NULL,
                           invited_by TEXT NOT NULL,
                           invited_at TEXT NOT NULL,
                           viewed TINYINT(1) DEFAULT 0,
@@ -1948,6 +1971,9 @@ def has_post_delete_permission(username, post_username, community_id):
 if not USE_MYSQL:
     init_db()
     ensure_indexes()
+
+# Always ensure missing tables are added for both SQLite and MySQL
+add_missing_tables()
 
 def ensure_admin_member_of_all():
     try:
@@ -12495,6 +12521,195 @@ def migrate_database():
         logger.error(f"Database migration failed: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@app.route('/migrate_key_posts', methods=['POST'])
+def migrate_key_posts():
+    """Create key_posts table if it doesn't exist - no login required for setup"""
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+
+            # Check if table exists
+            if USE_MYSQL:
+                c.execute("SHOW TABLES LIKE 'key_posts'")
+                table_exists = c.fetchone() is not None
+            else:
+                c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='key_posts'")
+                table_exists = c.fetchone() is not None
+
+            if not table_exists:
+                logger.info("Creating key_posts table...")
+                c.execute('''CREATE TABLE IF NOT EXISTS key_posts
+                             (id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                              username VARCHAR(191) NOT NULL,
+                              post_id INTEGER NOT NULL,
+                              community_id INTEGER NOT NULL,
+                              created_at TEXT NOT NULL,
+                              FOREIGN KEY (post_id) REFERENCES posts(id),
+                              FOREIGN KEY (username) REFERENCES users(username),
+                              FOREIGN KEY (community_id) REFERENCES communities(id),
+                              UNIQUE(username, post_id))''')
+                conn.commit()
+                logger.info("Created key_posts table successfully")
+                return jsonify({'success': True, 'message': 'Key Posts table created successfully'})
+            else:
+                return jsonify({'success': True, 'message': 'Key Posts table already exists'})
+    except Exception as e:
+        logger.error(f"Error creating key_posts table: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/migrate_username_types', methods=['POST'])
+def migrate_username_types():
+    """Migrate username columns from TEXT to VARCHAR(191) for MySQL compatibility - no login required"""
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+
+            # Check current username column types
+            try:
+                if USE_MYSQL:
+                    # Check users table username type
+                    c.execute("SHOW COLUMNS FROM users WHERE Field='username'")
+                    users_col = c.fetchone()
+                    users_username_type = users_col['Type'] if users_col else None
+
+                    # Check messages table sender type
+                    c.execute("SHOW COLUMNS FROM messages WHERE Field='sender'")
+                    messages_col = c.fetchone()
+                    messages_sender_type = messages_col['Type'] if messages_col else None
+
+                    # Check if key_posts table exists
+                    c.execute("SHOW TABLES LIKE 'key_posts'")
+                    key_posts_exists = c.fetchone() is not None
+
+                    logger.info(f"Current username types - Users: {users_username_type}, Messages sender: {messages_sender_type}, Key Posts exists: {key_posts_exists}")
+
+                    needs_migration = False
+                    if users_username_type and 'text' in users_username_type.lower():
+                        needs_migration = True
+                        logger.info("Found TEXT username in users table, migration needed")
+
+                    if messages_sender_type and 'text' in messages_sender_type.lower():
+                        needs_migration = True
+                        logger.info("Found TEXT username in messages table, migration needed")
+
+                    if needs_migration:
+                        logger.info("Starting username column migration...")
+
+                        # Step 1: Drop key_posts table if it exists (we'll recreate it)
+                        if key_posts_exists:
+                            logger.info("Dropping existing key_posts table...")
+                            c.execute("DROP TABLE key_posts")
+                            logger.info("key_posts table dropped")
+
+                        # Step 2: Drop foreign key constraints temporarily
+                        logger.info("Dropping foreign key constraints...")
+                        try:
+                            c.execute("ALTER TABLE messages DROP FOREIGN KEY messages_ibfk_1")
+                        except:
+                            logger.info("messages_ibfk_1 constraint not found or already dropped")
+
+                        try:
+                            c.execute("ALTER TABLE messages DROP FOREIGN KEY messages_ibfk_2")
+                        except:
+                            logger.info("messages_ibfk_2 constraint not found or already dropped")
+
+                        try:
+                            c.execute("ALTER TABLE password_reset_tokens DROP FOREIGN KEY password_reset_tokens_ibfk_1")
+                        except:
+                            logger.info("password_reset_tokens_ibfk_1 constraint not found or already dropped")
+
+                        # Step 3: Alter username columns to VARCHAR(191)
+                        logger.info("Altering username columns to VARCHAR(191)...")
+
+                        # Alter users table
+                        if users_username_type and 'text' in users_username_type.lower():
+                            c.execute("ALTER TABLE users MODIFY COLUMN username VARCHAR(191) NOT NULL")
+
+                        # Alter messages table
+                        if messages_sender_type and 'text' in messages_sender_type.lower():
+                            c.execute("ALTER TABLE messages MODIFY COLUMN sender VARCHAR(191) NOT NULL")
+                            c.execute("ALTER TABLE messages MODIFY COLUMN receiver VARCHAR(191) NOT NULL")
+
+                        # Alter other tables
+                        c.execute("ALTER TABLE api_usage MODIFY COLUMN username VARCHAR(191)")
+                        c.execute("ALTER TABLE saved_data MODIFY COLUMN username VARCHAR(191)")
+                        c.execute("ALTER TABLE push_subscriptions MODIFY COLUMN username VARCHAR(191) NOT NULL")
+                        c.execute("ALTER TABLE remember_tokens MODIFY COLUMN username VARCHAR(191) NOT NULL")
+                        c.execute("ALTER TABLE password_reset_tokens MODIFY COLUMN username VARCHAR(191) NOT NULL")
+
+                        # Step 4: Recreate foreign key constraints
+                        logger.info("Recreating foreign key constraints...")
+                        c.execute("ALTER TABLE messages ADD CONSTRAINT messages_ibfk_1 FOREIGN KEY (sender) REFERENCES users(username)")
+                        c.execute("ALTER TABLE messages ADD CONSTRAINT messages_ibfk_2 FOREIGN KEY (receiver) REFERENCES users(username)")
+                        c.execute("ALTER TABLE password_reset_tokens ADD CONSTRAINT password_reset_tokens_ibfk_1 FOREIGN KEY (username) REFERENCES users(username)")
+
+                        # Step 5: Recreate key_posts table
+                        logger.info("Recreating key_posts table...")
+                        c.execute('''CREATE TABLE key_posts
+                                     (id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                                      username VARCHAR(191) NOT NULL,
+                                      post_id INTEGER NOT NULL,
+                                      community_id INTEGER NOT NULL,
+                                      created_at TEXT NOT NULL,
+                                      FOREIGN KEY (post_id) REFERENCES posts(id),
+                                      FOREIGN KEY (username) REFERENCES users(username),
+                                      FOREIGN KEY (community_id) REFERENCES communities(id),
+                                      UNIQUE(username, post_id))''')
+
+                        conn.commit()
+                        logger.info("Username column migration completed successfully")
+                        return jsonify({'success': True, 'message': 'Username columns migrated and key_posts table recreated successfully'})
+
+                    else:
+                        # Check if we need to create key_posts table
+                        if not key_posts_exists:
+                            logger.info("Creating key_posts table...")
+                            c.execute('''CREATE TABLE key_posts
+                                         (id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                                          username VARCHAR(191) NOT NULL,
+                                          post_id INTEGER NOT NULL,
+                                          community_id INTEGER NOT NULL,
+                                          created_at TEXT NOT NULL,
+                                          FOREIGN KEY (post_id) REFERENCES posts(id),
+                                          FOREIGN KEY (username) REFERENCES users(username),
+                                          FOREIGN KEY (community_id) REFERENCES communities(id),
+                                          UNIQUE(username, post_id))''')
+                            conn.commit()
+                            logger.info("key_posts table created successfully")
+                            return jsonify({'success': True, 'message': 'Key Posts table created successfully'})
+
+                        return jsonify({'success': True, 'message': 'All username columns are already VARCHAR(191) and tables are properly configured'})
+
+                else:
+                    logger.info("Using SQLite - no migration needed for username types")
+                    # For SQLite, just create key_posts table if it doesn't exist
+                    c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='key_posts'")
+                    if not c.fetchone():
+                        logger.info("Creating key_posts table for SQLite...")
+                        c.execute('''CREATE TABLE key_posts
+                                     (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                      username VARCHAR(191) NOT NULL,
+                                      post_id INTEGER NOT NULL,
+                                      community_id INTEGER NOT NULL,
+                                      created_at TEXT NOT NULL,
+                                      FOREIGN KEY (post_id) REFERENCES posts(id),
+                                      FOREIGN KEY (username) REFERENCES users(username),
+                                      FOREIGN KEY (community_id) REFERENCES communities(id),
+                                      UNIQUE(username, post_id))''')
+                        conn.commit()
+                        logger.info("key_posts table created successfully")
+                        return jsonify({'success': True, 'message': 'Key Posts table created for SQLite'})
+
+                    return jsonify({'success': True, 'message': 'Key Posts table already exists in SQLite'})
+
+            except Exception as inner_e:
+                logger.error(f"Error during username migration: {inner_e}")
+                return jsonify({'success': False, 'error': str(inner_e)})
+
+    except Exception as e:
+        logger.error(f"Error in username migration: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
 @app.route('/debug_community/<int:community_id>')
 @login_required
 def debug_community(community_id):
@@ -13061,6 +13276,13 @@ def api_community_feed(community_id):
                 r = c.fetchone()
                 post['user_reaction'] = r['reaction_type'] if r else None
 
+                # Is starred by current user
+                try:
+                    c.execute("SELECT 1 FROM key_posts WHERE post_id = ? AND username = ?", (post_id, username))
+                    post['is_starred'] = True if c.fetchone() else False
+                except Exception:
+                    post['is_starred'] = False
+
                 # Active poll on this post (if any)
                 c.execute("SELECT * FROM polls WHERE post_id = ? AND is_active = 1", (post_id,))
                 poll_raw = c.fetchone()
@@ -13126,6 +13348,83 @@ def api_community_feed(community_id):
     except Exception as e:
         logger.error(f"Error in api_community_feed for {community_id}: {e}")
         return jsonify({'success': False, 'error': 'Server error'}), 500
+
+# Toggle key post (star/unstar)
+@app.route('/api/toggle_key_post', methods=['POST'])
+@login_required
+def api_toggle_key_post():
+    try:
+        username = session.get('username')
+        post_id = request.form.get('post_id', type=int)
+        if not post_id:
+            return jsonify({'success': False, 'error': 'post_id required'}), 400
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            # Determine community_id from post
+            c.execute("SELECT community_id FROM posts WHERE id = ?", (post_id,))
+            row = c.fetchone()
+            if not row:
+                return jsonify({'success': False, 'error': 'Post not found'}), 404
+            community_id = row['community_id'] if hasattr(row, 'keys') else row[0]
+            if community_id is None:
+                # Only allow starring community posts to scope Key Posts
+                community_id = -1
+            # Toggle
+            c.execute("SELECT id FROM key_posts WHERE username = ? AND post_id = ?", (username, post_id))
+            existing = c.fetchone()
+            if existing:
+                c.execute("DELETE FROM key_posts WHERE username = ? AND post_id = ?", (username, post_id))
+                conn.commit()
+                return jsonify({'success': True, 'starred': False})
+            else:
+                now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                c.execute("INSERT INTO key_posts (username, post_id, community_id, created_at) VALUES (?, ?, ?, ?)", (str(username), post_id, community_id, now))
+                conn.commit()
+                return jsonify({'success': True, 'starred': True})
+    except Exception as e:
+        logger.error(f"toggle key post error: {e}")
+        return jsonify({'success': False, 'error': 'server error'}), 500
+
+# List current user's key posts for a community
+@app.route('/api/key_posts', methods=['GET'])
+@login_required
+def api_key_posts():
+    try:
+        username = session.get('username')
+        community_id = request.args.get('community_id', type=int)
+        if not community_id:
+            return jsonify({'success': False, 'error': 'community_id required'}), 400
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            # Get starred post ids for this user/community
+            c.execute("SELECT post_id FROM key_posts WHERE username = ? AND community_id = ? ORDER BY id DESC", (username, community_id))
+            rows = c.fetchall() or []
+            post_ids = [ (r['post_id'] if hasattr(r, 'keys') else r[0]) for r in rows ]
+            if not post_ids:
+                return jsonify({'success': True, 'posts': []})
+            placeholders = ",".join(["?"] * len(post_ids))
+            c.execute(f"SELECT * FROM posts WHERE id IN ({placeholders}) ORDER BY id DESC", tuple(post_ids))
+            posts = [dict(r) for r in (c.fetchall() or [])]
+            for post in posts:
+                pid = post['id']
+                # Author picture
+                try:
+                    c.execute("SELECT profile_picture FROM user_profiles WHERE username = ?", (post['username'],))
+                    pp = c.fetchone()
+                    post['profile_picture'] = pp['profile_picture'] if pp and 'profile_picture' in pp.keys() else None
+                except Exception:
+                    post['profile_picture'] = None
+                # Reactions
+                c.execute("SELECT reaction_type, COUNT(*) as count FROM reactions WHERE post_id = ? GROUP BY reaction_type", (pid,))
+                post['reactions'] = {row['reaction_type']: row['count'] for row in (c.fetchall() or [])}
+                c.execute("SELECT reaction_type FROM reactions WHERE post_id = ? AND username = ?", (pid, username))
+                ur = c.fetchone()
+                post['user_reaction'] = ur['reaction_type'] if ur else None
+                post['is_starred'] = True
+            return jsonify({'success': True, 'posts': posts})
+    except Exception as e:
+        logger.error(f"key posts error: {e}")
+        return jsonify({'success': False, 'error': 'server error'}), 500
 
 # Product Development APIs
 @app.route('/api/product_posts', methods=['GET'])
@@ -14513,7 +14812,7 @@ def cf_add_entry():
             c.execute('''
                 CREATE TABLE IF NOT EXISTS crossfit_entries (
                     id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                    username TEXT NOT NULL,
+                    username VARCHAR(191) NOT NULL,
                     type TEXT NOT NULL,
                     name TEXT NOT NULL,
                     weight REAL,
@@ -14579,7 +14878,7 @@ def sync_gym_to_crossfit():
 
             c.execute('''CREATE TABLE IF NOT EXISTS crossfit_entries (
                 id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                username TEXT NOT NULL,
+                username VARCHAR(191) NOT NULL,
                 type TEXT NOT NULL,
                 name TEXT NOT NULL,
                 weight REAL,
@@ -14788,7 +15087,7 @@ def add_exercise():
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS exercises (
                     id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                    username TEXT NOT NULL,
+                    username VARCHAR(191) NOT NULL,
                     name TEXT NOT NULL,
                     muscle_group TEXT NOT NULL
                 )
@@ -14806,7 +15105,7 @@ def add_exercise():
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS workouts (
                     id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                    username TEXT NOT NULL,
+                    username VARCHAR(191) NOT NULL,
                     name TEXT NOT NULL,
                     date TEXT NOT NULL,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -14829,7 +15128,7 @@ def add_exercise():
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS exercises (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    username TEXT NOT NULL,
+                    username VARCHAR(191) NOT NULL,
                     name TEXT NOT NULL,
                     muscle_group TEXT NOT NULL DEFAULT "Other"
                 )
@@ -14847,7 +15146,7 @@ def add_exercise():
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS workouts (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    username TEXT NOT NULL,
+                    username VARCHAR(191) NOT NULL,
                     name TEXT NOT NULL,
                     date TEXT NOT NULL,
                     created_at TEXT DEFAULT (datetime('now'))
@@ -14904,7 +15203,7 @@ def add_exercise():
                     cursor.execute('''
                         CREATE TABLE IF NOT EXISTS crossfit_entries (
                             id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                            username TEXT NOT NULL,
+                            username VARCHAR(191) NOT NULL,
                             type TEXT NOT NULL,
                             name TEXT NOT NULL,
                             weight REAL,
@@ -14922,7 +15221,7 @@ def add_exercise():
                     cursor.execute('''
                         CREATE TABLE IF NOT EXISTS crossfit_entries (
                             id INTEGER PRIMARY KEY AUTOINCREMENT,
-                            username TEXT NOT NULL,
+                            username VARCHAR(191) NOT NULL,
                             type TEXT NOT NULL,
                             name TEXT NOT NULL,
                             weight REAL,
@@ -15558,7 +15857,7 @@ def log_weight_set():
                         cursor.execute('''
                             CREATE TABLE IF NOT EXISTS crossfit_entries (
                                 id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                                username TEXT NOT NULL,
+                                username VARCHAR(191) NOT NULL,
                                 type TEXT NOT NULL,
                                 name TEXT NOT NULL,
                                 weight REAL,
@@ -15576,7 +15875,7 @@ def log_weight_set():
                         cursor.execute('''
                             CREATE TABLE IF NOT EXISTS crossfit_entries (
                                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                                username TEXT NOT NULL,
+                                username VARCHAR(191) NOT NULL,
                                 type TEXT NOT NULL,
                                 name TEXT NOT NULL,
                                 weight REAL,
@@ -16404,7 +16703,7 @@ def create_workout():
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS workouts (
                     id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                    username TEXT NOT NULL,
+                    username VARCHAR(191) NOT NULL,
                     name TEXT NOT NULL,
                     date TEXT NOT NULL,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -16414,7 +16713,7 @@ def create_workout():
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS workouts (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    username TEXT NOT NULL,
+                    username VARCHAR(191) NOT NULL,
                     name TEXT NOT NULL,
                     date TEXT NOT NULL,
                     created_at TEXT DEFAULT (datetime('now'))
@@ -17765,7 +18064,7 @@ def seed_dummy_data():
             # Ensure crossfit_entries table exists
             c.execute('''CREATE TABLE IF NOT EXISTS crossfit_entries (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT NOT NULL,
+                username VARCHAR(191) NOT NULL,
                 type TEXT NOT NULL,
                 name TEXT NOT NULL,
                 weight REAL,
