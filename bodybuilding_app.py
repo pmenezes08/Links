@@ -1230,7 +1230,6 @@ def init_db():
                           community_id INTEGER NOT NULL,
                           created_at TEXT NOT NULL,
                           FOREIGN KEY (post_id) REFERENCES posts(id),
-                          FOREIGN KEY (username) REFERENCES users(username),
                           FOREIGN KEY (community_id) REFERENCES communities(id),
                           UNIQUE(username, post_id))''')
 
@@ -12859,7 +12858,7 @@ def api_toggle_key_post():
                 return jsonify({'success': True, 'starred': False})
             else:
                 now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                c.execute("INSERT INTO key_posts (username, post_id, community_id, created_at) VALUES (?, ?, ?, ?)", (username, post_id, community_id, now))
+                c.execute("INSERT INTO key_posts (username, post_id, community_id, created_at) VALUES (?, ?, ?, ?)", (str(username), post_id, community_id, now))
                 conn.commit()
                 return jsonify({'success': True, 'starred': True})
     except Exception as e:
