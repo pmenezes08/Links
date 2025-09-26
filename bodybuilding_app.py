@@ -1059,12 +1059,26 @@ def init_db():
                                  (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                                   user_id INTEGER NOT NULL,
                                   community_id INTEGER NOT NULL,
+                                  role TEXT,
                                   joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                                   FOREIGN KEY (user_id) REFERENCES users(id),
                                   FOREIGN KEY (community_id) REFERENCES communities(id),
                                   UNIQUE(user_id, community_id))''')
                     conn.commit()
                     logger.info("Created user_communities table")
+
+                    # Add role column if it doesn't exist (migration for existing installations)
+                    try:
+                        c.execute("SHOW COLUMNS FROM user_communities LIKE 'role'")
+                        if not c.fetchone():
+                            logger.info("Adding role column to user_communities table...")
+                            # TEXT columns can't have default values in MySQL
+                            c.execute("ALTER TABLE user_communities ADD COLUMN role TEXT")
+                            c.execute("UPDATE user_communities SET role = 'member' WHERE role IS NULL")
+                            conn.commit()
+                            logger.info("Added role column to user_communities table")
+                    except Exception as e:
+                        logger.warning(f"Could not add role column: {e}")
                 else:
                     # Table exists, check if it has user_id column
                     c.execute("SHOW COLUMNS FROM user_communities LIKE 'user_id'")
@@ -1075,12 +1089,26 @@ def init_db():
                                      (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                                       user_id INTEGER NOT NULL,
                                       community_id INTEGER NOT NULL,
+                                      role TEXT,
                                       joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                                       FOREIGN KEY (user_id) REFERENCES users(id),
                                       FOREIGN KEY (community_id) REFERENCES communities(id),
                                       UNIQUE(user_id, community_id))''')
                         conn.commit()
                         logger.info("Recreated user_communities table with correct schema")
+
+                        # Add role column if it doesn't exist (migration for existing installations)
+                        try:
+                            c.execute("SHOW COLUMNS FROM user_communities LIKE 'role'")
+                            if not c.fetchone():
+                                logger.info("Adding role column to user_communities table...")
+                                # TEXT columns can't have default values in MySQL
+                                c.execute("ALTER TABLE user_communities ADD COLUMN role TEXT")
+                                c.execute("UPDATE user_communities SET role = 'member' WHERE role IS NULL")
+                                conn.commit()
+                                logger.info("Added role column to user_communities table")
+                        except Exception as e:
+                            logger.warning(f"Could not add role column: {e}")
             except Exception as e:
                 logger.error(f"Failed to ensure user_communities table: {e}")
             
@@ -1223,10 +1251,24 @@ def init_db():
                          (id INTEGER PRIMARY KEY AUTO_INCREMENT,
                           user_id INTEGER NOT NULL,
                           community_id INTEGER NOT NULL,
+                          role TEXT,
                           joined_at TEXT NOT NULL,
                           FOREIGN KEY (user_id) REFERENCES users(id),
                           FOREIGN KEY (community_id) REFERENCES communities(id),
                           UNIQUE(user_id, community_id))''')
+
+            # Add role column if it doesn't exist (migration for existing installations)
+            try:
+                c.execute("SHOW COLUMNS FROM user_communities LIKE 'role'")
+                if not c.fetchone():
+                    logger.info("Adding role column to user_communities table...")
+                    # TEXT columns can't have default values in MySQL
+                    c.execute("ALTER TABLE user_communities ADD COLUMN role TEXT")
+                    c.execute("UPDATE user_communities SET role = 'member' WHERE role IS NULL")
+                    conn.commit()
+                    logger.info("Added role column to user_communities table")
+            except Exception as e:
+                logger.warning(f"Could not add role column: {e}")
 
             # Create community_files table
             logger.info("Creating community_files table...")
