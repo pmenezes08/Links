@@ -244,11 +244,16 @@ export default function CommunityFeed() {
             <div className="community-header-image overflow-hidden rounded-xl border border-white/10 mb-3 relative">
               <img 
                 src={
-                  data.community.background_path.startsWith('http')
-                    ? data.community.background_path
-                    : (data.community.background_path.includes('community_backgrounds/')
-                        ? `/static/${data.community.background_path}`
-                        : `/static/community_backgrounds/${data.community.background_path.split('/').slice(-1)[0]}`)
+                  (() => {
+                    const p = String(data.community.background_path || '').trim()
+                    if (!p) return ''
+                    if (p.startsWith('http')) return p
+                    if (p.startsWith('/uploads') || p.startsWith('uploads/')) return p.startsWith('/') ? p : `/${p}`
+                    if (p.startsWith('/static')) return p
+                    if (p.startsWith('static/')) return `/${p}`
+                    const fname = p.split('/').slice(-1)[0]
+                    return `/static/community_backgrounds/${fname}`
+                  })()
                 }
                 alt={data.community?.name + ' Header'}
                 className="block w-full h-auto header-image transition-transform duration-300 hover:scale-[1.015]"
