@@ -28,6 +28,9 @@ except ImportError:
     PIL_AVAILABLE = False
     print("Warning: PIL not available, image optimization disabled")
 
+# Development mode toggle (disables HTTPS-only features locally)
+DEV_MODE = os.getenv('DEV_MODE', '').lower() in ('1', 'true', 'yes', 'dev', 'development') or os.getenv('FLASK_ENV', '').lower() == 'development'
+
 # Initialize Flask app
 app = Flask(__name__, template_folder='templates')
 
@@ -118,11 +121,11 @@ app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 app.config['SESSION_COOKIE_PATH'] = '/'  # Ensure cookie is available for all paths
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)
 # For production with HTTPS
-app.config['SESSION_COOKIE_SECURE'] = True  # Re-enabled for HTTPS
+app.config['SESSION_COOKIE_SECURE'] = not DEV_MODE
 # Don't set domain - let Flask handle it automatically
 # app.config['SESSION_COOKIE_DOMAIN'] = os.getenv('SESSION_COOKIE_DOMAIN') or None
 app.config['SESSION_COOKIE_NAME'] = 'cpoint_session'  # Changed to avoid conflicts with old cookies
-app.config['PREFERRED_URL_SCHEME'] = 'https'
+app.config['PREFERRED_URL_SCHEME'] = 'http' if DEV_MODE else 'https'
 
 # Email (Resend)
 RESEND_API_KEY = os.getenv('RESEND_API_KEY')
@@ -205,6 +208,8 @@ CANONICAL_SCHEME = os.getenv('CANONICAL_SCHEME', 'https')
 @app.before_request
 def enforce_canonical_host():
     try:
+        if DEV_MODE:
+            return None
         req_host = request.headers.get('Host', '').split(':')[0]
         req_scheme = request.headers.get('X-Forwarded-Proto') or request.scheme
         # Enforce host
@@ -239,7 +244,7 @@ def _issue_remember_token(response, username: str):
         response.set_cookie(
             'remember_token', raw,
             max_age=30*24*60*60,
-            secure=True,
+            secure=not DEV_MODE,
             httponly=True,
             samesite='Lax',
             domain=os.getenv('SESSION_COOKIE_DOMAIN') or None,
@@ -427,42 +432,64 @@ def get_db_connection():
         try:
             conn = sqlite3.connect(db_path)
             conn.row_factory = sqlite3.Row
+
             # Wrap cursor to adapt MySQL-flavored SQL to SQLite at runtime
-            try:
-                orig_cursor = conn.cursor
+            def _adapt_sqlite_sql(sql: str) -> str:
+                s = sql
+                # Convert INSERT IGNORE -> INSERT OR IGNORE
+                s = s.replace('INSERT IGNORE', 'INSERT OR IGNORE')
+                # Convert AUTO_INCREMENT -> AUTOINCREMENT
+                s = s.replace('PRIMARY KEY AUTO_INCREMENT', 'PRIMARY KEY AUTOINCREMENT')
+                s = s.replace('AUTO_INCREMENT', 'AUTOINCREMENT')
+                # Normalize NOW() -> datetime('now')
+                s = s.replace('NOW()', "datetime('now')")
+                # Convert MySQL-specific UNIQUE KEY syntax to SQLite UNIQUE constraint
+                try:
+                    s = re.sub(r"UNIQUE\s+KEY\s+[^\(]+\(", "UNIQUE (", s, flags=re.IGNORECASE)
+                except Exception:
+                    pass
+                return s
 
-                def _adapt_sqlite_sql(sql: str) -> str:
-                    s = sql
-                    # Convert INSERT IGNORE -> INSERT OR IGNORE
-                    s = s.replace('INSERT IGNORE', 'INSERT OR IGNORE')
-                    # Convert AUTO_INCREMENT -> AUTOINCREMENT
-                    s = s.replace('PRIMARY KEY AUTO_INCREMENT', 'PRIMARY KEY AUTOINCREMENT')
-                    s = s.replace('AUTO_INCREMENT', 'AUTOINCREMENT')
-                    # Normalize NOW() -> datetime('now')
-                    s = s.replace('NOW()', "datetime('now')")
-                    return s
+            class _ProxyCursor:
+                def __init__(self, real):
+                    self._real = real
+                def execute(self, query, params=None):
+                    q = _adapt_sqlite_sql(query)
+                    if params is not None:
+                        return self._real.execute(q, params)
+                    return self._real.execute(q)
+                def executemany(self, query, param_seq):
+                    q = _adapt_sqlite_sql(query)
+                    return self._real.executemany(q, param_seq)
+                def __getattr__(self, name):
+                    return getattr(self._real, name)
 
-                class _ProxyCursor:
-                    def __init__(self, real):
-                        self._real = real
-                    def execute(self, query, params=None):
-                        q = _adapt_sqlite_sql(query)
-                        if params is not None:
-                            return self._real.execute(q, params)
-                        return self._real.execute(q)
-                    def executemany(self, query, param_seq):
-                        q = _adapt_sqlite_sql(query)
-                        return self._real.executemany(q, param_seq)
-                    def __getattr__(self, name):
-                        return getattr(self._real, name)
+            class _ConnectionWrapper:
+                def __init__(self, real_conn):
+                    self._real = real_conn
+                def cursor(self, *args, **kwargs):
+                    return _ProxyCursor(self._real.cursor(*args, **kwargs))
+                def commit(self):
+                    return self._real.commit()
+                def rollback(self):
+                    return self._real.rollback()
+                def close(self):
+                    return self._real.close()
+                def __enter__(self):
+                    # Mirror sqlite3 connection context manager behaviour
+                    return self
+                def __exit__(self, exc_type, exc_val, exc_tb):
+                    try:
+                        if exc_type is None:
+                            self._real.commit()
+                        else:
+                            self._real.rollback()
+                    finally:
+                        self._real.close()
+                def __getattr__(self, name):
+                    return getattr(self._real, name)
 
-                def _patched_cursor(*args, **kwargs):
-                    return _ProxyCursor(orig_cursor(*args, **kwargs))
-
-                conn.cursor = _patched_cursor  # type: ignore[attr-defined]
-            except Exception as _wrap_err:
-                logger.warning(f"Could not wrap SQLite cursor for SQL adaptation: {_wrap_err}")
-            return conn
+            return _ConnectionWrapper(conn)
         except Exception as e:
             logger.error(f"Failed to connect to database at {db_path}: {e}")
             # Try to ensure database exists and retry
@@ -1062,9 +1089,16 @@ def init_db():
             
             # Ensure user_communities table exists and has correct schema
             try:
-                # Check if table exists
-                c.execute("SHOW TABLES LIKE 'user_communities'")
-                if not c.fetchone():
+                # Check if table exists (MySQL syntax is not supported in SQLite, so try both)
+                table_exists = False
+                try:
+                    c.execute("SHOW TABLES LIKE 'user_communities'")
+                    table_exists = bool(c.fetchone())
+                except Exception:
+                    # SQLite path
+                    c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='user_communities'")
+                    table_exists = bool(c.fetchone())
+                if not table_exists:
                     logger.info("Creating user_communities table...")
                     c.execute('''CREATE TABLE user_communities
                                  (id INTEGER PRIMARY KEY AUTO_INCREMENT,
@@ -1080,8 +1114,13 @@ def init_db():
 
                     # Add role column if it doesn't exist (migration for existing installations)
                     try:
-                        c.execute("SHOW COLUMNS FROM user_communities LIKE 'role'")
-                        if not c.fetchone():
+                        try:
+                            c.execute("SHOW COLUMNS FROM user_communities LIKE 'role'")
+                            role_exists = bool(c.fetchone())
+                        except Exception:
+                            c.execute("PRAGMA table_info(user_communities)")
+                            role_exists = any(r[1] == 'role' for r in c.fetchall())
+                        if not role_exists:
                             logger.info("Adding role column to user_communities table...")
                             # TEXT columns can't have default values in MySQL
                             c.execute("ALTER TABLE user_communities ADD COLUMN role TEXT")
@@ -1093,8 +1132,13 @@ def init_db():
                     
                 else:
                     # Table exists, check if it has user_id column
-                    c.execute("SHOW COLUMNS FROM user_communities LIKE 'user_id'")
-                    if not c.fetchone():
+                    try:
+                        c.execute("SHOW COLUMNS FROM user_communities LIKE 'user_id'")
+                        has_user_id = bool(c.fetchone())
+                    except Exception:
+                        c.execute("PRAGMA table_info(user_communities)")
+                        has_user_id = any(r[1] == 'user_id' for r in c.fetchall())
+                    if not has_user_id:
                         logger.info("user_id column missing, recreating user_communities table...")
                         c.execute("DROP TABLE user_communities")
                         c.execute('''CREATE TABLE user_communities
@@ -1296,32 +1340,46 @@ def init_db():
 
             # Create notifications table
             logger.info("Creating notifications table...")
-            c.execute('''CREATE TABLE IF NOT EXISTS notifications
-                         (id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                          user_id TEXT NOT NULL,
-                          from_user TEXT,
-                          type TEXT NOT NULL,
-                          post_id INTEGER,
-                          community_id INTEGER,
-                          message TEXT,
-                          is_read INTEGER DEFAULT 0,
-                          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                          FOREIGN KEY (post_id) REFERENCES posts(id),
-                          FOREIGN KEY (community_id) REFERENCES communities(id),
-                          UNIQUE KEY unique_notification (user_id, from_user, type, post_id, community_id))''')
-
-            # Add unique constraint for existing installations (migration)
-            try:
-                c.execute("SHOW INDEX FROM notifications WHERE Key_name = 'unique_notification'")
-                if not c.fetchone():
-                    logger.info("Adding unique constraint to notifications table...")
-                    # First, drop the old constraint if it exists
-                    c.execute("ALTER TABLE notifications DROP INDEX IF EXISTS unique_notification")
-                    c.execute("ALTER TABLE notifications ADD UNIQUE KEY unique_notification (user_id, from_user, type, post_id, community_id)")
-                    conn.commit()
-                    logger.info("Added unique constraint to notifications table")
-            except Exception as e:
-                logger.warning(f"Could not add unique constraint to notifications: {e}")
+            if USE_MYSQL:
+                c.execute('''CREATE TABLE IF NOT EXISTS notifications
+                             (id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                              user_id TEXT NOT NULL,
+                              from_user TEXT,
+                              type TEXT NOT NULL,
+                              post_id INTEGER,
+                              community_id INTEGER,
+                              message TEXT,
+                              is_read INTEGER DEFAULT 0,
+                              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                              FOREIGN KEY (post_id) REFERENCES posts(id),
+                              FOREIGN KEY (community_id) REFERENCES communities(id),
+                              UNIQUE KEY unique_notification (user_id, from_user, type, post_id, community_id))''')
+                # Add unique constraint for existing installations (migration)
+                try:
+                    c.execute("SHOW INDEX FROM notifications WHERE Key_name = 'unique_notification'")
+                    if not c.fetchone():
+                        logger.info("Adding unique constraint to notifications table...")
+                        # First, drop the old constraint if it exists
+                        c.execute("ALTER TABLE notifications DROP INDEX IF EXISTS unique_notification")
+                        c.execute("ALTER TABLE notifications ADD UNIQUE KEY unique_notification (user_id, from_user, type, post_id, community_id)")
+                        conn.commit()
+                        logger.info("Added unique constraint to notifications table")
+                except Exception as e:
+                    logger.warning(f"Could not add unique constraint to notifications: {e}")
+            else:
+                c.execute('''CREATE TABLE IF NOT EXISTS notifications
+                             (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                              user_id TEXT NOT NULL,
+                              from_user TEXT,
+                              type TEXT NOT NULL,
+                              post_id INTEGER,
+                              community_id INTEGER,
+                              message TEXT,
+                              is_read INTEGER DEFAULT 0,
+                              created_at TEXT DEFAULT (datetime('now')),
+                              FOREIGN KEY (post_id) REFERENCES posts(id),
+                              FOREIGN KEY (community_id) REFERENCES communities(id),
+                              UNIQUE (user_id, from_user, type, post_id, community_id))''')
 
             # Useful documents (PDFs)
             logger.info("Ensuring useful_docs table...")
@@ -1800,30 +1858,53 @@ def init_db():
             logger.info("Adding is_active columns...")
             
             # Check and add is_active to users table
-            c.execute("SHOW COLUMNS FROM users LIKE 'is_active'")
-            if not c.fetchone():
+            try:
+                c.execute("SHOW COLUMNS FROM users LIKE 'is_active'")
+                has_is_active_users = bool(c.fetchone())
+            except Exception:
+                c.execute("PRAGMA table_info(users)")
+                has_is_active_users = any(r[1] == 'is_active' for r in c.fetchall())
+            if not has_is_active_users:
                 c.execute("ALTER TABLE users ADD COLUMN is_active TINYINT(1) DEFAULT 1")
                 logger.info("Added is_active column to users table")
             
             # Ensure notifications table has required columns
             try:
                 # Check if created_at column exists
-                c.execute("SHOW COLUMNS FROM notifications LIKE 'created_at'")
-                if not c.fetchone():
-                    c.execute("ALTER TABLE notifications ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+                try:
+                    c.execute("SHOW COLUMNS FROM notifications LIKE 'created_at'")
+                    has_created_at = bool(c.fetchone())
+                except Exception:
+                    c.execute("PRAGMA table_info(notifications)")
+                    has_created_at = any(r[1] == 'created_at' for r in c.fetchall())
+                if not has_created_at:
+                    if USE_MYSQL:
+                        c.execute("ALTER TABLE notifications ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+                    else:
+                        c.execute("ALTER TABLE notifications ADD COLUMN created_at TEXT DEFAULT (datetime('now'))")
                     logger.info("Added created_at column to notifications table")
                 
                 # Check if link column exists
-                c.execute("SHOW COLUMNS FROM notifications LIKE 'link'")
-                if not c.fetchone():
+                try:
+                    c.execute("SHOW COLUMNS FROM notifications LIKE 'link'")
+                    has_link = bool(c.fetchone())
+                except Exception:
+                    c.execute("PRAGMA table_info(notifications)")
+                    has_link = any(r[1] == 'link' for r in c.fetchall())
+                if not has_link:
                     c.execute("ALTER TABLE notifications ADD COLUMN link TEXT")
                     logger.info("Added link column to notifications table")
             except Exception as e:
                 logger.error(f"Failed to update notifications table: {e}")
             
             # Check and add is_active to communities table  
-            c.execute("SHOW COLUMNS FROM communities LIKE 'is_active'")
-            if not c.fetchone():
+            try:
+                c.execute("SHOW COLUMNS FROM communities LIKE 'is_active'")
+                has_is_active_comm = bool(c.fetchone())
+            except Exception:
+                c.execute("PRAGMA table_info(communities)")
+                has_is_active_comm = any(r[1] == 'is_active' for r in c.fetchall())
+            if not has_is_active_comm:
                 c.execute("ALTER TABLE communities ADD COLUMN is_active TINYINT(1) DEFAULT 1")
                 logger.info("Added is_active column to communities table")
             
@@ -1844,8 +1925,13 @@ def init_db():
                     location TEXT
                 )
             """)
-            c.execute("SHOW COLUMNS FROM calendar_events LIKE 'community_id'")
-            if not c.fetchone():
+            try:
+                c.execute("SHOW COLUMNS FROM calendar_events LIKE 'community_id'")
+                has_calendar_comm_id = bool(c.fetchone())
+            except Exception:
+                c.execute("PRAGMA table_info(calendar_events)")
+                has_calendar_comm_id = any(r[1] == 'community_id' for r in c.fetchall())
+            if not has_calendar_comm_id:
                 c.execute("ALTER TABLE calendar_events ADD COLUMN community_id INTEGER")
                 logger.info("Added community_id column to calendar_events table")
             
