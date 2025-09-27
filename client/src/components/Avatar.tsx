@@ -51,7 +51,7 @@ export default function Avatar({ username, url, size = 40, className = '' }: Ava
     if (p.startsWith('http')) return p
     if (p.startsWith('/uploads') || p.startsWith('uploads/')) return p.startsWith('/') ? p : `/${p}`
     if (p.startsWith('/static') || p.startsWith('static/')) return p.startsWith('/') ? p : `/${p}`
-    // Fallback: assume uploads by default
+    // Fallback: assume legacy stored filename in uploads
     return `/uploads/${p}`
   })()
   const initials = (username || '?').slice(0, 1).toUpperCase()
