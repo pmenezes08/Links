@@ -13249,7 +13249,18 @@ def serve_uploads(filename):
                 continue
 
         logger.error(f"serve_uploads not found after fallbacks: {filename} | tried: {tried}")
-        abort(404)
+        # Return a 1x1 transparent PNG placeholder instead of 404
+        try:
+            from flask import Response
+            transparent_pixel = b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\x00\x00\x00\x02\x00\x01\xe5\'\xde\xfc\x00\x00\x00\x00IEND\xaeB`\x82'
+            resp = Response(transparent_pixel, mimetype='image/png')
+            try:
+                resp.headers['Cache-Control'] = 'public, max-age=300'
+            except Exception:
+                pass
+            return resp
+        except Exception:
+            abort(404)
     except Exception as e:
         logger.error(f"serve_uploads error for {filename}: {e}")
         abort(404)
