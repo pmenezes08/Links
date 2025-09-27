@@ -14167,6 +14167,41 @@ def uploaded_file_compat(filename):
         logger.error(f"Error in uploaded_file_compat for {filename}: {e}")
         return 'Error', 500
 
+# PWA/static helpers to avoid web server mapping issues
+@app.route('/manifest.webmanifest')
+def serve_manifest():
+    try:
+        resp = send_from_directory('static', 'manifest.webmanifest')
+        try:
+            resp.headers['Cache-Control'] = 'public, max-age=3600'
+        except Exception:
+            pass
+        return resp
+    except Exception as e:
+        logger.error(f"serve_manifest error: {e}")
+        abort(404)
+
+@app.route('/favicon.svg')
+def serve_favicon():
+    try:
+        return send_from_directory('static', 'favicon.svg')
+    except Exception as e:
+        logger.error(f"serve_favicon error: {e}")
+        abort(404)
+
+@app.route('/icons/<path:filename>')
+def serve_icons(filename):
+    try:
+        resp = send_from_directory('static/icons', filename)
+        try:
+            resp.headers['Cache-Control'] = 'public, max-age=86400'
+        except Exception:
+            pass
+        return resp
+    except Exception as e:
+        logger.error(f"serve_icons error for {filename}: {e}")
+        abort(404)
+
 # --- Diagnostics: image path checks ---
 @app.route('/api/debug_image_paths')
 @login_required
