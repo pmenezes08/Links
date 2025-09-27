@@ -14167,6 +14167,96 @@ def uploaded_file_compat(filename):
         logger.error(f"Error in uploaded_file_compat for {filename}: {e}")
         return 'Error', 500
 
+# --- Diagnostics: image path checks ---
+@app.route('/api/debug_image_paths')
+@login_required
+def api_debug_image_paths():
+    """Inspect recent posts for a community and report image paths and file existence, plus user avatars.
+    Usage: /api/debug_image_paths?community_id=123&limit=20
+    """
+    try:
+        from datetime import datetime as _dt
+        community_id = request.args.get('community_id', type=int)
+        limit = request.args.get('limit', default=20, type=int)
+        if not community_id:
+            return jsonify({'success': False, 'error': 'community_id required'}), 400
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("""
+                SELECT id, username, image_path, timestamp
+                FROM posts
+                WHERE community_id = ?
+                ORDER BY id DESC
+                LIMIT ?
+            """, (community_id, limit))
+            rows = c.fetchall() or []
+            # Gather profile pictures for listed users
+            usernames = list({(r['username'] if hasattr(r,'keys') else r[1]) for r in rows})
+            avatars = {}
+            try:
+                if usernames:
+                    placeholders = ",".join([get_sql_placeholder()]*len(usernames))
+                    c.execute(f"SELECT username, profile_picture FROM user_profiles WHERE username IN ({placeholders})", tuple(usernames))
+                    for ar in c.fetchall() or []:
+                        u = ar['username'] if hasattr(ar,'keys') else ar[0]
+                        avatars[u] = (ar['profile_picture'] if hasattr(ar,'keys') else ar[1]) or None
+            except Exception:
+                pass
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        static_uploads = os.path.join(base_dir, 'static', 'uploads')
+        root_uploads = os.path.join(base_dir, 'uploads')
+        def check_exists(p: str):
+            try:
+                s = (p or '').strip()
+                if not s:
+                    return {'given': p, 'exists': False, 'tried': []}
+                tried = []
+                if s.startswith('http'):
+                    return {'given': p, 'exists': True, 'tried': ['http (skipped check)']}
+                # Build candidates mirroring client logic
+                cands = []
+                if s.startswith('/uploads'):
+                    cands.append(os.path.join(static_uploads, s.split('/uploads/',1)[1]))
+                    cands.append(os.path.join(root_uploads, s.split('/uploads/',1)[1]))
+                elif s.startswith('uploads/'):
+                    cands.append(os.path.join(static_uploads, s.split('uploads/',1)[1]))
+                    cands.append(os.path.join(root_uploads, s.split('uploads/',1)[1]))
+                elif s.startswith('/static/'):
+                    cands.append(os.path.join(base_dir, s.lstrip('/')))
+                elif s.startswith('static/'):
+                    cands.append(os.path.join(base_dir, s))
+                else:
+                    # bare filename
+                    cands.append(os.path.join(static_uploads, s))
+                    cands.append(os.path.join(base_dir, 'static', s))
+                    cands.append(os.path.join(root_uploads, s))
+                for fp in cands:
+                    tried.append(fp)
+                    if os.path.exists(fp):
+                        return {'given': p, 'exists': True, 'path': fp, 'tried': tried}
+                return {'given': p, 'exists': False, 'tried': tried}
+            except Exception as e:
+                return {'given': p, 'exists': False, 'error': str(e)}
+        out = []
+        for r in rows:
+            pid = r['id'] if hasattr(r,'keys') else r[0]
+            uname = r['username'] if hasattr(r,'keys') else r[1]
+            img = r['image_path'] if hasattr(r,'keys') else r[2]
+            ts = r['timestamp'] if hasattr(r,'keys') else r[3]
+            out.append({
+                'post_id': pid,
+                'username': uname,
+                'timestamp': ts,
+                'image_path': img,
+                'image_check': check_exists(str(img) if img is not None else ''),
+                'avatar': avatars.get(uname),
+                'avatar_check': check_exists(str(avatars.get(uname) or ''))
+            })
+        return jsonify({'success': True, 'community_id': community_id, 'count': len(out), 'items': out})
+    except Exception as e:
+        logger.error(f"debug_image_paths error: {e}")
+        return jsonify({'success': False, 'error': 'server error'}), 500
+
 @app.route('/static/community_backgrounds/<path:filename>')
 def community_background_file(filename):
     """Serve community background images"""
