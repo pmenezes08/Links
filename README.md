@@ -50,11 +50,39 @@ A comprehensive fitness and community platform built with Flask (Python) and Rea
 ## Getting Started
 
 1. Clone the repository
-2. Install Python dependencies: `pip install -r requirements.txt`
-3. Install Node.js dependencies: `cd client && npm install`
-4. Set up the database: `python init_database.py`
-5. Run the Flask server: `python bodybuilding_app.py`
-6. Build and run the React client: `cd client && npm run build && npm run preview`
+2. Python setup
+   - Create venv and install deps
+     
+     ```bash
+     python3 -m venv .venv
+     source .venv/bin/activate
+     pip install -r requirements.txt
+     ```
+   - Optional (on Ubuntu/Debian): `sudo apt-get install -y python3-venv`
+
+3. Node.js setup
+   - Install deps: `cd client && npm ci`
+   - Dev server: `npm run dev -- --host`
+
+4. Run the Flask server (SQLite dev)
+   
+   ```bash
+   # In repo root
+   export DEV_MODE=1
+   source .venv/bin/activate
+   python bodybuilding_app.py
+   ```
+
+   - Health check: visit `http://localhost:8080/health`
+
+5. Frontend dev server
+   - Vite runs at `http://localhost:5173` (auto-fallback to 5174 if busy)
+   - API proxy to Flask is configured in `client/vite.config.ts`
+
+6. Notes
+   - Backend DB defaults to SQLite file `users.db` in project root
+   - To use MySQL, set env vars: `DB_BACKEND=mysql`, `MYSQL_HOST`, `MYSQL_USER`, `MYSQL_PASSWORD`, `MYSQL_DB`
+   - In dev (`DEV_MODE=1`) cookies are non-secure and HTTP is allowed
 
 ## Project Structure
 

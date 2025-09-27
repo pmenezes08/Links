@@ -1,0 +1,12 @@
+
+> client@0.0.0 dev
+> vite --host
+
+Port 5173 is in use, trying another one...
+
+  VITE v7.1.4  ready in 125 ms
+
+  ➜  Local:   http://localhost:5174/
+  ➜  Network: http://172.30.0.2:5174/
+4:56:33 PM [vite] vite.config.ts changed, restarting server...
+4:56:34 PM [vite] server restarted.
