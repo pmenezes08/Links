@@ -745,6 +745,8 @@
 				},
 				success: function(response) {
 					const messagesArea = $('#messagesArea');
+					// Preserve scroll position if not at bottom
+					const wasAtBottom = (messagesArea[0].scrollHeight - messagesArea.scrollTop() - messagesArea.outerHeight()) < 8;
 					messagesArea.empty();
 					
 					if (response.success && response.messages && response.messages.length > 0) {
@@ -775,9 +777,11 @@
 							`;
 							messagesArea.append(messageHtml);
 						});
-						// Scroll to bottom after DOM updates
+						// Scroll after DOM updates only if user was at bottom
 						setTimeout(function(){
-							messagesArea.scrollTop(messagesArea[0].scrollHeight);
+							if (wasAtBottom) {
+								messagesArea.scrollTop(messagesArea[0].scrollHeight);
+							}
 						}, 0);
 					} else {
 						messagesArea.html(`
@@ -869,12 +873,24 @@
 			}
 		}
 		
-		// Auto-refresh messages periodically when a chat is open
-		setInterval(function() {
-			if (currentChatUser) {
-				loadMessages(currentChatUser, currentChatUsername);
-			}
-		}, 10000); // Refresh every 10 seconds
+		// Auto-refresh messages with debounce to avoid scroll jank
+		let refreshTimer = null;
+		function scheduleRefresh(){
+			if (refreshTimer) return;
+			refreshTimer = setTimeout(function(){
+				refreshTimer = null;
+				if (currentChatUser) {
+					const messagesArea = $('#messagesArea');
+					const atBottom = (messagesArea[0].scrollHeight - messagesArea.scrollTop() - messagesArea.outerHeight()) < 8;
+					loadMessages(currentChatUser, currentChatUsername);
+					// If user was at bottom before refresh, keep them at bottom
+					if (atBottom) {
+						setTimeout(function(){ messagesArea.scrollTop(messagesArea[0].scrollHeight); }, 0);
+					}
+				}
+			}, 8000);
+		}
+		setInterval(scheduleRefresh, 2000);
 		
 		// Auto-resize textarea function
 		function autoResizeTextarea(textarea) {
