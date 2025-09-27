@@ -13162,6 +13162,23 @@ def community_feed_smart(community_id):
     except Exception as e:
         logger.error(f"Error in community_feed_smart: {e}")
         abort(500)
+
+# Fallback route for serving uploaded images if web server mapping is missing
+@app.route('/uploads/<path:filename>')
+def serve_uploads(filename):
+    try:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        uploads_dir = os.path.join(base_dir, 'static', 'uploads')
+        # Add cache headers for images
+        resp = send_from_directory(uploads_dir, filename)
+        try:
+            resp.headers['Cache-Control'] = 'public, max-age=86400'
+        except Exception:
+            pass
+        return resp
+    except Exception as e:
+        logger.error(f"serve_uploads error for {filename}: {e}")
+        abort(404)
 @app.route('/api/community_feed/<int:community_id>')
 @login_required
 def api_community_feed(community_id):
