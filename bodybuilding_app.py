@@ -13208,14 +13208,55 @@ def community_feed_smart(community_id):
 def serve_uploads(filename):
     try:
         base_dir = os.path.dirname(os.path.abspath(__file__))
-        uploads_dir = os.path.join(base_dir, 'static', 'uploads')
-        # Add cache headers for images
-        resp = send_from_directory(uploads_dir, filename)
-        try:
-            resp.headers['Cache-Control'] = 'public, max-age=86400'
-        except Exception:
-            pass
-        return resp
+        static_uploads = os.path.join(base_dir, 'static', 'uploads')
+
+        # Try exact path under static/uploads first
+        candidate = os.path.join(static_uploads, filename)
+        if os.path.exists(candidate):
+            resp = send_from_directory(static_uploads, filename)
+            try:
+                resp.headers['Cache-Control'] = 'public, max-age=86400'
+            except Exception:
+                pass
+            return resp
+
+        # If the provided filename contains a leading "uploads/", try stripping it
+        if filename.startswith('uploads/'):
+            stripped = filename.split('uploads/', 1)[1]
+            alt_static = os.path.join(static_uploads, stripped)
+            if os.path.exists(alt_static):
+                resp = send_from_directory(static_uploads, stripped)
+                try:
+                    resp.headers['Cache-Control'] = 'public, max-age=86400'
+                except Exception:
+                    pass
+                return resp
+
+        # Legacy fallback: root uploads/ (outside static) for older saved files
+        legacy_root = os.path.join(base_dir, 'uploads')
+        legacy_candidate = os.path.join(legacy_root, filename)
+        if os.path.exists(legacy_candidate):
+            resp = send_from_directory(legacy_root, filename)
+            try:
+                resp.headers['Cache-Control'] = 'public, max-age=86400'
+            except Exception:
+                pass
+            return resp
+
+        # Also try stripping a leading uploads/ under the legacy root
+        if filename.startswith('uploads/'):
+            legacy_stripped = filename.split('uploads/', 1)[1]
+            legacy_alt = os.path.join(legacy_root, legacy_stripped)
+            if os.path.exists(legacy_alt):
+                resp = send_from_directory(legacy_root, legacy_stripped)
+                try:
+                    resp.headers['Cache-Control'] = 'public, max-age=86400'
+                except Exception:
+                    pass
+                return resp
+
+        logger.error(f"serve_uploads not found after fallbacks: {filename}")
+        abort(404)
     except Exception as e:
         logger.error(f"serve_uploads error for {filename}: {e}")
         abort(404)
