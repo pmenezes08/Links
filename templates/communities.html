@@ -28,24 +28,15 @@
   </style>
 </head>
 <body>
-  <div class="layout">
-    <!-- Sidebar (reuse structure from other HTML pages) -->
-    <aside class="sidebar">
-      <div class="title">Dashboard</div>
-      <nav>
-        <a href="/dashboard"><i class="fa-solid fa-gauge-high"></i> &nbsp;Dashboard</a>
-        <a href="/profile"><i class="fa-solid fa-user"></i> &nbsp;Profile</a>
-        <a href="/user_chat"><i class="fa-solid fa-message"></i> &nbsp;Messages</a>
-        <a href="/communities" style="color:#7fe7df"><i class="fa-solid fa-people-group"></i> &nbsp;Your Communities</a>
-        <a href="/logout"><i class="fa-solid fa-right-from-bracket"></i> &nbsp;Logout</a>
-        <a href="/account_settings"><i class="fa-solid fa-cog"></i> &nbsp;Settings</a>
-      </nav>
-    </aside>
-
-    <!-- Content -->
-    <main class="content">
+  <div class="layout" style="grid-template-columns: 1fr;">
+    <!-- Content only -->
+    <main class="content" style="max-width:1200px;margin:0 auto;">
       <div style="max-width: 1100px; margin: 0 auto;">
-        <h2 style="margin:0 0 8px 0">Communities</h2>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+          <a class="btn" href="/premium_dashboard" style="background:#1a1a1a;color:#7fe7df;border-color:#2a3f41;">← Back</a>
+          <h2 style="margin:0 0 8px 0;flex:1;text-align:center">Communities</h2>
+          <span style="width:64px;opacity:0;">&nbsp;</span>
+        </div>
         <!-- Top tabs -->
         <div class="tabs">
           <div id="tab-timeline" class="tab active" onclick="switchTab('timeline')">Home Timeline</div>
