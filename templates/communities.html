@@ -23,7 +23,8 @@
     .tabs .tab { flex: 0 0 auto; padding: 10px 14px; border-radius: 12px 12px 0 0; color: #9fb0b5; cursor: pointer; border: 1px solid transparent; border-bottom: none; }
     .tabs .tab.active { color: #fff; border-color: rgba(255,255,255,0.12); background: #0f1516; }
     @media (max-width: 1024px){ .grid{ grid-template-columns: repeat(2, minmax(0,1fr)); } }
-    @media (max-width: 768px){ .grid{ grid-template-columns: 1fr; } }
+		@media (max-width: 1024px){ .grid{ grid-template-columns: repeat(2, minmax(0,1fr)); } }
+		@media (max-width: 768px){ .grid{ grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
@@ -176,14 +177,13 @@
 		}
 
 		.communities-container {
-			margin-left: 80px;
 			padding: 20px;
-			max-width: 700px;
+			max-width: 1100px;
 			margin: 0 auto;
 			position: relative;
-			left: 40px;
 			background: #000000;
 			min-height: 100vh;
+			width: 100%;
 		}
 
 		.communities-header {
@@ -729,7 +729,7 @@
 <body class="communities-page">
 	<style>
 		/* Match community_feed sidebar/menu */
-		.communities-page { margin-left: 200px; }
+		.communities-page { margin-left: 0; }
 		.communities-page .sidebar { position: fixed !important; top: 0 !important; left: 0 !important; width: 200px !important; height: 100vh !important; background: #1a1a1a !important; border-right: 1px solid #333333 !important; z-index: 1000 !important; display: flex !important; flex-direction: column !important; }
 		.communities-page .sidebar-header { display: flex; align-items: center; padding: 10px; border-bottom: 1px solid #333333; height: 60px; box-sizing: border-box; }
 		.communities-page .sidebar-logo { padding: 5px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
@@ -748,7 +748,7 @@
 			.communities-page .sidebar:hover .sidebar-menu, .communities-page .sidebar:focus-within .sidebar-menu { display: block !important; }
 		}
 	</style>
-	<div class="sidebar">
+		<div class="sidebar" style="display:none;">
 		<div class="sidebar-header">
 			<div class="sidebar-logo" id="sidebarLogo"></div>
 			<div class="community-name">
@@ -777,7 +777,7 @@
 			.communities-header-bar { 
 				position: fixed; 
 				top: 0; 
-				left: 200px; 
+			left: 0; 
 				right: 0; 
 				height: 60px; 
 				padding: 10px;
@@ -793,6 +793,11 @@
 			}
 		</style>
 		<div class="communities-header-bar"></div>
+		<div style="max-width:1100px;margin:0 auto;padding:0 20px 8px 20px;">
+			<a href="/premium_dashboard" class="btn" style="display:inline-flex;align-items:center;gap:8px;">
+				<i class="fa-solid fa-arrow-left"></i> Back to Dashboard
+			</a>
+		</div>
 		<div class="communities-header">
 			<h1>Your Communities</h1>
 			<p>Join existing communities or create your own</p>
