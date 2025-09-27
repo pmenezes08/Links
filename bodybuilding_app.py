@@ -13208,54 +13208,47 @@ def community_feed_smart(community_id):
 def serve_uploads(filename):
     try:
         base_dir = os.path.dirname(os.path.abspath(__file__))
-        static_uploads = os.path.join(base_dir, 'static', 'uploads')
-
-        # Try exact path under static/uploads first
-        candidate = os.path.join(static_uploads, filename)
-        if os.path.exists(candidate):
-            resp = send_from_directory(static_uploads, filename)
-            try:
-                resp.headers['Cache-Control'] = 'public, max-age=86400'
-            except Exception:
-                pass
-            return resp
-
-        # If the provided filename contains a leading "uploads/", try stripping it
-        if filename.startswith('uploads/'):
-            stripped = filename.split('uploads/', 1)[1]
-            alt_static = os.path.join(static_uploads, stripped)
-            if os.path.exists(alt_static):
-                resp = send_from_directory(static_uploads, stripped)
-                try:
-                    resp.headers['Cache-Control'] = 'public, max-age=86400'
-                except Exception:
-                    pass
-                return resp
-
-        # Legacy fallback: root uploads/ (outside static) for older saved files
+        static_root = os.path.join(base_dir, 'static')
+        static_uploads = os.path.join(static_root, 'uploads')
         legacy_root = os.path.join(base_dir, 'uploads')
-        legacy_candidate = os.path.join(legacy_root, filename)
-        if os.path.exists(legacy_candidate):
-            resp = send_from_directory(legacy_root, filename)
+
+        normalized = filename
+        if normalized.startswith('uploads/'):
+            normalized = normalized.split('uploads/', 1)[1]
+        basename = os.path.basename(normalized)
+
+        candidates = [
+            os.path.join(static_uploads, filename),          # static/uploads/<original>
+            os.path.join(static_uploads, normalized),        # static/uploads/<stripped>
+            os.path.join(static_uploads, basename),          # static/uploads/<basename>
+            os.path.join(static_root, filename),             # static/<original>
+            os.path.join(static_root, normalized),           # static/<stripped>
+            os.path.join(static_root, basename),             # static/<basename>
+            os.path.join(static_root, 'message_photos', basename),  # static/message_photos/<basename>
+            os.path.join(static_uploads, 'message_photos', basename), # static/uploads/message_photos/<basename>
+            os.path.join(legacy_root, filename),             # uploads/<original>
+            os.path.join(legacy_root, normalized),           # uploads/<stripped>
+            os.path.join(legacy_root, basename),             # uploads/<basename>
+        ]
+
+        tried = []
+        for path in candidates:
+            tried.append(path)
             try:
-                resp.headers['Cache-Control'] = 'public, max-age=86400'
+                if os.path.exists(path):
+                    # Determine directory and relative filename for send_from_directory
+                    dirpath = os.path.dirname(path)
+                    relname = os.path.basename(path)
+                    resp = send_from_directory(dirpath, relname)
+                    try:
+                        resp.headers['Cache-Control'] = 'public, max-age=86400'
+                    except Exception:
+                        pass
+                    return resp
             except Exception:
-                pass
-            return resp
+                continue
 
-        # Also try stripping a leading uploads/ under the legacy root
-        if filename.startswith('uploads/'):
-            legacy_stripped = filename.split('uploads/', 1)[1]
-            legacy_alt = os.path.join(legacy_root, legacy_stripped)
-            if os.path.exists(legacy_alt):
-                resp = send_from_directory(legacy_root, legacy_stripped)
-                try:
-                    resp.headers['Cache-Control'] = 'public, max-age=86400'
-                except Exception:
-                    pass
-                return resp
-
-        logger.error(f"serve_uploads not found after fallbacks: {filename}")
+        logger.error(f"serve_uploads not found after fallbacks: {filename} | tried: {tried}")
         abort(404)
     except Exception as e:
         logger.error(f"serve_uploads error for {filename}: {e}")
