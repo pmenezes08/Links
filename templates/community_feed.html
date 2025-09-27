@@ -3436,7 +3436,19 @@
         function handleImageError(imgElement, originalPath, cleanPath) {
             console.log('Image failed to load:', imgElement.src, 'Original path:', originalPath, 'Clean path:', cleanPath);
             imgElement.style.display = 'none';
-            imgElement.parentElement.innerHTML = '<div style="padding: 20px; text-align: center; color: #9fb0b5;">Image could not be loaded</div>';
+            imgElement.parentElement.innerHTML = '<div style="padding: 20px; text-align: center; color: #9fb0b5;">image load failed</div>';
+        }
+
+        function handleHeaderImageError(imgElement){
+            try {
+                imgElement.style.display = 'none';
+                if (imgElement && imgElement.parentElement){
+                    imgElement.parentElement.style.display = 'block';
+                    imgElement.parentElement.innerHTML = '<div style="padding: 16px; text-align: center; color: #9fb0b5;">image load failed</div>';
+                }
+            } catch (e) {
+                console.log('Header image fallback error:', e);
+            }
         }
         
         function showPollsModal() {
@@ -3971,7 +3983,6 @@
             // Close dropdown
             toggleNotifications();
         }
-        
         function markAllAsRead(event) {
             event.preventDefault();
             
@@ -4851,10 +4862,11 @@
         <div class="community-header-image">
             <img src="{% if community.background_path.startswith('http') %}{{ community.background_path }}{% else %}{{ url_for('static', filename='community_backgrounds/' + community.background_path.split('/')[-1]) }}{% endif %}" 
                  alt="{{ community.name }} Header" 
-                 class="header-image"
+                 loading="lazy"
+                 class="sleek-image"
                  onclick="viewFullImage(this.src)"
                  title="Click to view full size"
-                 onerror="console.log('Header image failed to load:', this.src); this.style.display='none'; this.parentElement.style.display='none';"
+                 onerror="handleHeaderImageError(this)"
                  onload="console.log('Header image loaded successfully:', this.src);">
         </div>
         {% endif %}
@@ -5962,7 +5974,6 @@
                 modal.remove();
             }
         }
-        
         function showNotification(message, type) {
             // Simple notification (you can enhance this)
             const notification = document.createElement('div');
