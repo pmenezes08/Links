@@ -4929,7 +4929,7 @@
                             <div class="post-image">
                                 <!-- Debug: {{ post.image_path }} -->
                                 {% set clean_path = post.image_path.replace('uploads/uploads/', '').replace('uploads/', '') %}
-                                <img src="{{ url_for('uploaded_file', filename=clean_path) }}" 
+                                <img src="{{ url_for('uploaded_file_compat', filename=clean_path) }}" 
                                      alt="Post image" 
                                      loading="lazy" 
                                      onerror="handleImageError(this, '{{ post.image_path }}', '{{ clean_path }}')"
