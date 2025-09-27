@@ -6296,9 +6296,9 @@ def user_chat():
         with get_db_connection() as conn:
             c = conn.cursor()
             c.execute("SELECT subscription FROM users WHERE username=?", (username,))
-            user = c.fetchone()
+            user_row = c.fetchone()
             try:
-                subscription = user['subscription'] if hasattr(user, 'keys') else (user[0] if user else None)
+                subscription = user_row['subscription'] if hasattr(user_row, 'keys') else (user_row[0] if user_row else None)
             except Exception:
                 subscription = None
             if username != 'admin' and (not subscription or str(subscription).lower() != 'premium'):
@@ -6321,35 +6321,34 @@ def user_chat():
                 WHERE u.username = ?
                 ORDER BY c.name
             """, (username,))
-            communities = c.fetchall()
-            
+            comm_rows = c.fetchall() or []
+            # Normalize communities rows to dicts
+            communities = []
+            for r in comm_rows:
+                if hasattr(r, 'keys'):
+                    communities.append({'id': r['id'], 'name': r['name'], 'type': r['type'], 'creator_username': r['creator_username']})
+                else:
+                    communities.append({'id': r[0], 'name': r[1], 'type': r[2], 'creator_username': r[3]})
+
             community_members = {}
-            for community in communities:
-                c.execute("""
-                    SELECT DISTINCT u.username
-                    FROM user_communities uc
-                    INNER JOIN users u ON uc.user_id = u.id
-                    WHERE uc.community_id = ? AND u.username != ?
-                    ORDER BY u.username
-                """, (community[0], username))
-                members = [row[0] for row in c.fetchall()]
-                community_members[community[0]] = members
-            
             all_community_members = set()
-            for community in communities:
+            for comm in communities:
+                comm_id = comm['id']
                 c.execute("""
                     SELECT DISTINCT u.username
                     FROM user_communities uc
                     INNER JOIN users u ON uc.user_id = u.id
                     WHERE uc.community_id = ? AND u.username != ?
                     ORDER BY u.username
-                """, (community[0], username))
-                members = [row[0] for row in c.fetchall()]
+                """, (comm_id, username))
+                rows = c.fetchall() or []
+                members = [ (row['username'] if hasattr(row,'keys') else row[0]) for row in rows ]
+                community_members[comm_id] = members
                 all_community_members.update(members)
-            
-            all_users = sorted(list(all_community_members))
-            
-        return render_template('user_chat.html', name=username, users=all_users, communities=communities, community_members=community_members, subscription=user['subscription'])
+
+            all_users = sorted(all_community_members)
+
+        return render_template('user_chat.html', name=username, users=all_users, communities=communities, community_members=community_members, subscription=subscription)
     except Exception as e:
         logger.error(f"Error in user_chat for {username}: {str(e)}")
         abort(500)
