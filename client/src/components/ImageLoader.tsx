@@ -10,6 +10,15 @@ interface ImageLoaderProps {
 
 export default function ImageLoader({ src, alt, className = '', onClick, style }: ImageLoaderProps) {
   const [loading, setLoading] = useState(true)
+  const resolved = (() => {
+    const p = (src || '').trim()
+    if (!p) return p
+    if (p.startsWith('http')) return p
+    if (p.startsWith('/uploads') || p.startsWith('uploads/')) return p.startsWith('/') ? p : `/${p}`
+    if (p.startsWith('/static') || p.startsWith('static/')) return p.startsWith('/') ? p : `/${p}`
+    // Fallback: assume uploads for legacy
+    return `/uploads/${p}`
+  })()
 
   const handleLoad = () => {
     setLoading(false)
@@ -35,7 +44,7 @@ export default function ImageLoader({ src, alt, className = '', onClick, style }
 
       {/* Actual image */}
       <img
-        src={src}
+        src={resolved}
         alt={alt}
         className={`transition-opacity duration-300 ${loading ? 'opacity-0' : 'opacity-100'} ${className}`}
         style={style}

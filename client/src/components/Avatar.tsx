@@ -45,7 +45,15 @@ function ImageWithLoader({ src, alt, style }: { src: string; alt: string; style:
 }
 
 export default function Avatar({ username, url, size = 40, className = '' }: AvatarProps){
-  const resolved = url ? ((url.startsWith('http') || url.startsWith('/static')) ? url : `/static/${url}`) : null
+  const resolved = (() => {
+    const p = (url || '').trim()
+    if (!p) return null
+    if (p.startsWith('http')) return p
+    if (p.startsWith('/uploads') || p.startsWith('uploads/')) return p.startsWith('/') ? p : `/${p}`
+    if (p.startsWith('/static') || p.startsWith('static/')) return p.startsWith('/') ? p : `/${p}`
+    // Fallback: assume uploads by default
+    return `/uploads/${p}`
+  })()
   const initials = (username || '?').slice(0, 1).toUpperCase()
   return (
     <div
