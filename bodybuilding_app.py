@@ -6297,7 +6297,11 @@ def user_chat():
             c = conn.cursor()
             c.execute("SELECT subscription FROM users WHERE username=?", (username,))
             user = c.fetchone()
-            if not user or user['subscription'] != 'premium':
+            try:
+                subscription = user['subscription'] if hasattr(user, 'keys') else (user[0] if user else None)
+            except Exception:
+                subscription = None
+            if username != 'admin' and (not subscription or str(subscription).lower() != 'premium'):
                 return render_template('index.html', error="Premium subscription required!")
             
             # Smart UA: mobile -> SPA, desktop -> HTML
