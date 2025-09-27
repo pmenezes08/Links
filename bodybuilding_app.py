@@ -10482,6 +10482,9 @@ def deactivate_community(community_id):
 @login_required
 def gym():
     return redirect(url_for('workout_tracking'))
+
+@app.route('/admin/user_statistics')
+@login_required
 def admin_user_statistics():
     """Admin endpoint to view user activity statistics"""
     username = session.get('username')
@@ -10493,6 +10496,40 @@ def admin_user_statistics():
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
+            # Ensure required tables exist (esp. on MySQL where init_db may not run at import time)
+            try:
+                if USE_MYSQL:
+                    c.execute("""
+                        CREATE TABLE IF NOT EXISTS user_login_history (
+                            id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                            username VARCHAR(255) NOT NULL,
+                            login_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                            ip_address VARCHAR(45),
+                            user_agent TEXT,
+                            FOREIGN KEY (username) REFERENCES users (username)
+                        )
+                    """)
+                    c.execute("""
+                        CREATE TABLE IF NOT EXISTS community_visit_history (
+                            id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                            username VARCHAR(191) NOT NULL,
+                            community_id INTEGER NOT NULL,
+                            visit_time TEXT NOT NULL,
+                            FOREIGN KEY (username) REFERENCES users (username),
+                            FOREIGN KEY (community_id) REFERENCES communities (id)
+                        )
+                    """)
+                    try:
+                        c.execute("CREATE INDEX IF NOT EXISTS idx_login_username ON user_login_history(username)")
+                        c.execute("CREATE INDEX IF NOT EXISTS idx_login_time ON user_login_history(login_time)")
+                        c.execute("CREATE INDEX IF NOT EXISTS idx_visit_username ON community_visit_history(username)")
+                        c.execute("CREATE INDEX IF NOT EXISTS idx_visit_community ON community_visit_history(community_id)")
+                        c.execute("CREATE INDEX IF NOT EXISTS idx_visit_time ON community_visit_history(visit_time)")
+                    except Exception:
+                        pass
+                    conn.commit()
+            except Exception as ensure_err:
+                logger.warning(f"Could not ensure stats tables: {ensure_err}")
             
             # Get user statistics
             c.execute("""
