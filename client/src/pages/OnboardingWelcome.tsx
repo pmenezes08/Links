@@ -6,6 +6,7 @@ export default function OnboardingWelcome(){
   const [showModal, setShowModal] = useState(false)
   const [code, setCode] = useState('')
   const [error, setError] = useState('')
+  const [joining, setJoining] = useState(false)
 
   useEffect(() => {
     // Mobile-safe: prevent background scroll when modal open
@@ -26,14 +27,41 @@ export default function OnboardingWelcome(){
     navigate('/premium_dashboard')
   }
 
-  function onJoin(){
+  async function onJoin(){
     const trimmed = (code || '').trim()
     if (!trimmed){ setError('Please enter a code.'); return }
     setError('')
-    // Step 1: no backend call to avoid breaking; wire in next step
-    alert('Thanks! We will connect this in the next step.')
-    setShowModal(false)
-    navigate('/premium_dashboard')
+    setJoining(true)
+    try{
+      const body = new URLSearchParams({ community_code: trimmed })
+      const resp = await fetch('/join_community', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body
+      })
+      let data: any = null
+      try { data = await resp.json() } catch { data = null }
+
+      if (resp.ok && data?.success){
+        const cid = data.community_id
+        setShowModal(false)
+        if (cid){
+          navigate(`/community_feed_react/${cid}`)
+        } else {
+          navigate('/premium_dashboard')
+        }
+        return
+      }
+
+      // Handle common errors (e.g., 403 unverified email, invalid code, already a member)
+      const msg = data?.error || (resp.status === 403 ? 'Please verify your email to join communities.' : 'Failed to join the community.')
+      setError(msg)
+    } catch {
+      setError('Network error. Please try again.')
+    } finally {
+      setJoining(false)
+    }
   }
 
   return (
@@ -65,8 +93,8 @@ export default function OnboardingWelcome(){
               <div className="text-xs text-[#9fb0b5] mt-2">Enter the code provided by your community admin.</div>
             </div>
             <div className="mt-4 flex gap-2 justify-end">
-              <button className="px-4 py-2 rounded-lg border border-white/10 bg-white/[0.04]" onClick={onExit}>Exit</button>
-              <button className="px-4 py-2 rounded-lg bg-[#4db6ac] text-black font-semibold" onClick={onJoin}>Join</button>
+              <button className="px-4 py-2 rounded-lg border border-white/10 bg-white/[0.04]" onClick={onExit} disabled={joining}>Exit</button>
+              <button className="px-4 py-2 rounded-lg bg-[#4db6ac] text-black font-semibold" onClick={onJoin} disabled={joining}>{joining ? 'Joining…' : 'Join'}</button>
             </div>
           </div>
         </div>
