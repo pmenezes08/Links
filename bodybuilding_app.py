@@ -31,6 +31,27 @@ except ImportError:
 # Initialize Flask app
 app = Flask(__name__, template_folder='templates')
 
+# Authentication decorators (defined early so they are in scope for route decorators)
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'username' not in session:
+            try:
+                logger.info("No username in session, redirecting to index")
+            except Exception:
+                pass
+            return redirect(url_for('index'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+def business_login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'business_id' not in session:
+            return redirect(url_for('business_login'))
+        return f(*args, **kwargs)
+    return decorated_function
+
 # Add caching headers for static files (especially images)
 @app.after_request
 def add_cache_headers(response):
@@ -2309,24 +2330,6 @@ def is_blood_test_related(message):
 def is_nutrition_related(message):
     nutrition_keywords = ['plan', 'diet', 'nutrition', 'calories', 'protein', 'fat', 'carb', 'carbs', 'meal', 'food']
     return any(keyword in message.lower() for keyword in nutrition_keywords)
-
-# Decorators
-def login_required(f):
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if 'username' not in session:
-            logger.info("No username in session, redirecting to index")
-            return redirect(url_for('index'))
-        return f(*args, **kwargs)
-    return decorated_function
-
-def business_login_required(f):
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if 'business_id' not in session:
-            return redirect(url_for('business_login'))
-        return f(*args, **kwargs)
-    return decorated_function
 
 # Routes
 @app.route('/', methods=['GET', 'POST'])
