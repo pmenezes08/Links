@@ -2723,6 +2723,13 @@ def dashboard():
             """, (username,))
             communities = [{'id': row['id'], 'name': row['name'], 'type': row['type']} for row in c.fetchall()]
             
+        # Server-side onboarding gate: if user has no communities, send to React onboarding
+        if not communities:
+            try:
+                return redirect(url_for('premium_dashboard_react')) if False else redirect('/onboarding')
+            except Exception:
+                return redirect('/onboarding')
+
         # Determine if we should show the first-time join community prompt
         show_join_prompt = session.pop('show_join_community_prompt', False)
         
