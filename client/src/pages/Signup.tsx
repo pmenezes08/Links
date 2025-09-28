@@ -297,7 +297,7 @@ export default function Signup(){
               <div className="text-lg font-semibold mb-1">Verify your email</div>
               <div className="text-sm text-white/80">We sent a verification link to your email. Please click the link to verify your account.</div>
               <div className="mt-3 flex items-center gap-2">
-                <button className="px-3 py-2 rounded-md bg-[#4db6ac] text-black" onClick={()=> { setShowVerify(false); navigate('/verify_required') }}>OK</button>
+                <button className="px-3 py-2 rounded-md bg-[#4db6ac] text-black" onClick={()=> { setShowVerify(false); window.location.href = '/verify_required' }}>OK</button>
                 <button className="px-3 py-2 rounded-md border border-white/10" onClick={async ()=>{
                   try{
                     const r = await fetch('/resend_verification', { method:'POST', credentials:'include' })

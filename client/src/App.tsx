@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, useLocation, useNavigate } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import ErrorBoundary from './components/ErrorBoundary'
 import MobileLogin from './pages/MobileLogin'
@@ -56,6 +56,27 @@ function AppRoutes(){
     }
     load()
   }, [])
+
+  // Global guard: if user is logged in but email not verified, redirect to /verify_required
+  useEffect(() => {
+    let cancelled = false
+    async function guard(){
+      try{
+        const r = await fetch('/api/profile_me', { credentials: 'include' })
+        if (!r.ok) return
+        const j = await r.json().catch(()=>null)
+        if (!j?.success || !j.profile) return
+        const verified = !!j.profile.email_verified
+        if (!verified && location.pathname !== '/verify_required'){
+          if (!cancelled){
+            window.location.href = '/verify_required'
+          }
+        }
+      }catch{}
+    }
+    guard()
+    return () => { cancelled = true }
+  }, [location.pathname])
 
   return (
     <HeaderContext.Provider value={{ setTitle }}>
