@@ -184,16 +184,29 @@ def _block_unverified_users():
 
 @app.route('/verify_required')
 def verify_required():
+    # Always serve the simple HTML page to avoid client-side routing confusion
     try:
-        ua = request.headers.get('User-Agent', '')
-        is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
-        if is_mobile:
-            base_dir = os.path.dirname(os.path.abspath(__file__))
-            dist_dir = os.path.join(base_dir, 'client', 'dist')
-            return send_from_directory(dist_dir, 'index.html')
         return render_template('verify_required.html')
     except Exception:
         return render_template('verify_required.html')
+
+@app.route('/onboarding')
+@login_required
+def onboarding_react():
+    try:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        dist_dir = os.path.join(base_dir, 'client', 'dist')
+        resp = send_from_directory(dist_dir, 'index.html')
+        try:
+            resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+            resp.headers['Pragma'] = 'no-cache'
+            resp.headers['Expires'] = '0'
+        except Exception:
+            pass
+        return resp
+    except Exception as e:
+        logger.error(f"Error serving React onboarding: {str(e)}")
+        abort(500)
 
 def generate_email_token(email: str) -> str:
     s = _get_serializer()
