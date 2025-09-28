@@ -7,6 +7,9 @@ export default function OnboardingWelcome(){
   const [code, setCode] = useState('')
   const [error, setError] = useState('')
   const [joining, setJoining] = useState(false)
+  const [isUnverified, setIsUnverified] = useState(false)
+  const [resendLoading, setResendLoading] = useState(false)
+  const [resendMsg, setResendMsg] = useState('')
 
   useEffect(() => {
     // Mobile-safe: prevent background scroll when modal open
@@ -31,6 +34,8 @@ export default function OnboardingWelcome(){
     const trimmed = (code || '').trim()
     if (!trimmed){ setError('Please enter a code.'); return }
     setError('')
+    setIsUnverified(false)
+    setResendMsg('')
     setJoining(true)
     try{
       const body = new URLSearchParams({ community_code: trimmed })
@@ -55,12 +60,33 @@ export default function OnboardingWelcome(){
       }
 
       // Handle common errors (e.g., 403 unverified email, invalid code, already a member)
+      if (resp.status === 403){
+        setIsUnverified(true)
+      }
       const msg = data?.error || (resp.status === 403 ? 'Please verify your email to join communities.' : 'Failed to join the community.')
       setError(msg)
     } catch {
       setError('Network error. Please try again.')
     } finally {
       setJoining(false)
+    }
+  }
+
+  async function onResend(){
+    setResendMsg('')
+    setResendLoading(true)
+    try{
+      const r = await fetch('/resend_verification', { method:'POST', credentials:'include' })
+      const j = await r.json().catch(()=>null)
+      if (r.ok && j?.success){
+        setResendMsg('Verification email sent. Check your inbox.')
+      } else {
+        setResendMsg(j?.error || 'Failed to send verification email.')
+      }
+    } catch {
+      setResendMsg('Network error. Please try again.')
+    } finally {
+      setResendLoading(false)
     }
   }
 
@@ -90,11 +116,22 @@ export default function OnboardingWelcome(){
                 className="w-full px-3 py-3 rounded-xl border border-white/10 bg-white/[0.04]"
               />
               {error && <div className="text-xs text-red-400 mt-2">{error}</div>}
+              {isUnverified && (
+                <div className="mt-2 text-xs text-[#9fb0b5]">
+                  You need to verify your email before joining. 
+                  <button
+                    className="ml-2 underline disabled:opacity-60"
+                    onClick={onResend}
+                    disabled={resendLoading}
+                  >{resendLoading ? 'Sending…' : 'Resend verification'}</button>
+                  {resendMsg && <div className="mt-1">{resendMsg}</div>}
+                </div>
+              )}
               <div className="text-xs text-[#9fb0b5] mt-2">Enter the code provided by your community admin.</div>
             </div>
             <div className="mt-4 flex gap-2 justify-end">
               <button className="px-4 py-2 rounded-lg border border-white/10 bg-white/[0.04]" onClick={onExit} disabled={joining}>Exit</button>
-              <button className="px-4 py-2 rounded-lg bg-[#4db6ac] text-black font-semibold" onClick={onJoin} disabled={joining}>{joining ? 'Joining…' : 'Join'}</button>
+              <button className="px-4 py-2 rounded-lg bg-[#4db6ac] text-black font-semibold" onClick={onJoin} disabled={joining || isUnverified}>{joining ? 'Joining…' : 'Join'}</button>
             </div>
           </div>
         </div>
