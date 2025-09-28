@@ -63,6 +63,12 @@ function AppRoutes(){
     async function guard(){
       try{
         const r = await fetch('/api/profile_me', { credentials: 'include' })
+        if (r.status === 403){
+          if (!cancelled && location.pathname !== '/verify_required'){
+            window.location.href = '/verify_required'
+          }
+          return
+        }
         if (!r.ok) return
         const j = await r.json().catch(()=>null)
         if (!j?.success || !j.profile) return

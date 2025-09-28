@@ -45,10 +45,10 @@ export default function PremiumDashboard() {
       try {
         // Profile (email verification status)
         try{
-          const me = await fetchJson('/api/profile_me')
-          if (me?.success && me.profile){
-            setEmailVerified(!!me.profile.email_verified)
-          }
+          const r = await fetch('/api/profile_me', { credentials:'include' })
+          if (r.status === 403){ navigate('/verify_required', { replace: true }); return }
+          const me = await r.json().catch(()=>null)
+          if (me?.success && me.profile){ setEmailVerified(!!me.profile.email_verified) }
         }catch{ setEmailVerified(null) }
 
         // Check gym membership
