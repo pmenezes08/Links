@@ -16,6 +16,16 @@ export default function MobileLogin() {
         if (r.ok){
           const j = await r.json()
           if (j && j.username){
+            // Try to infer onboarding state: if user has no communities, send to /onboarding
+            try{
+              const ht = await fetch('/api/home_timeline', { credentials:'include' })
+              const hj = await ht.json().catch(()=>null)
+              const hasCommunities = Boolean(hj?.admin_communities?.length || hj?.communities_list?.length)
+              if (!hasCommunities){
+                navigate('/onboarding', { replace: true })
+                return
+              }
+            }catch{}
             navigate('/premium_dashboard', { replace: true })
             return
           }
