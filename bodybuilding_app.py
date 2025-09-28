@@ -2798,6 +2798,29 @@ def free_workouts():
 def premium_dashboard():
     # Prefer React app if built; fallback to HTML template
     try:
+        # Server-side onboarding gate for mobile: if no communities, go to onboarding
+        try:
+            username = session.get('username')
+            if username:
+                with get_db_connection() as conn:
+                    c = conn.cursor()
+                    c.execute(f"""
+                        SELECT COUNT(*) FROM user_communities uc
+                        JOIN users u ON uc.user_id = u.id
+                        WHERE u.username = {get_sql_placeholder()}
+                    """, (username,))
+                    row = c.fetchone()
+                    count = 0
+                    if row is not None:
+                        try:
+                            count = row['COUNT(*)'] if hasattr(row, 'keys') else (row[0] if len(row) else 0)
+                        except Exception:
+                            count = row[0] if not hasattr(row, 'keys') else list(row.values())[0]
+                    if count == 0:
+                        return redirect('/onboarding')
+        except Exception:
+            pass
+
         base_dir = os.path.dirname(os.path.abspath(__file__))
         dist_dir = os.path.join(base_dir, 'client', 'dist')
         index_path = os.path.join(dist_dir, 'index.html')
