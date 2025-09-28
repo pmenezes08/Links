@@ -142,7 +142,7 @@ def _block_unverified_users():
         path = request.path or ''
         if path.startswith('/static') or path.startswith('/assets'):
             return None
-        if path in ('/', '/login', '/login_password', '/signup', '/signup_react', '/verify_email', '/resend_verification', '/logout'):
+        if path in ('/', '/login', '/login_password', '/signup', '/signup_react', '/verify_email', '/resend_verification', '/logout', '/verify_required'):
             return None
         # Health and misc
         if path in ('/health', '/vite.svg', '/favicon.svg', '/manifest.webmanifest') or path.startswith('/icons/'):
@@ -2771,12 +2771,9 @@ def dashboard():
             """, (username,))
             communities = [{'id': row['id'], 'name': row['name'], 'type': row['type']} for row in c.fetchall()]
             
-        # Server-side onboarding gate: if user has no communities, send to React onboarding
-        if not communities:
-            try:
-                return redirect(url_for('onboarding_react'))
-            except Exception:
-                return redirect('/onboarding')
+        # Server-side onboarding gate: if user has no communities, send to onboarding (but avoid redirect loop)
+        if not communities and request.path != '/onboarding':
+            return redirect('/onboarding')
 
         # Determine if we should show the first-time join community prompt
         show_join_prompt = session.pop('show_join_community_prompt', False)
@@ -2816,7 +2813,7 @@ def premium_dashboard():
                             count = row['cnt'] if hasattr(row, 'keys') else (row[0] if len(row) else 0)
                         except Exception:
                             count = row[0] if not hasattr(row, 'keys') else list(row.values())[0]
-                    if count == 0:
+                    if count == 0 and request.path != '/onboarding':
                         return redirect('/onboarding')
         except Exception:
             pass
