@@ -66,7 +66,14 @@ export default function PremiumDashboard() {
           setCommunities([])
         }
 
-        // (No longer needed for desktop routing) Fetch of hierarchical communities removed
+        // Redirect first-time users to onboarding if no communities
+        try{
+          const hasNone = !Array.isArray(communities) || (communities || []).length === 0
+          if (hasNone){
+            navigate('/onboarding', { replace: true })
+            return
+          }
+        }catch{}
       } catch (error) {
         console.error('Error loading user data:', error)
         setHasGymAccess(false)
