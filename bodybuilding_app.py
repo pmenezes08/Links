@@ -4353,10 +4353,27 @@ def admin():
             users = []
             communities = []
 
-            # Get users list with is_active status
+            # Get users list with is_active status (normalize shape for template)
             try:
                 c.execute("SELECT username, subscription, is_active FROM users ORDER BY username")
-                users = c.fetchall()
+                users_raw = c.fetchall()
+                users = []
+                for row in users_raw or []:
+                    try:
+                        if hasattr(row, 'keys'):
+                            uname = row.get('username') if hasattr(row, 'get') else row['username']
+                            sub = row.get('subscription') if hasattr(row, 'get') else row['subscription']
+                            active = row.get('is_active') if hasattr(row, 'get') else row['is_active'] if 'is_active' in row.keys() else True
+                        else:
+                            uname = row[0]
+                            sub = row[1] if len(row) > 1 else 'free'
+                            active = row[2] if len(row) > 2 else True
+                    except Exception:
+                        # Defensive defaults
+                        uname = row[0] if not hasattr(row, 'keys') else (row.get('username') if hasattr(row, 'get') else None)
+                        sub = 'free'
+                        active = True
+                    users.append((uname, sub, bool(active) if active is not None else True))
             except Exception as users_error:
                 logger.error(f"Error getting users list: {users_error}")
 

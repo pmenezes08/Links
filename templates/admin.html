@@ -1364,14 +1364,17 @@
                         </thead>
                         <tbody id="usersTableBody">
                             {% for user in users %}
-                            <tr class="user-row {{ 'deactivated' if not user[2]|default(true) else '' }}" 
-                                data-username="{{ user[0] }}" 
-                                data-subscription="{{ user[1] }}"
-                                data-active="{{ user[2]|default(true) }}">
+                            {% set uname = user[0] if user is iterable and (user|length) > 0 else (user.username if user.username is defined else '') %}
+                            {% set sub = user[1] if user is iterable and (user|length) > 1 else (user.subscription if user.subscription is defined else 'free') %}
+                            {% set active = user[2] if user is iterable and (user|length) > 2 else (user.is_active if user.is_active is defined else true) %}
+                            <tr class="user-row {{ 'deactivated' if not active else '' }}" 
+                                data-username="{{ uname }}" 
+                                data-subscription="{{ sub }}"
+                                data-active="{{ active }}">
                                 <td class="username-cell">
                                     <div class="user-display">
                                         <i class="fas fa-user user-icon-small"></i>
-                                        <strong>{{ user[0] }}</strong>
+                                        <strong>{{ uname }}</strong>
                                         {% if user[0] == 'admin' %}
                                         <span class="admin-badge">Admin</span>
                                         {% endif %}
@@ -1381,22 +1384,22 @@
                                     </div>
                                 </td>
                                 <td>
-                                    <span class="subscription-badge-compact {{ user[1] }}">
-                                        {{ user[1]|title }}
+                                    <span class="subscription-badge-compact {{ sub }}">
+                                        {{ sub|title }}
                                     </span>
                                 </td>
                                 <td>
-                                    <span class="status-indicator {{ 'active' if user[2]|default(true) else 'inactive' }}">
-                                        {{ 'Active' if user[2]|default(true) else 'Inactive' }}
+                                    <span class="status-indicator {{ 'active' if active else 'inactive' }}">
+                                        {{ 'Active' if active else 'Inactive' }}
                                     </span>
                                 </td>
                                 <td class="actions-cell">
                                     <div class="compact-actions">
-                                        <button onclick="showPasswordModal('{{ user[0] }}')" 
+                                        <button onclick="showPasswordModal('{{ uname }}')" 
                                                 class="action-btn-compact" title="Update Password">
                                             <i class="fas fa-key"></i>
                                         </button>
-                                        <button onclick="showSubscriptionModal('{{ user[0] }}', '{{ user[1] }}')" 
+                                        <button onclick="showSubscriptionModal('{{ uname }}', '{{ sub }}')" 
                                                 class="action-btn-compact" title="Change Subscription">
                                             <i class="fas fa-crown"></i>
                                         </button>
@@ -1404,13 +1407,13 @@
                                                 class="action-btn-compact" title="View Details">
                                             <i class="fas fa-eye"></i>
                                         </button>
-                                        {% if user[0] != 'admin' %}
-                                        <button onclick="toggleUserStatus('{{ user[0] }}', {{ 'false' if user[2]|default(true) else 'true' }})" 
-                                                class="action-btn-compact {{ 'warning' if user[2]|default(true) else 'success' }}" 
-                                                title="{{ 'Deactivate' if user[2]|default(true) else 'Activate' }}">
-                                            <i class="fas fa-{{ 'ban' if user[2]|default(true) else 'check-circle' }}"></i>
+                                        {% if uname != 'admin' %}
+                                        <button onclick="toggleUserStatus('{{ uname }}', {{ 'false' if active else 'true' }})" 
+                                                class="action-btn-compact {{ 'warning' if active else 'success' }}" 
+                                                title="{{ 'Deactivate' if active else 'Activate' }}">
+                                            <i class="fas fa-{{ 'ban' if active else 'check-circle' }}"></i>
                                         </button>
-                                        <button onclick="deleteUser('{{ user[0] }}')" 
+                                        <button onclick="deleteUser('{{ uname }}')" 
                                                 class="action-btn-compact danger" title="Delete">
                                             <i class="fas fa-trash"></i>
                                         </button>
