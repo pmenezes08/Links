@@ -142,10 +142,23 @@ def _block_unverified_users():
         path = request.path or ''
         if path.startswith('/static') or path.startswith('/assets'):
             return None
-        if path in ('/', '/login', '/login_password', '/signup', '/signup_react', '/verify_email', '/resend_verification', '/logout', '/verify_required'):
+        if path in ('/', '/login', '/login_password', '/signup', '/signup_react', '/verify_email', '/resend_verification', '/logout', '/verify_required', '/onboarding'):
             return None
         # Health and misc
         if path in ('/health', '/vite.svg', '/favicon.svg', '/manifest.webmanifest') or path.startswith('/icons/'):
+            return None
+        # API behavior: return JSON instead of HTML redirects to avoid client parse errors
+        if path.startswith('/api/'):
+            username = session.get('username')
+            if not username:
+                return jsonify({'success': False, 'error': 'unauthenticated'}), 401
+            with get_db_connection() as conn:
+                c = conn.cursor()
+                c.execute("SELECT email_verified FROM users WHERE username=?", (username,))
+                row = c.fetchone()
+                verified = bool((row['email_verified'] if hasattr(row, 'keys') else row[0]) if row is not None else False)
+            if not verified:
+                return jsonify({'success': False, 'error': 'verify_required'}), 403
             return None
         # API that must remain accessible
         if path.startswith('/api/client_log'):
