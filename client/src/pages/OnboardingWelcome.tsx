@@ -40,7 +40,7 @@ export default function OnboardingWelcome(){
     <div className="min-h-screen bg-black text-white flex items-center justify-center p-4">
       <div className="w-full max-w-xl rounded-2xl border border-white/10 bg-white/[0.03] p-6">
         <div className="text-2xl font-bold">Welcome!</div>
-        <div className="text-sm text-[#9fb0b5] mt-2">Connect with your community. Share updates, join groups, and get the most out of C‑Point.</div>
+        <div className="text-sm text-[#9fb0b5] mt-2">Connect with your community. Share updates, view announcements, answer to polls and much more.</div>
         <div className="mt-4 flex gap-3 flex-wrap">
           <button className="px-4 py-3 rounded-xl bg-[#4db6ac] text-black font-semibold" onClick={onGetStarted}>Get started</button>
           <button className="px-4 py-3 rounded-xl border border-white/10 bg-white/[0.04]" onClick={onExplore}>Explore first</button>
