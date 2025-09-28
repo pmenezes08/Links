@@ -2774,7 +2774,7 @@ def dashboard():
         # Server-side onboarding gate: if user has no communities, send to React onboarding
         if not communities:
             try:
-                return redirect(url_for('premium_dashboard_react')) if False else redirect('/onboarding')
+                return redirect(url_for('onboarding_react'))
             except Exception:
                 return redirect('/onboarding')
 
@@ -2805,7 +2805,7 @@ def premium_dashboard():
                 with get_db_connection() as conn:
                     c = conn.cursor()
                     c.execute(f"""
-                        SELECT COUNT(*) FROM user_communities uc
+                        SELECT COUNT(*) as cnt FROM user_communities uc
                         JOIN users u ON uc.user_id = u.id
                         WHERE u.username = {get_sql_placeholder()}
                     """, (username,))
@@ -2813,7 +2813,7 @@ def premium_dashboard():
                     count = 0
                     if row is not None:
                         try:
-                            count = row['COUNT(*)'] if hasattr(row, 'keys') else (row[0] if len(row) else 0)
+                            count = row['cnt'] if hasattr(row, 'keys') else (row[0] if len(row) else 0)
                         except Exception:
                             count = row[0] if not hasattr(row, 'keys') else list(row.values())[0]
                     if count == 0:
