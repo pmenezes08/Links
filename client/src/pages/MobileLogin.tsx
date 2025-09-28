@@ -13,6 +13,10 @@ export default function MobileLogin() {
     async function check(){
       try{
         const r = await fetch('/api/profile_me', { credentials:'include' })
+        if (r.status === 403){
+          navigate('/verify_required', { replace: true })
+          return
+        }
         if (r.ok){
           const j = await r.json()
           if (j && j.username){

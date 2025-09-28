@@ -140,8 +140,18 @@ app.config['SESSION_COOKIE_PATH'] = '/'  # Ensure cookie is available for all pa
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)
 # For production with HTTPS
 app.config['SESSION_COOKIE_SECURE'] = True  # Re-enabled for HTTPS
-# Don't set domain - let Flask handle it automatically
-# app.config['SESSION_COOKIE_DOMAIN'] = os.getenv('SESSION_COOKIE_DOMAIN') or None
+# Cookie domain: ensure session persists across apex and www
+try:
+    explicit_domain = os.getenv('SESSION_COOKIE_DOMAIN')
+    if explicit_domain:
+        app.config['SESSION_COOKIE_DOMAIN'] = explicit_domain
+    else:
+        # If canonical host is provided and ends with c-point.co, scope cookie to .c-point.co
+        ch = os.getenv('CANONICAL_HOST') or ''
+        if ch.endswith('c-point.co'):
+            app.config['SESSION_COOKIE_DOMAIN'] = '.c-point.co'
+except Exception:
+    pass
 app.config['SESSION_COOKIE_NAME'] = 'cpoint_session'  # Changed to avoid conflicts with old cookies
 app.config['PREFERRED_URL_SCHEME'] = 'https'
 
@@ -337,7 +347,7 @@ def _issue_remember_token(response, username: str):
             secure=True,
             httponly=True,
             samesite='Lax',
-            domain=os.getenv('SESSION_COOKIE_DOMAIN') or None,
+            domain=app.config.get('SESSION_COOKIE_DOMAIN') or None,
             path='/'
         )
     except Exception as e:
@@ -2699,7 +2709,7 @@ def logout():
     # Clear remember token cookie
     from flask import make_response
     resp = make_response(redirect(url_for('index')))
-    resp.set_cookie('remember_token', '', max_age=0, path='/', domain=os.getenv('SESSION_COOKIE_DOMAIN') or None)
+    resp.set_cookie('remember_token', '', max_age=0, path='/', domain=app.config.get('SESSION_COOKIE_DOMAIN') or None)
     return resp
 @app.route('/login_password', methods=['GET', 'POST'])
 # @csrf.exempt
