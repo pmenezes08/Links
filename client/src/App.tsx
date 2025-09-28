@@ -34,6 +34,7 @@ import Notifications from './pages/Notifications'
 import AdminDashboard from './pages/AdminDashboard'
 import ProductDevelopment from './pages/ProductDevelopment'
 import KeyPosts from './pages/KeyPosts'
+import OnboardingWelcome from './pages/OnboardingWelcome'
 
 const queryClient = new QueryClient()
 
@@ -68,6 +69,7 @@ function AppRoutes(){
           <Route path="/login" element={<MobileLogin />} />
           <Route path="/signup" element={<Signup />} />
           <Route path="/signup_react" element={<Signup />} />
+          <Route path="/onboarding" element={<OnboardingWelcome />} />
           <Route path="/premium" element={<PremiumDashboard />} />
           <Route path="/premium_dashboard" element={<PremiumDashboard />} />
           <Route path="/premium_dashboard_react" element={<PremiumDashboard />} />
