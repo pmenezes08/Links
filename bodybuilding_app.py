@@ -4258,6 +4258,14 @@ def admin_delete_user():
             except Exception:
                 pass
             try:
+                c.execute(f"DELETE FROM user_login_history WHERE username={ph}", (target_username,))
+            except Exception:
+                pass
+            try:
+                c.execute(f"DELETE FROM community_visit_history WHERE username={ph}", (target_username,))
+            except Exception:
+                pass
+            try:
                 c.execute(f"DELETE FROM typing_status WHERE user={ph} OR peer={ph}", (target_username, target_username))
             except Exception:
                 pass
@@ -4466,6 +4474,28 @@ def admin():
                     
                     try:
                         # Delete user's data from all related tables
+                        # Web push subscriptions (FK on users.username in MySQL)
+                        try:
+                            c.execute("DELETE FROM push_subscriptions WHERE username=??", (user_to_delete,))
+                        except Exception:
+                            try:
+                                c.execute("DELETE FROM push_subscriptions WHERE username=?", (user_to_delete,))
+                            except Exception:
+                                pass
+                        # Remember tokens
+                        try:
+                            c.execute("DELETE FROM remember_tokens WHERE username=?", (user_to_delete,))
+                        except Exception:
+                            pass
+                        # Login and visit history
+                        try:
+                            c.execute("DELETE FROM user_login_history WHERE username=?", (user_to_delete,))
+                        except Exception:
+                            pass
+                        try:
+                            c.execute("DELETE FROM community_visit_history WHERE username=?", (user_to_delete,))
+                        except Exception:
+                            pass
                         c.execute("DELETE FROM posts WHERE username=?", (user_to_delete,))
                         c.execute("DELETE FROM replies WHERE username=?", (user_to_delete,))
                         c.execute("DELETE FROM reactions WHERE username=?", (user_to_delete,))
