@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Welcome • C‑Point</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+        body { background:#000; color:#fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+        .wrap { min-height: 100vh; display:flex; align-items:center; justify-content:center; padding: 24px; }
+        .card { max-width: 720px; width:100%; background: rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:16px; padding:28px; }
+        .title { font-size: 22px; font-weight: 700; margin-bottom: 8px; }
+        .subtitle { color:#9fb0b5; margin-bottom: 20px; }
+        .actions { display:flex; gap:12px; flex-wrap:wrap; }
+        .btn { padding: 12px 16px; border-radius: 10px; border:1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.04); color:#fff; cursor:pointer; }
+        .btn:hover { background: rgba(255,255,255,0.08); border-color:#4db6ac; }
+        .btn-primary { background:#4db6ac; border-color:#4db6ac; color:#000; font-weight:600; }
+        .btn-primary:hover { background:#3ca79e; }
+        .banner { display:none; margin-top:16px; padding:12px; border-radius:10px; background:rgba(77,182,172,0.08); border:1px solid rgba(77,182,172,0.3); color:#bfe4df; }
+        .modal { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.75); z-index:1000; align-items:center; justify-content:center; }
+        .modal-content { background:#0b0f10; border:1px solid rgba(255,255,255,0.1); border-radius:12px; width:95%; max-width:480px; padding:20px; }
+        .modal-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+        .modal-title { font-size:18px; font-weight:600; }
+        .close { cursor:pointer; color:#9fb0b5; font-size:22px; }
+        .form-row { margin-top:10px; }
+        .input { width:100%; padding:12px; border-radius:10px; border:1px solid rgba(255,255,255,0.12); background:rgba(255,255,255,0.04); color:#fff; }
+        .help { font-size:12px; color:#9fb0b5; margin-top:6px; }
+        .modal-actions { display:flex; gap:10px; justify-content:flex-end; margin-top:16px; }
+        .error { color:#ff6b6b; font-size:12px; margin-top:8px; display:none; }
+    </style>
+</head>
+<body>
+    <div class="wrap">
+        <div class="card">
+            <div class="title">Welcome{{ ' ' + username if username else '' }}!</div>
+            <div class="subtitle">Connect with your community. Share updates, join groups, and get the most out of C‑Point.</div>
+            <div class="actions">
+                <button class="btn btn-primary" id="getStartedBtn">Get started</button>
+                <button class="btn" id="exploreBtn">Explore first</button>
+            </div>
+            <div class="banner" id="exploreBanner"><i class="fas fa-info-circle"></i> Complete setup for a personalized feed.</div>
+        </div>
+    </div>
+
+    <!-- Community Code Modal -->
+    <div class="modal" id="codeModal" role="dialog" aria-modal="true" aria-labelledby="codeTitle">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-title" id="codeTitle">Do you have a community code?</div>
+                <span class="close" id="closeModal">&times;</span>
+            </div>
+            <div>
+                <div class="form-row">
+                    <input type="text" id="communityCode" class="input" placeholder="Enter community code">
+                    <div class="help">Enter the code provided by your community admin.</div>
+                    <div class="error" id="codeError">Please enter a code.</div>
+                </div>
+                <div class="modal-actions">
+                    <button class="btn" id="exitBtn">Exit</button>
+                    <button class="btn btn-primary" id="joinBtn">Join</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const getStartedBtn = document.getElementById('getStartedBtn');
+        const exploreBtn = document.getElementById('exploreBtn');
+        const banner = document.getElementById('exploreBanner');
+        const codeModal = document.getElementById('codeModal');
+        const closeModal = document.getElementById('closeModal');
+        const exitBtn = document.getElementById('exitBtn');
+        const joinBtn = document.getElementById('joinBtn');
+        const codeInput = document.getElementById('communityCode');
+        const codeError = document.getElementById('codeError');
+
+        function openModal(){ codeModal.style.display = 'flex'; setTimeout(()=> codeInput && codeInput.focus(), 50); }
+        function closeModalFn(){ codeModal.style.display = 'none'; }
+
+        getStartedBtn?.addEventListener('click', () => { openModal(); });
+        exploreBtn?.addEventListener('click', () => {
+            banner.style.display = 'block';
+            window.location.href = '{{ url_for('dashboard') }}';
+        });
+        closeModal?.addEventListener('click', closeModalFn);
+        exitBtn?.addEventListener('click', () => { closeModalFn(); window.location.href = '{{ url_for('dashboard') }}'; });
+        joinBtn?.addEventListener('click', () => {
+            const code = (codeInput.value || '').trim();
+            if (!code){ codeError.style.display = 'block'; return; }
+            codeError.style.display = 'none';
+            // Step 1: no backend call yet; we keep it safe. We'll wire in Step 2.
+            alert('Thanks! We will connect this in the next step.');
+            closeModalFn();
+            window.location.href = '{{ url_for('dashboard') }}';
+        });
+
+        window.addEventListener('click', (e) => { if (e.target === codeModal) closeModalFn(); });
+    </script>
+</body>
+</html>

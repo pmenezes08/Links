@@ -11681,6 +11681,18 @@ def delete_post():
         logger.error(f"Error deleting post {post_id} for {username}: {str(e)}", exc_info=True)
         return jsonify({'success': False, 'error': f'Unexpected error: {str(e)}'}), 500
 
+@app.route('/onboarding/welcome')
+@login_required
+def onboarding_welcome():
+    """Onboarding step 1: Welcome screen with Get started / Explore first and community code modal."""
+    try:
+        username = session.get('username')
+        return render_template('onboarding_welcome.html', username=username)
+    except Exception as e:
+        logger.error(f"onboarding_welcome error: {e}")
+        # Fail open to dashboard to avoid breaking experience
+        return redirect(url_for('dashboard'))
+
 @app.route('/edit_post', methods=['POST'])
 @login_required
 def edit_post():
