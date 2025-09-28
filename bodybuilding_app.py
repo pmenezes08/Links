@@ -134,6 +134,54 @@ VERIFICATION_TOKEN_MAX_AGE = int(os.getenv('VERIFICATION_TOKEN_MAX_AGE', '86400'
 def _get_serializer():
     return URLSafeTimedSerializer(VERIFICATION_TOKEN_SECRET)
 
+# Block unverified users from entering the app except for auth/static routes
+@app.before_request
+def _block_unverified_users():
+    try:
+        # Allow static and auth endpoints
+        path = request.path or ''
+        if path.startswith('/static') or path.startswith('/assets'):
+            return None
+        if path in ('/', '/login', '/login_password', '/signup', '/signup_react', '/verify_email', '/resend_verification', '/logout'):
+            return None
+        # Health and misc
+        if path in ('/health', '/vite.svg', '/favicon.svg', '/manifest.webmanifest') or path.startswith('/icons/'):
+            return None
+        # API that must remain accessible
+        if path.startswith('/api/client_log'):
+            return None
+        # If not logged in, normal flow
+        username = session.get('username')
+        if not username:
+            return None
+        # Check email_verified
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT email_verified FROM users WHERE username=?", (username,))
+            row = c.fetchone()
+            verified = bool((row['email_verified'] if hasattr(row, 'keys') else row[0]) if row is not None else False)
+        if not verified:
+            # Allow only verification related pages
+            if path.startswith('/verify_email') or path == '/resend_verification':
+                return None
+            # Redirect to verification required page (React onboarding-friendly)
+            return redirect(url_for('verify_required'))
+    except Exception:
+        return None
+
+@app.route('/verify_required')
+def verify_required():
+    try:
+        ua = request.headers.get('User-Agent', '')
+        is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
+        if is_mobile:
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            dist_dir = os.path.join(base_dir, 'client', 'dist')
+            return send_from_directory(dist_dir, 'index.html')
+        return render_template('verify_required.html')
+    except Exception:
+        return render_template('verify_required.html')
+
 def generate_email_token(email: str) -> str:
     s = _get_serializer()
     return s.dumps({'email': email}, salt=VERIFICATION_TOKEN_SALT)
