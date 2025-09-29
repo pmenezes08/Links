@@ -170,7 +170,14 @@ export default function PremiumDashboard() {
         <div className="flex items-start justify-center px-3 md:ml-52 py-6">
           <div className="w-full max-w-5xl">
             {communities.length === 0 ? (
-              <div className="text-[#9fb0b5] text-sm px-2 py-8 text-center">No communities found.</div>
+              <div className="px-3 py-10">
+                <div className="mx-auto max-w-xl rounded-2xl border border-white/10 bg-white/[0.03] p-6 text-center">
+                  <div className="text-2xl font-bold text-white">Your new world awaits you</div>
+                  <div className="mt-3 text-sm text-[#9fb0b5]">
+                    Enter an invite code to join a community or create your own. Welcome to CPoint, the network where ideas connect people.
+                  </div>
+                </div>
+              </div>
             ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {/* Show all communities */}
