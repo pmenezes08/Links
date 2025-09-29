@@ -293,12 +293,30 @@ function ParentTimeline({ parentId }:{ parentId:number }){
     async function load(){
       if (inflight) return
       inflight = true
+      // Try session cache first to avoid refetch loops on remount
+      try{
+        const key = `parent_tl_cache:${parentId}`
+        const raw = sessionStorage.getItem(key)
+        if (raw){
+          const cached = JSON.parse(raw)
+          if (cached && Array.isArray(cached.posts) && typeof cached.ts === 'number' && (Date.now() - cached.ts) < 10000){
+            setPosts(cached.posts)
+            setLoading(false)
+            setLoadedOnce(true)
+            inflight = false
+            return
+          }
+        }
+      }catch{}
       setLoading(true)
       try{
         const r = await fetch(`/api/community_group_feed/${parentId}`, { credentials:'include' })
         const j = await r.json()
         if (!ok) return
-        if (j?.success) setPosts(j.posts || [])
+        if (j?.success){
+          setPosts(j.posts || [])
+          try{ sessionStorage.setItem(`parent_tl_cache:${parentId}`, JSON.stringify({ ts: Date.now(), posts: j.posts||[] })) }catch{}
+        }
         else setError(j?.error || 'Error loading timeline')
       }catch{
         if (ok) setError('Error loading timeline')
