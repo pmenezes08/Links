@@ -19,6 +19,7 @@ export default function PremiumDashboard() {
   // Removed parentsWithChildren usage in desktop since cards now route to unified communities page
   const [emailVerified, setEmailVerified] = useState<boolean|null>(null)
   const [showVerifyFirstModal, setShowVerifyFirstModal] = useState(false)
+  const [communitiesLoaded, setCommunitiesLoaded] = useState(false)
   const { setTitle } = useHeader()
   useEffect(() => { setTitle('Dashboard') }, [setTitle])
   const navigate = useNavigate()
@@ -62,9 +63,11 @@ export default function PremiumDashboard() {
         if (fetchedCommunities.length > 0) {
           console.log('Dashboard: Setting communities:', fetchedCommunities)
           setCommunities(fetchedCommunities)
+          setCommunitiesLoaded(true)
         } else {
           console.log('Dashboard: No communities found or API error')
           setCommunities([])
+          setCommunitiesLoaded(true)
           // Redirect first-time users to onboarding if no communities
           navigate('/onboarding', { replace: true })
           return
@@ -81,6 +84,7 @@ export default function PremiumDashboard() {
 
   // Auto-prompt on first login: if user has no communities, show join; if not verified, show verify-first
   useEffect(() => {
+    if (!communitiesLoaded) return
     if (emailVerified === null) return
     if (!Array.isArray(communities)) return
     const hasNoCommunities = (communities || []).length === 0
