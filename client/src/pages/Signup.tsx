@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 
 export default function Signup(){
   const navigate = useNavigate()
+  const requireVerification = (import.meta as any).env?.VITE_REQUIRE_VERIFICATION_CLIENT === 'true'
   const [formData, setFormData] = useState({
     username: '',
     first_name: '',
@@ -106,13 +107,17 @@ export default function Signup(){
             setError(j?.error || 'Registration failed')
           }
         } catch (jsonError) {
-          // Not JSON, might be HTML redirect
-          console.log('Not JSON response, checking for redirect...')
-          if (r.redirected || r.status === 302) {
-            // Successful redirect
-            navigate('/premium_dashboard')
+          // Not JSON response. Under feature flag, lock on verify modal; otherwise keep legacy redirect.
+          if (requireVerification) {
+            setRedirectAfterVerify('/premium_dashboard')
+            setShowVerify(true)
           } else {
-            setError('Unexpected response format')
+            console.log('Not JSON response, checking for redirect...')
+            if (r.redirected || r.status === 302) {
+              navigate('/premium_dashboard')
+            } else {
+              setError('Unexpected response format')
+            }
           }
         }
       } else {
@@ -296,17 +301,40 @@ export default function Signup(){
             <div className="w-[90%] max-w-md rounded-xl border border-white/10 bg-[#0b0b0b] p-4">
               <div className="text-lg font-semibold mb-1">Verify your email</div>
               <div className="text-sm text-white/80">We sent a verification link to your email. Please click the link to verify your account.</div>
-              <div className="mt-3 flex items-center gap-2">
-                <button className="px-3 py-2 rounded-md bg-[#4db6ac] text-black" onClick={()=> { setShowVerify(false); window.location.href = '/verify_required' }}>OK</button>
-                <button className="px-3 py-2 rounded-md border border-white/10" onClick={async ()=>{
-                  try{
-                    const r = await fetch('/resend_verification', { method:'POST', credentials:'include' })
-                    const j = await r.json().catch(()=>null)
-                    if (!j?.success) alert(j?.error || 'Failed to resend')
-                    else alert('Verification email sent')
-                  }catch{ alert('Network error') }
-                }}>Resend email</button>
-              </div>
+              {requireVerification ? (
+                <div className="mt-3 flex items-center gap-2">
+                  <button className="px-3 py-2 rounded-md border border-white/10" onClick={async ()=>{
+                    try{
+                      const r = await fetch('/resend_verification', { method:'POST', credentials:'include' })
+                      const j = await r.json().catch(()=>null)
+                      if (!j?.success) alert(j?.error || 'Failed to resend')
+                      else alert('Verification email sent')
+                    }catch{ alert('Network error') }
+                  }}>Resend verification</button>
+                  <button className="px-3 py-2 rounded-md bg-[#4db6ac] text-black" onClick={async ()=>{
+                    try{
+                      const r = await fetch('/api/profile_me', { credentials:'include' })
+                      if (r.status === 403){ alert('Still unverified. Please click the link in your email.'); return }
+                      const j = await r.json().catch(()=>null)
+                      const verified = !!(j?.profile?.email_verified)
+                      if (verified){ navigate(redirectAfterVerify) }
+                      else { alert('Still unverified. Please check your email and try again.') }
+                    }catch{ alert('Network error, please try again.') }
+                  }}>I’ve verified</button>
+                </div>
+              ) : (
+                <div className="mt-3 flex items-center gap-2">
+                  <button className="px-3 py-2 rounded-md bg-[#4db6ac] text-black" onClick={()=> { setShowVerify(false); window.location.href = '/verify_required' }}>OK</button>
+                  <button className="px-3 py-2 rounded-md border border-white/10" onClick={async ()=>{
+                    try{
+                      const r = await fetch('/resend_verification', { method:'POST', credentials:'include' })
+                      const j = await r.json().catch(()=>null)
+                      if (!j?.success) alert(j?.error || 'Failed to resend')
+                      else alert('Verification email sent')
+                    }catch{ alert('Network error') }
+                  }}>Resend email</button>
+                </div>
+              )}
             </div>
           </div>
         )}
