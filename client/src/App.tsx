@@ -77,7 +77,19 @@ function AppRoutes(){
       try{
         if (!requireVerification){ setAuthLoaded(true); return }
         const r = await fetch('/api/profile_me', { credentials: 'include' })
-        if (r.status === 401){ if (!cancelled) window.location.href = '/'; return }
+        if (r.status === 401){
+          if (!cancelled){
+            // Avoid reload loops on public pages
+            const p = location.pathname
+            const publicPaths = new Set(['/', '/login', '/signup', '/signup_react', '/verify_required'])
+            if (!publicPaths.has(p)) {
+              window.location.href = '/'
+            } else {
+              setAuthLoaded(true)
+            }
+          }
+          return
+        }
         if (r.status === 403){ if (!cancelled){ setIsVerified(false); setAuthLoaded(true) } return }
         if (!r.ok){ if (!cancelled) setAuthLoaded(true); return }
         const j = await r.json().catch(()=>null)
