@@ -76,6 +76,15 @@ def add_cache_headers(response):
     
     return response
 
+@app.after_request
+def log_onboarding_redirects(response):
+    try:
+        if response.status_code in (301, 302) and '/onboarding' in (response.headers.get('Location') or ''):
+            logger.warning(f"HTTP redirect to /onboarding: path={request.path}, referer={request.headers.get('Referer')}, ua={request.headers.get('User-Agent')}")
+    except Exception:
+        pass
+    return response
+
 # Custom template filters
 @app.template_filter('nl2br')
 def nl2br_filter(text):
@@ -225,6 +234,10 @@ def verify_required():
 @login_required
 def onboarding_react():
     try:
+        try:
+            logger.info(f"Serving /onboarding for user={session.get('username')}, referer={request.headers.get('Referer')}")
+        except Exception:
+            pass
         base_dir = os.path.dirname(os.path.abspath(__file__))
         dist_dir = os.path.join(base_dir, 'client', 'dist')
         resp = send_from_directory(dist_dir, 'index.html')
@@ -2838,6 +2851,14 @@ def dashboard():
             has_any = bool(communities)
 
         if not has_any and request.path != '/onboarding':
+            try:
+                logger.warning(
+                    f"Onboarding redirect (dashboard): user={username}, path={request.path}, "
+                    f"membership_cnt={membership_cnt}, created_cnt={created_cnt}, admin_cnt={admin_cnt}, "
+                    f"referer={request.headers.get('Referer')}, ua={request.headers.get('User-Agent')}"
+                )
+            except Exception:
+                pass
             return redirect('/onboarding')
 
         # Determine if we should show the first-time join community prompt
@@ -2883,6 +2904,14 @@ def premium_dashboard():
                     admin_cnt = _count(f"SELECT COUNT(*) as cnt FROM community_admins WHERE username = {ph}", (username,))
                     total_cnt = membership_cnt + created_cnt + admin_cnt
                     if total_cnt == 0 and request.path != '/onboarding':
+                        try:
+                            logger.warning(
+                                f"Onboarding redirect (premium_dashboard): user={username}, path={request.path}, "
+                                f"membership_cnt={membership_cnt}, created_cnt={created_cnt}, admin_cnt={admin_cnt}, "
+                                f"referer={request.headers.get('Referer')}, ua={request.headers.get('User-Agent')}"
+                            )
+                        except Exception:
+                            pass
                         return redirect('/onboarding')
         except Exception:
             pass

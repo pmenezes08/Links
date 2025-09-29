@@ -17,6 +17,15 @@ export default function OnboardingWelcome(){
     return () => { document.body.style.overflow = '' }
   }, [showModal])
 
+  useEffect(() => {
+    // Client instrumentation: log when onboarding is shown
+    ;(async () => {
+      try{
+        await fetch('/api/client_log', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ level:'warn', type:'onboarding_mount', path: window.location.pathname }) })
+      }catch{}
+    })()
+  }, [])
+
   function onExplore(){
     navigate('/premium_dashboard')
   }
