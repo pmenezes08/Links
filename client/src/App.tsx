@@ -35,6 +35,7 @@ import AdminDashboard from './pages/AdminDashboard'
 import ProductDevelopment from './pages/ProductDevelopment'
 import KeyPosts from './pages/KeyPosts'
 import OnboardingWelcome from './pages/OnboardingWelcome'
+import VerifyOverlay from './components/VerifyOverlay'
 
 const queryClient = new QueryClient()
 
@@ -43,6 +44,9 @@ function AppRoutes(){
   const [userMeta, setUserMeta] = useState<{ username?:string; avatarUrl?:string|null }>({})
   const location = useLocation()
   const isFirstPage = location.pathname === '/'
+  const [authLoaded, setAuthLoaded] = useState(false)
+  const [isVerified, setIsVerified] = useState<boolean | null>(null)
+  const [requireVerification] = useState(() => (import.meta as any).env?.VITE_REQUIRE_VERIFICATION_CLIENT === 'true')
 
   useEffect(() => {
     async function load(){
@@ -62,27 +66,26 @@ function AppRoutes(){
     let cancelled = false
     async function guard(){
       try{
+        if (!requireVerification){ setAuthLoaded(true); return }
         const r = await fetch('/api/profile_me', { credentials: 'include' })
-        if (r.status === 403){
-          if (!cancelled && location.pathname !== '/verify_required'){
-            window.location.href = '/verify_required'
-          }
-          return
-        }
-        if (!r.ok) return
+        if (r.status === 401){ if (!cancelled) window.location.href = '/'; return }
+        if (r.status === 403){ if (!cancelled){ setIsVerified(false); setAuthLoaded(true) } return }
+        if (!r.ok){ if (!cancelled) setAuthLoaded(true); return }
         const j = await r.json().catch(()=>null)
-        if (!j?.success || !j.profile) return
-        const verified = !!j.profile.email_verified
-        if (!verified && location.pathname !== '/verify_required'){
-          if (!cancelled){
-            window.location.href = '/verify_required'
-          }
-        }
+        const verified = !!(j?.profile?.email_verified)
+        if (!cancelled){ setIsVerified(verified); setAuthLoaded(true) }
       }catch{}
     }
     guard()
     return () => { cancelled = true }
-  }, [location.pathname])
+  }, [location.pathname, requireVerification])
+
+  function ProtectedRoute({ element }:{ element: JSX.Element }){
+    if (!requireVerification) return element
+    if (!authLoaded) return <div />
+    if (isVerified === false) return <div />
+    return element
+  }
 
   return (
     <HeaderContext.Provider value={{ setTitle }}>
@@ -96,26 +99,26 @@ function AppRoutes(){
           <Route path="/login" element={<MobileLogin />} />
           <Route path="/signup" element={<Signup />} />
           <Route path="/signup_react" element={<Signup />} />
-          <Route path="/onboarding" element={<OnboardingWelcome />} />
-          <Route path="/premium" element={<PremiumDashboard />} />
-          <Route path="/premium_dashboard" element={<PremiumDashboard />} />
-          <Route path="/premium_dashboard_react" element={<PremiumDashboard />} />
+          <Route path="/onboarding" element={<ProtectedRoute element={<OnboardingWelcome />} />} />
+          <Route path="/premium" element={<ProtectedRoute element={<PremiumDashboard />} />} />
+          <Route path="/premium_dashboard" element={<ProtectedRoute element={<PremiumDashboard />} />} />
+          <Route path="/premium_dashboard_react" element={<ProtectedRoute element={<PremiumDashboard />} />} />
           <Route path="/crossfit" element={<CrossfitExact />} />
           <Route path="/crossfit_react" element={<CrossfitExact />} />
-          <Route path="/communities" element={<Communities />} />
-          <Route path="/your_sports" element={<YourSports />} />
-          <Route path="/gym" element={<Gym />} />
-          <Route path="/user_chat" element={<Messages />} />
-          <Route path="/user_chat/new" element={<NewMessage />} />
-          <Route path="/user_chat/chat/:username" element={<ChatThread />} />
-          <Route path="/profile" element={<Profile />} />
+          <Route path="/communities" element={<ProtectedRoute element={<Communities />} />} />
+          <Route path="/your_sports" element={<ProtectedRoute element={<YourSports />} />} />
+          <Route path="/gym" element={<ProtectedRoute element={<Gym />} />} />
+          <Route path="/user_chat" element={<ProtectedRoute element={<Messages />} />} />
+          <Route path="/user_chat/new" element={<ProtectedRoute element={<NewMessage />} />} />
+          <Route path="/user_chat/chat/:username" element={<ProtectedRoute element={<ChatThread />} />} />
+          <Route path="/profile" element={<ProtectedRoute element={<Profile />} />} />
           <Route path="/profile_react" element={<Profile />} />
           <Route path="/profile/:username" element={<PublicProfile />} />
-          <Route path="/account_settings" element={<AccountSettings />} />
+          <Route path="/account_settings" element={<ProtectedRoute element={<AccountSettings />} />} />
           <Route path="/account_settings_react" element={<AccountSettings />} />
           <Route path="/notifications" element={<Notifications />} />
-          <Route path="/admin" element={<AdminDashboard />} />
-          <Route path="/admin_dashboard" element={<AdminDashboard />} />
+          <Route path="/admin" element={<ProtectedRoute element={<AdminDashboard />} />} />
+          <Route path="/admin_dashboard" element={<ProtectedRoute element={<AdminDashboard />} />} />
           <Route path="/home" element={<HomeTimeline />} />
           <Route path="/workout_tracking" element={<WorkoutTracking />} />
           <Route path="/community_feed_react/:community_id" element={<CommunityFeed />} />
@@ -130,10 +133,20 @@ function AppRoutes(){
           <Route path="/post/:post_id" element={<PostDetail />} />
           <Route path="/compose" element={<CreatePost />} />
           <Route path="/product_development" element={<ProductDevelopment />} />
-          <Route path="*" element={<PremiumDashboard />} />
+          <Route path="*" element={<ProtectedRoute element={<PremiumDashboard />} />} />
           </Routes>
         </ErrorBoundary>
       </div>
+      {requireVerification && authLoaded && isVerified === false && (
+        <VerifyOverlay onRecheck={async ()=>{
+          try{
+            const r = await fetch('/api/profile_me', { credentials:'include' })
+            const j = await r.json().catch(()=>null)
+            const v = !!(j?.profile?.email_verified)
+            setIsVerified(v)
+          }catch{}
+        }} />
+      )}
     </HeaderContext.Provider>
   )
 }
