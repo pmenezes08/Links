@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { BrowserRouter, Routes, Route, useLocation, useNavigate } from 'react-router-dom'
+import { useEffect, useState, type ReactElement } from 'react'
+import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import ErrorBoundary from './components/ErrorBoundary'
 import MobileLogin from './pages/MobileLogin'
@@ -80,7 +80,7 @@ function AppRoutes(){
     return () => { cancelled = true }
   }, [location.pathname, requireVerification])
 
-  function ProtectedRoute({ element }:{ element: JSX.Element }){
+  function ProtectedRoute({ element }:{ element: ReactElement }){
     if (!requireVerification) return element
     if (!authLoaded) return <div />
     if (isVerified === false) return <div />
