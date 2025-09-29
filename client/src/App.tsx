@@ -51,10 +51,10 @@ function AppRoutes(){
   useEffect(() => {
     async function load(){
       try{
-        const r = await fetch('/api/home_timeline', { credentials:'include' })
-        const j = await r.json()
-        if (j?.success){
-          setUserMeta({ username: j.username, avatarUrl: j.current_user_profile_picture })
+        const r = await fetch('/api/profile_me', { credentials:'include' })
+        const j = await r.json().catch(()=>null)
+        if (j?.success && j.profile){
+          setUserMeta({ username: j.profile.username, avatarUrl: j.profile.profile_picture || null })
         }
       }catch{}
     }
