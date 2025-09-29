@@ -287,6 +287,9 @@ function ParentTimeline({ parentId }:{ parentId:number }){
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string|undefined>()
   const [loadedOnce, setLoadedOnce] = useState(false)
+  // Module-level caches to prevent duplicate network requests across quick remounts
+  const cacheRef = (window as any).__parentTlCache || ((window as any).__parentTlCache = new Map<number, { ts:number; posts:any[] }>())
+  const inflightRef = (window as any).__parentTlInflight || ((window as any).__parentTlInflight = new Map<number, Promise<any>>())
   useEffect(() => {
     let ok = true
     let inflight = false
@@ -307,20 +310,47 @@ function ParentTimeline({ parentId }:{ parentId:number }){
             return
           }
         }
+        // Check module-level cache/inflight as well
+        const entry = cacheRef.get(parentId)
+        if (entry && (Date.now() - entry.ts) < 10000){
+          setPosts(entry.posts || [])
+          setLoading(false)
+          setLoadedOnce(true)
+          inflight = false
+          return
+        }
+        const existing = inflightRef.get(parentId)
+        if (existing){
+          await existing
+          const after = cacheRef.get(parentId)
+          if (ok && after){
+            setPosts(after.posts || [])
+            setLoading(false)
+            setLoadedOnce(true)
+          }
+          inflight = false
+          return
+        }
       }catch{}
       setLoading(true)
       try{
-        const r = await fetch(`/api/community_group_feed/${parentId}`, { credentials:'include' })
-        const j = await r.json()
+        const promise = (async () => {
+          const r = await fetch(`/api/community_group_feed/${parentId}`, { credentials:'include' })
+          return await r.json()
+        })()
+        inflightRef.set(parentId, promise)
+        const j = await promise
         if (!ok) return
         if (j?.success){
           setPosts(j.posts || [])
           try{ sessionStorage.setItem(`parent_tl_cache:${parentId}`, JSON.stringify({ ts: Date.now(), posts: j.posts||[] })) }catch{}
+          try{ cacheRef.set(parentId, { ts: Date.now(), posts: j.posts||[] }) }catch{}
         }
         else setError(j?.error || 'Error loading timeline')
       }catch{
         if (ok) setError('Error loading timeline')
       }finally{
+        inflightRef.delete(parentId)
         inflight = false
         if (ok){ setLoading(false); setLoadedOnce(true) }
       }
