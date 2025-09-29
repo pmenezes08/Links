@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactElement } from 'react'
+import { useEffect, useState } from 'react'
 import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import ErrorBoundary from './components/ErrorBoundary'
@@ -94,7 +94,7 @@ function AppRoutes(){
     return () => { cancelled = true }
   }, [requireVerification])
 
-  const ProtectedRoute = ({ element }:{ element: ReactElement }) => element
+  // ProtectedRoute no longer used after simplifying guards
 
   return (
     <HeaderContext.Provider value={{ setTitle }}>
@@ -108,26 +108,26 @@ function AppRoutes(){
           <Route path="/login" element={<MobileLogin />} />
           <Route path="/signup" element={<Signup />} />
           <Route path="/signup_react" element={<Signup />} />
-          <Route path="/onboarding" element={<ProtectedRoute element={<OnboardingWelcome />} />} />
-          <Route path="/premium" element={<ProtectedRoute element={<PremiumDashboard />} />} />
-          <Route path="/premium_dashboard" element={<ProtectedRoute element={<PremiumDashboard />} />} />
-          <Route path="/premium_dashboard_react" element={<ProtectedRoute element={<PremiumDashboard />} />} />
+          <Route path="/onboarding" element={<OnboardingWelcome />} />
+          <Route path="/premium" element={<PremiumDashboard />} />
+          <Route path="/premium_dashboard" element={<PremiumDashboard />} />
+          <Route path="/premium_dashboard_react" element={<PremiumDashboard />} />
           <Route path="/crossfit" element={<CrossfitExact />} />
           <Route path="/crossfit_react" element={<CrossfitExact />} />
-          <Route path="/communities" element={<ProtectedRoute element={<Communities />} />} />
-          <Route path="/your_sports" element={<ProtectedRoute element={<YourSports />} />} />
-          <Route path="/gym" element={<ProtectedRoute element={<Gym />} />} />
-          <Route path="/user_chat" element={<ProtectedRoute element={<Messages />} />} />
-          <Route path="/user_chat/new" element={<ProtectedRoute element={<NewMessage />} />} />
-          <Route path="/user_chat/chat/:username" element={<ProtectedRoute element={<ChatThread />} />} />
-          <Route path="/profile" element={<ProtectedRoute element={<Profile />} />} />
+          <Route path="/communities" element={<Communities />} />
+          <Route path="/your_sports" element={<YourSports />} />
+          <Route path="/gym" element={<Gym />} />
+          <Route path="/user_chat" element={<Messages />} />
+          <Route path="/user_chat/new" element={<NewMessage />} />
+          <Route path="/user_chat/chat/:username" element={<ChatThread />} />
+          <Route path="/profile" element={<Profile />} />
           <Route path="/profile_react" element={<Profile />} />
           <Route path="/profile/:username" element={<PublicProfile />} />
-          <Route path="/account_settings" element={<ProtectedRoute element={<AccountSettings />} />} />
+          <Route path="/account_settings" element={<AccountSettings />} />
           <Route path="/account_settings_react" element={<AccountSettings />} />
           <Route path="/notifications" element={<Notifications />} />
-          <Route path="/admin" element={<ProtectedRoute element={<AdminDashboard />} />} />
-          <Route path="/admin_dashboard" element={<ProtectedRoute element={<AdminDashboard />} />} />
+          <Route path="/admin" element={<AdminDashboard />} />
+          <Route path="/admin_dashboard" element={<AdminDashboard />} />
           <Route path="/home" element={<HomeTimeline />} />
           <Route path="/workout_tracking" element={<WorkoutTracking />} />
           <Route path="/community_feed_react/:community_id" element={<CommunityFeed />} />
@@ -142,7 +142,7 @@ function AppRoutes(){
           <Route path="/post/:post_id" element={<PostDetail />} />
           <Route path="/compose" element={<CreatePost />} />
           <Route path="/product_development" element={<ProductDevelopment />} />
-          <Route path="*" element={<ProtectedRoute element={<PremiumDashboard />} />} />
+          <Route path="*" element={<PremiumDashboard />} />
           </Routes>
         </ErrorBoundary>
       </div>
