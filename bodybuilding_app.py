@@ -4311,6 +4311,10 @@ def admin_delete_user():
                 return jsonify({'success': False, 'error': 'User not found'}), 404
 
             # Delete dependent rows first to satisfy FK constraints
+            try:
+                c.execute(f"DELETE FROM notifications WHERE user_id={ph} OR from_user={ph}", (target_username, target_username))
+            except Exception:
+                pass
             c.execute(f"DELETE FROM messages WHERE sender={ph} OR receiver={ph}", (target_username, target_username))
             c.execute(f"DELETE FROM notifications WHERE user_id={ph} OR from_user={ph}", (target_username, target_username))
             c.execute(f"DELETE FROM user_communities WHERE user_id={ph}", (user_id,))
@@ -4543,6 +4547,11 @@ def admin():
                     
                     try:
                         # Delete user's data from all related tables
+                        # Notifications (FK to users.username)
+                        try:
+                            c.execute("DELETE FROM notifications WHERE user_id=? OR from_user=?", (user_to_delete, user_to_delete))
+                        except Exception:
+                            pass
                         # Web push subscriptions (FK on users.username in MySQL)
                         try:
                             c.execute("DELETE FROM push_subscriptions WHERE username=??", (user_to_delete,))
