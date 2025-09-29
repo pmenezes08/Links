@@ -58,10 +58,10 @@ export default function Communities(){
       try{
         // Fetch current user meta from home timeline endpoint
         try{
-          const r = await fetch(`/api/home_timeline`, { credentials:'include' })
-          const j = await r.json()
-          if (mounted && j?.success){
-            setData({ username: j.username, current_user_profile_picture: j.current_user_profile_picture })
+          const r = await fetch(`/api/profile_me`, { credentials:'include' })
+          const j = await r.json().catch(()=>null)
+          if (mounted && j?.success && j.profile){
+            setData({ username: j.profile.username, current_user_profile_picture: j.profile.profile_picture })
           }
         }catch{}
 
@@ -136,8 +136,8 @@ export default function Communities(){
               type="button" 
               className={`text-sm font-medium ${activeTab==='timeline' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`} 
               onClick={()=> {
-                const pid = new URLSearchParams(location.search).get('parent_id')
-                if (!pid) { navigate('/home'); return }
+                const pidLocal = new URLSearchParams(location.search).get('parent_id')
+                if (!pidLocal) { navigate('/home'); return }
                 setActiveTab('timeline')
                 const el = document.getElementById('parent-timeline')
                 if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -179,11 +179,11 @@ export default function Communities(){
         ) : (
           <div className="space-y-3">
              {(() => {
-               const pid = new URLSearchParams(location.search).get('parent_id')
-              if (pid && activeTab === 'timeline') {
+              const pidLocal = new URLSearchParams(location.search).get('parent_id')
+              if (pidLocal && activeTab === 'timeline') {
                 return (
                   <div id="parent-timeline">
-                    <ParentTimeline parentId={Number(pid)} />
+                    <ParentTimeline parentId={Number(pidLocal)} />
                   </div>
                 )
               }
