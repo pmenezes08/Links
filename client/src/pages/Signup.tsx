@@ -17,7 +17,8 @@ export default function Signup(){
   const [error, setError] = useState<string>('')
   const [debugInfo, setDebugInfo] = useState<string[]>([])
   const [showVerify, setShowVerify] = useState(false)
-  const [redirectAfterVerify, setRedirectAfterVerify] = useState<string>('/premium_dashboard')
+  // kept for legacy flows (desktop), unused in mobile flag path
+  // legacy var kept removed
 
   function handleInputChange(field: string, value: string) {
     setFormData(prev => ({ ...prev, [field]: value }))
@@ -97,7 +98,6 @@ export default function Signup(){
             const dest = j.redirect || '/premium_dashboard'
             // Show verify modal for unverified flow (mobile JSON response)
             if (j.needs_email_verification) {
-              setRedirectAfterVerify(dest)
               setShowVerify(true)
             } else {
               // If no verification needed, proceed to destination
@@ -109,7 +109,6 @@ export default function Signup(){
         } catch (jsonError) {
           // Not JSON response. Under feature flag, lock on verify modal; otherwise keep legacy redirect.
           if (requireVerification) {
-            setRedirectAfterVerify('/premium_dashboard')
             setShowVerify(true)
           } else {
             console.log('Not JSON response, checking for redirect...')
@@ -317,7 +316,7 @@ export default function Signup(){
                       if (r.status === 403){ alert('Still unverified. Please click the link in your email.'); return }
                       const j = await r.json().catch(()=>null)
                       const verified = !!(j?.profile?.email_verified)
-                      if (verified){ navigate(redirectAfterVerify) }
+                      if (verified){ navigate('/onboarding') }
                       else { alert('Still unverified. Please check your email and try again.') }
                     }catch{ alert('Network error, please try again.') }
                   }}>I’ve verified</button>
