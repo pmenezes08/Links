@@ -61,16 +61,9 @@ function AppRoutes(){
     load()
   }, [])
 
-  // Instrument client route transitions to trace unexpected onboarding hits
-  useEffect(() => {
-    (async () => {
-      try{
-        await fetch('/api/client_log', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ level:'warn', type:'route_change', path: location.pathname }) })
-      }catch{}
-    })()
-  }, [location.pathname])
+  // (disabled) route change logging
 
-  // Global guard: if user is logged in but email not verified, redirect to /verify_required
+  // Global guard: run once on boot
   useEffect(() => {
     let cancelled = false
     async function guard(){
@@ -80,7 +73,7 @@ function AppRoutes(){
         if (r.status === 401){
           if (!cancelled){
             // Avoid reload loops on public pages
-            const p = location.pathname
+            const p = window.location.pathname
             const publicPaths = new Set(['/', '/login', '/signup', '/signup_react', '/verify_required'])
             if (!publicPaths.has(p)) {
               window.location.href = '/'
@@ -99,14 +92,9 @@ function AppRoutes(){
     }
     guard()
     return () => { cancelled = true }
-  }, [location.pathname, requireVerification])
+  }, [requireVerification])
 
-  function ProtectedRoute({ element }:{ element: ReactElement }){
-    if (!requireVerification) return element
-    if (!authLoaded) return <div />
-    if (isVerified === false) return <div />
-    return element
-  }
+  const ProtectedRoute = ({ element }:{ element: ReactElement }) => element
 
   return (
     <HeaderContext.Provider value={{ setTitle }}>
