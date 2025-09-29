@@ -2810,8 +2810,34 @@ def dashboard():
             """, (username,))
             communities = [{'id': row['id'], 'name': row['name'], 'type': row['type']} for row in c.fetchall()]
             
-        # Server-side onboarding gate: if user has no communities, send to onboarding (but avoid redirect loop)
-        if not communities and request.path != '/onboarding':
+        # Server-side onboarding gate: treat membership OR creator OR admin as communities
+        try:
+            has_any = False
+            with get_db_connection() as conn2:
+                c2 = conn2.cursor()
+                ph = get_sql_placeholder()
+                # Memberships
+                c2.execute(f"""
+                    SELECT COUNT(*) as cnt
+                    FROM user_communities uc
+                    JOIN users u ON uc.user_id = u.id
+                    WHERE u.username = {ph}
+                """, (username,))
+                row_m = c2.fetchone()
+                membership_cnt = (row_m['cnt'] if hasattr(row_m,'keys') else (row_m[0] if row_m else 0)) or 0
+                # Created by user
+                c2.execute(f"SELECT COUNT(*) as cnt FROM communities WHERE creator_username = {ph}", (username,))
+                row_c = c2.fetchone()
+                created_cnt = (row_c['cnt'] if hasattr(row_c,'keys') else (row_c[0] if row_c else 0)) or 0
+                # Admin role
+                c2.execute(f"SELECT COUNT(*) as cnt FROM community_admins WHERE username = {ph}", (username,))
+                row_a = c2.fetchone()
+                admin_cnt = (row_a['cnt'] if hasattr(row_a,'keys') else (row_a[0] if row_a else 0)) or 0
+                has_any = (membership_cnt + created_cnt + admin_cnt) > 0
+        except Exception:
+            has_any = bool(communities)
+
+        if not has_any and request.path != '/onboarding':
             return redirect('/onboarding')
 
         # Determine if we should show the first-time join community prompt
@@ -2834,25 +2860,29 @@ def free_workouts():
 def premium_dashboard():
     # Prefer React app if built; fallback to HTML template
     try:
-        # Server-side onboarding gate for mobile: if no communities, go to onboarding
+        # Server-side onboarding gate for mobile: consider membership OR creator OR admin
         try:
             username = session.get('username')
             if username:
                 with get_db_connection() as conn:
                     c = conn.cursor()
-                    c.execute(f"""
+                    ph = get_sql_placeholder()
+                    def _count(q, args):
+                        try:
+                            c.execute(q, args)
+                            r = c.fetchone()
+                            return (r['cnt'] if hasattr(r,'keys') else (r[0] if r else 0)) or 0
+                        except Exception:
+                            return 0
+                    membership_cnt = _count(f"""
                         SELECT COUNT(*) as cnt FROM user_communities uc
                         JOIN users u ON uc.user_id = u.id
-                        WHERE u.username = {get_sql_placeholder()}
+                        WHERE u.username = {ph}
                     """, (username,))
-                    row = c.fetchone()
-                    count = 0
-                    if row is not None:
-                        try:
-                            count = row['cnt'] if hasattr(row, 'keys') else (row[0] if len(row) else 0)
-                        except Exception:
-                            count = row[0] if not hasattr(row, 'keys') else list(row.values())[0]
-                    if count == 0 and request.path != '/onboarding':
+                    created_cnt = _count(f"SELECT COUNT(*) as cnt FROM communities WHERE creator_username = {ph}", (username,))
+                    admin_cnt = _count(f"SELECT COUNT(*) as cnt FROM community_admins WHERE username = {ph}", (username,))
+                    total_cnt = membership_cnt + created_cnt + admin_cnt
+                    if total_cnt == 0 and request.path != '/onboarding':
                         return redirect('/onboarding')
         except Exception:
             pass
