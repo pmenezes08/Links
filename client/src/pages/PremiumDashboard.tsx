@@ -68,9 +68,7 @@ export default function PremiumDashboard() {
           console.log('Dashboard: No communities found or API error')
           setCommunities([])
           setCommunitiesLoaded(true)
-          // Redirect first-time users to onboarding if no communities
-          navigate('/onboarding', { replace: true })
-          return
+          // Direct fix: do not redirect here; welcome/join modal handles first-time case
         }
       } catch (error) {
         console.error('Error loading user data:', error)
