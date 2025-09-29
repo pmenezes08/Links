@@ -50,7 +50,10 @@ export default function Communities(){
 
   useEffect(() => {
     let mounted = true
+    let inflight = false
     async function load(){
+      if (inflight) return
+      inflight = true
       setLoading(true)
       try{
         // Fetch current user meta from home timeline endpoint
@@ -100,6 +103,7 @@ export default function Communities(){
       }catch{
         if (mounted) setError('Error loading communities')
       } finally {
+        inflight = false
         if (mounted) setLoading(false)
       }
     }
@@ -282,9 +286,13 @@ function ParentTimeline({ parentId }:{ parentId:number }){
   const [posts, setPosts] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string|undefined>()
+  const [loadedOnce, setLoadedOnce] = useState(false)
   useEffect(() => {
     let ok = true
+    let inflight = false
     async function load(){
+      if (inflight) return
+      inflight = true
       setLoading(true)
       try{
         const r = await fetch(`/api/community_group_feed/${parentId}`, { credentials:'include' })
@@ -295,15 +303,16 @@ function ParentTimeline({ parentId }:{ parentId:number }){
       }catch{
         if (ok) setError('Error loading timeline')
       }finally{
-        if (ok) setLoading(false)
+        inflight = false
+        if (ok){ setLoading(false); setLoadedOnce(true) }
       }
     }
     load()
     return ()=>{ ok = false }
   }, [parentId])
 
-  if (loading) return null
-  if (error) return null
+  if (loading && !loadedOnce) return null
+  if (error && !loadedOnce) return null
 
   return (
     <div>
