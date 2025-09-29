@@ -187,14 +187,14 @@ export default function Communities(){
                   </div>
                 )
               }
-               if (pid && activeTab === 'training' && showTrainingTab) {
+               if (pidLocal && activeTab === 'training' && showTrainingTab) {
                  return (
                    <div className="bg-white/5 backdrop-blur rounded-xl p-4 border border-white/10">
                      <button
                        className="px-4 py-2 rounded-lg bg-[#4db6ac] text-black text-sm hover:brightness-110"
                        onClick={()=> {
-                         const pid = new URLSearchParams(location.search).get('parent_id')
-                         window.location.href = pid ? `/workout_tracking?parent_id=${pid}` : '/workout_tracking'
+                         const pidNext = new URLSearchParams(location.search).get('parent_id')
+                         window.location.href = pidNext ? `/workout_tracking?parent_id=${pidNext}` : '/workout_tracking'
                        }}
                      >
                        Go to Workout Tracking
@@ -204,7 +204,7 @@ export default function Communities(){
                }
               return (
                 <>
-                  {!pid && (
+                  {!pidLocal && (
                     <JoinCommunity onJoined={()=>{ window.location.reload() }} />
                   )}
                   {activeTab === 'training' && showTrainingTab ? (
@@ -212,8 +212,8 @@ export default function Communities(){
                       <button
                         className="px-4 py-2 rounded-lg bg-[#4db6ac] text-black text-sm hover:brightness-110"
                         onClick={()=> {
-                          const pid = new URLSearchParams(location.search).get('parent_id')
-                          window.location.href = pid ? `/workout_tracking?parent_id=${pid}` : '/workout_tracking'
+                          const pidNext = new URLSearchParams(location.search).get('parent_id')
+                          window.location.href = pidNext ? `/workout_tracking?parent_id=${pidNext}` : '/workout_tracking'
                         }}
                       >
                         Go to Workout Tracking
