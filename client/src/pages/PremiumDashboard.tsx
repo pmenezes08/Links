@@ -55,25 +55,20 @@ export default function PremiumDashboard() {
         const gymData = await fetchJson('/api/check_gym_membership')
         setHasGymAccess(gymData.hasGymAccess || false)
 
-        // Get all user communities
+        // Get all user communities and decide using the fetched value (avoid stale state)
         const parentData = await fetchJson('/api/user_parent_community')
         console.log('Dashboard: Parent communities API response:', parentData)
-        if (parentData.success && parentData.communities) {
-          console.log('Dashboard: Setting communities:', parentData.communities)
-          setCommunities(parentData.communities)
+        const fetchedCommunities = (parentData?.success && Array.isArray(parentData.communities)) ? parentData.communities : []
+        if (fetchedCommunities.length > 0) {
+          console.log('Dashboard: Setting communities:', fetchedCommunities)
+          setCommunities(fetchedCommunities)
         } else {
           console.log('Dashboard: No communities found or API error')
           setCommunities([])
+          // Redirect first-time users to onboarding if no communities
+          navigate('/onboarding', { replace: true })
+          return
         }
-
-        // Redirect first-time users to onboarding if no communities
-        try{
-          const hasNone = !Array.isArray(communities) || (communities || []).length === 0
-          if (hasNone){
-            navigate('/onboarding', { replace: true })
-            return
-          }
-        }catch{}
       } catch (error) {
         console.error('Error loading user data:', error)
         setHasGymAccess(false)
