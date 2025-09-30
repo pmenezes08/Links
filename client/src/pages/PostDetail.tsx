@@ -395,7 +395,7 @@ function Reaction({ icon, count, active, onClick }:{ icon: string, count: number
   )
 }
 
-function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDelete, onPreviewImage, inlineSending }:{ reply: Reply, depth?: number, currentUser?: string|null, onToggle: (id:number, reaction:string)=>void, onInlineReply: (id:number, text:string, file?: File)=>void, onDelete: (id:number)=>void, onPreviewImage: (src:string)=>void, inlineSending: Record<number, boolean> }){
+function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDelete, onPreviewImage, inlineSending, communityId }:{ reply: Reply, depth?: number, currentUser?: string|null, onToggle: (id:number, reaction:string)=>void, onInlineReply: (id:number, text:string, file?: File)=>void, onDelete: (id:number)=>void, onPreviewImage: (src:string)=>void, inlineSending: Record<number, boolean>, communityId?: number | string }){
   const [showComposer, setShowComposer] = useState(false)
   const [text, setText] = useState('')
   const [img, setImg] = useState<File|null>(null)
@@ -484,8 +484,19 @@ function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDel
           </div>
           {showComposer ? (
             <div className="mt-2 space-y-2">
-              <div className="flex items-center gap-2">
-                <input className="flex-1 px-3 py-1.5 rounded-full bg-black border border-[#4db6ac] text-[16px] focus:outline-none focus:ring-1 focus:ring-[#4db6ac]" value={text} onChange={(e)=> setText(e.target.value)} placeholder={`Reply to @${reply.username}`} />
+              <div className="flex items-start gap-2">
+                {(import.meta as any).env?.VITE_MENTIONS_ENABLED === 'true' ? (
+                  <MentionTextarea
+                    value={text}
+                    onChange={setText}
+                    communityId={communityId}
+                    placeholder={`Reply to @${reply.username}`}
+                    className="flex-1 px-3 py-1.5 rounded-2xl bg-black border border-[#4db6ac] text-[16px] focus:outline-none focus:ring-1 focus:ring-[#4db6ac] min-h-[36px]"
+                    rows={2}
+                  />
+                ) : (
+                  <textarea className="flex-1 px-3 py-1.5 rounded-2xl bg-black border border-[#4db6ac] text-[16px] focus:outline-none focus:ring-1 focus:ring-[#4db6ac] min-h-[36px]" value={text} onChange={(e)=> setText(e.target.value)} placeholder={`Reply to @${reply.username}`} />
+                )}
                 <button type="button" className="w-10 h-10 rounded-full hover:bg:white/10 grid place-items-center" aria-label="Add image" onClick={()=> inlineFileRef.current?.click()}>
                   <i className="fa-regular fa-image text-xl" style={{ color: img ? '#7fe7df' : '#4db6ac' }} />
                 </button>
@@ -518,7 +529,7 @@ function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDel
         </div>
       </div>
       {reply.children && reply.children.length ? reply.children.map(ch => (
-        <ReplyNode key={ch.id} reply={ch} depth={Math.min(depth+1, 3)} currentUser={currentUser} onToggle={onToggle} onInlineReply={onInlineReply} onDelete={onDelete} onPreviewImage={onPreviewImage} inlineSending={inlineSending} />
+        <ReplyNode key={ch.id} reply={ch} depth={Math.min(depth+1, 3)} currentUser={currentUser} onToggle={onToggle} onInlineReply={onInlineReply} onDelete={onDelete} onPreviewImage={onPreviewImage} inlineSending={inlineSending} communityId={communityId} />
       )) : null}
     </div>
   )
