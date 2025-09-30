@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 type Member = { username:string; display_name?:string; avatar?:string|null }
 
@@ -20,7 +20,8 @@ export default function MentionTextarea({
   const enabled = (import.meta as any).env?.VITE_MENTIONS_ENABLED === 'true'
   const taRef = useRef<HTMLTextAreaElement|null>(null)
   const [open, setOpen] = useState(false)
-  const [query, setQuery] = useState('')
+  // note: store in ref to avoid TS unused warnings
+  const queryRef = useRef('')
   const [items, setItems] = useState<Member[]>([])
   const [active, setActive] = useState(0)
   const timerRef = useRef<any>(null)
@@ -37,8 +38,8 @@ export default function MentionTextarea({
   useEffect(() => {
     if (!enabled) return
     const q = getMentionQuery(value)
-    if (q === null || !communityId){ setOpen(false); setQuery(''); setItems([]); return }
-    setQuery(q)
+    if (q === null || !communityId){ setOpen(false); setItems([]); return }
+    queryRef.current = q
     setOpen(true)
     if (timerRef.current) clearTimeout(timerRef.current)
     timerRef.current = setTimeout(async () => {
@@ -79,7 +80,7 @@ export default function MentionTextarea({
     onChange(newText)
     setOpen(false)
     setItems([])
-    setQuery('')
+    // no-op
     requestAnimationFrame(() => {
       ta.focus()
       const newPos = replaceStart + username.length + 1
