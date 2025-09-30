@@ -457,6 +457,7 @@ XAI_API_URL = 'https://api.x.ai/v1/chat/completions'
 DAILY_API_LIMIT = 10
 
 USE_MYSQL = (os.getenv('DB_BACKEND', 'sqlite').lower() == 'mysql')
+MENTIONS_ENABLED = os.getenv('MENTIONS_ENABLED', 'false').lower() == 'true'
 
 # Database connection helper: MySQL in production (if configured), SQLite locally
 def get_sql_placeholder():
@@ -8551,6 +8552,37 @@ def post_status():
                 except Exception as te:
                     logger.warning(f"post dedupe token write failed: {te}")
 
+            # Mentions: create notifications for @username occurrences (flagged)
+            if MENTIONS_ENABLED:
+                try:
+                    import re
+                    mentions = set([m.lower() for m in re.findall(r"@([a-zA-Z0-9_]{1,30})", content or '')])
+                    if mentions:
+                        # Filter to members of this community and not the author
+                        allowed = []
+                        if community_id:
+                            c.execute("""
+                                SELECT u.username
+                                FROM users u
+                                JOIN user_communities uc ON u.id = uc.user_id
+                                WHERE uc.community_id = ?
+                            """, (community_id,))
+                            members = {row['username'] if hasattr(row,'keys') else row[0] for row in c.fetchall()}
+                            allowed = [u for u in mentions if u in members and u != username]
+                        else:
+                            allowed = [u for u in mentions if u != username]
+                        for target in allowed:
+                            try:
+                                c.execute("""
+                                    INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read)
+                                    VALUES (?, ?, 'mention_post', ?, ?, ?, NOW(), 0)
+                                """, (target, username, post_id, community_id, f"{username} mentioned you in a post"))
+                                conn.commit()
+                            except Exception as ne:
+                                logger.warning(f"mention notify error to {target}: {ne}")
+                except Exception as e:
+                    logger.warning(f"mention parse error: {e}")
+
             # Notify community members (excluding creator)
             try:
                 c.execute("""
@@ -8705,6 +8737,36 @@ def post_reply():
                 except Exception as te:
                     logger.warning(f"reply dedupe token write failed: {te}")
             
+            # Mentions in reply (flagged)
+            if MENTIONS_ENABLED:
+                try:
+                    import re
+                    mentions = set([m.lower() for m in re.findall(r"@([a-zA-Z0-9_]{1,30})", content or '')])
+                    if mentions:
+                        allowed = []
+                        if community_id:
+                            c.execute("""
+                                SELECT u.username
+                                FROM users u
+                                JOIN user_communities uc ON u.id = uc.user_id
+                                WHERE uc.community_id = ?
+                            """, (community_id,))
+                            members = {row['username'] if hasattr(row,'keys') else row[0] for row in c.fetchall()}
+                            allowed = [u for u in mentions if u in members and u != username]
+                        else:
+                            allowed = [u for u in mentions if u != username]
+                        for target in allowed:
+                            try:
+                                c.execute("""
+                                    INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read)
+                                    VALUES (?, ?, 'mention_reply', ?, ?, ?, NOW(), 0)
+                                """, (target, username, post_id, community_id, f"{username} mentioned you in a reply"))
+                                conn.commit()
+                            except Exception as ne:
+                                logger.warning(f"mention reply notify error to {target}: {ne}")
+                except Exception as e:
+                    logger.warning(f"mention reply parse error: {e}")
+
             # Notify recipients (post owner and parent reply author)
             try:
                 notify_post_reply_recipients(post_id=post_id, from_user=username, community_id=community_id, parent_reply_id=parent_reply_id)
@@ -13684,6 +13746,44 @@ def api_community_feed(community_id):
     except Exception as e:
         logger.error(f"Error in api_community_feed for {community_id}: {e}")
         return jsonify({'success': False, 'error': 'Server error'}), 500
+
+@app.route('/api/community_member_suggest')
+@login_required
+def api_community_member_suggest():
+    if not MENTIONS_ENABLED:
+        return jsonify({'success': True, 'members': []})
+    try:
+        q = (request.args.get('q') or '').strip()
+        community_id = request.args.get('community_id', type=int)
+        if not community_id or len(q) < 1:
+            return jsonify({'success': True, 'members': []})
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            # Only members of this community
+            c.execute(f"""
+                SELECT u.username,
+                       COALESCE(p.display_name, u.username) AS display_name,
+                       p.profile_picture
+                FROM users u
+                JOIN user_communities uc ON u.id = uc.user_id
+                LEFT JOIN user_profiles p ON p.username = u.username
+                WHERE uc.community_id = {ph}
+                  AND (u.username LIKE {ph} OR p.display_name LIKE {ph})
+                ORDER BY u.username
+                LIMIT 10
+            """, (community_id, f"%{q}%", f"%{q}%"))
+            rows = c.fetchall() or []
+            members = []
+            for r in rows:
+                if hasattr(r,'keys'):
+                    members.append({ 'username': r['username'], 'display_name': r['display_name'], 'avatar': r.get('profile_picture') })
+                else:
+                    members.append({ 'username': r[0], 'display_name': r[1], 'avatar': r[2] if len(r) > 2 else None })
+            return jsonify({'success': True, 'members': members})
+    except Exception as e:
+        logger.error(f"api_community_member_suggest error: {e}")
+        return jsonify({'success': False, 'members': []}), 500
 
 # Toggle key post (star/unstar)
 @app.route('/api/toggle_key_post', methods=['POST'])

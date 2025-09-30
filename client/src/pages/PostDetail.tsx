@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type React from 'react'
+import MentionTextarea from '../components/MentionTextarea'
 import { useNavigate, useParams } from 'react-router-dom'
 import Avatar from '../components/Avatar'
 import ImageLoader from '../components/ImageLoader'
@@ -303,12 +304,23 @@ export default function PostDetail(){
       {/* Fixed-bottom reply composer */}
       <div className="fixed left-0 right-0 bottom-0 z-[100] bg-black/85 border-t border-white/10 backdrop-blur pointer-events-auto">
         <div className="px-3 py-2 flex flex-col gap-1.5">
-          <textarea
-            className="w-full resize-none max-h-36 min-h-[30px] px-3 py-1.5 rounded-2xl bg-black border border-[#4db6ac] text-[16px] focus:outline-none focus:ring-1 focus:ring-[#4db6ac]"
-            placeholder="Write a reply…"
-            value={content}
-            onChange={(e)=> setContent(e.target.value)}
-          />
+          {(import.meta as any).env?.VITE_MENTIONS_ENABLED === 'true' ? (
+            <MentionTextarea
+              value={content}
+              onChange={setContent}
+              communityId={(post as any)?.community_id}
+              placeholder="Write a reply…"
+              className="w-full resize-none max-h-36 min-h-[30px] px-3 py-1.5 rounded-2xl bg-black border border-[#4db6ac] text-[16px] focus:outline-none focus:ring-1 focus:ring-[#4db6ac]"
+              rows={3}
+            />
+          ) : (
+            <textarea
+              className="w-full resize-none max-h-36 min-h-[30px] px-3 py-1.5 rounded-2xl bg-black border border-[#4db6ac] text-[16px] focus:outline-none focus:ring-1 focus:ring-[#4db6ac]"
+              placeholder="Write a reply…"
+              value={content}
+              onChange={(e)=> setContent(e.target.value)}
+            />
+          )}
           <div className="flex items-center justify-end gap-2 flex-wrap">
             {file && (
               <div className="flex items-center gap-2 mr-auto">
