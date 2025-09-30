@@ -13755,10 +13755,29 @@ def api_community_member_suggest():
     try:
         q = (request.args.get('q') or '').strip()
         community_id = request.args.get('community_id', type=int)
-        if not community_id or len(q) < 1:
-            return jsonify({'success': True, 'members': []})
+        post_id = request.args.get('post_id', type=int)
+        reply_id = request.args.get('reply_id', type=int)
         with get_db_connection() as conn:
             c = conn.cursor()
+            # Derive community_id from post_id or reply_id if not provided
+            if not community_id:
+                try:
+                    if post_id:
+                        c.execute("SELECT community_id FROM posts WHERE id = ?", (post_id,))
+                        row = c.fetchone()
+                        if row:
+                            community_id = row['community_id'] if hasattr(row, 'keys') else row[0]
+                    elif reply_id:
+                        c.execute("SELECT community_id FROM replies WHERE id = ?", (reply_id,))
+                        row = c.fetchone()
+                        if row:
+                            community_id = row['community_id'] if hasattr(row, 'keys') else row[0]
+                except Exception as de:
+                    logger.warning(f"suggest: could not derive community_id (post_id={post_id}, reply_id={reply_id}): {de}")
+
+            # Require at least 1 char and a resolved community_id
+            if not community_id or len(q) < 1:
+                return jsonify({'success': True, 'members': []})
             ph = get_sql_placeholder()
             # Only members of this community
             c.execute(f"""

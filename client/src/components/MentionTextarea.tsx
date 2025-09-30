@@ -6,6 +6,8 @@ export default function MentionTextarea({
   value,
   onChange,
   communityId,
+  postId,
+  replyId,
   placeholder,
   className,
   rows = 3,
@@ -13,6 +15,8 @@ export default function MentionTextarea({
   value: string
   onChange: (v:string)=>void
   communityId?: number | string
+  postId?: number | string
+  replyId?: number | string
   placeholder?: string
   className?: string
   rows?: number
@@ -38,13 +42,18 @@ export default function MentionTextarea({
   useEffect(() => {
     if (!enabled) return
     const q = getMentionQuery(value)
-    if (q === null || !communityId){ setOpen(false); setItems([]); return }
+    if (q === null){ setOpen(false); setItems([]); return }
     queryRef.current = q
     setOpen(true)
     if (timerRef.current) clearTimeout(timerRef.current)
     timerRef.current = setTimeout(async () => {
       try{
-        const u = `/api/community_member_suggest?community_id=${encodeURIComponent(String(communityId))}&q=${encodeURIComponent(q)}`
+        const params = new URLSearchParams()
+        if (communityId){ params.set('community_id', String(communityId)) }
+        else if (postId){ params.set('post_id', String(postId)) }
+        else if (replyId){ params.set('reply_id', String(replyId)) }
+        params.set('q', q)
+        const u = `/api/community_member_suggest?${params.toString()}`
         const r = await fetch(u, { credentials:'include' })
         const j = await r.json().catch(()=>null)
         if (j?.success && Array.isArray(j.members)){

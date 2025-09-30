@@ -284,7 +284,7 @@ export default function PostDetail(){
 
         <div className="mt-3 rounded-2xl border border-white/10">
           {post.replies.map(r => (
-            <ReplyNode key={r.id} reply={r} currentUser={currentUser} onToggle={(id, reaction)=> toggleReplyReaction(id, reaction)} onInlineReply={(id, text, file)=> submitInlineReply(id, text, file)} onDelete={(id)=> deleteReply(id)} onPreviewImage={(src)=> setPreviewSrc(src)} inlineSending={inlineSending} />
+            <ReplyNode key={r.id} reply={r} currentUser={currentUser} onToggle={(id, reaction)=> toggleReplyReaction(id, reaction)} onInlineReply={(id, text, file)=> submitInlineReply(id, text, file)} onDelete={(id)=> deleteReply(id)} onPreviewImage={(src)=> setPreviewSrc(src)} inlineSending={inlineSending} communityId={(post as any)?.community_id} postId={post?.id} />
           ))}
         </div>
         {/* Spacer to prevent fixed composer overlap with first replies */}
@@ -309,6 +309,7 @@ export default function PostDetail(){
               value={content}
               onChange={setContent}
               communityId={(post as any)?.community_id}
+              postId={post?.id}
               placeholder="Write a reply…"
               className="w-full resize-none max-h-36 min-h-[30px] px-3 py-1.5 rounded-2xl bg-black border border-[#4db6ac] text-[16px] focus:outline-none focus:ring-1 focus:ring-[#4db6ac]"
               rows={3}
@@ -395,7 +396,7 @@ function Reaction({ icon, count, active, onClick }:{ icon: string, count: number
   )
 }
 
-function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDelete, onPreviewImage, inlineSending, communityId }:{ reply: Reply, depth?: number, currentUser?: string|null, onToggle: (id:number, reaction:string)=>void, onInlineReply: (id:number, text:string, file?: File)=>void, onDelete: (id:number)=>void, onPreviewImage: (src:string)=>void, inlineSending: Record<number, boolean>, communityId?: number | string }){
+function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDelete, onPreviewImage, inlineSending, communityId, postId }:{ reply: Reply, depth?: number, currentUser?: string|null, onToggle: (id:number, reaction:string)=>void, onInlineReply: (id:number, text:string, file?: File)=>void, onDelete: (id:number)=>void, onPreviewImage: (src:string)=>void, inlineSending: Record<number, boolean>, communityId?: number | string, postId?: number }){
   const [showComposer, setShowComposer] = useState(false)
   const [text, setText] = useState('')
   const [img, setImg] = useState<File|null>(null)
@@ -490,6 +491,7 @@ function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDel
                     value={text}
                     onChange={setText}
                     communityId={communityId}
+                    postId={postId}
                     placeholder={`Reply to @${reply.username}`}
                     className="flex-1 px-3 py-1.5 rounded-2xl bg-black border border-[#4db6ac] text-[16px] focus:outline-none focus:ring-1 focus:ring-[#4db6ac] min-h-[36px]"
                     rows={2}
@@ -529,7 +531,7 @@ function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDel
         </div>
       </div>
       {reply.children && reply.children.length ? reply.children.map(ch => (
-        <ReplyNode key={ch.id} reply={ch} depth={Math.min(depth+1, 3)} currentUser={currentUser} onToggle={onToggle} onInlineReply={onInlineReply} onDelete={onDelete} onPreviewImage={onPreviewImage} inlineSending={inlineSending} communityId={communityId} />
+        <ReplyNode key={ch.id} reply={ch} depth={Math.min(depth+1, 3)} currentUser={currentUser} onToggle={onToggle} onInlineReply={onInlineReply} onDelete={onDelete} onPreviewImage={onPreviewImage} inlineSending={inlineSending} communityId={communityId} postId={postId} />
       )) : null}
     </div>
   )
