@@ -121,15 +121,17 @@ export default function MentionTextarea({
     const after = value.slice(selStart)
     const m = before.match(/(^|\s)@([a-zA-Z0-9_]{0,30})$/)
     if (!m) return
-    const replaceStart = before.length - (m[2]?.length || 0)
-    const newText = before.slice(0, replaceStart) + username + ' ' + after
+    // Replace from the '@' to the cursor with a single @username
+    let replaceStart = before.lastIndexOf('@')
+    if (replaceStart < 0){ replaceStart = before.length - (m[2]?.length || 0) }
+    const newText = before.slice(0, replaceStart) + '@' + username + ' ' + after
     onChange(newText)
     setOpen(false)
     setItems([])
     // no-op
     requestAnimationFrame(() => {
       ta.focus()
-      const newPos = replaceStart + username.length + 1
+      const newPos = replaceStart + ('@' + username + ' ').length
       ta.setSelectionRange(newPos, newPos)
     })
   }
@@ -163,7 +165,7 @@ export default function MentionTextarea({
           if (e.key === 'ArrowDown'){ e.preventDefault(); setActive(a=> Math.min(a+1, Math.max(0, items.length-1))) }
           else if (e.key === 'ArrowUp'){ e.preventDefault(); setActive(a=> Math.max(0, a-1)) }
           else if (e.key === 'Enter'){ 
-            if (items[active]){ e.preventDefault(); insert('@' + items[active].username) }
+            if (items[active]){ e.preventDefault(); insert(items[active].username) }
           }
         }}
       />
@@ -175,7 +177,7 @@ export default function MentionTextarea({
             <button key={m.username}
               className={`w-full px-3 py-2 text-left flex items-center gap-2 ${idx===active? 'bg-white/5' : ''}`}
               onMouseEnter={()=> setActive(idx)}
-              onMouseDown={(e)=> { e.preventDefault(); insert('@' + m.username) }}
+              onMouseDown={(e)=> { e.preventDefault(); insert(m.username) }}
             >
               <div className="w-7 h-7 rounded-full bg-white/10 overflow-hidden border border-white/10">
                 {m.avatar ? <img src={m.avatar.startsWith('http')? m.avatar : `/uploads/${m.avatar}`} alt="" className="w-full h-full object-cover" /> : null}
