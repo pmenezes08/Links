@@ -184,21 +184,7 @@ export default function UsefulLinks(){
           >
             Open in new tab
           </a>
-          <object
-            data={`/uploads/${previewDoc.file_path}#toolbar=1&navpanes=0`}
-            type="application/pdf"
-            className="w-[92vw] h-[85vh] rounded border border-white/10 bg-black"
-          >
-            <embed
-              src={`/uploads/${previewDoc.file_path}`}
-              type="application/pdf"
-              className="w-full h-full rounded border border-white/10 bg-black"
-            />
-            <div className="p-3 text-[#cfd8dc] text-sm">
-              PDF preview is not supported on this device.
-              <a href={`/uploads/${previewDoc.file_path}`} target="_blank" rel="noreferrer" className="text-[#4db6ac] underline ml-1">Open in a new tab</a>
-            </div>
-          </object>
+          <PdfScrollViewer url={`/uploads/${previewDoc.file_path}`} />
         </div>
       )}
 
@@ -219,6 +205,44 @@ export default function UsefulLinks(){
           </button>
         </div>
       </div>
+    </div>
+  )
+}
+
+function PdfScrollViewer({ url }:{ url: string }){
+  const containerRef = useRef<HTMLDivElement|null>(null)
+  useEffect(() => {
+    let mounted = true
+    async function load(){
+      try{
+        const pdfjs = await import('pdfjs-dist/build/pdf')
+        // @ts-ignore worker
+        pdfjs.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.min.js'
+        const pdf = await (pdfjs as any).getDocument(url).promise
+        if (!mounted) return
+        const cont = containerRef.current
+        if (!cont) return
+        cont.innerHTML = ''
+        for (let i=1; i<=pdf.numPages; i++){
+          const page = await pdf.getPage(i)
+          const viewport = page.getViewport({ scale: 1.2 })
+          const canvas = document.createElement('canvas')
+          canvas.style.display = 'block'
+          canvas.style.margin = '0 auto 12px auto'
+          canvas.width = viewport.width
+          canvas.height = viewport.height
+          cont.appendChild(canvas)
+          const ctx = canvas.getContext('2d')
+          await page.render({ canvasContext: ctx as any, viewport }).promise
+        }
+      }catch{}
+    }
+    load()
+    return () => { mounted = false }
+  }, [url])
+  return (
+    <div className="w-[92vw] h-[85vh] rounded border border-white/10 bg-black overflow-y-auto p-2">
+      <div ref={containerRef} />
     </div>
   )
 }
