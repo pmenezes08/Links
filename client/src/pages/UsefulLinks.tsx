@@ -211,6 +211,7 @@ export default function UsefulLinks(){
 
 function PdfScrollViewer({ url }:{ url: string }){
   const containerRef = useRef<HTMLDivElement|null>(null)
+  const [scale, setScale] = useState(0.95)
   useEffect(() => {
     let mounted = true
     async function load(){
@@ -232,7 +233,7 @@ function PdfScrollViewer({ url }:{ url: string }){
         cont.innerHTML = ''
         for (let i=1; i<=pdf.numPages; i++){
           const page = await pdf.getPage(i)
-          const viewport = page.getViewport({ scale: 1.2 })
+          const viewport = page.getViewport({ scale })
           const canvas = document.createElement('canvas')
           canvas.style.display = 'block'
           canvas.style.margin = '0 auto 12px auto'
@@ -246,9 +247,32 @@ function PdfScrollViewer({ url }:{ url: string }){
     }
     load()
     return () => { mounted = false }
-  }, [url])
+  }, [url, scale])
   return (
-    <div className="w-[92vw] h-[85vh] rounded border border-white/10 bg-black overflow-y-auto p-2">
+    <div className="relative w-[92vw] h-[85vh] rounded border border-white/10 bg-black overflow-y-auto p-2">
+      <div className="absolute top-2 right-2 z-[5] flex items-center gap-2">
+        <button
+          className="px-2 py-1 rounded-md border border-white/20 text-xs text-white hover:bg-white/10"
+          onClick={()=> setScale(s => Math.max(0.5, +(s - 0.15).toFixed(2)))}
+          aria-label="Zoom out"
+        >
+          −
+        </button>
+        <div className="text-xs text-white/80 min-w-[46px] text-center">{Math.round(scale*100)}%</div>
+        <button
+          className="px-2 py-1 rounded-md border border-white/20 text-xs text-white hover:bg-white/10"
+          onClick={()=> setScale(s => Math.min(2.0, +(s + 0.15).toFixed(2)))}
+          aria-label="Zoom in"
+        >
+          +
+        </button>
+        <button
+          className="px-2 py-1 rounded-md border border-white/20 text-xs text-white hover:bg-white/10"
+          onClick={()=> setScale(0.95)}
+        >
+          Reset
+        </button>
+      </div>
       <div ref={containerRef} />
     </div>
   )
