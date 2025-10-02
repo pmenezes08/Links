@@ -211,7 +211,12 @@ export default function UsefulLinks(){
 
 function PdfScrollViewer({ url }:{ url: string }){
   const containerRef = useRef<HTMLDivElement|null>(null)
+  const wrapperRef = useRef<HTMLDivElement|null>(null)
   const [scale, setScale] = useState(0.95)
+  const [pinchScale, setPinchScale] = useState(1)
+  const [isPinching, setIsPinching] = useState(false)
+  const startDistRef = useRef(0)
+  const baseScaleRef = useRef(0.95)
   useEffect(() => {
     let mounted = true
     async function load(){
@@ -248,8 +253,53 @@ function PdfScrollViewer({ url }:{ url: string }){
     load()
     return () => { mounted = false }
   }, [url, scale])
+  function getDistance(touches: any){
+    if (!touches || touches.length < 2) return 0
+    const t0 = touches.item ? touches.item(0) : touches[0]
+    const t1 = touches.item ? touches.item(1) : touches[1]
+    const dx = t0.clientX - t1.clientX
+    const dy = t0.clientY - t1.clientY
+    return Math.hypot(dx, dy)
+  }
+
   return (
-    <div className="relative w-[92vw] h-[85vh] rounded border border-white/10 bg-black overflow-y-auto p-2">
+    <div
+      className="relative w-[92vw] h-[85vh] rounded border border-white/10 bg-black overflow-y-auto p-2"
+      style={{ touchAction: 'none' }}
+      onTouchStart={(e)=>{
+        if (e.touches.length === 2){
+          e.preventDefault()
+          setIsPinching(true)
+          startDistRef.current = getDistance(e.touches)
+          baseScaleRef.current = scale
+          setPinchScale(1)
+        }
+      }}
+      onTouchMove={(e)=>{
+        if (isPinching && e.touches.length === 2){
+          e.preventDefault()
+          const dist = getDistance(e.touches)
+          const factor = Math.max(0.5/baseScaleRef.current, Math.min(3.0/baseScaleRef.current, dist / (startDistRef.current || dist)))
+          setPinchScale(factor)
+          const wrap = wrapperRef.current
+          if (wrap){
+            wrap.style.transform = `scale(${factor})`
+            wrap.style.transformOrigin = 'center top'
+          }
+        }
+      }}
+      onTouchEnd={(e)=>{
+        if (isPinching && e.touches.length < 2){
+          e.preventDefault()
+          const newScale = Math.max(0.5, Math.min(3.0, +(baseScaleRef.current * pinchScale).toFixed(2)))
+          setIsPinching(false)
+          setPinchScale(1)
+          const wrap = wrapperRef.current
+          if (wrap){ wrap.style.transform = 'none' }
+          if (newScale !== scale){ setScale(newScale) }
+        }
+      }}
+    >
       <div className="absolute top-2 right-2 z-[5] flex items-center gap-2">
         <button
           className="px-2 py-1 rounded-md border border-white/20 text-xs text-white hover:bg-white/10"
@@ -273,7 +323,9 @@ function PdfScrollViewer({ url }:{ url: string }){
           Reset
         </button>
       </div>
-      <div ref={containerRef} />
+      <div ref={wrapperRef}>
+        <div ref={containerRef} />
+      </div>
     </div>
   )
 }
