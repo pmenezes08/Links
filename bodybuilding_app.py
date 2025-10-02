@@ -18884,6 +18884,48 @@ def process_mentions_for_post(post_id: int, author_username: str):
                 logger.info(f"mentions-post: allowed={allowed} members={list(members_map.keys())[:5]}...")
             except Exception:
                 pass
+            # Fallback: if allowed empty but mentions exist, notify valid platform users (ignoring community)
+            if not allowed and mentions:
+                try:
+                    # Resolve to canonical usernames that exist on the platform
+                    resolved: list[str] = []
+                    for m in mentions:
+                        if m == current_lower:
+                            continue
+                        c.execute("SELECT username FROM users WHERE LOWER(username)=? LIMIT 1", (m,))
+                        rr = c.fetchone()
+                        if rr:
+                            resolved.append(rr['username'] if hasattr(rr,'keys') else rr[0])
+                    if resolved:
+                        logger.info(f"mentions-post: fallback notifying={resolved}")
+                        for target in resolved:
+                            try:
+                                if USE_MYSQL:
+                                    c.execute("""
+                                        INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read)
+                                        VALUES (?, ?, 'mention_post', ?, ?, ?, NOW(), 0)
+                                        ON DUPLICATE KEY UPDATE created_at = NOW(), is_read = 0, message = VALUES(message)
+                                    """, (target, author_username, post_id, community_id, f"{author_username} mentioned you in a post"))
+                                else:
+                                    now_ts = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                                    c.execute("""
+                                        INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read)
+                                        VALUES (?, ?, 'mention_post', ?, ?, ?, ?, 0)
+                                    """, (target, author_username, post_id, community_id, f"{author_username} mentioned you in a post", now_ts))
+                                conn.commit()
+                                try:
+                                    send_push_to_user(target, {
+                                        'title': 'You were mentioned',
+                                        'body': f"{author_username} mentioned you in a post",
+                                        'url': f"/post/{post_id}",
+                                        'tag': f"mention-post-{post_id}-{target}"
+                                    })
+                                except Exception as pe:
+                                    logger.warning(f"push mention post fallback warn: {pe}")
+                            except Exception as ne:
+                                logger.warning(f"mention post fallback insert warn to {target}: {ne}")
+                except Exception as fe:
+                    logger.warning(f"mentions-post fallback error: {fe}")
             for target_lower in allowed:
                 target = members_map.get(target_lower, target_lower)
                 try:
@@ -18951,6 +18993,47 @@ def process_mentions_for_reply(post_id: int, author_username: str, community_id:
                 logger.info(f"mentions-reply: allowed={allowed} members={list(members_map.keys())[:5]}...")
             except Exception:
                 pass
+            # Fallback: if allowed empty but mentions exist, notify valid platform users (ignoring community)
+            if not allowed and mentions:
+                try:
+                    resolved: list[str] = []
+                    for m in mentions:
+                        if m == current_lower:
+                            continue
+                        c.execute("SELECT username FROM users WHERE LOWER(username)=? LIMIT 1", (m,))
+                        rr = c.fetchone()
+                        if rr:
+                            resolved.append(rr['username'] if hasattr(rr,'keys') else rr[0])
+                    if resolved:
+                        logger.info(f"mentions-reply: fallback notifying={resolved}")
+                        for target in resolved:
+                            try:
+                                if USE_MYSQL:
+                                    c.execute("""
+                                        INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read)
+                                        VALUES (?, ?, 'mention_reply', ?, ?, ?, NOW(), 0)
+                                        ON DUPLICATE KEY UPDATE created_at = NOW(), is_read = 0, message = VALUES(message)
+                                    """, (target, author_username, post_id, community_id, f"{author_username} mentioned you in a reply"))
+                                else:
+                                    now_ts = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                                    c.execute("""
+                                        INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read)
+                                        VALUES (?, ?, 'mention_reply', ?, ?, ?, ?, 0)
+                                    """, (target, author_username, post_id, community_id, f"{author_username} mentioned you in a reply", now_ts))
+                                conn.commit()
+                                try:
+                                    send_push_to_user(target, {
+                                        'title': 'You were mentioned',
+                                        'body': f"{author_username} mentioned you in a reply",
+                                        'url': f"/post/{post_id}",
+                                        'tag': f"mention-reply-{post_id}-{target}"
+                                    })
+                                except Exception as pe:
+                                    logger.warning(f"push mention reply fallback warn: {pe}")
+                            except Exception as ne:
+                                logger.warning(f"mention reply fallback insert warn to {target}: {ne}")
+                except Exception as fe:
+                    logger.warning(f"mentions-reply fallback error: {fe}")
             for target_lower in allowed:
                 target = members_map.get(target_lower, target_lower)
                 try:
