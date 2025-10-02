@@ -8555,6 +8555,10 @@ def post_status():
             # Mentions processing deferred to helper for robustness
             if MENTIONS_ENABLED:
                 try:
+                    try:
+                        logger.info(f"mentions-post: post_id={post_id} author={username} comm={community_id}")
+                    except Exception:
+                        pass
                     process_mentions_for_post(post_id=post_id, author_username=username)
                 except Exception as e:
                     logger.warning(f"mention post helper error: {e}")
@@ -8716,7 +8720,7 @@ def post_reply():
             # Mentions processing deferred to helper for robustness
             if MENTIONS_ENABLED:
                 try:
-                    process_mentions_for_reply(post_id=post_id, author_username=username, community_id=community_id)
+                    process_mentions_for_reply(post_id=post_id, author_username=username, community_id=community_id, reply_id=reply_id)
                 except Exception as e:
                     logger.warning(f"mention reply helper error: {e}")
 
@@ -18899,17 +18903,20 @@ def process_mentions_for_post(post_id: int, author_username: str):
     except Exception as e:
         logger.warning(f"process_mentions_for_post error: {e}")
 
-def process_mentions_for_reply(post_id: int, author_username: str, community_id: int|None):
+def process_mentions_for_reply(post_id: int, author_username: str, community_id: int|None, reply_id: int|None = None):
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
-            # Get latest reply content for this author/post
-            c.execute("""
-                SELECT content FROM replies
-                WHERE post_id=? AND username=?
-                ORDER BY id DESC
-                LIMIT 1
-            """, (post_id, author_username))
+            # Get exact reply content if reply_id provided, else most recent by this author/post
+            if reply_id:
+                c.execute("SELECT content FROM replies WHERE id=? LIMIT 1", (reply_id,))
+            else:
+                c.execute("""
+                    SELECT content FROM replies
+                    WHERE post_id=? AND username=?
+                    ORDER BY id DESC
+                    LIMIT 1
+                """, (post_id, author_username))
             row = c.fetchone()
             if not row:
                 return
@@ -18917,6 +18924,10 @@ def process_mentions_for_reply(post_id: int, author_username: str, community_id:
             mentions = _collect_mentions(content)
             if not mentions:
                 return
+            try:
+                logger.info(f"mentions-reply: post_id={post_id} reply_id={reply_id} author={author_username} found={mentions}")
+            except Exception:
+                pass
             members_map = {}
             if community_id:
                 c.execute("SELECT u.username FROM users u JOIN user_communities uc ON u.id=uc.user_id WHERE uc.community_id=?", (community_id,))
@@ -18925,6 +18936,10 @@ def process_mentions_for_reply(post_id: int, author_username: str, community_id:
                     members_map[uname.lower()] = uname
             current_lower = (author_username or '').lower()
             allowed = [u for u in mentions if (u != current_lower) and (not community_id or u in members_map)]
+            try:
+                logger.info(f"mentions-reply: allowed={allowed} members={list(members_map.keys())[:5]}...")
+            except Exception:
+                pass
             for target_lower in allowed:
                 target = members_map.get(target_lower, target_lower)
                 try:
