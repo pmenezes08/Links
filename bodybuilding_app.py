@@ -8552,16 +8552,15 @@ def post_status():
                 except Exception as te:
                     logger.warning(f"post dedupe token write failed: {te}")
 
-            # Mentions processing deferred to helper for robustness
-            if MENTIONS_ENABLED:
+            # Mentions processing deferred to helper for robustness (always on)
+            try:
                 try:
-                    try:
-                        logger.info(f"mentions-post: post_id={post_id} author={username} comm={community_id}")
-                    except Exception:
-                        pass
-                    process_mentions_for_post(post_id=post_id, author_username=username)
-                except Exception as e:
-                    logger.warning(f"mention post helper error: {e}")
+                    logger.info(f"mentions-post: post_id={post_id} author={username} comm={community_id}")
+                except Exception:
+                    pass
+                process_mentions_for_post(post_id=post_id, author_username=username)
+            except Exception as e:
+                logger.warning(f"mention post helper error: {e}")
 
             # Notify community members (excluding creator)
             try:
@@ -8717,12 +8716,11 @@ def post_reply():
                 except Exception as te:
                     logger.warning(f"reply dedupe token write failed: {te}")
             
-            # Mentions processing deferred to helper for robustness
-            if MENTIONS_ENABLED:
-                try:
-                    process_mentions_for_reply(post_id=post_id, author_username=username, community_id=community_id, reply_id=reply_id)
-                except Exception as e:
-                    logger.warning(f"mention reply helper error: {e}")
+            # Mentions processing deferred to helper for robustness (always on)
+            try:
+                process_mentions_for_reply(post_id=post_id, author_username=username, community_id=community_id, reply_id=reply_id)
+            except Exception as e:
+                logger.warning(f"mention reply helper error: {e}")
 
             # Notify recipients (post owner and parent reply author)
             try:
