@@ -8580,10 +8580,19 @@ def post_status():
                         for target_lower in allowed_lower:
                             try:
                                 target = members_map.get(target_lower, target_lower)
-                                c.execute("""
-                                    INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read)
-                                    VALUES (?, ?, 'mention_post', ?, ?, ?, NOW(), 0)
-                                """, (target, username, post_id, community_id, f"{username} mentioned you in a post"))
+                                if USE_MYSQL:
+                                    c.execute("""
+                                        INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read)
+                                        VALUES (?, ?, 'mention_post', ?, ?, ?, NOW(), 0)
+                                        ON DUPLICATE KEY UPDATE created_at = NOW(), is_read = 0, message = VALUES(message)
+                                    """, (target, username, post_id, community_id, f"{username} mentioned you in a post"))
+                                else:
+                                    # SQLite: allow multiple entries; optional dedupe could be added
+                                    now_ts = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                                    c.execute("""
+                                        INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read)
+                                        VALUES (?, ?, 'mention_post', ?, ?, ?, ?, 0)
+                                    """, (target, username, post_id, community_id, f"{username} mentioned you in a post", now_ts))
                                 conn.commit()
                             except Exception as ne:
                                 logger.warning(f"mention notify error to {target_lower}: {ne}")
@@ -8771,10 +8780,18 @@ def post_reply():
                         for target_lower in allowed_lower:
                             try:
                                 target = members_map.get(target_lower, target_lower)
-                                c.execute("""
-                                    INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read)
-                                    VALUES (?, ?, 'mention_reply', ?, ?, ?, NOW(), 0)
-                                """, (target, username, post_id, community_id, f"{username} mentioned you in a reply"))
+                                if USE_MYSQL:
+                                    c.execute("""
+                                        INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read)
+                                        VALUES (?, ?, 'mention_reply', ?, ?, ?, NOW(), 0)
+                                        ON DUPLICATE KEY UPDATE created_at = NOW(), is_read = 0, message = VALUES(message)
+                                    """, (target, username, post_id, community_id, f"{username} mentioned you in a reply"))
+                                else:
+                                    now_ts = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                                    c.execute("""
+                                        INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read)
+                                        VALUES (?, ?, 'mention_reply', ?, ?, ?, ?, 0)
+                                    """, (target, username, post_id, community_id, f"{username} mentioned you in a reply", now_ts))
                                 conn.commit()
                             except Exception as ne:
                                 logger.warning(f"mention reply notify error to {target_lower}: {ne}")
