@@ -176,11 +176,29 @@ export default function UsefulLinks(){
           <button className="absolute top-3 right-3 w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 text-white flex items-center justify-center" onClick={()=> setPreviewDoc(null)} aria-label="Close preview">
             <i className="fa-solid fa-xmark" />
           </button>
-          <iframe
-            title="Document preview"
-            src={`/uploads/${previewDoc.file_path}`}
+          <a
+            href={`/uploads/${previewDoc.file_path}`}
+            target="_blank"
+            rel="noreferrer"
+            className="absolute top-3 left-3 px-3 py-1.5 rounded-md border border-white/20 text-xs text-white hover:bg-white/10"
+          >
+            Open in new tab
+          </a>
+          <object
+            data={`/uploads/${previewDoc.file_path}#toolbar=1&navpanes=0`}
+            type="application/pdf"
             className="w-[92vw] h-[85vh] rounded border border-white/10 bg-black"
-          />
+          >
+            <embed
+              src={`/uploads/${previewDoc.file_path}`}
+              type="application/pdf"
+              className="w-full h-full rounded border border-white/10 bg-black"
+            />
+            <div className="p-3 text-[#cfd8dc] text-sm">
+              PDF preview is not supported on this device.
+              <a href={`/uploads/${previewDoc.file_path}`} target="_blank" rel="noreferrer" className="text-[#4db6ac] underline ml-1">Open in a new tab</a>
+            </div>
+          </object>
         </div>
       )}
 
