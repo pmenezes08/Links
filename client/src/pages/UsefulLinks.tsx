@@ -242,6 +242,7 @@ function PdfScrollViewer({ url }:{ url: string }){
           const canvas = document.createElement('canvas')
           canvas.style.display = 'block'
           canvas.style.margin = '0 auto 12px auto'
+          canvas.style.maxWidth = 'none'
           canvas.width = viewport.width
           canvas.height = viewport.height
           cont.appendChild(canvas)
@@ -264,11 +265,11 @@ function PdfScrollViewer({ url }:{ url: string }){
 
   return (
     <div
-      className="relative w-[92vw] h-[85vh] rounded border border-white/10 bg-black overflow-y-auto p-2"
-      style={{ touchAction: 'none' }}
+      className="relative w-[92vw] h-[85vh] rounded border border-white/10 bg-black overflow-x-auto overflow-y-auto p-2"
+      style={{ touchAction: 'pan-x pan-y' }}
       onTouchStart={(e)=>{
         if (e.touches.length === 2){
-          e.preventDefault()
+          try{ e.preventDefault() }catch{}
           setIsPinching(true)
           startDistRef.current = getDistance(e.touches)
           baseScaleRef.current = scale
@@ -277,7 +278,7 @@ function PdfScrollViewer({ url }:{ url: string }){
       }}
       onTouchMove={(e)=>{
         if (isPinching && e.touches.length === 2){
-          e.preventDefault()
+          try{ e.preventDefault() }catch{}
           const dist = getDistance(e.touches)
           const factor = Math.max(0.5/baseScaleRef.current, Math.min(3.0/baseScaleRef.current, dist / (startDistRef.current || dist)))
           setPinchScale(factor)
