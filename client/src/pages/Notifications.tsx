@@ -18,7 +18,8 @@ function iconFor(type?: string){
   switch(type){
     case 'reaction': return 'fa-regular fa-heart'
     case 'reply': return 'fa-regular fa-comment'
-    case 'mention': return 'fa-solid fa-at'
+    case 'mention_post': return 'fa-solid fa-at'
+    case 'mention_reply': return 'fa-solid fa-at'
     case 'follow': return 'fa-solid fa-user-plus'
     case 'poll_vote': return 'fa-solid fa-square-poll-vertical'
     default: return 'fa-regular fa-bell'
@@ -127,7 +128,12 @@ export default function Notifications(){
                     <div className="text-sm truncate">
                       {n.type === 'event_invitation' ? (n.message || 'Event invitation') : (
                         <>
-                          <strong>@{n.from_user}</strong> {n.type === 'reaction' ? 'reacted to your post' : n.type === 'reply' ? 'replied to your post' : 'interacted with you'}
+                          <strong>@{n.from_user}</strong> {
+                            n.type === 'reaction' ? 'reacted to your post' :
+                            n.type === 'reply' ? 'replied to your post' :
+                            n.type === 'mention_post' ? 'mentioned you in a post' :
+                            n.type === 'mention_reply' ? 'mentioned you in a reply' : 'interacted with you'
+                          }
                         </>
                       )}
                     </div>

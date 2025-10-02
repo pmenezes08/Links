@@ -8594,6 +8594,16 @@ def post_status():
                                         VALUES (?, ?, 'mention_post', ?, ?, ?, ?, 0)
                                     """, (target, username, post_id, community_id, f"{username} mentioned you in a post", now_ts))
                                 conn.commit()
+                                # Push notify mentioned user (best-effort)
+                                try:
+                                    send_push_to_user(target, {
+                                        'title': 'You were mentioned',
+                                        'body': f"{username} mentioned you in a post",
+                                        'url': f"/post/{post_id}",
+                                        'tag': f"mention-post-{post_id}-{target}"
+                                    })
+                                except Exception as pe:
+                                    logger.warning(f"push mention_post warn: {pe}")
                             except Exception as ne:
                                 logger.warning(f"mention notify error to {target_lower}: {ne}")
                 except Exception as e:
@@ -8793,6 +8803,16 @@ def post_reply():
                                         VALUES (?, ?, 'mention_reply', ?, ?, ?, ?, 0)
                                     """, (target, username, post_id, community_id, f"{username} mentioned you in a reply", now_ts))
                                 conn.commit()
+                                # Push notify mentioned user (best-effort)
+                                try:
+                                    send_push_to_user(target, {
+                                        'title': 'You were mentioned',
+                                        'body': f"{username} mentioned you in a reply",
+                                        'url': f"/post/{post_id}",
+                                        'tag': f"mention-reply-{post_id}-{target}"
+                                    })
+                                except Exception as pe:
+                                    logger.warning(f"push mention_reply warn: {pe}")
                             except Exception as ne:
                                 logger.warning(f"mention reply notify error to {target_lower}: {ne}")
                 except Exception as e:
