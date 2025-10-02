@@ -33,7 +33,8 @@ function renderRichText(input: string){
   let m: RegExpExecArray | null
   while ((m = urlRe.exec(rest))){
     if (m.index > urlLast){
-      nodes.push(...preserveNewlines(rest.slice(urlLast, m.index)))
+      // Before URLs, also colorize @mentions in the chunk
+      nodes.push(...colorizeMentions(preserveNewlines(rest.slice(urlLast, m.index))))
     }
     const urlText = m[0]
     const href = urlText.startsWith('http') ? urlText : `https://${urlText}`
@@ -41,7 +42,7 @@ function renderRichText(input: string){
     urlLast = urlRe.lastIndex
   }
   if (urlLast < rest.length){
-    nodes.push(...preserveNewlines(rest.slice(urlLast)))
+    nodes.push(...colorizeMentions(preserveNewlines(rest.slice(urlLast))))
   }
   return <>{nodes}</>
 }
@@ -52,6 +53,30 @@ function preserveNewlines(text: string){
   parts.forEach((p, i) => {
     if (i > 0) out.push(<br key={`br-${i}-${p.length}-${Math.random()}`} />)
     if (p) out.push(p)
+  })
+  return out
+}
+
+function colorizeMentions(nodes: Array<React.ReactNode>): Array<React.ReactNode> {
+  // Transform plain-text strings in nodes to add color for @mentions
+  const out: Array<React.ReactNode> = []
+  const mentionRe = /(^|\s)(@([a-zA-Z0-9_]{1,30}))/g
+  nodes.forEach((n, idx) => {
+    if (typeof n !== 'string'){ out.push(n); return }
+    const segs: Array<React.ReactNode> = []
+    let last = 0
+    let m: RegExpExecArray | null
+    while ((m = mentionRe.exec(n))){
+      const start = m.index
+      const lead = m[1]
+      const full = m[2]
+      if (start > last){ segs.push(n.slice(last, start)) }
+      if (lead){ segs.push(lead) }
+      segs.push(<span key={`men-${idx}-${start}`} className="text-[#4db6ac]">{full}</span>)
+      last = start + lead.length + full.length
+    }
+    if (last < n.length){ segs.push(n.slice(last)) }
+    out.push(...segs)
   })
   return out
 }

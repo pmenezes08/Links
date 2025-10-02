@@ -8558,8 +8558,8 @@ def post_status():
                     import re
                     mentions = set([m.lower() for m in re.findall(r"@([a-zA-Z0-9_]{1,30})", content or '')])
                     if mentions:
-                        # Filter to members of this community and not the author
-                        allowed = []
+                        # Filter to members of this community and not the author (case-insensitive)
+                        allowed_lower = []
                         if community_id:
                             c.execute("""
                                 SELECT u.username
@@ -8567,19 +8567,26 @@ def post_status():
                                 JOIN user_communities uc ON u.id = uc.user_id
                                 WHERE uc.community_id = ?
                             """, (community_id,))
-                            members = {row['username'] if hasattr(row,'keys') else row[0] for row in c.fetchall()}
-                            allowed = [u for u in mentions if u in members and u != username]
+                            rows = c.fetchall() or []
+                            members_map = {}
+                            for row in rows:
+                                uname = row['username'] if hasattr(row,'keys') else row[0]
+                                members_map[uname.lower()] = uname
+                            current_lower = (username or '').lower()
+                            allowed_lower = [u for u in mentions if u in members_map and u != current_lower]
                         else:
-                            allowed = [u for u in mentions if u != username]
-                        for target in allowed:
+                            current_lower = (username or '').lower()
+                            allowed_lower = [u for u in mentions if u != current_lower]
+                        for target_lower in allowed_lower:
                             try:
+                                target = members_map.get(target_lower, target_lower)
                                 c.execute("""
                                     INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read)
                                     VALUES (?, ?, 'mention_post', ?, ?, ?, NOW(), 0)
                                 """, (target, username, post_id, community_id, f"{username} mentioned you in a post"))
                                 conn.commit()
                             except Exception as ne:
-                                logger.warning(f"mention notify error to {target}: {ne}")
+                                logger.warning(f"mention notify error to {target_lower}: {ne}")
                 except Exception as e:
                     logger.warning(f"mention parse error: {e}")
 
@@ -8743,7 +8750,8 @@ def post_reply():
                     import re
                     mentions = set([m.lower() for m in re.findall(r"@([a-zA-Z0-9_]{1,30})", content or '')])
                     if mentions:
-                        allowed = []
+                        allowed_lower = []
+                        members_map = {}
                         if community_id:
                             c.execute("""
                                 SELECT u.username
@@ -8751,19 +8759,25 @@ def post_reply():
                                 JOIN user_communities uc ON u.id = uc.user_id
                                 WHERE uc.community_id = ?
                             """, (community_id,))
-                            members = {row['username'] if hasattr(row,'keys') else row[0] for row in c.fetchall()}
-                            allowed = [u for u in mentions if u in members and u != username]
+                            rows = c.fetchall() or []
+                            for row in rows:
+                                uname = row['username'] if hasattr(row,'keys') else row[0]
+                                members_map[uname.lower()] = uname
+                            current_lower = (username or '').lower()
+                            allowed_lower = [u for u in mentions if u in members_map and u != current_lower]
                         else:
-                            allowed = [u for u in mentions if u != username]
-                        for target in allowed:
+                            current_lower = (username or '').lower()
+                            allowed_lower = [u for u in mentions if u != current_lower]
+                        for target_lower in allowed_lower:
                             try:
+                                target = members_map.get(target_lower, target_lower)
                                 c.execute("""
                                     INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read)
                                     VALUES (?, ?, 'mention_reply', ?, ?, ?, NOW(), 0)
                                 """, (target, username, post_id, community_id, f"{username} mentioned you in a reply"))
                                 conn.commit()
                             except Exception as ne:
-                                logger.warning(f"mention reply notify error to {target}: {ne}")
+                                logger.warning(f"mention reply notify error to {target_lower}: {ne}")
                 except Exception as e:
                     logger.warning(f"mention reply parse error: {e}")
 
