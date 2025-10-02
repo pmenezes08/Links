@@ -215,10 +215,17 @@ function PdfScrollViewer({ url }:{ url: string }){
     let mounted = true
     async function load(){
       try{
-        const pdfjs = await import('pdfjs-dist/build/pdf')
-        // @ts-ignore worker
-        pdfjs.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.min.js'
-        const pdf = await (pdfjs as any).getDocument(url).promise
+        const pdfjsLib: any = await import('pdfjs-dist')
+        try{
+          // Try to set worker from packaged entry; ignore types
+          // @ts-ignore
+          const workerEntry = await import('pdfjs-dist/build/pdf.worker.mjs')
+          pdfjsLib.GlobalWorkerOptions.workerSrc = (workerEntry as any)
+        }catch{
+          // Fallback to CDN worker
+          pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.min.js'
+        }
+        const pdf = await pdfjsLib.getDocument(url).promise
         if (!mounted) return
         const cont = containerRef.current
         if (!cont) return
