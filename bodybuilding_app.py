@@ -8552,62 +8552,12 @@ def post_status():
                 except Exception as te:
                     logger.warning(f"post dedupe token write failed: {te}")
 
-            # Mentions: create notifications for @username occurrences (flagged)
+            # Mentions processing deferred to helper for robustness
             if MENTIONS_ENABLED:
                 try:
-                    import re
-                    mentions = set([m.lower() for m in re.findall(r"@([a-zA-Z0-9_]{1,30})", content or '')])
-                    if mentions:
-                        # Filter to members of this community and not the author (case-insensitive)
-                        allowed_lower = []
-                        if community_id:
-                            c.execute("""
-                                SELECT u.username
-                                FROM users u
-                                JOIN user_communities uc ON u.id = uc.user_id
-                                WHERE uc.community_id = ?
-                            """, (community_id,))
-                            rows = c.fetchall() or []
-                            members_map = {}
-                            for row in rows:
-                                uname = row['username'] if hasattr(row,'keys') else row[0]
-                                members_map[uname.lower()] = uname
-                            current_lower = (username or '').lower()
-                            allowed_lower = [u for u in mentions if u in members_map and u != current_lower]
-                        else:
-                            current_lower = (username or '').lower()
-                            allowed_lower = [u for u in mentions if u != current_lower]
-                        for target_lower in allowed_lower:
-                            try:
-                                target = members_map.get(target_lower, target_lower)
-                                if USE_MYSQL:
-                                    c.execute("""
-                                        INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read)
-                                        VALUES (?, ?, 'mention_post', ?, ?, ?, NOW(), 0)
-                                        ON DUPLICATE KEY UPDATE created_at = NOW(), is_read = 0, message = VALUES(message)
-                                    """, (target, username, post_id, community_id, f"{username} mentioned you in a post"))
-                                else:
-                                    # SQLite: allow multiple entries; optional dedupe could be added
-                                    now_ts = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                                    c.execute("""
-                                        INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read)
-                                        VALUES (?, ?, 'mention_post', ?, ?, ?, ?, 0)
-                                    """, (target, username, post_id, community_id, f"{username} mentioned you in a post", now_ts))
-                                conn.commit()
-                                # Push notify mentioned user (best-effort)
-                                try:
-                                    send_push_to_user(target, {
-                                        'title': 'You were mentioned',
-                                        'body': f"{username} mentioned you in a post",
-                                        'url': f"/post/{post_id}",
-                                        'tag': f"mention-post-{post_id}-{target}"
-                                    })
-                                except Exception as pe:
-                                    logger.warning(f"push mention_post warn: {pe}")
-                            except Exception as ne:
-                                logger.warning(f"mention notify error to {target_lower}: {ne}")
+                    process_mentions_for_post(post_id=post_id, author_username=username)
                 except Exception as e:
-                    logger.warning(f"mention parse error: {e}")
+                    logger.warning(f"mention post helper error: {e}")
 
             # Notify community members (excluding creator)
             try:
@@ -8763,60 +8713,12 @@ def post_reply():
                 except Exception as te:
                     logger.warning(f"reply dedupe token write failed: {te}")
             
-            # Mentions in reply (flagged)
+            # Mentions processing deferred to helper for robustness
             if MENTIONS_ENABLED:
                 try:
-                    import re
-                    mentions = set([m.lower() for m in re.findall(r"@([a-zA-Z0-9_]{1,30})", content or '')])
-                    if mentions:
-                        allowed_lower = []
-                        members_map = {}
-                        if community_id:
-                            c.execute("""
-                                SELECT u.username
-                                FROM users u
-                                JOIN user_communities uc ON u.id = uc.user_id
-                                WHERE uc.community_id = ?
-                            """, (community_id,))
-                            rows = c.fetchall() or []
-                            for row in rows:
-                                uname = row['username'] if hasattr(row,'keys') else row[0]
-                                members_map[uname.lower()] = uname
-                            current_lower = (username or '').lower()
-                            allowed_lower = [u for u in mentions if u in members_map and u != current_lower]
-                        else:
-                            current_lower = (username or '').lower()
-                            allowed_lower = [u for u in mentions if u != current_lower]
-                        for target_lower in allowed_lower:
-                            try:
-                                target = members_map.get(target_lower, target_lower)
-                                if USE_MYSQL:
-                                    c.execute("""
-                                        INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read)
-                                        VALUES (?, ?, 'mention_reply', ?, ?, ?, NOW(), 0)
-                                        ON DUPLICATE KEY UPDATE created_at = NOW(), is_read = 0, message = VALUES(message)
-                                    """, (target, username, post_id, community_id, f"{username} mentioned you in a reply"))
-                                else:
-                                    now_ts = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                                    c.execute("""
-                                        INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read)
-                                        VALUES (?, ?, 'mention_reply', ?, ?, ?, ?, 0)
-                                    """, (target, username, post_id, community_id, f"{username} mentioned you in a reply", now_ts))
-                                conn.commit()
-                                # Push notify mentioned user (best-effort)
-                                try:
-                                    send_push_to_user(target, {
-                                        'title': 'You were mentioned',
-                                        'body': f"{username} mentioned you in a reply",
-                                        'url': f"/post/{post_id}",
-                                        'tag': f"mention-reply-{post_id}-{target}"
-                                    })
-                                except Exception as pe:
-                                    logger.warning(f"push mention_reply warn: {pe}")
-                            except Exception as ne:
-                                logger.warning(f"mention reply notify error to {target_lower}: {ne}")
+                    process_mentions_for_reply(post_id=post_id, author_username=username, community_id=community_id)
                 except Exception as e:
-                    logger.warning(f"mention reply parse error: {e}")
+                    logger.warning(f"mention reply helper error: {e}")
 
             # Notify recipients (post owner and parent reply author)
             try:
@@ -18938,6 +18840,120 @@ def api_active_chat():
     except Exception as e:
         logger.error(f"active chat set error: {e}")
         return jsonify({ 'success': False }), 500
+
+def _collect_mentions(text: str) -> list:
+    try:
+        import re as _re
+        return list({ m.lower() for m in _re.findall(r"@([a-zA-Z0-9_]{1,30})", text or '') })
+    except Exception:
+        return []
+
+def process_mentions_for_post(post_id: int, author_username: str):
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT content, community_id FROM posts WHERE id = ?", (post_id,))
+            row = c.fetchone()
+            if not row:
+                return
+            content = row['content'] if hasattr(row, 'keys') else row[0]
+            community_id = row['community_id'] if hasattr(row, 'keys') else row[1]
+            mentions = _collect_mentions(content)
+            if not mentions:
+                return
+            members_map = {}
+            if community_id:
+                c.execute("SELECT u.username FROM users u JOIN user_communities uc ON u.id=uc.user_id WHERE uc.community_id=?", (community_id,))
+                for r in c.fetchall() or []:
+                    uname = r['username'] if hasattr(r,'keys') else r[0]
+                    members_map[uname.lower()] = uname
+            current_lower = (author_username or '').lower()
+            allowed = [u for u in mentions if (u != current_lower) and (not community_id or u in members_map)]
+            for target_lower in allowed:
+                target = members_map.get(target_lower, target_lower)
+                try:
+                    if USE_MYSQL:
+                        c.execute("""
+                            INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read)
+                            VALUES (?, ?, 'mention_post', ?, ?, ?, NOW(), 0)
+                            ON DUPLICATE KEY UPDATE created_at = NOW(), is_read = 0, message = VALUES(message)
+                        """, (target, author_username, post_id, community_id, f"{author_username} mentioned you in a post"))
+                    else:
+                        now_ts = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                        c.execute("""
+                            INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read)
+                            VALUES (?, ?, 'mention_post', ?, ?, ?, ?, 0)
+                        """, (target, author_username, post_id, community_id, f"{author_username} mentioned you in a post", now_ts))
+                    conn.commit()
+                    try:
+                        send_push_to_user(target, {
+                            'title': 'You were mentioned',
+                            'body': f"{author_username} mentioned you in a post",
+                            'url': f"/post/{post_id}",
+                            'tag': f"mention-post-{post_id}-{target}"
+                        })
+                    except Exception as pe:
+                        logger.warning(f"push mention post helper warn: {pe}")
+                except Exception as ne:
+                    logger.warning(f"mention post helper insert warn to {target}: {ne}")
+    except Exception as e:
+        logger.warning(f"process_mentions_for_post error: {e}")
+
+def process_mentions_for_reply(post_id: int, author_username: str, community_id: int|None):
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            # Get latest reply content for this author/post
+            c.execute("""
+                SELECT content FROM replies
+                WHERE post_id=? AND username=?
+                ORDER BY id DESC
+                LIMIT 1
+            """, (post_id, author_username))
+            row = c.fetchone()
+            if not row:
+                return
+            content = row['content'] if hasattr(row, 'keys') else row[0]
+            mentions = _collect_mentions(content)
+            if not mentions:
+                return
+            members_map = {}
+            if community_id:
+                c.execute("SELECT u.username FROM users u JOIN user_communities uc ON u.id=uc.user_id WHERE uc.community_id=?", (community_id,))
+                for r in c.fetchall() or []:
+                    uname = r['username'] if hasattr(r,'keys') else r[0]
+                    members_map[uname.lower()] = uname
+            current_lower = (author_username or '').lower()
+            allowed = [u for u in mentions if (u != current_lower) and (not community_id or u in members_map)]
+            for target_lower in allowed:
+                target = members_map.get(target_lower, target_lower)
+                try:
+                    if USE_MYSQL:
+                        c.execute("""
+                            INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read)
+                            VALUES (?, ?, 'mention_reply', ?, ?, ?, NOW(), 0)
+                            ON DUPLICATE KEY UPDATE created_at = NOW(), is_read = 0, message = VALUES(message)
+                        """, (target, author_username, post_id, community_id, f"{author_username} mentioned you in a reply"))
+                    else:
+                        now_ts = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                        c.execute("""
+                            INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read)
+                            VALUES (?, ?, 'mention_reply', ?, ?, ?, ?, 0)
+                        """, (target, author_username, post_id, community_id, f"{author_username} mentioned you in a reply", now_ts))
+                    conn.commit()
+                    try:
+                        send_push_to_user(target, {
+                            'title': 'You were mentioned',
+                            'body': f"{author_username} mentioned you in a reply",
+                            'url': f"/post/{post_id}",
+                            'tag': f"mention-reply-{post_id}-{target}"
+                        })
+                    except Exception as pe:
+                        logger.warning(f"push mention reply helper warn: {pe}")
+                except Exception as ne:
+                    logger.warning(f"mention reply helper insert warn to {target}: {ne}")
+    except Exception as e:
+        logger.warning(f"process_mentions_for_reply error: {e}")
 
 def send_push_to_user(target_username: str, payload: dict):
     if not VAPID_PUBLIC_KEY or not VAPID_PRIVATE_KEY:
