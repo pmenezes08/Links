@@ -329,24 +329,15 @@ export default function PostDetail(){
       {/* Fixed-bottom reply composer */}
       <div className="fixed left-0 right-0 bottom-0 z-[100] bg-black/85 border-t border-white/10 backdrop-blur pointer-events-auto">
         <div className="px-3 py-2 flex flex-col gap-1.5">
-          {(import.meta as any).env?.VITE_MENTIONS_ENABLED === 'true' ? (
-            <MentionTextarea
-              value={content}
-              onChange={setContent}
-              communityId={(post as any)?.community_id}
-              postId={post?.id}
-              placeholder="Write a reply…"
-              className="w-full resize-none max-h-36 min-h-[30px] px-3 py-1.5 rounded-2xl bg-black border border-[#4db6ac] text-[16px] focus:outline-none focus:ring-1 focus:ring-[#4db6ac]"
-              rows={3}
-            />
-          ) : (
-            <textarea
-              className="w-full resize-none max-h-36 min-h-[30px] px-3 py-1.5 rounded-2xl bg-black border border-[#4db6ac] text-[16px] focus:outline-none focus:ring-1 focus:ring-[#4db6ac]"
-              placeholder="Write a reply…"
-              value={content}
-              onChange={(e)=> setContent(e.target.value)}
-            />
-          )}
+          <MentionTextarea
+            value={content}
+            onChange={setContent}
+            communityId={(post as any)?.community_id}
+            postId={post?.id}
+            placeholder="Write a reply…"
+            className="w-full resize-none max-h-36 min-h-[30px] px-3 py-1.5 rounded-2xl bg-black border border-[#4db6ac] text-[16px] focus:outline-none focus:ring-1 focus:ring-[#4db6ac]"
+            rows={3}
+          />
           <div className="flex items-center justify-end gap-2 flex-wrap">
             {file && (
               <div className="flex items-center gap-2 mr-auto">
@@ -511,19 +502,15 @@ function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDel
           {showComposer ? (
             <div className="mt-2 space-y-2">
               <div className="flex items-start gap-2">
-                {(import.meta as any).env?.VITE_MENTIONS_ENABLED === 'true' ? (
-                  <MentionTextarea
-                    value={text}
-                    onChange={setText}
-                    communityId={communityId}
-                    postId={postId}
-                    placeholder={`Reply to @${reply.username}`}
-                    className="flex-1 px-3 py-1.5 rounded-2xl bg-black border border-[#4db6ac] text-[16px] focus:outline-none focus:ring-1 focus:ring-[#4db6ac] min-h-[36px]"
-                    rows={2}
-                  />
-                ) : (
-                  <textarea className="flex-1 px-3 py-1.5 rounded-2xl bg-black border border-[#4db6ac] text-[16px] focus:outline-none focus:ring-1 focus:ring-[#4db6ac] min-h-[36px]" value={text} onChange={(e)=> setText(e.target.value)} placeholder={`Reply to @${reply.username}`} />
-                )}
+                <MentionTextarea
+                  value={text}
+                  onChange={setText}
+                  communityId={communityId}
+                  postId={postId}
+                  placeholder={`Reply to @${reply.username}`}
+                  className="flex-1 px-3 py-1.5 rounded-2xl bg-black border border-[#4db6ac] text-[16px] focus:outline-none focus:ring-1 focus:ring-[#4db6ac] min-h-[36px]"
+                  rows={2}
+                />
                 <button type="button" className="w-10 h-10 rounded-full hover:bg:white/10 grid place-items-center" aria-label="Add image" onClick={()=> inlineFileRef.current?.click()}>
                   <i className="fa-regular fa-image text-xl" style={{ color: img ? '#7fe7df' : '#4db6ac' }} />
                 </button>

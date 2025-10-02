@@ -13705,8 +13705,6 @@ def api_community_feed(community_id):
 @app.route('/api/community_member_suggest')
 @login_required
 def api_community_member_suggest():
-    if not MENTIONS_ENABLED:
-        return jsonify({'success': True, 'members': []})
     try:
         q = (request.args.get('q') or '').strip()
         community_id = request.args.get('community_id', type=int)

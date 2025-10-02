@@ -39,18 +39,14 @@ export default function CreatePost(){
         </button>
       </div>
       <div className="max-w-2xl mx-auto pt-24 px-3">
-        {(import.meta as any).env?.VITE_MENTIONS_ENABLED === 'true' ? (
-          <MentionTextarea
-            value={content}
-            onChange={setContent}
-            communityId={communityId ? Number(communityId) : undefined}
-            placeholder="What's happening?"
-            className="w-full min-h-[180px] p-3 rounded-xl bg-black border border-white/10 text-sm focus:outline-none focus:ring-1 focus:ring-[#4db6ac]"
-            rows={8}
-          />
-        ) : (
-          <textarea className="w-full min-h-[180px] p-3 rounded-xl bg-black border border-white/10 text-sm focus:outline-none focus:ring-1 focus:ring-[#4db6ac]" placeholder="What's happening?" value={content} onChange={(e)=> setContent(e.target.value)} />
-        )}
+        <MentionTextarea
+          value={content}
+          onChange={setContent}
+          communityId={communityId ? Number(communityId) : undefined}
+          placeholder="What's happening?"
+          className="w-full min-h-[180px] p-3 rounded-xl bg-black border border-white/10 text-sm focus:outline-none focus:ring-1 focus:ring-[#4db6ac]"
+          rows={8}
+        />
         {file ? (
           <div className="mt-3 rounded-xl overflow-hidden border border-white/10">
             <img src={URL.createObjectURL(file)} alt="preview" className="w-full h-auto" />
