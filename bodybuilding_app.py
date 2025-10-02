@@ -18846,9 +18846,12 @@ def api_active_chat():
         return jsonify({ 'success': False }), 500
 
 def _collect_mentions(text: str) -> list:
+    """Return lowercased usernames mentioned with @, avoiding emails and words."""
     try:
         import re as _re
-        return list({ m.lower() for m in _re.findall(r"@([a-zA-Z0-9_]{1,30})", text or '') })
+        # Negative lookbehind to ensure @ is not preceded by a word character (avoids emails)
+        pattern = _re.compile(r"(?<!\w)@([A-Za-z0-9_]{1,30})")
+        return list({ m.group(1).lower() for m in pattern.finditer(text or '') })
     except Exception:
         return []
 
@@ -18865,6 +18868,10 @@ def process_mentions_for_post(post_id: int, author_username: str):
             mentions = _collect_mentions(content)
             if not mentions:
                 return
+            try:
+                logger.info(f"mentions-post: post_id={post_id} author={author_username} found={mentions}")
+            except Exception:
+                pass
             members_map = {}
             if community_id:
                 c.execute("SELECT u.username FROM users u JOIN user_communities uc ON u.id=uc.user_id WHERE uc.community_id=?", (community_id,))
@@ -18873,6 +18880,10 @@ def process_mentions_for_post(post_id: int, author_username: str):
                     members_map[uname.lower()] = uname
             current_lower = (author_username or '').lower()
             allowed = [u for u in mentions if (u != current_lower) and (not community_id or u in members_map)]
+            try:
+                logger.info(f"mentions-post: allowed={allowed} members={list(members_map.keys())[:5]}...")
+            except Exception:
+                pass
             for target_lower in allowed:
                 target = members_map.get(target_lower, target_lower)
                 try:
@@ -19008,6 +19019,11 @@ def send_push_to_user(target_username: str, payload: dict):
             c = conn.cursor()
             c.execute("SELECT endpoint, p256dh, auth FROM push_subscriptions WHERE username=?", (target_username,))
             subs = c.fetchall()
+        if not subs:
+            try:
+                logger.info(f"push: no subscriptions for {target_username}")
+            except Exception:
+                pass
         for s in subs:
             try:
                 subscription_info = {
