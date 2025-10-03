@@ -4347,10 +4347,8 @@ def admin_delete_user():
                 c.execute(f"DELETE FROM remember_tokens WHERE username={ph}", (target_username,))
             except Exception:
                 pass
-            try:
-                c.execute(f"DELETE FROM user_profiles WHERE username={ph}", (target_username,))
-            except Exception:
-                pass
+            # Remove profile row before user to satisfy FK fk_profile_user
+            c.execute(f"DELETE FROM user_profiles WHERE username={ph}", (target_username,))
             try:
                 c.execute(f"DELETE FROM exercises WHERE username={ph}", (target_username,))
                 c.execute(f"DELETE FROM workouts WHERE username={ph}", (target_username,))
