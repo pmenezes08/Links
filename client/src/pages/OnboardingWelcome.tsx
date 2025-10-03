@@ -7,6 +7,11 @@ export default function OnboardingWelcome(){
   const [cardIndex, setCardIndex] = useState(0)
   const [touchStartX, setTouchStartX] = useState<number | null>(null)
   const [touchDeltaX, setTouchDeltaX] = useState(0)
+  const headlines = [
+    'Welcome to the network where ideas connect people',
+    'Share your thoughts, images, and connect through meaningful conversations.',
+    'Connect with your world'
+  ]
 
   // no modal state
 
@@ -31,14 +36,7 @@ export default function OnboardingWelcome(){
     })()
   }, [])
 
-  // Autoplay slides every 4s
-  useEffect(() => {
-    const id = window.setInterval(() => {
-      const total = (cards && cards.length) ? cards.length : 3
-      setCardIndex(i => (i + 1) % total)
-    }, 4000)
-    return () => window.clearInterval(id)
-  }, [cards])
+  // Manual scroll only (no autoplay)
 
   function onGetStarted(){
     navigate('/login')
@@ -48,10 +46,10 @@ export default function OnboardingWelcome(){
   return (
     <div className="min-h-screen bg-black text-white flex items-center justify-center p-4">
       <div className="w-full max-w-xl">
-        <div className="mb-3">
+        <div className="mb-1">
           <div className="text-2xl font-bold">Welcome!</div>
         </div>
-        <div className="text-sm text-[#9fb0b5] mb-3">Connect with your community. Share updates, view announcements, answer to polls and much more.</div>
+        <div className="text-sm text-[#9fb0b5] mb-3">{headlines[Math.min(cardIndex, headlines.length-1)]}</div>
 
         <div className="rounded-2xl border border-white/10 overflow-hidden bg-white/[0.03]">
           <div className="relative w-full h-[46vh]"
