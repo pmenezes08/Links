@@ -10,12 +10,19 @@ export default function OnboardingWelcome(){
   const [isUnverified, setIsUnverified] = useState(false)
   const [resendLoading, setResendLoading] = useState(false)
   const [resendMsg, setResendMsg] = useState('')
+  // Profile picture step
+  const [showPicModal, setShowPicModal] = useState(false)
+  const [nextPath, setNextPath] = useState<string | null>(null)
+  const [picFile, setPicFile] = useState<File | null>(null)
+  const [picPreview, setPicPreview] = useState<string>('')
+  const [picError, setPicError] = useState('')
+  const [uploadingPic, setUploadingPic] = useState(false)
 
   useEffect(() => {
-    // Mobile-safe: prevent background scroll when modal open
-    if (showModal) { document.body.style.overflow = 'hidden' } else { document.body.style.overflow = '' }
+    // Mobile-safe: prevent background scroll when any modal open
+    if (showModal || showPicModal) { document.body.style.overflow = 'hidden' } else { document.body.style.overflow = '' }
     return () => { document.body.style.overflow = '' }
-  }, [showModal])
+  }, [showModal, showPicModal])
 
   useEffect(() => {
     // Client instrumentation: log when onboarding is shown
@@ -60,11 +67,10 @@ export default function OnboardingWelcome(){
       if (resp.ok && data?.success){
         const cid = data.community_id
         setShowModal(false)
-        if (cid){
-          navigate(`/community_feed_react/${cid}`)
-        } else {
-          navigate('/premium_dashboard')
-        }
+        const path = cid ? `/community_feed_react/${cid}` : '/premium_dashboard'
+        setNextPath(path)
+        // Next step: prompt to add profile picture
+        setShowPicModal(true)
         return
       }
 
@@ -79,6 +85,47 @@ export default function OnboardingWelcome(){
     } finally {
       setJoining(false)
     }
+  }
+
+  function onPicFileChange(e: React.ChangeEvent<HTMLInputElement>){
+    setPicError('')
+    const f = e.target.files && e.target.files[0] ? e.target.files[0] : null
+    setPicFile(f)
+    if (f){
+      try{
+        const url = URL.createObjectURL(f)
+        setPicPreview(url)
+      }catch{ setPicPreview('') }
+    } else {
+      setPicPreview('')
+    }
+  }
+
+  async function onUploadPic(){
+    setPicError('')
+    if (!picFile){ setPicError('Please choose an image.'); return }
+    setUploadingPic(true)
+    try{
+      const fd = new FormData()
+      fd.append('profile_picture', picFile)
+      const r = await fetch('/upload_profile_picture', { method:'POST', credentials:'include', body: fd })
+      const j = await r.json().catch(()=>null)
+      if (r.ok && j?.success){
+        setShowPicModal(false)
+        navigate(nextPath || '/premium_dashboard', { replace: true })
+      } else {
+        setPicError(j?.error || 'Failed to upload. Please try again.')
+      }
+    } catch {
+      setPicError('Network error. Please try again.')
+    } finally {
+      setUploadingPic(false)
+    }
+  }
+
+  function onSkipPic(){
+    setShowPicModal(false)
+    navigate(nextPath || '/premium_dashboard', { replace: true })
   }
 
   async function onResend(){
@@ -141,6 +188,33 @@ export default function OnboardingWelcome(){
             <div className="mt-4 flex gap-2 justify-end">
               <button className="px-4 py-2 rounded-lg border border-white/10 bg-white/[0.04]" onClick={onExit} disabled={joining}>Exit</button>
               <button className="px-4 py-2 rounded-lg bg-[#4db6ac] text-black font-semibold" onClick={onJoin} disabled={joining || isUnverified}>{joining ? 'Joining…' : 'Join'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showPicModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
+          <div className="w-[92%] max-w-md rounded-xl border border-white/10 bg-[#0b0f10] p-5">
+            <div className="flex items-center justify-between">
+              <div className="text-lg font-semibold">Add a profile picture</div>
+              <button className="text-[#9fb0b5] text-2xl" onClick={onSkipPic}>&times;</button>
+            </div>
+            <div className="mt-3 text-sm text-[#9fb0b5]">Help people recognize you. You can change this later in your profile.</div>
+            <div className="mt-3">
+              <div className="flex items-center gap-3">
+                <input id="onb-prof-pic" type="file" accept="image/*" onChange={onPicFileChange} className="block w-full text-sm text-white/80 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-[#4db6ac] file:text-black hover:file:brightness-110" />
+              </div>
+              {picPreview ? (
+                <div className="mt-3 flex items-center justify-center">
+                  <img src={picPreview} alt="Preview" className="max-h-40 rounded-lg border border-white/10" />
+                </div>
+              ) : null}
+              {picError && <div className="text-xs text-red-400 mt-2">{picError}</div>}
+            </div>
+            <div className="mt-4 flex gap-2 justify-end">
+              <button className="px-4 py-2 rounded-lg border border-white/10 bg-white/[0.04]" onClick={onSkipPic} disabled={uploadingPic}>Skip for now</button>
+              <button className="px-4 py-2 rounded-lg bg-[#4db6ac] text-black font-semibold" onClick={onUploadPic} disabled={uploadingPic}>{uploadingPic ? 'Uploading…' : 'Upload & continue'}</button>
             </div>
           </div>
         </div>
