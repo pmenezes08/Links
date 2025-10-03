@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import Avatar from './Avatar'
 
@@ -14,6 +14,9 @@ export default function HeaderBar({ title, username, avatarUrl }: HeaderBarProps
   const [menuOpen, setMenuOpen] = useState(false)
   const [unreadMsgs, setUnreadMsgs] = useState<number>(0)
   const [unreadNotifs, setUnreadNotifs] = useState<number>(0)
+  const [installEvt, setInstallEvt] = useState<any>(null)
+  const [isStandalone, setIsStandalone] = useState<boolean>(false)
+  const [isIOS, setIsIOS] = useState<boolean>(false)
 
   // Light polling for unread counts
   // Using window.setInterval to avoid importing useEffect here per minimal diff constraints
@@ -54,6 +57,45 @@ export default function HeaderBar({ title, username, avatarUrl }: HeaderBarProps
     ;(window as any).__header_do_poll = poll
     poll()
     setInterval(poll, 5000)
+  }
+
+  // PWA install prompt wiring
+  useEffect(() => {
+    try{
+      const checkStandalone = () => {
+        const mql = window.matchMedia && window.matchMedia('(display-mode: standalone)')
+        const standalone = (mql && mql.matches) || (navigator as any).standalone === true
+        setIsStandalone(!!standalone)
+      }
+      checkStandalone()
+      const onChange = () => checkStandalone()
+      try{ window.matchMedia('(display-mode: standalone)').addEventListener('change', onChange) }catch{}
+
+      const onBIP = (e: any) => { e.preventDefault(); setInstallEvt(e) }
+      const onInstalled = () => { setInstallEvt(null); setIsStandalone(true) }
+      window.addEventListener('beforeinstallprompt', onBIP as any)
+      window.addEventListener('appinstalled', onInstalled as any)
+      setIsIOS(/iphone|ipad|ipod/i.test(navigator.userAgent))
+      return () => {
+        try{ window.matchMedia('(display-mode: standalone)').removeEventListener('change', onChange) }catch{}
+        window.removeEventListener('beforeinstallprompt', onBIP as any)
+        window.removeEventListener('appinstalled', onInstalled as any)
+      }
+    }catch{
+      /* ignore */
+    }
+  }, [])
+
+  async function handleInstall(){
+    try{
+      if (installEvt && typeof installEvt.prompt === 'function'){
+        await installEvt.prompt()
+        try{ await installEvt.userChoice }catch{}
+        setInstallEvt(null)
+      } else if (isIOS){
+        alert('To install: tap Share, then "Add to Home Screen"')
+      }
+    }catch{}
   }
 
   const resolvedAvatar = avatarUrl
@@ -97,6 +139,11 @@ export default function HeaderBar({ title, username, avatarUrl }: HeaderBarProps
               <Avatar username={username || ''} url={resolvedAvatar} size={40} />
               <div className="font-medium truncate">{username || ''}</div>
             </div>
+            {(!isStandalone && (installEvt || isIOS)) && (
+              <button className="block w-full text-left px-4 py-3 rounded-xl bg-[#4db6ac] text-black hover:brightness-110" onClick={handleInstall}>
+                Install App
+              </button>
+            )}
             {username === 'admin' ? (
               <>
                 <a className="block px-4 py-3 rounded-xl hover:bg:white/5 text-white" href="/admin_profile">Admin Profile</a>
