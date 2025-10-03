@@ -10,6 +10,8 @@ export default function MobileLogin() {
   const [installEvt, setInstallEvt] = useState<any>(null)
   const [isStandalone, setIsStandalone] = useState<boolean>(false)
   const [isIOS, setIsIOS] = useState<boolean>(false)
+  const [showInstall, setShowInstall] = useState(false)
+  const [installMode, setInstallMode] = useState<'android'|'ios'|null>(null)
 
   // If already authenticated, skip login
   useEffect(() => {
@@ -76,11 +78,11 @@ export default function MobileLogin() {
   async function handleInstall(){
     try{
       if (installEvt && typeof installEvt.prompt === 'function'){
-        await installEvt.prompt()
-        try{ await installEvt.userChoice }catch{}
-        setInstallEvt(null)
+        setInstallMode('android')
+        setShowInstall(true)
       } else if (isIOS){
-        alert('To install: tap Share, then "Add to Home Screen"')
+        setInstallMode('ios')
+        setShowInstall(true)
       }
     }catch{}
   }
@@ -179,6 +181,60 @@ export default function MobileLogin() {
                   <button className="w-full mt-4 rounded-lg border border-white/10 bg-white/5 py-2 text-sm" onClick={() => setShowForgot(false)}>Close</button>
                 </>
               )}
+
+  {/* Install modal */}
+  {showInstall && (
+    <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center" onClick={(e)=> e.currentTarget===e.target && setShowInstall(false)}>
+      <div className="w-[92%] max-w-sm rounded-2xl border border-white/10 bg-[#0b0f10] text-white shadow-xl p-4">
+        <div className="flex items-center justify-between mb-2">
+          <div className="text-base font-semibold">Install C.Point</div>
+          <button aria-label="Close" className="text-white/60 hover:text-white" onClick={()=> setShowInstall(false)}>
+            <i className="fa-solid fa-xmark" />
+          </button>
+        </div>
+        {installMode === 'android' ? (
+          <div>
+            <p className="text-sm text-white/75 mb-3">Add the app to your home screen for a faster, full-screen experience.</p>
+            <div className="flex items-center justify-end gap-2 mt-2">
+              <button className="px-3 py-2 rounded-lg border border-white/15 hover:bg-white/5 text-sm" onClick={()=> setShowInstall(false)}>Maybe later</button>
+              <button className="px-3 py-2 rounded-lg bg-[#4db6ac] text-black hover:brightness-110 text-sm"
+                onClick={async()=>{
+                  try{
+                    if (installEvt && typeof installEvt.prompt === 'function'){
+                      await installEvt.prompt()
+                      try{ await installEvt.userChoice }catch{}
+                      setInstallEvt(null)
+                    }
+                  }finally{
+                    setShowInstall(false)
+                  }
+                }}
+              >Install now</button>
+            </div>
+          </div>
+        ) : null}
+        {installMode === 'ios' ? (
+          <div>
+            <p className="text-sm text-white/75 mb-3">On iPhone/iPad:</p>
+            <ol className="space-y-2 text-sm text-white/85">
+              <li className="flex items-center gap-2">
+                <i className="fa-solid fa-share-from-square text-[#4db6ac]" />
+                <span>Tap <strong>Share</strong> in Safari</span>
+              </li>
+              <li className="flex items-center gap-2">
+                <i className="fa-solid fa-plus text-[#4db6ac]" />
+                <span>Select <strong>Add to Home Screen</strong></span>
+              </li>
+            </ol>
+            <div className="text-xs text-white/60 mt-3">Tip: If you don’t see the option, scroll the sheet to find it.</div>
+            <div className="flex items-center justify-end mt-4">
+              <button className="px-3 py-2 rounded-lg border border-white/15 hover:bg-white/5 text-sm" onClick={()=> setShowInstall(false)}>Got it</button>
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  )}
             </div>
           </div>
         </div>
