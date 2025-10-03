@@ -12,7 +12,7 @@ export default function OnboardingWelcome(){
   const [resendMsg, setResendMsg] = useState('')
   // Profile picture step
   const [showPicModal, setShowPicModal] = useState(false)
-  const [nextPath, setNextPath] = useState<string | null>(null)
+  // deprecated (moved to route): const [nextPath, setNextPath] = useState<string | null>(null)
   const [picFile, setPicFile] = useState<File | null>(null)
   const [picPreview, setPicPreview] = useState<string>('')
   const [picError, setPicError] = useState('')
@@ -68,9 +68,8 @@ export default function OnboardingWelcome(){
         const cid = data.community_id
         setShowModal(false)
         const path = cid ? `/community_feed_react/${cid}` : '/premium_dashboard'
-        setNextPath(path)
-        // Next step: prompt to add profile picture
-        setShowPicModal(true)
+        // Navigate to dedicated onboarding profile picture step
+        navigate(`/onboarding/profile_picture?next=${encodeURIComponent(path)}`)
         return
       }
 
@@ -112,7 +111,7 @@ export default function OnboardingWelcome(){
       const j = await r.json().catch(()=>null)
       if (r.ok && j?.success){
         setShowPicModal(false)
-        navigate(nextPath || '/premium_dashboard', { replace: true })
+        navigate('/premium_dashboard', { replace: true })
       } else {
         setPicError(j?.error || 'Failed to upload. Please try again.')
       }
@@ -125,7 +124,7 @@ export default function OnboardingWelcome(){
 
   function onSkipPic(){
     setShowPicModal(false)
-    navigate(nextPath || '/premium_dashboard', { replace: true })
+    navigate('/premium_dashboard', { replace: true })
   }
 
   async function onResend(){
