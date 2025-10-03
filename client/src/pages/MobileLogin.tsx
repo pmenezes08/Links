@@ -77,13 +77,8 @@ export default function MobileLogin() {
 
   async function handleInstall(){
     try{
-      if (installEvt && typeof installEvt.prompt === 'function'){
-        setInstallMode('android')
-        setShowInstall(true)
-      } else if (isIOS){
-        setInstallMode('ios')
-        setShowInstall(true)
-      }
+      setInstallMode(isIOS ? 'ios' : 'android')
+      setShowInstall(true)
     }catch{}
   }
 
@@ -146,8 +141,8 @@ export default function MobileLogin() {
           <div className="flex-1 h-px bg-white/10" />
         </div>
 
-        {(!isStandalone && (installEvt || isIOS)) ? (
-          <button onClick={handleInstall} className="block w-full text-center rounded-lg border border-white/10 bg-white/5 py-2 text-sm">Install App</button>
+        {(!isStandalone) ? (
+          <button type="button" onClick={handleInstall} className="block w-full text-center rounded-lg border border-white/10 bg-white/5 py-2 text-sm">Install App</button>
         ) : null}
       </div>
 
@@ -196,8 +191,8 @@ export default function MobileLogin() {
           <div>
             <p className="text-sm text-white/75 mb-3">Add the app to your home screen for a faster, full-screen experience.</p>
             <div className="flex items-center justify-end gap-2 mt-2">
-              <button className="px-3 py-2 rounded-lg border border-white/15 hover:bg-white/5 text-sm" onClick={()=> setShowInstall(false)}>Maybe later</button>
-              <button className="px-3 py-2 rounded-lg bg-[#4db6ac] text-black hover:brightness-110 text-sm"
+              <button type="button" className="px-3 py-2 rounded-lg border border-white/15 hover:bg-white/5 text-sm" onClick={()=> setShowInstall(false)}>Maybe later</button>
+              <button type="button" className={`px-3 py-2 rounded-lg ${installEvt? 'bg-[#4db6ac] hover:brightness-110 text-black' : 'bg-white/10 text-white/50 cursor-not-allowed'} text-sm`}
                 onClick={async()=>{
                   try{
                     if (installEvt && typeof installEvt.prompt === 'function'){
@@ -209,8 +204,14 @@ export default function MobileLogin() {
                     setShowInstall(false)
                   }
                 }}
+                disabled={!installEvt}
               >Install now</button>
             </div>
+            {!installEvt && (
+              <div className="mt-3 text-xs text-white/60">
+                Install prompt not available yet. Try reloading the page, or use the browser menu → <strong>Add to Home screen</strong>.
+              </div>
+            )}
           </div>
         ) : null}
         {installMode === 'ios' ? (
