@@ -5227,6 +5227,23 @@ def apple_touch_icon_route():
         logger.error(f"apple-touch-icon route error: {e}")
         abort(404)
 
+@app.route('/icons/<path:filename>')
+def serve_generated_icons(filename):
+    """Serve generated PWA icons from static/icons with no-cache headers."""
+    try:
+        directory = os.path.join('static', 'icons')
+        resp = send_from_directory(directory, filename)
+        try:
+            resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+            resp.headers['Pragma'] = 'no-cache'
+            resp.headers['Expires'] = '0'
+        except Exception:
+            pass
+        return resp
+    except Exception as e:
+        logger.warning(f"icons serve error: {e}")
+        abort(404)
+
 @app.route('/check_profile_picture')
 @login_required
 def check_profile_picture():
