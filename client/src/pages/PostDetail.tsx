@@ -336,7 +336,7 @@ export default function PostDetail(){
   return (
     <div className="min-h-screen bg-black text-white pb-24">
       {(refreshHint || refreshing) ? (
-        <div className="fixed top-[60px] left-0 right-0 z-50 flex items-center justify-center pointer-events-none">
+        <div className="fixed top-[72px] left-0 right-0 z-50 flex items-center justify-center pointer-events-none">
           <div className="px-2 py-1 text-xs rounded-full bg-white/10 border border-white/15 text-white/80 flex items-center gap-2">
             <i className="fa-solid fa-rotate fa-spin" />
           </div>
