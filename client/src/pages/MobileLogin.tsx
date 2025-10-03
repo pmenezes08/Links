@@ -7,6 +7,9 @@ export default function MobileLogin() {
   const [resetEmail, setResetEmail] = useState('')
   const [resetSent, setResetSent] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [installEvt, setInstallEvt] = useState<any>(null)
+  const [isStandalone, setIsStandalone] = useState<boolean>(false)
+  const [isIOS, setIsIOS] = useState<boolean>(false)
 
   // If already authenticated, skip login
   useEffect(() => {
@@ -45,6 +48,42 @@ export default function MobileLogin() {
     const e = params.get('error')
     setError(e)
   }, [])
+
+  // PWA install prompt
+  useEffect(() => {
+    try{
+      const checkStandalone = () => {
+        const mql = window.matchMedia && window.matchMedia('(display-mode: standalone)')
+        const standalone = (mql && mql.matches) || (navigator as any).standalone === true
+        setIsStandalone(!!standalone)
+      }
+      checkStandalone()
+      const onChange = () => checkStandalone()
+      try{ window.matchMedia('(display-mode: standalone)').addEventListener('change', onChange) }catch{}
+      const onBIP = (e: any) => { e.preventDefault(); setInstallEvt(e) }
+      const onInstalled = () => { setInstallEvt(null); setIsStandalone(true) }
+      window.addEventListener('beforeinstallprompt', onBIP as any)
+      window.addEventListener('appinstalled', onInstalled as any)
+      setIsIOS(/iphone|ipad|ipod/i.test(navigator.userAgent))
+      return () => {
+        try{ window.matchMedia('(display-mode: standalone)').removeEventListener('change', onChange) }catch{}
+        window.removeEventListener('beforeinstallprompt', onBIP as any)
+        window.removeEventListener('appinstalled', onInstalled as any)
+      }
+    }catch{}
+  }, [])
+
+  async function handleInstall(){
+    try{
+      if (installEvt && typeof installEvt.prompt === 'function'){
+        await installEvt.prompt()
+        try{ await installEvt.userChoice }catch{}
+        setInstallEvt(null)
+      } else if (isIOS){
+        alert('To install: tap Share, then "Add to Home Screen"')
+      }
+    }catch{}
+  }
 
   // Allow natural page scroll (no viewport locking)
 
@@ -101,11 +140,13 @@ export default function MobileLogin() {
 
         <div className="flex items-center gap-3 my-4 text-white/40 text-[12px]">
           <div className="flex-1 h-px bg-white/10" />
-          <span>other options</span>
+          <span>get the app</span>
           <div className="flex-1 h-px bg-white/10" />
         </div>
 
-        <a href="/login_x" className="block w-full text-center rounded-lg border border-white/10 bg-white/5 py-2 text-sm">Sign In with X</a>
+        {(!isStandalone && (installEvt || isIOS)) ? (
+          <button onClick={handleInstall} className="block w-full text-center rounded-lg border border-white/10 bg-white/5 py-2 text-sm">Install App</button>
+        ) : null}
       </div>
 
       {showForgot && (
