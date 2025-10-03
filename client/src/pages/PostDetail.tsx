@@ -110,35 +110,38 @@ export default function PostDetail(){
 
   useEffect(() => {
     // Pull-to-refresh on overscroll at top
-    let lastY = 0
-    let over = 0
-    function onWheel(e: WheelEvent){
-      try{
-        const y = window.scrollY || 0
-        if (y <= 0 && e.deltaY < 0){ over++; setRefreshHint(true); if (over > 3){ location.reload() } } else { over = 0; setRefreshHint(false); setPullPx(0) }
-      }catch{}
+    let startY = 0
+    const threshold = 64
+    const reloading = { current: false }
+    function onTS(ev: TouchEvent){
+      try{ startY = ev.touches?.[0]?.clientY || 0 }catch{ startY = 0 }
+      setPullPx(0)
+      setRefreshHint(false)
     }
-    function onTS(){ try{ lastY = window.scrollY || 0 }catch{ lastY = 0 } }
     function onTM(ev: TouchEvent){
       try{
         const y = window.scrollY || 0
-        const dy = (ev.touches?.[0]?.clientY || 0) - (lastY || 0)
+        const curY = ev.touches?.[0]?.clientY || 0
+        const dy = curY - startY
         if (y <= 0 && dy > 0){
           const px = Math.min(100, Math.max(0, dy * 0.5))
           setPullPx(px)
           setRefreshHint(px > 8)
-          if (px >= 64){ location.reload() }
-        } else { over = 0; setRefreshHint(false); setPullPx(0) }
-        lastY = y
+          if (px >= threshold && !reloading.current){ reloading.current = true; location.reload() }
+        } else {
+          setPullPx(0)
+          setRefreshHint(false)
+        }
       }catch{}
     }
-    window.addEventListener('wheel', onWheel, { passive: true })
+    function onTE(){ setPullPx(0); setRefreshHint(false) }
     window.addEventListener('touchstart', onTS, { passive: true })
     window.addEventListener('touchmove', onTM, { passive: true })
+    window.addEventListener('touchend', onTE, { passive: true })
     return () => {
-      window.removeEventListener('wheel', onWheel as any)
       window.removeEventListener('touchstart', onTS as any)
       window.removeEventListener('touchmove', onTM as any)
+      window.removeEventListener('touchend', onTE as any)
     }
   }, [])
 
