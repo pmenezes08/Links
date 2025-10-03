@@ -4577,6 +4577,11 @@ def admin():
                         c.execute("DELETE FROM replies WHERE username=?", (user_to_delete,))
                         c.execute("DELETE FROM reactions WHERE username=?", (user_to_delete,))
                         c.execute("DELETE FROM reply_reactions WHERE username=?", (user_to_delete,))
+                        # Remove profile row before deleting from users to satisfy FK fk_profile_user
+                        try:
+                            c.execute("DELETE FROM user_profiles WHERE username=?", (user_to_delete,))
+                        except Exception:
+                            pass
                         if USE_MYSQL:
                             c.execute("DELETE FROM user_communities WHERE user_id=(SELECT id FROM users WHERE username=?)", (user_to_delete,))
                         else:
