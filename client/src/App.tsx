@@ -106,10 +106,10 @@ function AppRoutes(){
 
   return (
     <HeaderContext.Provider value={{ setTitle }}>
-      {!isFirstPage && (
+      {(!isFirstPage && location.pathname !== '/login') && (
         <HeaderBar title={title} username={userMeta.username} avatarUrl={userMeta.avatarUrl} />
       )}
-      <div style={{ paddingTop: isFirstPage ? 0 : '56px' }}>
+      <div style={{ paddingTop: (isFirstPage || location.pathname === '/login') ? 0 : '56px' }}>
         <ErrorBoundary>
           <Routes>
           <Route path="/" element={(hasCommunities === false ? <OnboardingWelcome /> : <MobileLogin />)} />

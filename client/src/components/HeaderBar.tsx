@@ -98,7 +98,7 @@ export default function HeaderBar({ title, username, avatarUrl }: HeaderBarProps
 
       {menuOpen && (
         <div className="fixed inset-0 z-[90] flex bg-black/50" onClick={(e)=> e.currentTarget===e.target && setMenuOpen(false)}>
-          <div className="w-[90%] h-full bg-black/95 backdrop-blur border-r border-white/10 p-4 space-y-3 text-white">
+          <div className="w-[90%] h-full bg-black/95 backdrop-blur border-r border-white/10 p-4 space-y-3 text-white overflow-y-auto overscroll-contain">
             <div className="flex items-center gap-2 pb-2 border-b border-white/10">
               <Avatar username={username || ''} url={resolvedAvatar} size={40} />
               <div className="font-medium truncate">{username || ''}</div>
