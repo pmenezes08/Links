@@ -107,6 +107,15 @@ export default function PostDetail(){
   const fileInputRef = useRef<HTMLInputElement|null>(null)
   const [refreshHint, setRefreshHint] = useState(false)
   const [pullPx, setPullPx] = useState(0)
+  const [refreshing, setRefreshing] = useState(false)
+
+  async function refreshPost(){
+    try{
+      const r = await fetch(`/get_post?post_id=${post_id}`, { credentials: 'include' })
+      const j = await r.json()
+      if (j?.success) setPost(j.post)
+    }catch{}
+  }
 
   useEffect(() => {
     // Pull-to-refresh on overscroll at top
@@ -127,7 +136,16 @@ export default function PostDetail(){
           const px = Math.min(100, Math.max(0, dy * 0.5))
           setPullPx(px)
           setRefreshHint(px > 8)
-          if (px >= threshold && !reloading.current){ reloading.current = true; location.reload() }
+          if (px >= threshold && !reloading.current){
+            reloading.current = true
+            setRefreshing(true)
+            refreshPost().finally(()=>{
+              setRefreshing(false)
+              setPullPx(0)
+              setRefreshHint(false)
+              reloading.current = false
+            })
+          }
         } else {
           setPullPx(0)
           setRefreshHint(false)
@@ -317,11 +335,10 @@ export default function PostDetail(){
 
   return (
     <div className="min-h-screen bg-black text-white pb-24">
-      {refreshHint ? (
+      {(refreshHint || refreshing) ? (
         <div className="fixed top-[60px] left-0 right-0 z-50 flex items-center justify-center pointer-events-none">
           <div className="px-2 py-1 text-xs rounded-full bg-white/10 border border-white/15 text-white/80 flex items-center gap-2">
             <i className="fa-solid fa-rotate fa-spin" />
-            <span>Refreshing…</span>
           </div>
         </div>
       ) : null}
