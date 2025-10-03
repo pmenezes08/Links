@@ -12,6 +12,7 @@ export default function MobileLogin() {
   const [isStandalone, setIsStandalone] = useState(false)
   const [isIOS, setIsIOS] = useState(false)
   const [showInstall, setShowInstall] = useState(false)
+  const [isInstalled, setIsInstalled] = useState(false)
 
   // If already authenticated, skip login
   useEffect(() => {
@@ -57,16 +58,30 @@ export default function MobileLogin() {
       const checkStandalone = () => {
         const mql = window.matchMedia && window.matchMedia('(display-mode: standalone)')
         const standalone = (mql && mql.matches) || (navigator as any).standalone === true
-        setIsStandalone(!!standalone)
+        const asStandalone = !!standalone
+        setIsStandalone(asStandalone)
+        if (asStandalone) setIsInstalled(true)
       }
       checkStandalone()
       const onChange = () => checkStandalone()
       try{ window.matchMedia('(display-mode: standalone)').addEventListener('change', onChange) }catch{}
       const onBIP = (e: any) => { e.preventDefault(); setDeferredPrompt(e) }
-      const onInstalled = () => { setDeferredPrompt(null); setIsStandalone(true) }
+      const onInstalled = () => { setDeferredPrompt(null); setIsStandalone(true); setIsInstalled(true) }
       window.addEventListener('beforeinstallprompt', onBIP as any)
       window.addEventListener('appinstalled', onInstalled as any)
       setIsIOS(/iphone|ipad|ipod/i.test(navigator.userAgent))
+      // Best-effort: detect installed related apps (Android/Chrome)
+      ;(async () => {
+        try{
+          const navAny: any = navigator as any
+          if (typeof navAny.getInstalledRelatedApps === 'function'){
+            const related = await navAny.getInstalledRelatedApps()
+            if (Array.isArray(related) && related.length > 0){
+              setIsInstalled(true)
+            }
+          }
+        }catch{}
+      })()
       return () => {
         try{ window.matchMedia('(display-mode: standalone)').removeEventListener('change', onChange) }catch{}
         window.removeEventListener('beforeinstallprompt', onBIP as any)
@@ -150,7 +165,7 @@ export default function MobileLogin() {
           <div className="flex-1 h-px bg-white/10" />
         </div>
 
-        {(!isStandalone) ? (
+        {(!isStandalone && !isInstalled) ? (
           <div className="mt-2">
             <div
               role="button"
