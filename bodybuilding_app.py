@@ -12068,6 +12068,99 @@ def admin_communities_list():
         logger.error(f"admin_communities_list error: {e}")
         return jsonify({'success': False, 'error': 'server error'}), 500
 
+# === Welcome cards API ===
+@app.route('/welcome_cards')
+def welcome_cards():
+    try:
+        cards = []
+        defaults = [
+            'welcome/default-1.jpg',
+            'welcome/default-2.jpg',
+            'welcome/default-3.jpg',
+        ]
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            try:
+                c.execute("SELECT value FROM site_settings WHERE `key`='welcome_card_1'")
+                r1 = c.fetchone()
+            except Exception:
+                r1 = None
+            try:
+                c.execute("SELECT value FROM site_settings WHERE `key`='welcome_card_2'")
+                r2 = c.fetchone()
+            except Exception:
+                r2 = None
+            try:
+                c.execute("SELECT value FROM site_settings WHERE `key`='welcome_card_3'")
+                r3 = c.fetchone()
+            except Exception:
+                r3 = None
+        vals = [
+            (get_scalar_result(r1, column_name='value') if r1 else None),
+            (get_scalar_result(r2, column_name='value') if r2 else None),
+            (get_scalar_result(r3, column_name='value') if r3 else None),
+        ]
+        for idx, val in enumerate(vals):
+            rel = val if val else defaults[idx]
+            path = os.path.join('static', rel)
+            v = 0
+            try: v = int(os.path.getmtime(path))
+            except Exception: pass
+            cards.append(f"/static/{rel}?v={v}")
+        return jsonify({'success': True, 'cards': cards})
+    except Exception as e:
+        logger.error(f"welcome_cards error: {e}")
+        return jsonify({'success': False, 'cards': []}), 500
+
+@app.route('/admin/upload_welcome_card', methods=['POST'])
+@login_required
+def admin_upload_welcome_card():
+    username = session.get('username')
+    if not is_app_admin(username):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    try:
+        idx = request.form.get('index') or request.args.get('index')
+        try:
+            idx = int(idx)
+        except Exception:
+            return jsonify({'success': False, 'error': 'index must be 1, 2, or 3'}), 400
+        if idx not in (1,2,3):
+            return jsonify({'success': False, 'error': 'index must be 1, 2, or 3'}), 400
+        if 'image' not in request.files:
+            return jsonify({'success': False, 'error': 'No file provided'}), 400
+        f = request.files['image']
+        if not f or f.filename == '':
+            return jsonify({'success': False, 'error': 'No file selected'}), 400
+        ext = os.path.splitext(f.filename)[1].lower()
+        if ext.replace('.', '') not in ALLOWED_EXTENSIONS:
+            return jsonify({'success': False, 'error': 'Invalid file type'}), 400
+        os.makedirs(os.path.join('static','welcome'), exist_ok=True)
+        filename = f"card-{idx}.jpg" if ext.lower() not in ('.webp',) else f"card-{idx}{ext}"
+        dest = os.path.join('static','welcome', filename)
+        f.save(dest)
+        try:
+            optimize_image(dest, max_width=1920, quality=82)
+        except Exception:
+            pass
+        key = f"welcome_card_{idx}"
+        # upsert
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            if USE_MYSQL:
+                c.execute("CREATE TABLE IF NOT EXISTS site_settings (`key` VARCHAR(191) PRIMARY KEY, `value` TEXT)")
+                c.execute("INSERT INTO site_settings (`key`,`value`) VALUES (%s,%s) ON DUPLICATE KEY UPDATE `value`=VALUES(`value`)", (key, f"welcome/{filename}"))
+            else:
+                c.execute("CREATE TABLE IF NOT EXISTS site_settings (key TEXT PRIMARY KEY, value TEXT)")
+                c.execute("INSERT INTO site_settings (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (key, f"welcome/{filename}"))
+            conn.commit()
+        v = 0
+        try: v = int(os.path.getmtime(dest))
+        except Exception: pass
+        return jsonify({'success': True, 'url': f"/static/welcome/{filename}?v={v}"})
+    except Exception as e:
+        logger.error(f"admin_upload_welcome_card error: {e}")
+        return jsonify({'success': False, 'error': 'server error'}), 500
+
 @app.route('/delete_reply', methods=['POST'])
 @login_required
 def delete_reply():
