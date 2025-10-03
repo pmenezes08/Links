@@ -259,7 +259,7 @@ export default function ProductDevelopment(){
           <div className="mt-3 space-y-3">
             {loading ? (<div className="text-[#9fb0b5]">Loading…</div>) : error ? (<div className="text-red-400">{error}</div>) : (
               posts.length ? posts.map(p => (
-                <PostCard key={p.id} post={p} onReply={addReply} onEditPost={editPost} onDeletePost={deletePost} onEditReply={editReply} onDeleteReply={deleteReply} />
+                <PostCard key={p.id} isAdmin={canPostUpdates} post={p} onReply={addReply} onEditPost={editPost} onDeletePost={deletePost} onEditReply={editReply} onDeleteReply={deleteReply} />
               )) : (<div className="text-[#9fb0b5] text-sm">No posts yet.</div>)
             )}
           </div>
@@ -269,13 +269,11 @@ export default function ProductDevelopment(){
   )
 }
 
-function PostCard({ post, onReply, onEditPost, onDeletePost, onEditReply, onDeleteReply }:{ post:PPost; onReply:(postId:number, text:string)=>void; onEditPost:(postId:number, content:string)=>void; onDeletePost:(postId:number)=>void; onEditReply:(replyId:number, content:string)=>void; onDeleteReply:(replyId:number)=>void }){
+function PostCard({ isAdmin, post, onReply, onEditPost, onDeletePost, onEditReply, onDeleteReply }:{ isAdmin:boolean; post:PPost; onReply:(postId:number, text:string)=>void; onEditPost:(postId:number, content:string)=>void; onDeletePost:(postId:number)=>void; onEditReply:(replyId:number, content:string)=>void; onDeleteReply:(replyId:number)=>void }){
   const [replyText, setReplyText] = useState('')
   const [isEditing, setIsEditing] = useState(false)
   const [editText, setEditText] = useState(post.content)
-  const [me, setMe] = useState('')
-  useEffect(()=>{ (async()=>{ try{ const r = await fetch('/api/home_timeline', { credentials:'include' }); const j = await r.json().catch(()=>null); if (j?.username) setMe(j.username) }catch{} })() }, [])
-  const allowEdit = ['admin','paulo'].includes((me||'').toLowerCase())
+  const allowEdit = !!isAdmin
   return (
     <div className="rounded-2xl border border-white/10 bg-black">
       <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2">
@@ -315,7 +313,7 @@ function PostCard({ post, onReply, onEditPost, onDeletePost, onEditReply, onDele
         {post.replies?.length ? (
           <div className="mt-2 space-y-2">
             {post.replies.map(r => (
-              <ReplyCard key={r.id} reply={r} onEditReply={onEditReply} onDeleteReply={onDeleteReply} />
+              <ReplyCard key={r.id} isAdmin={isAdmin} reply={r} onEditReply={onEditReply} onDeleteReply={onDeleteReply} />
             ))}
           </div>
         ) : null}
@@ -324,12 +322,10 @@ function PostCard({ post, onReply, onEditPost, onDeletePost, onEditReply, onDele
   )
 }
 
-function ReplyCard({ reply, onEditReply, onDeleteReply }:{ reply:PReply; onEditReply:(replyId:number, content:string)=>void; onDeleteReply:(replyId:number)=>void }){
+function ReplyCard({ isAdmin, reply, onEditReply, onDeleteReply }:{ isAdmin:boolean; reply:PReply; onEditReply:(replyId:number, content:string)=>void; onDeleteReply:(replyId:number)=>void }){
   const [isEditing, setIsEditing] = useState(false)
   const [editText, setEditText] = useState(reply.content)
-  const [me, setMe] = useState('')
-  useEffect(()=>{ (async()=>{ try{ const r = await fetch('/api/home_timeline', { credentials:'include' }); const j = await r.json().catch(()=>null); if (j?.username) setMe(j.username) }catch{} })() }, [])
-  const allowEdit = ['admin','paulo'].includes((me||'').toLowerCase())
+  const allowEdit = !!isAdmin
   return (
     <div className="px-2 py-1.5 rounded-lg border border-white/10 bg-black/60">
       <div className="flex items-center gap-2">
