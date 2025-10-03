@@ -45,8 +45,8 @@ export default function CommunityFeed() {
     const el = scrollRef.current
     if (!el) return
     let startY = 0
-    let pulling = false
     const threshold = 64
+    const reloadingRef = { current: false }
     function onWheel(e: WheelEvent){
       try{
         const y = (el ? el.scrollTop : 0) || 0
@@ -55,7 +55,7 @@ export default function CommunityFeed() {
     }
     function onTS(ev: TouchEvent){
       try{ startY = ev.touches[0]?.clientY || 0 }catch{ startY = 0 }
-      pulling = false
+      // reset tracking
     }
     function onTM(ev: TouchEvent){
       try{
@@ -63,19 +63,17 @@ export default function CommunityFeed() {
         const curY = ev.touches[0]?.clientY || 0
         const dy = curY - startY
         if (y <= 0 && dy > 0){
-          pulling = true
           const px = Math.min(100, Math.max(0, dy * 0.5))
           setPullPx(px)
           setRefreshHint(px > 8)
-          if (px >= threshold){ location.reload() }
+          if (px >= threshold && !reloadingRef.current){ reloadingRef.current = true; location.reload() }
         } else {
-          pulling = false
           setPullPx(0)
           setRefreshHint(false)
         }
       }catch{}
     }
-    function onTE(){ if (!pulling){ setPullPx(0); setRefreshHint(false) } }
+    function onTE(){ setPullPx(0); setRefreshHint(false) }
     el.addEventListener('wheel', onWheel, { passive: true })
     el.addEventListener('touchstart', onTS, { passive: true })
     el.addEventListener('touchmove', onTM, { passive: true })
