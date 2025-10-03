@@ -153,14 +153,17 @@ export default function MobileLogin() {
 
         {(!isStandalone) ? (
           <div className="mt-2">
-            <button
-              type="button"
-              onClick={handleInstall}
-              className="w-full text-center rounded-lg border border-white/10 bg-white/5 py-2 text-sm cursor-pointer select-none relative"
+            <a
+              href="#"
+              role="button"
+              tabIndex={0}
+              onClick={(e)=>{ e.preventDefault(); handleInstall() }}
+              onTouchEnd={(e)=>{ e.preventDefault(); handleInstall() }}
+              className="w-full inline-block text-center rounded-lg border border-white/10 bg-white/5 py-2 text-sm cursor-pointer select-none relative z-20"
               style={{ WebkitTapHighlightColor: 'transparent' }}
             >
               Install App
-            </button>
+            </a>
           </div>
         ) : null}
       </div>
