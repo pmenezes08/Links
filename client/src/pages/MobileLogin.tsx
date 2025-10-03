@@ -216,11 +216,17 @@ export default function MobileLogin() {
               <p className="text-sm text-white/75 mb-3">On iPhone/iPad:</p>
               <ol className="space-y-2 text-sm text-white/85">
                 <li className="flex items-center gap-2">
-                  <i className="fa-solid fa-share-from-square text-[#4db6ac]" />
+                  <svg className="text-[#4db6ac]" width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="M7 10v7a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                    <path d="M12 3v10M12 3l-3.5 3.5M12 3l3.5 3.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
                   <span>Tap <strong>Share</strong> in Safari</span>
                 </li>
                 <li className="flex items-center gap-2">
-                  <i className="fa-solid fa-plus text-[#4db6ac]" />
+                  <svg className="text-[#4db6ac]" width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <rect x="4" y="4" width="16" height="16" rx="4" stroke="currentColor" strokeWidth="1.8" />
+                    <path d="M12 8v8M8 12h8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                  </svg>
                   <span>Select <strong>Add to Home Screen</strong></span>
                 </li>
               </ol>
