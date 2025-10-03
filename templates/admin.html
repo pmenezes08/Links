@@ -1174,6 +1174,51 @@
                 </button>
             </div>
         </div>
+
+        <!-- Welcome Cards Management -->
+        <div class="admin-section">
+            <div class="section-header">
+                <h2><i class="fas fa-images"></i> Welcome Cards</h2>
+            </div>
+            <div class="cards-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;">
+                <div class="card-item" style="border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px;background:rgba(255,255,255,0.03)">
+                    <div style="font-size:12px;color:#9fb0b5;margin-bottom:8px">Card 1</div>
+                    <div style="aspect-ratio:16/9;background:#0b0f10;border:1px solid rgba(255,255,255,0.1);border-radius:8px;display:flex;align-items:center;justify-content:center;overflow:hidden">
+                        <img id="welcomeCard1" style="max-width:100%;max-height:100%;object-fit:cover" />
+                    </div>
+                    <div style="margin-top:8px">
+                        <label class="action-btn-compact" style="cursor:pointer">
+                            <i class="fas fa-upload"></i> Upload
+                            <input type="file" accept="image/*" style="display:none" onchange="uploadWelcomeCard(1,this.files[0])" />
+                        </label>
+                    </div>
+                </div>
+                <div class="card-item" style="border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px;background:rgba(255,255,255,0.03)">
+                    <div style="font-size:12px;color:#9fb0b5;margin-bottom:8px">Card 2</div>
+                    <div style="aspect-ratio:16/9;background:#0b0f10;border:1px solid rgba(255,255,255,0.1);border-radius:8px;display:flex;align-items:center;justify-content:center;overflow:hidden">
+                        <img id="welcomeCard2" style="max-width:100%;max-height:100%;object-fit:cover" />
+                    </div>
+                    <div style="margin-top:8px">
+                        <label class="action-btn-compact" style="cursor:pointer">
+                            <i class="fas fa-upload"></i> Upload
+                            <input type="file" accept="image/*" style="display:none" onchange="uploadWelcomeCard(2,this.files[0])" />
+                        </label>
+                    </div>
+                </div>
+                <div class="card-item" style="border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px;background:rgba(255,255,255,0.03)">
+                    <div style="font-size:12px;color:#9fb0b5;margin-bottom:8px">Card 3</div>
+                    <div style="aspect-ratio:16/9;background:#0b0f10;border:1px solid rgba(255,255,255,0.1);border-radius:8px;display:flex;align-items:center;justify-content:center;overflow:hidden">
+                        <img id="welcomeCard3" style="max-width:100%;max-height:100%;object-fit:cover" />
+                    </div>
+                    <div style="margin-top:8px">
+                        <label class="action-btn-compact" style="cursor:pointer">
+                            <i class="fas fa-upload"></i> Upload
+                            <input type="file" accept="image/*" style="display:none" onchange="uploadWelcomeCard(3,this.files[0])" />
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- Signup Image Upload Modal -->
@@ -1897,6 +1942,25 @@
             document.getElementById('signupImagePreviewWrap').style.display = 'none';
         }
         
+        function uploadWelcomeCard(index, file){
+            if (!file) return
+            const fd = new FormData()
+            fd.append('index', String(index))
+            fd.append('image', file)
+            fetch('/admin/upload_welcome_card', { method:'POST', body: fd })
+              .then(r=>r.json())
+              .then(j=>{
+                if (j && j.success && j.url){
+                    const el = document.getElementById('welcomeCard'+index)
+                    if (el){ el.src = j.url }
+                    showNotification('success', 'Card '+index+' updated')
+                } else {
+                    showNotification('error', j && j.error ? j.error : 'Upload failed')
+                }
+              })
+              .catch(()=> showNotification('error', 'Server error uploading image'))
+        }
+        
         function loadCurrentLogo() {
             fetch('/get_logo')
                 .then(response => response.json())
@@ -1928,6 +1992,16 @@
         // Load logo when page loads
         $(document).ready(function() {
             loadCurrentLogo();
+            fetch('/welcome_cards').then(r=>r.json()).then(j=>{
+                try{
+                    if (j && j.success && Array.isArray(j.cards)){
+                        const [u1,u2,u3] = j.cards
+                        const e1 = document.getElementById('welcomeCard1'); if (e1) e1.src = u1
+                        const e2 = document.getElementById('welcomeCard2'); if (e2) e2.src = u2
+                        const e3 = document.getElementById('welcomeCard3'); if (e3) e3.src = u3
+                    }
+                }catch(e){}
+            }).catch(()=>{})
         });
         
         function removeLogo() {
