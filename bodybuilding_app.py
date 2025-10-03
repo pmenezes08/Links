@@ -4480,16 +4480,27 @@ def admin():
 
             # Get all communities with member counts and is_active status
             try:
-                c.execute("""
-                    SELECT c.id, c.name, c.type, c.creator_username, c.join_code,
-                           COUNT(uc.user_id) as member_count, c.is_active
-                    FROM communities c
-                    LEFT JOIN user_communities uc ON c.id = uc.community_id
-                    GROUP BY c.id, c.name, c.type, c.creator_username, c.join_code, c.is_active
-                    ORDER BY c.name
-                """)
-                communities_raw = c.fetchall()
-
+                # Prefer query including is_active; fallback if column missing
+                try:
+                    c.execute("""
+                        SELECT c.id, c.name, c.type, c.creator_username, c.join_code,
+                               COUNT(uc.user_id) as member_count, c.is_active
+                        FROM communities c
+                        LEFT JOIN user_communities uc ON c.id = uc.community_id
+                        GROUP BY c.id, c.name, c.type, c.creator_username, c.join_code, c.is_active
+                        ORDER BY c.name
+                    """)
+                except Exception:
+                    c.execute("""
+                        SELECT c.id, c.name, c.type, c.creator_username, c.join_code,
+                               COUNT(uc.user_id) as member_count
+                        FROM communities c
+                        LEFT JOIN user_communities uc ON c.id = uc.community_id
+                        GROUP BY c.id, c.name, c.type, c.creator_username, c.join_code
+                        ORDER BY c.name
+                    """)
+                communities_raw = c.fetchall() or []
+                
                 # Convert to list of dictionaries for easier template access
                 for community in communities_raw:
                     communities.append({
@@ -4498,8 +4509,8 @@ def admin():
                         'type': community[2],
                         'creator_username': community[3],
                         'join_code': community[4],
-                        'member_count': community[5],
-                        'is_active': community[6] if len(community) > 6 else True
+                        'member_count': community[5] if len(community) > 5 else 0,
+                        'is_active': (community[6] if len(community) > 6 else True)
                     })
             except Exception as communities_error:
                 logger.error(f"Error getting communities list: {communities_error}")
