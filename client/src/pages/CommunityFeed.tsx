@@ -47,12 +47,6 @@ export default function CommunityFeed() {
     let startY = 0
     const threshold = 64
     const reloadingRef = { current: false }
-    function onWheel(e: WheelEvent){
-      try{
-        const y = (el ? el.scrollTop : 0) || 0
-        if (y <= 0 && e.deltaY < 0){ setRefreshHint(true) } else { setRefreshHint(false) }
-      }catch{}
-    }
     function onTS(ev: TouchEvent){
       try{ startY = ev.touches[0]?.clientY || 0 }catch{ startY = 0 }
       // reset tracking
@@ -74,12 +68,10 @@ export default function CommunityFeed() {
       }catch{}
     }
     function onTE(){ setPullPx(0); setRefreshHint(false) }
-    el.addEventListener('wheel', onWheel, { passive: true })
     el.addEventListener('touchstart', onTS, { passive: true })
     el.addEventListener('touchmove', onTM, { passive: true })
     el.addEventListener('touchend', onTE, { passive: true })
     return () => {
-      el.removeEventListener('wheel', onWheel as any)
       el.removeEventListener('touchstart', onTS as any)
       el.removeEventListener('touchmove', onTM as any)
       el.removeEventListener('touchend', onTE as any)
@@ -277,7 +269,7 @@ export default function CommunityFeed() {
         </div>
       )}
       {/* Scrollable content area below fixed global header */}
-      <div ref={scrollRef} className="h-full max-w-2xl mx-auto overflow-y-auto no-scrollbar pb-20 px-3" style={{ WebkitOverflowScrolling: 'touch' as any, paddingTop: `calc(12px + ${pullPx}px)` }}>
+      <div ref={scrollRef} className="h-full max-w-2xl mx-auto overflow-y-auto no-scrollbar pb-20 px-3" style={{ WebkitOverflowScrolling: 'touch' as any, overflowY: 'auto', overscrollBehaviorY: 'contain', touchAction: 'pan-y', paddingTop: `calc(12px + ${pullPx}px)` }}>
         <div className="space-y-3">
           {/* Back to communities (parent) + Search */}
           <div className="flex items-center gap-2">
