@@ -7,6 +7,11 @@ export default function OnboardingWelcome(){
   const [cardIndex, setCardIndex] = useState(0)
   const [touchStartX, setTouchStartX] = useState<number | null>(null)
   const [touchDeltaX, setTouchDeltaX] = useState(0)
+  const sentences = [
+    'Welcome to the network where ideas connect people',
+    'Share your thoughts, images, and connect through meaningful conversations.',
+    'Connect with your world'
+  ]
 
   // no modal state
 
@@ -44,6 +49,7 @@ export default function OnboardingWelcome(){
         <div className="mb-3">
           <div className="text-2xl font-bold">Welcome to CPoint</div>
         </div>
+        <div className="text-sm text-[#9fb0b5] mb-3" style={{ minHeight: '32px' }}>{sentences[cardIndex % sentences.length]}</div>
 
         <div className="rounded-2xl border border-white/10 overflow-hidden bg-white/[0.03]">
           <div className="relative w-full h-[46vh]"
