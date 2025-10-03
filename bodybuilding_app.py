@@ -4347,6 +4347,11 @@ def admin_delete_user():
                 c.execute(f"DELETE FROM remember_tokens WHERE username={ph}", (target_username,))
             except Exception:
                 pass
+            # Reassign communities owned by this user to 'admin' to satisfy FK fk_comm_owner
+            try:
+                c.execute(f"UPDATE communities SET creator_username={ph} WHERE creator_username={ph}", ('admin', target_username))
+            except Exception:
+                pass
             # Remove profile row before user to satisfy FK fk_profile_user
             c.execute(f"DELETE FROM user_profiles WHERE username={ph}", (target_username,))
             try:
@@ -4577,6 +4582,11 @@ def admin():
                         c.execute("DELETE FROM replies WHERE username=?", (user_to_delete,))
                         c.execute("DELETE FROM reactions WHERE username=?", (user_to_delete,))
                         c.execute("DELETE FROM reply_reactions WHERE username=?", (user_to_delete,))
+                        # Reassign communities owned by this user to 'admin' to satisfy FK fk_comm_owner
+                        try:
+                            c.execute("UPDATE communities SET creator_username=? WHERE creator_username=?", ('admin', user_to_delete))
+                        except Exception:
+                            pass
                         # Remove profile row before deleting from users to satisfy FK fk_profile_user
                         try:
                             c.execute("DELETE FROM user_profiles WHERE username=?", (user_to_delete,))
