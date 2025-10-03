@@ -273,7 +273,9 @@ function PostCard({ post, onReply, onEditPost, onDeletePost, onEditReply, onDele
   const [replyText, setReplyText] = useState('')
   const [isEditing, setIsEditing] = useState(false)
   const [editText, setEditText] = useState(post.content)
-  const allowEdit = ['admin','paulo'].includes((post.username||'').toLowerCase()) || true
+  const [me, setMe] = useState('')
+  useEffect(()=>{ (async()=>{ try{ const r = await fetch('/api/home_timeline', { credentials:'include' }); const j = await r.json().catch(()=>null); if (j?.username) setMe(j.username) }catch{} })() }, [])
+  const allowEdit = ['admin','paulo'].includes((me||'').toLowerCase())
   return (
     <div className="rounded-2xl border border-white/10 bg-black">
       <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2">
@@ -325,18 +327,23 @@ function PostCard({ post, onReply, onEditPost, onDeletePost, onEditReply, onDele
 function ReplyCard({ reply, onEditReply, onDeleteReply }:{ reply:PReply; onEditReply:(replyId:number, content:string)=>void; onDeleteReply:(replyId:number)=>void }){
   const [isEditing, setIsEditing] = useState(false)
   const [editText, setEditText] = useState(reply.content)
+  const [me, setMe] = useState('')
+  useEffect(()=>{ (async()=>{ try{ const r = await fetch('/api/home_timeline', { credentials:'include' }); const j = await r.json().catch(()=>null); if (j?.username) setMe(j.username) }catch{} })() }, [])
+  const allowEdit = ['admin','paulo'].includes((me||'').toLowerCase())
   return (
     <div className="px-2 py-1.5 rounded-lg border border-white/10 bg-black/60">
       <div className="flex items-center gap-2">
         <div className="text-xs text-[#9fb0b5]">{reply.username} • {reply.created_at}</div>
-        <div className="ml-auto flex items-center gap-1">
-          <button className="px-2 py-1 rounded-full text-[#6c757d] hover:text-[#4db6ac]" title="Edit reply" onClick={()=> setIsEditing(v=>!v)}>
-            <i className="fa-regular fa-pen-to-square" />
-          </button>
-          <button className="px-2 py-1 rounded-full text-red-300 hover:text-red-400" title="Delete reply" onClick={()=> onDeleteReply(reply.id)}>
-            <i className="fa-regular fa-trash-can" />
-          </button>
-        </div>
+        {allowEdit ? (
+          <div className="ml-auto flex items-center gap-1">
+            <button className="px-2 py-1 rounded-full text-[#6c757d] hover:text-[#4db6ac]" title="Edit reply" onClick={()=> setIsEditing(v=>!v)}>
+              <i className="fa-regular fa-pen-to-square" />
+            </button>
+            <button className="px-2 py-1 rounded-full text-red-300 hover:text-red-400" title="Delete reply" onClick={()=> onDeleteReply(reply.id)}>
+              <i className="fa-regular fa-trash-can" />
+            </button>
+          </div>
+        ) : null}
       </div>
       {!isEditing ? (
         <div className="text-sm whitespace-pre-wrap break-words">{reply.content}</div>

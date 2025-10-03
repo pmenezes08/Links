@@ -13939,7 +13939,8 @@ def api_edit_product_post():
             if not row:
                 return jsonify({'success': False, 'error': 'Post not found'}), 404
             owner = row['username'] if hasattr(row,'keys') else row[0]
-            if username not in ('admin','Paulo','paulo') and username != owner:
+            # Restrict edits to Admin/Paulo only (owners cannot edit unless they are admin/Paulo)
+            if (username or '').lower() not in ('admin','paulo'):
                 return jsonify({'success': False, 'error': 'Forbidden'}), 403
             c.execute(f"UPDATE product_posts SET content={ph} WHERE id={ph}", (content, post_id))
             conn.commit()
@@ -13964,7 +13965,8 @@ def api_delete_product_post():
             if not row:
                 return jsonify({'success': False, 'error': 'Post not found'}), 404
             owner = row['username'] if hasattr(row,'keys') else row[0]
-            if username not in ('admin','Paulo','paulo') and username != owner:
+            # Restrict deletes to Admin/Paulo only (owners cannot delete unless they are admin/Paulo)
+            if (username or '').lower() not in ('admin','paulo'):
                 return jsonify({'success': False, 'error': 'Forbidden'}), 403
             # Delete post (replies should cascade if FK set; otherwise explicit delete)
             try:
@@ -13996,7 +13998,8 @@ def api_edit_product_reply():
             if not row:
                 return jsonify({'success': False, 'error': 'Reply not found'}), 404
             owner = row['username'] if hasattr(row,'keys') else row[0]
-            if username not in ('admin','Paulo','paulo') and username != owner:
+            # Restrict edits to Admin/Paulo only
+            if (username or '').lower() not in ('admin','paulo'):
                 return jsonify({'success': False, 'error': 'Forbidden'}), 403
             c.execute(f"UPDATE product_replies SET content={ph} WHERE id={ph}", (content, reply_id))
             conn.commit()
@@ -14021,7 +14024,8 @@ def api_delete_product_reply():
             if not row:
                 return jsonify({'success': False, 'error': 'Reply not found'}), 404
             owner = row['username'] if hasattr(row,'keys') else row[0]
-            if username not in ('admin','Paulo','paulo') and username != owner:
+            # Restrict deletes to Admin/Paulo only
+            if (username or '').lower() not in ('admin','paulo'):
                 return jsonify({'success': False, 'error': 'Forbidden'}), 403
             c.execute(f"DELETE FROM product_replies WHERE id={ph}", (reply_id,))
             conn.commit()
