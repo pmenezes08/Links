@@ -39,6 +39,41 @@ export default function CommunityFeed() {
   useEffect(() => { if (data?.community?.name) setTitle(data.community.name) }, [setTitle, data?.community?.name])
 
   useEffect(() => {
+    // Pull-to-refresh behavior on overscroll at top
+    const el = scrollRef.current || document.scrollingElement || document.documentElement
+    let lastY = 0
+    let overTopCount = 0
+    function onWheel(e: WheelEvent){
+      try{
+        const y = (el as any).scrollTop || window.scrollY || 0
+        if (y <= 0 && e.deltaY < 0){
+          overTopCount++
+          if (overTopCount > 3){ location.reload() }
+        } else {
+          overTopCount = 0
+        }
+      }catch{}
+    }
+    function onTouchStart(){ try{ lastY = window.scrollY || 0 }catch{ lastY = 0 } }
+    function onTouchMove(){
+      try{
+        const y = window.scrollY || 0
+        if (y <= 0 && y < lastY){ overTopCount++; if (overTopCount > 3){ location.reload() } }
+        else { overTopCount = 0 }
+        lastY = y
+      }catch{}
+    }
+    window.addEventListener('wheel', onWheel, { passive: true })
+    window.addEventListener('touchstart', onTouchStart, { passive: true })
+    window.addEventListener('touchmove', onTouchMove, { passive: true })
+    return () => {
+      window.removeEventListener('wheel', onWheel as any)
+      window.removeEventListener('touchstart', onTouchStart as any)
+      window.removeEventListener('touchmove', onTouchMove as any)
+    }
+  }, [])
+
+  useEffect(() => {
     // Ensure legacy css is attached once to avoid flashes between pages
     let link = document.getElementById('legacy-styles') as HTMLLinkElement | null
     if (!link){

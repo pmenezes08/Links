@@ -107,6 +107,34 @@ export default function PostDetail(){
   const fileInputRef = useRef<HTMLInputElement|null>(null)
 
   useEffect(() => {
+    // Pull-to-refresh on overscroll at top
+    let lastY = 0
+    let over = 0
+    function onWheel(e: WheelEvent){
+      try{
+        const y = window.scrollY || 0
+        if (y <= 0 && e.deltaY < 0){ over++; if (over > 3){ location.reload() } } else { over = 0 }
+      }catch{}
+    }
+    function onTS(){ try{ lastY = window.scrollY || 0 }catch{ lastY = 0 } }
+    function onTM(){
+      try{
+        const y = window.scrollY || 0
+        if (y <= 0 && y < lastY){ over++; if (over > 3){ location.reload() } } else { over = 0 }
+        lastY = y
+      }catch{}
+    }
+    window.addEventListener('wheel', onWheel, { passive: true })
+    window.addEventListener('touchstart', onTS, { passive: true })
+    window.addEventListener('touchmove', onTM, { passive: true })
+    return () => {
+      window.removeEventListener('wheel', onWheel as any)
+      window.removeEventListener('touchstart', onTS as any)
+      window.removeEventListener('touchmove', onTM as any)
+    }
+  }, [])
+
+  useEffect(() => {
     let mounted = true
     async function load(){
       try{
