@@ -98,8 +98,8 @@ export default function MobileLogin() {
   }
 
   return (
-    <div className="min-h-screen w-full flex items-center justify-center bg-black text-white p-5">
-      <div className="w-full max-w-xs border border-white/10 rounded-xl p-6 bg-white/5 backdrop-blur">
+    <div className="min-h-screen w-full flex items-center justify-center bg-black text-white p-5 relative">
+      <div className="w-full max-w-xs border border-white/10 rounded-xl p-6 bg-white/5 backdrop-blur relative z-10">
         <div className="text-center mb-5">
           <h1 className="text-lg font-semibold">C.Point</h1>
           <p className="text-xs text-white/60 mt-1">Sign in to your account</p>
@@ -146,10 +146,9 @@ export default function MobileLogin() {
           <button
             type="button"
             onClick={handleInstall}
-            onTouchStart={()=> handleInstall()}
-            onPointerUp={()=> handleInstall()}
-            className="block w-full text-center rounded-lg border border-white/10 bg-white/5 py-2 text-sm cursor-pointer relative z-[1]"
-            style={{ WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation' }}
+            onTouchEnd={()=> handleInstall()}
+            className="block w-full text-center rounded-lg border border-white/10 bg-white/5 py-2 text-sm cursor-pointer"
+            style={{ WebkitTapHighlightColor: 'transparent' }}
           >
             Install App
           </button>
