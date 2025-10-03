@@ -47,6 +47,7 @@ function AppRoutes(){
   const isFirstPage = location.pathname === '/'
   const [authLoaded, setAuthLoaded] = useState(false)
   const [isVerified, setIsVerified] = useState<boolean | null>(null)
+  const [hasCommunities, setHasCommunities] = useState<boolean | null>(null)
   const [requireVerification] = useState(() => (import.meta as any).env?.VITE_REQUIRE_VERIFICATION_CLIENT === 'true')
 
   useEffect(() => {
@@ -57,6 +58,12 @@ function AppRoutes(){
         if (j?.success && j.profile){
           setUserMeta({ username: j.profile.username, avatarUrl: j.profile.profile_picture || null })
         }
+        try{
+          const ht = await fetch('/api/home_timeline', { credentials:'include' })
+          const hj = await ht.json().catch(()=>null)
+          const has = Boolean(hj?.admin_communities?.length || hj?.communities_list?.length)
+          setHasCommunities(has)
+        }catch{}
       }catch{}
     }
     load()
@@ -105,7 +112,7 @@ function AppRoutes(){
       <div style={{ paddingTop: isFirstPage ? 0 : '56px' }}>
         <ErrorBoundary>
           <Routes>
-          <Route path="/" element={<MobileLogin />} />
+          <Route path="/" element={(hasCommunities === false ? <OnboardingWelcome /> : <MobileLogin />)} />
           <Route path="/login" element={<MobileLogin />} />
           <Route path="/signup" element={<Signup />} />
           <Route path="/signup_react" element={<Signup />} />

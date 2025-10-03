@@ -32,7 +32,7 @@ export default function MobileLogin() {
               const hj = await ht.json().catch(()=>null)
               const hasCommunities = Boolean(hj?.admin_communities?.length || hj?.communities_list?.length)
               if (!hasCommunities){
-                // Direct fix: do not redirect here; let dashboard handle first-time UI
+                navigate('/onboarding', { replace: true })
                 return
               }
             }catch{}
