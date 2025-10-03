@@ -7,10 +7,9 @@ export default function MobileLogin() {
   const [resetEmail, setResetEmail] = useState('')
   const [resetSent, setResetSent] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [deferredPrompt, setDeferredPrompt] = useState<any>(null)
+  // PWA prompt state (not used on iOS; Android uses browser menu fallback)
   const [isStandalone, setIsStandalone] = useState(false)
-  const [isIOS, setIsIOS] = useState(false)
-  const [showInstall, setShowInstall] = useState(false)
+  // no platform-specific handling needed for inline alert
 
   // If already authenticated, skip login
   useEffect(() => {
@@ -50,7 +49,7 @@ export default function MobileLogin() {
     setError(e)
   }, [])
 
-  // PWA install prompt
+  // PWA install prompt (read-only setup for standalone detection)
   useEffect(() => {
     try{
       const checkStandalone = () => {
@@ -61,36 +60,16 @@ export default function MobileLogin() {
       checkStandalone()
       const onChange = () => checkStandalone()
       try{ window.matchMedia('(display-mode: standalone)').addEventListener('change', onChange) }catch{}
-      const onBIP = (e: any) => { e.preventDefault(); setDeferredPrompt(e) }
-      const onInstalled = () => { setDeferredPrompt(null); setIsStandalone(true) }
-      window.addEventListener('beforeinstallprompt', onBIP as any)
+      const onInstalled = () => { setIsStandalone(true) }
       window.addEventListener('appinstalled', onInstalled as any)
-      setIsIOS(/iphone|ipad|ipod/i.test(navigator.userAgent))
       return () => {
         try{ window.matchMedia('(display-mode: standalone)').removeEventListener('change', onChange) }catch{}
-        window.removeEventListener('beforeinstallprompt', onBIP as any)
         window.removeEventListener('appinstalled', onInstalled as any)
       }
     }catch{}
   }, [])
 
-  async function handleInstall(){
-    try{
-      // iOS shows instructions; Android shows native prompt
-      if (isIOS){
-        setShowInstall(true)
-        return
-      }
-      if (deferredPrompt && typeof deferredPrompt.prompt === 'function'){
-        await deferredPrompt.prompt()
-        try{ await deferredPrompt.userChoice }catch{}
-        setDeferredPrompt(null)
-        return
-      }
-      // Fallback: open a small instruction modal
-      setShowInstall(true)
-    }catch{}
-  }
+  // no-op
 
   // Allow natural page scroll (no viewport locking)
 
@@ -153,17 +132,16 @@ export default function MobileLogin() {
 
         {(!isStandalone) ? (
           <div className="mt-2">
-            <a
-              href="#"
+            <div
               role="button"
               tabIndex={0}
-              onClick={(e)=>{ e.preventDefault(); handleInstall() }}
-              onTouchEnd={(e)=>{ e.preventDefault(); handleInstall() }}
-              className="w-full inline-block text-center rounded-lg border border-white/10 bg-white/5 py-2 text-sm cursor-pointer select-none relative z-20"
-              style={{ WebkitTapHighlightColor: 'transparent' }}
+              onClick={(e)=>{ try{ e.preventDefault() }catch{}; alert('To install: On iPhone use Share → Add to Home Screen. On Android use browser menu → Add to Home screen.') }}
+              onTouchEnd={(e)=>{ try{ e.preventDefault() }catch{}; alert('To install: On iPhone use Share → Add to Home Screen. On Android use browser menu → Add to Home screen.') }}
+              className="w-full text-center rounded-lg border border-white/10 bg-white/5 py-3 text-sm cursor-pointer select-none relative z-20"
+              style={{ WebkitTapHighlightColor: 'transparent', WebkitUserSelect: 'none', userSelect: 'none' }}
             >
               Install App
-            </a>
+            </div>
           </div>
         ) : null}
       </div>
@@ -199,58 +177,7 @@ export default function MobileLogin() {
                 </>
               )}
 
-  {/* Install modal */}
-  {showInstall && (
-    <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center" onClick={(e)=> e.currentTarget===e.target && setShowInstall(false)}>
-      <div className="w-[92%] max-w-sm rounded-2xl border border-white/10 bg-[#0b0f10] text-white shadow-xl p-4">
-        <div className="flex items-center justify-between mb-2">
-          <div className="text-base font-semibold">Install C.Point</div>
-          <button aria-label="Close" className="text-white/60 hover:text-white" onClick={()=> setShowInstall(false)}>
-            <i className="fa-solid fa-xmark" />
-          </button>
-        </div>
-        {isIOS ? (
-          <div>
-            <p className="text-sm text-white/75 mb-3">On iPhone/iPad:</p>
-            <ol className="space-y-2 text-sm text-white/85">
-              <li className="flex items-center gap-2">
-                <i className="fa-solid fa-share-from-square text-[#4db6ac]" />
-                <span>Tap <strong>Share</strong> in Safari</span>
-              </li>
-              <li className="flex items-center gap-2">
-                <i className="fa-solid fa-plus text-[#4db6ac]" />
-                <span>Select <strong>Add to Home Screen</strong></span>
-              </li>
-            </ol>
-            <div className="text-xs text-white/60 mt-3">Tip: If you don’t see the option, scroll the sheet to find it.</div>
-            <div className="flex items-center justify-end mt-4">
-              <button className="px-3 py-2 rounded-lg border border-white/15 hover:bg-white/5 text-sm" onClick={()=> setShowInstall(false)}>Got it</button>
-            </div>
-          </div>
-        ) : (
-          <div>
-            <p className="text-sm text-white/75 mb-3">Add the app to your home screen for a faster, full-screen experience.</p>
-            <div className="flex items-center justify-end gap-2 mt-2">
-              <button type="button" className="px-3 py-2 rounded-lg border border-white/15 hover:bg-white/5 text-sm" onClick={()=> setShowInstall(false)}>Maybe later</button>
-              <button type="button" className="px-3 py-2 rounded-lg bg-[#4db6ac] hover:brightness-110 text-black text-sm"
-                onClick={async()=>{
-                  try{
-                    if (deferredPrompt && typeof deferredPrompt.prompt === 'function'){
-                      await deferredPrompt.prompt()
-                      try{ await deferredPrompt.userChoice }catch{}
-                      setDeferredPrompt(null)
-                    } else {
-                      alert('Use your browser menu → Add to Home screen')
-                    }
-                  }finally{}
-                }}
-              >Install now</button>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  )}
+  
             </div>
           </div>
         </div>
