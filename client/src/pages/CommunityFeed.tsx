@@ -32,6 +32,7 @@ export default function CommunityFeed() {
   const [q, setQ] = useState('#')
   const [results, setResults] = useState<Array<{id:number, username:string, content:string, timestamp:string}>>([])
   const scrollRef = useRef<HTMLDivElement|null>(null)
+  const [refreshHint, setRefreshHint] = useState(false)
   // Modal removed in favor of dedicated PostDetail route
 
   // Set header title consistently
@@ -48,9 +49,11 @@ export default function CommunityFeed() {
         const y = (el as any).scrollTop || window.scrollY || 0
         if (y <= 0 && e.deltaY < 0){
           overTopCount++
+          setRefreshHint(true)
           if (overTopCount > 3){ location.reload() }
         } else {
           overTopCount = 0
+          setRefreshHint(false)
         }
       }catch{}
     }
@@ -58,8 +61,8 @@ export default function CommunityFeed() {
     function onTouchMove(){
       try{
         const y = window.scrollY || 0
-        if (y <= 0 && y < lastY){ overTopCount++; if (overTopCount > 3){ location.reload() } }
-        else { overTopCount = 0 }
+        if (y <= 0 && y < lastY){ overTopCount++; setRefreshHint(true); if (overTopCount > 3){ location.reload() } }
+        else { overTopCount = 0; setRefreshHint(false) }
         lastY = y
       }catch{}
     }
@@ -255,6 +258,14 @@ export default function CommunityFeed() {
 
   return (
     <div className="fixed inset-x-0 top-14 bottom-0 bg-black text-white">
+      {refreshHint && (
+        <div className="fixed top-14 left-0 right-0 z-50 flex items-center justify-center pointer-events-none">
+          <div className="px-2 py-1 text-xs rounded-full bg-white/10 border border-white/15 text-white/80 flex items-center gap-2">
+            <i className="fa-solid fa-rotate fa-spin" />
+            <span>Refreshing…</span>
+          </div>
+        </div>
+      )}
       {/* Scrollable content area below fixed global header */}
       <div ref={scrollRef} className="h-full max-w-2xl mx-auto overflow-y-auto no-scrollbar pt-3 pb-20 px-3" style={{ WebkitOverflowScrolling: 'touch' as any }}>
         <div className="space-y-3">
