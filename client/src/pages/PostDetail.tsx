@@ -106,6 +106,7 @@ export default function PostDetail(){
   
   const fileInputRef = useRef<HTMLInputElement|null>(null)
   const [refreshHint, setRefreshHint] = useState(false)
+  const [pullPx, setPullPx] = useState(0)
 
   useEffect(() => {
     // Pull-to-refresh on overscroll at top
@@ -114,14 +115,20 @@ export default function PostDetail(){
     function onWheel(e: WheelEvent){
       try{
         const y = window.scrollY || 0
-        if (y <= 0 && e.deltaY < 0){ over++; setRefreshHint(true); if (over > 3){ location.reload() } } else { over = 0; setRefreshHint(false) }
+        if (y <= 0 && e.deltaY < 0){ over++; setRefreshHint(true); if (over > 3){ location.reload() } } else { over = 0; setRefreshHint(false); setPullPx(0) }
       }catch{}
     }
     function onTS(){ try{ lastY = window.scrollY || 0 }catch{ lastY = 0 } }
-    function onTM(){
+    function onTM(ev: TouchEvent){
       try{
         const y = window.scrollY || 0
-        if (y <= 0 && y < lastY){ over++; setRefreshHint(true); if (over > 3){ location.reload() } } else { over = 0; setRefreshHint(false) }
+        const dy = (ev.touches?.[0]?.clientY || 0) - (lastY || 0)
+        if (y <= 0 && dy > 0){
+          const px = Math.min(100, Math.max(0, dy * 0.5))
+          setPullPx(px)
+          setRefreshHint(px > 8)
+          if (px >= 64){ location.reload() }
+        } else { over = 0; setRefreshHint(false); setPullPx(0) }
         lastY = y
       }catch{}
     }
@@ -308,14 +315,14 @@ export default function PostDetail(){
   return (
     <div className="min-h-screen bg-black text-white pb-24">
       {refreshHint ? (
-        <div className="fixed top-14 left-0 right-0 z-50 flex items-center justify-center pointer-events-none">
+        <div className="fixed top-[60px] left-0 right-0 z-50 flex items-center justify-center pointer-events-none">
           <div className="px-2 py-1 text-xs rounded-full bg-white/10 border border-white/15 text-white/80 flex items-center gap-2">
             <i className="fa-solid fa-rotate fa-spin" />
             <span>Refreshing…</span>
           </div>
         </div>
       ) : null}
-      <div className="max-w-2xl mx-auto pt-14 px-3" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 14rem)' }}>
+      <div className="max-w-2xl mx-auto px-3" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 14rem)', paddingTop: `calc(3.5rem + ${pullPx}px)` }}>
         <div className="mb-2">
           <button className="px-3 py-1.5 rounded-lg border border-white/10 bg-white/[0.03] text-sm hover:bg-white/10" onClick={()=> navigate(-1)} aria-label="Back">
             ← Back

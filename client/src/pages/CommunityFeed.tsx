@@ -33,6 +33,7 @@ export default function CommunityFeed() {
   const [results, setResults] = useState<Array<{id:number, username:string, content:string, timestamp:string}>>([])
   const scrollRef = useRef<HTMLDivElement|null>(null)
   const [refreshHint, setRefreshHint] = useState(false)
+  const [pullPx, setPullPx] = useState(0)
   // Modal removed in favor of dedicated PostDetail route
 
   // Set header title consistently
@@ -40,39 +41,50 @@ export default function CommunityFeed() {
   useEffect(() => { if (data?.community?.name) setTitle(data.community.name) }, [setTitle, data?.community?.name])
 
   useEffect(() => {
-    // Pull-to-refresh behavior on overscroll at top
-    const el = scrollRef.current || document.scrollingElement || document.documentElement
-    let lastY = 0
-    let overTopCount = 0
+    // Pull-to-refresh behavior on overscroll at top with a small elastic offset
+    const el = scrollRef.current
+    if (!el) return
+    let startY = 0
+    let pulling = false
+    const threshold = 64
     function onWheel(e: WheelEvent){
       try{
-        const y = (el as any).scrollTop || window.scrollY || 0
-        if (y <= 0 && e.deltaY < 0){
-          overTopCount++
-          setRefreshHint(true)
-          if (overTopCount > 3){ location.reload() }
+        const y = (el ? el.scrollTop : 0) || 0
+        if (y <= 0 && e.deltaY < 0){ setRefreshHint(true) } else { setRefreshHint(false) }
+      }catch{}
+    }
+    function onTS(ev: TouchEvent){
+      try{ startY = ev.touches[0]?.clientY || 0 }catch{ startY = 0 }
+      pulling = false
+    }
+    function onTM(ev: TouchEvent){
+      try{
+        const y = (el ? el.scrollTop : 0) || 0
+        const curY = ev.touches[0]?.clientY || 0
+        const dy = curY - startY
+        if (y <= 0 && dy > 0){
+          pulling = true
+          const px = Math.min(100, Math.max(0, dy * 0.5))
+          setPullPx(px)
+          setRefreshHint(px > 8)
+          if (px >= threshold){ location.reload() }
         } else {
-          overTopCount = 0
+          pulling = false
+          setPullPx(0)
           setRefreshHint(false)
         }
       }catch{}
     }
-    function onTouchStart(){ try{ lastY = window.scrollY || 0 }catch{ lastY = 0 } }
-    function onTouchMove(){
-      try{
-        const y = window.scrollY || 0
-        if (y <= 0 && y < lastY){ overTopCount++; setRefreshHint(true); if (overTopCount > 3){ location.reload() } }
-        else { overTopCount = 0; setRefreshHint(false) }
-        lastY = y
-      }catch{}
-    }
-    window.addEventListener('wheel', onWheel, { passive: true })
-    window.addEventListener('touchstart', onTouchStart, { passive: true })
-    window.addEventListener('touchmove', onTouchMove, { passive: true })
+    function onTE(){ if (!pulling){ setPullPx(0); setRefreshHint(false) } }
+    el.addEventListener('wheel', onWheel, { passive: true })
+    el.addEventListener('touchstart', onTS, { passive: true })
+    el.addEventListener('touchmove', onTM, { passive: true })
+    el.addEventListener('touchend', onTE, { passive: true })
     return () => {
-      window.removeEventListener('wheel', onWheel as any)
-      window.removeEventListener('touchstart', onTouchStart as any)
-      window.removeEventListener('touchmove', onTouchMove as any)
+      el.removeEventListener('wheel', onWheel as any)
+      el.removeEventListener('touchstart', onTS as any)
+      el.removeEventListener('touchmove', onTM as any)
+      el.removeEventListener('touchend', onTE as any)
     }
   }, [])
 
@@ -259,7 +271,7 @@ export default function CommunityFeed() {
   return (
     <div className="fixed inset-x-0 top-14 bottom-0 bg-black text-white">
       {refreshHint && (
-        <div className="fixed top-14 left-0 right-0 z-50 flex items-center justify-center pointer-events-none">
+        <div className="fixed top-[60px] left-0 right-0 z-50 flex items-center justify-center pointer-events-none">
           <div className="px-2 py-1 text-xs rounded-full bg-white/10 border border-white/15 text-white/80 flex items-center gap-2">
             <i className="fa-solid fa-rotate fa-spin" />
             <span>Refreshing…</span>
@@ -267,7 +279,7 @@ export default function CommunityFeed() {
         </div>
       )}
       {/* Scrollable content area below fixed global header */}
-      <div ref={scrollRef} className="h-full max-w-2xl mx-auto overflow-y-auto no-scrollbar pt-3 pb-20 px-3" style={{ WebkitOverflowScrolling: 'touch' as any }}>
+      <div ref={scrollRef} className="h-full max-w-2xl mx-auto overflow-y-auto no-scrollbar pb-20 px-3" style={{ WebkitOverflowScrolling: 'touch' as any, paddingTop: `calc(12px + ${pullPx}px)` }}>
         <div className="space-y-3">
           {/* Back to communities (parent) + Search */}
           <div className="flex items-center gap-2">
