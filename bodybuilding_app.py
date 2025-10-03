@@ -5925,8 +5925,14 @@ def delete_nutrition():
             c = conn.cursor()
             c.execute("SELECT subscription FROM users WHERE username=?", (username,))
             user = c.fetchone()
-            if not user or user['subscription'] != 'premium':
-                return jsonify({'success': False, 'error': 'Premium subscription required!'})
+            try:
+                c.execute("SELECT email_verified FROM users WHERE username=?", (username,))
+                ver_row = c.fetchone()
+                is_verified = bool(ver_row['email_verified'] if hasattr(ver_row,'keys') else (ver_row[0] if ver_row else 0))
+            except Exception:
+                is_verified = False
+            if username != 'admin' and not is_verified:
+                return jsonify({'success': False, 'error': 'Email verification required!'})
             c.execute("DELETE FROM saved_data WHERE username=? AND type='nutrition' AND timestamp=?", (username, timestamp))
             if c.rowcount == 0:
                 return jsonify({'success': False, 'error': 'Nutrition plan not found!'})
@@ -6555,14 +6561,17 @@ def user_chat():
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
-            c.execute("SELECT subscription FROM users WHERE username=?", (username,))
+            # Allow verified users (and admin) to access messages regardless of subscription
+            c.execute("SELECT email_verified, subscription FROM users WHERE username=?", (username,))
             user_row = c.fetchone()
-            try:
-                subscription = user_row['subscription'] if hasattr(user_row, 'keys') else (user_row[0] if user_row else None)
-            except Exception:
-                subscription = None
-            if username != 'admin' and (not subscription or str(subscription).lower() != 'premium'):
-                return render_template('index.html', error="Premium subscription required!")
+            if hasattr(user_row, 'keys'):
+                is_verified = bool(user_row.get('email_verified'))
+                subscription = user_row.get('subscription')
+            else:
+                is_verified = bool(user_row[0] if user_row else 0)
+                subscription = (user_row[1] if user_row else None)
+            if username != 'admin' and not is_verified:
+                return redirect(url_for('verify_required'))
             
             # Smart UA: mobile -> SPA, desktop -> HTML
             ua = request.headers.get('User-Agent', '')
@@ -6662,11 +6671,15 @@ def delete_chat_thread():
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
-            # Optional: restrict to premium similar to delete_message
-            c.execute("SELECT subscription FROM users WHERE username=?", (username,))
-            user = c.fetchone()
-            if not user or (hasattr(user, 'keys') and user['subscription'] != 'premium') or (not hasattr(user, 'keys') and user[0] != 'premium'):
-                return jsonify({'success': False, 'error': 'Premium subscription required!'})
+            # Allow verified users to manage their chat threads
+            try:
+                c.execute("SELECT email_verified FROM users WHERE username=?", (username,))
+                ver_row = c.fetchone()
+                is_verified = bool(ver_row['email_verified'] if hasattr(ver_row,'keys') else (ver_row[0] if ver_row else 0))
+            except Exception:
+                is_verified = False
+            if username != 'admin' and not is_verified:
+                return jsonify({'success': False, 'error': 'Email verification required!'})
 
             c.execute(
                 """
