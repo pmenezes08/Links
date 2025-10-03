@@ -7,12 +7,10 @@ export default function MobileLogin() {
   const [resetEmail, setResetEmail] = useState('')
   const [resetSent, setResetSent] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [installEvt, setInstallEvt] = useState<any>(null)
-  const [isStandalone, setIsStandalone] = useState<boolean>(false)
-  const [isIOS, setIsIOS] = useState<boolean>(false)
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null)
+  const [isStandalone, setIsStandalone] = useState(false)
+  const [isIOS, setIsIOS] = useState(false)
   const [showInstall, setShowInstall] = useState(false)
-  const [installMode, setInstallMode] = useState<'android'|'ios'|null>(null)
-  const [showAndroidTip, setShowAndroidTip] = useState(false)
 
   // If already authenticated, skip login
   useEffect(() => {
@@ -63,8 +61,8 @@ export default function MobileLogin() {
       checkStandalone()
       const onChange = () => checkStandalone()
       try{ window.matchMedia('(display-mode: standalone)').addEventListener('change', onChange) }catch{}
-      const onBIP = (e: any) => { e.preventDefault(); setInstallEvt(e) }
-      const onInstalled = () => { setInstallEvt(null); setIsStandalone(true) }
+      const onBIP = (e: any) => { e.preventDefault(); setDeferredPrompt(e) }
+      const onInstalled = () => { setDeferredPrompt(null); setIsStandalone(true) }
       window.addEventListener('beforeinstallprompt', onBIP as any)
       window.addEventListener('appinstalled', onInstalled as any)
       setIsIOS(/iphone|ipad|ipod/i.test(navigator.userAgent))
@@ -78,7 +76,18 @@ export default function MobileLogin() {
 
   async function handleInstall(){
     try{
-      setInstallMode(isIOS ? 'ios' : 'android')
+      // iOS shows instructions; Android shows native prompt
+      if (isIOS){
+        setShowInstall(true)
+        return
+      }
+      if (deferredPrompt && typeof deferredPrompt.prompt === 'function'){
+        await deferredPrompt.prompt()
+        try{ await deferredPrompt.userChoice }catch{}
+        setDeferredPrompt(null)
+        return
+      }
+      // Fallback: open a small instruction modal
       setShowInstall(true)
     }catch{}
   }
@@ -143,15 +152,16 @@ export default function MobileLogin() {
         </div>
 
         {(!isStandalone) ? (
-          <button
-            type="button"
-            onClick={handleInstall}
-            onTouchEnd={()=> handleInstall()}
-            className="block w-full text-center rounded-lg border border-white/10 bg-white/5 py-2 text-sm cursor-pointer"
-            style={{ WebkitTapHighlightColor: 'transparent' }}
-          >
-            Install App
-          </button>
+          <div className="mt-2">
+            <button
+              type="button"
+              onClick={handleInstall}
+              className="w-full text-center rounded-lg border border-white/10 bg-white/5 py-2 text-sm cursor-pointer select-none relative"
+              style={{ WebkitTapHighlightColor: 'transparent' }}
+            >
+              Install App
+            </button>
+          </div>
         ) : null}
       </div>
 
@@ -196,35 +206,7 @@ export default function MobileLogin() {
             <i className="fa-solid fa-xmark" />
           </button>
         </div>
-        {installMode === 'android' ? (
-          <div>
-            <p className="text-sm text-white/75 mb-3">Add the app to your home screen for a faster, full-screen experience.</p>
-            <div className="flex items-center justify-end gap-2 mt-2">
-              <button type="button" className="px-3 py-2 rounded-lg border border-white/15 hover:bg-white/5 text-sm" onClick={()=> setShowInstall(false)}>Maybe later</button>
-              <button type="button" className="px-3 py-2 rounded-lg bg-[#4db6ac] hover:brightness-110 text-black text-sm"
-                onClick={async()=>{
-                  try{
-                    if (installEvt && typeof installEvt.prompt === 'function'){
-                      await installEvt.prompt()
-                      try{ await installEvt.userChoice }catch{}
-                      setInstallEvt(null)
-                    } else {
-                      setShowAndroidTip(true)
-                    }
-                  }finally{
-                    // Keep modal open so the user can read instructions
-                  }
-                }}
-              >Install now</button>
-            </div>
-            {showAndroidTip || !installEvt ? (
-              <div className="mt-3 text-xs text-white/60">
-                Install prompt not available yet. Try reloading the page, or use the browser menu → <strong>Add to Home screen</strong>.
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-        {installMode === 'ios' ? (
+        {isIOS ? (
           <div>
             <p className="text-sm text-white/75 mb-3">On iPhone/iPad:</p>
             <ol className="space-y-2 text-sm text-white/85">
@@ -242,7 +224,27 @@ export default function MobileLogin() {
               <button className="px-3 py-2 rounded-lg border border-white/15 hover:bg-white/5 text-sm" onClick={()=> setShowInstall(false)}>Got it</button>
             </div>
           </div>
-        ) : null}
+        ) : (
+          <div>
+            <p className="text-sm text-white/75 mb-3">Add the app to your home screen for a faster, full-screen experience.</p>
+            <div className="flex items-center justify-end gap-2 mt-2">
+              <button type="button" className="px-3 py-2 rounded-lg border border-white/15 hover:bg-white/5 text-sm" onClick={()=> setShowInstall(false)}>Maybe later</button>
+              <button type="button" className="px-3 py-2 rounded-lg bg-[#4db6ac] hover:brightness-110 text-black text-sm"
+                onClick={async()=>{
+                  try{
+                    if (deferredPrompt && typeof deferredPrompt.prompt === 'function'){
+                      await deferredPrompt.prompt()
+                      try{ await deferredPrompt.userChoice }catch{}
+                      setDeferredPrompt(null)
+                    } else {
+                      alert('Use your browser menu → Add to Home screen')
+                    }
+                  }finally{}
+                }}
+              >Install now</button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )}
