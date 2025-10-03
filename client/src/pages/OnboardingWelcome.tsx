@@ -47,7 +47,7 @@ export default function OnboardingWelcome(){
     <div className="h-screen overflow-hidden bg-black text-white flex items-center justify-center" style={{ height: '100dvh' }}>
       <div className="w-full max-w-xl px-4">
         <div className="mb-3">
-          <div className="text-2xl font-bold">Welcome to CPoint</div>
+          <div className="text-2xl font-bold">Welcome to Community Point</div>
         </div>
         <div className="text-sm text-[#9fb0b5] mb-3" style={{ minHeight: '32px' }}>{sentences[cardIndex % sentences.length]}</div>
 
