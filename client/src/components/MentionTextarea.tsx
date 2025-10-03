@@ -21,7 +21,9 @@ export default function MentionTextarea({
   className?: string
   rows?: number
 }){
-  const enabled = (import.meta as any).env?.VITE_MENTIONS_ENABLED === 'true'
+  // Default to enabled when env flag is unset; only disable if explicitly set to 'false'
+  const envVal = (import.meta as any).env?.VITE_MENTIONS_ENABLED
+  const enabled = (envVal === undefined || envVal === 'true')
   const taRef = useRef<HTMLTextAreaElement|null>(null)
   const overlayRef = useRef<HTMLDivElement|null>(null)
   const [open, setOpen] = useState(false)
