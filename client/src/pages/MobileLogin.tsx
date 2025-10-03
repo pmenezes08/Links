@@ -12,6 +12,7 @@ export default function MobileLogin() {
   const [isIOS, setIsIOS] = useState<boolean>(false)
   const [showInstall, setShowInstall] = useState(false)
   const [installMode, setInstallMode] = useState<'android'|'ios'|null>(null)
+  const [showAndroidTip, setShowAndroidTip] = useState(false)
 
   // If already authenticated, skip login
   useEffect(() => {
@@ -192,26 +193,27 @@ export default function MobileLogin() {
             <p className="text-sm text-white/75 mb-3">Add the app to your home screen for a faster, full-screen experience.</p>
             <div className="flex items-center justify-end gap-2 mt-2">
               <button type="button" className="px-3 py-2 rounded-lg border border-white/15 hover:bg-white/5 text-sm" onClick={()=> setShowInstall(false)}>Maybe later</button>
-              <button type="button" className={`px-3 py-2 rounded-lg ${installEvt? 'bg-[#4db6ac] hover:brightness-110 text-black' : 'bg-white/10 text-white/50 cursor-not-allowed'} text-sm`}
+              <button type="button" className="px-3 py-2 rounded-lg bg-[#4db6ac] hover:brightness-110 text-black text-sm"
                 onClick={async()=>{
                   try{
                     if (installEvt && typeof installEvt.prompt === 'function'){
                       await installEvt.prompt()
                       try{ await installEvt.userChoice }catch{}
                       setInstallEvt(null)
+                    } else {
+                      setShowAndroidTip(true)
                     }
                   }finally{
-                    setShowInstall(false)
+                    // Keep modal open so the user can read instructions
                   }
                 }}
-                disabled={!installEvt}
               >Install now</button>
             </div>
-            {!installEvt && (
+            {showAndroidTip || !installEvt ? (
               <div className="mt-3 text-xs text-white/60">
                 Install prompt not available yet. Try reloading the page, or use the browser menu → <strong>Add to Home screen</strong>.
               </div>
-            )}
+            ) : null}
           </div>
         ) : null}
         {installMode === 'ios' ? (
