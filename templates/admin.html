@@ -1778,6 +1778,46 @@
         
         function showCommunitiesModal() {
             $('#communitiesModal').show();
+            // Load fresh data for communities
+            fetch('/admin/communities_list', { credentials: 'include' })
+              .then(r=>r.json())
+              .then(j=>{
+                try{
+                  if (!j || !j.success){ return }
+                  const tbody = document.querySelector('#communitiesModal .communities-table tbody')
+                  if (!tbody) return
+                  tbody.innerHTML = ''
+                  const list = Array.isArray(j.communities) ? j.communities : []
+                  for (const c of list){
+                    const tr = document.createElement('tr')
+                    tr.className = 'community-row' + (c.is_active ? '' : ' deactivated')
+                    tr.setAttribute('data-community-id', String(c.id))
+                    tr.setAttribute('data-active', c.is_active ? 'true' : 'false')
+                    tr.innerHTML = `
+                      <td class="community-name-cell"><strong>${c.name}</strong>${c.is_active ? '' : '<span class="deactivated-badge-compact">Deactivated</span>'}</td>
+                      <td><span class="type-badge">${c.type||''}</span></td>
+                      <td>${c.creator_username||''}</td>
+                      <td class="text-center">${c.member_count||0}</td>
+                      <td class="code-cell"><code>${c.join_code||''}</code></td>
+                      <td><span class="status-indicator ${c.is_active ? 'active' : 'inactive'}">${c.is_active ? 'Active' : 'Inactive'}</span></td>
+                      <td class="actions-cell">
+                        <div class="compact-actions">
+                          <button onclick="showCommunityMembers('${c.id}')" class="action-btn-compact" title="View Members"><i class="fas fa-users"></i></button>
+                          <button onclick="toggleCommunityStatus('${c.id}', ${c.is_active ? 'false' : 'true'})" class="action-btn-compact ${c.is_active ? 'warning' : 'success'}" title="${c.is_active ? 'Deactivate' : 'Activate'}"><i class="fas fa-${c.is_active ? 'ban' : 'check-circle'}"></i></button>
+                          <button onclick="deleteCommunity('${c.id}')" class="action-btn-compact danger" title="Delete"><i class="fas fa-trash"></i></button>
+                        </div>
+                      </td>
+                    `
+                    tbody.appendChild(tr)
+                  }
+                  const summary = document.querySelector('#communitiesModal .communities-summary')
+                  if (summary){
+                    const activeCount = list.filter(x=>x.is_active).length
+                    summary.innerHTML = `<span>Total: ${list.length} communities</span><span>Active: ${activeCount}</span><span>Deactivated: ${list.length-activeCount}</span>`
+                  }
+                }catch(e){ console.error(e) }
+              })
+              .catch(()=>{})
         }
         
         function closeCommunitiesModal() {

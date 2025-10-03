@@ -12020,6 +12020,54 @@ def edit_post():
         logger.error(f"Error editing post {post_id} by {username}: {e}")
         return jsonify({'success': False, 'error': 'Server error'}), 500
 
+@app.route('/admin/communities_list')
+@login_required
+def admin_communities_list():
+    """Return communities for admin modal as JSON."""
+    username = session.get('username')
+    if not is_app_admin(username):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    try:
+        out = []
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            try:
+                c.execute(
+                    """
+                    SELECT c.id, c.name, c.type, c.creator_username, c.join_code,
+                           COUNT(uc.user_id) as member_count, c.is_active
+                    FROM communities c
+                    LEFT JOIN user_communities uc ON c.id = uc.community_id
+                    GROUP BY c.id, c.name, c.type, c.creator_username, c.join_code, c.is_active
+                    ORDER BY c.name
+                    """
+                )
+            except Exception:
+                c.execute(
+                    """
+                    SELECT c.id, c.name, c.type, c.creator_username, c.join_code,
+                           COUNT(uc.user_id) as member_count
+                    FROM communities c
+                    LEFT JOIN user_communities uc ON c.id = uc.community_id
+                    GROUP BY c.id, c.name, c.type, c.creator_username, c.join_code
+                    ORDER BY c.name
+                    """
+                )
+            for r in c.fetchall() or []:
+                out.append({
+                    'id': r['id'] if hasattr(r,'keys') else r[0],
+                    'name': r['name'] if hasattr(r,'keys') else r[1],
+                    'type': r['type'] if hasattr(r,'keys') else r[2],
+                    'creator_username': r['creator_username'] if hasattr(r,'keys') else r[3],
+                    'join_code': r['join_code'] if hasattr(r,'keys') else r[4],
+                    'member_count': (r['member_count'] if hasattr(r,'keys') else (r[5] if len(r) > 5 else 0)),
+                    'is_active': (r['is_active'] if hasattr(r,'keys') and 'is_active' in r.keys() else (r[6] if (isinstance(r, (list,tuple)) and len(r) > 6) else 1)) in (1,'1',True)
+                })
+        return jsonify({'success': True, 'communities': out})
+    except Exception as e:
+        logger.error(f"admin_communities_list error: {e}")
+        return jsonify({'success': False, 'error': 'server error'}), 500
+
 @app.route('/delete_reply', methods=['POST'])
 @login_required
 def delete_reply():
