@@ -190,13 +190,34 @@ export default function AccountSettings(){
               </div>
               <div className="pt-3 border-t border-white/10">
                 <h3 className="text-sm font-semibold mb-2 text-red-400">Danger zone</h3>
-                <button type="button" className="px-4 py-2 rounded-md bg-red-600 text-white hover:bg-red-500" onClick={async()=>{
+                <button type="button" className="px-4 py-2 rounded-md bg-red-600 text-white hover:bg-red-500" onClick={async(event)=>{
                   if (!confirm('Permanently delete your account? This cannot be undone.')) return
                   
                   // Show loading state
                   const btn = event?.currentTarget as HTMLButtonElement
                   const originalText = btn?.textContent || ''
                   if (btn) btn.textContent = 'Deleting...'
+                  
+                  // FIRST: Clear ALL localStorage completely to ensure clean slate
+                  try {
+                    console.log('Clearing ALL localStorage before deletion...')
+                    const allKeys = Object.keys(localStorage)
+                    console.log('All localStorage keys before deletion:', allKeys)
+                    
+                    // Clear everything onboarding-related
+                    allKeys.forEach(key => {
+                      if (key.includes('onboarding') || key.includes('first_login')) {
+                        localStorage.removeItem(key)
+                        console.log('Pre-deletion cleared:', key)
+                      }
+                    })
+                    
+                    // Also clear any other app-specific data
+                    localStorage.clear()
+                    console.log('localStorage.clear() called - everything removed')
+                  } catch(e) { 
+                    console.error('Failed to clear localStorage:', e) 
+                  }
                   
                   try{
                     const r = await fetch('/delete_account', { method:'POST', credentials:'include' })
@@ -210,27 +231,18 @@ export default function AccountSettings(){
                     const j = await r.json().catch(()=>null)
                     
                     if (j?.success){ 
-                      alert('✅ Account deleted successfully! Clearing data...')
+                      alert('✅ Account deleted! You can now create a new account.')
                       
-                      // Clear all onboarding-related localStorage flags more aggressively
+                      // Double-check localStorage is cleared
                       try {
-                        const keys = Object.keys(localStorage)
-                        keys.forEach(key => {
-                          if (key.includes('onboarding') || key.includes('first_login')) {
-                            localStorage.removeItem(key)
-                            console.log('Cleared:', key)
-                          }
-                        })
-                        console.log('All onboarding flags cleared')
-                      } catch(e) { 
-                        console.error('Failed to clear localStorage:', e) 
-                      }
+                        localStorage.clear()
+                        console.log('localStorage cleared again after deletion success')
+                      } catch(e) {}
                       
-                      // Force redirect using replace to prevent back button
-                      console.log('Redirecting to clear_onboarding_storage...')
+                      // Redirect to signup (not the clearing page, since we already cleared)
                       setTimeout(() => {
-                        window.location.replace('/clear_onboarding_storage')
-                      }, 500)
+                        window.location.replace('/signup')
+                      }, 1000)
                       return
                     }
                     
