@@ -183,7 +183,7 @@ def _block_unverified_users():
         path = request.path or ''
         if path.startswith('/static') or path.startswith('/assets'):
             return None
-        if path in ('/', '/login', '/login_password', '/signup', '/signup_react', '/verify_email', '/resend_verification', '/logout', '/verify_required', '/onboarding'):
+        if path in ('/', '/welcome', '/login', '/login_password', '/signup', '/signup_react', '/verify_email', '/resend_verification', '/logout', '/verify_required', '/onboarding'):
             return None
         # Health and misc
         if path in ('/health', '/vite.svg', '/favicon.svg', '/manifest.webmanifest') or path.startswith('/icons/'):
@@ -2359,15 +2359,57 @@ def is_nutrition_related(message):
 # Routes
 @app.route('/', methods=['GET'])
 def index():
-    # Guests see the welcome page. Logged-in users go to communities.
+    # Guests: mobile -> React welcome (via /welcome), desktop -> HTML
+    # Logged-in users -> communities
     try:
         if session.get('username'):
             return redirect(url_for('communities'))
-        # For mobile, still allow React SPA if present, else render welcome (index.html)
         ua = request.headers.get('User-Agent', '')
         is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
         if is_mobile:
+            return redirect('/welcome')
+        return render_template('index.html')
+    except Exception as e:
+        logger.error(f"Error in / route: {str(e)}")
+        return ("Internal Server Error", 500)
+
+@app.route('/welcome', methods=['GET'])
+def welcome():
+    # Public React entry for welcome (mobile only). Desktop users go to '/' (HTML).
+    try:
+        ua = request.headers.get('User-Agent', '')
+        is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
+        if not is_mobile:
+            return redirect(url_for('index'))
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        dist_dir = os.path.join(base_dir, 'client', 'dist')
+        index_path = os.path.join(dist_dir, 'index.html')
+        if os.path.exists(index_path):
+            resp = send_from_directory(dist_dir, 'index.html')
             try:
+                resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+                resp.headers['Pragma'] = 'no-cache'
+                resp.headers['Expires'] = '0'
+            except Exception:
+                pass
+            return resp
+        # Fallback: HTML welcome if React build missing
+        return render_template('onboarding_welcome.html', username=session.get('username'))
+    except Exception as e:
+        logger.error(f"Error in /welcome: {e}")
+        return ("Internal Server Error", 500)
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    # Dedicated login route: handles username submission -> login_password
+    try:
+        if request.method == 'GET':
+            if session.get('username'):
+                return redirect(url_for('login_password'))
+            ua = request.headers.get('User-Agent', '')
+            is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
+            if is_mobile:
+                # Serve React login for mobile
                 base_dir = os.path.dirname(os.path.abspath(__file__))
                 dist_dir = os.path.join(base_dir, 'client', 'dist')
                 index_path = os.path.join(dist_dir, 'index.html')
@@ -2380,20 +2422,6 @@ def index():
                     except Exception:
                         pass
                     return resp
-            except Exception as e:
-                logger.warning(f"React mobile index not available: {e}")
-        return render_template('index.html')
-    except Exception as e:
-        logger.error(f"Error in / route: {str(e)}")
-        return ("Internal Server Error", 500)
-
-@app.route('/login', methods=['GET', 'POST'])
-def login():
-    # Dedicated login route: handles username submission -> login_password
-    try:
-        if request.method == 'GET':
-            if session.get('username'):
-                return redirect(url_for('login_password'))
             return render_template('index.html')
         # POST
         username = (request.form.get('username') or '').strip()
