@@ -1,15 +1,17 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 
 export default function OnboardingWelcome(){
   const navigate = useNavigate()
+  const location = useLocation()
+  const isOnboardingRoute = location.pathname.startsWith('/onboarding')
   const [cards, setCards] = useState<string[]>([])
   const [cardIndex, setCardIndex] = useState(0)
   const [touchStartX, setTouchStartX] = useState<number | null>(null)
   const [touchDeltaX, setTouchDeltaX] = useState(0)
   const [loaded, setLoaded] = useState(false)
   // Onboarding step modals
-  const [step, setStep] = useState<1|2|3>(1)
+  const [step, setStep] = useState<number>(0)
   const [displayName, setDisplayName] = useState('')
   const [savingName, setSavingName] = useState(false)
   const [nameError, setNameError] = useState('')
@@ -21,6 +23,8 @@ export default function OnboardingWelcome(){
   const [communityName, setCommunityName] = useState('')
   const [communityType, setCommunityType] = useState('general')
   const [communityError, setCommunityError] = useState('')
+  const [isAuthed, setIsAuthed] = useState(false)
+  const [isVerified, setIsVerified] = useState<boolean | null>(null)
   const sentences = [
     'Welcome to the network where ideas connect people',
     'Share your thoughts, images, and connect through meaningful conversations.',
@@ -62,8 +66,16 @@ export default function OnboardingWelcome(){
     ;(async () => {
       try{
         const r = await fetch('/api/profile_me', { credentials:'include' })
-        const j = await r.json().catch(()=>null)
-        if (j?.profile?.username){ setDisplayName(j.profile.username) }
+        if (r.status === 200){
+          const j = await r.json().catch(()=>null)
+          setIsAuthed(true)
+          const verified = !!(j?.profile?.email_verified)
+          setIsVerified(verified)
+          if (j?.profile?.username){ setDisplayName(j.profile.username) }
+        } else {
+          setIsAuthed(false)
+          setIsVerified(null)
+        }
       }catch{}
     })()
   }, [])
@@ -71,7 +83,12 @@ export default function OnboardingWelcome(){
   // Manual scroll only (no autoplay)
 
   function onGetStarted(){
-    setStep(1)
+    if (!isOnboardingRoute){
+      navigate('/login')
+      return
+    }
+    if (isAuthed && isVerified){ setStep(1) }
+    else { navigate('/login') }
   }
   // no join/profile picture or resend flows
 
@@ -128,7 +145,7 @@ export default function OnboardingWelcome(){
           <button className="px-4 py-3 rounded-xl bg-[#4db6ac] text-black font-semibold" onClick={onGetStarted}>Get started</button>
         </div>
 
-        {step === 1 && (
+        {isOnboardingRoute && isAuthed && isVerified && step === 1 && (
           <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center">
             <div className="w-[92%] max-w-md rounded-xl border border-white/10 bg-[#0b0f10] p-5">
               <div className="text-lg font-semibold mb-2">Choose your display name</div>
@@ -152,7 +169,7 @@ export default function OnboardingWelcome(){
           </div>
         )}
 
-        {step === 2 && (
+        {isOnboardingRoute && isAuthed && isVerified && step === 2 && (
           <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center">
             <div className="w-[92%] max-w-md rounded-xl border border-white/10 bg-[#0b0f10] p-5">
               <div className="text-lg font-semibold mb-2">Add a profile picture</div>
@@ -184,7 +201,7 @@ export default function OnboardingWelcome(){
           </div>
         )}
 
-        {step === 3 && (
+        {isOnboardingRoute && isAuthed && isVerified && step === 3 && (
           <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center">
             <div className="w-[92%] max-w-md rounded-xl border border-white/10 bg-[#0b0f10] p-5">
               <div className="text-lg font-semibold mb-2">Get started</div>

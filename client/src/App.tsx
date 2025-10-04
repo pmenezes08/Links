@@ -35,7 +35,6 @@ import AdminDashboard from './pages/AdminDashboard'
 import ProductDevelopment from './pages/ProductDevelopment'
 import KeyPosts from './pages/KeyPosts'
 import OnboardingWelcome from './pages/OnboardingWelcome'
-import OnboardingProfilePicture from './pages/OnboardingProfilePicture'
 import VerifyOverlay from './components/VerifyOverlay'
 
 const queryClient = new QueryClient()
@@ -112,7 +111,6 @@ function AppRoutes(){
           <Route path="/signup" element={<Signup />} />
           <Route path="/signup_react" element={<Signup />} />
           <Route path="/onboarding" element={<OnboardingWelcome />} />
-          <Route path="/onboarding/profile_picture" element={<OnboardingProfilePicture />} />
           <Route path="/premium" element={<PremiumDashboard />} />
           <Route path="/premium_dashboard" element={<PremiumDashboard />} />
           <Route path="/premium_dashboard_react" element={<PremiumDashboard />} />
