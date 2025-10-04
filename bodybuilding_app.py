@@ -5471,6 +5471,11 @@ def update_public_profile():
             
             conn.commit()
             logger.info(f"Profile committed to database for {username}")
+            # Invalidate cached profile so clients see updates immediately
+            try:
+                invalidate_user_cache(username)
+            except Exception:
+                pass
             flash('Public profile updated successfully!', 'success')
             
     except Exception as e:
@@ -5534,6 +5539,10 @@ def upload_profile_picture():
 
                 conn.commit()
                 logger.info(f"Profile picture committed to database for {username}")
+                try:
+                    invalidate_user_cache(username)
+                except Exception:
+                    pass
                 return jsonify({'success': True, 'profile_picture': profile_picture_path})
             else:
                 return jsonify({'success': False, 'error': 'No file uploaded'}), 400
