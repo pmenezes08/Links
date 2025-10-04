@@ -5293,8 +5293,49 @@ def debug_onboarding():
                     </div>
                 </div>
                 
+                <div style="margin-top: 30px; padding: 20px; background: rgba(255, 193, 7, 0.1); border-radius: 8px; border: 1px solid #FFC107;">
+                    <div class="label" style="color: #FFC107;">⚠️ LocalStorage Check</div>
+                    <div style="margin-top: 10px; font-size: 14px; color: #9fb0b5;">
+                        Check your browser's localStorage for:<br>
+                        <code style="background: rgba(255,255,255,0.1); padding: 4px 8px; border-radius: 4px; display: inline-block; margin-top: 8px;">
+                            onboarding_done:{username}
+                        </code><br><br>
+                        If this is set to "1", onboarding won't trigger!<br>
+                        <button onclick="clearOnboarding()" style="margin-top: 12px; padding: 10px 20px; background: #F44336; color: #fff; border: none; border-radius: 6px; font-weight: 600; cursor: pointer;">
+                            Clear Onboarding Flag & Reload
+                        </button>
+                    </div>
+                </div>
+                
                 <a href="/debug_onboarding" class="refresh">🔄 Refresh</a>
                 <a href="/premium_dashboard" class="refresh" style="background: #333; margin-left: 10px;">Go to Dashboard</a>
+                
+                <script>
+                    function clearOnboarding() {{
+                        try {{
+                            localStorage.removeItem('onboarding_done:{username}');
+                            localStorage.removeItem('onboarding_done');
+                            alert('✅ Onboarding flags cleared! Reloading...');
+                            window.location.href = '/premium_dashboard';
+                        }} catch(e) {{
+                            alert('Error: ' + e.message);
+                        }}
+                    }}
+                    
+                    // Show current localStorage values on page load
+                    window.addEventListener('DOMContentLoaded', function() {{
+                        try {{
+                            const doneValue = localStorage.getItem('onboarding_done:{username}');
+                            const legacyValue = localStorage.getItem('onboarding_done');
+                            if (doneValue || legacyValue) {{
+                                const warning = document.createElement('div');
+                                warning.style = 'position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: #F44336; color: #fff; padding: 15px 20px; border-radius: 8px; z-index: 9999; box-shadow: 0 4px 12px rgba(0,0,0,0.3);';
+                                warning.innerHTML = '🚨 FOUND: localStorage blocking onboarding!<br>onboarding_done:{username} = ' + (doneValue || 'null') + '<br>Click "Clear Onboarding Flag" button below!';
+                                document.body.appendChild(warning);
+                            }}
+                        }} catch(e) {{}}
+                    }});
+                </script>
             </body>
             </html>
             """
