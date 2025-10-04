@@ -21,7 +21,7 @@ export default function AccountSettings(){
   const navigate = useNavigate()
   const [profile, setProfile] = useState<ProfileData|null>(null)
   const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
+  // Removed saving state since only email updates are handled here now
   const [message, setMessage] = useState<{type: 'success'|'error', text: string}|null>(null)
   const [showVerifyModal, setShowVerifyModal] = useState(false)
 
@@ -51,8 +51,6 @@ export default function AccountSettings(){
   function handleSave(e: React.FormEvent) {
     e.preventDefault()
     if (!profile) return
-
-    setSaving(true)
     setMessage(null)
 
     // Save public fields
@@ -82,9 +80,9 @@ export default function AccountSettings(){
           }
         })
         .catch(()=> setMessage({ type:'error', text:'Error updating email' }))
-        .finally(()=> setSaving(false))
+        .finally(()=> {})
     } else {
-      setSaving(false)
+      // no-op
     }
   }
 
@@ -148,33 +146,6 @@ export default function AccountSettings(){
         )}
 
         <form onSubmit={handleSave} className="space-y-6">
-          {/* Profile Picture Section */}
-          <div className="bg-white/5 rounded-xl p-6 border border-white/10">
-            <h2 className="text-lg font-semibold mb-4">Profile Picture</h2>
-            <div className="flex items-center gap-4">
-              <div className="w-20 h-20 rounded-full bg-white/10 flex items-center justify-center overflow-hidden">
-                {profile.profile_picture ? (
-                  <img 
-                    src={`/static/${profile.profile_picture}`}
-                    alt="Profile"
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <i className="fa-solid fa-user text-2xl text-white/50" />
-                )}
-              </div>
-              <div>
-                <button 
-                  type="button"
-                  className="px-4 py-2 bg-[#4db6ac] text-black rounded-lg hover:bg-[#45a99c] transition-colors"
-                >
-                  Change Photo
-                </button>
-                <div className="text-xs text-white/60 mt-1">JPG, PNG up to 5MB</div>
-              </div>
-            </div>
-          </div>
-
           {/* Basic Information */}
           <div className="bg-white/5 rounded-xl p-6 border border-white/10">
             <h2 className="text-lg font-semibold mb-4">Basic Information</h2>
@@ -191,84 +162,12 @@ export default function AccountSettings(){
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-2">Display Name</label>
-                <input
-                  type="text"
-                  value={profile.display_name || ''}
-                  onChange={e => handleInputChange('display_name', e.target.value)}
-                  placeholder="Your display name"
-                  className="w-full px-4 py-3 bg-white/5 border border-white/20 rounded-lg text-white focus:border-[#4db6ac] focus:outline-none"
-                />
-              </div>
-
-              <div>
                 <label className="block text-sm font-medium mb-2">Email</label>
                 <input
                   type="email"
                   value={profile.email || ''}
                   onChange={e => handleInputChange('email', e.target.value)}
                   placeholder="your@email.com"
-                  className="w-full px-4 py-3 bg-white/5 border border-white/20 rounded-lg text-white focus:border-[#4db6ac] focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium mb-2">Bio</label>
-                <textarea
-                  value={profile.bio || ''}
-                  onChange={e => handleInputChange('bio', e.target.value)}
-                  placeholder="Tell us about yourself..."
-                  rows={3}
-                  className="w-full px-4 py-3 bg-white/5 border border-white/20 rounded-lg text-white focus:border-[#4db6ac] focus:outline-none resize-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium mb-2">Location</label>
-                <input
-                  type="text"
-                  value={profile.location || ''}
-                  onChange={e => handleInputChange('location', e.target.value)}
-                  placeholder="City, Country"
-                  className="w-full px-4 py-3 bg-white/5 border border-white/20 rounded-lg text-white focus:border-[#4db6ac] focus:outline-none"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Social Links */}
-          <div className="bg-white/5 rounded-xl p-6 border border-white/10">
-            <h2 className="text-lg font-semibold mb-4">Social Links</h2>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium mb-2">Website</label>
-                <input
-                  type="url"
-                  value={profile.website || ''}
-                  onChange={e => handleInputChange('website', e.target.value)}
-                  placeholder="https://yourwebsite.com"
-                  className="w-full px-4 py-3 bg-white/5 border border-white/20 rounded-lg text-white focus:border-[#4db6ac] focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium mb-2">Instagram</label>
-                <input
-                  type="text"
-                  value={profile.instagram || ''}
-                  onChange={e => handleInputChange('instagram', e.target.value)}
-                  placeholder="@username"
-                  className="w-full px-4 py-3 bg-white/5 border border-white/20 rounded-lg text-white focus:border-[#4db6ac] focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium mb-2">Twitter</label>
-                <input
-                  type="text"
-                  value={profile.twitter || ''}
-                  onChange={e => handleInputChange('twitter', e.target.value)}
-                  placeholder="@username"
                   className="w-full px-4 py-3 bg-white/5 border border-white/20 rounded-lg text-white focus:border-[#4db6ac] focus:outline-none"
                 />
               </div>
@@ -289,33 +188,21 @@ export default function AccountSettings(){
                   {profile.subscription === 'premium' ? '⭐ Premium' : '🆓 Free'}
                 </div>
               </div>
+              <div className="pt-3 border-t border-white/10">
+                <h3 className="text-sm font-semibold mb-2 text-red-400">Danger zone</h3>
+                <button type="button" className="px-4 py-2 rounded-md bg-red-600 text-white hover:bg-red-500" onClick={async()=>{
+                  if (!confirm('Permanently delete your account? This cannot be undone.')) return
+                  try{
+                    const r = await fetch('/delete_account', { method:'POST', credentials:'include' })
+                    const j = await r.json().catch(()=>null)
+                    if (j?.success){ window.location.href = '/logout' }
+                    else alert(j?.error || 'Failed to delete account')
+                  }catch{ alert('Failed to delete account') }
+                }}>Delete Account</button>
+              </div>
             </div>
           </div>
-
-          {/* Save Button */}
-          <div className="flex gap-3">
-            <button
-              type="submit"
-              disabled={saving}
-              className={`flex-1 py-3 rounded-lg font-medium transition-colors ${
-                saving
-                  ? 'bg-gray-600 text-gray-300 cursor-not-allowed'
-                  : 'bg-[#4db6ac] text-black hover:bg-[#45a99c]'
-              }`}
-            >
-              {saving ? (
-                <>
-                  <i className="fa-solid fa-spinner fa-spin mr-2" />
-                  Saving...
-                </>
-              ) : (
-                <>
-                  <i className="fa-solid fa-save mr-2" />
-                  Save Changes
-                </>
-              )}
-            </button>
-          </div>
+          {/* Save Button removed (email saves immediately) */}
         </form>
         {showVerifyModal && (
           <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
