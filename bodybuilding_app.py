@@ -2854,16 +2854,19 @@ def dashboard():
         except Exception:
             has_any = bool(communities)
 
-        if not has_any and request.path != '/onboarding':
+        if not has_any:
             try:
                 logger.warning(
-                    f"Onboarding redirect (dashboard): user={username}, path={request.path}, "
+                    f"Onboarding prompt (dashboard): user={username}, path={request.path}, "
                     f"membership_cnt={membership_cnt}, created_cnt={created_cnt}, admin_cnt={admin_cnt}, "
                     f"referer={request.headers.get('Referer')}, ua={request.headers.get('User-Agent')}"
                 )
             except Exception:
                 pass
-            return redirect('/onboarding')
+            try:
+                session['show_join_community_prompt'] = True
+            except Exception:
+                pass
 
         # Determine if we should show the first-time join community prompt
         show_join_prompt = session.pop('show_join_community_prompt', False)
@@ -2907,16 +2910,19 @@ def premium_dashboard():
                     created_cnt = _count(f"SELECT COUNT(*) as cnt FROM communities WHERE creator_username = {ph}", (username,))
                     admin_cnt = _count(f"SELECT COUNT(*) as cnt FROM community_admins WHERE username = {ph}", (username,))
                     total_cnt = membership_cnt + created_cnt + admin_cnt
-                    if total_cnt == 0 and request.path != '/onboarding':
+                    if total_cnt == 0:
                         try:
                             logger.warning(
-                                f"Onboarding redirect (premium_dashboard): user={username}, path={request.path}, "
+                                f"Onboarding prompt (premium_dashboard): user={username}, path={request.path}, "
                                 f"membership_cnt={membership_cnt}, created_cnt={created_cnt}, admin_cnt={admin_cnt}, "
                                 f"referer={request.headers.get('Referer')}, ua={request.headers.get('User-Agent')}"
                             )
                         except Exception:
                             pass
-                        return redirect('/onboarding')
+                        try:
+                            session['show_join_community_prompt'] = True
+                        except Exception:
+                            pass
         except Exception:
             pass
 
