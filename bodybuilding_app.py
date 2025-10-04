@@ -12488,6 +12488,15 @@ def create_community():
                 verified = bool(row['email_verified'] if hasattr(row, 'keys') else row[0])
             if not verified:
                 return jsonify({'success': False, 'error': 'please verify your email'}), 403
+            # Enforce subscription: only premium users (or admin) can create communities
+            try:
+                c.execute("SELECT subscription FROM users WHERE username=?", (username,))
+                sub_row = c.fetchone()
+                subscription = (sub_row['subscription'] if hasattr(sub_row,'keys') else (sub_row[0] if sub_row else 'free'))
+            except Exception:
+                subscription = 'free'
+            if username != 'admin' and (not subscription or str(subscription).lower() != 'premium'):
+                return jsonify({'success': False, 'error': 'only premium users can create communities'}), 403
     except Exception as _e:
         pass
     name = request.form.get('name')
