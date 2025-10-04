@@ -5376,7 +5376,11 @@ def debug_onboarding():
 @app.route('/clear_onboarding_storage', methods=['GET', 'POST'])
 def clear_onboarding_storage():
     """Endpoint that returns JavaScript to clear localStorage - works even when button doesn't"""
-    return '''
+    # Check if user is logged in to determine redirect destination
+    is_logged_in = 'username' in session
+    redirect_url = '/premium_dashboard' if is_logged_in else '/signup'
+    
+    return f'''
     <html>
     <head>
         <meta charset="UTF-8">
@@ -5387,31 +5391,36 @@ def clear_onboarding_storage():
         <h1>Clearing localStorage...</h1>
         <p id="status">Please wait...</p>
         <script>
-            try {
+            try {{
                 // Get all localStorage keys
                 const keys = Object.keys(localStorage);
                 let cleared = [];
                 
                 // Remove onboarding-related keys
-                keys.forEach(function(key) {
-                    if (key.includes('onboarding') || key.includes('first_login')) {
+                keys.forEach(function(key) {{
+                    if (key.includes('onboarding') || key.includes('first_login')) {{
                         localStorage.removeItem(key);
                         cleared.push(key);
-                    }
-                });
+                    }}
+                }});
                 
-                document.getElementById('status').innerHTML = 
-                    '✅ Cleared ' + cleared.length + ' keys:<br><br>' +
-                    cleared.join('<br>') + 
-                    '<br><br>Redirecting to dashboard in 2 seconds...';
+                if (cleared.length > 0) {{
+                    document.getElementById('status').innerHTML = 
+                        '✅ Cleared ' + cleared.length + ' keys:<br><br>' +
+                        cleared.join('<br>') + 
+                        '<br><br>Redirecting in 2 seconds...';
+                }} else {{
+                    document.getElementById('status').innerHTML = 
+                        '✅ No onboarding flags found to clear.<br><br>Redirecting in 2 seconds...';
+                }}
                 
-                setTimeout(function() {
-                    window.location.href = '/premium_dashboard';
-                }, 2000);
-            } catch(e) {
+                setTimeout(function() {{
+                    window.location.href = '{redirect_url}';
+                }}, 2000);
+            }} catch(e) {{
                 document.getElementById('status').innerHTML = 
-                    '❌ Error: ' + e.message + '<br><br><a href="/premium_dashboard" style="color: #4db6ac;">Go to Dashboard</a>';
-            }
+                    '❌ Error: ' + e.message + '<br><br><a href="{redirect_url}" style="color: #4db6ac;">Continue</a>';
+            }}
         </script>
     </body>
     </html>
