@@ -98,13 +98,15 @@ export default function PremiumDashboard() {
     if (!communitiesLoaded) return
     if (emailVerified === null) return
     if (!Array.isArray(communities)) return
+    // Do not override if user is already in an onboarding modal
+    if (onbStep !== 0) return
     const hasNoCommunities = (communities || []).length === 0
     if (emailVerified === false){ setShowVerifyFirstModal(true); return }
     // Start onboarding sequence: if no display name or default equals username, ask; then picture; then join/create if no communities
     const isDefaultName = !displayName || displayName.trim().length === 0 || displayName === username
     if (isDefaultName){ setOnbStep(1); return }
     if (hasNoCommunities){ setOnbStep(3); return }
-  }, [communitiesLoaded, communities, emailVerified, displayName, username])
+  }, [communitiesLoaded, communities, emailVerified, displayName, username, onbStep])
 
   // Load available parent communities when opening create modal
   useEffect(() => {
