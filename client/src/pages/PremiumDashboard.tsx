@@ -100,6 +100,8 @@ export default function PremiumDashboard() {
     if (!Array.isArray(communities)) return
     // Do not override if user is already in an onboarding modal
     if (onbStep !== 0) return
+    // Respect explicit exit: do not relaunch onboarding once user opted out
+    if (localStorage.getItem('onboarding_done') === '1') return
     const hasNoCommunities = (communities || []).length === 0
     if (emailVerified === false){ setShowVerifyFirstModal(true); return }
     // Start onboarding sequence: if no display name or default equals username, ask; then picture; then join/create if no communities
@@ -241,7 +243,7 @@ export default function PremiumDashboard() {
                 {/* No back from first step; keep placeholder for spacing */}
               </div>
               <div className="flex gap-2">
-              <button className="px-4 py-2 rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> setConfirmExit(true)}>Exit</button>
+              <button type="button" className="px-4 py-2 rounded-lg border border-white/10 bg-white/[0.04]" onClick={(e)=> { e.preventDefault(); setConfirmExit(true) }}>Exit</button>
               <button className="px-4 py-2 rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> setOnbStep(2)} disabled={savingName}>Skip</button>
               <button className="px-4 py-2 rounded-lg bg-[#4db6ac] text-black font-semibold" disabled={savingName} onClick={async()=>{
                 try{
@@ -278,7 +280,7 @@ export default function PremiumDashboard() {
                 <button className="px-4 py-2 rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> setOnbStep(1)} disabled={uploadingPic}>Back</button>
               </div>
               <div className="flex gap-2">
-              <button className="px-4 py-2 rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> setConfirmExit(true)} disabled={uploadingPic}>Exit</button>
+              <button type="button" className="px-4 py-2 rounded-lg border border-white/10 bg-white/[0.04]" onClick={(e)=> { e.preventDefault(); setConfirmExit(true) }} disabled={uploadingPic}>Exit</button>
               <button className="px-4 py-2 rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> setOnbStep(3)} disabled={uploadingPic}>Skip</button>
               <button className="px-4 py-2 rounded-lg bg-[#4db6ac] text-black font-semibold" disabled={uploadingPic || !picFile} onClick={async()=>{
                 if (!picFile) return; setUploadingPic(true)
@@ -311,7 +313,7 @@ export default function PremiumDashboard() {
                 <button className="px-4 py-2 rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> setOnbStep(2)}>Back</button>
               </div>
               <div className="flex gap-2">
-                <button className="px-4 py-2 rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> setConfirmExit(true)}>Exit</button>
+                <button type="button" className="px-4 py-2 rounded-lg border border-white/10 bg-white/[0.04]" onClick={(e)=> { e.preventDefault(); setConfirmExit(true) }}>Exit</button>
                 <button className="px-4 py-2 rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> { setOnbStep(1) }}>Skip for now</button>
               </div>
             </div>
@@ -321,8 +323,8 @@ export default function PremiumDashboard() {
             <div className="text-lg font-semibold mb-2">Exit onboarding?</div>
             <div className="text-xs text-[#9fb0b5] mb-4">You can update these details anytime later in your Profile page.</div>
             <div className="flex justify-end gap-2">
-              <button className="px-4 py-2 rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> setConfirmExit(false)}>Cancel</button>
-              <button className="px-4 py-2 rounded-lg bg-[#4db6ac] text-black font-semibold" onClick={()=>{ localStorage.setItem('onboarding_done','1'); setOnbStep(0); setConfirmExit(false); navigate('/premium_dashboard') }}>Exit</button>
+              <button type="button" className="px-4 py-2 rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> setConfirmExit(false)}>Cancel</button>
+              <button type="button" className="px-4 py-2 rounded-lg bg-[#4db6ac] text-black font-semibold" onClick={()=>{ try{ localStorage.setItem('onboarding_done','1') }catch{}; setOnbStep(0); setConfirmExit(false); window.location.href = '/premium_dashboard' }}>Exit</button>
             </div>
           </div>
         </div>
