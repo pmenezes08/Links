@@ -125,6 +125,35 @@ export default function PremiumDashboard() {
     return () => { cancelled = true; window.removeEventListener('focus', onFocus); document.removeEventListener('visibilitychange', onVisibility) }
   }, [])
 
+  // Kick off onboarding immediately after email verification succeeds
+  useEffect(() => {
+    if (emailVerified !== true) return
+    // Clear any legacy or per-user done flags to allow onboarding to start
+    try {
+      if (username) localStorage.removeItem(`onboarding_done:${username}`)
+      localStorage.removeItem('onboarding_done')
+    } catch {}
+    ;(async () => {
+      try{
+        const pr = await fetch('/api/profile_me', { credentials:'include' })
+        const pj = await pr.json().catch(()=>null)
+        if (pj?.success && pj.profile){
+          setEmailVerified(!!pj.profile.email_verified)
+          setUsername(pj.profile.username || '')
+          setDisplayName(pj.profile.display_name || pj.profile.username)
+          setSubscription((pj.profile.subscription || 'free') as string)
+        }
+        const parentDataResp = await fetch('/api/user_parent_community', { credentials:'include' })
+        const parentData = await parentDataResp.json().catch(()=>null)
+        const fetchedCommunities = (parentData?.success && Array.isArray(parentData.communities)) ? parentData.communities : []
+        setCommunities(fetchedCommunities)
+        setCommunitiesLoaded(true)
+        // Ensure the auto-prompt effect sees idle state
+        setOnbStep(0)
+      }catch{}
+    })()
+  }, [emailVerified, username])
+
   // Auto-prompt on first login: onboarding
   useEffect(() => {
     if (!communitiesLoaded) return
