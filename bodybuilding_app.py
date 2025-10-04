@@ -3867,7 +3867,8 @@ def delete_account():
             conn.commit()
         # Clear session
         session.clear()
-        return jsonify({'success': True})
+        # Return success with instruction to clear localStorage
+        return jsonify({'success': True, 'clear_storage': True})
     except Exception as e:
         try:
             logger.error(f"delete_account error for {username}: {e}")
@@ -5301,8 +5302,11 @@ def debug_onboarding():
                             onboarding_done:{username}
                         </code><br><br>
                         If this is set to "1", onboarding won't trigger!<br>
-                        <button onclick="clearOnboarding()" style="margin-top: 12px; padding: 10px 20px; background: #F44336; color: #fff; border: none; border-radius: 6px; font-weight: 600; cursor: pointer;">
+                        <a href="/clear_onboarding_storage" style="display: inline-block; margin-top: 12px; padding: 10px 20px; background: #F44336; color: #fff; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; text-decoration: none;">
                             Clear Onboarding Flag & Reload
+                        </a>
+                        <button onclick="clearOnboarding()" style="margin-top: 12px; margin-left: 10px; padding: 10px 20px; background: #666; color: #fff; border: none; border-radius: 6px; font-weight: 600; cursor: pointer;">
+                            Try JavaScript Method
                         </button>
                     </div>
                 </div>
@@ -5368,6 +5372,50 @@ def debug_onboarding():
             return html
     except Exception as e:
         return f"<html><body style='padding:20px; font-family:sans-serif;'><h1>Error</h1><pre>{str(e)}</pre></body></html>", 500
+
+@app.route('/clear_onboarding_storage', methods=['GET', 'POST'])
+def clear_onboarding_storage():
+    """Endpoint that returns JavaScript to clear localStorage - works even when button doesn't"""
+    return '''
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Clearing...</title>
+    </head>
+    <body style="background: #0b0b0b; color: #fff; font-family: sans-serif; padding: 20px; text-align: center;">
+        <h1>Clearing localStorage...</h1>
+        <p id="status">Please wait...</p>
+        <script>
+            try {
+                // Get all localStorage keys
+                const keys = Object.keys(localStorage);
+                let cleared = [];
+                
+                // Remove onboarding-related keys
+                keys.forEach(function(key) {
+                    if (key.includes('onboarding') || key.includes('first_login')) {
+                        localStorage.removeItem(key);
+                        cleared.push(key);
+                    }
+                });
+                
+                document.getElementById('status').innerHTML = 
+                    '✅ Cleared ' + cleared.length + ' keys:<br><br>' +
+                    cleared.join('<br>') + 
+                    '<br><br>Redirecting to dashboard in 2 seconds...';
+                
+                setTimeout(function() {
+                    window.location.href = '/premium_dashboard';
+                }, 2000);
+            } catch(e) {
+                document.getElementById('status').innerHTML = 
+                    '❌ Error: ' + e.message + '<br><br><a href="/premium_dashboard" style="color: #4db6ac;">Go to Dashboard</a>';
+            }
+        </script>
+    </body>
+    </html>
+    '''
 
 @app.route('/upload_logo', methods=['POST'])
 @login_required
