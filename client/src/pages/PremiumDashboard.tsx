@@ -23,6 +23,7 @@ export default function PremiumDashboard() {
   // Onboarding steps
   const [onbStep, setOnbStep] = useState<0|1|2|3>(0)
   const [displayName, setDisplayName] = useState('')
+  const [username, setUsername] = useState('')
   const [savingName, setSavingName] = useState(false)
   const [picFile, setPicFile] = useState<File | null>(null)
   const [picPreview, setPicPreview] = useState('')
@@ -58,6 +59,7 @@ export default function PremiumDashboard() {
           const me = await r.json().catch(()=>null)
           if (me?.success && me.profile){
             setEmailVerified(!!me.profile.email_verified)
+            setUsername(me.profile.username || '')
             setDisplayName(me.profile.display_name || me.profile.username)
           }
         }catch{ setEmailVerified(null) }
@@ -99,9 +101,10 @@ export default function PremiumDashboard() {
     if (emailVerified === false){ setShowVerifyFirstModal(true); return }
     if (localStorage.getItem('onboarding_done') === '1') return
     // Start onboarding sequence: if no display name or default equals username, ask; then picture; then join/create if no communities
-    if (!displayName || displayName.trim().length === 0){ setOnbStep(1); return }
+    const isDefaultName = !displayName || displayName.trim().length === 0 || displayName === username
+    if (isDefaultName){ setOnbStep(1); return }
     if (hasNoCommunities){ setOnbStep(3); return }
-  }, [communities, emailVerified])
+  }, [communitiesLoaded, communities, emailVerified, displayName, username])
 
   // Load available parent communities when opening create modal
   useEffect(() => {
