@@ -21,6 +21,7 @@ from pywebpush import webpush, WebPushException
 from hashlib import sha256
 from redis_cache import cache, cache_result, invalidate_user_cache, invalidate_community_cache, invalidate_message_cache
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
+from urllib.parse import urlencode
 try:
     from PIL import Image
     PIL_AVAILABLE = True
@@ -2372,8 +2373,8 @@ def index():
         if not username:
             logger.warning("Username missing or empty")
             if is_mobile:
-                # Redirect to React mobile page with error message
-                return redirect(url_for('index', error='Please enter a username!'))
+                # Redirect SPA to login with error
+                return redirect('/login?' + urlencode({'error': 'Please enter a username!'}))
             return render_template('index.html', error="Please enter a username!")
 
         # Validate username exists in database
@@ -2390,13 +2391,13 @@ def index():
             import traceback
             logger.error(f"Traceback: {traceback.format_exc()}")
             if is_mobile:
-                return redirect(url_for('index', error='Server error. Please try again.'))
+                return redirect('/login?' + urlencode({'error': 'Server error. Please try again.'}))
             return render_template('index.html', error=f"Database error: {str(e)}")
 
         if not exists:
             logger.warning(f"Username not found: {username}")
             if is_mobile:
-                return redirect(url_for('index', error='Username does not exist'))
+                return redirect('/login?' + urlencode({'error': 'Username does not exist'}))
             return render_template('index.html', error="Username does not exist")
 
         # Set long-lived session on initial username step
