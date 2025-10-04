@@ -311,7 +311,7 @@ export default function Signup(){
                     if (r.status === 403){ alert('Still unverified. Please click the link in your email.'); return }
                     const j = await r.json().catch(()=>null)
                     const verified = !!(j?.profile?.email_verified)
-                    if (verified){ navigate('/onboarding') }
+                    if (verified){ navigate('/premium_dashboard', { replace: true }) }
                     else { alert('Still unverified. Please check your email and try again.') }
                   }catch{ alert('Network error, please try again.') }
                 }}>I’ve verified</button>
