@@ -34,6 +34,7 @@ export default function PremiumDashboard() {
   const [showPremiumOnlyModal, setShowPremiumOnlyModal] = useState(false)
   const [emailVerifiedAt, setEmailVerifiedAt] = useState<string | null>(null)
   const [isRecentlyVerified, setIsRecentlyVerified] = useState(false)
+  const onboardingTriggeredRef = useRef(false)  // Track if onboarding was already triggered
   const doneKey = username ? `onboarding_done:${username}` : 'onboarding_done'
   const { setTitle } = useHeader()
   useEffect(() => { setTitle('Dashboard') }, [setTitle])
@@ -161,9 +162,6 @@ export default function PremiumDashboard() {
     }
   }, [emailVerifiedAt, emailVerified])
 
-  // Track if onboarding was already triggered to prevent re-triggering
-  const onboardingTriggeredRef = useRef(false)
-  
   // Auto-prompt onboarding for newly verified users with no communities/profile
   useEffect(() => {
     console.log('Onboarding trigger check:', { 
