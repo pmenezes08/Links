@@ -5165,6 +5165,143 @@ def api_profile_me():
         logger.error(f"Traceback: {traceback.format_exc()}")
         return jsonify({ 'success': False, 'error': 'server error' }), 500
 
+@app.route('/debug_onboarding')
+@login_required
+def debug_onboarding():
+    """Debug endpoint to check onboarding trigger conditions - visible on iOS"""
+    username = session['username']
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            # Get user data
+            c.execute("""
+                SELECT u.email_verified, u.email_verified_at,
+                       p.profile_picture
+                FROM users u
+                LEFT JOIN user_profiles p ON u.username = p.username
+                WHERE u.username = ?
+            """, (username,))
+            user = c.fetchone()
+            
+            # Get communities count
+            c.execute("""
+                SELECT COUNT(*) as cnt
+                FROM user_communities uc
+                JOIN users u ON uc.user_id = u.id
+                WHERE u.username = ?
+            """, (username,))
+            communities_row = c.fetchone()
+            communities_count = communities_row['cnt'] if hasattr(communities_row, 'keys') else communities_row[0]
+            
+            email_verified = bool(user['email_verified'] if hasattr(user, 'keys') else user[0]) if user else False
+            email_verified_at = (user['email_verified_at'] if hasattr(user, 'keys') else user[1]) if user else None
+            profile_picture = (user['profile_picture'] if hasattr(user, 'keys') else user[2]) if user else None
+            
+            # Calculate if recently verified
+            is_recently_verified = False
+            time_since_verification = None
+            if email_verified_at:
+                try:
+                    from datetime import datetime
+                    verified_time = datetime.fromisoformat(email_verified_at)
+                    now = datetime.now()
+                    diff = now - verified_time
+                    time_since_verification = f"{diff.total_seconds() / 3600:.1f} hours ago"
+                    is_recently_verified = diff.total_seconds() < (24 * 60 * 60)  # 24 hours
+                except:
+                    time_since_verification = "Error parsing timestamp"
+            
+            # Build HTML response
+            html = f"""
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <title>Onboarding Debug</title>
+                <style>
+                    body {{ 
+                        font-family: -apple-system, BlinkMacSystemFont, sans-serif; 
+                        padding: 20px; 
+                        background: #0b0b0b; 
+                        color: #fff;
+                        line-height: 1.6;
+                    }}
+                    .status {{ 
+                        padding: 15px; 
+                        margin: 10px 0; 
+                        border-radius: 8px; 
+                        border: 1px solid rgba(255,255,255,0.1);
+                    }}
+                    .pass {{ background: rgba(76, 175, 80, 0.2); border-color: #4CAF50; }}
+                    .fail {{ background: rgba(244, 67, 54, 0.2); border-color: #F44336; }}
+                    .label {{ font-weight: 600; color: #4db6ac; }}
+                    h1 {{ color: #4db6ac; font-size: 24px; }}
+                    .value {{ font-family: monospace; }}
+                    .refresh {{ 
+                        display: inline-block;
+                        margin-top: 20px;
+                        padding: 12px 24px;
+                        background: #4db6ac;
+                        color: #000;
+                        text-decoration: none;
+                        border-radius: 8px;
+                        font-weight: 600;
+                    }}
+                </style>
+            </head>
+            <body>
+                <h1>🔍 Onboarding Debug for {username}</h1>
+                
+                <div class="status {'pass' if email_verified else 'fail'}">
+                    <div class="label">Email Verified:</div>
+                    <div class="value">{'✅ YES' if email_verified else '❌ NO'}</div>
+                </div>
+                
+                <div class="status {'pass' if email_verified_at else 'fail'}">
+                    <div class="label">Email Verified At:</div>
+                    <div class="value">{email_verified_at or '❌ NULL (timestamp missing!)'}</div>
+                    {f'<div style="margin-top:8px; color:#9fb0b5;">{time_since_verification}</div>' if time_since_verification else ''}
+                </div>
+                
+                <div class="status {'pass' if is_recently_verified else 'fail'}">
+                    <div class="label">Recently Verified (< 24h):</div>
+                    <div class="value">{'✅ YES' if is_recently_verified else '❌ NO'}</div>
+                </div>
+                
+                <div class="status {'pass' if communities_count == 0 else 'fail'}">
+                    <div class="label">Communities Count:</div>
+                    <div class="value">{communities_count} {'✅ (needs to be 0)' if communities_count == 0 else '❌ (has communities)'}</div>
+                </div>
+                
+                <div class="status {'pass' if not profile_picture else 'fail'}">
+                    <div class="label">Has Profile Picture:</div>
+                    <div class="value">{'❌ YES (has picture)' if profile_picture else '✅ NO (no picture)'}</div>
+                    {f'<div style="margin-top:8px; color:#9fb0b5;">{profile_picture}</div>' if profile_picture else ''}
+                </div>
+                
+                <div style="margin-top: 30px; padding: 20px; background: rgba(77, 182, 172, 0.1); border-radius: 8px; border: 2px solid {'#4CAF50' if (email_verified and communities_count == 0 and not profile_picture and (is_recently_verified or not email_verified_at)) else '#F44336'};">
+                    <div class="label">Should Onboarding Trigger?</div>
+                    <div style="font-size: 32px; margin-top: 10px;">
+                        {('✅ YES' if (email_verified and communities_count == 0 and not profile_picture and (is_recently_verified or not email_verified_at)) else '❌ NO')}
+                    </div>
+                    <div style="margin-top: 15px; font-size: 14px; color: #9fb0b5;">
+                        Requirements:<br>
+                        • Email verified: {'✅' if email_verified else '❌'}<br>
+                        • No communities: {'✅' if communities_count == 0 else '❌'}<br>
+                        • No profile picture: {'✅' if not profile_picture else '❌'}<br>
+                        • Recently verified OR no timestamp: {'✅' if (is_recently_verified or not email_verified_at) else '❌'}
+                    </div>
+                </div>
+                
+                <a href="/debug_onboarding" class="refresh">🔄 Refresh</a>
+                <a href="/premium_dashboard" class="refresh" style="background: #333; margin-left: 10px;">Go to Dashboard</a>
+            </body>
+            </html>
+            """
+            return html
+    except Exception as e:
+        return f"<html><body style='padding:20px; font-family:sans-serif;'><h1>Error</h1><pre>{str(e)}</pre></body></html>", 500
+
 @app.route('/upload_logo', methods=['POST'])
 @login_required
 def upload_logo():
