@@ -3805,6 +3805,12 @@ def delete_account():
                 try: c.execute(f"DELETE FROM user_communities WHERE user_id={get_sql_placeholder()}", (user_id,))
                 except Exception: pass
 
+            # Reassign communities owned by this user to admin to avoid FK failures
+            try:
+                c.execute(f"UPDATE communities SET creator_username={get_sql_placeholder()} WHERE creator_username={get_sql_placeholder()}", ('admin', username))
+            except Exception:
+                pass
+
             # Finally, delete from users
             c.execute(f"DELETE FROM users WHERE username = {get_sql_placeholder()}", (username,))
             conn.commit()
