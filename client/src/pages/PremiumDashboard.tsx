@@ -232,6 +232,7 @@ export default function PremiumDashboard() {
             <div className="text-xs text-[#9fb0b5] mb-3">By default, your display name matches your username. You can change it now.</div>
             <input value={displayName} onChange={(e)=> setDisplayName(e.target.value)} className="w-full px-3 py-3 rounded-xl border border-white/10 bg-white/[0.04]" />
             <div className="mt-4 flex gap-2 justify-end">
+              <button className="px-4 py-2 rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> { localStorage.setItem('onboarding_done','1'); setOnbStep(0); navigate('/premium_dashboard') }}>Exit</button>
               <button className="px-4 py-2 rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> setOnbStep(2)} disabled={savingName}>Skip</button>
               <button className="px-4 py-2 rounded-lg bg-[#4db6ac] text-black font-semibold" disabled={savingName} onClick={async()=>{
                 try{
@@ -263,6 +264,7 @@ export default function PremiumDashboard() {
               </div>
             )}
             <div className="mt-4 flex gap-2 justify-end">
+              <button className="px-4 py-2 rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> { localStorage.setItem('onboarding_done','1'); setOnbStep(0); navigate('/premium_dashboard') }} disabled={uploadingPic}>Exit</button>
               <button className="px-4 py-2 rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> setOnbStep(3)} disabled={uploadingPic}>Skip</button>
               <button className="px-4 py-2 rounded-lg bg-[#4db6ac] text-black font-semibold" disabled={uploadingPic || !picFile} onClick={async()=>{
                 if (!picFile) return; setUploadingPic(true)
@@ -289,8 +291,9 @@ export default function PremiumDashboard() {
               <button className={`px-3 py-2 rounded-lg border ${showJoinModal ? 'border-[#4db6ac] text-[#4db6ac]' : 'border-white/15 text-white/80'}`} onClick={()=> { setShowJoinModal(true); setOnbStep(0) }}>Join</button>
               <button className={`px-3 py-2 rounded-lg border ${showCreateModal ? 'border-[#4db6ac] text-[#4db6ac]' : 'border-white/15 text-white/80'}`} onClick={()=> { setShowCreateModal(true); setOnbStep(0) }}>Create</button>
             </div>
-            <div className="flex justify-end">
-              <button className="px-4 py-2 rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> { localStorage.setItem('onboarding_done','1'); setOnbStep(0) }}>Skip for now</button>
+            <div className="flex justify-end gap-2">
+              <button className="px-4 py-2 rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> { localStorage.setItem('onboarding_done','1'); setOnbStep(0); navigate('/premium_dashboard') }}>Exit</button>
+              <button className="px-4 py-2 rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> { localStorage.setItem('onboarding_done','1'); setOnbStep(0); navigate('/premium_dashboard') }}>Skip for now</button>
             </div>
           </div>
         </div>
