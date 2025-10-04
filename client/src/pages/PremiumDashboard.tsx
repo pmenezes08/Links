@@ -140,8 +140,8 @@ export default function PremiumDashboard() {
     return () => { cancelled = true; window.removeEventListener('focus', onFocus); document.removeEventListener('visibilitychange', onVisibility) }
   }, [])
 
-  // Check if user was recently verified (within last 10 minutes)
-  // This prevents onboarding from re-triggering on page reload/re-login after long periods
+  // Check if user was recently verified (within last 24 hours)
+  // This gives plenty of time for users to complete signup and reach dashboard
   useEffect(() => {
     if (!emailVerifiedAt || !emailVerified) {
       setIsRecentlyVerified(false)
@@ -150,9 +150,9 @@ export default function PremiumDashboard() {
     try {
       const verifiedTime = new Date(emailVerifiedAt).getTime()
       const now = Date.now()
-      const tenMinutesAgo = now - (10 * 60 * 1000) // 10 minutes in milliseconds
-      const isRecent = verifiedTime > tenMinutesAgo
-      console.log('Onboarding check:', { emailVerifiedAt, verifiedTime, now, tenMinutesAgo, isRecent, diff: (now - verifiedTime) / 1000 + 's ago' })
+      const twentyFourHoursAgo = now - (24 * 60 * 60 * 1000) // 24 hours in milliseconds
+      const isRecent = verifiedTime > twentyFourHoursAgo
+      console.log('Onboarding check:', { emailVerifiedAt, verifiedTime, now, twentyFourHoursAgo, isRecent, diff: (now - verifiedTime) / 1000 + 's ago' })
       setIsRecentlyVerified(isRecent)
     } catch (err) {
       console.error('Error parsing email_verified_at:', err)
@@ -194,15 +194,15 @@ export default function PremiumDashboard() {
       return
     }
     
-    // ONLY trigger onboarding for users who recently verified (within 10 minutes)
-    // This prevents re-triggering for existing users on page reload
-    if (!isRecentlyVerified) {
-      console.log('Onboarding skipped: user not recently verified (verified more than 10 minutes ago)')
-      return
+    // Trigger onboarding for verified users with no communities/profile who:
+    // 1. Recently verified (within 24 hours) - primary path
+    // 2. OR have no verification timestamp yet (legacy users or edge cases) - fallback
+    if (isRecentlyVerified || !emailVerifiedAt) {
+      console.log('🎉 Triggering onboarding flow!', isRecentlyVerified ? '(recently verified)' : '(no timestamp - legacy user)')
+      setOnbStep(1)
+    } else {
+      console.log('Onboarding skipped: verified more than 24 hours ago')
     }
-    
-    console.log('🎉 Triggering onboarding flow! (recently verified user)')
-    setOnbStep(1)
   }, [communitiesLoaded, emailVerified, communities, hasProfilePic, username, onbStep, doneKey, isRecentlyVerified, emailVerifiedAt])
 
   // Load available parent communities when opening create modal
