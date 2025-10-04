@@ -3771,6 +3771,53 @@ def is_community_owner(username, community_id):
         logger.error(f"Error checking community owner: {e}")
     return False
 
+# --- Account deletion ---
+@app.route('/delete_account', methods=['POST'])
+@login_required
+def delete_account():
+    """Permanently delete the current user's account and related data where possible."""
+    username = session.get('username')
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            # Try to find user id for FK cleanups
+            c.execute(f"SELECT id FROM users WHERE username = {get_sql_placeholder()}", (username,))
+            row = c.fetchone()
+            user_id = None
+            if row is not None:
+                user_id = row['id'] if hasattr(row, 'keys') else row[0]
+
+            # Best-effort delete dependent rows with foreign keys referencing users/username/user_id
+            # Messages
+            try: c.execute(f"DELETE FROM messages WHERE sender={get_sql_placeholder()} OR receiver={get_sql_placeholder()}", (username, username))
+            except Exception: pass
+            # Notifications (if exists)
+            try: c.execute(f"DELETE FROM notifications WHERE username={get_sql_placeholder()}", (username,))
+            except Exception: pass
+            # Push subscriptions
+            try: c.execute(f"DELETE FROM push_subscriptions WHERE username={get_sql_placeholder()}", (username,))
+            except Exception: pass
+            # User profiles
+            try: c.execute(f"DELETE FROM user_profiles WHERE username={get_sql_placeholder()}", (username,))
+            except Exception: pass
+            # User communities by user_id
+            if user_id is not None:
+                try: c.execute(f"DELETE FROM user_communities WHERE user_id={get_sql_placeholder()}", (user_id,))
+                except Exception: pass
+
+            # Finally, delete from users
+            c.execute(f"DELETE FROM users WHERE username = {get_sql_placeholder()}", (username,))
+            conn.commit()
+        # Clear session
+        session.clear()
+        return jsonify({'success': True})
+    except Exception as e:
+        try:
+            logger.error(f"delete_account error for {username}: {e}")
+        except Exception:
+            pass
+        return jsonify({'success': False, 'error': 'server error'}), 500
+
 @app.route('/api/check_admin', methods=['GET'])
 @login_required
 def check_admin():
