@@ -342,15 +342,13 @@ export default function PremiumDashboard() {
       {onbStep === 1 && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center">
           <div className="w-[92%] max-w-md rounded-xl border border-white/10 bg-[#0b0f10] p-6">
-            <div className="text-center mb-6">
-              <div className="text-3xl font-bold mb-3">Welcome {firstName || 'to CPoint'}! 👋</div>
-              <div className="text-sm text-[#9fb0b5]">
-                Let's get your profile set up so you can make the most of your experience.
+            <div className="text-center">
+              <div className="text-2xl font-bold mb-3">Welcome {firstName || 'to CPoint'}! 👋</div>
+              <div className="text-sm text-[#9fb0b5] mb-6">
+                Let's get you set up in just a few steps. This will only take a minute.
               </div>
-            </div>
-            <div className="flex justify-center">
               <button 
-                className="px-6 py-3 text-base rounded-lg bg-[#4db6ac] text-black font-semibold hover:brightness-110 transition-all" 
+                className="w-full px-4 py-3 text-base rounded-lg bg-[#4db6ac] text-black font-semibold hover:brightness-110" 
                 onClick={() => setOnbStep(2)}
               >
                 Get Started
