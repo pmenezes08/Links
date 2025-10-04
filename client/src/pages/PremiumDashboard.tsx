@@ -21,8 +21,9 @@ export default function PremiumDashboard() {
   const [showVerifyFirstModal, setShowVerifyFirstModal] = useState(false)
   const [communitiesLoaded, setCommunitiesLoaded] = useState(false)
   // Onboarding steps
-  const [onbStep, setOnbStep] = useState<0|1|2|3>(0)
+  const [onbStep, setOnbStep] = useState<0|1|2|3|4>(0)
   const [displayName, setDisplayName] = useState('')
+  const [firstName, setFirstName] = useState('')
   const [username, setUsername] = useState('')
   const [subscription, setSubscription] = useState<string>('free')
   const [hasProfilePic, setHasProfilePic] = useState<boolean>(false)
@@ -77,6 +78,7 @@ export default function PremiumDashboard() {
             setEmailVerified(!!me.profile.email_verified)
             setEmailVerifiedAt(me.profile.email_verified_at || null)
             setUsername(me.profile.username || '')
+            setFirstName(me.profile.first_name || '')
             setDisplayName(me.profile.display_name || me.profile.username)
             setSubscription((me.profile.subscription || 'free') as string)
             setHasProfilePic(!!me.profile.profile_picture)
@@ -336,8 +338,30 @@ export default function PremiumDashboard() {
         </div>
       </div>
 
-      {/* Onboarding Step 1: Display Name */}
+      {/* Onboarding Step 1: Welcome */}
       {onbStep === 1 && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center">
+          <div className="w-[92%] max-w-md rounded-xl border border-white/10 bg-[#0b0f10] p-6">
+            <div className="text-center mb-6">
+              <div className="text-3xl font-bold mb-3">Welcome {firstName || 'to CPoint'}! 👋</div>
+              <div className="text-sm text-[#9fb0b5]">
+                Let's get your profile set up so you can make the most of your experience.
+              </div>
+            </div>
+            <div className="flex justify-center">
+              <button 
+                className="px-6 py-3 text-base rounded-lg bg-[#4db6ac] text-black font-semibold hover:brightness-110 transition-all" 
+                onClick={() => setOnbStep(2)}
+              >
+                Get Started
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Onboarding Step 2: Display Name */}
+      {onbStep === 2 && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center">
           <div className="w-[92%] max-w-md rounded-xl border border-white/10 bg-[#0b0f10] p-5">
             <div className="text-lg font-semibold mb-2">Choose your display name</div>
@@ -345,17 +369,17 @@ export default function PremiumDashboard() {
             <input value={displayName} onChange={(e)=> setDisplayName(e.target.value)} className="w-full px-3 py-3 rounded-xl border border-white/10 bg-white/[0.04]" />
             <div className="mt-4 flex gap-2 justify-between">
               <div>
-                {/* No back from first step; keep placeholder for spacing */}
+                <button className="px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> setOnbStep(1)}>Back</button>
               </div>
               <div className="flex gap-2">
               <button type="button" className="px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/[0.04]" onClick={(e)=> { e.preventDefault(); setConfirmExit(true) }}>Exit</button>
-              <button className="px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> setOnbStep(2)} disabled={savingName}>Skip</button>
+              <button className="px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> setOnbStep(3)} disabled={savingName}>Skip</button>
               <button className="px-3 py-2 text-sm rounded-lg bg-[#4db6ac] text-black font-semibold" disabled={savingName} onClick={async()=>{
                 try{
                   const fd = new FormData(); fd.append('display_name', displayName.trim())
                   const r = await fetch('/update_public_profile', { method:'POST', credentials:'include', body: fd })
                   if (!r.ok){ alert('Failed to save name'); return }
-                  setOnbStep(2)
+                  setOnbStep(3)
                 }catch{ alert('Network error') } finally { setSavingName(false) }
               }}>{savingName ? 'Saving…' : 'Save & continue'}</button>
               </div>
@@ -364,8 +388,8 @@ export default function PremiumDashboard() {
         </div>
       )}
 
-      {/* Onboarding Step 2: Profile Picture */}
-      {onbStep === 2 && (
+      {/* Onboarding Step 3: Profile Picture */}
+      {onbStep === 3 && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center">
           <div className="w-[92%] max-w-md rounded-xl border border-white/10 bg-[#0b0f10] p-5">
             <div className="text-lg font-semibold mb-2">Add a profile picture</div>
@@ -382,11 +406,11 @@ export default function PremiumDashboard() {
             )}
             <div className="mt-4 flex gap-2 justify-between">
               <div>
-                <button className="px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> setOnbStep(1)} disabled={uploadingPic}>Back</button>
+                <button className="px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> setOnbStep(2)} disabled={uploadingPic}>Back</button>
               </div>
               <div className="flex gap-2">
               <button type="button" className="px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/[0.04]" onClick={(e)=> { e.preventDefault(); setConfirmExit(true) }} disabled={uploadingPic}>Exit</button>
-              <button className="px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> setOnbStep(3)} disabled={uploadingPic}>Skip</button>
+              <button className="px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> setOnbStep(4)} disabled={uploadingPic}>Skip</button>
               <button className="px-3 py-2 text-sm rounded-lg bg-[#4db6ac] text-black font-semibold" disabled={uploadingPic || !picFile} onClick={async()=>{
                 if (!picFile) return; setUploadingPic(true)
                 try{
@@ -394,7 +418,7 @@ export default function PremiumDashboard() {
                   const r = await fetch('/upload_profile_picture', { method:'POST', credentials:'include', body: fd })
                   const j = await r.json().catch(()=>null)
                   if (!r.ok || !j?.success){ alert(j?.error || 'Failed to upload'); return }
-                  setOnbStep(3)
+                  setOnbStep(4)
                 }catch{ alert('Network error') } finally { setUploadingPic(false) }
               }}>{uploadingPic ? 'Uploading…' : 'Upload & continue'}</button>
               </div>
@@ -403,8 +427,8 @@ export default function PremiumDashboard() {
         </div>
       )}
 
-      {/* Onboarding Step 3: Join/Create Community */}
-      {onbStep === 3 && (
+      {/* Onboarding Step 4: Join/Create Community */}
+      {onbStep === 4 && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center">
           <div className="w-[92%] max-w-md rounded-xl border border-white/10 bg-[#0b0f10] p-5">
             <div className="text-lg font-semibold mb-2">Get started</div>
@@ -415,11 +439,11 @@ export default function PremiumDashboard() {
             </div>
             <div className="flex justify-between gap-2">
               <div>
-                <button className="px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> setOnbStep(2)}>Back</button>
+                <button className="px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> setOnbStep(3)}>Back</button>
               </div>
               <div className="flex gap-2">
                 <button type="button" className="px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/[0.04]" onClick={(e)=> { e.preventDefault(); setConfirmExit(true) }}>Exit</button>
-                <button className="px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> { setOnbStep(1) }}>Skip for now</button>
+                <button className="px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/[0.04]" onClick={handleExitConfirm}>Skip for now</button>
               </div>
             </div>
           </div>
