@@ -25,6 +25,7 @@ export default function PremiumDashboard() {
   const [displayName, setDisplayName] = useState('')
   const [username, setUsername] = useState('')
   const [subscription, setSubscription] = useState<string>('free')
+  const [hasProfilePic, setHasProfilePic] = useState<boolean>(false)
   const [savingName, setSavingName] = useState(false)
   const [picFile, setPicFile] = useState<File | null>(null)
   const [picPreview, setPicPreview] = useState('')
@@ -74,6 +75,7 @@ export default function PremiumDashboard() {
             setUsername(me.profile.username || '')
             setDisplayName(me.profile.display_name || me.profile.username)
             setSubscription((me.profile.subscription || 'free') as string)
+            setHasProfilePic(!!me.profile.profile_picture)
           }
         }catch{ setEmailVerified(null) }
 
@@ -117,6 +119,7 @@ export default function PremiumDashboard() {
           setEmailVerified(!!pj.profile.email_verified)
           setUsername(pj.profile.username || '')
           setDisplayName(pj.profile.display_name || pj.profile.username)
+          setHasProfilePic(!!pj.profile.profile_picture)
         }
         // Also refresh communities snapshot
         const parentDataResp = await fetch('/api/user_parent_community', { credentials:'include' })
@@ -182,27 +185,24 @@ export default function PremiumDashboard() {
     })()
   }, [emailVerified, username])
 
-  // Auto-prompt on first login: onboarding
+  // Auto-prompt onboarding for first-time login when: verified, no communities, no profile pic
   useEffect(() => {
     if (!communitiesLoaded) return
-    if (emailVerified === null) return
+    if (emailVerified !== true) return
     if (!Array.isArray(communities)) return
-    // Do not override if user is already in an onboarding modal
+    if (!username) return
     if (onbStep !== 0) return
-    // Respect explicit exit per user
-    try{
-      if (localStorage.getItem(doneKey) === '1') return
-    }catch{}
-    // Only start automatically immediately after verification
-    if (!justVerifiedRef.current) return
+    try{ if (localStorage.getItem(doneKey) === '1') return }catch{}
+    const firstLoginKey = `first_login_seen:${username}`
+    let isFirstLogin = true
+    try{ isFirstLogin = localStorage.getItem(firstLoginKey) !== '1' }catch{}
+    if (!isFirstLogin) return
     const hasNoCommunities = (communities || []).length === 0
-    if (emailVerified === false){ setShowVerifyFirstModal(true); return }
-    // Start onboarding sequence: if no display name or default equals username, ask; then picture; then join/create if no communities
-    const isDefaultName = !displayName || displayName.trim().length === 0 || displayName === username
-    if (isDefaultName){ setOnbStep(1); return }
-    if (hasNoCommunities){ setOnbStep(3); return }
-    justVerifiedRef.current = false
-  }, [communitiesLoaded, communities, emailVerified, displayName, username, onbStep])
+    if (hasNoCommunities && !hasProfilePic){
+      setOnbStep(1)
+      try{ localStorage.setItem(firstLoginKey, '1') }catch{}
+    }
+  }, [communitiesLoaded, emailVerified, communities, hasProfilePic, username, onbStep, doneKey])
 
   // Load available parent communities when opening create modal
   useEffect(() => {
