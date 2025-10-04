@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom'
 
 export default function Signup(){
   const navigate = useNavigate()
-  const requireVerification = (import.meta as any).env?.VITE_REQUIRE_VERIFICATION_CLIENT === 'true'
   const [formData, setFormData] = useState({
     username: '',
     first_name: '',
@@ -17,6 +16,12 @@ export default function Signup(){
   const [error, setError] = useState<string>('')
   const [debugInfo, setDebugInfo] = useState<string[]>([])
   const [showVerify, setShowVerify] = useState(false)
+  // Lock body scroll when verify modal is shown
+  if (typeof document !== 'undefined'){
+    try{
+      document.body.style.overflow = showVerify ? 'hidden' : ''
+    }catch{}
+  }
   // kept for legacy flows (desktop), unused in mobile flag path
   // legacy var kept removed
 
@@ -107,17 +112,8 @@ export default function Signup(){
             setError(j?.error || 'Registration failed')
           }
         } catch (jsonError) {
-          // Not JSON response. Under feature flag, lock on verify modal; otherwise keep legacy redirect.
-          if (requireVerification) {
-            setShowVerify(true)
-          } else {
-            console.log('Not JSON response, checking for redirect...')
-            if (r.redirected || r.status === 302) {
-              navigate('/premium_dashboard')
-            } else {
-              setError('Unexpected response format')
-            }
-          }
+          // Not JSON response. Always require verification: gate user in modal.
+          setShowVerify(true)
         }
       } else {
         // Error response
@@ -296,44 +292,30 @@ export default function Signup(){
 
         {/* Verify Email Modal */}
         {showVerify && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" aria-modal="true" role="dialog">
             <div className="w-[90%] max-w-md rounded-xl border border-white/10 bg-[#0b0b0b] p-4">
               <div className="text-lg font-semibold mb-1">Verify your email</div>
               <div className="text-sm text-white/80">We sent a verification link to your email. Please click the link to verify your account.</div>
-              {requireVerification ? (
-                <div className="mt-3 flex items-center gap-2">
-                  <button className="px-3 py-2 rounded-md border border-white/10" onClick={async ()=>{
-                    try{
-                      const r = await fetch('/resend_verification', { method:'POST', credentials:'include' })
-                      const j = await r.json().catch(()=>null)
-                      if (!j?.success) alert(j?.error || 'Failed to resend')
-                      else alert('Verification email sent')
-                    }catch{ alert('Network error') }
-                  }}>Resend verification</button>
-                  <button className="px-3 py-2 rounded-md bg-[#4db6ac] text-black" onClick={async ()=>{
-                    try{
-                      const r = await fetch('/api/profile_me', { credentials:'include' })
-                      if (r.status === 403){ alert('Still unverified. Please click the link in your email.'); return }
-                      const j = await r.json().catch(()=>null)
-                      const verified = !!(j?.profile?.email_verified)
-                      if (verified){ navigate('/onboarding') }
-                      else { alert('Still unverified. Please check your email and try again.') }
-                    }catch{ alert('Network error, please try again.') }
-                  }}>I’ve verified</button>
-                </div>
-              ) : (
-                <div className="mt-3 flex items-center gap-2">
-                  <button className="px-3 py-2 rounded-md bg-[#4db6ac] text-black" onClick={()=> { setShowVerify(false); window.location.href = '/verify_required' }}>OK</button>
-                  <button className="px-3 py-2 rounded-md border border-white/10" onClick={async ()=>{
-                    try{
-                      const r = await fetch('/resend_verification', { method:'POST', credentials:'include' })
-                      const j = await r.json().catch(()=>null)
-                      if (!j?.success) alert(j?.error || 'Failed to resend')
-                      else alert('Verification email sent')
-                    }catch{ alert('Network error') }
-                  }}>Resend email</button>
-                </div>
-              )}
+              <div className="mt-3 flex items-center gap-2">
+                <button className="px-3 py-2 rounded-md border border-white/10" onClick={async ()=>{
+                  try{
+                    const r = await fetch('/resend_verification', { method:'POST', credentials:'include' })
+                    const j = await r.json().catch(()=>null)
+                    if (!j?.success) alert(j?.error || 'Failed to resend')
+                    else alert('Verification email sent')
+                  }catch{ alert('Network error') }
+                }}>Resend verification</button>
+                <button className="px-3 py-2 rounded-md bg-[#4db6ac] text-black" onClick={async ()=>{
+                  try{
+                    const r = await fetch('/api/profile_me', { credentials:'include' })
+                    if (r.status === 403){ alert('Still unverified. Please click the link in your email.'); return }
+                    const j = await r.json().catch(()=>null)
+                    const verified = !!(j?.profile?.email_verified)
+                    if (verified){ navigate('/onboarding') }
+                    else { alert('Still unverified. Please check your email and try again.') }
+                  }catch{ alert('Network error, please try again.') }
+                }}>I’ve verified</button>
+              </div>
             </div>
           </div>
         )}
