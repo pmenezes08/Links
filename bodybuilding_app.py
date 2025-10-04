@@ -5311,11 +5311,23 @@ def debug_onboarding():
                 <a href="/premium_dashboard" class="refresh" style="background: #333; margin-left: 10px;">Go to Dashboard</a>
                 
                 <script>
+                    const currentUsername = '{username}';
+                    
                     function clearOnboarding() {{
                         try {{
-                            localStorage.removeItem('onboarding_done:{username}');
+                            // Clear all possible onboarding flags
+                            localStorage.removeItem('onboarding_done:' + currentUsername);
                             localStorage.removeItem('onboarding_done');
-                            alert('✅ Onboarding flags cleared! Reloading...');
+                            localStorage.removeItem('first_login_seen:' + currentUsername);
+                            
+                            // Clear all onboarding-related keys
+                            Object.keys(localStorage).forEach(function(key) {{
+                                if (key.startsWith('onboarding_') || key.startsWith('first_login_')) {{
+                                    localStorage.removeItem(key);
+                                }}
+                            }});
+                            
+                            alert('✅ All onboarding flags cleared! Redirecting to dashboard...');
                             window.location.href = '/premium_dashboard';
                         }} catch(e) {{
                             alert('Error: ' + e.message);
@@ -5325,15 +5337,29 @@ def debug_onboarding():
                     // Show current localStorage values on page load
                     window.addEventListener('DOMContentLoaded', function() {{
                         try {{
-                            const doneValue = localStorage.getItem('onboarding_done:{username}');
+                            const doneValue = localStorage.getItem('onboarding_done:' + currentUsername);
                             const legacyValue = localStorage.getItem('onboarding_done');
-                            if (doneValue || legacyValue) {{
+                            const firstLoginValue = localStorage.getItem('first_login_seen:' + currentUsername);
+                            
+                            console.log('localStorage check:', {{
+                                'onboarding_done:' + currentUsername: doneValue,
+                                'onboarding_done': legacyValue,
+                                'first_login_seen:' + currentUsername: firstLoginValue
+                            }});
+                            
+                            if (doneValue || legacyValue || firstLoginValue) {{
                                 const warning = document.createElement('div');
-                                warning.style = 'position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: #F44336; color: #fff; padding: 15px 20px; border-radius: 8px; z-index: 9999; box-shadow: 0 4px 12px rgba(0,0,0,0.3);';
-                                warning.innerHTML = '🚨 FOUND: localStorage blocking onboarding!<br>onboarding_done:{username} = ' + (doneValue || 'null') + '<br>Click "Clear Onboarding Flag" button below!';
+                                warning.style = 'position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: #F44336; color: #fff; padding: 15px 20px; border-radius: 8px; z-index: 9999; box-shadow: 0 4px 12px rgba(0,0,0,0.3); max-width: 90%; text-align: center;';
+                                warning.innerHTML = '🚨 FOUND: localStorage blocking onboarding!<br><br>' +
+                                    'onboarding_done:' + currentUsername + ' = ' + (doneValue || 'null') + '<br>' +
+                                    'onboarding_done = ' + (legacyValue || 'null') + '<br>' +
+                                    'first_login_seen:' + currentUsername + ' = ' + (firstLoginValue || 'null') + '<br><br>' +
+                                    'Click "Clear Onboarding Flag" button below!';
                                 document.body.appendChild(warning);
                             }}
-                        }} catch(e) {{}}
+                        }} catch(e) {{
+                            console.error('localStorage check error:', e);
+                        }}
                     }});
                 </script>
             </body>
