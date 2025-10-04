@@ -29,6 +29,7 @@ export default function PremiumDashboard() {
   const [picPreview, setPicPreview] = useState('')
   const [uploadingPic, setUploadingPic] = useState(false)
   const [confirmExit, setConfirmExit] = useState(false)
+  const doneKey = username ? `onboarding_done:${username}` : 'onboarding_done'
   const { setTitle } = useHeader()
   useEffect(() => { setTitle('Dashboard') }, [setTitle])
   const navigate = useNavigate()
@@ -129,8 +130,10 @@ export default function PremiumDashboard() {
     if (!Array.isArray(communities)) return
     // Do not override if user is already in an onboarding modal
     if (onbStep !== 0) return
-    // Respect explicit exit: do not relaunch onboarding once user opted out
-    if (localStorage.getItem('onboarding_done') === '1') return
+    // Respect explicit exit per user
+    try{
+      if (localStorage.getItem(doneKey) === '1') return
+    }catch{}
     const hasNoCommunities = (communities || []).length === 0
     if (emailVerified === false){ setShowVerifyFirstModal(true); return }
     // Start onboarding sequence: if no display name or default equals username, ask; then picture; then join/create if no communities
@@ -353,7 +356,7 @@ export default function PremiumDashboard() {
             <div className="text-xs text-[#9fb0b5] mb-4">You can update these details anytime later in your Profile page.</div>
             <div className="flex justify-end gap-2">
               <button type="button" className="px-4 py-2 rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> setConfirmExit(false)}>Cancel</button>
-              <button type="button" className="px-4 py-2 rounded-lg bg-[#4db6ac] text-black font-semibold" onClick={()=>{ try{ localStorage.setItem('onboarding_done','1') }catch{}; setOnbStep(0); setConfirmExit(false); window.location.href = '/premium_dashboard' }}>Exit</button>
+              <button type="button" className="px-4 py-2 rounded-lg bg-[#4db6ac] text-black font-semibold" onClick={()=>{ try{ localStorage.setItem(doneKey, '1') }catch{}; setOnbStep(0); setConfirmExit(false); window.location.href = '/premium_dashboard' }}>Exit</button>
             </div>
           </div>
         </div>
