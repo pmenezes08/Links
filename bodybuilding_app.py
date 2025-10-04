@@ -4993,7 +4993,9 @@ def verify_email():
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
-            c.execute("UPDATE users SET email_verified=1, email_verified_at=? WHERE email=?", (datetime.now().isoformat(), email))
+            # Only set email_verified_at on FIRST verification (when it's NULL)
+            # This ensures the timestamp always represents the first time they verified
+            c.execute("UPDATE users SET email_verified=1, email_verified_at=COALESCE(email_verified_at, ?) WHERE email=?", (datetime.now().isoformat(), email))
             conn.commit()
         return render_template('verification_result.html', success=True, message='Your email has been verified! You can close this tab.')
     except Exception as e:

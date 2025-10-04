@@ -18,6 +18,13 @@
     </style>
     <script>
         function closeTab(){ window.close(); }
+        
+        // Auto-redirect to dashboard after successful verification
+        {% if success %}
+        setTimeout(function() {
+            window.location.href = '/premium_dashboard';
+        }, 2000); // 2 second delay so user can see success message
+        {% endif %}
     </script>
  </head>
 <body>
