@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, useLocation, useNavigate } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import ErrorBoundary from './components/ErrorBoundary'
 import MobileLogin from './pages/MobileLogin'
@@ -44,6 +44,7 @@ function AppRoutes(){
   const [userMeta, setUserMeta] = useState<{ username?:string; displayName?:string|null; avatarUrl?:string|null }>({})
   const location = useLocation()
   const isFirstPage = location.pathname === '/'
+  const navigate = useNavigate()
   const [authLoaded, setAuthLoaded] = useState(false)
   const [isVerified, setIsVerified] = useState<boolean | null>(null)
   // const [hasCommunities, setHasCommunities] = useState<boolean | null>(null)
@@ -56,12 +57,16 @@ function AppRoutes(){
         const j = await r.json().catch(()=>null)
         if (j?.success && j.profile){
           setUserMeta({ username: j.profile.username, displayName: j.profile.display_name || j.profile.username, avatarUrl: j.profile.profile_picture || null })
+          // If already authenticated and at root, send to dashboard
+          if (location.pathname === '/'){
+            navigate('/premium_dashboard', { replace: true })
+          }
         }
         // First page is always the welcome page; defer community checks until after login
       }catch{}
     }
     load()
-  }, [])
+  }, [location.pathname, navigate])
 
   // (disabled) route change logging
 
@@ -110,7 +115,8 @@ function AppRoutes(){
       <div style={{ paddingTop: (() => { const p = location.pathname; return (isFirstPage || p === '/login' || p === '/signup' || p === '/signup_react') ? 0 : '56px' })() }}>
         <ErrorBoundary>
           <Routes>
-          <Route path="/" element={<OnboardingWelcome />} />
+          <Route path="/" element={<MobileLogin />} />
+          <Route path="/welcome" element={<OnboardingWelcome />} />
           <Route path="/login" element={<MobileLogin />} />
           <Route path="/signup" element={<Signup />} />
           <Route path="/signup_react" element={<Signup />} />
