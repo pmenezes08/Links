@@ -3838,7 +3838,9 @@ def delete_account():
             try: c.execute(f"DELETE FROM messages WHERE sender={get_sql_placeholder()} OR receiver={get_sql_placeholder()}", (username, username))
             except Exception: pass
             # Notifications (if exists)
-            try: c.execute(f"DELETE FROM notifications WHERE username={get_sql_placeholder()}", (username,))
+            try:
+                ph = get_sql_placeholder()
+                c.execute(f"DELETE FROM notifications WHERE user_id={ph} OR from_user={ph}", (username, username))
             except Exception: pass
             # Push subscriptions
             try: c.execute(f"DELETE FROM push_subscriptions WHERE username={get_sql_placeholder()}", (username,))
