@@ -41,7 +41,7 @@ const queryClient = new QueryClient()
 
 function AppRoutes(){
   const [title, setTitle] = useState('')
-  const [userMeta, setUserMeta] = useState<{ username?:string; avatarUrl?:string|null }>({})
+  const [userMeta, setUserMeta] = useState<{ username?:string; displayName?:string|null; avatarUrl?:string|null }>({})
   const location = useLocation()
   const isFirstPage = location.pathname === '/'
   const [authLoaded, setAuthLoaded] = useState(false)
@@ -55,7 +55,7 @@ function AppRoutes(){
         const r = await fetch('/api/profile_me', { credentials:'include' })
         const j = await r.json().catch(()=>null)
         if (j?.success && j.profile){
-          setUserMeta({ username: j.profile.username, avatarUrl: j.profile.profile_picture || null })
+          setUserMeta({ username: j.profile.username, displayName: j.profile.display_name || j.profile.username, avatarUrl: j.profile.profile_picture || null })
         }
         // First page is always the welcome page; defer community checks until after login
       }catch{}
@@ -105,7 +105,7 @@ function AppRoutes(){
         const hideHeader = isFirstPage || path === '/login' || path === '/signup' || path === '/signup_react'
         return !hideHeader
       })() && (
-        <HeaderBar title={title} username={userMeta.username} avatarUrl={userMeta.avatarUrl} />
+        <HeaderBar title={title} username={userMeta.username} displayName={userMeta.displayName || undefined} avatarUrl={userMeta.avatarUrl} />
       )}
       <div style={{ paddingTop: (() => { const p = location.pathname; return (isFirstPage || p === '/login' || p === '/signup' || p === '/signup_react') ? 0 : '56px' })() }}>
         <ErrorBoundary>

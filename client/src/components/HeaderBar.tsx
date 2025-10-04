@@ -5,10 +5,11 @@ import Avatar from './Avatar'
 type HeaderBarProps = {
   title: string
   username?: string
+  displayName?: string
   avatarUrl?: string | null
 }
 
-export default function HeaderBar({ title, username, avatarUrl }: HeaderBarProps){
+export default function HeaderBar({ title, username, displayName, avatarUrl }: HeaderBarProps){
   const navigate = useNavigate()
   const location = useLocation()
   const [menuOpen, setMenuOpen] = useState(false)
@@ -101,7 +102,7 @@ export default function HeaderBar({ title, username, avatarUrl }: HeaderBarProps
           <div className="w-[90%] h-full bg-black/95 backdrop-blur border-r border-white/10 p-4 space-y-3 text-white overflow-y-auto overscroll-contain">
             <div className="flex items-center gap-2 pb-2 border-b border-white/10">
               <Avatar username={username || ''} url={resolvedAvatar} size={40} />
-              <div className="font-medium truncate">{username || ''}</div>
+              <div className="font-medium truncate">{displayName || username || ''}</div>
             </div>
             {/* Install action moved to login page */}
             {username === 'admin' ? (
