@@ -2359,7 +2359,7 @@ def is_nutrition_related(message):
 # Routes
 @app.route('/', methods=['GET'])
 def index():
-    # Guests: mobile -> React welcome (via /welcome), desktop -> HTML
+    # Guests: mobile -> React welcome (serve SPA directly), desktop -> HTML
     # Logged-in users -> communities
     try:
         if session.get('username'):
@@ -2367,7 +2367,21 @@ def index():
         ua = request.headers.get('User-Agent', '')
         is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
         if is_mobile:
-            return redirect('/welcome')
+            try:
+                base_dir = os.path.dirname(os.path.abspath(__file__))
+                dist_dir = os.path.join(base_dir, 'client', 'dist')
+                index_path = os.path.join(dist_dir, 'index.html')
+                if os.path.exists(index_path):
+                    resp = send_from_directory(dist_dir, 'index.html')
+                    try:
+                        resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+                        resp.headers['Pragma'] = 'no-cache'
+                        resp.headers['Expires'] = '0'
+                    except Exception:
+                        pass
+                    return resp
+            except Exception as e:
+                logger.warning(f"React mobile index not available: {e}")
         return render_template('index.html')
     except Exception as e:
         logger.error(f"Error in / route: {str(e)}")

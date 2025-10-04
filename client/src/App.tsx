@@ -115,7 +115,7 @@ function AppRoutes(){
       <div style={{ paddingTop: (() => { const p = location.pathname; return (isFirstPage || p === '/welcome' || p === '/onboarding' || p === '/login' || p === '/signup' || p === '/signup_react') ? 0 : '56px' })() }}>
         <ErrorBoundary>
           <Routes>
-          <Route path="/" element={<MobileLogin />} />
+          <Route path="/" element={<OnboardingWelcome />} />
           <Route path="/welcome" element={<OnboardingWelcome />} />
           <Route path="/login" element={<MobileLogin />} />
           <Route path="/signup" element={<Signup />} />
