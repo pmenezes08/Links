@@ -20,6 +20,13 @@ export default function PremiumDashboard() {
   const [emailVerified, setEmailVerified] = useState<boolean|null>(null)
   const [showVerifyFirstModal, setShowVerifyFirstModal] = useState(false)
   const [communitiesLoaded, setCommunitiesLoaded] = useState(false)
+  // Onboarding steps
+  const [onbStep, setOnbStep] = useState<0|1|2|3>(0)
+  const [displayName, setDisplayName] = useState('')
+  const [savingName, setSavingName] = useState(false)
+  const [picFile, setPicFile] = useState<File | null>(null)
+  const [picPreview, setPicPreview] = useState('')
+  const [uploadingPic, setUploadingPic] = useState(false)
   const { setTitle } = useHeader()
   useEffect(() => { setTitle('Dashboard') }, [setTitle])
   const navigate = useNavigate()
@@ -49,7 +56,10 @@ export default function PremiumDashboard() {
           const r = await fetch('/api/profile_me', { credentials:'include' })
           if (r.status === 403){ navigate('/verify_required', { replace: true }); return }
           const me = await r.json().catch(()=>null)
-          if (me?.success && me.profile){ setEmailVerified(!!me.profile.email_verified) }
+          if (me?.success && me.profile){
+            setEmailVerified(!!me.profile.email_verified)
+            setDisplayName(me.profile.display_name || me.profile.username)
+          }
         }catch{ setEmailVerified(null) }
 
         // Check gym membership
@@ -80,23 +90,17 @@ export default function PremiumDashboard() {
     loadUserData()
   }, [])
 
-  // Auto-prompt on first login: if user has no communities, show join; if not verified, show verify-first
+  // Auto-prompt on first login: onboarding
   useEffect(() => {
     if (!communitiesLoaded) return
     if (emailVerified === null) return
     if (!Array.isArray(communities)) return
     const hasNoCommunities = (communities || []).length === 0
-    if (!hasNoCommunities) return
-    const k = 'welcome_join_prompt_shown'
-    try{
-      if (localStorage.getItem(k)) return
-    }catch{}
-    if (emailVerified === false){
-      setShowVerifyFirstModal(true)
-    } else {
-      setShowJoinModal(true)
-    }
-    try{ localStorage.setItem(k, '1') }catch{}
+    if (emailVerified === false){ setShowVerifyFirstModal(true); return }
+    if (localStorage.getItem('onboarding_done') === '1') return
+    // Start onboarding sequence: if no display name or default equals username, ask; then picture; then join/create if no communities
+    if (!displayName || displayName.trim().length === 0){ setOnbStep(1); return }
+    if (hasNoCommunities){ setOnbStep(3); return }
   }, [communities, emailVerified])
 
   // Load available parent communities when opening create modal
@@ -220,6 +224,77 @@ export default function PremiumDashboard() {
         </div>
       </div>
 
+      {/* Onboarding Step 1: Display Name */}
+      {onbStep === 1 && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center">
+          <div className="w-[92%] max-w-md rounded-xl border border-white/10 bg-[#0b0f10] p-5">
+            <div className="text-lg font-semibold mb-2">Choose your display name</div>
+            <div className="text-xs text-[#9fb0b5] mb-3">By default, your display name matches your username. You can change it now.</div>
+            <input value={displayName} onChange={(e)=> setDisplayName(e.target.value)} className="w-full px-3 py-3 rounded-xl border border-white/10 bg-white/[0.04]" />
+            <div className="mt-4 flex gap-2 justify-end">
+              <button className="px-4 py-2 rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> setOnbStep(2)} disabled={savingName}>Skip</button>
+              <button className="px-4 py-2 rounded-lg bg-[#4db6ac] text-black font-semibold" disabled={savingName} onClick={async()=>{
+                try{
+                  const fd = new FormData(); fd.append('display_name', displayName.trim())
+                  const r = await fetch('/update_public_profile', { method:'POST', credentials:'include', body: fd })
+                  if (!r.ok){ alert('Failed to save name'); return }
+                  setOnbStep(2)
+                }catch{ alert('Network error') } finally { setSavingName(false) }
+              }}>{savingName ? 'Saving…' : 'Save & continue'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Onboarding Step 2: Profile Picture */}
+      {onbStep === 2 && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center">
+          <div className="w-[92%] max-w-md rounded-xl border border-white/10 bg-[#0b0f10] p-5">
+            <div className="text-lg font-semibold mb-2">Add a profile picture</div>
+            <div className="text-xs text-[#9fb0b5] mb-3">Help people recognize you. You can change this later in your profile.</div>
+            <input type="file" accept="image/*" onChange={(e)=>{
+              const f = e.target.files && e.target.files[0] ? e.target.files[0] : null
+              setPicFile(f as any)
+              if (f){ try{ setPicPreview(URL.createObjectURL(f)) }catch{ setPicPreview('') } }
+            }} />
+            {picPreview && (
+              <div className="mt-3 flex items-center justify-center">
+                <img src={picPreview} className="max-h-40 rounded-lg border border-white/10" />
+              </div>
+            )}
+            <div className="mt-4 flex gap-2 justify-end">
+              <button className="px-4 py-2 rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> setOnbStep(3)} disabled={uploadingPic}>Skip</button>
+              <button className="px-4 py-2 rounded-lg bg-[#4db6ac] text-black font-semibold" disabled={uploadingPic || !picFile} onClick={async()=>{
+                if (!picFile) return; setUploadingPic(true)
+                try{
+                  const fd = new FormData(); fd.append('profile_picture', picFile)
+                  const r = await fetch('/upload_profile_picture', { method:'POST', credentials:'include', body: fd })
+                  const j = await r.json().catch(()=>null)
+                  if (!r.ok || !j?.success){ alert(j?.error || 'Failed to upload'); return }
+                  setOnbStep(3)
+                }catch{ alert('Network error') } finally { setUploadingPic(false) }
+              }}>{uploadingPic ? 'Uploading…' : 'Upload & continue'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Onboarding Step 3: Join/Create Community */}
+      {onbStep === 3 && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center">
+          <div className="w-[92%] max-w-md rounded-xl border border-white/10 bg-[#0b0f10] p-5">
+            <div className="text-lg font-semibold mb-2">Get started</div>
+            <div className="text-xs text-[#9fb0b5] mb-3">Join an existing community with a code, or create a new one.</div>
+            <div className="flex gap-2 mb-3">
+              <button className={`px-3 py-2 rounded-lg border ${showJoinModal ? 'border-[#4db6ac] text-[#4db6ac]' : 'border-white/15 text-white/80'}`} onClick={()=> { setShowJoinModal(true); setOnbStep(0) }}>Join</button>
+              <button className={`px-3 py-2 rounded-lg border ${showCreateModal ? 'border-[#4db6ac] text-[#4db6ac]' : 'border-white/15 text-white/80'}`} onClick={()=> { setShowCreateModal(true); setOnbStep(0) }}>Create</button>
+            </div>
+            <div className="flex justify-end">
+              <button className="px-4 py-2 rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> { localStorage.setItem('onboarding_done','1'); setOnbStep(0) }}>Skip for now</button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Verify email first modal */}
       {showVerifyFirstModal && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur flex items-center justify-center" onClick={(e)=> e.currentTarget===e.target && setShowVerifyFirstModal(false)}>

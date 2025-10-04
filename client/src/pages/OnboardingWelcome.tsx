@@ -1,30 +1,14 @@
 import { useEffect, useState } from 'react'
-import { useNavigate, useLocation } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 
 export default function OnboardingWelcome(){
   const navigate = useNavigate()
-  const location = useLocation()
-  const isOnboardingRoute = location.pathname.startsWith('/onboarding')
   const [cards, setCards] = useState<string[]>([])
   const [cardIndex, setCardIndex] = useState(0)
   const [touchStartX, setTouchStartX] = useState<number | null>(null)
   const [touchDeltaX, setTouchDeltaX] = useState(0)
   const [loaded, setLoaded] = useState(false)
-  // Onboarding step modals
-  const [step, setStep] = useState<number>(0)
-  const [displayName, setDisplayName] = useState('')
-  const [savingName, setSavingName] = useState(false)
-  const [nameError, setNameError] = useState('')
-  const [picFile, setPicFile] = useState<File | null>(null)
-  const [picPreview, setPicPreview] = useState('')
-  const [uploadingPic, setUploadingPic] = useState(false)
-  const [communityMode, setCommunityMode] = useState<'join'|'create'>('join')
-  const [joinCode, setJoinCode] = useState('')
-  const [communityName, setCommunityName] = useState('')
-  const [communityType, setCommunityType] = useState('general')
-  const [communityError, setCommunityError] = useState('')
-  const [isAuthed, setIsAuthed] = useState(false)
-  const [isVerified, setIsVerified] = useState<boolean | null>(null)
+  // Remove onboarding modals logic from welcome (now handled on dashboard)
   const sentences = [
     'Welcome to the network where ideas connect people',
     'Share your thoughts, images, and connect through meaningful conversations.',
@@ -61,35 +45,11 @@ export default function OnboardingWelcome(){
     })()
   }, [])
 
-  // Prefill display name with username
-  useEffect(() => {
-    ;(async () => {
-      try{
-        const r = await fetch('/api/profile_me', { credentials:'include' })
-        if (r.status === 200){
-          const j = await r.json().catch(()=>null)
-          setIsAuthed(true)
-          const verified = !!(j?.profile?.email_verified)
-          setIsVerified(verified)
-          if (j?.profile?.username){ setDisplayName(j.profile.username) }
-        } else {
-          setIsAuthed(false)
-          setIsVerified(null)
-        }
-      }catch{}
-    })()
-  }, [])
+  // No profile gating on welcome
 
   // Manual scroll only (no autoplay)
 
-  function onGetStarted(){
-    if (!isOnboardingRoute){
-      navigate('/login')
-      return
-    }
-    if (isAuthed && isVerified){ setStep(1) }
-    else { navigate('/login') }
-  }
+  function onGetStarted(){ navigate('/login') }
   // no join/profile picture or resend flows
 
   return (
@@ -145,110 +105,6 @@ export default function OnboardingWelcome(){
           <button className="px-4 py-3 rounded-xl bg-[#4db6ac] text-black font-semibold" onClick={onGetStarted}>Get started</button>
         </div>
 
-        {isOnboardingRoute && isAuthed && isVerified && step === 1 && (
-          <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center">
-            <div className="w-[92%] max-w-md rounded-xl border border-white/10 bg-[#0b0f10] p-5">
-              <div className="text-lg font-semibold mb-2">Choose your display name</div>
-              <div className="text-xs text-[#9fb0b5] mb-3">By default, your display name matches your username. You can change it now.</div>
-              <input value={displayName} onChange={(e)=> setDisplayName(e.target.value)} className="w-full px-3 py-3 rounded-xl border border-white/10 bg-white/[0.04]" />
-              {nameError && <div className="text-xs text-red-400 mt-2">{nameError}</div>}
-              <div className="mt-4 flex gap-2 justify-end">
-                <button className="px-4 py-2 rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> setStep(2)} disabled={savingName}>Skip</button>
-                <button className="px-4 py-2 rounded-lg bg-[#4db6ac] text-black font-semibold" disabled={savingName} onClick={async()=>{
-                  setNameError(''); setSavingName(true)
-                  try{
-                    const fd = new FormData()
-                    fd.append('display_name', displayName.trim())
-                    const r = await fetch('/update_public_profile', { method:'POST', credentials:'include', body: fd })
-                    if (!r.ok){ setNameError('Failed to save name'); return }
-                    setStep(2)
-                  }catch{ setNameError('Network error'); } finally { setSavingName(false) }
-                }}>{savingName ? 'Saving…' : 'Save & continue'}</button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {isOnboardingRoute && isAuthed && isVerified && step === 2 && (
-          <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center">
-            <div className="w-[92%] max-w-md rounded-xl border border-white/10 bg-[#0b0f10] p-5">
-              <div className="text-lg font-semibold mb-2">Add a profile picture</div>
-              <div className="text-xs text-[#9fb0b5] mb-3">Help people recognize you. You can change this later in your profile.</div>
-              <input type="file" accept="image/*" onChange={(e)=>{
-                const f = e.target.files && e.target.files[0] ? e.target.files[0] : null
-                setPicFile(f as any)
-                if (f){ try{ setPicPreview(URL.createObjectURL(f)) }catch{ setPicPreview('') } }
-              }} />
-              {picPreview && (
-                <div className="mt-3 flex items-center justify-center">
-                  <img src={picPreview} className="max-h-40 rounded-lg border border-white/10" />
-                </div>
-              )}
-              <div className="mt-4 flex gap-2 justify-end">
-                <button className="px-4 py-2 rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> setStep(3)} disabled={uploadingPic}>Skip</button>
-                <button className="px-4 py-2 rounded-lg bg-[#4db6ac] text-black font-semibold" disabled={uploadingPic || !picFile} onClick={async()=>{
-                  if (!picFile) return; setUploadingPic(true)
-                  try{
-                    const fd = new FormData(); fd.append('profile_picture', picFile)
-                    const r = await fetch('/upload_profile_picture', { method:'POST', credentials:'include', body: fd })
-                    const j = await r.json().catch(()=>null)
-                    if (!r.ok || !j?.success){ alert(j?.error || 'Failed to upload'); return }
-                    setStep(3)
-                  }catch{ alert('Network error') } finally { setUploadingPic(false) }
-                }}>{uploadingPic ? 'Uploading…' : 'Upload & continue'}</button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {isOnboardingRoute && isAuthed && isVerified && step === 3 && (
-          <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center">
-            <div className="w-[92%] max-w-md rounded-xl border border-white/10 bg-[#0b0f10] p-5">
-              <div className="text-lg font-semibold mb-2">Get started</div>
-              <div className="text-xs text-[#9fb0b5] mb-3">Join an existing community with a code, or create a new one.</div>
-              <div className="flex gap-2 mb-3">
-                <button className={`px-3 py-2 rounded-lg border ${communityMode==='join' ? 'border-[#4db6ac] text-[#4db6ac]' : 'border-white/15 text-white/80'}`} onClick={()=> setCommunityMode('join')}>Join</button>
-                <button className={`px-3 py-2 rounded-lg border ${communityMode==='create' ? 'border-[#4db6ac] text-[#4db6ac]' : 'border-white/15 text-white/80'}`} onClick={()=> setCommunityMode('create')}>Create</button>
-              </div>
-              {communityMode === 'join' ? (
-                <div>
-                  <input value={joinCode} onChange={(e)=> setJoinCode(e.target.value)} placeholder="Enter community code" className="w-full px-3 py-3 rounded-xl border border-white/10 bg-white/[0.04]" />
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  <input value={communityName} onChange={(e)=> setCommunityName(e.target.value)} placeholder="Community name" className="w-full px-3 py-3 rounded-xl border border-white/10 bg-white/[0.04]" />
-                  <select value={communityType} onChange={(e)=> setCommunityType(e.target.value)} className="w-full px-3 py-3 rounded-xl border border-white/10 bg-white/[0.04]">
-                    <option value="general">General</option>
-                    <option value="gym">Gym</option>
-                    <option value="crossfit">Crossfit</option>
-                  </select>
-                </div>
-              )}
-              {communityError && <div className="text-xs text-red-400 mt-2">{communityError}</div>}
-              <div className="mt-4 flex gap-2 justify-end">
-                <button className="px-4 py-2 rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> { setStep(0 as any); navigate('/premium_dashboard') }}>Skip</button>
-                <button className="px-4 py-2 rounded-lg bg-[#4db6ac] text-black font-semibold" onClick={async()=>{
-                  setCommunityError('')
-                  try{
-                    if (communityMode==='join'){
-                      const body = new URLSearchParams({ community_code: joinCode.trim() })
-                      const r = await fetch('/join_community', { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body })
-                      const j = await r.json().catch(()=>null)
-                      if (!r.ok || !j?.success){ setCommunityError(j?.error || 'Failed to join'); return }
-                      navigate(`/community_feed_react/${j.community_id}`)
-                    } else {
-                      const fd = new URLSearchParams({ name: communityName.trim(), type: communityType })
-                      const r = await fetch('/create_community', { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
-                      const j = await r.json().catch(()=>null)
-                      if (!r.ok || !j?.success){ setCommunityError(j?.error || 'Failed to create'); return }
-                      navigate(`/community_feed_react/${j.community_id}`)
-                    }
-                  }catch{ setCommunityError('Network error') }
-                }}>Continue</button>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   )
