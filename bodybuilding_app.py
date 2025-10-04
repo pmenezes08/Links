@@ -5119,7 +5119,7 @@ def api_profile_me():
         with get_db_connection() as conn:
             c = conn.cursor()
             c.execute("""
-                SELECT u.username, u.email, u.subscription, u.email_verified,
+                SELECT u.username, u.email, u.subscription, u.email_verified, u.email_verified_at,
                        p.display_name, p.bio, p.location, p.website,
                        p.instagram, p.twitter, p.profile_picture, p.cover_photo
                 FROM users u
@@ -5139,14 +5139,15 @@ def api_profile_me():
                 'email': get_val('email') if isinstance(row, dict) or hasattr(row, 'keys') else row[1],
                 'subscription': get_val('subscription') if isinstance(row, dict) or hasattr(row, 'keys') else row[2],
                 'email_verified': bool(get_val('email_verified') if isinstance(row, dict) or hasattr(row, 'keys') else row[3]),
-                'display_name': get_val('display_name') if isinstance(row, dict) or hasattr(row, 'keys') else row[4],
-                'bio': get_val('bio') if isinstance(row, dict) or hasattr(row, 'keys') else row[5],
-                'location': get_val('location') if isinstance(row, dict) or hasattr(row, 'keys') else row[6],
-                'website': get_val('website') if isinstance(row, dict) or hasattr(row, 'keys') else row[7],
-                'instagram': get_val('instagram') if isinstance(row, dict) or hasattr(row, 'keys') else row[8],
-                'twitter': get_val('twitter') if isinstance(row, dict) or hasattr(row, 'keys') else row[9],
-                'profile_picture': get_val('profile_picture') if isinstance(row, dict) or hasattr(row, 'keys') else row[10],
-                'cover_photo': get_val('cover_photo') if isinstance(row, dict) or hasattr(row, 'keys') else row[11],
+                'email_verified_at': get_val('email_verified_at') if isinstance(row, dict) or hasattr(row, 'keys') else row[4],
+                'display_name': get_val('display_name') if isinstance(row, dict) or hasattr(row, 'keys') else row[5],
+                'bio': get_val('bio') if isinstance(row, dict) or hasattr(row, 'keys') else row[6],
+                'location': get_val('location') if isinstance(row, dict) or hasattr(row, 'keys') else row[7],
+                'website': get_val('website') if isinstance(row, dict) or hasattr(row, 'keys') else row[8],
+                'instagram': get_val('instagram') if isinstance(row, dict) or hasattr(row, 'keys') else row[9],
+                'twitter': get_val('twitter') if isinstance(row, dict) or hasattr(row, 'keys') else row[10],
+                'profile_picture': get_val('profile_picture') if isinstance(row, dict) or hasattr(row, 'keys') else row[11],
+                'cover_photo': get_val('cover_photo') if isinstance(row, dict) or hasattr(row, 'keys') else row[12],
             }
             
             # Cache profile for faster future requests

@@ -32,6 +32,8 @@ export default function PremiumDashboard() {
   const [uploadingPic, setUploadingPic] = useState(false)
   const [confirmExit, setConfirmExit] = useState(false)
   const [showPremiumOnlyModal, setShowPremiumOnlyModal] = useState(false)
+  const [emailVerifiedAt, setEmailVerifiedAt] = useState<string | null>(null)
+  const [isRecentlyVerified, setIsRecentlyVerified] = useState(false)
   const doneKey = username ? `onboarding_done:${username}` : 'onboarding_done'
   const { setTitle } = useHeader()
   useEffect(() => { setTitle('Dashboard') }, [setTitle])
@@ -41,7 +43,6 @@ export default function PremiumDashboard() {
     try { localStorage.setItem(doneKey, '1') } catch {}
     setOnbStep(0)
     setConfirmExit(false)
-    try { (justVerifiedRef as any).current = false } catch {}
     window.location.href = '/premium_dashboard'
   }
 
@@ -72,6 +73,7 @@ export default function PremiumDashboard() {
           const me = await r.json().catch(()=>null)
           if (me?.success && me.profile){
             setEmailVerified(!!me.profile.email_verified)
+            setEmailVerifiedAt(me.profile.email_verified_at || null)
             setUsername(me.profile.username || '')
             setDisplayName(me.profile.display_name || me.profile.username)
             setSubscription((me.profile.subscription || 'free') as string)
@@ -117,6 +119,7 @@ export default function PremiumDashboard() {
         if (cancelled) return
         if (pj?.success && pj.profile){
           setEmailVerified(!!pj.profile.email_verified)
+          setEmailVerifiedAt(pj.profile.email_verified_at || null)
           setUsername(pj.profile.username || '')
           setDisplayName(pj.profile.display_name || pj.profile.username)
           setHasProfilePic(!!pj.profile.profile_picture)
@@ -137,72 +140,43 @@ export default function PremiumDashboard() {
     return () => { cancelled = true; window.removeEventListener('focus', onFocus); document.removeEventListener('visibilitychange', onVisibility) }
   }, [])
 
-  // Fire onboarding only on verified transition (false -> true)
-  const prevVerifiedRef = useRef<boolean | null>(null)
-  const justVerifiedRef = useRef<boolean>(false)
+  // Check if user was recently verified (within last 30 seconds)
+  // This prevents onboarding from re-triggering on page reload/re-login
   useEffect(() => {
-    const prev = prevVerifiedRef.current
-    // Initialize previous state on first run; do not treat as transition
-    if (prev === null){
-      prevVerifiedRef.current = emailVerified
+    if (!emailVerifiedAt || !emailVerified) {
+      setIsRecentlyVerified(false)
       return
     }
-    if (prev === false && emailVerified === true){
-      justVerifiedRef.current = true
-      try { localStorage.removeItem('onboarding_done') } catch {}
-    } else {
-      justVerifiedRef.current = false
-    }
-    prevVerifiedRef.current = emailVerified
-  }, [emailVerified])
-
-  // Kick off onboarding immediately after email verification succeeds
-  useEffect(() => {
-    if (emailVerified !== true) return
-    // Clear any legacy or per-user done flags to allow onboarding to start
     try {
-      if (username) localStorage.removeItem(`onboarding_done:${username}`)
-      localStorage.removeItem('onboarding_done')
-    } catch {}
-    ;(async () => {
-      try{
-        const pr = await fetch('/api/profile_me', { credentials:'include' })
-        const pj = await pr.json().catch(()=>null)
-        if (pj?.success && pj.profile){
-          setEmailVerified(!!pj.profile.email_verified)
-          setUsername(pj.profile.username || '')
-          setDisplayName(pj.profile.display_name || pj.profile.username)
-          setSubscription((pj.profile.subscription || 'free') as string)
-        }
-        const parentDataResp = await fetch('/api/user_parent_community', { credentials:'include' })
-        const parentData = await parentDataResp.json().catch(()=>null)
-        const fetchedCommunities = (parentData?.success && Array.isArray(parentData.communities)) ? parentData.communities : []
-        setCommunities(fetchedCommunities)
-        setCommunitiesLoaded(true)
-        // Ensure the auto-prompt effect sees idle state
-        setOnbStep(0)
-      }catch{}
-    })()
-  }, [emailVerified, username])
+      const verifiedTime = new Date(emailVerifiedAt).getTime()
+      const now = Date.now()
+      const thirtySecondsAgo = now - 30000
+      setIsRecentlyVerified(verifiedTime > thirtySecondsAgo)
+    } catch {
+      setIsRecentlyVerified(false)
+    }
+  }, [emailVerifiedAt, emailVerified])
 
-  // Auto-prompt onboarding for first-time login when: verified, no communities, no profile pic
+  // Auto-prompt onboarding for newly verified users with no communities/profile
   useEffect(() => {
     if (!communitiesLoaded) return
     if (emailVerified !== true) return
     if (!Array.isArray(communities)) return
     if (!username) return
     if (onbStep !== 0) return
+    
+    // Check if user has marked onboarding as done
     try{ if (localStorage.getItem(doneKey) === '1') return }catch{}
-    const firstLoginKey = `first_login_seen:${username}`
-    let isFirstLogin = true
-    try{ isFirstLogin = localStorage.getItem(firstLoginKey) !== '1' }catch{}
-    if (!isFirstLogin) return
+    
+    // Only trigger for RECENTLY verified users (within last 30 seconds)
+    // This prevents re-triggering on page reload/re-login
+    if (!isRecentlyVerified) return
+    
     const hasNoCommunities = (communities || []).length === 0
     if (hasNoCommunities && !hasProfilePic){
       setOnbStep(1)
-      try{ localStorage.setItem(firstLoginKey, '1') }catch{}
     }
-  }, [communitiesLoaded, emailVerified, communities, hasProfilePic, username, onbStep, doneKey])
+  }, [communitiesLoaded, emailVerified, communities, hasProfilePic, username, onbStep, doneKey, isRecentlyVerified])
 
   // Load available parent communities when opening create modal
   useEffect(() => {
