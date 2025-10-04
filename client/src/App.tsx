@@ -100,10 +100,14 @@ function AppRoutes(){
 
   return (
     <HeaderContext.Provider value={{ setTitle }}>
-      {(!isFirstPage && location.pathname !== '/login') && (
+      {(() => {
+        const path = location.pathname
+        const hideHeader = isFirstPage || path === '/login' || path === '/signup' || path === '/signup_react'
+        return !hideHeader
+      })() && (
         <HeaderBar title={title} username={userMeta.username} avatarUrl={userMeta.avatarUrl} />
       )}
-      <div style={{ paddingTop: (isFirstPage || location.pathname === '/login') ? 0 : '56px' }}>
+      <div style={{ paddingTop: (() => { const p = location.pathname; return (isFirstPage || p === '/login' || p === '/signup' || p === '/signup_react') ? 0 : '56px' })() }}>
         <ErrorBoundary>
           <Routes>
           <Route path="/" element={<OnboardingWelcome />} />
