@@ -293,7 +293,7 @@ export default function PremiumDashboard() {
             </div>
             <div className="flex justify-end gap-2">
               <button className="px-4 py-2 rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> { localStorage.setItem('onboarding_done','1'); setOnbStep(0); navigate('/premium_dashboard') }}>Exit</button>
-              <button className="px-4 py-2 rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> { localStorage.setItem('onboarding_done','1'); setOnbStep(0); navigate('/premium_dashboard') }}>Skip for now</button>
+              <button className="px-4 py-2 rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> { setOnbStep(1) }}>Skip for now</button>
             </div>
           </div>
         </div>
