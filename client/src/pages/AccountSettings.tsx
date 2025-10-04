@@ -192,10 +192,26 @@ export default function AccountSettings(){
                 <h3 className="text-sm font-semibold mb-2 text-red-400">Danger zone</h3>
                 <button type="button" className="px-4 py-2 rounded-md bg-red-600 text-white hover:bg-red-500" onClick={async()=>{
                   if (!confirm('Permanently delete your account? This cannot be undone.')) return
+                  
+                  // Show loading state
+                  const btn = event?.currentTarget as HTMLButtonElement
+                  const originalText = btn?.textContent || ''
+                  if (btn) btn.textContent = 'Deleting...'
+                  
                   try{
                     const r = await fetch('/delete_account', { method:'POST', credentials:'include' })
+                    
+                    if (!r.ok) {
+                      alert('Server error: ' + r.status)
+                      if (btn) btn.textContent = originalText
+                      return
+                    }
+                    
                     const j = await r.json().catch(()=>null)
+                    
                     if (j?.success){ 
+                      alert('✅ Account deleted successfully! Clearing data...')
+                      
                       // Clear all onboarding-related localStorage flags more aggressively
                       try {
                         const keys = Object.keys(localStorage)
@@ -209,19 +225,26 @@ export default function AccountSettings(){
                       } catch(e) { 
                         console.error('Failed to clear localStorage:', e) 
                       }
+                      
                       // Force redirect using replace to prevent back button
                       console.log('Redirecting to clear_onboarding_storage...')
-                      window.location.replace('/clear_onboarding_storage')
+                      setTimeout(() => {
+                        window.location.replace('/clear_onboarding_storage')
+                      }, 500)
                       return
                     }
+                    
                     if (j?.error) {
                       alert('Error: ' + j.error)
+                      if (btn) btn.textContent = originalText
                     } else {
                       alert('Failed to delete account. Please try again.')
+                      if (btn) btn.textContent = originalText
                     }
                   }catch(e){ 
                     console.error('Delete account error:', e)
-                    alert('Network error. Please try again.') 
+                    alert('Network error: ' + (e instanceof Error ? e.message : 'Please try again.'))
+                    if (btn) btn.textContent = originalText
                   }
                 }}>Delete Account</button>
               </div>
