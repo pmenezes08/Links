@@ -209,11 +209,20 @@ export default function AccountSettings(){
                       } catch(e) { 
                         console.error('Failed to clear localStorage:', e) 
                       }
-                      // Redirect to clear_onboarding_storage endpoint to ensure clearing
-                      window.location.href = '/clear_onboarding_storage'
+                      // Force redirect using replace to prevent back button
+                      console.log('Redirecting to clear_onboarding_storage...')
+                      window.location.replace('/clear_onboarding_storage')
+                      return
                     }
-                    else alert(j?.error || 'Failed to delete account')
-                  }catch{ alert('Failed to delete account') }
+                    if (j?.error) {
+                      alert('Error: ' + j.error)
+                    } else {
+                      alert('Failed to delete account. Please try again.')
+                    }
+                  }catch(e){ 
+                    console.error('Delete account error:', e)
+                    alert('Network error. Please try again.') 
+                  }
                 }}>Delete Account</button>
               </div>
             </div>

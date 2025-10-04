@@ -43,6 +43,7 @@ export default function PremiumDashboard() {
     try { localStorage.setItem(doneKey, '1') } catch {}
     setOnbStep(0)
     setConfirmExit(false)
+    onboardingTriggeredRef.current = false  // Reset so it can trigger again if flag is cleared
     window.location.href = '/premium_dashboard'
   }
 
@@ -160,6 +161,9 @@ export default function PremiumDashboard() {
     }
   }, [emailVerifiedAt, emailVerified])
 
+  // Track if onboarding was already triggered to prevent re-triggering
+  const onboardingTriggeredRef = useRef(false)
+  
   // Auto-prompt onboarding for newly verified users with no communities/profile
   useEffect(() => {
     console.log('Onboarding trigger check:', { 
@@ -173,8 +177,12 @@ export default function PremiumDashboard() {
       doneValue: localStorage.getItem(doneKey),
       isRecentlyVerified,
       hasProfilePic,
-      emailVerifiedAt
+      emailVerifiedAt,
+      alreadyTriggered: onboardingTriggeredRef.current
     })
+    
+    // Don't re-trigger if we already triggered onboarding in this session
+    if (onboardingTriggeredRef.current) return
     
     if (!communitiesLoaded) return
     if (emailVerified !== true) {
@@ -186,7 +194,10 @@ export default function PremiumDashboard() {
     if (onbStep !== 0) return
     
     // Check if user has marked onboarding as done
-    try{ if (localStorage.getItem(doneKey) === '1') return }catch{}
+    try{ if (localStorage.getItem(doneKey) === '1') {
+      console.log('Onboarding skipped: already completed')
+      return
+    }}catch{}
     
     const hasNoCommunities = (communities || []).length === 0
     if (!hasNoCommunities || hasProfilePic){
@@ -199,6 +210,7 @@ export default function PremiumDashboard() {
     // 2. OR have no verification timestamp yet (legacy users or edge cases) - fallback
     if (isRecentlyVerified || !emailVerifiedAt) {
       console.log('🎉 Triggering onboarding flow!', isRecentlyVerified ? '(recently verified)' : '(no timestamp - legacy user)')
+      onboardingTriggeredRef.current = true  // Mark as triggered
       setOnbStep(1)
     } else {
       console.log('Onboarding skipped: verified more than 24 hours ago')
