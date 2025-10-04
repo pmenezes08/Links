@@ -81,7 +81,7 @@ function AppRoutes(){
           if (!cancelled){
             // Avoid reload loops on public pages
             const p = window.location.pathname
-            const publicPaths = new Set(['/', '/login', '/signup', '/signup_react', '/verify_required'])
+            const publicPaths = new Set(['/', '/welcome', '/onboarding', '/login', '/signup', '/signup_react', '/verify_required'])
             if (!publicPaths.has(p)) {
               window.location.href = '/'
             } else {
@@ -107,12 +107,12 @@ function AppRoutes(){
     <HeaderContext.Provider value={{ setTitle }}>
       {(() => {
         const path = location.pathname
-        const hideHeader = isFirstPage || path === '/login' || path === '/signup' || path === '/signup_react'
+        const hideHeader = isFirstPage || path === '/welcome' || path === '/onboarding' || path === '/login' || path === '/signup' || path === '/signup_react'
         return !hideHeader
       })() && (
         <HeaderBar title={title} username={userMeta.username} displayName={userMeta.displayName || undefined} avatarUrl={userMeta.avatarUrl} />
       )}
-      <div style={{ paddingTop: (() => { const p = location.pathname; return (isFirstPage || p === '/login' || p === '/signup' || p === '/signup_react') ? 0 : '56px' })() }}>
+      <div style={{ paddingTop: (() => { const p = location.pathname; return (isFirstPage || p === '/welcome' || p === '/onboarding' || p === '/login' || p === '/signup' || p === '/signup_react') ? 0 : '56px' })() }}>
         <ErrorBoundary>
           <Routes>
           <Route path="/" element={<MobileLogin />} />
