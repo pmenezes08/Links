@@ -134,7 +134,7 @@ export default function MobileLogin() {
           </div>
         )}
 
-        <form method="POST" action="/" className="space-y-3">
+        <form method="POST" action="/login" className="space-y-3">
           <div>
             <input
               type="text"
