@@ -36,6 +36,14 @@ export default function PremiumDashboard() {
   useEffect(() => { setTitle('Dashboard') }, [setTitle])
   const navigate = useNavigate()
 
+  function handleExitConfirm(){
+    try { localStorage.setItem(doneKey, '1') } catch {}
+    setOnbStep(0)
+    setConfirmExit(false)
+    try { (justVerifiedRef as any).current = false } catch {}
+    window.location.href = '/premium_dashboard'
+  }
+
   async function fetchJson(url: string){
     try{
       const r = await fetch(url, { credentials:'include' })
@@ -131,9 +139,16 @@ export default function PremiumDashboard() {
   const justVerifiedRef = useRef<boolean>(false)
   useEffect(() => {
     const prev = prevVerifiedRef.current
-    if (prev !== true && emailVerified === true){
+    // Initialize previous state on first run; do not treat as transition
+    if (prev === null){
+      prevVerifiedRef.current = emailVerified
+      return
+    }
+    if (prev === false && emailVerified === true){
       justVerifiedRef.current = true
       try { localStorage.removeItem('onboarding_done') } catch {}
+    } else {
+      justVerifiedRef.current = false
     }
     prevVerifiedRef.current = emailVerified
   }, [emailVerified])
@@ -407,7 +422,7 @@ export default function PremiumDashboard() {
             <div className="text-xs text-[#9fb0b5] mb-4">You can update these details anytime later in your Profile page.</div>
             <div className="flex justify-end gap-2">
               <button type="button" className="px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> setConfirmExit(false)}>Cancel</button>
-              <button type="button" className="px-3 py-2 text-sm rounded-lg bg-[#4db6ac] text-black font-semibold" onClick={()=>{ try{ localStorage.setItem(doneKey, '1') }catch{}; setOnbStep(0); setConfirmExit(false); window.location.href = '/premium_dashboard' }}>Exit</button>
+              <button type="button" className="px-3 py-2 text-sm rounded-lg bg-[#4db6ac] text-black font-semibold" onClick={handleExitConfirm}>Exit</button>
             </div>
           </div>
         </div>
