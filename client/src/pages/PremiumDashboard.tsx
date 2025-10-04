@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useHeader } from '../contexts/HeaderContext'
 import { useNavigate } from 'react-router-dom'
 
@@ -30,6 +30,7 @@ export default function PremiumDashboard() {
   const [picPreview, setPicPreview] = useState('')
   const [uploadingPic, setUploadingPic] = useState(false)
   const [confirmExit, setConfirmExit] = useState(false)
+  const [showPremiumOnlyModal, setShowPremiumOnlyModal] = useState(false)
   const doneKey = username ? `onboarding_done:${username}` : 'onboarding_done'
   const { setTitle } = useHeader()
   useEffect(() => { setTitle('Dashboard') }, [setTitle])
@@ -125,6 +126,18 @@ export default function PremiumDashboard() {
     return () => { cancelled = true; window.removeEventListener('focus', onFocus); document.removeEventListener('visibilitychange', onVisibility) }
   }, [])
 
+  // Fire onboarding only on verified transition (false -> true)
+  const prevVerifiedRef = useRef<boolean | null>(null)
+  const justVerifiedRef = useRef<boolean>(false)
+  useEffect(() => {
+    const prev = prevVerifiedRef.current
+    if (prev !== true && emailVerified === true){
+      justVerifiedRef.current = true
+      try { localStorage.removeItem('onboarding_done') } catch {}
+    }
+    prevVerifiedRef.current = emailVerified
+  }, [emailVerified])
+
   // Kick off onboarding immediately after email verification succeeds
   useEffect(() => {
     if (emailVerified !== true) return
@@ -165,12 +178,15 @@ export default function PremiumDashboard() {
     try{
       if (localStorage.getItem(doneKey) === '1') return
     }catch{}
+    // Only start automatically immediately after verification
+    if (!justVerifiedRef.current) return
     const hasNoCommunities = (communities || []).length === 0
     if (emailVerified === false){ setShowVerifyFirstModal(true); return }
     // Start onboarding sequence: if no display name or default equals username, ask; then picture; then join/create if no communities
     const isDefaultName = !displayName || displayName.trim().length === 0 || displayName === username
     if (isDefaultName){ setOnbStep(1); return }
     if (hasNoCommunities){ setOnbStep(3); return }
+    justVerifiedRef.current = false
   }, [communitiesLoaded, communities, emailVerified, displayName, username, onbStep])
 
   // Load available parent communities when opening create modal
@@ -284,7 +300,7 @@ export default function PremiumDashboard() {
         <div className="fixed bottom-6 right-6 z-50">
           {fabOpen && (
             <div className="mb-2 rounded-xl border border-white/10 bg:black/80 backdrop-blur p-2 w-48 shadow-lg">
-              <button className="w-full text-left px-3 py-2 rounded-lg hover:bg:white/5 text-sm" onClick={()=> { setFabOpen(false); if ((subscription||'free').toLowerCase() !== 'premium') { alert('Community creation is only available for premium users.'); return } setShowCreateModal(true) }}>Create Community</button>
+          <button className="w-full text-left px-3 py-2 rounded-lg hover:bg:white/5 text-sm" onClick={()=> { setFabOpen(false); if ((subscription||'free').toLowerCase() !== 'premium') { setShowPremiumOnlyModal(true); return } setShowCreateModal(true) }}>Create Community</button>
               <button className="w-full text-left px-3 py-2 rounded-lg hover:bg:white/5 text-sm" onClick={()=> { setFabOpen(false); setShowJoinModal(true) }}>Join Community</button>
             </div>
           )}
@@ -369,7 +385,7 @@ export default function PremiumDashboard() {
             <div className="text-xs text-[#9fb0b5] mb-3">Join an existing community with a code, or create a new one.</div>
             <div className="flex gap-2 mb-3">
               <button className={`px-3 py-2 rounded-lg border ${showJoinModal ? 'border-[#4db6ac] text-[#4db6ac]' : 'border-white/15 text-white/80'}`} onClick={()=> { setShowJoinModal(true); setOnbStep(0) }}>Join</button>
-              <button className={`px-3 py-2 rounded-lg border ${showCreateModal ? 'border-[#4db6ac] text-[#4db6ac]' : 'border-white/15 text-white/80'}`} onClick={()=> { if ((subscription||'free').toLowerCase() !== 'premium') { alert('Community creation is only available for premium users.'); return } setShowCreateModal(true); setOnbStep(0) }}>Create</button>
+              <button className={`px-3 py-2 rounded-lg border ${showCreateModal ? 'border-[#4db6ac] text-[#4db6ac]' : 'border-white/15 text-white/80'}`} onClick={()=> { if ((subscription||'free').toLowerCase() !== 'premium') { setShowPremiumOnlyModal(true); return } setShowCreateModal(true); setOnbStep(0) }}>Create</button>
             </div>
             <div className="flex justify-between gap-2">
               <div>
@@ -465,6 +481,20 @@ export default function PremiumDashboard() {
                   }catch{ alert('Failed to create community') }
                 }}>Create</button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {showPremiumOnlyModal && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur flex items-center justify-center" onClick={(e)=> e.currentTarget===e.target && setShowPremiumOnlyModal(false)}>
+          <div className="w-[92%] max-w-sm rounded-2xl border border-white/10 bg-[#0b0f10] p-4">
+            <div className="flex items-center justify-between mb-2">
+              <div className="font-semibold text-sm">Premium feature</div>
+              <button className="p-2 rounded-md hover:bg:white/5" onClick={()=> setShowPremiumOnlyModal(false)} aria-label="Close"><i className="fa-solid fa-xmark"/></button>
+            </div>
+            <div className="text-sm text-[#9fb0b5] mb-3">Community creation is available for premium users only.</div>
+            <div className="flex items-center justify-end gap-2">
+              <button className="px-3 py-2 rounded-md bg:white/10 hover:bg:white/15 text-sm" onClick={()=> setShowPremiumOnlyModal(false)}>OK</button>
             </div>
           </div>
         </div>
