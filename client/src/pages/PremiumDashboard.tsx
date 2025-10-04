@@ -93,6 +93,35 @@ export default function PremiumDashboard() {
     loadUserData()
   }, [])
 
+  // Robust re-check after email verification: when tab regains focus or becomes visible
+  useEffect(() => {
+    let cancelled = false
+    async function refresh(){
+      try{
+        const pr = await fetch('/api/profile_me', { credentials:'include' })
+        const pj = await pr.json().catch(()=>null)
+        if (cancelled) return
+        if (pj?.success && pj.profile){
+          setEmailVerified(!!pj.profile.email_verified)
+          setUsername(pj.profile.username || '')
+          setDisplayName(pj.profile.display_name || pj.profile.username)
+        }
+        // Also refresh communities snapshot
+        const parentDataResp = await fetch('/api/user_parent_community', { credentials:'include' })
+        const parentData = await parentDataResp.json().catch(()=>null)
+        if (cancelled) return
+        const fetchedCommunities = (parentData?.success && Array.isArray(parentData.communities)) ? parentData.communities : []
+        setCommunities(fetchedCommunities)
+        setCommunitiesLoaded(true)
+      }catch{}
+    }
+    const onFocus = () => refresh()
+    const onVisibility = () => { if (document.visibilityState === 'visible') refresh() }
+    window.addEventListener('focus', onFocus)
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => { cancelled = true; window.removeEventListener('focus', onFocus); document.removeEventListener('visibilitychange', onVisibility) }
+  }, [])
+
   // Auto-prompt on first login: onboarding
   useEffect(() => {
     if (!communitiesLoaded) return

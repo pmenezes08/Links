@@ -3845,6 +3845,9 @@ def delete_account():
             # Push subscriptions
             try: c.execute(f"DELETE FROM push_subscriptions WHERE username={get_sql_placeholder()}", (username,))
             except Exception: pass
+            # Remember tokens (FK to users.username)
+            try: c.execute(f"DELETE FROM remember_tokens WHERE username={get_sql_placeholder()}", (username,))
+            except Exception: pass
             # User profiles
             try: c.execute(f"DELETE FROM user_profiles WHERE username={get_sql_placeholder()}", (username,))
             except Exception: pass
