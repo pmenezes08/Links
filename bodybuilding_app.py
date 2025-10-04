@@ -38,10 +38,10 @@ def login_required(f):
     def decorated_function(*args, **kwargs):
         if 'username' not in session:
             try:
-                logger.info("No username in session, redirecting to index")
+                logger.info("No username in session, redirecting to login")
             except Exception:
                 pass
-            return redirect(url_for('index'))
+            return redirect(url_for('login'))
         return f(*args, **kwargs)
     return decorated_function
 
@@ -2357,57 +2357,13 @@ def is_nutrition_related(message):
     return any(keyword in message.lower() for keyword in nutrition_keywords)
 
 # Routes
-@app.route('/', methods=['GET', 'POST'])
-# @csrf.exempt
+@app.route('/', methods=['GET'])
 def index():
-    # Reduce verbose logging in production for index/login flows
-    # Debug prints removed
-    
-    if request.method == 'POST':
-        username = (request.form.get('username') or '').strip()
-
-        # Determine if request is from a mobile device
-        ua = request.headers.get('User-Agent', '')
-        is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
-
-        if not username:
-            logger.warning("Username missing or empty")
-            if is_mobile:
-                # Redirect SPA to login with error
-                return redirect('/login?' + urlencode({'error': 'Please enter a username!'}))
-            return render_template('index.html', error="Please enter a username!")
-
-        # Validate username exists in database
-        try:
-            with get_db_connection() as conn:
-                c = conn.cursor()
-                # Use the automatic placeholder conversion
-                placeholder = get_sql_placeholder()
-                c.execute(f"SELECT 1 FROM users WHERE username={placeholder} LIMIT 1", (username,))
-                result = c.fetchone()
-                exists = result is not None
-        except Exception as e:
-            logger.error(f"Database error validating username '{username}': {e}")
-            import traceback
-            logger.error(f"Traceback: {traceback.format_exc()}")
-            if is_mobile:
-                return redirect('/login?' + urlencode({'error': 'Server error. Please try again.'}))
-            return render_template('index.html', error=f"Database error: {str(e)}")
-
-        if not exists:
-            logger.warning(f"Username not found: {username}")
-            if is_mobile:
-                return redirect('/login?' + urlencode({'error': 'Username does not exist'}))
-            return render_template('index.html', error="Username does not exist")
-
-        # Set long-lived session on initial username step
-        session.permanent = True
-        session['username'] = username
-        session.permanent = True  # Make session persist
-        session.modified = True  # Force session to be saved
-        return redirect(url_for('login_password'))
-    # GET request: Desktop -> HTML template, Mobile -> React (if available)
+    # Guests see the welcome page. Logged-in users go to communities.
     try:
+        if session.get('username'):
+            return redirect(url_for('communities'))
+        # For mobile, still allow React SPA if present, else render welcome (index.html)
         ua = request.headers.get('User-Agent', '')
         is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
         if is_mobile:
@@ -2429,6 +2385,45 @@ def index():
         return render_template('index.html')
     except Exception as e:
         logger.error(f"Error in / route: {str(e)}")
+        return ("Internal Server Error", 500)
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    # Dedicated login route: handles username submission -> login_password
+    try:
+        if request.method == 'GET':
+            if session.get('username'):
+                return redirect(url_for('login_password'))
+            return render_template('index.html')
+        # POST
+        username = (request.form.get('username') or '').strip()
+        ua = request.headers.get('User-Agent', '')
+        is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
+        if not username:
+            if is_mobile:
+                return redirect('/login?' + urlencode({'error': 'Please enter a username!'}))
+            return render_template('index.html', error="Please enter a username!")
+        try:
+            with get_db_connection() as conn:
+                c = conn.cursor()
+                placeholder = get_sql_placeholder()
+                c.execute(f"SELECT 1 FROM users WHERE username={placeholder} LIMIT 1", (username,))
+                exists = c.fetchone() is not None
+        except Exception as e:
+            logger.error(f"Database error validating username '{username}': {e}")
+            if is_mobile:
+                return redirect('/login?' + urlencode({'error': 'Server error. Please try again.'}))
+            return render_template('index.html', error=f"Database error: {str(e)}")
+        if not exists:
+            if is_mobile:
+                return redirect('/login?' + urlencode({'error': 'Username does not exist'}))
+            return render_template('index.html', error="Username does not exist")
+        session.permanent = True
+        session['username'] = username
+        session.modified = True
+        return redirect(url_for('login_password'))
+    except Exception as e:
+        logger.error(f"Error in /login: {e}")
         return ("Internal Server Error", 500)
 
 @app.route('/login_x')
