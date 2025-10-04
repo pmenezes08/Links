@@ -2596,32 +2596,7 @@ def signup():
             except Exception:
                 pass
 
-@app.route('/login')
-def mobile_login_route():
-    """Serve SPA login route so client-side can show errors without 404."""
-    try:
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        dist_dir = os.path.join(base_dir, 'client', 'dist')
-        index_path = os.path.join(dist_dir, 'index.html')
-        if os.path.exists(index_path):
-            resp = send_from_directory(dist_dir, 'index.html')
-            try:
-                resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-                resp.headers['Pragma'] = 'no-cache'
-                resp.headers['Expires'] = '0'
-            except Exception:
-                pass
-            return resp
-    except Exception as e:
-        try:
-            logger.warning(f"React mobile login not available: {e}")
-        except Exception:
-            pass
-    # Fallback to server-rendered login page
-    try:
-        return render_template('index.html', error=request.args.get('error'))
-    except Exception:
-        return redirect(url_for('index', error=request.args.get('error')))
+            
 
             # Log the user in automatically and persist session
             session.permanent = True
