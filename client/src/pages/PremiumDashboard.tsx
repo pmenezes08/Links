@@ -24,6 +24,7 @@ export default function PremiumDashboard() {
   const [onbStep, setOnbStep] = useState<0|1|2|3>(0)
   const [displayName, setDisplayName] = useState('')
   const [username, setUsername] = useState('')
+  const [subscription, setSubscription] = useState<string>('free')
   const [savingName, setSavingName] = useState(false)
   const [picFile, setPicFile] = useState<File | null>(null)
   const [picPreview, setPicPreview] = useState('')
@@ -63,6 +64,7 @@ export default function PremiumDashboard() {
             setEmailVerified(!!me.profile.email_verified)
             setUsername(me.profile.username || '')
             setDisplayName(me.profile.display_name || me.profile.username)
+            setSubscription((me.profile.subscription || 'free') as string)
           }
         }catch{ setEmailVerified(null) }
 
@@ -253,7 +255,7 @@ export default function PremiumDashboard() {
         <div className="fixed bottom-6 right-6 z-50">
           {fabOpen && (
             <div className="mb-2 rounded-xl border border-white/10 bg:black/80 backdrop-blur p-2 w-48 shadow-lg">
-              <button className="w-full text-left px-3 py-2 rounded-lg hover:bg:white/5 text-sm" onClick={()=> { setFabOpen(false); setShowCreateModal(true) }}>Create Community</button>
+              <button className="w-full text-left px-3 py-2 rounded-lg hover:bg:white/5 text-sm" onClick={()=> { setFabOpen(false); if ((subscription||'free').toLowerCase() !== 'premium') { alert('Community creation is only available for premium users.'); return } setShowCreateModal(true) }}>Create Community</button>
               <button className="w-full text-left px-3 py-2 rounded-lg hover:bg:white/5 text-sm" onClick={()=> { setFabOpen(false); setShowJoinModal(true) }}>Join Community</button>
             </div>
           )}
@@ -338,7 +340,7 @@ export default function PremiumDashboard() {
             <div className="text-xs text-[#9fb0b5] mb-3">Join an existing community with a code, or create a new one.</div>
             <div className="flex gap-2 mb-3">
               <button className={`px-3 py-2 rounded-lg border ${showJoinModal ? 'border-[#4db6ac] text-[#4db6ac]' : 'border-white/15 text-white/80'}`} onClick={()=> { setShowJoinModal(true); setOnbStep(0) }}>Join</button>
-              <button className={`px-3 py-2 rounded-lg border ${showCreateModal ? 'border-[#4db6ac] text-[#4db6ac]' : 'border-white/15 text-white/80'}`} onClick={()=> { setShowCreateModal(true); setOnbStep(0) }}>Create</button>
+              <button className={`px-3 py-2 rounded-lg border ${showCreateModal ? 'border-[#4db6ac] text-[#4db6ac]' : 'border-white/15 text-white/80'}`} onClick={()=> { if ((subscription||'free').toLowerCase() !== 'premium') { alert('Community creation is only available for premium users.'); return } setShowCreateModal(true); setOnbStep(0) }}>Create</button>
             </div>
             <div className="flex justify-between gap-2">
               <div>
