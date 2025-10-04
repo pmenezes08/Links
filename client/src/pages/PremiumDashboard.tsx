@@ -160,7 +160,7 @@ export default function PremiumDashboard() {
     }
   }, [emailVerifiedAt, emailVerified])
 
-  // Auto-prompt onboarding for newly verified users with no communities/profile
+  // Auto-prompt onboarding for new users with no communities/profile
   useEffect(() => {
     console.log('Onboarding trigger check:', { 
       communitiesLoaded, 
@@ -172,11 +172,11 @@ export default function PremiumDashboard() {
       doneKey,
       doneValue: localStorage.getItem(doneKey),
       isRecentlyVerified,
-      hasProfilePic 
+      hasProfilePic,
+      emailVerifiedAt
     })
     
     if (!communitiesLoaded) return
-    if (emailVerified !== true) return
     if (!Array.isArray(communities)) return
     if (!username) return
     if (onbStep !== 0) return
@@ -184,21 +184,26 @@ export default function PremiumDashboard() {
     // Check if user has marked onboarding as done
     try{ if (localStorage.getItem(doneKey) === '1') return }catch{}
     
-    // Only trigger for RECENTLY verified users (within last 10 minutes)
-    // This prevents re-triggering on page reload/re-login
-    if (!isRecentlyVerified) {
-      console.log('Onboarding skipped: user not recently verified')
+    const hasNoCommunities = (communities || []).length === 0
+    if (!hasNoCommunities || hasProfilePic){
+      console.log('Onboarding not triggered:', { hasNoCommunities, hasProfilePic })
       return
     }
     
-    const hasNoCommunities = (communities || []).length === 0
-    if (hasNoCommunities && !hasProfilePic){
-      console.log('🎉 Triggering onboarding flow!')
+    // Trigger onboarding for new users who:
+    // 1. Recently verified (within 10 minutes) - primary path
+    // 2. OR never verified but have no communities/profile - fallback for when verification isn't enforced
+    if (isRecentlyVerified) {
+      console.log('🎉 Triggering onboarding flow! (recently verified)')
+      setOnbStep(1)
+    } else if (emailVerified !== true && !emailVerifiedAt) {
+      // User hasn't verified yet but is logged in - show onboarding anyway
+      console.log('🎉 Triggering onboarding flow! (unverified new user)')
       setOnbStep(1)
     } else {
-      console.log('Onboarding not triggered:', { hasNoCommunities, hasProfilePic })
+      console.log('Onboarding skipped: user not recently verified and already has verified account')
     }
-  }, [communitiesLoaded, emailVerified, communities, hasProfilePic, username, onbStep, doneKey, isRecentlyVerified])
+  }, [communitiesLoaded, emailVerified, communities, hasProfilePic, username, onbStep, doneKey, isRecentlyVerified, emailVerifiedAt])
 
   // Load available parent communities when opening create modal
   useEffect(() => {
