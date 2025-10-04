@@ -99,7 +99,6 @@ export default function PremiumDashboard() {
     if (!Array.isArray(communities)) return
     const hasNoCommunities = (communities || []).length === 0
     if (emailVerified === false){ setShowVerifyFirstModal(true); return }
-    if (localStorage.getItem('onboarding_done') === '1') return
     // Start onboarding sequence: if no display name or default equals username, ask; then picture; then join/create if no communities
     const isDefaultName = !displayName || displayName.trim().length === 0 || displayName === username
     if (isDefaultName){ setOnbStep(1); return }
