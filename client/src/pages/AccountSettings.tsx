@@ -195,7 +195,19 @@ export default function AccountSettings(){
                   try{
                     const r = await fetch('/delete_account', { method:'POST', credentials:'include' })
                     const j = await r.json().catch(()=>null)
-                    if (j?.success){ window.location.href = '/logout' }
+                    if (j?.success){ 
+                      // Clear all onboarding-related localStorage flags
+                      try {
+                        localStorage.removeItem('onboarding_done')
+                        // Clear all user-specific onboarding flags
+                        Object.keys(localStorage).forEach(key => {
+                          if (key.startsWith('onboarding_done:') || key.startsWith('first_login_seen:')) {
+                            localStorage.removeItem(key)
+                          }
+                        })
+                      } catch(e) { console.error('Failed to clear localStorage:', e) }
+                      window.location.href = '/logout' 
+                    }
                     else alert(j?.error || 'Failed to delete account')
                   }catch{ alert('Failed to delete account') }
                 }}>Delete Account</button>
