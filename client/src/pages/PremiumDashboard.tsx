@@ -233,7 +233,11 @@ export default function PremiumDashboard() {
             <div className="text-lg font-semibold mb-2">Choose your display name</div>
             <div className="text-xs text-[#9fb0b5] mb-3">By default, your display name matches your username. You can change it now.</div>
             <input value={displayName} onChange={(e)=> setDisplayName(e.target.value)} className="w-full px-3 py-3 rounded-xl border border-white/10 bg-white/[0.04]" />
-            <div className="mt-4 flex gap-2 justify-end">
+            <div className="mt-4 flex gap-2 justify-between">
+              <div>
+                {/* No back from first step; keep placeholder for spacing */}
+              </div>
+              <div className="flex gap-2">
               <button className="px-4 py-2 rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> { localStorage.setItem('onboarding_done','1'); setOnbStep(0); navigate('/premium_dashboard') }}>Exit</button>
               <button className="px-4 py-2 rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> setOnbStep(2)} disabled={savingName}>Skip</button>
               <button className="px-4 py-2 rounded-lg bg-[#4db6ac] text-black font-semibold" disabled={savingName} onClick={async()=>{
@@ -244,6 +248,7 @@ export default function PremiumDashboard() {
                   setOnbStep(2)
                 }catch{ alert('Network error') } finally { setSavingName(false) }
               }}>{savingName ? 'Saving…' : 'Save & continue'}</button>
+              </div>
             </div>
           </div>
         </div>
@@ -265,7 +270,11 @@ export default function PremiumDashboard() {
                 <img src={picPreview} className="max-h-40 rounded-lg border border-white/10" />
               </div>
             )}
-            <div className="mt-4 flex gap-2 justify-end">
+            <div className="mt-4 flex gap-2 justify-between">
+              <div>
+                <button className="px-4 py-2 rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> setOnbStep(1)} disabled={uploadingPic}>Back</button>
+              </div>
+              <div className="flex gap-2">
               <button className="px-4 py-2 rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> { localStorage.setItem('onboarding_done','1'); setOnbStep(0); navigate('/premium_dashboard') }} disabled={uploadingPic}>Exit</button>
               <button className="px-4 py-2 rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> setOnbStep(3)} disabled={uploadingPic}>Skip</button>
               <button className="px-4 py-2 rounded-lg bg-[#4db6ac] text-black font-semibold" disabled={uploadingPic || !picFile} onClick={async()=>{
@@ -278,6 +287,7 @@ export default function PremiumDashboard() {
                   setOnbStep(3)
                 }catch{ alert('Network error') } finally { setUploadingPic(false) }
               }}>{uploadingPic ? 'Uploading…' : 'Upload & continue'}</button>
+              </div>
             </div>
           </div>
         </div>
@@ -293,9 +303,14 @@ export default function PremiumDashboard() {
               <button className={`px-3 py-2 rounded-lg border ${showJoinModal ? 'border-[#4db6ac] text-[#4db6ac]' : 'border-white/15 text-white/80'}`} onClick={()=> { setShowJoinModal(true); setOnbStep(0) }}>Join</button>
               <button className={`px-3 py-2 rounded-lg border ${showCreateModal ? 'border-[#4db6ac] text-[#4db6ac]' : 'border-white/15 text-white/80'}`} onClick={()=> { setShowCreateModal(true); setOnbStep(0) }}>Create</button>
             </div>
-            <div className="flex justify-end gap-2">
-              <button className="px-4 py-2 rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> { localStorage.setItem('onboarding_done','1'); setOnbStep(0); navigate('/premium_dashboard') }}>Exit</button>
-              <button className="px-4 py-2 rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> { setOnbStep(1) }}>Skip for now</button>
+            <div className="flex justify-between gap-2">
+              <div>
+                <button className="px-4 py-2 rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> setOnbStep(2)}>Back</button>
+              </div>
+              <div className="flex gap-2">
+                <button className="px-4 py-2 rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> { localStorage.setItem('onboarding_done','1'); setOnbStep(0); navigate('/premium_dashboard') }}>Exit</button>
+                <button className="px-4 py-2 rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> { setOnbStep(1) }}>Skip for now</button>
+              </div>
             </div>
           </div>
         </div>
