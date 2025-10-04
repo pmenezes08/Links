@@ -140,8 +140,8 @@ export default function PremiumDashboard() {
     return () => { cancelled = true; window.removeEventListener('focus', onFocus); document.removeEventListener('visibilitychange', onVisibility) }
   }, [])
 
-  // Check if user was recently verified (within last 30 seconds)
-  // This prevents onboarding from re-triggering on page reload/re-login
+  // Check if user was recently verified (within last 10 minutes)
+  // This prevents onboarding from re-triggering on page reload/re-login after long periods
   useEffect(() => {
     if (!emailVerifiedAt || !emailVerified) {
       setIsRecentlyVerified(false)
@@ -150,15 +150,31 @@ export default function PremiumDashboard() {
     try {
       const verifiedTime = new Date(emailVerifiedAt).getTime()
       const now = Date.now()
-      const thirtySecondsAgo = now - 30000
-      setIsRecentlyVerified(verifiedTime > thirtySecondsAgo)
-    } catch {
+      const tenMinutesAgo = now - (10 * 60 * 1000) // 10 minutes in milliseconds
+      const isRecent = verifiedTime > tenMinutesAgo
+      console.log('Onboarding check:', { emailVerifiedAt, verifiedTime, now, tenMinutesAgo, isRecent, diff: (now - verifiedTime) / 1000 + 's ago' })
+      setIsRecentlyVerified(isRecent)
+    } catch (err) {
+      console.error('Error parsing email_verified_at:', err)
       setIsRecentlyVerified(false)
     }
   }, [emailVerifiedAt, emailVerified])
 
   // Auto-prompt onboarding for newly verified users with no communities/profile
   useEffect(() => {
+    console.log('Onboarding trigger check:', { 
+      communitiesLoaded, 
+      emailVerified, 
+      communitiesArray: Array.isArray(communities), 
+      communitiesLength: communities?.length,
+      username, 
+      onbStep, 
+      doneKey,
+      doneValue: localStorage.getItem(doneKey),
+      isRecentlyVerified,
+      hasProfilePic 
+    })
+    
     if (!communitiesLoaded) return
     if (emailVerified !== true) return
     if (!Array.isArray(communities)) return
@@ -168,13 +184,19 @@ export default function PremiumDashboard() {
     // Check if user has marked onboarding as done
     try{ if (localStorage.getItem(doneKey) === '1') return }catch{}
     
-    // Only trigger for RECENTLY verified users (within last 30 seconds)
+    // Only trigger for RECENTLY verified users (within last 10 minutes)
     // This prevents re-triggering on page reload/re-login
-    if (!isRecentlyVerified) return
+    if (!isRecentlyVerified) {
+      console.log('Onboarding skipped: user not recently verified')
+      return
+    }
     
     const hasNoCommunities = (communities || []).length === 0
     if (hasNoCommunities && !hasProfilePic){
+      console.log('🎉 Triggering onboarding flow!')
       setOnbStep(1)
+    } else {
+      console.log('Onboarding not triggered:', { hasNoCommunities, hasProfilePic })
     }
   }, [communitiesLoaded, emailVerified, communities, hasProfilePic, username, onbStep, doneKey, isRecentlyVerified])
 
