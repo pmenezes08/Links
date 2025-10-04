@@ -306,9 +306,9 @@ export default function PremiumDashboard() {
                 {/* No back from first step; keep placeholder for spacing */}
               </div>
               <div className="flex gap-2">
-              <button type="button" className="px-4 py-2 rounded-lg border border-white/10 bg-white/[0.04]" onClick={(e)=> { e.preventDefault(); setConfirmExit(true) }}>Exit</button>
-              <button className="px-4 py-2 rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> setOnbStep(2)} disabled={savingName}>Skip</button>
-              <button className="px-4 py-2 rounded-lg bg-[#4db6ac] text-black font-semibold" disabled={savingName} onClick={async()=>{
+              <button type="button" className="px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/[0.04]" onClick={(e)=> { e.preventDefault(); setConfirmExit(true) }}>Exit</button>
+              <button className="px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> setOnbStep(2)} disabled={savingName}>Skip</button>
+              <button className="px-3 py-2 text-sm rounded-lg bg-[#4db6ac] text-black font-semibold" disabled={savingName} onClick={async()=>{
                 try{
                   const fd = new FormData(); fd.append('display_name', displayName.trim())
                   const r = await fetch('/update_public_profile', { method:'POST', credentials:'include', body: fd })
@@ -340,12 +340,12 @@ export default function PremiumDashboard() {
             )}
             <div className="mt-4 flex gap-2 justify-between">
               <div>
-                <button className="px-4 py-2 rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> setOnbStep(1)} disabled={uploadingPic}>Back</button>
+                <button className="px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> setOnbStep(1)} disabled={uploadingPic}>Back</button>
               </div>
               <div className="flex gap-2">
-              <button type="button" className="px-4 py-2 rounded-lg border border-white/10 bg-white/[0.04]" onClick={(e)=> { e.preventDefault(); setConfirmExit(true) }} disabled={uploadingPic}>Exit</button>
-              <button className="px-4 py-2 rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> setOnbStep(3)} disabled={uploadingPic}>Skip</button>
-              <button className="px-4 py-2 rounded-lg bg-[#4db6ac] text-black font-semibold" disabled={uploadingPic || !picFile} onClick={async()=>{
+              <button type="button" className="px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/[0.04]" onClick={(e)=> { e.preventDefault(); setConfirmExit(true) }} disabled={uploadingPic}>Exit</button>
+              <button className="px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> setOnbStep(3)} disabled={uploadingPic}>Skip</button>
+              <button className="px-3 py-2 text-sm rounded-lg bg-[#4db6ac] text-black font-semibold" disabled={uploadingPic || !picFile} onClick={async()=>{
                 if (!picFile) return; setUploadingPic(true)
                 try{
                   const fd = new FormData(); fd.append('profile_picture', picFile)
@@ -373,25 +373,26 @@ export default function PremiumDashboard() {
             </div>
             <div className="flex justify-between gap-2">
               <div>
-                <button className="px-4 py-2 rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> setOnbStep(2)}>Back</button>
+                <button className="px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> setOnbStep(2)}>Back</button>
               </div>
               <div className="flex gap-2">
-                <button type="button" className="px-4 py-2 rounded-lg border border-white/10 bg-white/[0.04]" onClick={(e)=> { e.preventDefault(); setConfirmExit(true) }}>Exit</button>
-                <button className="px-4 py-2 rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> { setOnbStep(1) }}>Skip for now</button>
+                <button type="button" className="px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/[0.04]" onClick={(e)=> { e.preventDefault(); setConfirmExit(true) }}>Exit</button>
+                <button className="px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> { setOnbStep(1) }}>Skip for now</button>
               </div>
-            </div>
-      {confirmExit && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center" onClick={(e)=> e.currentTarget===e.target && setConfirmExit(false)}>
-          <div className="w-[92%] max-w-md rounded-xl border border-white/10 bg-[#0b0f10] p-5">
-            <div className="text-lg font-semibold mb-2">Exit onboarding?</div>
-            <div className="text-xs text-[#9fb0b5] mb-4">You can update these details anytime later in your Profile page.</div>
-            <div className="flex justify-end gap-2">
-              <button type="button" className="px-4 py-2 rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> setConfirmExit(false)}>Cancel</button>
-              <button type="button" className="px-4 py-2 rounded-lg bg-[#4db6ac] text-black font-semibold" onClick={()=>{ try{ localStorage.setItem(doneKey, '1') }catch{}; setOnbStep(0); setConfirmExit(false); window.location.href = '/premium_dashboard' }}>Exit</button>
             </div>
           </div>
         </div>
       )}
+      {/* Global Exit confirmation modal (available on any step) */}
+      {confirmExit && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center" onClick={(e)=> e.currentTarget===e.target && setConfirmExit(false)}>
+          <div className="w-[92%] max-w-md rounded-xl border border-white/10 bg-[#0b0f10] p-5">
+            <div className="text-base font-semibold mb-2">Exit onboarding?</div>
+            <div className="text-xs text-[#9fb0b5] mb-4">You can update these details anytime later in your Profile page.</div>
+            <div className="flex justify-end gap-2">
+              <button type="button" className="px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> setConfirmExit(false)}>Cancel</button>
+              <button type="button" className="px-3 py-2 text-sm rounded-lg bg-[#4db6ac] text-black font-semibold" onClick={()=>{ try{ localStorage.setItem(doneKey, '1') }catch{}; setOnbStep(0); setConfirmExit(false); window.location.href = '/premium_dashboard' }}>Exit</button>
+            </div>
           </div>
         </div>
       )}
