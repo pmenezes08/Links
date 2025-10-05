@@ -407,8 +407,21 @@ export default function CommunityFeed() {
 
       {/* Highlight overlay - Reaction Step */}
       {highlightStep === 'reaction' && (
-        <div className="fixed inset-0 z-[39] bg-black/85">
-          <div className="absolute top-[30%] left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center w-[90%] max-w-sm">
+        <>
+          {/* Top dark section - covers from top to just before first post */}
+          <div className="fixed top-0 left-0 right-0 h-[35vh] z-[50] bg-black/85 pointer-events-none" />
+          
+          {/* Bottom dark section - covers from below first post to bottom */}
+          <div className="fixed bottom-0 left-0 right-0 h-[40vh] z-[50] bg-black/85 pointer-events-none" />
+          
+          {/* Left dark section - middle area */}
+          <div className="fixed top-[35vh] left-0 bottom-[40vh] w-[5%] z-[50] bg-black/85 pointer-events-none" />
+          
+          {/* Right dark section - middle area */}
+          <div className="fixed top-[35vh] right-0 bottom-[40vh] w-[50%] z-[50] bg-black/85 pointer-events-none" />
+          
+          {/* Instruction prompt */}
+          <div className="fixed top-[15%] left-1/2 transform -translate-x-1/2 z-[51] text-center w-[90%] max-w-sm pointer-events-auto">
             <div className="text-white text-base font-medium px-6 py-3 rounded-xl bg-black/70 backdrop-blur-md border border-[#4db6ac]/30 mb-6 shadow-lg">
               React to a post <span className="text-[#4db6ac] text-sm ml-2">(1/2)</span>
             </div>
@@ -420,7 +433,7 @@ export default function CommunityFeed() {
               Next
             </button>
           </div>
-        </div>
+        </>
       )}
 
       {/* Highlight overlay - Post Creation Step */}
