@@ -434,28 +434,30 @@ export default function PremiumDashboard() {
       {onbStep === 4 && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center">
           <div className="w-[92%] max-w-md rounded-xl border border-white/10 bg-[#0b0f10] p-5">
-            <div className="text-lg font-semibold mb-2">Join a community</div>
-            <div className="text-xs text-[#9fb0b5] mb-3">Enter your community code to continue</div>
-            
-            <input 
-              value={onboardingJoinCode} 
-              onChange={(e)=> setOnboardingJoinCode(e.target.value)} 
-              placeholder="Enter code" 
-              className="w-full px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/[0.04] mb-3 text-center tracking-wider focus:border-[#4db6ac] focus:outline-none"
-              autoFocus
-            />
-            
-            <div className="flex justify-between gap-2">
-              <div>
-                <button className="px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> setOnbStep(3)} disabled={joiningCommunity}>Back</button>
-              </div>
-              <div className="flex gap-2">
-                <button type="button" className="px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/[0.04]" onClick={(e)=> { e.preventDefault(); setConfirmExit(true) }} disabled={joiningCommunity}>Exit</button>
-                <button className="px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/[0.04]" onClick={handleExitConfirm} disabled={joiningCommunity}>Skip</button>
-                <button 
-                  className="px-4 py-2 text-sm rounded-lg bg-[#4db6ac] text-black font-semibold disabled:opacity-50" 
-                  disabled={joiningCommunity || !onboardingJoinCode.trim()}
-                  onClick={async()=> {
+            {!showSuccessModal ? (
+              <>
+                <div className="text-lg font-semibold mb-2">Join a community</div>
+                <div className="text-xs text-[#9fb0b5] mb-3">Enter your community code to continue</div>
+                
+                <input 
+                  value={onboardingJoinCode} 
+                  onChange={(e)=> setOnboardingJoinCode(e.target.value)} 
+                  placeholder="Enter code" 
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/[0.04] mb-3 text-center tracking-wider focus:border-[#4db6ac] focus:outline-none"
+                  autoFocus
+                />
+                
+                <div className="flex justify-between gap-2">
+                  <div>
+                    <button className="px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> setOnbStep(3)} disabled={joiningCommunity}>Back</button>
+                  </div>
+                  <div className="flex gap-2">
+                    <button type="button" className="px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/[0.04]" onClick={(e)=> { e.preventDefault(); setConfirmExit(true) }} disabled={joiningCommunity}>Exit</button>
+                    <button className="px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/[0.04]" onClick={handleExitConfirm} disabled={joiningCommunity}>Skip</button>
+                    <button 
+                      className="px-4 py-2 text-sm rounded-lg bg-[#4db6ac] text-black font-semibold disabled:opacity-50" 
+                      disabled={joiningCommunity || !onboardingJoinCode.trim()}
+                      onClick={async()=> {
                     if (!onboardingJoinCode.trim()) { alert('Please enter a code'); return }
                     if (emailVerified === false){ setShowVerifyFirstModal(true); return }
                     
@@ -489,6 +491,13 @@ export default function PremiumDashboard() {
                 </button>
               </div>
             </div>
+              </>
+            ) : (
+              <div className="text-center py-8">
+                <div className="text-5xl mb-4">✓</div>
+                <div className="text-lg font-semibold text-[#4db6ac]">Joined!</div>
+              </div>
+            )}
           </div>
         </div>
       )}

@@ -51,7 +51,7 @@ export default function CreatePost(){
     <div className="min-h-screen bg-black text-white pb-20">
       {/* Praise notification */}
       {showPraise && (
-        <div className="fixed top-24 left-1/2 transform -translate-x-1/2 z-50 pointer-events-none">
+        <div className="fixed bottom-24 left-1/2 transform -translate-x-1/2 z-50 pointer-events-none">
           <div className="px-6 py-3 rounded-full border border-[#4db6ac]/40 bg-black/90 backdrop-blur-sm shadow-lg">
             <div className="text-sm font-medium text-white">
               Great job! <span className="text-[#4db6ac]">First post created</span> ✨
