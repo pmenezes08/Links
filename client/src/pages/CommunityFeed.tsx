@@ -410,7 +410,7 @@ export default function CommunityFeed() {
         <div className="fixed inset-0 z-[39] bg-black/85">
           <div className="absolute top-[30%] left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center w-[90%] max-w-sm">
             <div className="text-white text-base font-medium px-6 py-3 rounded-xl bg-black/70 backdrop-blur-md border border-[#4db6ac]/30 mb-6 shadow-lg">
-              React to a post
+              React to a post <span className="text-[#4db6ac] text-sm ml-2">(1/2)</span>
             </div>
             <div className="w-1 h-12 mx-auto bg-gradient-to-b from-[#4db6ac]/50 to-transparent mb-6" />
             <button 
@@ -426,11 +426,16 @@ export default function CommunityFeed() {
       {/* Highlight overlay - Post Creation Step */}
       {highlightStep === 'post' && (
         <div className="fixed inset-0 z-[39] bg-black/85">
-          <div className="absolute top-[30%] left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center w-[90%] max-w-sm">
-            <div className="text-white text-base font-medium px-6 py-3 rounded-xl bg-black/70 backdrop-blur-md border border-[#4db6ac]/30 mb-6 shadow-lg">
-              Click here to Create Your First Post
+          {/* Description near the glowing button at bottom */}
+          <div className="fixed bottom-32 left-1/2 transform -translate-x-1/2 text-center w-[90%] max-w-sm">
+            <div className="text-white text-base font-medium px-6 py-3 rounded-xl bg-black/70 backdrop-blur-md border border-[#4db6ac]/30 shadow-lg">
+              Click here to Create Your First Post <span className="text-[#4db6ac] text-sm ml-2">(2/2)</span>
             </div>
-            <div className="w-1 h-20 mx-auto bg-gradient-to-b from-[#4db6ac]/50 to-transparent mb-6" />
+            <div className="w-1 h-12 mx-auto bg-gradient-to-b from-[#4db6ac]/50 to-transparent" />
+          </div>
+          
+          {/* Action buttons at top */}
+          <div className="absolute top-[15%] left-1/2 transform -translate-x-1/2 w-[90%] max-w-sm">
             <div className="flex gap-3 justify-center">
               <button 
                 className="px-6 py-2.5 rounded-full border border-white/20 bg-white/[0.08] text-white font-medium hover:bg-white/[0.12]"
