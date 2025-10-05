@@ -433,7 +433,7 @@ export default function PremiumDashboard() {
             <div className="text-lg font-semibold mb-2">Join a community</div>
             <div className="text-xs text-[#9fb0b5] mb-3">Join an existing community with a code to continue your setup.</div>
             <div className="flex gap-2 mb-3">
-              <button className="flex-1 px-3 py-2 rounded-lg border border-[#4db6ac] bg-[#4db6ac]/10 text-[#4db6ac]" onClick={()=> { setShowJoinModal(true); setOnbStep(0) }}>
+              <button className="flex-1 px-3 py-2 rounded-lg border border-[#4db6ac] bg-[#4db6ac]/10 text-[#4db6ac]" onClick={()=> { setShowJoinModal(true) }}>
                 <i className="fa-solid fa-users mr-2" />
                 Join Community
               </button>
@@ -609,11 +609,13 @@ export default function PremiumDashboard() {
                     if (j?.success){ 
                       setShowJoinModal(false); 
                       setJoinCode('');
-                      // If in onboarding flow, store community ID and go to step 5
-                      if (onbStep === 4) {
+                      // If in onboarding flow (step 4 or 0 during onboarding), store community ID and go to step 5
+                      if (onbStep === 4 || (onbStep >= 0 && onboardingTriggeredRef.current)) {
+                        console.log('Joined during onboarding, going to step 5');
                         setJoinedCommunityId(j.community_id);
                         setOnbStep(5);
                       } else {
+                        console.log('Joined outside onboarding, redirecting to communities');
                         location.href = '/communities';
                       }
                     }
