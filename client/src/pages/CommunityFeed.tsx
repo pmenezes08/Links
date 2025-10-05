@@ -35,14 +35,12 @@ export default function CommunityFeed() {
   const [refreshHint, setRefreshHint] = useState(false)
   const [pullPx, setPullPx] = useState(0)
   
-  // Check if we should highlight the post button (from onboarding)
-  const [highlightPostButton, setHighlightPostButton] = useState(false)
+  // Check if we should highlight from onboarding
+  const [highlightStep, setHighlightStep] = useState<'reaction' | 'post' | null>(null)
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     if (params.get('highlight_post') === 'true') {
-      setHighlightPostButton(true)
-      // Auto-dismiss after 5 seconds
-      setTimeout(() => setHighlightPostButton(false), 5000)
+      setHighlightStep('reaction') // Start with reaction
     }
   }, [])
   // Modal removed in favor of dedicated PostDetail route
@@ -341,8 +339,8 @@ export default function CommunityFeed() {
           ) : null}
 
           {/* Feed items */}
-          {postsOnly.map((p: Post) => (
-            <PostCard key={p.id} post={p} currentUser={data.username} isAdmin={!!data.is_community_admin} onOpen={() => navigate(`/post/${p.id}`)} onToggleReaction={handleToggleReaction} />
+          {postsOnly.map((p: Post, idx: number) => (
+            <PostCard key={p.id} post={p} idx={idx} currentUser={data.username} isAdmin={!!data.is_community_admin} highlightStep={highlightStep} onOpen={() => navigate(`/post/${p.id}`)} onToggleReaction={handleToggleReaction} />
           ))}
         </div>
       </div>
@@ -407,15 +405,46 @@ export default function CommunityFeed() {
         </div>
       )}
 
-      {/* Highlight overlay when directing from onboarding */}
-      {highlightPostButton && (
-        <div className="fixed inset-0 z-[39] bg-black/85" onClick={()=> setHighlightPostButton(false)}>
-          <div className="absolute top-[40%] left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center">
-            <div className="text-white text-base font-medium tracking-wide px-6 py-3 rounded-2xl bg-black/60 backdrop-blur-sm border border-white/10">
+      {/* Highlight overlay - Reaction Step */}
+      {highlightStep === 'reaction' && (
+        <div className="fixed inset-0 z-[39] bg-black/85">
+          <div className="absolute top-[35%] left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center">
+            <div className="text-white text-base font-medium tracking-wide px-6 py-3 rounded-2xl bg-black/60 backdrop-blur-sm border border-white/10 mb-4">
+              React to a post
+            </div>
+            <button 
+              className="px-6 py-2 rounded-lg bg-[#4db6ac] text-black font-semibold"
+              onClick={()=> setHighlightStep('post')}
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Highlight overlay - Post Creation Step */}
+      {highlightStep === 'post' && (
+        <div className="fixed inset-0 z-[39] bg-black/85">
+          <div className="absolute top-[35%] left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center">
+            <div className="text-white text-base font-medium tracking-wide px-6 py-3 rounded-2xl bg-black/60 backdrop-blur-sm border border-white/10 mb-4">
               Click here to Create Your First Post
             </div>
-            <div className="absolute -bottom-16 left-1/2 transform -translate-x-1/2 w-0.5 h-12 bg-gradient-to-b from-white/30 to-transparent" />
+            <button 
+              className="px-6 py-2 rounded-lg border border-white/10 bg-white/[0.04] text-white font-medium"
+              onClick={()=> {
+                setHighlightStep(null);
+                // Mark onboarding as complete
+                try { 
+                  const username = data?.username || '';
+                  const doneKey = username ? `onboarding_done:${username}` : 'onboarding_done';
+                  localStorage.setItem(doneKey, '1');
+                } catch {}
+              }}
+            >
+              Skip for now
+            </button>
           </div>
+          <div className="absolute bottom-32 left-1/2 transform -translate-x-1/2 w-0.5 h-16 bg-gradient-to-b from-white/30 to-transparent" />
         </div>
       )}
 
@@ -429,10 +458,18 @@ export default function CommunityFeed() {
             <i className="fa-solid fa-users" />
           </button>
           <button 
-            className={`w-10 h-10 rounded-md bg-[#4db6ac] text-black hover:brightness-110 grid place-items-center transition-all ${highlightPostButton ? 'ring-[6px] ring-[#4db6ac] shadow-[0_0_40px_rgba(77,182,172,0.8)] animate-pulse scale-125' : ''}`}
+            className={`w-10 h-10 rounded-md bg-[#4db6ac] text-black hover:brightness-110 grid place-items-center transition-all ${highlightStep === 'post' ? 'ring-[6px] ring-[#4db6ac] shadow-[0_0_40px_rgba(77,182,172,0.8)] animate-pulse scale-125 z-[40] relative' : ''}`}
             aria-label="New Post" 
             onClick={()=> { 
-              setHighlightPostButton(false);
+              if (highlightStep === 'post') {
+                setHighlightStep(null);
+                // Mark onboarding as complete
+                try { 
+                  const username = data?.username || '';
+                  const doneKey = username ? `onboarding_done:${username}` : 'onboarding_done';
+                  localStorage.setItem(doneKey, '1');
+                } catch {}
+              }
               navigate(`/compose?community_id=${community_id}`);
             }}
           >
@@ -490,7 +527,7 @@ export default function CommunityFeed() {
 
 // Ad components removed
 
-function PostCard({ post, currentUser, isAdmin, onOpen, onToggleReaction }: { post: Post & { display_timestamp?: string }, currentUser: string, isAdmin: boolean, onOpen: ()=>void, onToggleReaction: (postId:number, reaction:string)=>void }) {
+function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onToggleReaction }: { post: Post & { display_timestamp?: string }, idx: number, currentUser: string, isAdmin: boolean, highlightStep: 'reaction' | 'post' | null, onOpen: ()=>void, onToggleReaction: (postId:number, reaction:string)=>void }) {
   const cardRef = useRef<HTMLDivElement|null>(null)
   const [isEditing, setIsEditing] = useState(false)
   const [editText, setEditText] = useState(post.content)
@@ -572,7 +609,9 @@ function PostCard({ post, currentUser, isAdmin, onOpen, onToggleReaction }: { po
         ) : null}
         {/* Polls are not displayed on the timeline in React */}
         <div className="flex items-center gap-2 text-xs" onClick={(e)=> e.stopPropagation()}>
-          <ReactionFA icon="fa-regular fa-heart" count={post.reactions?.['heart']||0} active={post.user_reaction==='heart'} onClick={()=> onToggleReaction(post.id, 'heart')} />
+          <div className={`${highlightStep === 'reaction' && idx === 0 ? 'relative z-[40] ring-4 ring-[#4db6ac] rounded-full' : ''}`}>
+            <ReactionFA icon="fa-regular fa-heart" count={post.reactions?.['heart']||0} active={post.user_reaction==='heart'} onClick={()=> onToggleReaction(post.id, 'heart')} />
+          </div>
           <ReactionFA icon="fa-regular fa-thumbs-up" count={post.reactions?.['thumbs-up']||0} active={post.user_reaction==='thumbs-up'} onClick={()=> onToggleReaction(post.id, 'thumbs-up')} />
           <ReactionFA icon="fa-regular fa-thumbs-down" count={post.reactions?.['thumbs-down']||0} active={post.user_reaction==='thumbs-down'} onClick={()=> onToggleReaction(post.id, 'thumbs-down')} />
           <button className="ml-auto px-2.5 py-1 rounded-full text-[#cfd8dc]"

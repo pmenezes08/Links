@@ -369,7 +369,7 @@ export default function PremiumDashboard() {
           <div className="w-[92%] max-w-md rounded-xl border border-white/10 bg-[#0b0f10] p-5">
             <div className="text-lg font-semibold mb-2">Choose your display name</div>
             <div className="text-xs text-[#9fb0b5] mb-3">By default, your display name matches your username. You can change it now.</div>
-            <input value={displayName} onChange={(e)=> setDisplayName(e.target.value)} className="w-full px-3 py-3 rounded-xl border border-white/10 bg-white/[0.04]" />
+            <input value={displayName} onChange={(e)=> setDisplayName(e.target.value)} className="w-full px-3 py-3 rounded-xl border border-white/10 bg-white/[0.04] focus:border-[#4db6ac] focus:outline-none" />
             <div className="mt-4 flex gap-2 justify-between">
               <div>
                 <button className="px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> setOnbStep(1)}>Back</button>
@@ -440,8 +440,8 @@ export default function PremiumDashboard() {
             <input 
               value={onboardingJoinCode} 
               onChange={(e)=> setOnboardingJoinCode(e.target.value)} 
-              placeholder="Enter community code" 
-              className="w-full px-3 py-3 rounded-xl border border-white/10 bg-white/[0.04] mb-4 text-center tracking-wider"
+              placeholder="Enter code" 
+              className="w-full px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/[0.04] mb-3 text-center tracking-wider focus:border-[#4db6ac] focus:outline-none"
               autoFocus
             />
             
@@ -519,15 +519,15 @@ export default function PremiumDashboard() {
           </div>
         </div>
       )}
-      {/* Success Modal - Modern and Sleek */}
+      {/* Success Popup - Over Modal */}
       {showSuccessModal && (
-        <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-sm rounded-2xl border border-[#4db6ac]/30 bg-gradient-to-b from-[#0b0f10] to-black p-6 shadow-2xl">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 pointer-events-none">
+          <div className="w-full max-w-xs rounded-xl border border-[#4db6ac]/30 bg-gradient-to-b from-[#0b0f10] to-black p-5 shadow-2xl pointer-events-auto">
             <div className="text-center">
-              <div className="text-xl font-bold mb-2 text-white">Successfully joined</div>
-              <div className="text-2xl font-bold mb-6 text-[#4db6ac]">{joinedCommunityName}</div>
+              <div className="text-base font-bold mb-1 text-white">Successfully joined</div>
+              <div className="text-lg font-bold mb-4 text-[#4db6ac]">{joinedCommunityName}</div>
               <button 
-                className="w-full px-4 py-3 rounded-xl bg-[#4db6ac] text-black font-semibold hover:brightness-110 transition-all" 
+                className="w-full px-4 py-2 text-sm rounded-lg bg-[#4db6ac] text-black font-semibold hover:brightness-110 transition-all" 
                 onClick={()=> {
                   setShowSuccessModal(false);
                   setOnbStep(5);
