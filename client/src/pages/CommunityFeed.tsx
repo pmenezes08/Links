@@ -278,7 +278,7 @@ export default function CommunityFeed() {
         </div>
       )}
       {/* Scrollable content area below fixed global header */}
-      <div ref={scrollRef} className={`h-full max-w-2xl mx-auto ${highlightStep === 'reaction' ? 'overflow-hidden' : 'overflow-y-auto'} no-scrollbar pb-20 px-3`} style={{ WebkitOverflowScrolling: 'touch' as any, overflowY: highlightStep === 'reaction' ? 'hidden' : 'auto', overscrollBehaviorY: 'contain', touchAction: highlightStep === 'reaction' ? 'none' : 'pan-y', paddingTop: `calc(12px + ${pullPx}px)` }}>
+      <div ref={scrollRef} className="h-full max-w-2xl mx-auto overflow-y-auto no-scrollbar pb-20 px-3" style={{ WebkitOverflowScrolling: 'touch' as any, overflowY: 'auto', overscrollBehaviorY: 'contain', touchAction: 'pan-y', paddingTop: `calc(12px + ${pullPx}px)` }}>
         <div className="space-y-3">
           {/* Back to communities (parent) + Search */}
           <div className="flex items-center gap-2">
@@ -408,17 +408,17 @@ export default function CommunityFeed() {
       {/* Highlight overlay - Reaction Step */}
       {highlightStep === 'reaction' && (
         <>
-          {/* Top dark section - covers top but leaves room for post header */}
-          <div className="fixed top-0 left-0 right-0 h-[32vh] z-[50] bg-black/85 pointer-events-none" />
+          {/* Top dark section - covers community logo and header completely */}
+          <div className="fixed top-0 left-0 right-0 h-[35vh] z-[50] bg-black/90 pointer-events-none" />
           
-          {/* Bottom dark section - covers from below first post to bottom */}
-          <div className="fixed bottom-0 left-0 right-0 h-[28vh] z-[50] bg-black/85 pointer-events-none" />
+          {/* Bottom dark section - covers second post and everything below */}
+          <div className="fixed bottom-0 left-0 right-0 h-[35vh] z-[50] bg-black/90 pointer-events-none" />
           
-          {/* Left dark section - middle area */}
-          <div className="fixed top-[32vh] left-0 bottom-[28vh] w-[3%] z-[50] bg-black/85 pointer-events-none" />
+          {/* Left dark section - middle area where first post is */}
+          <div className="fixed top-[35vh] left-0 bottom-[35vh] w-[2%] z-[50] bg-black/90 pointer-events-none" />
           
-          {/* Right dark section - middle area */}
-          <div className="fixed top-[32vh] right-0 bottom-[28vh] w-[3%] z-[50] bg-black/85 pointer-events-none" />
+          {/* Right dark section - middle area where first post is */}
+          <div className="fixed top-[35vh] right-0 bottom-[35vh] w-[2%] z-[50] bg-black/90 pointer-events-none" />
           
           {/* Instruction prompt and Next button stacked - on top of dark overlay */}
           <div className="fixed top-[8%] left-1/2 transform -translate-x-1/2 z-[51] text-center w-[90%] max-w-sm pointer-events-auto">
