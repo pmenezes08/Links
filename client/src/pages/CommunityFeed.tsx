@@ -419,7 +419,7 @@ export default function CommunityFeed() {
       {highlightStep === 'reaction' && (
         <>
           {/* Dark cover above the highlighted post (covers back button and community logo) */}
-          <div className="fixed top-[56px] left-0 right-0 h-[32vh] z-[50] bg-black/90 pointer-events-none" />
+          <div className="fixed top-[56px] left-0 right-0 h-[30vh] z-[50] bg-black/90 pointer-events-none" />
           
           {/* Instruction prompt and Next button */}
           <div className="fixed top-[15%] left-1/2 transform -translate-x-1/2 z-[51] text-center w-[90%] max-w-sm pointer-events-auto">
