@@ -299,6 +299,10 @@ export default function CommunityFeed() {
           {/* Top header image from legacy template */}
           {data.community?.background_path ? (
             <div className="community-header-image overflow-hidden rounded-xl border border-white/10 mb-3 relative">
+              {/* Dark overlay during reaction highlight */}
+              {highlightStep === 'reaction' && (
+                <div className="absolute inset-0 bg-black/90 z-[45] pointer-events-none" />
+              )}
               <img 
                 src={
                   (() => {
@@ -340,7 +344,13 @@ export default function CommunityFeed() {
 
           {/* Feed items */}
           {postsOnly.map((p: Post, idx: number) => (
-            <PostCard key={p.id} post={p} idx={idx} currentUser={data.username} isAdmin={!!data.is_community_admin} highlightStep={highlightStep} onOpen={() => navigate(`/post/${p.id}`)} onToggleReaction={handleToggleReaction} />
+            <div key={p.id} className="relative">
+              <PostCard post={p} idx={idx} currentUser={data.username} isAdmin={!!data.is_community_admin} highlightStep={highlightStep} onOpen={() => navigate(`/post/${p.id}`)} onToggleReaction={handleToggleReaction} />
+              {/* Dark overlay for all posts except first one during reaction highlight */}
+              {highlightStep === 'reaction' && idx !== 0 && (
+                <div className="absolute inset-0 bg-black/90 z-[45] pointer-events-none" />
+              )}
+            </div>
           ))}
         </div>
       </div>
@@ -405,34 +415,19 @@ export default function CommunityFeed() {
         </div>
       )}
 
-      {/* Highlight overlay - Reaction Step - Scrolls with content to show only first post */}
+      {/* Highlight overlay - Reaction Step - Instruction prompt only */}
       {highlightStep === 'reaction' && (
-        <>
-          {/* Top dark section - covers everything above first post */}
-          <div className="absolute top-0 left-0 right-0 h-[280px] z-[50] bg-black/90 pointer-events-none" />
-          
-          {/* Bottom dark section - covers second post and everything below */}
-          <div className="absolute top-[680px] left-0 right-0 h-[2000px] z-[50] bg-black/90 pointer-events-none" />
-          
-          {/* Left dark section - middle area where first post is */}
-          <div className="absolute top-[280px] left-0 h-[400px] w-[2%] z-[50] bg-black/90 pointer-events-none" />
-          
-          {/* Right dark section - middle area where first post is */}
-          <div className="absolute top-[280px] right-0 h-[400px] w-[2%] z-[50] bg-black/90 pointer-events-none" />
-          
-          {/* Instruction prompt and Next button stacked - fixed to viewport but lower */}
-          <div className="fixed top-[15%] left-1/2 transform -translate-x-1/2 z-[51] text-center w-[90%] max-w-sm pointer-events-auto">
-            <div className="text-white text-base font-medium px-6 py-3 rounded-xl bg-black/70 backdrop-blur-md border border-[#4db6ac]/30 shadow-lg mb-3">
-              React to a post <span className="text-[#4db6ac] text-sm ml-2">(1/2)</span>
-            </div>
-            <button 
-              className="px-6 py-2 rounded-full bg-[#4db6ac]/50 text-white text-sm font-medium hover:bg-[#4db6ac]/70"
-              onClick={()=> setHighlightStep('post')}
-            >
-              Next
-            </button>
+        <div className="fixed top-[15%] left-1/2 transform -translate-x-1/2 z-[51] text-center w-[90%] max-w-sm pointer-events-auto">
+          <div className="text-white text-base font-medium px-6 py-3 rounded-xl bg-black/70 backdrop-blur-md border border-[#4db6ac]/30 shadow-lg mb-3">
+            React to a post <span className="text-[#4db6ac] text-sm ml-2">(1/2)</span>
           </div>
-        </>
+          <button 
+            className="px-6 py-2 rounded-full bg-[#4db6ac]/50 text-white text-sm font-medium hover:bg-[#4db6ac]/70"
+            onClick={()=> setHighlightStep('post')}
+          >
+            Next
+          </button>
+        </div>
       )}
 
       {/* Highlight overlay - Post Creation Step */}
