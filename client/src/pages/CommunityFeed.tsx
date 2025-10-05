@@ -418,8 +418,8 @@ export default function CommunityFeed() {
       {/* Highlight overlay - Reaction Step */}
       {highlightStep === 'reaction' && (
         <>
-          {/* Dark cover above the highlighted post (covers back button and header) */}
-          <div className="fixed top-[56px] left-0 right-0 h-[28vh] z-[50] bg-black/90 pointer-events-none" />
+          {/* Dark cover above the highlighted post (covers back button and community logo) */}
+          <div className="fixed top-[56px] left-0 right-0 h-[32vh] z-[50] bg-black/90 pointer-events-none" />
           
           {/* Instruction prompt and Next button */}
           <div className="fixed top-[15%] left-1/2 transform -translate-x-1/2 z-[51] text-center w-[90%] max-w-sm pointer-events-auto">
@@ -427,7 +427,7 @@ export default function CommunityFeed() {
               React to a post <span className="text-[#4db6ac] text-sm ml-2">(1/2)</span>
             </div>
             <button 
-              className="px-6 py-2 rounded-full bg-[#4db6ac]/50 text-white text-sm font-medium hover:bg-[#4db6ac]/70"
+              className="px-6 py-2 rounded-full bg-[#4db6ac]/50 text-white text-sm font-medium hover:bg-[#4db6ac]/70 shadow-[0_0_20px_rgba(77,182,172,0.6)] hover:shadow-[0_0_30px_rgba(77,182,172,0.8)]"
               onClick={()=> setHighlightStep('post')}
             >
               Next
