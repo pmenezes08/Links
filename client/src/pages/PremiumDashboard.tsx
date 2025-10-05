@@ -454,9 +454,9 @@ export default function PremiumDashboard() {
           <div className="w-[92%] max-w-md rounded-xl border border-white/10 bg-[#0b0f10] p-5">
             <div className="text-center mb-4">
               <div className="text-4xl mb-3">✍️</div>
-              <div className="text-lg font-semibold mb-2">Share your first post!</div>
+              <div className="text-lg font-semibold mb-2">Ready to engage!</div>
               <div className="text-sm text-[#9fb0b5] mb-4">
-                Introduce yourself to your new community. Share your thoughts, goals, or just say hello!
+                Head to your communities to create your first post, connect with members, and start your journey!
               </div>
             </div>
             <div className="flex justify-between gap-2">
@@ -466,9 +466,10 @@ export default function PremiumDashboard() {
               <div className="flex gap-2">
                 <button className="px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/[0.04]" onClick={handleExitConfirm}>Skip for now</button>
                 <button className="px-3 py-2 text-sm rounded-lg bg-[#4db6ac] text-black font-semibold" onClick={()=> {
-                  // Navigate to feed/create post page
-                  window.location.href = '/feed'
-                }}>Create Post</button>
+                  // Mark onboarding as complete and go to communities
+                  try { localStorage.setItem(doneKey, '1') } catch {}
+                  window.location.href = '/communities'
+                }}>Go to Communities</button>
               </div>
             </div>
           </div>
