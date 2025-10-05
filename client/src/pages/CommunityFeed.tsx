@@ -408,20 +408,20 @@ export default function CommunityFeed() {
       {/* Highlight overlay - Reaction Step */}
       {highlightStep === 'reaction' && (
         <>
-          {/* Top dark section - covers from top to before instruction */}
-          <div className="fixed top-0 left-0 right-0 h-[15vh] z-[50] bg-black/85 pointer-events-none" />
+          {/* Top dark section - covers entire top including header area */}
+          <div className="fixed top-0 left-0 right-0 h-[40vh] z-[50] bg-black/85 pointer-events-none" />
           
           {/* Bottom dark section - covers from below first post to bottom */}
-          <div className="fixed bottom-0 left-0 right-0 h-[25vh] z-[50] bg-black/85 pointer-events-none" />
+          <div className="fixed bottom-0 left-0 right-0 h-[30vh] z-[50] bg-black/85 pointer-events-none" />
           
           {/* Left dark section - middle area */}
-          <div className="fixed top-[15vh] left-0 bottom-[25vh] w-[3%] z-[50] bg-black/85 pointer-events-none" />
+          <div className="fixed top-[40vh] left-0 bottom-[30vh] w-[3%] z-[50] bg-black/85 pointer-events-none" />
           
           {/* Right dark section - middle area */}
-          <div className="fixed top-[15vh] right-0 bottom-[25vh] w-[3%] z-[50] bg-black/85 pointer-events-none" />
+          <div className="fixed top-[40vh] right-0 bottom-[30vh] w-[3%] z-[50] bg-black/85 pointer-events-none" />
           
-          {/* Instruction prompt and Next button stacked */}
-          <div className="fixed top-[17vh] left-1/2 transform -translate-x-1/2 z-[51] text-center w-[90%] max-w-sm pointer-events-auto">
+          {/* Instruction prompt and Next button stacked - on top of dark overlay */}
+          <div className="fixed top-[8%] left-1/2 transform -translate-x-1/2 z-[51] text-center w-[90%] max-w-sm pointer-events-auto">
             <div className="text-white text-base font-medium px-6 py-3 rounded-xl bg-black/70 backdrop-blur-md border border-[#4db6ac]/30 shadow-lg mb-3">
               React to a post <span className="text-[#4db6ac] text-sm ml-2">(1/2)</span>
             </div>
