@@ -436,9 +436,9 @@ export default function CommunityFeed() {
           
           {/* Action buttons at top */}
           <div className="absolute top-[15%] left-1/2 transform -translate-x-1/2 w-[90%] max-w-sm">
-            <div className="flex gap-3 justify-center">
+            <div className="flex justify-center">
               <button 
-                className="px-6 py-2.5 rounded-full border border-white/20 bg-white/[0.08] text-white font-medium hover:bg-white/[0.12]"
+                className="px-8 py-2.5 rounded-full border border-white/20 bg-white/[0.08] text-white font-medium hover:bg-white/[0.12]"
                 onClick={()=> {
                   setHighlightStep(null);
                   // Mark onboarding as complete
@@ -450,22 +450,6 @@ export default function CommunityFeed() {
                 }}
               >
                 Skip for now
-              </button>
-              <button 
-                className="px-6 py-2.5 rounded-full bg-[#4db6ac] text-black font-semibold hover:brightness-110 shadow-lg"
-                onClick={()=> {
-                  setHighlightStep(null);
-                  // Mark onboarding as complete
-                  try { 
-                    const username = data?.username || '';
-                    const doneKey = username ? `onboarding_done:${username}` : 'onboarding_done';
-                    localStorage.setItem(doneKey, '1');
-                  } catch {}
-                  // TODO: Navigate to tour page
-                  alert('Community tour coming soon!');
-                }}
-              >
-                Give me a tour
               </button>
             </div>
           </div>
@@ -485,7 +469,8 @@ export default function CommunityFeed() {
             className={`w-10 h-10 rounded-md bg-[#4db6ac] text-black hover:brightness-110 grid place-items-center transition-all ${highlightStep === 'post' ? 'ring-[6px] ring-[#4db6ac] shadow-[0_0_40px_rgba(77,182,172,0.8)] animate-pulse scale-125 z-[40] relative' : ''}`}
             aria-label="New Post" 
             onClick={()=> { 
-              if (highlightStep === 'post') {
+              const isFromOnboarding = highlightStep === 'post'
+              if (isFromOnboarding) {
                 setHighlightStep(null);
                 // Mark onboarding as complete
                 try { 
@@ -494,7 +479,8 @@ export default function CommunityFeed() {
                   localStorage.setItem(doneKey, '1');
                 } catch {}
               }
-              navigate(`/compose?community_id=${community_id}`);
+              // Add first_post param if from onboarding
+              navigate(`/compose?community_id=${community_id}${isFromOnboarding ? '&first_post=true' : ''}`);
             }}
           >
             <i className="fa-solid fa-plus" />

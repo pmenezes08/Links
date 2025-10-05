@@ -9,12 +9,17 @@ export default function CreatePost(){
   const [content, setContent] = useState('')
   const [file, setFile] = useState<File|null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [showPraise, setShowPraise] = useState(false)
   const tokenRef = useRef<string>(`${Date.now()}_${Math.random().toString(36).slice(2)}`)
 
   async function submit(){
     if (!content && !file) return
     if (submitting) return
     setSubmitting(true)
+    
+    // Check if this is from onboarding (first post)
+    const isFirstPost = params.get('first_post') === 'true'
+    
     try{
       const fd = new FormData()
       fd.append('content', content)
@@ -22,9 +27,20 @@ export default function CreatePost(){
       if (file) fd.append('image', file)
       fd.append('dedupe_token', tokenRef.current)
       await fetch('/post_status', { method: 'POST', credentials: 'include', body: fd })
-      // Regardless of server response, navigate back to feed to avoid double tap
-      if (communityId) navigate(`/community_feed_react/${communityId}`)
-      else navigate(-1)
+      
+      // Show praise for first post
+      if (isFirstPost) {
+        setShowPraise(true)
+        setTimeout(() => {
+          setShowPraise(false)
+          if (communityId) navigate(`/community_feed_react/${communityId}`)
+          else navigate(-1)
+        }, 2000)
+      } else {
+        // Regardless of server response, navigate back to feed to avoid double tap
+        if (communityId) navigate(`/community_feed_react/${communityId}`)
+        else navigate(-1)
+      }
     }catch{
       setSubmitting(false)
       alert('Failed to post. Please try again.')
@@ -33,6 +49,16 @@ export default function CreatePost(){
 
   return (
     <div className="min-h-screen bg-black text-white pb-20">
+      {/* Praise notification */}
+      {showPraise && (
+        <div className="fixed top-24 left-1/2 transform -translate-x-1/2 z-50 pointer-events-none">
+          <div className="px-6 py-3 rounded-full border border-[#4db6ac]/40 bg-black/90 backdrop-blur-sm shadow-lg">
+            <div className="text-sm font-medium text-white">
+              Great job! <span className="text-[#4db6ac]">First post created</span> ✨
+            </div>
+          </div>
+        </div>
+      )}
       <div className="fixed left-0 right-0 top-14 h-12 border-b border-white/10 bg-black/70 backdrop-blur flex items-center px-3 z-40">
         <button className="px-3 py-2 rounded-full text-[#cfd8dc] hover:text-[#4db6ac]" onClick={()=> communityId ? navigate(`/community_feed_react/${communityId}`) : navigate(-1)} aria-label="Back">
           <i className="fa-solid fa-arrow-left" />
