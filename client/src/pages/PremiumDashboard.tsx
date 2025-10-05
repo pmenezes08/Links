@@ -431,18 +431,21 @@ export default function PremiumDashboard() {
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center">
           <div className="w-[92%] max-w-md rounded-xl border border-white/10 bg-[#0b0f10] p-5">
             <div className="text-lg font-semibold mb-2">Join a community</div>
-            <div className="text-xs text-[#9fb0b5] mb-3">Join an existing community with a code, or create a new one.</div>
+            <div className="text-xs text-[#9fb0b5] mb-3">Join an existing community with a code to continue your setup.</div>
             <div className="flex gap-2 mb-3">
-              <button className={`px-3 py-2 rounded-lg border ${showJoinModal ? 'border-[#4db6ac] text-[#4db6ac]' : 'border-white/15 text-white/80'}`} onClick={()=> { setShowJoinModal(true); setOnbStep(0) }}>Join</button>
-              <button className={`px-3 py-2 rounded-lg border ${showCreateModal ? 'border-[#4db6ac] text-[#4db6ac]' : 'border-white/15 text-white/80'}`} onClick={()=> { if ((subscription||'free').toLowerCase() !== 'premium') { setShowPremiumOnlyModal(true); return } setShowCreateModal(true); setOnbStep(0) }}>Create</button>
+              <button className="flex-1 px-3 py-2 rounded-lg border border-[#4db6ac] bg-[#4db6ac]/10 text-[#4db6ac]" onClick={()=> { setShowJoinModal(true); setOnbStep(0) }}>
+                <i className="fa-solid fa-users mr-2" />
+                Join Community
+              </button>
             </div>
+            {/* Show skip option after they've tried joining */}
             <div className="flex justify-between gap-2">
               <div>
                 <button className="px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> setOnbStep(3)}>Back</button>
               </div>
               <div className="flex gap-2">
                 <button type="button" className="px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/[0.04]" onClick={(e)=> { e.preventDefault(); setConfirmExit(true) }}>Exit</button>
-                <button className="px-3 py-2 text-sm rounded-lg bg-[#4db6ac] text-black font-semibold" onClick={()=> setOnbStep(5)}>Continue</button>
+                <button className="px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/[0.04]" onClick={handleExitConfirm}>Skip for now</button>
               </div>
             </div>
           </div>
