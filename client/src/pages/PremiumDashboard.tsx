@@ -470,6 +470,11 @@ export default function PremiumDashboard() {
                         setJoinedCommunityName(j.community_name || 'community');
                         setOnboardingJoinCode('');
                         setShowSuccessModal(true);
+                        // Auto-dismiss toast and go to step 5 after 2 seconds
+                        setTimeout(() => {
+                          setShowSuccessModal(false);
+                          setOnbStep(5);
+                        }, 2000);
                       } else {
                         alert(j?.error || 'Failed to join community')
                       }
