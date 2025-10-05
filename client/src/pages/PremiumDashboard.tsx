@@ -37,6 +37,7 @@ export default function PremiumDashboard() {
   const [isRecentlyVerified, setIsRecentlyVerified] = useState(false)
   const onboardingTriggeredRef = useRef(false)  // Track if onboarding was already triggered
   const [joinedCommunityId, setJoinedCommunityId] = useState<number | null>(null)  // Track community joined during onboarding
+  const [joinedCommunityName, setJoinedCommunityName] = useState<string | null>(null)  // Track community name
   const doneKey = username ? `onboarding_done:${username}` : 'onboarding_done'
   const { setTitle } = useHeader()
   useEffect(() => { setTitle('Dashboard') }, [setTitle])
@@ -458,9 +459,9 @@ export default function PremiumDashboard() {
           <div className="w-[92%] max-w-md rounded-xl border border-white/10 bg-[#0b0f10] p-5">
             <div className="text-center mb-4">
               <div className="text-4xl mb-3">✍️</div>
-              <div className="text-lg font-semibold mb-2">Ready to engage!</div>
+              <div className="text-lg font-semibold mb-2">Create your first post!</div>
               <div className="text-sm text-[#9fb0b5] mb-4">
-                Head to your communities to create your first post, connect with members, and start your journey!
+                Welcome to {joinedCommunityName || 'your community'}! Share your thoughts, introduce yourself, or start a conversation.
               </div>
             </div>
             <div className="flex justify-between gap-2">
@@ -607,15 +608,22 @@ export default function PremiumDashboard() {
                     const r = await fetch('/join_community', { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
                     const j = await r.json().catch(()=>null)
                     if (j?.success){ 
-                      setShowJoinModal(false); 
-                      setJoinCode('');
-                      // If in onboarding flow (step 4 or 0 during onboarding), store community ID and go to step 5
-                      if (onbStep === 4 || (onbStep >= 0 && onboardingTriggeredRef.current)) {
-                        console.log('Joined during onboarding, going to step 5');
+                      // If in onboarding flow (step 4), store community info and show success, then go to step 5
+                      if (onbStep === 4) {
+                        console.log('✅ Joined during onboarding, going to step 5');
                         setJoinedCommunityId(j.community_id);
+                        setJoinedCommunityName(j.community_name || 'community');
+                        setShowJoinModal(false); 
+                        setJoinCode('');
+                        // Show success alert
+                        alert(`✅ You've successfully joined ${j.community_name || 'the community'}!`);
+                        // Go to step 5 - DO NOT redirect
                         setOnbStep(5);
                       } else {
+                        // Not in onboarding, redirect normally
                         console.log('Joined outside onboarding, redirecting to communities');
+                        setShowJoinModal(false); 
+                        setJoinCode('');
                         location.href = '/communities';
                       }
                     }
