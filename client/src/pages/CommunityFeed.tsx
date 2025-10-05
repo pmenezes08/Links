@@ -619,7 +619,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
         ) : null}
         {/* Polls are not displayed on the timeline in React */}
         <div className="flex items-center gap-2 text-xs" onClick={(e)=> e.stopPropagation()}>
-          <div className={`${highlightStep === 'reaction' && idx === 0 ? 'relative z-[40] ring-[2px] ring-[#4db6ac] shadow-[0_0_80px_rgba(77,182,172,1),0_0_120px_rgba(77,182,172,0.9),0_0_160px_rgba(77,182,172,0.6)] rounded-full animate-pulse scale-150' : ''}`}>
+          <div className={`${highlightStep === 'reaction' && idx === 0 ? 'relative z-[40] ring-[3px] ring-[#4db6ac] shadow-[0_0_25px_rgba(77,182,172,1),0_0_50px_rgba(77,182,172,0.8)] rounded-lg bg-[#4db6ac]/10 animate-pulse' : ''}`}>
             <ReactionFA 
               icon="fa-regular fa-heart" 
               count={post.reactions?.['heart']||0} 
@@ -645,7 +645,7 @@ function ReactionFA({ icon, count, active, onClick, isHighlighted }:{ icon: stri
   // Border-only turquoise for active icon (stroke/outline vibe); neutral grey. No pill/border backgrounds.
   const [popping, setPopping] = useState(false)
   const iconStyle: React.CSSProperties = isHighlighted 
-    ? { color: '#4db6ac', fontSize: '1.6rem', filter: 'brightness(2) drop-shadow(0 0 20px rgba(77,182,172,1))' }
+    ? { color: '#5ffff0', filter: 'brightness(1.5) saturate(1.5)' }
     : active
     ? { color: '#4db6ac', WebkitTextStroke: '1px #4db6ac' }
     : { color: '#6c757d' }
@@ -654,9 +654,9 @@ function ReactionFA({ icon, count, active, onClick, isHighlighted }:{ icon: stri
     try { onClick() } finally { setTimeout(() => setPopping(false), 140) }
   }
   return (
-    <button className={`px-2 py-1 rounded transition-colors ${isHighlighted ? 'brightness-150' : ''}`} onClick={handleClick}>
+    <button className={`px-2 py-1 rounded transition-colors`} onClick={handleClick}>
       <i className={`${icon} ${popping ? 'scale-125' : 'scale-100'} transition-transform duration-150`} style={iconStyle} />
-      <span className="ml-1" style={{ color: isHighlighted ? '#4db6ac' : (active ? '#cfe9e7' : '#9fb0b5'), fontWeight: isHighlighted ? 'bold' : undefined, fontSize: isHighlighted ? '1.2rem' : undefined }}>{count}</span>
+      <span className="ml-1" style={{ color: isHighlighted ? '#5ffff0' : (active ? '#cfe9e7' : '#9fb0b5'), filter: isHighlighted ? 'brightness(1.5)' : undefined }}>{count}</span>
     </button>
   )
 }
