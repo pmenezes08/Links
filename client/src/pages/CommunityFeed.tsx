@@ -405,7 +405,7 @@ export default function CommunityFeed() {
         </div>
       )}
 
-      {/* Highlight overlay - Reaction Step */}
+      {/* Highlight overlay - Reaction Step - Fixed to viewport (follows screen) */}
       {highlightStep === 'reaction' && (
         <>
           {/* Top dark section - covers community logo and header completely */}
@@ -420,7 +420,7 @@ export default function CommunityFeed() {
           {/* Right dark section - middle area where first post is */}
           <div className="fixed top-[35vh] right-0 bottom-[35vh] w-[2%] z-[50] bg-black/90 pointer-events-none" />
           
-          {/* Instruction prompt and Next button stacked - on top of dark overlay */}
+          {/* Instruction prompt and Next button stacked - fixed to viewport */}
           <div className="fixed top-[8%] left-1/2 transform -translate-x-1/2 z-[51] text-center w-[90%] max-w-sm pointer-events-auto">
             <div className="text-white text-base font-medium px-6 py-3 rounded-xl bg-black/70 backdrop-blur-md border border-[#4db6ac]/30 shadow-lg mb-3">
               React to a post <span className="text-[#4db6ac] text-sm ml-2">(1/2)</span>
