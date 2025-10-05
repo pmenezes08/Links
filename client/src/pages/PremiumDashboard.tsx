@@ -604,31 +604,38 @@ export default function PremiumDashboard() {
                     return
                   }
                   try{
+                    console.log('🔍 Join button clicked, current onbStep:', onbStep);
                     const fd = new URLSearchParams({ community_code: joinCode.trim() })
                     const r = await fetch('/join_community', { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
                     const j = await r.json().catch(()=>null)
+                    console.log('📡 Join response:', j);
+                    
                     if (j?.success){ 
-                      // If in onboarding flow (step 4), store community info and show success, then go to step 5
-                      if (onbStep === 4) {
-                        console.log('✅ Joined during onboarding, going to step 5');
-                        setJoinedCommunityId(j.community_id);
-                        setJoinedCommunityName(j.community_name || 'community');
-                        setShowJoinModal(false); 
-                        setJoinCode('');
+                      setJoinedCommunityId(j.community_id);
+                      setJoinedCommunityName(j.community_name || 'community');
+                      setShowJoinModal(false); 
+                      setJoinCode('');
+                      
+                      // ALWAYS check if we're in onboarding by checking if onboardingTriggeredRef is true
+                      const inOnboarding = onboardingTriggeredRef.current;
+                      console.log('🎯 Onboarding status - triggered:', inOnboarding, 'step:', onbStep);
+                      
+                      if (inOnboarding) {
+                        console.log('✅ IN ONBOARDING - Going to step 5, NO REDIRECT');
                         // Show success alert
                         alert(`✅ You've successfully joined ${j.community_name || 'the community'}!`);
                         // Go to step 5 - DO NOT redirect
                         setOnbStep(5);
                       } else {
-                        // Not in onboarding, redirect normally
-                        console.log('Joined outside onboarding, redirecting to communities');
-                        setShowJoinModal(false); 
-                        setJoinCode('');
+                        console.log('❌ NOT in onboarding - Redirecting to communities');
                         location.href = '/communities';
                       }
                     }
                     else alert(j?.error || 'Failed to join community')
-                  }catch{ alert('Failed to join community') }
+                  }catch(err){ 
+                    console.error('Join error:', err);
+                    alert('Failed to join community') 
+                  }
                 }}>Join</button>
               </div>
             </div>
