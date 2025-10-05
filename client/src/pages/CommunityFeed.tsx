@@ -34,6 +34,17 @@ export default function CommunityFeed() {
   const scrollRef = useRef<HTMLDivElement|null>(null)
   const [refreshHint, setRefreshHint] = useState(false)
   const [pullPx, setPullPx] = useState(0)
+  
+  // Check if we should highlight the post button (from onboarding)
+  const [highlightPostButton, setHighlightPostButton] = useState(false)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('highlight_post') === 'true') {
+      setHighlightPostButton(true)
+      // Auto-dismiss after 5 seconds
+      setTimeout(() => setHighlightPostButton(false), 5000)
+    }
+  }, [])
   // Modal removed in favor of dedicated PostDetail route
 
   // Set header title consistently
@@ -396,6 +407,11 @@ export default function CommunityFeed() {
         </div>
       )}
 
+      {/* Highlight overlay when directing from onboarding */}
+      {highlightPostButton && (
+        <div className="fixed inset-0 z-[39] bg-black/60" onClick={()=> setHighlightPostButton(false)} />
+      )}
+
       {/* Bottom navigation bar - floating */}
       <div className="fixed bottom-4 left-1/2 transform -translate-x-1/2 z-40 w-[94%] max-w-[1200px] rounded-2xl border border-white/10 bg-black/80 backdrop-blur shadow-lg">
         <div className="h-14 px-6 flex items-center justify-between text-[#cfd8dc]">
@@ -405,7 +421,14 @@ export default function CommunityFeed() {
           <button className="p-2 rounded-full hover:bg-white/5" aria-label="Members" onClick={()=> navigate(`/community/${community_id}/members`)}>
             <i className="fa-solid fa-users" />
           </button>
-          <button className="w-10 h-10 rounded-md bg-[#4db6ac] text-black hover:brightness-110 grid place-items-center" aria-label="New Post" onClick={()=> navigate(`/compose?community_id=${community_id}`)}>
+          <button 
+            className={`w-10 h-10 rounded-md bg-[#4db6ac] text-black hover:brightness-110 grid place-items-center transition-all ${highlightPostButton ? 'ring-4 ring-[#4db6ac]/50 animate-pulse scale-110' : ''}`}
+            aria-label="New Post" 
+            onClick={()=> { 
+              setHighlightPostButton(false);
+              navigate(`/compose?community_id=${community_id}`);
+            }}
+          >
             <i className="fa-solid fa-plus" />
           </button>
           <button className="relative p-2 rounded-full hover:bg-white/5" aria-label="Announcements" onClick={()=> { fetchAnnouncements() }}>

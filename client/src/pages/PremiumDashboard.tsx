@@ -36,6 +36,7 @@ export default function PremiumDashboard() {
   const [emailVerifiedAt, setEmailVerifiedAt] = useState<string | null>(null)
   const [isRecentlyVerified, setIsRecentlyVerified] = useState(false)
   const onboardingTriggeredRef = useRef(false)  // Track if onboarding was already triggered
+  const [joinedCommunityId, setJoinedCommunityId] = useState<number | null>(null)  // Track community joined during onboarding
   const doneKey = username ? `onboarding_done:${username}` : 'onboarding_done'
   const { setTitle } = useHeader()
   useEffect(() => { setTitle('Dashboard') }, [setTitle])
@@ -466,10 +467,14 @@ export default function PremiumDashboard() {
               <div className="flex gap-2">
                 <button className="px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/[0.04]" onClick={handleExitConfirm}>Skip for now</button>
                 <button className="px-3 py-2 text-sm rounded-lg bg-[#4db6ac] text-black font-semibold" onClick={()=> {
-                  // Mark onboarding as complete and go to communities
+                  // Mark onboarding as complete and redirect to community feed
                   try { localStorage.setItem(doneKey, '1') } catch {}
-                  window.location.href = '/communities'
-                }}>Go to Communities</button>
+                  if (joinedCommunityId) {
+                    window.location.href = `/community_feed_react/${joinedCommunityId}?highlight_post=true`;
+                  } else {
+                    window.location.href = '/communities';
+                  }
+                }}>Go to Community</button>
               </div>
             </div>
           </div>
@@ -598,7 +603,17 @@ export default function PremiumDashboard() {
                     const fd = new URLSearchParams({ community_code: joinCode.trim() })
                     const r = await fetch('/join_community', { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
                     const j = await r.json().catch(()=>null)
-                    if (j?.success){ setShowJoinModal(false); setJoinCode(''); location.href = '/communities' }
+                    if (j?.success){ 
+                      setShowJoinModal(false); 
+                      setJoinCode('');
+                      // If in onboarding flow, store community ID and go to step 5
+                      if (onbStep === 4) {
+                        setJoinedCommunityId(j.community_id);
+                        setOnbStep(5);
+                      } else {
+                        location.href = '/communities';
+                      }
+                    }
                     else alert(j?.error || 'Failed to join community')
                   }catch{ alert('Failed to join community') }
                 }}>Join</button>
