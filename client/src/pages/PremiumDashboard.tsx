@@ -494,7 +494,7 @@ export default function PremiumDashboard() {
           <div className="w-[92%] max-w-md rounded-xl border border-white/10 bg-[#0b0f10] p-5">
             <div className="text-center mb-4">
               <div className="text-4xl mb-3">✍️</div>
-              <div className="text-lg font-semibold mb-2">Create your first post!</div>
+              <div className="text-lg font-semibold mb-2">Create or React to Your First Post!</div>
               <div className="text-sm text-[#9fb0b5] mb-4">
                 Welcome to {joinedCommunityName || 'your community'}! Share your thoughts, introduce yourself, or start a conversation.
               </div>
