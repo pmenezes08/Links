@@ -21,7 +21,7 @@ export default function PremiumDashboard() {
   const [showVerifyFirstModal, setShowVerifyFirstModal] = useState(false)
   const [communitiesLoaded, setCommunitiesLoaded] = useState(false)
   // Onboarding steps
-  const [onbStep, setOnbStep] = useState<0|1|2|3|4>(0)
+  const [onbStep, setOnbStep] = useState<0|1|2|3|4|5>(0)
   const [displayName, setDisplayName] = useState('')
   const [firstName, setFirstName] = useState('')
   const [username, setUsername] = useState('')
@@ -429,7 +429,7 @@ export default function PremiumDashboard() {
       {onbStep === 4 && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center">
           <div className="w-[92%] max-w-md rounded-xl border border-white/10 bg-[#0b0f10] p-5">
-            <div className="text-lg font-semibold mb-2">Get started</div>
+            <div className="text-lg font-semibold mb-2">Join a community</div>
             <div className="text-xs text-[#9fb0b5] mb-3">Join an existing community with a code, or create a new one.</div>
             <div className="flex gap-2 mb-3">
               <button className={`px-3 py-2 rounded-lg border ${showJoinModal ? 'border-[#4db6ac] text-[#4db6ac]' : 'border-white/15 text-white/80'}`} onClick={()=> { setShowJoinModal(true); setOnbStep(0) }}>Join</button>
@@ -441,7 +441,34 @@ export default function PremiumDashboard() {
               </div>
               <div className="flex gap-2">
                 <button type="button" className="px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/[0.04]" onClick={(e)=> { e.preventDefault(); setConfirmExit(true) }}>Exit</button>
+                <button className="px-3 py-2 text-sm rounded-lg bg-[#4db6ac] text-black font-semibold" onClick={()=> setOnbStep(5)}>Continue</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Onboarding Step 5: Create First Post */}
+      {onbStep === 5 && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center">
+          <div className="w-[92%] max-w-md rounded-xl border border-white/10 bg-[#0b0f10] p-5">
+            <div className="text-center mb-4">
+              <div className="text-4xl mb-3">✍️</div>
+              <div className="text-lg font-semibold mb-2">Share your first post!</div>
+              <div className="text-sm text-[#9fb0b5] mb-4">
+                Introduce yourself to your new community. Share your thoughts, goals, or just say hello!
+              </div>
+            </div>
+            <div className="flex justify-between gap-2">
+              <div>
+                <button className="px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> setOnbStep(4)}>Back</button>
+              </div>
+              <div className="flex gap-2">
                 <button className="px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/[0.04]" onClick={handleExitConfirm}>Skip for now</button>
+                <button className="px-3 py-2 text-sm rounded-lg bg-[#4db6ac] text-black font-semibold" onClick={()=> {
+                  // Navigate to feed/create post page
+                  window.location.href = '/feed'
+                }}>Create Post</button>
               </div>
             </div>
           </div>
