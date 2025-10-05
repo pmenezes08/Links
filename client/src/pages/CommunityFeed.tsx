@@ -414,7 +414,7 @@ export default function CommunityFeed() {
             </div>
             <div className="w-1 h-12 mx-auto bg-gradient-to-b from-[#4db6ac]/50 to-transparent mb-6" />
             <button 
-              className="px-8 py-2.5 rounded-full bg-[#4db6ac]/70 text-white/90 font-medium hover:bg-[#4db6ac]/80"
+              className="px-6 py-2 rounded-full bg-white/10 text-white/60 text-sm font-normal hover:bg-white/15"
               onClick={()=> setHighlightStep('post')}
             >
               Next
@@ -619,8 +619,14 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
         ) : null}
         {/* Polls are not displayed on the timeline in React */}
         <div className="flex items-center gap-2 text-xs" onClick={(e)=> e.stopPropagation()}>
-          <div className={`${highlightStep === 'reaction' && idx === 0 ? 'relative z-[40] ring-[2px] ring-[#4db6ac] shadow-[0_0_80px_rgba(77,182,172,1),0_0_120px_rgba(77,182,172,0.9),0_0_160px_rgba(77,182,172,0.6)] rounded-full animate-pulse scale-150 brightness-150' : ''}`}>
-            <ReactionFA icon="fa-regular fa-heart" count={post.reactions?.['heart']||0} active={post.user_reaction==='heart'} onClick={()=> onToggleReaction(post.id, 'heart')} />
+          <div className={`${highlightStep === 'reaction' && idx === 0 ? 'relative z-[40] ring-[2px] ring-[#4db6ac] shadow-[0_0_80px_rgba(77,182,172,1),0_0_120px_rgba(77,182,172,0.9),0_0_160px_rgba(77,182,172,0.6)] rounded-full animate-pulse scale-150' : ''}`}>
+            <ReactionFA 
+              icon="fa-regular fa-heart" 
+              count={post.reactions?.['heart']||0} 
+              active={post.user_reaction==='heart'} 
+              onClick={()=> onToggleReaction(post.id, 'heart')}
+              isHighlighted={highlightStep === 'reaction' && idx === 0}
+            />
           </div>
           <ReactionFA icon="fa-regular fa-thumbs-up" count={post.reactions?.['thumbs-up']||0} active={post.user_reaction==='thumbs-up'} onClick={()=> onToggleReaction(post.id, 'thumbs-up')} />
           <ReactionFA icon="fa-regular fa-thumbs-down" count={post.reactions?.['thumbs-down']||0} active={post.user_reaction==='thumbs-down'} onClick={()=> onToggleReaction(post.id, 'thumbs-down')} />
@@ -635,10 +641,12 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
   )
 }
 
-function ReactionFA({ icon, count, active, onClick }:{ icon: string, count: number, active: boolean, onClick: ()=>void }){
+function ReactionFA({ icon, count, active, onClick, isHighlighted }:{ icon: string, count: number, active: boolean, onClick: ()=>void, isHighlighted?: boolean }){
   // Border-only turquoise for active icon (stroke/outline vibe); neutral grey. No pill/border backgrounds.
   const [popping, setPopping] = useState(false)
-  const iconStyle: React.CSSProperties = active
+  const iconStyle: React.CSSProperties = isHighlighted 
+    ? { color: '#4db6ac', fontSize: '1.6rem', filter: 'brightness(2) drop-shadow(0 0 20px rgba(77,182,172,1))' }
+    : active
     ? { color: '#4db6ac', WebkitTextStroke: '1px #4db6ac' }
     : { color: '#6c757d' }
   const handleClick = () => {
@@ -646,9 +654,9 @@ function ReactionFA({ icon, count, active, onClick }:{ icon: string, count: numb
     try { onClick() } finally { setTimeout(() => setPopping(false), 140) }
   }
   return (
-    <button className="px-2 py-1 rounded transition-colors" onClick={handleClick}>
+    <button className={`px-2 py-1 rounded transition-colors ${isHighlighted ? 'brightness-150' : ''}`} onClick={handleClick}>
       <i className={`${icon} ${popping ? 'scale-125' : 'scale-100'} transition-transform duration-150`} style={iconStyle} />
-      <span className="ml-1" style={{ color: active ? '#cfe9e7' : '#9fb0b5' }}>{count}</span>
+      <span className="ml-1" style={{ color: isHighlighted ? '#4db6ac' : (active ? '#cfe9e7' : '#9fb0b5'), fontWeight: isHighlighted ? 'bold' : undefined, fontSize: isHighlighted ? '1.2rem' : undefined }}>{count}</span>
     </button>
   )
 }
