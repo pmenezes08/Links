@@ -414,7 +414,7 @@ export default function CommunityFeed() {
             </div>
             <div className="w-1 h-12 mx-auto bg-gradient-to-b from-[#4db6ac]/50 to-transparent mb-6" />
             <button 
-              className="px-8 py-2.5 rounded-full bg-[#4db6ac] text-black font-semibold hover:brightness-110 shadow-lg"
+              className="px-8 py-2.5 rounded-full bg-[#4db6ac]/70 text-white/90 font-medium hover:bg-[#4db6ac]/80"
               onClick={()=> setHighlightStep('post')}
             >
               Next
@@ -619,7 +619,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
         ) : null}
         {/* Polls are not displayed on the timeline in React */}
         <div className="flex items-center gap-2 text-xs" onClick={(e)=> e.stopPropagation()}>
-          <div className={`${highlightStep === 'reaction' && idx === 0 ? 'relative z-[40] ring-[8px] ring-[#4db6ac] shadow-[0_0_60px_rgba(77,182,172,1),0_0_100px_rgba(77,182,172,0.6)] rounded-full animate-pulse scale-150' : ''}`}>
+          <div className={`${highlightStep === 'reaction' && idx === 0 ? 'relative z-[40] ring-[2px] ring-[#4db6ac] shadow-[0_0_80px_rgba(77,182,172,1),0_0_120px_rgba(77,182,172,0.9),0_0_160px_rgba(77,182,172,0.6)] rounded-full animate-pulse scale-150 brightness-150' : ''}`}>
             <ReactionFA icon="fa-regular fa-heart" count={post.reactions?.['heart']||0} active={post.user_reaction==='heart'} onClick={()=> onToggleReaction(post.id, 'heart')} />
           </div>
           <ReactionFA icon="fa-regular fa-thumbs-up" count={post.reactions?.['thumbs-up']||0} active={post.user_reaction==='thumbs-up'} onClick={()=> onToggleReaction(post.id, 'thumbs-up')} />
