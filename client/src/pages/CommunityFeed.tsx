@@ -420,12 +420,15 @@ export default function CommunityFeed() {
           {/* Right dark section - middle area */}
           <div className="fixed top-[35vh] right-0 bottom-[40vh] w-[50%] z-[50] bg-black/85 pointer-events-none" />
           
-          {/* Instruction prompt */}
-          <div className="fixed top-[15%] left-1/2 transform -translate-x-1/2 z-[51] text-center w-[90%] max-w-sm pointer-events-auto">
-            <div className="text-white text-base font-medium px-6 py-3 rounded-xl bg-black/70 backdrop-blur-md border border-[#4db6ac]/30 mb-6 shadow-lg">
+          {/* Instruction prompt at top */}
+          <div className="fixed top-[8%] left-1/2 transform -translate-x-1/2 z-[51] text-center w-[90%] max-w-sm pointer-events-auto">
+            <div className="text-white text-base font-medium px-6 py-3 rounded-xl bg-black/70 backdrop-blur-md border border-[#4db6ac]/30 shadow-lg">
               React to a post <span className="text-[#4db6ac] text-sm ml-2">(1/2)</span>
             </div>
-            <div className="w-1 h-12 mx-auto bg-gradient-to-b from-[#4db6ac]/50 to-transparent mb-6" />
+          </div>
+          
+          {/* Next button at bottom */}
+          <div className="fixed bottom-[8%] left-1/2 transform -translate-x-1/2 z-[51] pointer-events-auto">
             <button 
               className="px-6 py-2 rounded-full bg-white/10 text-white/60 text-sm font-normal hover:bg-white/15"
               onClick={()=> setHighlightStep('post')}
