@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>C.Point - The Operating System for Communities</title>
+    <title>C.Point - Verified Intent Infrastructure for Communities</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <style>
         * {
@@ -194,8 +194,8 @@
             border: 1px solid rgba(77, 182, 172, 0.2);
             border-radius: 16px;
             padding: 48px;
-            margin: 0 auto 60px;
-            max-width: 800px;
+            margin: 0 auto 40px;
+            max-width: 900px;
         }
 
         .tree {
@@ -222,14 +222,47 @@
             font-size: 14px;
         }
 
+        .tree-hidden {
+            color: rgba(255, 255, 255, 0.4);
+            margin-left: 48px;
+            font-size: 14px;
+            font-style: italic;
+        }
+
         .tree-count {
             color: #4db6ac;
             font-size: 13px;
         }
 
+        .tree-lock {
+            color: #ff9800;
+            font-size: 13px;
+        }
+
+        .exclusivity-explainer {
+            background: rgba(77, 182, 172, 0.05);
+            border: 1px solid rgba(77, 182, 172, 0.3);
+            border-radius: 12px;
+            padding: 24px;
+            margin: 40px auto;
+            max-width: 900px;
+        }
+
+        .exclusivity-explainer h4 {
+            color: #4db6ac;
+            font-size: 18px;
+            margin-bottom: 12px;
+        }
+
+        .exclusivity-explainer p {
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 15px;
+            line-height: 1.7;
+        }
+
         .comparison-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
             gap: 24px;
             margin-top: 40px;
         }
@@ -262,9 +295,59 @@
             line-height: 1.6;
         }
 
+        /* Data Advantage Section */
+        .data-advantage {
+            padding: 80px 24px;
+            background: #000000;
+        }
+
+        .data-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 32px;
+            margin-top: 48px;
+        }
+
+        .data-card {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            padding: 40px;
+        }
+
+        .data-card h3 {
+            font-size: 24px;
+            margin-bottom: 20px;
+            color: #4db6ac;
+        }
+
+        .data-card .data-example {
+            background: rgba(0, 0, 0, 0.5);
+            border-left: 3px solid #4db6ac;
+            padding: 16px;
+            margin: 16px 0;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            color: rgba(255, 255, 255, 0.8);
+        }
+
+        .data-card .result {
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            font-size: 15px;
+            color: rgba(255, 255, 255, 0.7);
+        }
+
+        .data-card .result strong {
+            color: #4db6ac;
+        }
+
         /* Verticals Section */
         .verticals {
             padding: 80px 24px;
+            background: linear-gradient(180deg, #000000 0%, #0a1414 100%);
+            border-top: 1px solid rgba(77, 182, 172, 0.1);
         }
 
         .vertical-grid {
@@ -327,9 +410,54 @@
             color: #4db6ac;
         }
 
+        /* B2B Value Section */
+        .b2b-value {
+            padding: 80px 24px;
+            background: #000000;
+        }
+
+        .value-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 40px;
+            margin-top: 48px;
+        }
+
+        .value-card {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            padding: 40px;
+            text-align: center;
+        }
+
+        .value-card .value-icon {
+            font-size: 48px;
+            margin-bottom: 24px;
+        }
+
+        .value-card h3 {
+            font-size: 24px;
+            margin-bottom: 16px;
+            color: #ffffff;
+        }
+
+        .value-card .value-stat {
+            font-size: 36px;
+            font-weight: 700;
+            color: #4db6ac;
+            margin: 20px 0;
+        }
+
+        .value-card p {
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 15px;
+            line-height: 1.6;
+        }
+
         /* How It Works */
         .how-it-works {
-            background: linear-gradient(180deg, #000000 0%, #0a1414 100%);
+            background: linear-gradient(180deg, #0a1414 0%, #000000 100%);
             padding: 80px 24px;
             border-top: 1px solid rgba(77, 182, 172, 0.1);
         }
@@ -374,13 +502,14 @@
         .stats {
             padding: 80px 24px;
             text-align: center;
+            background: #000000;
         }
 
         .stats-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
             gap: 48px;
-            max-width: 900px;
+            max-width: 1000px;
             margin: 48px auto 0;
         }
 
@@ -450,7 +579,7 @@
                 font-size: 32px;
             }
 
-            .vertical-grid {
+            .vertical-grid, .data-grid, .value-grid {
                 grid-template-columns: 1fr;
             }
 
@@ -472,7 +601,7 @@
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
             gap: 32px;
-            margin: 60px 0;
+            margin: 60px 0 40px;
         }
 
         .feature {
@@ -512,12 +641,12 @@
 
     <!-- Hero Section -->
     <section class="hero">
-        <h1>The Operating System for Communities</h1>
-        <p class="subtitle">Private social networks for real-world communities</p>
+        <h1>Verified Intent Infrastructure for Communities</h1>
+        <p class="subtitle">Hierarchical social networks where trust meets exclusivity</p>
         <p class="description">
-            We create hierarchical social networks for gyms, universities, companies, and more. 
-            Join one community, discover an ecosystem. Because the future isn't global connections 
-            with strangers—it's strong local networks with people you actually know.
+            We build private social networks for gyms, universities, companies, and more. 
+            Join the parent, network with thousands. Join the children, connect with your crew. 
+            All within a verified trust boundary—no spam, no bots, just your people.
         </p>
         <div class="hero-buttons">
             <a href="/signup" class="primary-button">Get Started Free</a>
@@ -528,63 +657,151 @@
     <!-- Secret Sauce Section -->
     <section class="secret-sauce">
         <div class="container">
-            <h2 class="section-title">Our Secret Sauce: Bounded Network Effects</h2>
+            <h2 class="section-title">Trust + Exclusivity: The Privacy Paradox Solved</h2>
             <p class="section-subtitle">
-                The only platform where communities can have communities. 
-                Join one, discover dozens—all within a trusted boundary.
+                The only platform where you can network within a trust boundary 
+                while keeping your sub-communities exclusive.
             </p>
 
             <!-- Visual Hierarchy Demo -->
             <div class="hierarchy-demo">
                 <div class="tree">
                     <div class="tree-parent">🎓 University of Chicago <span class="tree-count">(15,000 members)</span></div>
-                    <div class="tree-child">├── Booth Business School <span class="tree-count">(3,000 students)</span></div>
-                    <div class="tree-grandchild">│   ├── EMBA Class of 2024 <span class="tree-count">(50 students)</span></div>
-                    <div class="tree-grandchild">│   ├── Full-Time MBA 2025 <span class="tree-count">(500 students)</span></div>
-                    <div class="tree-grandchild">│   └── Alumni Network <span class="tree-count">(10,000 people)</span></div>
-                    <div class="tree-child">├── Campus Gym <span class="tree-count">(2,000 members)</span></div>
-                    <div class="tree-grandchild">│   ├── Powerlifting Club <span class="tree-count">(50 members)</span></div>
-                    <div class="tree-grandchild">│   ├── Morning Crew <span class="tree-count">(30 members)</span></div>
-                    <div class="tree-grandchild">│   └── Yoga Classes <span class="tree-count">(100 members)</span></div>
-                    <div class="tree-child">└── Career Services</div>
+                    <div style="margin-left: 24px; color: rgba(255, 255, 255, 0.5); font-size: 13px; margin-top: 8px;">
+                        ↳ All members can network across the university feed
+                    </div>
+                    <div style="margin: 20px 0; border-top: 1px solid rgba(77, 182, 172, 0.2);"></div>
+                    <div class="tree-child">├── Booth Business School <span class="tree-lock">🔒 Needs Code</span></div>
+                    <div style="margin-left: 48px; color: rgba(255, 255, 255, 0.5); font-size: 12px;">
+                        ↳ Hidden from parent. Only Booth members see this.
+                    </div>
+                    <div class="tree-grandchild">│   ├── EMBA Class of 2024 <span class="tree-lock">🔒 Needs Code</span></div>
+                    <div class="tree-grandchild">│   ├── Full-Time MBA 2025 <span class="tree-lock">🔒 Needs Code</span></div>
+                    <div class="tree-grandchild">│   └── Alumni Network <span class="tree-lock">🔒 Needs Code</span></div>
+                    <div class="tree-child" style="margin-top: 12px;">├── Campus Gym <span class="tree-lock">🔒 Needs Code</span></div>
+                    <div style="margin-left: 48px; color: rgba(255, 255, 255, 0.5); font-size: 12px;">
+                        ↳ Hidden from parent. Only gym members see this.
+                    </div>
+                    <div class="tree-grandchild">│   ├── Powerlifting Club <span class="tree-lock">🔒 Needs Code</span></div>
+                    <div class="tree-grandchild">│   ├── Morning Crew <span class="tree-lock">🔒 Needs Code</span></div>
+                    <div class="tree-grandchild">│   └── Yoga Classes <span class="tree-lock">🔒 Needs Code</span></div>
+                    <div class="tree-child" style="margin-top: 12px;">└── Career Services <span class="tree-lock">🔒 Needs Code</span></div>
                 </div>
+            </div>
+
+            <div class="exclusivity-explainer">
+                <h4>🔐 How Exclusivity Works:</h4>
+                <p>
+                    <strong>You join University of Chicago:</strong> Network with all 15,000 members in the parent feed.<br>
+                    <strong>You can't see the children:</strong> Booth, Campus Gym, Career Services are hidden unless you have their codes.<br>
+                    <strong>You join EMBA 2024 (with code):</strong> Your posts stay in EMBA. University members can't see them.<br>
+                    <strong>Result:</strong> Trusted networking (university boundary) + exclusive intimacy (EMBA privacy).
+                </p>
             </div>
 
             <div class="comparison-grid">
                 <div class="comparison-card">
-                    <h3>❌ Instagram/Facebook</h3>
-                    <p>Global chaos. Your content reaches 2% of followers. Too many strangers, zero context.</p>
+                    <h3>❌ WhatsApp</h3>
+                    <p><strong>Private ✓ Isolated ✗</strong><br>Your group is exclusive but you can't network beyond it. Dies at 500 members.</p>
                 </div>
                 <div class="comparison-card">
-                    <h3>❌ WhatsApp/Discord</h3>
-                    <p>Flat structure. One big group chat. Dies at 500 members. Chaotic, unsearchable, temporary.</p>
+                    <h3>❌ Facebook</h3>
+                    <p><strong>Networking ✓ Public ✗</strong><br>You can network but everything is public or algorithmically buried. No boundaries.</p>
+                </div>
+                <div class="comparison-card">
+                    <h3>❌ Discord</h3>
+                    <p><strong>Organized ✓ Flat ✗</strong><br>Server → Channels. Everyone sees all channels. No parent-child hierarchy.</p>
                 </div>
                 <div class="comparison-card highlight">
                     <h3>✅ C.Point</h3>
-                    <p>Hierarchical networks. Join the parent (critical mass), engage in children (intimacy). Network effects that compound.</p>
+                    <p><strong>All Three ✓✓✓</strong><br>Network in parent (trust). Engage in children (exclusivity). Hierarchical scale.</p>
                 </div>
             </div>
 
             <div class="feature-highlights">
                 <div class="feature">
                     <div class="feature-icon">🎯</div>
-                    <h4>Bounded Discovery</h4>
-                    <p>Find communities within your trust boundary</p>
+                    <h4>Bounded Trust</h4>
+                    <p>Network within your verified community boundary</p>
                 </div>
                 <div class="feature">
                     <div class="feature-icon">🔒</div>
-                    <h4>Verified Members</h4>
-                    <p>Community codes ensure real members only</p>
+                    <h4>Hidden Children</h4>
+                    <p>Sub-communities stay exclusive with separate codes</p>
                 </div>
                 <div class="feature">
                     <div class="feature-icon">📊</div>
-                    <h4>Multi-Level Admin</h4>
-                    <p>Distributed moderation that scales</p>
+                    <h4>Multi-Level Engagement</h4>
+                    <p>Post locally, network broadly—all in one place</p>
                 </div>
                 <div class="feature">
                     <div class="feature-icon">🔗</div>
                     <h4>Persistent Networks</h4>
-                    <p>Connections that last beyond the moment</p>
+                    <p>Communities that outlast any individual member</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Data Advantage Section -->
+    <section class="data-advantage">
+        <div class="container">
+            <h2 class="section-title">The Data Advantage: Hyper-Focused Intent</h2>
+            <p class="section-subtitle">
+                Real communities + topic-based engagement = the most precise targeting on the internet. 
+                Not surveillance. Just relevance.
+            </p>
+
+            <div class="data-grid">
+                <div class="data-card">
+                    <h3>Facebook/Instagram Targeting</h3>
+                    <div class="data-example">
+                        Target: "People interested in fitness"<br><br>
+                        Who sees your ad:<br>
+                        • Guy who clicked a gym ad once<br>
+                        • Person who liked a fitness meme<br>
+                        • Bot account
+                    </div>
+                    <div class="result">
+                        <strong>Result:</strong> 2% conversion rate. High cost. Low intent. Mostly wasted.
+                    </div>
+                </div>
+
+                <div class="data-card">
+                    <h3>C.Point Hyper-Targeting</h3>
+                    <div class="data-example">
+                        Target: "Gold's Gym Venice members who engage with 'powerlifting' posts and react to 'supplement' discussions"<br><br>
+                        Who sees your ad:<br>
+                        • Verified gym members (real people)<br>
+                        • Demonstrated interest (topic engagement)<br>
+                        • Active community behavior
+                    </div>
+                    <div class="result">
+                        <strong>Result:</strong> 40%+ conversion rate. Premium CPMs. Actual intent. Every dollar counts.
+                    </div>
+                </div>
+            </div>
+
+            <div class="feature-highlights" style="margin-top: 60px;">
+                <div class="feature">
+                    <div class="feature-icon">✅</div>
+                    <h4>Verified Identity</h4>
+                    <p>Real people with community codes, not bots</p>
+                </div>
+                <div class="feature">
+                    <div class="feature-icon">🎯</div>
+                    <h4>Demonstrated Interest</h4>
+                    <p>Topic engagement, not guessed behavior</p>
+                </div>
+                <div class="feature">
+                    <div class="feature-icon">🔍</div>
+                    <h4>Community Context</h4>
+                    <p>Trusted environment = higher conversion</p>
+                </div>
+                <div class="feature">
+                    <div class="feature-icon">📈</div>
+                    <h4>Cross-Community Patterns</h4>
+                    <p>Users in Gym + Vegan communities = precision</p>
                 </div>
             </div>
         </div>
@@ -689,6 +906,48 @@
         </div>
     </section>
 
+    <!-- B2B Value Section -->
+    <section class="b2b-value">
+        <div class="container">
+            <h2 class="section-title">Value for Everyone</h2>
+            <p class="section-subtitle">
+                Community owners monetize their data. Advertisers get real conversions. Users see relevant offers.
+            </p>
+
+            <div class="value-grid">
+                <div class="value-card">
+                    <div class="value-icon">🏢</div>
+                    <h3>For Community Owners</h3>
+                    <div class="value-stat">$2K+/mo</div>
+                    <p>
+                        Your community is an asset. Get 30% revenue share from brands targeting your members. 
+                        2,000 gym members × $10 CPM × 10 campaigns/month = $2,000 recurring revenue.
+                    </p>
+                </div>
+
+                <div class="value-card">
+                    <div class="value-icon">📊</div>
+                    <h3>For Advertisers</h3>
+                    <div class="value-stat">10x ROI</div>
+                    <p>
+                        Stop wasting 98% of your budget. Target verified members with demonstrated intent. 
+                        Same spend, 10-20x better conversion rates. Premium CPMs that actually work.
+                    </p>
+                </div>
+
+                <div class="value-card">
+                    <div class="value-icon">👥</div>
+                    <h3>For Users</h3>
+                    <div class="value-stat">Zero Spam</div>
+                    <p>
+                        See ads that actually matter. In a powerlifting community? See powerlifting gear. 
+                        Not creepy tracking—just contextual relevance within your verified community.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </section>
+
     <!-- How It Works -->
     <section class="how-it-works" id="how-it-works">
         <div class="container">
@@ -700,22 +959,22 @@
             <div class="steps-grid">
                 <div class="step">
                     <div class="step-number">1</div>
-                    <h3>Verified Entry</h3>
-                    <p>Join with your community code. Verified members only—no spam, no bots, just your people.</p>
+                    <h3>Join the Parent</h3>
+                    <p>Enter your university/gym/company code. Network with all verified members in the parent community.</p>
                 </div>
                 <div class="step">
                     <div class="step-number">2</div>
-                    <h3>Discover Ecosystem</h3>
-                    <p>See all sub-communities within your organization. Find your specific crew within the bigger network.</p>
+                    <h3>Discover Children (Optional)</h3>
+                    <p>Get codes for exclusive sub-communities (your MBA cohort, powerlifting club, etc). Hidden from the parent.</p>
                 </div>
                 <div class="step">
                     <div class="step-number">3</div>
                     <h3>Engage at Every Level</h3>
-                    <p>Post to your small study group. Network with your entire cohort. Stay connected with alumni. All in one place.</p>
+                    <p>Post in your intimate crew. Network in your broader community. Everything in one feed.</p>
                 </div>
                 <div class="step">
                     <div class="step-number">4</div>
-                    <h3>Lasting Connections</h3>
+                    <h3>Persistent Connections</h3>
                     <p>Unlike WhatsApp groups that die, these networks persist. Your 2024 cohort is still active in 2034.</p>
                 </div>
             </div>
@@ -740,8 +999,8 @@
                     <div class="stat-label">Avg communities joined per user</div>
                 </div>
                 <div class="stat">
-                    <div class="stat-number">80%</div>
-                    <div class="stat-label">Weekly active users in top communities</div>
+                    <div class="stat-number">40%</div>
+                    <div class="stat-label">Ad conversion rate (vs 2% industry avg)</div>
                 </div>
             </div>
         </div>
@@ -753,7 +1012,7 @@
             <h2>Ready to Build Your Community?</h2>
             <p>
                 Whether you're running a gym, university program, or coworking space—
-                we'll help you turn members into a thriving community.
+                we'll help you turn members into a thriving, monetizable community.
             </p>
             <div class="hero-buttons">
                 <a href="/signup" class="primary-button">Start Free Today</a>
@@ -764,7 +1023,7 @@
 
     <!-- Footer -->
     <footer>
-        <p>&copy; 2025 C.Point. The operating system for communities.</p>
+        <p>&copy; 2025 C.Point. Verified intent infrastructure for communities.</p>
     </footer>
 
     <script>
