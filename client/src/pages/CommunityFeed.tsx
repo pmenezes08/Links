@@ -409,7 +409,14 @@ export default function CommunityFeed() {
 
       {/* Highlight overlay when directing from onboarding */}
       {highlightPostButton && (
-        <div className="fixed inset-0 z-[39] bg-black/60" onClick={()=> setHighlightPostButton(false)} />
+        <div className="fixed inset-0 z-[39] bg-black/85" onClick={()=> setHighlightPostButton(false)}>
+          <div className="absolute top-[40%] left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center">
+            <div className="text-white text-base font-medium tracking-wide px-6 py-3 rounded-2xl bg-black/60 backdrop-blur-sm border border-white/10">
+              Click here to Create Your First Post
+            </div>
+            <div className="absolute -bottom-16 left-1/2 transform -translate-x-1/2 w-0.5 h-12 bg-gradient-to-b from-white/30 to-transparent" />
+          </div>
+        </div>
       )}
 
       {/* Bottom navigation bar - floating */}
@@ -422,7 +429,7 @@ export default function CommunityFeed() {
             <i className="fa-solid fa-users" />
           </button>
           <button 
-            className={`w-10 h-10 rounded-md bg-[#4db6ac] text-black hover:brightness-110 grid place-items-center transition-all ${highlightPostButton ? 'ring-4 ring-[#4db6ac]/50 animate-pulse scale-110' : ''}`}
+            className={`w-10 h-10 rounded-md bg-[#4db6ac] text-black hover:brightness-110 grid place-items-center transition-all ${highlightPostButton ? 'ring-[6px] ring-[#4db6ac] shadow-[0_0_40px_rgba(77,182,172,0.8)] animate-pulse scale-125' : ''}`}
             aria-label="New Post" 
             onClick={()=> { 
               setHighlightPostButton(false);

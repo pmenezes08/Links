@@ -38,7 +38,9 @@ export default function PremiumDashboard() {
   const onboardingTriggeredRef = useRef(false)  // Track if onboarding was already triggered
   const [joinedCommunityId, setJoinedCommunityId] = useState<number | null>(null)  // Track community joined during onboarding
   const [joinedCommunityName, setJoinedCommunityName] = useState<string | null>(null)  // Track community name
-  const [debugInfo, setDebugInfo] = useState<string | null>(null)  // For debugging on iPhone
+  const [showSuccessModal, setShowSuccessModal] = useState(false)  // Success modal for join
+  const [onboardingJoinCode, setOnboardingJoinCode] = useState('')  // Join code in step 4
+  const [joiningCommunity, setJoiningCommunity] = useState(false)  // Loading state
   const doneKey = username ? `onboarding_done:${username}` : 'onboarding_done'
   const { setTitle } = useHeader()
   useEffect(() => { setTitle('Dashboard') }, [setTitle])
@@ -428,26 +430,58 @@ export default function PremiumDashboard() {
         </div>
       )}
 
-      {/* Onboarding Step 4: Join/Create Community */}
+      {/* Onboarding Step 4: Join Community with Direct Input */}
       {onbStep === 4 && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center">
           <div className="w-[92%] max-w-md rounded-xl border border-white/10 bg-[#0b0f10] p-5">
             <div className="text-lg font-semibold mb-2">Join a community</div>
-            <div className="text-xs text-[#9fb0b5] mb-3">Join an existing community with a code to continue your setup.</div>
-            <div className="flex gap-2 mb-3">
-              <button className="flex-1 px-3 py-2 rounded-lg border border-[#4db6ac] bg-[#4db6ac]/10 text-[#4db6ac]" onClick={()=> { setShowJoinModal(true) }}>
-                <i className="fa-solid fa-users mr-2" />
-                Join Community
-              </button>
-            </div>
-            {/* Show skip option after they've tried joining */}
+            <div className="text-xs text-[#9fb0b5] mb-3">Enter your community code to continue</div>
+            
+            <input 
+              value={onboardingJoinCode} 
+              onChange={(e)=> setOnboardingJoinCode(e.target.value)} 
+              placeholder="Enter community code" 
+              className="w-full px-3 py-3 rounded-xl border border-white/10 bg-white/[0.04] mb-4 text-center tracking-wider"
+              autoFocus
+            />
+            
             <div className="flex justify-between gap-2">
               <div>
-                <button className="px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> setOnbStep(3)}>Back</button>
+                <button className="px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> setOnbStep(3)} disabled={joiningCommunity}>Back</button>
               </div>
               <div className="flex gap-2">
-                <button type="button" className="px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/[0.04]" onClick={(e)=> { e.preventDefault(); setConfirmExit(true) }}>Exit</button>
-                <button className="px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/[0.04]" onClick={handleExitConfirm}>Skip for now</button>
+                <button type="button" className="px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/[0.04]" onClick={(e)=> { e.preventDefault(); setConfirmExit(true) }} disabled={joiningCommunity}>Exit</button>
+                <button className="px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/[0.04]" onClick={handleExitConfirm} disabled={joiningCommunity}>Skip</button>
+                <button 
+                  className="px-4 py-2 text-sm rounded-lg bg-[#4db6ac] text-black font-semibold disabled:opacity-50" 
+                  disabled={joiningCommunity || !onboardingJoinCode.trim()}
+                  onClick={async()=> {
+                    if (!onboardingJoinCode.trim()) { alert('Please enter a code'); return }
+                    if (emailVerified === false){ setShowVerifyFirstModal(true); return }
+                    
+                    setJoiningCommunity(true);
+                    try{
+                      const fd = new URLSearchParams({ community_code: onboardingJoinCode.trim() })
+                      const r = await fetch('/join_community', { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
+                      const j = await r.json().catch(()=>null)
+                      
+                      if (j?.success){ 
+                        setJoinedCommunityId(j.community_id);
+                        setJoinedCommunityName(j.community_name || 'community');
+                        setOnboardingJoinCode('');
+                        setShowSuccessModal(true);
+                      } else {
+                        alert(j?.error || 'Failed to join community')
+                      }
+                    }catch(err){ 
+                      alert('Failed to join community')
+                    } finally {
+                      setJoiningCommunity(false);
+                    }
+                  }}
+                >
+                  {joiningCommunity ? 'Joining...' : 'Join'}
+                </button>
               </div>
             </div>
           </div>
@@ -485,33 +519,21 @@ export default function PremiumDashboard() {
           </div>
         </div>
       )}
-      {/* Debug Info Modal - Shows on screen for iPhone debugging */}
-      {debugInfo && (
-        <div className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center p-4">
-          <div className="w-full max-w-md rounded-xl border border-white/10 bg-[#0b0f10] p-5">
-            <div className="text-base font-semibold mb-3">🐛 Debug Info</div>
-            <pre className="text-xs text-[#9fb0b5] whitespace-pre-wrap mb-4 bg-black/50 p-3 rounded">{debugInfo}</pre>
-            <div className="flex gap-2">
+      {/* Success Modal - Modern and Sleek */}
+      {showSuccessModal && (
+        <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-sm rounded-2xl border border-[#4db6ac]/30 bg-gradient-to-b from-[#0b0f10] to-black p-6 shadow-2xl">
+            <div className="text-center">
+              <div className="text-xl font-bold mb-2 text-white">Successfully joined</div>
+              <div className="text-2xl font-bold mb-6 text-[#4db6ac]">{joinedCommunityName}</div>
               <button 
-                className="flex-1 px-3 py-2 text-sm rounded-lg bg-[#4db6ac] text-black font-semibold" 
+                className="w-full px-4 py-3 rounded-xl bg-[#4db6ac] text-black font-semibold hover:brightness-110 transition-all" 
                 onClick={()=> {
-                  const inOnboarding = onboardingTriggeredRef.current;
-                  setDebugInfo(null);
-                  if (inOnboarding) {
-                    alert(`✅ You've successfully joined ${joinedCommunityName || 'the community'}!`);
-                    setOnbStep(5);
-                  } else {
-                    location.href = '/communities';
-                  }
+                  setShowSuccessModal(false);
+                  setOnbStep(5);
                 }}
               >
                 Continue
-              </button>
-              <button 
-                className="px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/[0.04]" 
-                onClick={()=> setDebugInfo(null)}
-              >
-                Cancel
               </button>
             </div>
           </div>
@@ -643,23 +665,15 @@ export default function PremiumDashboard() {
                     const j = await r.json().catch(()=>null)
                     
                     if (j?.success){ 
-                      const inOnboarding = onboardingTriggeredRef.current;
-                      
-                      // Show debug info on screen
-                      const debug = `DEBUG INFO:\n\nonbStep: ${onbStep}\nonboardingTriggeredRef: ${inOnboarding}\ncommunity_id: ${j.community_id}\ncommunity_name: ${j.community_name}\n\nWill ${inOnboarding ? 'GO TO STEP 5' : 'REDIRECT to /communities'}`;
-                      setDebugInfo(debug);
-                      
                       setJoinedCommunityId(j.community_id);
                       setJoinedCommunityName(j.community_name || 'community');
                       setShowJoinModal(false); 
                       setJoinCode('');
-                      
-                      // DON'T proceed until user dismisses debug
-                      return;
+                      setShowSuccessModal(true);
                     }
                     else alert(j?.error || 'Failed to join community')
                   }catch(err){ 
-                    alert('Failed to join community: ' + err) 
+                    alert('Failed to join community') 
                   }
                 }}>Join</button>
               </div>
