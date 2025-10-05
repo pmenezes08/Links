@@ -415,19 +415,25 @@ export default function CommunityFeed() {
         </div>
       )}
 
-      {/* Highlight overlay - Reaction Step - Instruction prompt only */}
+      {/* Highlight overlay - Reaction Step */}
       {highlightStep === 'reaction' && (
-        <div className="fixed top-[15%] left-1/2 transform -translate-x-1/2 z-[51] text-center w-[90%] max-w-sm pointer-events-auto">
-          <div className="text-white text-base font-medium px-6 py-3 rounded-xl bg-black/70 backdrop-blur-md border border-[#4db6ac]/30 shadow-lg mb-3">
-            React to a post <span className="text-[#4db6ac] text-sm ml-2">(1/2)</span>
+        <>
+          {/* Dark cover above the highlighted post (covers back button and header) */}
+          <div className="fixed top-[56px] left-0 right-0 h-[35vh] z-[50] bg-black/90 pointer-events-none" />
+          
+          {/* Instruction prompt and Next button */}
+          <div className="fixed top-[15%] left-1/2 transform -translate-x-1/2 z-[51] text-center w-[90%] max-w-sm pointer-events-auto">
+            <div className="text-white text-base font-medium px-6 py-3 rounded-xl bg-black/70 backdrop-blur-md border border-[#4db6ac]/30 shadow-lg mb-3">
+              React to a post <span className="text-[#4db6ac] text-sm ml-2">(1/2)</span>
+            </div>
+            <button 
+              className="px-6 py-2 rounded-full bg-[#4db6ac]/50 text-white text-sm font-medium hover:bg-[#4db6ac]/70"
+              onClick={()=> setHighlightStep('post')}
+            >
+              Next
+            </button>
           </div>
-          <button 
-            className="px-6 py-2 rounded-full bg-[#4db6ac]/50 text-white text-sm font-medium hover:bg-[#4db6ac]/70"
-            onClick={()=> setHighlightStep('post')}
-          >
-            Next
-          </button>
-        </div>
+        </>
       )}
 
       {/* Highlight overlay - Post Creation Step */}
