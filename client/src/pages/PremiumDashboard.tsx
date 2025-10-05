@@ -38,6 +38,7 @@ export default function PremiumDashboard() {
   const onboardingTriggeredRef = useRef(false)  // Track if onboarding was already triggered
   const [joinedCommunityId, setJoinedCommunityId] = useState<number | null>(null)  // Track community joined during onboarding
   const [joinedCommunityName, setJoinedCommunityName] = useState<string | null>(null)  // Track community name
+  const [debugInfo, setDebugInfo] = useState<string | null>(null)  // For debugging on iPhone
   const doneKey = username ? `onboarding_done:${username}` : 'onboarding_done'
   const { setTitle } = useHeader()
   useEffect(() => { setTitle('Dashboard') }, [setTitle])
@@ -484,6 +485,39 @@ export default function PremiumDashboard() {
           </div>
         </div>
       )}
+      {/* Debug Info Modal - Shows on screen for iPhone debugging */}
+      {debugInfo && (
+        <div className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center p-4">
+          <div className="w-full max-w-md rounded-xl border border-white/10 bg-[#0b0f10] p-5">
+            <div className="text-base font-semibold mb-3">🐛 Debug Info</div>
+            <pre className="text-xs text-[#9fb0b5] whitespace-pre-wrap mb-4 bg-black/50 p-3 rounded">{debugInfo}</pre>
+            <div className="flex gap-2">
+              <button 
+                className="flex-1 px-3 py-2 text-sm rounded-lg bg-[#4db6ac] text-black font-semibold" 
+                onClick={()=> {
+                  const inOnboarding = onboardingTriggeredRef.current;
+                  setDebugInfo(null);
+                  if (inOnboarding) {
+                    alert(`✅ You've successfully joined ${joinedCommunityName || 'the community'}!`);
+                    setOnbStep(5);
+                  } else {
+                    location.href = '/communities';
+                  }
+                }}
+              >
+                Continue
+              </button>
+              <button 
+                className="px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/[0.04]" 
+                onClick={()=> setDebugInfo(null)}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Global Exit confirmation modal (available on any step) */}
       {confirmExit && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center" onClick={(e)=> e.currentTarget===e.target && setConfirmExit(false)}>
@@ -604,37 +638,28 @@ export default function PremiumDashboard() {
                     return
                   }
                   try{
-                    console.log('🔍 Join button clicked, current onbStep:', onbStep);
                     const fd = new URLSearchParams({ community_code: joinCode.trim() })
                     const r = await fetch('/join_community', { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
                     const j = await r.json().catch(()=>null)
-                    console.log('📡 Join response:', j);
                     
                     if (j?.success){ 
+                      const inOnboarding = onboardingTriggeredRef.current;
+                      
+                      // Show debug info on screen
+                      const debug = `DEBUG INFO:\n\nonbStep: ${onbStep}\nonboardingTriggeredRef: ${inOnboarding}\ncommunity_id: ${j.community_id}\ncommunity_name: ${j.community_name}\n\nWill ${inOnboarding ? 'GO TO STEP 5' : 'REDIRECT to /communities'}`;
+                      setDebugInfo(debug);
+                      
                       setJoinedCommunityId(j.community_id);
                       setJoinedCommunityName(j.community_name || 'community');
                       setShowJoinModal(false); 
                       setJoinCode('');
                       
-                      // ALWAYS check if we're in onboarding by checking if onboardingTriggeredRef is true
-                      const inOnboarding = onboardingTriggeredRef.current;
-                      console.log('🎯 Onboarding status - triggered:', inOnboarding, 'step:', onbStep);
-                      
-                      if (inOnboarding) {
-                        console.log('✅ IN ONBOARDING - Going to step 5, NO REDIRECT');
-                        // Show success alert
-                        alert(`✅ You've successfully joined ${j.community_name || 'the community'}!`);
-                        // Go to step 5 - DO NOT redirect
-                        setOnbStep(5);
-                      } else {
-                        console.log('❌ NOT in onboarding - Redirecting to communities');
-                        location.href = '/communities';
-                      }
+                      // DON'T proceed until user dismisses debug
+                      return;
                     }
                     else alert(j?.error || 'Failed to join community')
                   }catch(err){ 
-                    console.error('Join error:', err);
-                    alert('Failed to join community') 
+                    alert('Failed to join community: ' + err) 
                   }
                 }}>Join</button>
               </div>
