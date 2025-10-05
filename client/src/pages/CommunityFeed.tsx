@@ -405,28 +405,28 @@ export default function CommunityFeed() {
         </div>
       )}
 
-      {/* Highlight overlay - Reaction Step - Fixed to viewport (follows screen) */}
+      {/* Highlight overlay - Reaction Step - Scrolls with content to show only first post */}
       {highlightStep === 'reaction' && (
         <>
-          {/* Top dark section - covers community logo and header completely */}
-          <div className="fixed top-0 left-0 right-0 h-[35vh] z-[50] bg-black/90 pointer-events-none" />
+          {/* Top dark section - covers everything above first post */}
+          <div className="absolute top-0 left-0 right-0 h-[280px] z-[50] bg-black/90 pointer-events-none" />
           
           {/* Bottom dark section - covers second post and everything below */}
-          <div className="fixed bottom-0 left-0 right-0 h-[35vh] z-[50] bg-black/90 pointer-events-none" />
+          <div className="absolute top-[680px] left-0 right-0 h-[2000px] z-[50] bg-black/90 pointer-events-none" />
           
           {/* Left dark section - middle area where first post is */}
-          <div className="fixed top-[35vh] left-0 bottom-[35vh] w-[2%] z-[50] bg-black/90 pointer-events-none" />
+          <div className="absolute top-[280px] left-0 h-[400px] w-[2%] z-[50] bg-black/90 pointer-events-none" />
           
           {/* Right dark section - middle area where first post is */}
-          <div className="fixed top-[35vh] right-0 bottom-[35vh] w-[2%] z-[50] bg-black/90 pointer-events-none" />
+          <div className="absolute top-[280px] right-0 h-[400px] w-[2%] z-[50] bg-black/90 pointer-events-none" />
           
-          {/* Instruction prompt and Next button stacked - fixed to viewport */}
-          <div className="fixed top-[8%] left-1/2 transform -translate-x-1/2 z-[51] text-center w-[90%] max-w-sm pointer-events-auto">
+          {/* Instruction prompt and Next button stacked - fixed to viewport but lower */}
+          <div className="fixed top-[15%] left-1/2 transform -translate-x-1/2 z-[51] text-center w-[90%] max-w-sm pointer-events-auto">
             <div className="text-white text-base font-medium px-6 py-3 rounded-xl bg-black/70 backdrop-blur-md border border-[#4db6ac]/30 shadow-lg mb-3">
               React to a post <span className="text-[#4db6ac] text-sm ml-2">(1/2)</span>
             </div>
             <button 
-              className="px-6 py-2 rounded-full bg-white/10 text-white/60 text-sm font-normal hover:bg-white/15"
+              className="px-6 py-2 rounded-full bg-[#4db6ac]/50 text-white text-sm font-medium hover:bg-[#4db6ac]/70"
               onClick={()=> setHighlightStep('post')}
             >
               Next
