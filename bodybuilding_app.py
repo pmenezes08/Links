@@ -14046,8 +14046,9 @@ def community_feed_smart(community_id):
         abort(500)
 
 # Fallback route for serving uploaded images if web server mapping is missing
-@app.route('/uploads/<path:filename>')
+@app.route('/uploads/<path:filename>', endpoint='uploaded_file_compat')
 def serve_uploads(filename):
+    """Serve uploaded files - accessible via uploaded_file_compat endpoint"""
     try:
         base_dir = os.path.dirname(os.path.abspath(__file__))
         static_root = os.path.join(base_dir, 'static')
