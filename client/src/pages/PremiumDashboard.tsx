@@ -519,22 +519,12 @@ export default function PremiumDashboard() {
           </div>
         </div>
       )}
-      {/* Success Popup - Over Modal */}
+      {/* Success Toast - Subtle notification */}
       {showSuccessModal && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 pointer-events-none">
-          <div className="w-full max-w-xs rounded-xl border border-[#4db6ac]/30 bg-gradient-to-b from-[#0b0f10] to-black p-5 shadow-2xl pointer-events-auto">
-            <div className="text-center">
-              <div className="text-base font-bold mb-1 text-white">Successfully joined</div>
-              <div className="text-lg font-bold mb-4 text-[#4db6ac]">{joinedCommunityName}</div>
-              <button 
-                className="w-full px-4 py-2 text-sm rounded-lg bg-[#4db6ac] text-black font-semibold hover:brightness-110 transition-all" 
-                onClick={()=> {
-                  setShowSuccessModal(false);
-                  setOnbStep(5);
-                }}
-              >
-                Continue
-              </button>
+        <div className="fixed top-20 left-1/2 transform -translate-x-1/2 z-[60] pointer-events-none">
+          <div className="px-6 py-3 rounded-full border border-[#4db6ac]/40 bg-black/90 backdrop-blur-sm shadow-lg animate-fade-in">
+            <div className="text-sm font-medium text-white">
+              Joined <span className="text-[#4db6ac]">{joinedCommunityName}</span>
             </div>
           </div>
         </div>

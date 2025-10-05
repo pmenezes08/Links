@@ -408,12 +408,13 @@ export default function CommunityFeed() {
       {/* Highlight overlay - Reaction Step */}
       {highlightStep === 'reaction' && (
         <div className="fixed inset-0 z-[39] bg-black/85">
-          <div className="absolute top-[35%] left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center">
-            <div className="text-white text-base font-medium tracking-wide px-6 py-3 rounded-2xl bg-black/60 backdrop-blur-sm border border-white/10 mb-4">
+          <div className="absolute top-[30%] left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center w-[90%] max-w-sm">
+            <div className="text-white text-base font-medium px-6 py-3 rounded-xl bg-black/70 backdrop-blur-md border border-[#4db6ac]/30 mb-6 shadow-lg">
               React to a post
             </div>
+            <div className="w-1 h-12 mx-auto bg-gradient-to-b from-[#4db6ac]/50 to-transparent mb-6" />
             <button 
-              className="px-6 py-2 rounded-lg bg-[#4db6ac] text-black font-semibold"
+              className="px-8 py-2.5 rounded-full bg-[#4db6ac] text-black font-semibold hover:brightness-110 shadow-lg"
               onClick={()=> setHighlightStep('post')}
             >
               Next
@@ -425,26 +426,44 @@ export default function CommunityFeed() {
       {/* Highlight overlay - Post Creation Step */}
       {highlightStep === 'post' && (
         <div className="fixed inset-0 z-[39] bg-black/85">
-          <div className="absolute top-[35%] left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center">
-            <div className="text-white text-base font-medium tracking-wide px-6 py-3 rounded-2xl bg-black/60 backdrop-blur-sm border border-white/10 mb-4">
+          <div className="absolute top-[30%] left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center w-[90%] max-w-sm">
+            <div className="text-white text-base font-medium px-6 py-3 rounded-xl bg-black/70 backdrop-blur-md border border-[#4db6ac]/30 mb-6 shadow-lg">
               Click here to Create Your First Post
             </div>
-            <button 
-              className="px-6 py-2 rounded-lg border border-white/10 bg-white/[0.04] text-white font-medium"
-              onClick={()=> {
-                setHighlightStep(null);
-                // Mark onboarding as complete
-                try { 
-                  const username = data?.username || '';
-                  const doneKey = username ? `onboarding_done:${username}` : 'onboarding_done';
-                  localStorage.setItem(doneKey, '1');
-                } catch {}
-              }}
-            >
-              Skip for now
-            </button>
+            <div className="w-1 h-20 mx-auto bg-gradient-to-b from-[#4db6ac]/50 to-transparent mb-6" />
+            <div className="flex gap-3 justify-center">
+              <button 
+                className="px-6 py-2.5 rounded-full border border-white/20 bg-white/[0.08] text-white font-medium hover:bg-white/[0.12]"
+                onClick={()=> {
+                  setHighlightStep(null);
+                  // Mark onboarding as complete
+                  try { 
+                    const username = data?.username || '';
+                    const doneKey = username ? `onboarding_done:${username}` : 'onboarding_done';
+                    localStorage.setItem(doneKey, '1');
+                  } catch {}
+                }}
+              >
+                Skip for now
+              </button>
+              <button 
+                className="px-6 py-2.5 rounded-full bg-[#4db6ac] text-black font-semibold hover:brightness-110 shadow-lg"
+                onClick={()=> {
+                  setHighlightStep(null);
+                  // Mark onboarding as complete
+                  try { 
+                    const username = data?.username || '';
+                    const doneKey = username ? `onboarding_done:${username}` : 'onboarding_done';
+                    localStorage.setItem(doneKey, '1');
+                  } catch {}
+                  // TODO: Navigate to tour page
+                  alert('Community tour coming soon!');
+                }}
+              >
+                Give me a tour
+              </button>
+            </div>
           </div>
-          <div className="absolute bottom-32 left-1/2 transform -translate-x-1/2 w-0.5 h-16 bg-gradient-to-b from-white/30 to-transparent" />
         </div>
       )}
 
@@ -609,7 +628,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
         ) : null}
         {/* Polls are not displayed on the timeline in React */}
         <div className="flex items-center gap-2 text-xs" onClick={(e)=> e.stopPropagation()}>
-          <div className={`${highlightStep === 'reaction' && idx === 0 ? 'relative z-[40] ring-4 ring-[#4db6ac] rounded-full' : ''}`}>
+          <div className={`${highlightStep === 'reaction' && idx === 0 ? 'relative z-[40] ring-[3px] ring-[#4db6ac]/60 shadow-[0_0_20px_rgba(77,182,172,0.6)] rounded-full animate-pulse' : ''}`}>
             <ReactionFA icon="fa-regular fa-heart" count={post.reactions?.['heart']||0} active={post.user_reaction==='heart'} onClick={()=> onToggleReaction(post.id, 'heart')} />
           </div>
           <ReactionFA icon="fa-regular fa-thumbs-up" count={post.reactions?.['thumbs-up']||0} active={post.user_reaction==='thumbs-up'} onClick={()=> onToggleReaction(post.id, 'thumbs-up')} />
