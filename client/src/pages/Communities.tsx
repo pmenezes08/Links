@@ -290,8 +290,6 @@ function ParentTimeline({ parentId }:{ parentId:number }){
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string|undefined>()
   const [loadedOnce, setLoadedOnce] = useState(false)
-  const [fetchCount, setFetchCount] = useState(0)
-  const [debugInfo, setDebugInfo] = useState<string[]>([])
   // Module-level caches to prevent duplicate network requests across quick remounts
   const cacheRef = (window as any).__parentTlCache || ((window as any).__parentTlCache = new Map<number, { ts:number; posts:any[] }>())
   const inflightRef = (window as any).__parentTlInflight || ((window as any).__parentTlInflight = new Map<number, Promise<any>>())
@@ -347,23 +345,7 @@ function ParentTimeline({ parentId }:{ parentId:number }){
         const j = await promise
         if (!ok) return
         if (j?.success){
-          const postList = j.posts || []
-          setPosts(postList)
-          setFetchCount(prev => prev + 1)
-          
-          // Debug info
-          const videoCount = postList.filter((p: any) => {
-            const hasYoutube = p.content?.includes('youtube.com') || p.content?.includes('youtu.be')
-            const hasVimeo = p.content?.includes('vimeo.com')
-            return hasYoutube || hasVimeo
-          }).length
-          setDebugInfo([
-            `Fetch #${fetchCount + 1}`,
-            `Posts: ${postList.length}`,
-            `Videos: ${videoCount}`,
-            `${new Date().toLocaleTimeString()}`
-          ])
-          
+          setPosts(j.posts || [])
           try{ sessionStorage.setItem(`parent_tl_cache:${parentId}`, JSON.stringify({ ts: Date.now(), posts: j.posts||[] })) }catch{}
           try{ cacheRef.set(parentId, { ts: Date.now(), posts: j.posts||[] }) }catch{}
         }
@@ -385,14 +367,6 @@ function ParentTimeline({ parentId }:{ parentId:number }){
 
   return (
     <div>
-      {/* Debug banner - Green */}
-      {debugInfo.length > 0 && (
-        <div className="sticky top-0 z-50 bg-green-600/95 backdrop-blur text-white text-[11px] px-2 py-1 mb-3 flex gap-3 justify-center font-mono rounded-lg">
-          {debugInfo.map((info, i) => (
-            <span key={i} className="font-semibold">{info}</span>
-          ))}
-        </div>
-      )}
       {posts.length === 0 ? (
         <div className="text-[#9fb0b5] text-sm">No posts created in the past 48h</div>
       ) : (
