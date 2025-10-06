@@ -11178,7 +11178,7 @@ def admin_user_statistics():
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
-            # Ensure required tables exist (esp. on MySQL where init_db may not run at import time)
+            # Ensure required tables exist
             try:
                 if USE_MYSQL:
                     c.execute("""
@@ -11201,15 +11201,39 @@ def admin_user_statistics():
                             FOREIGN KEY (community_id) REFERENCES communities (id)
                         )
                     """)
-                    try:
-                        c.execute("CREATE INDEX IF NOT EXISTS idx_login_username ON user_login_history(username)")
-                        c.execute("CREATE INDEX IF NOT EXISTS idx_login_time ON user_login_history(login_time)")
-                        c.execute("CREATE INDEX IF NOT EXISTS idx_visit_username ON community_visit_history(username)")
-                        c.execute("CREATE INDEX IF NOT EXISTS idx_visit_community ON community_visit_history(community_id)")
-                        c.execute("CREATE INDEX IF NOT EXISTS idx_visit_time ON community_visit_history(visit_time)")
-                    except Exception:
-                        pass
-                    conn.commit()
+                else:
+                    # SQLite
+                    c.execute("""
+                        CREATE TABLE IF NOT EXISTS user_login_history (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            username TEXT NOT NULL,
+                            login_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                            ip_address TEXT,
+                            user_agent TEXT,
+                            FOREIGN KEY (username) REFERENCES users (username)
+                        )
+                    """)
+                    c.execute("""
+                        CREATE TABLE IF NOT EXISTS community_visit_history (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            username TEXT NOT NULL,
+                            community_id INTEGER NOT NULL,
+                            visit_time TEXT NOT NULL,
+                            FOREIGN KEY (username) REFERENCES users (username),
+                            FOREIGN KEY (community_id) REFERENCES communities (id)
+                        )
+                    """)
+                
+                # Create indexes for both MySQL and SQLite
+                try:
+                    c.execute("CREATE INDEX IF NOT EXISTS idx_login_username ON user_login_history(username)")
+                    c.execute("CREATE INDEX IF NOT EXISTS idx_login_time ON user_login_history(login_time)")
+                    c.execute("CREATE INDEX IF NOT EXISTS idx_visit_username ON community_visit_history(username)")
+                    c.execute("CREATE INDEX IF NOT EXISTS idx_visit_community ON community_visit_history(community_id)")
+                    c.execute("CREATE INDEX IF NOT EXISTS idx_visit_time ON community_visit_history(visit_time)")
+                except Exception:
+                    pass
+                conn.commit()
             except Exception as ensure_err:
                 logger.warning(f"Could not ensure stats tables: {ensure_err}")
             
