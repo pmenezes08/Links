@@ -16,6 +16,7 @@ export default function HomeTimeline(){
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string|null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
+  const [debugInfo, setDebugInfo] = useState<string[]>([])
 
   useEffect(() => {
     let link = document.getElementById('legacy-styles') as HTMLLinkElement | null
@@ -23,9 +24,10 @@ export default function HomeTimeline(){
       link = document.createElement('link')
       link.id = 'legacy-styles'
       link.rel = 'stylesheet'
-      link.href = '/static/styles.css'
+      link.href = '/static/base.css'
       document.head.appendChild(link)
     }
+    return () => { link?.remove() }
   }, [])
 
   // Refresh data when page becomes visible
@@ -54,13 +56,39 @@ export default function HomeTimeline(){
     return () => { mounted = false }
   }, [refreshKey])
 
-  const posts: Post[] = useMemo(() => data?.posts || [], [data])
+  const posts: Post[] = useMemo(() => {
+    const postList = data?.posts || []
+    const videoCount = postList.filter((p: Post) => {
+      const hasYoutube = p.content?.includes('youtube.com') || p.content?.includes('youtu.be')
+      const hasVimeo = p.content?.includes('vimeo.com')
+      return hasYoutube || hasVimeo
+    }).length
+    
+    setDebugInfo([
+      `Fetch #${refreshKey}`,
+      `Posts: ${postList.length}`,
+      `With videos: ${videoCount}`,
+      `Time: ${new Date().toLocaleTimeString()}`
+    ])
+    
+    return postList
+  }, [data, refreshKey])
+  
   const { setTitle } = useHeader()
 
   useEffect(() => { setTitle('Home') }, [setTitle])
 
   return (
     <div className="fixed inset-x-0 top-14 bottom-0 bg-black text-white">
+      {/* Debug info banner */}
+      {debugInfo.length > 0 && (
+        <div className="fixed top-[56px] left-0 right-0 z-50 bg-purple-900/90 backdrop-blur text-white text-xs px-3 py-1 flex gap-3 justify-center">
+          {debugInfo.map((info, i) => (
+            <span key={i}>{info}</span>
+          ))}
+        </div>
+      )}
+      
       {/* Secondary header below global header */}
 
       {/* Secondary tabs */}
@@ -83,7 +111,7 @@ export default function HomeTimeline(){
         ) : error ? (
           <div className="p-3 text-red-400">{error}</div>
         ) : posts.length === 0 ? (
-          <div className="p-3 text-[#9fb0b5]">No recent posts in the last 48h.</div>
+          <div className="p-3 text-[#9fb0b5]">No recent posts</div>
         ) : (
           <div className="space-y-3">
             {posts.map(p => (
@@ -107,11 +135,6 @@ export default function HomeTimeline(){
                     const videoEmbed = extractVideoEmbed(content)
                     const displayContent = videoEmbed ? removeVideoUrlFromText(content, videoEmbed) : content
                     
-                    // Debug logging
-                    if (content.includes('youtube.com') || content.includes('youtu.be')) {
-                      console.log('[HomeTimeline] Post', p.id, 'has video URL:', !!videoEmbed, 'content length:', content.length)
-                    }
-                    
                     if (!videoEmbed && !displayContent) return null
                     return (
                       <>
@@ -130,15 +153,9 @@ export default function HomeTimeline(){
                         return ip.startsWith('uploads') ? `/${ip}` : `/uploads/${ip}`
                       })()}
                       alt="Post image"
-                      className="block mx-auto max-w-full max-h-[360px] rounded border border-white/10 px-3"
+                      className="w-full h-auto"
                     />
                   ) : null}
-                  <div className="flex items-center gap-3 text-xs">
-                    <button className="ml-auto px-2.5 py-1 rounded-full text-[#cfd8dc]" onClick={(e)=> { e.stopPropagation(); navigate(`/post/${p.id}`) }}>
-                      <i className="fa-regular fa-comment" />
-                      <span className="ml-1">{p.replies_count||0}</span>
-                    </button>
-                  </div>
                 </div>
               </div>
             ))}
@@ -148,4 +165,3 @@ export default function HomeTimeline(){
     </div>
   )
 }
-
