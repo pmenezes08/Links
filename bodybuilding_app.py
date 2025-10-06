@@ -11274,7 +11274,7 @@ def admin_user_statistics():
                     COUNT(*) as visit_count
                 FROM community_visit_history vh
                 JOIN communities c ON vh.community_id = c.id
-                GROUP BY vh.username, vh.community_id, c.name
+                GROUP BY vh.username, c.name
                 ORDER BY vh.username, visit_count DESC
             """)
             
