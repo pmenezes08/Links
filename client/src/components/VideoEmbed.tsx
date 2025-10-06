@@ -8,15 +8,19 @@ type Props = {
 export default function VideoEmbed({ embed, className = '' }: Props) {
   if (!embed || !embed.embedUrl) return null
 
+  // Instagram needs different aspect ratio and styling
+  const isInstagram = embed.type === 'instagram'
+
   return (
     <div className={`relative w-full overflow-hidden rounded-lg border border-white/10 ${className}`}>
-      <div className="relative pb-[56.25%]"> {/* 16:9 aspect ratio */}
+      <div className={`relative ${isInstagram ? 'pb-[125%]' : 'pb-[56.25%]'}`}> {/* Instagram: taller, Others: 16:9 */}
         <iframe
           src={embed.embedUrl}
           className="absolute top-0 left-0 w-full h-full"
           frameBorder="0"
           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
           allowFullScreen
+          scrolling="no"
           title={`${embed.type} video player`}
         />
       </div>

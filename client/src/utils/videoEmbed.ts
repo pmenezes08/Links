@@ -1,7 +1,7 @@
 // Utility functions for detecting and embedding video URLs
 
 export type VideoEmbed = {
-  type: 'youtube' | 'vimeo' | 'tiktok' | null
+  type: 'youtube' | 'vimeo' | 'tiktok' | 'instagram' | null
   videoId: string
   embedUrl: string
 }
@@ -68,6 +68,25 @@ export function extractVideoEmbed(text: string): VideoEmbed | null {
     }
   }
 
+  // Instagram patterns (posts and reels)
+  const instagramPatterns = [
+    /(?:https?:\/\/)?(?:www\.)?instagram\.com\/p\/([a-zA-Z0-9_-]+)/,
+    /(?:https?:\/\/)?(?:www\.)?instagram\.com\/reel\/([a-zA-Z0-9_-]+)/,
+    /(?:https?:\/\/)?(?:www\.)?instagram\.com\/tv\/([a-zA-Z0-9_-]+)/,
+  ]
+
+  for (const pattern of instagramPatterns) {
+    const match = text.match(pattern)
+    if (match) {
+      const videoId = match[1]
+      return {
+        type: 'instagram',
+        videoId,
+        embedUrl: `https://www.instagram.com/p/${videoId}/embed`,
+      }
+    }
+  }
+
   return null
 }
 
@@ -91,6 +110,11 @@ export function removeVideoUrlFromText(text: string, videoEmbed: VideoEmbed | nu
     tiktok: [
       /https?:\/\/(?:www\.)?tiktok\.com\/@[\w.-]+\/video\/\d+[^\s]*/g,
       /https?:\/\/(?:vm\.)?tiktok\.com\/[a-zA-Z0-9]+[^\s]*/g,
+    ],
+    instagram: [
+      /https?:\/\/(?:www\.)?instagram\.com\/p\/[a-zA-Z0-9_-]+[^\s]*/g,
+      /https?:\/\/(?:www\.)?instagram\.com\/reel\/[a-zA-Z0-9_-]+[^\s]*/g,
+      /https?:\/\/(?:www\.)?instagram\.com\/tv\/[a-zA-Z0-9_-]+[^\s]*/g,
     ],
   }
 

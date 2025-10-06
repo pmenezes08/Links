@@ -634,7 +634,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
               return (
                 <>
                   {displayContent && <div className="whitespace-pre-wrap text-[14px] leading-relaxed tracking-[0]">{displayContent}</div>}
-                  {videoEmbed && <VideoEmbed embed={videoEmbed} />}
+                  {videoEmbed && <VideoEmbed embed={videoEmbed} className="my-2" />}
                 </>
               )
             })()}
