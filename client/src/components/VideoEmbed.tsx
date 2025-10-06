@@ -12,8 +12,8 @@ export default function VideoEmbed({ embed, className = '' }: Props) {
   const isInstagram = embed.type === 'instagram'
 
   if (isInstagram) {
-    // Instagram embeds have severe limitations - they don't support inline video playback
-    // Display as a styled link instead
+    // Instagram doesn't allow inline playback - their API intentionally redirects to Instagram
+    // Show the iframe embed which will display the post preview
     const instagramUrl = embed.embedUrl.replace('/embed', '')
     return (
       <div className={`flex justify-center w-full ${className}`}>
@@ -21,27 +21,34 @@ export default function VideoEmbed({ embed, className = '' }: Props) {
           href={instagramUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="block no-underline"
+          className="block no-underline relative"
           style={{ maxWidth: '328px', width: '100%' }}
         >
-          <div className="relative border border-white/20 rounded-lg overflow-hidden bg-gradient-to-br from-purple-600 via-pink-600 to-orange-600 p-[2px]">
-            <div className="bg-black rounded-lg p-4">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 via-pink-500 to-orange-500 flex items-center justify-center">
-                  <i className="fab fa-instagram text-white text-xl" />
-                </div>
-                <div className="flex-1">
-                  <div className="text-white font-medium text-sm">Instagram</div>
-                  <div className="text-white/60 text-xs">Tap to view</div>
-                </div>
-              </div>
-              <div className="aspect-[9/16] bg-white/5 rounded flex items-center justify-center">
-                <div className="text-center">
-                  <i className="fas fa-play-circle text-white/80 text-4xl mb-2" />
-                  <div className="text-white/60 text-xs">View on Instagram</div>
+          <div className="relative rounded-lg overflow-hidden border-[3px] border-transparent bg-gradient-to-br from-purple-600 via-pink-600 to-orange-600 p-[3px]">
+            <div className="bg-black rounded-lg overflow-hidden">
+              {/* Instagram iframe for preview */}
+              <iframe
+                src={embed.embedUrl}
+                className="border-0 w-full"
+                height="580"
+                frameBorder="0"
+                scrolling="no"
+                allowTransparency={true}
+                style={{ pointerEvents: 'none' }}
+                title="Instagram preview"
+              />
+              {/* Overlay to make it clickable and show it's a link */}
+              <div className="absolute inset-0 bg-black/0 hover:bg-black/10 transition-colors flex items-center justify-center group">
+                <div className="bg-black/80 backdrop-blur-sm rounded-full p-4 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <i className="fas fa-external-link-alt text-white text-2xl" />
                 </div>
               </div>
             </div>
+          </div>
+          {/* Instagram badge */}
+          <div className="absolute top-3 right-3 px-2 py-1 rounded-md bg-black/90 backdrop-blur-sm text-xs text-white font-medium z-10 pointer-events-none flex items-center gap-1.5">
+            <i className="fab fa-instagram" />
+            <span>View on Instagram</span>
           </div>
         </a>
       </div>
