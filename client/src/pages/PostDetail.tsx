@@ -5,6 +5,8 @@ import { useNavigate, useParams } from 'react-router-dom'
 import Avatar from '../components/Avatar'
 import ImageLoader from '../components/ImageLoader'
 import { formatSmartTime } from '../utils/time'
+import VideoEmbed from '../components/VideoEmbed'
+import { extractVideoEmbed, removeVideoUrlFromText } from '../utils/videoEmbed'
 
 type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null, parent_reply_id?: number|null, children?: Reply[], profile_picture?: string|null, image_path?: string|null }
 type Post = { id: number; username: string; content: string; image_path?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; replies: Reply[] }
@@ -354,8 +356,17 @@ export default function PostDetail(){
             <div className="font-medium">{post.username}</div>
             <div className="text-xs text-[#9fb0b5] ml-auto">{formatSmartTime((post as any).display_timestamp || post.timestamp)}</div>
           </div>
-          <div className="px-3 py-2 space-y-2">
-            <div className="whitespace-pre-wrap text-[14px] break-words">{renderRichText(post.content)}</div>
+          <div className="py-2 space-y-2">
+            {(() => {
+              const videoEmbed = extractVideoEmbed(post.content)
+              const displayContent = videoEmbed ? removeVideoUrlFromText(post.content, videoEmbed) : post.content
+              return (
+                <>
+                  {displayContent && <div className="px-3 whitespace-pre-wrap text-[14px] break-words">{renderRichText(displayContent)}</div>}
+                  {videoEmbed && <VideoEmbed embed={videoEmbed} />}
+                </>
+              )
+            })()}
             {post.image_path ? (
               <div onClick={()=> setPreviewSrc(normalizePath(post.image_path as string))}>
                 <ImageLoader
