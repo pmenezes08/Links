@@ -15,6 +15,7 @@ export default function HomeTimeline(){
   const [data, setData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string|null>(null)
+  // Force rebuild to clear cached JS - video embedding fix
 
   useEffect(() => {
     let link = document.getElementById('legacy-styles') as HTMLLinkElement | null
@@ -92,6 +93,7 @@ export default function HomeTimeline(){
                   {(() => {
                     const videoEmbed = extractVideoEmbed(p.content)
                     const displayContent = videoEmbed ? removeVideoUrlFromText(p.content, videoEmbed) : p.content
+                    if (!videoEmbed && !displayContent) return null
                     return (
                       <>
                         {displayContent && <div className="px-3 whitespace-pre-wrap text-[14px] leading-relaxed">{renderTextWithLinks(displayContent)}</div>}
