@@ -15,7 +15,7 @@ export default function HomeTimeline(){
   const [data, setData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string|null>(null)
-  // Force rebuild to clear cached JS - video embedding fix
+  const [refreshKey, setRefreshKey] = useState(0)
 
   useEffect(() => {
     let link = document.getElementById('legacy-styles') as HTMLLinkElement | null
@@ -26,6 +26,17 @@ export default function HomeTimeline(){
       link.href = '/static/styles.css'
       document.head.appendChild(link)
     }
+  }, [])
+
+  // Refresh data when page becomes visible
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        setRefreshKey(prev => prev + 1)
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
   }, [])
 
   useEffect(() => {
@@ -41,7 +52,7 @@ export default function HomeTimeline(){
     }
     load()
     return () => { mounted = false }
-  }, [])
+  }, [refreshKey])
 
   const posts: Post[] = useMemo(() => data?.posts || [], [data])
   const { setTitle } = useHeader()
