@@ -625,7 +625,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
           </button>
         )}
       </div>
-      <div className="px-3 py-2 space-y-2">
+      <div className="py-2 space-y-2">
         {!isEditing ? (
           <>
             {(() => {
@@ -633,14 +633,14 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
               const displayContent = videoEmbed ? removeVideoUrlFromText(post.content, videoEmbed) : post.content
               return (
                 <>
-                  {displayContent && <div className="whitespace-pre-wrap text-[14px] leading-relaxed tracking-[0]">{displayContent}</div>}
-                  {videoEmbed && <VideoEmbed embed={videoEmbed} className="my-2" />}
+                  {displayContent && <div className="px-3 whitespace-pre-wrap text-[14px] leading-relaxed tracking-[0]">{displayContent}</div>}
+                  {videoEmbed && <VideoEmbed embed={videoEmbed} />}
                 </>
               )
             })()}
           </>
         ) : (
-          <div className="space-y-2" onClick={(e)=> e.stopPropagation()}>
+          <div className="px-3 space-y-2" onClick={(e)=> e.stopPropagation()}>
             <textarea className="w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none min-h-[100px]" value={editText} onChange={(e)=> setEditText(e.target.value)} />
             <div className="flex gap-2 justify-end">
               <button className="px-3 py-1.5 rounded-md border border-white/10 hover:bg-white/5 text-sm" onClick={()=> { setEditText(post.content); setIsEditing(false) }}>Cancel</button>
@@ -658,7 +658,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
               return p.startsWith('uploads') ? `/${p}` : `/uploads/${p}`
             })()}
             alt="Post image"
-            className="block mx-auto max-w-full max-h-[360px] rounded border border-white/10"
+            className="block mx-auto max-w-full max-h-[360px] rounded border border-white/10 px-3"
           />
         ) : null}
         {/* Polls are not displayed on the timeline in React */}

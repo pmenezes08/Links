@@ -70,8 +70,8 @@ export function extractVideoEmbed(text: string): VideoEmbed | null {
 
   // Instagram patterns (posts and reels)
   const instagramPatterns = [
-    /(?:https?:\/\/)?(?:www\.)?instagram\.com\/p\/([a-zA-Z0-9_-]+)/,
     /(?:https?:\/\/)?(?:www\.)?instagram\.com\/reel\/([a-zA-Z0-9_-]+)/,
+    /(?:https?:\/\/)?(?:www\.)?instagram\.com\/p\/([a-zA-Z0-9_-]+)/,
     /(?:https?:\/\/)?(?:www\.)?instagram\.com\/tv\/([a-zA-Z0-9_-]+)/,
   ]
 
@@ -79,10 +79,14 @@ export function extractVideoEmbed(text: string): VideoEmbed | null {
     const match = text.match(pattern)
     if (match) {
       const videoId = match[1]
+      // Use reel embed for reels, regular embed for posts/tv
+      const isReel = text.includes('/reel/')
       return {
         type: 'instagram',
         videoId,
-        embedUrl: `https://www.instagram.com/p/${videoId}/embed`,
+        embedUrl: isReel 
+          ? `https://www.instagram.com/reel/${videoId}/embed` 
+          : `https://www.instagram.com/p/${videoId}/embed`,
       }
     }
   }
