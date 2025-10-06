@@ -587,13 +587,14 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
       return
     }
     const links = detectLinks(editText)
-    // Filter out video embed URLs (YouTube, Vimeo, TikTok)
+    // Filter out video embed URLs (YouTube, Vimeo, TikTok, Instagram)
     const nonVideoLinks = links.filter(link => {
       const url = link.url.toLowerCase()
       return !url.includes('youtube.com') && 
              !url.includes('youtu.be') && 
              !url.includes('vimeo.com') &&
-             !url.includes('tiktok.com')
+             !url.includes('tiktok.com') &&
+             !url.includes('instagram.com')
     })
     setDetectedLinks(nonVideoLinks)
   }, [editText, isEditing])

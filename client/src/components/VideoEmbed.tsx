@@ -12,21 +12,21 @@ export default function VideoEmbed({ embed, className = '' }: Props) {
   const isInstagram = embed.type === 'instagram'
 
   if (isInstagram) {
-    // Instagram embed with 9:16 aspect ratio (typical for reels/stories)
+    // Instagram embed - let iframe size naturally without forcing dimensions
     return (
       <div className={`flex justify-center w-full ${className}`}>
-        <div className="relative w-full" style={{ maxWidth: '360px' }}>
-          <div style={{ position: 'relative', width: '100%', paddingBottom: '177.78%', height: 0 }}>
-            <iframe
-              src={embed.embedUrl}
-              style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', border: 0 }}
-              frameBorder="0"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-              allowFullScreen
-              scrolling="no"
-              title="Instagram video player"
-            />
-          </div>
+        <div className="relative">
+          <iframe
+            src={embed.embedUrl}
+            className="border-0"
+            width="328"
+            height="580"
+            frameBorder="0"
+            scrolling="no"
+            allowTransparency={true}
+            allow="encrypted-media"
+            title="Instagram video player"
+          />
           {/* Platform badge */}
           <div className="absolute top-2 right-2 px-2 py-1 rounded-md bg-black/80 backdrop-blur-sm text-xs text-white/90 capitalize z-10 pointer-events-none">
             Instagram
