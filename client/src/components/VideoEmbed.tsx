@@ -8,19 +8,42 @@ type Props = {
 export default function VideoEmbed({ embed, className = '' }: Props) {
   if (!embed || !embed.embedUrl) return null
 
-  // Instagram needs different aspect ratio and styling
+  // Instagram needs different handling
   const isInstagram = embed.type === 'instagram'
 
+  if (isInstagram) {
+    // Instagram embed with native aspect ratio (centered if narrower than container)
+    return (
+      <div className={`flex justify-center w-full ${className}`}>
+        <div className="relative" style={{ width: '100%', maxWidth: '500px', height: '640px' }}>
+          <iframe
+            src={embed.embedUrl}
+            className="w-full h-full border-0"
+            frameBorder="0"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            allowFullScreen
+            scrolling="no"
+            title="Instagram video player"
+          />
+          {/* Platform badge */}
+          <div className="absolute top-2 right-2 px-2 py-1 rounded-md bg-black/80 backdrop-blur-sm text-xs text-white/90 capitalize z-10 pointer-events-none">
+            Instagram
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // YouTube, Vimeo, TikTok: responsive 16:9
   return (
-    <div className={`relative w-full overflow-hidden ${className}`}>
-      <div className={`relative ${isInstagram ? 'pb-[125%]' : 'pb-[56.25%]'}`}> {/* Instagram: taller, Others: 16:9 */}
+    <div className={`relative w-full ${className}`}>
+      <div style={{ position: 'relative', width: '100%', paddingBottom: '56.25%', height: 0 }}>
         <iframe
           src={embed.embedUrl}
-          className="absolute top-0 left-0 w-full h-full border-0"
+          style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', border: 0 }}
           frameBorder="0"
           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
           allowFullScreen
-          scrolling="no"
           title={`${embed.type} video player`}
         />
       </div>
