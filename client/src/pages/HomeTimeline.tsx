@@ -16,7 +16,6 @@ export default function HomeTimeline(){
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string|null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
-  const [debugInfo, setDebugInfo] = useState<string[]>([])
 
   useEffect(() => {
     let link = document.getElementById('legacy-styles') as HTMLLinkElement | null
@@ -56,23 +55,7 @@ export default function HomeTimeline(){
     return () => { mounted = false }
   }, [refreshKey])
 
-  const posts: Post[] = useMemo(() => {
-    const postList = data?.posts || []
-    const videoCount = postList.filter((p: Post) => {
-      const hasYoutube = p.content?.includes('youtube.com') || p.content?.includes('youtu.be')
-      const hasVimeo = p.content?.includes('vimeo.com')
-      return hasYoutube || hasVimeo
-    }).length
-    
-    setDebugInfo([
-      `Fetch #${refreshKey}`,
-      `Posts: ${postList.length}`,
-      `Videos: ${videoCount}`,
-      `${new Date().toLocaleTimeString()}`
-    ])
-    
-    return postList
-  }, [data, refreshKey])
+  const posts: Post[] = useMemo(() => data?.posts || [], [data])
   
   const { setTitle } = useHeader()
 
@@ -80,15 +63,6 @@ export default function HomeTimeline(){
 
   return (
     <div className="fixed inset-x-0 top-14 bottom-0 bg-black text-white">
-      {/* Debug banner - Orange */}
-      {debugInfo.length > 0 && (
-        <div className="fixed top-[56px] left-0 right-0 z-50 bg-orange-600/95 backdrop-blur text-white text-[11px] px-2 py-1 flex gap-3 justify-center font-mono">
-          {debugInfo.map((info, i) => (
-            <span key={i} className="font-semibold">{info}</span>
-          ))}
-        </div>
-      )}
-      
       {/* Secondary header below global header */}
 
       {/* Secondary tabs */}
