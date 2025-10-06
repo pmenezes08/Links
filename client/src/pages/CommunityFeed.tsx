@@ -418,6 +418,9 @@ export default function CommunityFeed() {
       {/* Highlight overlay - Reaction Step */}
       {highlightStep === 'reaction' && (
         <>
+          {/* Full-screen blocker - blocks all clicks except specific elements */}
+          <div className="fixed inset-0 z-[48] pointer-events-auto" onClick={(e)=> e.stopPropagation()} />
+          
           {/* Dark cover above the highlighted post (covers back button and community logo) */}
           <div className="fixed top-[56px] left-0 right-0 h-[30vh] z-[50] bg-black/90 pointer-events-none" />
           
@@ -426,12 +429,27 @@ export default function CommunityFeed() {
             <div className="text-white text-base font-medium px-6 py-3 rounded-xl bg-black/70 backdrop-blur-md border border-[#4db6ac]/30 shadow-lg mb-3">
               React to a post <span className="text-[#4db6ac] text-sm ml-2">(1/2)</span>
             </div>
-            <button 
-              className="px-6 py-2 rounded-full bg-[#4db6ac]/50 text-white text-sm font-medium hover:bg-[#4db6ac]/70 shadow-[0_0_20px_rgba(77,182,172,0.6)] hover:shadow-[0_0_30px_rgba(77,182,172,0.8)]"
-              onClick={()=> setHighlightStep('post')}
-            >
-              Next
-            </button>
+            <div className="flex gap-3 justify-center">
+              <button 
+                className="px-6 py-2 rounded-full bg-[#4db6ac]/50 text-white text-sm font-medium hover:bg-[#4db6ac]/70 shadow-[0_0_20px_rgba(77,182,172,0.6)] hover:shadow-[0_0_30px_rgba(77,182,172,0.8)]"
+                onClick={()=> setHighlightStep('post')}
+              >
+                Next
+              </button>
+              <button 
+                className="px-6 py-2 rounded-full border border-white/20 bg-white/[0.08] text-white text-sm font-medium hover:bg-white/[0.12]"
+                onClick={()=> {
+                  setHighlightStep(null);
+                  try { 
+                    const username = data?.username || '';
+                    const doneKey = username ? `onboarding_done:${username}` : 'onboarding_done';
+                    localStorage.setItem(doneKey, '1');
+                  } catch {}
+                }}
+              >
+                Skip
+              </button>
+            </div>
           </div>
         </>
       )}
@@ -631,8 +649,8 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
           />
         ) : null}
         {/* Polls are not displayed on the timeline in React */}
-        <div className="flex items-center gap-2 text-xs" onClick={(e)=> e.stopPropagation()}>
-          <div className={`${highlightStep === 'reaction' && idx === 0 ? 'relative z-[9999] ring-[3px] ring-[#4db6ac] shadow-[0_0_25px_rgba(77,182,172,1),0_0_50px_rgba(77,182,172,0.8)] rounded-lg bg-[#4db6ac]/10 animate-pulse' : ''}`}>
+        <div className={`flex items-center gap-2 text-xs ${highlightStep === 'reaction' && idx === 0 ? 'relative z-[9999] pointer-events-auto' : ''}`} onClick={(e)=> e.stopPropagation()}>
+          <div className={`${highlightStep === 'reaction' && idx === 0 ? 'ring-[3px] ring-[#4db6ac] shadow-[0_0_25px_rgba(77,182,172,1),0_0_50px_rgba(77,182,172,0.8)] rounded-lg bg-[#4db6ac]/10 animate-pulse' : ''}`}>
             <ReactionFA 
               icon="fa-regular fa-heart" 
               count={post.reactions?.['heart']||0} 
