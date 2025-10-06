@@ -102,8 +102,16 @@ export default function HomeTimeline(){
                 </div>
                 <div className="py-2 space-y-2">
                   {(() => {
-                    const videoEmbed = extractVideoEmbed(p.content)
-                    const displayContent = videoEmbed ? removeVideoUrlFromText(p.content, videoEmbed) : p.content
+                    // Always use fresh content from post object
+                    const content = p.content || ''
+                    const videoEmbed = extractVideoEmbed(content)
+                    const displayContent = videoEmbed ? removeVideoUrlFromText(content, videoEmbed) : content
+                    
+                    // Debug logging
+                    if (content.includes('youtube.com') || content.includes('youtu.be')) {
+                      console.log('[HomeTimeline] Post', p.id, 'has video URL:', !!videoEmbed, 'content length:', content.length)
+                    }
+                    
                     if (!videoEmbed && !displayContent) return null
                     return (
                       <>
