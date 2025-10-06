@@ -115,11 +115,11 @@ export function removeVideoUrlFromText(text: string, videoEmbed: VideoEmbed | nu
       /https?:\/\/(?:www\.)?tiktok\.com\/@[\w.-]+\/video\/\d+[^\s]*/g,
       /https?:\/\/(?:vm\.)?tiktok\.com\/[a-zA-Z0-9]+[^\s]*/g,
     ],
-    instagram: [
-      /https?:\/\/(?:www\.)?instagram\.com\/p\/[a-zA-Z0-9_-]+[^\s]*/g,
-      /https?:\/\/(?:www\.)?instagram\.com\/reel\/[a-zA-Z0-9_-]+[^\s]*/g,
-      /https?:\/\/(?:www\.)?instagram\.com\/tv\/[a-zA-Z0-9_-]+[^\s]*/g,
-    ],
+    // instagram: [  // DISABLED FOR NOW
+    //   /https?:\/\/(?:www\.)?instagram\.com\/p\/[a-zA-Z0-9_-]+[^\s]*/g,
+    //   /https?:\/\/(?:www\.)?instagram\.com\/reel\/[a-zA-Z0-9_-]+[^\s]*/g,
+    //   /https?:\/\/(?:www\.)?instagram\.com\/tv\/[a-zA-Z0-9_-]+[^\s]*/g,
+    // ],
   }
 
   let cleanedText = text
