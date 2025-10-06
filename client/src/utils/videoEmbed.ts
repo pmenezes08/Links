@@ -68,28 +68,30 @@ export function extractVideoEmbed(text: string): VideoEmbed | null {
     }
   }
 
-  // Instagram patterns (posts and reels)
-  const instagramPatterns = [
-    /(?:https?:\/\/)?(?:www\.)?instagram\.com\/reel\/([a-zA-Z0-9_-]+)/,
-    /(?:https?:\/\/)?(?:www\.)?instagram\.com\/p\/([a-zA-Z0-9_-]+)/,
-    /(?:https?:\/\/)?(?:www\.)?instagram\.com\/tv\/([a-zA-Z0-9_-]+)/,
-  ]
+  // Instagram patterns (posts and reels) - DISABLED
+  // Instagram API doesn't support inline playback - always redirects to instagram.com
+  // Treating Instagram as regular links that users can rename
+  // const instagramPatterns = [
+  //   /(?:https?:\/\/)?(?:www\.)?instagram\.com\/reel\/([a-zA-Z0-9_-]+)/,
+  //   /(?:https?:\/\/)?(?:www\.)?instagram\.com\/p\/([a-zA-Z0-9_-]+)/,
+  //   /(?:https?:\/\/)?(?:www\.)?instagram\.com\/tv\/([a-zA-Z0-9_-]+)/,
+  // ]
 
-  for (const pattern of instagramPatterns) {
-    const match = text.match(pattern)
-    if (match) {
-      const videoId = match[1]
-      // Use reel embed for reels, regular embed for posts/tv
-      const isReel = text.includes('/reel/')
-      return {
-        type: 'instagram',
-        videoId,
-        embedUrl: isReel 
-          ? `https://www.instagram.com/reel/${videoId}/embed` 
-          : `https://www.instagram.com/p/${videoId}/embed`,
-      }
-    }
-  }
+  // for (const pattern of instagramPatterns) {
+  //   const match = text.match(pattern)
+  //   if (match) {
+  //     const videoId = match[1]
+  //     // Use reel embed for reels, regular embed for posts/tv
+  //     const isReel = text.includes('/reel/')
+  //     return {
+  //       type: 'instagram',
+  //       videoId,
+  //       embedUrl: isReel 
+  //         ? `https://www.instagram.com/reel/${videoId}/embed` 
+  //         : `https://www.instagram.com/p/${videoId}/embed`,
+  //     }
+  //   }
+  // }
 
   return null
 }
