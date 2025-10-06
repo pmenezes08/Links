@@ -24,6 +24,10 @@ export default function AccountSettings(){
   // Removed saving state since only email updates are handled here now
   const [message, setMessage] = useState<{type: 'success'|'error', text: string}|null>(null)
   const [showVerifyModal, setShowVerifyModal] = useState(false)
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [passwordMessage, setPasswordMessage] = useState<{type: 'success'|'error', text: string}|null>(null)
 
   useEffect(() => { setTitle('Account Settings') }, [setTitle])
 
@@ -171,6 +175,96 @@ export default function AccountSettings(){
                   className="w-full px-4 py-3 bg-white/5 border border-white/20 rounded-lg text-white focus:border-[#4db6ac] focus:outline-none"
                 />
               </div>
+            </div>
+          </div>
+
+          {/* Password Update */}
+          <div className="bg-white/5 rounded-xl p-6 border border-white/10">
+            <h2 className="text-lg font-semibold mb-4">Change Password</h2>
+            {passwordMessage && (
+              <div className={`mb-4 p-4 rounded-lg border ${
+                passwordMessage.type === 'success' 
+                  ? 'bg-green-500/10 border-green-500/30 text-green-400' 
+                  : 'bg-red-500/10 border-red-500/30 text-red-400'
+              }`}>
+                {passwordMessage.text}
+              </div>
+            )}
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-2">Current Password</label>
+                <input
+                  type="password"
+                  value={currentPassword}
+                  onChange={e => setCurrentPassword(e.target.value)}
+                  placeholder="Enter current password"
+                  className="w-full px-4 py-3 bg-white/5 border border-white/20 rounded-lg text-white focus:border-[#4db6ac] focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2">New Password</label>
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={e => setNewPassword(e.target.value)}
+                  placeholder="Enter new password"
+                  className="w-full px-4 py-3 bg-white/5 border border-white/20 rounded-lg text-white focus:border-[#4db6ac] focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2">Confirm New Password</label>
+                <input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={e => setConfirmPassword(e.target.value)}
+                  placeholder="Confirm new password"
+                  className="w-full px-4 py-3 bg-white/5 border border-white/20 rounded-lg text-white focus:border-[#4db6ac] focus:outline-none"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={async () => {
+                  setPasswordMessage(null)
+                  
+                  if (!currentPassword || !newPassword || !confirmPassword) {
+                    setPasswordMessage({ type: 'error', text: 'Please fill in all password fields' })
+                    return
+                  }
+                  
+                  if (newPassword !== confirmPassword) {
+                    setPasswordMessage({ type: 'error', text: 'New passwords do not match' })
+                    return
+                  }
+                  
+                  if (newPassword.length < 6) {
+                    setPasswordMessage({ type: 'error', text: 'New password must be at least 6 characters' })
+                    return
+                  }
+                  
+                  try {
+                    const fd = new FormData()
+                    fd.append('current_password', currentPassword)
+                    fd.append('new_password', newPassword)
+                    
+                    const r = await fetch('/update_password', { method: 'POST', credentials: 'include', body: fd })
+                    const j = await r.json()
+                    
+                    if (j?.success) {
+                      setPasswordMessage({ type: 'success', text: 'Password updated successfully!' })
+                      setCurrentPassword('')
+                      setNewPassword('')
+                      setConfirmPassword('')
+                    } else {
+                      setPasswordMessage({ type: 'error', text: j?.error || 'Failed to update password' })
+                    }
+                  } catch (err) {
+                    setPasswordMessage({ type: 'error', text: 'Network error. Please try again.' })
+                  }
+                }}
+                className="px-6 py-3 bg-[#4db6ac] text-black rounded-lg hover:bg-[#45a99c] font-medium transition-colors"
+              >
+                Update Password
+              </button>
             </div>
           </div>
 
