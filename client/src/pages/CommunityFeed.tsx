@@ -26,6 +26,7 @@ export default function CommunityFeed() {
   const [error, setError] = useState<string| null>(null)
   const [hasUnseenAnnouncements, setHasUnseenAnnouncements] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
+  const [debugInfo, setDebugInfo] = useState<string[]>([])
   const [showAnnouncements, _setShowAnnouncements] = useState(false)
   const [_announcements, _setAnnouncements] = useState<Array<{id:number, content:string, created_by:string, created_at:string}>>([])
   const [newAnnouncement, setNewAnnouncement] = useState('')
