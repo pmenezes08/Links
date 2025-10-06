@@ -384,12 +384,11 @@ export default function Signup(){
 
               {/* Benefits */}
               <div className="bg-[#4db6ac]/5 border border-[#4db6ac]/20 rounded-lg p-3 mb-4">
-                <div className="text-xs font-semibold text-[#4db6ac] mb-2">✨ Why install?</div>
+                <div className="text-xs font-semibold text-[#4db6ac] mb-2">Why install?</div>
                 <ul className="space-y-1 text-xs text-white/70">
-                  <li>📬 Receive push notifications</li>
-                  <li>⚡ Faster performance</li>
-                  <li>📱 Works offline</li>
-                  <li>🎯 Quick access from home screen</li>
+                  <li>• Receive push notifications</li>
+                  <li>• Faster performance</li>
+                  <li>• Quick access from home screen</li>
                 </ul>
               </div>
 
