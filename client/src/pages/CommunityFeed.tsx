@@ -6,6 +6,7 @@ import ImageLoader from '../components/ImageLoader'
 import { useHeader } from '../contexts/HeaderContext'
 import VideoEmbed from '../components/VideoEmbed'
 import { extractVideoEmbed, removeVideoUrlFromText } from '../utils/videoEmbed'
+import { renderTextWithLinks } from '../utils/linkUtils.tsx'
 
 type PollOption = { id: number; text: string; votes: number }
 type Poll = { id: number; question: string; is_active: number; options: PollOption[]; user_vote: number|null; total_votes: number }
@@ -633,7 +634,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
               const displayContent = videoEmbed ? removeVideoUrlFromText(post.content, videoEmbed) : post.content
               return (
                 <>
-                  {displayContent && <div className="px-3 whitespace-pre-wrap text-[14px] leading-relaxed tracking-[0]">{displayContent}</div>}
+                  {displayContent && <div className="px-3 whitespace-pre-wrap text-[14px] leading-relaxed tracking-[0]">{renderTextWithLinks(displayContent)}</div>}
                   {videoEmbed && <VideoEmbed embed={videoEmbed} />}
                 </>
               )

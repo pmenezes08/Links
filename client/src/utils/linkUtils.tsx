@@ -1,4 +1,5 @@
 // Utility functions for detecting and handling links in post content
+import React from 'react'
 
 export type DetectedLink = {
   url: string

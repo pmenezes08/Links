@@ -1,6 +1,7 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import MentionTextarea from '../components/MentionTextarea'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import { detectLinks, replaceLinkInText, type DetectedLink } from '../utils/linkUtils.tsx'
 
 export default function CreatePost(){
   const [params] = useSearchParams()
@@ -10,7 +11,43 @@ export default function CreatePost(){
   const [file, setFile] = useState<File|null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [showPraise, setShowPraise] = useState(false)
+  const [detectedLinks, setDetectedLinks] = useState<DetectedLink[]>([])
+  const [renamingLink, setRenamingLink] = useState<DetectedLink | null>(null)
+  const [linkDisplayName, setLinkDisplayName] = useState('')
   const tokenRef = useRef<string>(`${Date.now()}_${Math.random().toString(36).slice(2)}`)
+
+  // Detect links when content changes
+  useEffect(() => {
+    const links = detectLinks(content)
+    // Filter out video embed URLs (YouTube, Vimeo, TikTok, Instagram)
+    const nonVideoLinks = links.filter(link => {
+      const url = link.url.toLowerCase()
+      return !url.includes('youtube.com') && 
+             !url.includes('youtu.be') && 
+             !url.includes('vimeo.com') &&
+             !url.includes('tiktok.com') &&
+             !url.includes('instagram.com')
+    })
+    setDetectedLinks(nonVideoLinks)
+  }, [content])
+
+  function startRenamingLink(link: DetectedLink) {
+    setRenamingLink(link)
+    setLinkDisplayName(link.displayText)
+  }
+
+  function saveRenamedLink() {
+    if (!renamingLink) return
+    const newContent = replaceLinkInText(content, renamingLink.url, linkDisplayName)
+    setContent(newContent)
+    setRenamingLink(null)
+    setLinkDisplayName('')
+  }
+
+  function cancelRenaming() {
+    setRenamingLink(null)
+    setLinkDisplayName('')
+  }
 
   async function submit(){
     if (!content && !file) return
@@ -73,12 +110,78 @@ export default function CreatePost(){
           className="w-full min-h-[180px] p-3 rounded-xl bg-black border border-white/10 text-sm focus:outline-none focus:ring-1 focus:ring-[#4db6ac]"
           rows={8}
         />
+        
+        {/* Detected links */}
+        {detectedLinks.length > 0 && (
+          <div className="mt-3 space-y-2">
+            <div className="text-xs text-[#9fb0b5] font-medium">Detected Links:</div>
+            {detectedLinks.map((link, idx) => (
+              <div key={idx} className="flex items-center gap-2 p-2 rounded-lg border border-white/10 bg-white/5">
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs text-[#4db6ac] truncate">{link.displayText}</div>
+                  {link.displayText !== link.url && (
+                    <div className="text-xs text-white/50 truncate">{link.url}</div>
+                  )}
+                </div>
+                <button
+                  className="px-2 py-1 rounded text-xs border border-[#4db6ac]/30 text-[#4db6ac] hover:bg-[#4db6ac]/10"
+                  onClick={() => startRenamingLink(link)}
+                >
+                  Rename
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
         {file ? (
           <div className="mt-3 rounded-xl overflow-hidden border border-white/10">
             <img src={URL.createObjectURL(file)} alt="preview" className="w-full h-auto" />
           </div>
         ) : null}
       </div>
+      
+      {/* Rename link modal */}
+      {renamingLink && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm">
+          <div className="w-[90%] max-w-md rounded-2xl border border-[#4db6ac]/30 bg-[#0b0b0b] p-6 shadow-[0_0_40px_rgba(77,182,172,0.3)]">
+            <h3 className="text-lg font-bold text-white mb-4">Rename Link</h3>
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs text-[#9fb0b5] mb-1 block">Original URL:</label>
+                <div className="text-xs text-white/70 truncate p-2 rounded bg-white/5 border border-white/10">
+                  {renamingLink.url}
+                </div>
+              </div>
+              <div>
+                <label className="text-xs text-[#9fb0b5] mb-1 block">Display as:</label>
+                <input
+                  type="text"
+                  value={linkDisplayName}
+                  onChange={(e) => setLinkDisplayName(e.target.value)}
+                  className="w-full p-2 rounded bg-white/5 border border-white/10 text-sm text-white focus:outline-none focus:ring-1 focus:ring-[#4db6ac]"
+                  placeholder="Enter display name"
+                  autoFocus
+                />
+              </div>
+            </div>
+            <div className="flex gap-2 mt-6">
+              <button
+                className="flex-1 px-4 py-2 rounded-lg border border-white/20 text-white/80 text-sm hover:bg-white/5"
+                onClick={cancelRenaming}
+              >
+                Cancel
+              </button>
+              <button
+                className="flex-1 px-4 py-2 rounded-lg bg-[#4db6ac] text-black font-medium hover:brightness-110"
+                onClick={saveRenamedLink}
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="fixed left-0 right-0 bottom-0 h-16 border-t border-white/10 bg-black/85 backdrop-blur z-40">
         <div className="max-w-2xl mx-auto h-full px-4 flex items-center justify-between">
           <label className="px-3 py-2 rounded-full hover:bg-white/5 cursor-pointer" aria-label="Add image">

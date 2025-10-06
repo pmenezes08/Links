@@ -6,6 +6,7 @@ import { formatSmartTime } from '../utils/time'
 import ImageLoader from '../components/ImageLoader'
 import VideoEmbed from '../components/VideoEmbed'
 import { extractVideoEmbed, removeVideoUrlFromText } from '../utils/videoEmbed'
+import { renderTextWithLinks } from '../utils/linkUtils.tsx'
 
 type Post = { id:number; username:string; content:string; image_path?:string|null; timestamp:string; display_timestamp?:string; community_id?:number|null; community_name?:string; reactions:Record<string,number>; user_reaction:string|null; poll?:any|null; replies_count?:number; profile_picture?:string|null }
 
@@ -93,7 +94,7 @@ export default function HomeTimeline(){
                     const displayContent = videoEmbed ? removeVideoUrlFromText(p.content, videoEmbed) : p.content
                     return (
                       <>
-                        {displayContent && <div className="px-3 whitespace-pre-wrap text-[14px] leading-relaxed">{displayContent}</div>}
+                        {displayContent && <div className="px-3 whitespace-pre-wrap text-[14px] leading-relaxed">{renderTextWithLinks(displayContent)}</div>}
                         {videoEmbed && <VideoEmbed embed={videoEmbed} />}
                       </>
                     )
