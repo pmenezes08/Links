@@ -12,10 +12,10 @@ export default function VideoEmbed({ embed, className = '' }: Props) {
   const isInstagram = embed.type === 'instagram'
 
   if (isInstagram) {
-    // Instagram embed with native aspect ratio (centered if narrower than container)
+    // Instagram embed with native aspect ratio (centered, narrower to prevent stretching)
     return (
       <div className={`flex justify-center w-full ${className}`}>
-        <div className="relative" style={{ width: '100%', maxWidth: '500px', height: '640px' }}>
+        <div className="relative" style={{ width: '100%', maxWidth: '360px', height: '640px' }}>
           <iframe
             src={embed.embedUrl}
             className="w-full h-full border-0"
