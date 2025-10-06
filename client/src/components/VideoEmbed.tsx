@@ -12,10 +12,10 @@ export default function VideoEmbed({ embed, className = '' }: Props) {
   const isInstagram = embed.type === 'instagram'
 
   if (isInstagram) {
-    // Instagram embed with fixed height approach
+    // Instagram embed with native aspect ratio (centered if narrower than container)
     return (
-      <div className={`relative w-full overflow-hidden ${className}`}>
-        <div className="relative" style={{ width: '100%', height: '640px' }}>
+      <div className={`flex justify-center w-full ${className}`}>
+        <div className="relative" style={{ width: '100%', maxWidth: '500px', height: '640px' }}>
           <iframe
             src={embed.embedUrl}
             className="w-full h-full border-0"
@@ -25,10 +25,10 @@ export default function VideoEmbed({ embed, className = '' }: Props) {
             scrolling="no"
             title="Instagram video player"
           />
-        </div>
-        {/* Platform badge */}
-        <div className="absolute top-2 right-2 px-2 py-1 rounded-md bg-black/80 backdrop-blur-sm text-xs text-white/90 capitalize z-10 pointer-events-none">
-          Instagram
+          {/* Platform badge */}
+          <div className="absolute top-2 right-2 px-2 py-1 rounded-md bg-black/80 backdrop-blur-sm text-xs text-white/90 capitalize z-10 pointer-events-none">
+            Instagram
+          </div>
         </div>
       </div>
     )
