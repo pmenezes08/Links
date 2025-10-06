@@ -258,7 +258,23 @@ export default function CommunityFeed() {
 
   // Reply reactions handled inside PostDetail page
 
-  const postsOnly = useMemo(() => Array.isArray(data?.posts) ? data.posts : [], [data])
+  const postsOnly = useMemo(() => {
+    const postList = Array.isArray(data?.posts) ? data.posts : []
+    const videoCount = postList.filter((p: Post) => {
+      const hasYoutube = p.content?.includes('youtube.com') || p.content?.includes('youtu.be')
+      const hasVimeo = p.content?.includes('vimeo.com')
+      return hasYoutube || hasVimeo
+    }).length
+    
+    setDebugInfo([
+      `Fetch #${refreshKey}`,
+      `Posts: ${postList.length}`,
+      `With videos: ${videoCount}`,
+      `Time: ${new Date().toLocaleTimeString()}`
+    ])
+    
+    return postList
+  }, [data, refreshKey])
 
   if (loading) return <div className="p-4 text-[#9fb0b5]">Loading…</div>
   if (error) return <div className="p-4 text-red-400">{error || 'Failed to load feed.'}</div>

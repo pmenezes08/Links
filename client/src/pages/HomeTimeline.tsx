@@ -63,6 +63,15 @@ export default function HomeTimeline(){
 
   return (
     <div className="fixed inset-x-0 top-14 bottom-0 bg-black text-white">
+      {/* Debug banner */}
+      {debugInfo.length > 0 && (
+        <div className="fixed top-[56px] left-0 right-0 z-50 bg-orange-900/90 backdrop-blur text-white text-xs px-3 py-1 flex gap-3 justify-center">
+          {debugInfo.map((info, i) => (
+            <span key={i}>{info}</span>
+          ))}
+        </div>
+      )}
+      
       {/* Secondary header below global header */}
 
       {/* Secondary tabs */}
