@@ -25,6 +25,7 @@ export default function CommunityFeed() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string| null>(null)
   const [hasUnseenAnnouncements, setHasUnseenAnnouncements] = useState(false)
+  const [refreshKey, setRefreshKey] = useState(0)
   const [showAnnouncements, _setShowAnnouncements] = useState(false)
   const [_announcements, _setAnnouncements] = useState<Array<{id:number, content:string, created_by:string, created_at:string}>>([])
   const [newAnnouncement, setNewAnnouncement] = useState('')
@@ -109,6 +110,17 @@ export default function CommunityFeed() {
     }
   }, [community_id])
 
+  // Refresh data when page becomes visible
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        setRefreshKey(prev => prev + 1)
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
+  }, [])
+
   useEffect(() => {
     let isMounted = true
     setLoading(true)
@@ -135,7 +147,7 @@ export default function CommunityFeed() {
       }})
       .finally(() => isMounted && setLoading(false))
     return () => { isMounted = false }
-  }, [community_id])
+  }, [community_id, refreshKey])
 
   // Ads removed
 
