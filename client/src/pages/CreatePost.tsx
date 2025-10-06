@@ -19,14 +19,14 @@ export default function CreatePost(){
   // Detect links when content changes
   useEffect(() => {
     const links = detectLinks(content)
-    // Filter out video embed URLs (YouTube, Vimeo, TikTok, Instagram)
+    // Filter out video embed URLs (YouTube, Vimeo, TikTok)
+    // Instagram is treated as regular link (can be renamed)
     const nonVideoLinks = links.filter(link => {
       const url = link.url.toLowerCase()
       return !url.includes('youtube.com') && 
              !url.includes('youtu.be') && 
              !url.includes('vimeo.com') &&
-             !url.includes('tiktok.com') &&
-             !url.includes('instagram.com')
+             !url.includes('tiktok.com')
     })
     setDetectedLinks(nonVideoLinks)
   }, [content])
