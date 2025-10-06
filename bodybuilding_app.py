@@ -63,11 +63,12 @@ def add_cache_headers(response):
         if any(request.path.endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.ico']):
             response.headers['Cache-Control'] = 'public, max-age=604800, immutable'  # 7 days
             response.headers['Expires'] = (datetime.now() + timedelta(days=7)).strftime('%a, %d %b %Y %H:%M:%S GMT')
-        # CSS and JS get short cache time (1 hour) - ensures users get updates quickly
-        # Vite's filename hashing (index-B3jp5IOO.js) handles long-term caching anyway
+        # CSS and JS get medium cache time (1 day) with immutable flag
+        # Vite's filename hashing (index-B1Wbmng4.js) ensures new builds get new files
+        # The hash changes on every build, so aggressive caching is safe
         elif any(request.path.endswith(ext) for ext in ['.css', '.js']):
-            response.headers['Cache-Control'] = 'public, max-age=3600'  # 1 hour
-            response.headers['Expires'] = (datetime.now() + timedelta(hours=1)).strftime('%a, %d %b %Y %H:%M:%S GMT')
+            response.headers['Cache-Control'] = 'public, max-age=86400, immutable'  # 1 day
+            response.headers['Expires'] = (datetime.now() + timedelta(days=1)).strftime('%a, %d %b %Y %H:%M:%S GMT')
         # Other static files get short cache time (1 hour)
         else:
             response.headers['Cache-Control'] = 'public, max-age=3600'  # 1 hour
