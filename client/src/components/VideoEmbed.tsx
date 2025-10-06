@@ -15,15 +15,14 @@ export default function VideoEmbed({ embed, className = '' }: Props) {
     // Instagram embed with fixed height approach
     return (
       <div className={`relative w-full overflow-hidden ${className}`}>
-        <div className="relative" style={{ minHeight: '600px', maxHeight: '800px', height: '640px' }}>
+        <div className="relative" style={{ width: '100%', height: '640px' }}>
           <iframe
-            src={`${embed.embedUrl}/captioned`}
+            src={embed.embedUrl}
             className="w-full h-full border-0"
             frameBorder="0"
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
             allowFullScreen
             scrolling="no"
-            loading="lazy"
             title="Instagram video player"
           />
         </div>
@@ -37,16 +36,14 @@ export default function VideoEmbed({ embed, className = '' }: Props) {
 
   // YouTube, Vimeo, TikTok: responsive 16:9
   return (
-    <div className={`relative w-full overflow-hidden ${className}`}>
-      <div className="relative pb-[56.25%]">
+    <div className={`relative w-full ${className}`}>
+      <div style={{ position: 'relative', width: '100%', paddingBottom: '56.25%', height: 0 }}>
         <iframe
           src={embed.embedUrl}
-          className="absolute top-0 left-0 w-full h-full border-0"
+          style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', border: 0 }}
           frameBorder="0"
           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
           allowFullScreen
-          scrolling="no"
-          loading="lazy"
           title={`${embed.type} video player`}
         />
       </div>
