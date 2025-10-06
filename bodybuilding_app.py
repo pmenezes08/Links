@@ -2359,16 +2359,33 @@ def is_nutrition_related(message):
 # Routes
 @app.route('/', methods=['GET'])
 def index():
-    # Show landing page for guests, redirect logged-in users
+    # Guests: mobile -> React welcome (serve SPA directly), desktop -> HTML
+    # Logged-in users -> communities
     try:
         if session.get('username'):
             return redirect(url_for('communities'))
-        
-        # Show new multi-vertical landing page for guests
-        return render_template('landing.html')
+        ua = request.headers.get('User-Agent', '')
+        is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
+        if is_mobile:
+            try:
+                base_dir = os.path.dirname(os.path.abspath(__file__))
+                dist_dir = os.path.join(base_dir, 'client', 'dist')
+                index_path = os.path.join(dist_dir, 'index.html')
+                if os.path.exists(index_path):
+                    resp = send_from_directory(dist_dir, 'index.html')
+                    try:
+                        resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+                        resp.headers['Pragma'] = 'no-cache'
+                        resp.headers['Expires'] = '0'
+                    except Exception:
+                        pass
+                    return resp
+            except Exception as e:
+                logger.warning(f"React mobile index not available: {e}")
+        return render_template('index.html')
     except Exception as e:
         logger.error(f"Error in / route: {str(e)}")
-        return render_template('landing.html')
+        return ("Internal Server Error", 500)
 
 @app.route('/welcome', methods=['GET'])
 def welcome():
@@ -14029,9 +14046,8 @@ def community_feed_smart(community_id):
         abort(500)
 
 # Fallback route for serving uploaded images if web server mapping is missing
-@app.route('/uploads/<path:filename>', endpoint='uploaded_file_compat')
+@app.route('/uploads/<path:filename>')
 def serve_uploads(filename):
-    """Serve uploaded files - accessible via uploaded_file_compat endpoint"""
     try:
         base_dir = os.path.dirname(os.path.abspath(__file__))
         static_root = os.path.join(base_dir, 'static')
