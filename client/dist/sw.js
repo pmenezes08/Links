@@ -1,9 +1,27 @@
+// Version tracking for updates
+const SW_VERSION = '1.0.0'
+
 self.addEventListener('install', (event) => {
-  self.skipWaiting()
+  console.log(`[SW] Installing version ${SW_VERSION}`)
+  self.skipWaiting() // Force immediate activation
 })
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(self.clients.claim())
+  console.log(`[SW] Activating version ${SW_VERSION}`)
+  event.waitUntil(
+    // Clear all caches to ensure fresh content
+    caches.keys().then((cacheNames) => {
+      return Promise.all(
+        cacheNames.map((cacheName) => {
+          console.log(`[SW] Clearing cache: ${cacheName}`)
+          return caches.delete(cacheName)
+        })
+      )
+    }).then(() => {
+      console.log('[SW] All caches cleared')
+      return self.clients.claim()
+    })
+  )
 })
 
 self.addEventListener('push', (event) => {
