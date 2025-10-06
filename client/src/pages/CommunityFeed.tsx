@@ -26,7 +26,6 @@ export default function CommunityFeed() {
   const [error, setError] = useState<string| null>(null)
   const [hasUnseenAnnouncements, setHasUnseenAnnouncements] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
-  const [debugInfo, setDebugInfo] = useState<string[]>([])
   const [showAnnouncements, _setShowAnnouncements] = useState(false)
   const [_announcements, _setAnnouncements] = useState<Array<{id:number, content:string, created_by:string, created_at:string}>>([])
   const [newAnnouncement, setNewAnnouncement] = useState('')
@@ -258,23 +257,7 @@ export default function CommunityFeed() {
 
   // Reply reactions handled inside PostDetail page
 
-  const postsOnly = useMemo(() => {
-    const postList = Array.isArray(data?.posts) ? data.posts : []
-    const videoCount = postList.filter((p: Post) => {
-      const hasYoutube = p.content?.includes('youtube.com') || p.content?.includes('youtu.be')
-      const hasVimeo = p.content?.includes('vimeo.com')
-      return hasYoutube || hasVimeo
-    }).length
-    
-    setDebugInfo([
-      `Fetch #${refreshKey}`,
-      `Posts: ${postList.length}`,
-      `Videos: ${videoCount}`,
-      `${new Date().toLocaleTimeString()}`
-    ])
-    
-    return postList
-  }, [data, refreshKey])
+  const postsOnly = useMemo(() => Array.isArray(data?.posts) ? data.posts : [], [data])
 
   if (loading) return <div className="p-4 text-[#9fb0b5]">Loading…</div>
   if (error) return <div className="p-4 text-red-400">{error || 'Failed to load feed.'}</div>
@@ -301,14 +284,6 @@ export default function CommunityFeed() {
 
   return (
     <div className="fixed inset-x-0 top-14 bottom-0 bg-black text-white">
-      {/* Debug banner - Purple */}
-      {debugInfo.length > 0 && (
-        <div className="fixed top-[56px] left-0 right-0 z-50 bg-purple-600/95 backdrop-blur text-white text-[11px] px-2 py-1 flex gap-3 justify-center font-mono">
-          {debugInfo.map((info, i) => (
-            <span key={i} className="font-semibold">{info}</span>
-          ))}
-        </div>
-      )}
       {refreshHint && (
         <div className="fixed top-[72px] left-0 right-0 z-50 flex items-center justify-center pointer-events-none">
           <div className="px-2 py-1 text-xs rounded-full bg-white/10 border border-white/15 text-white/80 flex items-center gap-2">
