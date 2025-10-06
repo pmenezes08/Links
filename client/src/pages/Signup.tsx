@@ -402,7 +402,7 @@ export default function Signup(){
                     // Optionally, show instructions again or a reminder after they close
                   }}
                 >
-                  I'll install it now
+                  Install now
                 </button>
                 <button 
                   className="w-full px-4 py-3 rounded-lg border border-white/20 text-white/80 text-sm hover:bg-white/5 transition-colors"
