@@ -4,6 +4,8 @@ import Avatar from '../components/Avatar'
 import { formatSmartTime } from '../utils/time'
 import ImageLoader from '../components/ImageLoader'
 import { useHeader } from '../contexts/HeaderContext'
+import VideoEmbed from '../components/VideoEmbed'
+import { extractVideoEmbed, removeVideoUrlFromText } from '../utils/videoEmbed'
 
 type PollOption = { id: number; text: string; votes: number }
 type Poll = { id: number; question: string; is_active: number; options: PollOption[]; user_vote: number|null; total_votes: number }
@@ -625,7 +627,18 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
       </div>
       <div className="px-3 py-2 space-y-2">
         {!isEditing ? (
-          <div className="whitespace-pre-wrap text-[14px] leading-relaxed tracking-[0]">{post.content}</div>
+          <>
+            {(() => {
+              const videoEmbed = extractVideoEmbed(post.content)
+              const displayContent = videoEmbed ? removeVideoUrlFromText(post.content, videoEmbed) : post.content
+              return (
+                <>
+                  {displayContent && <div className="whitespace-pre-wrap text-[14px] leading-relaxed tracking-[0]">{displayContent}</div>}
+                  {videoEmbed && <VideoEmbed embed={videoEmbed} />}
+                </>
+              )
+            })()}
+          </>
         ) : (
           <div className="space-y-2" onClick={(e)=> e.stopPropagation()}>
             <textarea className="w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none min-h-[100px]" value={editText} onChange={(e)=> setEditText(e.target.value)} />
