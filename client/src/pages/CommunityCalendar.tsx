@@ -227,22 +227,29 @@ export default function CommunityCalendar(){
             </div>
 
             <div className="flex items-center gap-2">
-              <button type="button" className={`px-2 py-1 rounded-md border text-xs hover:bg-white/5 ${inviteAll ? 'border-teal-500 text-teal-300 bg-teal-700/15' : 'border-white/10'}`} onClick={()=> { setInviteAll(v=> !v); if (!inviteAll) setInviteOpen(false) }}>
+              <button type="button" className={`px-2 py-1 rounded-md border text-xs hover:bg-white/5 ${inviteAll ? 'border-teal-500 text-teal-300 bg-teal-700/15' : 'border-white/10'}`} onClick={()=> { setInviteAll(v=> { const newVal = !v; if (newVal) setInviteOpen(false); return newVal; }) }}>
                 Invite all members
               </button>
-              <button type="button" className="px-2 py-1 rounded-md border border-white/10 text-xs hover:bg-white/5" onClick={()=> setInviteOpen(o=>!o)}>
+              <button type="button" className="px-2 py-1 rounded-md border border-white/10 text-xs hover:bg-white/5" onClick={()=> { setInviteAll(false); setInviteOpen(true) }}>
                 Select members
               </button>
             </div>
 
-            {!inviteAll && inviteOpen && (
+            {inviteOpen && !inviteAll && (
               <div className="max-h-48 overflow-y-auto border border-white/10 rounded-md p-2 space-y-1">
                 {members.length === 0 ? (
                   <div className="text-sm text-[#9fb0b5]">No members</div>
                 ) : members.map(m => (
-                  <label key={m.username} className="flex items-center justify-between gap-2 py-1 px-2 rounded hover:bg-white/5">
+                  <label key={m.username} className="flex items-center justify-between gap-2 py-1 px-2 rounded hover:bg-white/5 cursor-pointer">
                     <span className="text-sm">{m.username}</span>
-                    <input type="checkbox" className="accent-[#4db6ac] w-4 h-4" checked={!!selected[m.username]} onChange={(e)=> setSelected(s => ({ ...s, [m.username]: e.target.checked }))} />
+                    <div 
+                      className={`w-5 h-5 rounded border flex items-center justify-center transition-all ${selected[m.username] ? 'border-[#6c757d] bg-black' : 'border-[#6c757d] bg-black'}`}
+                      onClick={(e)=> { e.preventDefault(); setSelected(s => ({ ...s, [m.username]: !s[m.username] })) }}
+                    >
+                      {selected[m.username] && (
+                        <i className="fa-solid fa-check text-[#4db6ac] text-xs" />
+                      )}
+                    </div>
                   </label>
                 ))}
               </div>
