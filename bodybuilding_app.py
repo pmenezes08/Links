@@ -1959,17 +1959,39 @@ def init_db():
             c.execute("""
                 CREATE TABLE IF NOT EXISTS calendar_events (
                     id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                    title TEXT,
-                    description TEXT,
+                    username VARCHAR(191) NOT NULL,
+                    title TEXT NOT NULL,
+                    date TEXT NOT NULL,
+                    end_date TEXT,
+                    time TEXT,
                     start_time TEXT,
                     end_time TEXT,
-                    location TEXT
+                    description TEXT,
+                    location TEXT,
+                    created_at DATETIME NOT NULL,
+                    community_id INTEGER,
+                    FOREIGN KEY (username) REFERENCES users(username)
                 )
             """)
-            c.execute("SHOW COLUMNS FROM calendar_events LIKE 'community_id'")
-            if not c.fetchone():
-                c.execute("ALTER TABLE calendar_events ADD COLUMN community_id INTEGER")
-                logger.info("Added community_id column to calendar_events table")
+            
+            # Add missing columns if they don't exist
+            required_columns = {
+                'username': 'VARCHAR(191) NOT NULL',
+                'date': 'TEXT NOT NULL',
+                'end_date': 'TEXT',
+                'time': 'TEXT',
+                'created_at': 'DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP',
+                'community_id': 'INTEGER'
+            }
+            
+            for col_name, col_def in required_columns.items():
+                c.execute(f"SHOW COLUMNS FROM calendar_events LIKE '{col_name}'")
+                if not c.fetchone():
+                    try:
+                        c.execute(f"ALTER TABLE calendar_events ADD COLUMN {col_name} {col_def}")
+                        logger.info(f"Added {col_name} column to calendar_events table")
+                    except Exception as e:
+                        logger.warning(f"Could not add {col_name} column: {e}")
             
             # Create event RSVPs table
             logger.info("Creating event RSVPs table...")
@@ -10920,12 +10942,19 @@ def rsvp_event(event_id):
             return jsonify({'success': False, 'message': 'Invalid response'}), 400
         with get_db_connection() as conn:
             c = conn.cursor()
-            # Ensure event exists and get community_id
-            c.execute("SELECT community_id FROM calendar_events WHERE id = ?", (event_id,))
+            # Ensure event exists and get community_id and creator
+            c.execute("SELECT community_id, username FROM calendar_events WHERE id = ?", (event_id,))
             row = c.fetchone()
             if not row:
                 return jsonify({'success': False, 'message': 'Event not found'}), 404
             community_id_val = row['community_id'] if hasattr(row, 'keys') else row[0]
+            event_creator = row['username'] if hasattr(row, 'keys') else row[1]
+            
+            # Check if user is invited or is the event creator
+            if username != event_creator:
+                c.execute("SELECT 1 FROM event_invitations WHERE event_id = ? AND invited_username = ?", (event_id, username))
+                if not c.fetchone():
+                    return jsonify({'success': False, 'message': 'You are not invited to this event'}), 403
             # Upsert RSVP
             c.execute("""
                 INSERT INTO event_rsvps (event_id, username, response, note, responded_at)
@@ -10937,16 +10966,21 @@ def rsvp_event(event_id):
             counts = {'going': 0, 'maybe': 0, 'not_going': 0}
             for r in c.fetchall():
                 counts[r['response']] = r['count']
+            # Calculate no_response based on invited users only
             no_response = 0
-            if community_id_val:
-                try:
-                    c.execute("SELECT COUNT(DISTINCT u.username) FROM user_communities uc JOIN users u ON uc.user_id=u.id WHERE uc.community_id=?", (community_id_val,))
-                    total_members = (c.fetchone() or [0])[0]
-                    c.execute("SELECT COUNT(DISTINCT username) FROM event_rsvps WHERE event_id=?", (event_id,))
-                    responded = (c.fetchone() or [0])[0]
-                    no_response = max(0, (total_members or 0) - (responded or 0))
-                except Exception:
-                    no_response = 0
+            try:
+                # Count total invited users (including creator)
+                c.execute("SELECT COUNT(DISTINCT invited_username) FROM event_invitations WHERE event_id=?", (event_id,))
+                total_invited = (c.fetchone() or [0])[0]
+                # Add 1 for event creator
+                total_invited += 1
+                
+                # Count users who responded
+                c.execute("SELECT COUNT(DISTINCT username) FROM event_rsvps WHERE event_id=?", (event_id,))
+                responded = (c.fetchone() or [0])[0]
+                no_response = max(0, total_invited - responded)
+            except Exception:
+                no_response = 0
             counts['no_response'] = no_response
             conn.commit()
         return jsonify({'success': True, 'counts': counts, 'user_rsvp': response})
@@ -11443,21 +11477,28 @@ def admin_ads_overview():
         flash('Error loading ads overview', 'error')
         return redirect(url_for('admin'))
 def get_calendar_events():
-    """Get all calendar events"""
+    """Get calendar events visible to the current user (invited events only)"""
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
             
-            # Get all calendar events (with backward compatibility for time field)
+            # Get current user
+            username = session.get('username')
+            if not username:
+                return jsonify({'success': True, 'events': []})
+            
+            # Get calendar events where user is invited or is the creator
             c.execute("""
-                SELECT id, username, title, date, 
-                       COALESCE(end_date, date) as end_date,
-                       COALESCE(start_time, time) as start_time,
-                       end_time,
-                       time, description, created_at, community_id
-                FROM calendar_events
-                ORDER BY date ASC, COALESCE(start_time, time) ASC
-            """)
+                SELECT DISTINCT ce.id, ce.username, ce.title, ce.date, 
+                       COALESCE(ce.end_date, ce.date) as end_date,
+                       COALESCE(ce.start_time, ce.time) as start_time,
+                       ce.end_time,
+                       ce.time, ce.description, ce.created_at, ce.community_id
+                FROM calendar_events ce
+                LEFT JOIN event_invitations ei ON ce.id = ei.event_id
+                WHERE ce.username = ? OR ei.invited_username = ?
+                ORDER BY ce.date ASC, COALESCE(ce.start_time, ce.time) ASC
+            """, (username, username))
             events_raw = c.fetchall()
             
             events = []
@@ -11475,20 +11516,23 @@ def get_calendar_events():
                 rsvp_counts = {'going': 0, 'maybe': 0, 'not_going': 0}
                 for row in c.fetchall():
                     rsvp_counts[row['response']] = row['count']
-                # Derive no_response based on community size if possible
+                # Derive no_response based on invited users only
                 no_response = 0
-                community_id_val = event['community_id'] if hasattr(event, 'keys') else None
-                if community_id_val:
-                    try:
-                        c.execute("SELECT COUNT(DISTINCT u.username) FROM user_communities uc JOIN users u ON uc.user_id=u.id WHERE uc.community_id=?", (community_id_val,))
-                        total_members_row = c.fetchone()
-                        total_members = total_members_row[0] if total_members_row is not None else 0
-                        c.execute("SELECT COUNT(DISTINCT username) FROM event_rsvps WHERE event_id=?", (event_id,))
-                        responded_row = c.fetchone()
-                        responded = responded_row[0] if responded_row is not None else 0
-                        no_response = max(0, (total_members or 0) - (responded or 0))
-                    except Exception:
-                        no_response = 0
+                try:
+                    # Count total invited users (including creator)
+                    c.execute("SELECT COUNT(DISTINCT invited_username) FROM event_invitations WHERE event_id=?", (event_id,))
+                    invited_row = c.fetchone()
+                    total_invited = invited_row[0] if invited_row is not None else 0
+                    # Add 1 for the event creator (they're always "invited")
+                    total_invited += 1
+                    
+                    # Count users who responded
+                    c.execute("SELECT COUNT(DISTINCT username) FROM event_rsvps WHERE event_id=?", (event_id,))
+                    responded_row = c.fetchone()
+                    responded = responded_row[0] if responded_row is not None else 0
+                    no_response = max(0, total_invited - responded)
+                except Exception:
+                    no_response = 0
                 rsvp_counts['no_response'] = no_response
                 
                 # Get current user's RSVP if logged in
@@ -12206,6 +12250,11 @@ def get_event_rsvp_details():
             
             rsvps = c.fetchall()
             
+            # Get event creator
+            c.execute("SELECT username FROM calendar_events WHERE id = ?", (event_id,))
+            event_row = c.fetchone()
+            event_creator = event_row['username'] if event_row else None
+            
             # Get all invited users
             c.execute("""
                 SELECT i.invited_username, u.username as display_name
@@ -12216,6 +12265,12 @@ def get_event_rsvp_details():
             """, (event_id,))
             
             invited_users = c.fetchall()
+            
+            # Add event creator to invited users if not already in the list
+            if event_creator:
+                invited_usernames = [u['invited_username'] for u in invited_users]
+                if event_creator not in invited_usernames:
+                    invited_users = list(invited_users) + [{'invited_username': event_creator, 'display_name': event_creator}]
             
             # Organize attendees by response
             attendees = {
