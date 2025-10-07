@@ -11294,8 +11294,11 @@ def admin_user_statistics():
             })
             
     except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
         logger.error(f"Error getting user statistics: {e}")
-        return jsonify({'success': False, 'message': str(e)}), 500
+        logger.error(f"Traceback: {error_details}")
+        return jsonify({'success': False, 'message': str(e), 'traceback': error_details}), 500
 @app.route('/admin/ads_overview')
 @login_required
 def admin_ads_overview():
