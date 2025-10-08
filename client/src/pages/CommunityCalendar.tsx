@@ -268,7 +268,13 @@ export default function CommunityCalendar(){
             ) : (
               grouped.map(([date, items]) => (
                 <div key={date} className="rounded-2xl border border-white/10 bg-white/[0.035] overflow-hidden">
-                  <div className="px-3 py-2 bg-white/5 text-xs text-[#9fb0b5]">{date}</div>
+                  <div className="px-3 py-2 bg-white/5 text-xs text-[#9fb0b5]">
+                    {(() => {
+                      // Show end date if any event in this group has a different end date
+                      const firstWithEndDate = items.find(ev => ev.end_date && ev.end_date !== date && ev.end_date !== '0000-00-00')
+                      return firstWithEndDate ? `${date} → ${firstWithEndDate.end_date}` : date
+                    })()}
+                  </div>
                   <div className="divide-y divide-white/10">
                     {items.map(ev => (
                       <div key={ev.id} className="px-3 py-2">
@@ -284,11 +290,10 @@ export default function CommunityCalendar(){
                         </div>
                         {ev.description ? (<div className="text-sm text-[#cfd8dc] mt-1">{ev.description}</div>) : null}
                         <div className="text-xs text-[#9fb0b5] mt-2 flex items-center gap-2 flex-wrap">
-                          <span>RSVP:</span>
                           <button className={`px-2 py-1 rounded-full border ${ev.user_rsvp==='going'?'border-teal-500 text-teal-300 bg-teal-700/15':'border-white/10'}`} onClick={()=> rsvp(ev.id, 'going')}>Going {ev.rsvp_counts?.going||0}</button>
                           <button className={`px-2 py-1 rounded-full border ${ev.user_rsvp==='maybe'?'border-teal-500 text-teal-300 bg-teal-700/15':'border-white/10'}`} onClick={()=> rsvp(ev.id, 'maybe')}>Maybe {ev.rsvp_counts?.maybe||0}</button>
                           <button className={`px-2 py-1 rounded-full border ${ev.user_rsvp==='not_going'?'border-teal-500 text-teal-300 bg-teal-700/15':'border-white/10'}`} onClick={()=> rsvp(ev.id, 'not_going')}>Not going {ev.rsvp_counts?.not_going||0}</button>
-                          {typeof ev.rsvp_counts?.no_response === 'number' && (
+                          {typeof ev.rsvp_counts?.no_response === 'number' && ev.rsvp_counts.no_response > 0 && (
                             <span className="px-2 py-1 rounded-full border border-white/10">No response {ev.rsvp_counts.no_response}</span>
                           )}
                           <button title="Invite details" className="ml-auto px-2 py-1 rounded-md border border-white/10 hover:bg-white/5" onClick={()=> openInviteDetails(ev)}>

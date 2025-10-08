@@ -10955,7 +10955,8 @@ def rsvp_event(event_id):
         with get_db_connection() as conn:
             c = conn.cursor()
             # Ensure event exists and get community_id and creator
-            c.execute("SELECT community_id, username FROM calendar_events WHERE id = ?", (event_id,))
+            ph = get_sql_placeholder()
+            c.execute(f"SELECT community_id, username FROM calendar_events WHERE id = {ph}", (event_id,))
             row = c.fetchone()
             if not row:
                 return jsonify({'success': False, 'message': 'Event not found'}), 404
@@ -10964,36 +10965,39 @@ def rsvp_event(event_id):
             
             # Check if user is invited or is the event creator
             if username != event_creator:
-                c.execute("SELECT 1 FROM event_invitations WHERE event_id = ? AND invited_username = ?", (event_id, username))
+                c.execute(f"SELECT 1 FROM event_invitations WHERE event_id = {ph} AND invited_username = {ph}", (event_id, username))
                 if not c.fetchone():
                     return jsonify({'success': False, 'message': 'You are not invited to this event'}), 403
             # Upsert RSVP
-            c.execute("""
+            c.execute(f"""
                 INSERT INTO event_rsvps (event_id, username, response, note, responded_at)
-                VALUES (?, ?, ?, ?, ?)
+                VALUES ({ph}, {ph}, {ph}, {ph}, {ph})
                 ON DUPLICATE KEY UPDATE response=VALUES(response), note=VALUES(note), responded_at=VALUES(responded_at)
             """, (event_id, username, response, note, datetime.now().isoformat()))
             # Counts
-            c.execute("SELECT response, COUNT(*) as count FROM event_rsvps WHERE event_id=? GROUP BY response", (event_id,))
+            ph = get_sql_placeholder()
+            c.execute(f"SELECT response, COUNT(*) as count FROM event_rsvps WHERE event_id={ph} GROUP BY response", (event_id,))
             counts = {'going': 0, 'maybe': 0, 'not_going': 0}
             for r in c.fetchall():
                 counts[r['response']] = r['count']
             # Calculate no_response based on invited users only
             no_response = 0
+            total_invited = 0
             try:
                 # Count total invited users (including creator)
-                c.execute("SELECT COUNT(DISTINCT invited_username) FROM event_invitations WHERE event_id=?", (event_id,))
+                c.execute(f"SELECT COUNT(DISTINCT invited_username) FROM event_invitations WHERE event_id={ph}", (event_id,))
                 total_invited = (c.fetchone() or [0])[0]
                 # Add 1 for event creator
                 total_invited += 1
                 
                 # Count users who responded
-                c.execute("SELECT COUNT(DISTINCT username) FROM event_rsvps WHERE event_id=?", (event_id,))
+                c.execute(f"SELECT COUNT(DISTINCT username) FROM event_rsvps WHERE event_id={ph}", (event_id,))
                 responded = (c.fetchone() or [0])[0]
                 no_response = max(0, total_invited - responded)
             except Exception:
                 no_response = 0
             counts['no_response'] = no_response
+            counts['total_invited'] = total_invited
             conn.commit()
         return jsonify({'success': True, 'counts': counts, 'user_rsvp': response})
     except Exception as e:
@@ -11536,24 +11540,31 @@ def get_calendar_events():
                 rsvp_counts = {'going': 0, 'maybe': 0, 'not_going': 0}
                 for row in c.fetchall():
                     rsvp_counts[row['response']] = row['count']
-                # Derive no_response based on invited users only
+                # Calculate no_response: total invited members - total responded
                 no_response = 0
+                total_invited = 0
                 try:
-                    # Count total invited users (including creator)
+                    # Count total invited users
                     c.execute(f"SELECT COUNT(DISTINCT invited_username) FROM event_invitations WHERE event_id={ph}", (event_id,))
                     invited_row = c.fetchone()
                     total_invited = invited_row[0] if invited_row is not None else 0
-                    # Add 1 for the event creator (they're always "invited")
+                    
+                    # Add 1 for the event creator (they're always invited)
                     total_invited += 1
                     
                     # Count users who responded
                     c.execute(f"SELECT COUNT(DISTINCT username) FROM event_rsvps WHERE event_id={ph}", (event_id,))
                     responded_row = c.fetchone()
                     responded = responded_row[0] if responded_row is not None else 0
+                    
+                    # no_response = total invited - total responded
                     no_response = max(0, total_invited - responded)
-                except Exception:
+                except Exception as e:
+                    logger.warning(f"Error calculating no_response for event {event_id}: {e}")
                     no_response = 0
+                
                 rsvp_counts['no_response'] = no_response
+                rsvp_counts['total_invited'] = total_invited
                 
                 # Get current user's RSVP if logged in
                 username = session.get('username')
