@@ -84,14 +84,18 @@ export default function Notifications(){
     // Mark read (fire and forget)
     fetch(`/api/notifications/${n.id}/read`, { method:'POST', credentials:'include' }).catch(()=>{})
     const url = n.link || (n.post_id ? `/post/${n.post_id}` : (n.community_id ? `/community_feed_react/${n.community_id}` : '/notifications'))
+    console.log('Notification clicked:', { id: n.id, type: n.type, link: n.link, url })
     if (url.startsWith('http') || url.startsWith('/')){
       // Use SPA navigation for known in-app routes
       if (url.startsWith('/post/') || url.startsWith('/community_feed_react/') || url.startsWith('/event/')){
+        console.log('Using SPA navigation to:', url)
         navigate(url)
       } else {
+        console.log('Using window.location.href to:', url)
         window.location.href = url
       }
     } else {
+      console.log('Using window.location.href (no prefix) to:', url)
       window.location.href = url
     }
   }
