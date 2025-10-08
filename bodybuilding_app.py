@@ -10985,16 +10985,25 @@ def rsvp_event(event_id):
             total_invited = 0
             try:
                 # Count total invited users (including creator)
-                c.execute(f"SELECT COUNT(DISTINCT invited_username) FROM event_invitations WHERE event_id={ph}", (event_id,))
-                total_invited = (c.fetchone() or [0])[0]
+                c.execute(f"SELECT COUNT(DISTINCT invited_username) as cnt FROM event_invitations WHERE event_id={ph}", (event_id,))
+                invited_row = c.fetchone()
+                if invited_row:
+                    total_invited = invited_row['cnt'] if hasattr(invited_row, 'keys') else invited_row[0]
+                else:
+                    total_invited = 0
                 # Add 1 for event creator
                 total_invited += 1
                 
                 # Count users who responded
-                c.execute(f"SELECT COUNT(DISTINCT username) FROM event_rsvps WHERE event_id={ph}", (event_id,))
-                responded = (c.fetchone() or [0])[0]
+                c.execute(f"SELECT COUNT(DISTINCT username) as cnt FROM event_rsvps WHERE event_id={ph}", (event_id,))
+                responded_row = c.fetchone()
+                if responded_row:
+                    responded = responded_row['cnt'] if hasattr(responded_row, 'keys') else responded_row[0]
+                else:
+                    responded = 0
                 no_response = max(0, total_invited - responded)
-            except Exception:
+            except Exception as e:
+                logger.warning(f"Error calculating no_response in RSVP endpoint for event {event_id}: {e}")
                 no_response = 0
             counts['no_response'] = no_response
             counts['total_invited'] = total_invited
@@ -11545,17 +11554,23 @@ def get_calendar_events():
                 total_invited = 0
                 try:
                     # Count total invited users
-                    c.execute(f"SELECT COUNT(DISTINCT invited_username) FROM event_invitations WHERE event_id={ph}", (event_id,))
+                    c.execute(f"SELECT COUNT(DISTINCT invited_username) as cnt FROM event_invitations WHERE event_id={ph}", (event_id,))
                     invited_row = c.fetchone()
-                    total_invited = invited_row[0] if invited_row is not None else 0
+                    if invited_row:
+                        total_invited = invited_row['cnt'] if hasattr(invited_row, 'keys') else invited_row[0]
+                    else:
+                        total_invited = 0
                     
                     # Add 1 for the event creator (they're always invited)
                     total_invited += 1
                     
                     # Count users who responded
-                    c.execute(f"SELECT COUNT(DISTINCT username) FROM event_rsvps WHERE event_id={ph}", (event_id,))
+                    c.execute(f"SELECT COUNT(DISTINCT username) as cnt FROM event_rsvps WHERE event_id={ph}", (event_id,))
                     responded_row = c.fetchone()
-                    responded = responded_row[0] if responded_row is not None else 0
+                    if responded_row:
+                        responded = responded_row['cnt'] if hasattr(responded_row, 'keys') else responded_row[0]
+                    else:
+                        responded = 0
                     
                     # no_response = total invited - total responded
                     no_response = max(0, total_invited - responded)
@@ -12129,11 +12144,19 @@ def get_calendar_event(event_id):
                 rsvp_counts[row['response']] = row['count']
             
             # Calculate no_response
-            c.execute(f"SELECT COUNT(DISTINCT invited_username) FROM event_invitations WHERE event_id={ph}", (event_id,))
-            total_invited = (c.fetchone() or [0])[0] + 1  # +1 for creator
+            c.execute(f"SELECT COUNT(DISTINCT invited_username) as cnt FROM event_invitations WHERE event_id={ph}", (event_id,))
+            invited_row = c.fetchone()
+            if invited_row:
+                total_invited = (invited_row['cnt'] if hasattr(invited_row, 'keys') else invited_row[0]) + 1  # +1 for creator
+            else:
+                total_invited = 1  # Just the creator
             
-            c.execute(f"SELECT COUNT(DISTINCT username) FROM event_rsvps WHERE event_id={ph}", (event_id,))
-            responded = (c.fetchone() or [0])[0]
+            c.execute(f"SELECT COUNT(DISTINCT username) as cnt FROM event_rsvps WHERE event_id={ph}", (event_id,))
+            responded_row = c.fetchone()
+            if responded_row:
+                responded = responded_row['cnt'] if hasattr(responded_row, 'keys') else responded_row[0]
+            else:
+                responded = 0
             rsvp_counts['no_response'] = max(0, total_invited - responded)
             
             # Get current user's RSVP
