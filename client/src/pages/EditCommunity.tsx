@@ -14,6 +14,7 @@ export default function EditCommunity(){
   const [isChild, setIsChild] = useState(false)
   const [parentOptions, setParentOptions] = useState<Array<{ id:number; name:string; type?:string }>>([])
   const [selectedParentId, setSelectedParentId] = useState<string>('none')
+  const [notifyOnNewMember, setNotifyOnNewMember] = useState(false)
   const formRef = useRef<HTMLFormElement|null>(null)
 
   useEffect(() => {
@@ -39,6 +40,7 @@ export default function EditCommunity(){
           setType(jc.community.type || 'public')
           const pid = jc.community.parent_community_id
           if (pid){ setIsChild(true); setSelectedParentId(String(pid)) }
+          setNotifyOnNewMember(!!jc.community.notify_on_new_member)
         }
         // Load available parents for dropdown
         try{
@@ -64,6 +66,7 @@ export default function EditCommunity(){
     fd.append('type', type)
     // Parent setting
     fd.append('parent_community_id', isChild && selectedParentId !== 'none' ? selectedParentId : 'none')
+    fd.append('notify_on_new_member', notifyOnNewMember ? 'true' : 'false')
     if (imageFile) fd.append('background_file', imageFile)
     const r = await fetch('/update_community', { method:'POST', credentials:'include', body: fd })
     const j = await r.json().catch(()=>null)
@@ -119,6 +122,24 @@ export default function EditCommunity(){
               <option value="private">Private</option>
               <option value="closed">Closed</option>
             </select>
+          </div>
+          <div>
+            <label className="block text-sm text-[#9fb0b5] mb-2">Notifications</label>
+            <label className="flex items-center justify-between px-4 py-3 rounded-lg border border-white/15 bg-black hover:bg-white/5 cursor-pointer">
+              <div className="flex-1">
+                <div className="text-sm font-medium text-white">Notify on new members</div>
+                <div className="text-xs text-[#9fb0b5] mt-0.5">Send a notification to all members when someone new joins</div>
+              </div>
+              <div className="ml-3">
+                <button
+                  type="button"
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${notifyOnNewMember ? 'bg-[#4db6ac]' : 'bg-white/20'}`}
+                  onClick={() => setNotifyOnNewMember(!notifyOnNewMember)}
+                >
+                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${notifyOnNewMember ? 'translate-x-6' : 'translate-x-1'}`} />
+                </button>
+              </div>
+            </label>
           </div>
           <div>
             <label className="block text-sm text-[#9fb0b5] mb-1">Hierarchy</label>

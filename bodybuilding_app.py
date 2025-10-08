@@ -1375,8 +1375,20 @@ def init_db():
                           accent_color TEXT DEFAULT '#4db6ac',
                           card_color TEXT DEFAULT '#1a2526',
                           parent_community_id INTEGER,
+                          notify_on_new_member TINYINT(1) DEFAULT 0,
                           FOREIGN KEY (creator_username) REFERENCES users(username),
                           FOREIGN KEY (parent_community_id) REFERENCES communities(id))''')
+            
+            # Add notify_on_new_member column to existing communities table
+            try:
+                c.execute("SHOW COLUMNS FROM communities LIKE 'notify_on_new_member'")
+                if not c.fetchone():
+                    logger.info("Adding notify_on_new_member column to communities table...")
+                    c.execute("ALTER TABLE communities ADD COLUMN notify_on_new_member TINYINT(1) DEFAULT 0")
+                    conn.commit()
+                    logger.info("Added notify_on_new_member column to communities table")
+            except Exception as e:
+                logger.warning(f"Could not add notify_on_new_member column: {e}")
 
             # Create user_communities table
             logger.info("Creating user_communities table...")
@@ -13155,7 +13167,7 @@ def edit_community():
 @app.route('/update_community', methods=['POST'])
 @login_required
 def update_community():
-    """Update community details (name, description, type, background, template, colors, parent)"""
+    """Update community details (name, description, type, background, template, colors, parent, notifications)"""
     username = session.get('username')
     community_id = request.form.get('community_id', type=int)
     name = request.form.get('name', '').strip()
@@ -13167,6 +13179,7 @@ def update_community():
     accent_color = request.form.get('accent_color', '#4db6ac')
     text_color = request.form.get('text_color', '#ffffff')
     parent_community_id = request.form.get('parent_community_id', None)
+    notify_on_new_member = 1 if request.form.get('notify_on_new_member') == 'true' else 0
     
     if not community_id or not name:
         return jsonify({'success': False, 'error': 'Community ID and name are required'}), 400
@@ -13208,20 +13221,22 @@ def update_community():
             if background_path:
                 c.execute("""UPDATE communities 
                             SET name = ?, description = ?, type = ?, background_path = ?, template = ?, 
-                                background_color = ?, card_color = ?, accent_color = ?, text_color = ?, parent_community_id = ? 
+                                background_color = ?, card_color = ?, accent_color = ?, text_color = ?, parent_community_id = ?, notify_on_new_member = ? 
                             WHERE id = ?""", 
                          (name, description, community_type, background_path, template, 
                           background_color, card_color, accent_color, text_color, 
                           parent_community_id if parent_community_id and parent_community_id != 'none' else None, 
+                          notify_on_new_member,
                           community_id))
             else:
                 c.execute("""UPDATE communities 
                             SET name = ?, description = ?, type = ?, template = ?, 
-                                background_color = ?, card_color = ?, accent_color = ?, text_color = ?, parent_community_id = ? 
+                                background_color = ?, card_color = ?, accent_color = ?, text_color = ?, parent_community_id = ?, notify_on_new_member = ? 
                             WHERE id = ?""", 
                          (name, description, community_type, template, 
                           background_color, card_color, accent_color, text_color, 
                           parent_community_id if parent_community_id and parent_community_id != 'none' else None, 
+                          notify_on_new_member,
                           community_id))
             
             conn.commit()
@@ -13851,6 +13866,46 @@ def join_community():
                 ))
             except Exception as notify_err:
                 logger.warning(f"Failed to create join notification for {username}: {notify_err}")
+
+            # Check if community has notify_on_new_member enabled
+            try:
+                c.execute(f"SELECT notify_on_new_member FROM communities WHERE id = {get_sql_placeholder()}", (community_id,))
+                notify_setting = c.fetchone()
+                should_notify = notify_setting and (notify_setting['notify_on_new_member'] if hasattr(notify_setting, 'keys') else notify_setting[0])
+                
+                if should_notify:
+                    # Get all existing members of the community (excluding the new joiner)
+                    c.execute(f"""
+                        SELECT DISTINCT u.username
+                        FROM user_communities uc
+                        JOIN users u ON uc.user_id = u.id
+                        WHERE uc.community_id = {get_sql_placeholder()} AND u.username != {get_sql_placeholder()}
+                    """, (community_id, username))
+                    
+                    existing_members = c.fetchall()
+                    
+                    # Send notification to each existing member
+                    notif_ph = ', '.join([get_sql_placeholder()] * 6)
+                    for member in existing_members:
+                        member_username = member['username'] if hasattr(member, 'keys') else member[0]
+                        try:
+                            c.execute(f"""
+                                INSERT INTO notifications (user_id, from_user, type, community_id, message, link)
+                                VALUES ({notif_ph})
+                            """, (
+                                member_username,
+                                username,
+                                'new_member',
+                                community_id,
+                                f'{username} just joined "{community_name}". Say hi! 👋',
+                                f'/community_feed/{community_id}'
+                            ))
+                        except Exception as member_notify_err:
+                            logger.warning(f"Failed to notify {member_username} about new member: {member_notify_err}")
+                    
+                    logger.info(f"Sent new member notifications to {len(existing_members)} members in {community_name}")
+            except Exception as notify_members_err:
+                logger.warning(f"Failed to send new member notifications: {notify_members_err}")
 
             conn.commit()
             
