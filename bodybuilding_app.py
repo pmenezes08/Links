@@ -11642,6 +11642,12 @@ def add_calendar_event():
             except ValueError:
                 return jsonify({'success': False, 'message': 'Invalid end date format'})
         
+        # Convert empty strings to None for proper NULL storage
+        end_date = end_date if end_date else None
+        start_time = start_time if start_time else None
+        end_time = end_time if end_time else None
+        description = description if description else None
+        
         # Validate time formats if provided
         if start_time:
             try:
@@ -11665,11 +11671,11 @@ def add_calendar_event():
             c.execute("""
                 INSERT INTO calendar_events (username, title, date, end_date, time, start_time, end_time, description, created_at, community_id)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?)
-            """, (username, title, date, end_date if end_date else None, 
-                  start_time if start_time else None,  # Keep time field for compatibility
-                  start_time if start_time else None,  # start_time
-                  end_time if end_time else None,      # end_time
-                  description if description else None,
+            """, (username, title, date, end_date, 
+                  start_time,  # Keep time field for compatibility
+                  start_time,  # start_time
+                  end_time,    # end_time
+                  description,
                   community_id))
             
             event_id = c.lastrowid
