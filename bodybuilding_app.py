@@ -11668,9 +11668,10 @@ def add_calendar_event():
             c = conn.cursor()
             
             # Insert the event (keeping 'time' field for backward compatibility)
-            c.execute("""
+            ph = get_sql_placeholder()
+            c.execute(f"""
                 INSERT INTO calendar_events (username, title, date, end_date, time, start_time, end_time, description, created_at, community_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?)
+                VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, NOW(), {ph})
             """, (username, title, date, end_date, 
                   start_time,  # Keep time field for compatibility
                   start_time,  # start_time
