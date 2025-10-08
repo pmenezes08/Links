@@ -12017,15 +12017,33 @@ def edit_calendar_event():
         if not all([event_id, title, date]):
             return jsonify({'success': False, 'message': 'Event ID, title, and date are required'})
         
+        # Convert empty strings to None
+        end_date = end_date if end_date else None
+        description = description if description else None
+        
+        # Convert time (HH:MM) to datetime (YYYY-MM-DD HH:MM:00) for DATETIME columns
+        start_time_original = start_time
+        if start_time:
+            start_time = f"{date} {start_time}:00"
+        else:
+            start_time = None
+            
+        if end_time:
+            time_date = end_date if end_date else date
+            end_time = f"{time_date} {end_time}:00"
+        else:
+            end_time = None
+        
         with get_db_connection() as conn:
             c = conn.cursor()
             
             # Get event details and community info
-            c.execute("""
+            ph = get_sql_placeholder()
+            c.execute(f"""
                 SELECT e.username, e.community_id, c.creator_username
                 FROM calendar_events e
                 LEFT JOIN communities c ON e.community_id = c.id
-                WHERE e.id = ?
+                WHERE e.id = {ph}
             """, (event_id,))
             event = c.fetchone()
             
@@ -12039,7 +12057,7 @@ def edit_calendar_event():
             # Check if user is community admin
             is_community_admin = False
             if community_id:
-                c.execute("SELECT 1 FROM community_admins WHERE community_id = ? AND username = ?",
+                c.execute(f"SELECT 1 FROM community_admins WHERE community_id = {ph} AND username = {ph}",
                          (community_id, username))
                 is_community_admin = c.fetchone() is not None
             
@@ -12055,14 +12073,14 @@ def edit_calendar_event():
                 return jsonify({'success': False, 'message': 'You do not have permission to edit this event'})
             
             # Update the event
-            c.execute("""
+            c.execute(f"""
                 UPDATE calendar_events 
-                SET title = ?, date = ?, end_date = ?, start_time = ?, end_time = ?, 
-                    time = ?, description = ?
-                WHERE id = ?
-            """, (title, date, end_date if end_date else None, 
-                  start_time if start_time else None, end_time if end_time else None,
-                  start_time if start_time else None,  # Keep time field for compatibility
+                SET title = {ph}, date = {ph}, end_date = {ph}, start_time = {ph}, end_time = {ph}, 
+                    time = {ph}, description = {ph}
+                WHERE id = {ph}
+            """, (title, date, end_date, 
+                  start_time, end_time,
+                  start_time_original,  # Keep time field for compatibility
                   description, event_id))
             
             conn.commit()

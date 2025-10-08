@@ -35,6 +35,7 @@ export default function CommunityCalendar(){
   const [successMsg, setSuccessMsg] = useState<string| null>(null)
   const [modalEvent, setModalEvent] = useState<EventItem| null>(null)
   const [modalDetails, setModalDetails] = useState<RSVPDetails| null>(null)
+  const [editingEvent, setEditingEvent] = useState<EventItem| null>(null)
   const formRef = useRef<HTMLFormElement|null>(null)
   const scrollRef = useRef<HTMLDivElement|null>(null)
   const [moreOpen, setMoreOpen] = useState(false)
@@ -177,6 +178,26 @@ export default function CommunityCalendar(){
     }catch{}
   }
 
+  async function saveEditedEvent(formData: FormData){
+    if (!editingEvent) return
+    const params = new URLSearchParams()
+    params.append('event_id', String(editingEvent.id))
+    ;['title','date','end_date','start_time','end_time','description'].forEach(k => {
+      const v = (formData.get(k) as string) || ''
+      if (v) params.append(k, v)
+    })
+    const r = await fetch('/edit_calendar_event', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: params })
+    const j = await r.json().catch(()=>null)
+    if (j?.success){
+      await reloadEvents()
+      setEditingEvent(null)
+      setSuccessMsg('Event updated')
+      setTimeout(() => setSuccessMsg(null), 2000)
+    } else {
+      alert(j?.message || 'Failed to update event')
+    }
+  }
+
   return (
     <div className="h-screen overflow-hidden bg-black text-white">
       <div className="fixed left-0 right-0 top-14 h-10 bg-black/70 backdrop-blur z-40">
@@ -299,6 +320,9 @@ export default function CommunityCalendar(){
                           <button title="Invite details" className="ml-auto px-2 py-1 rounded-md border border-white/10 hover:bg-white/5" onClick={()=> openInviteDetails(ev)}>
                             <i className="fa-regular fa-circle-question" />
                           </button>
+                          <button title="Edit event" className="px-2 py-1 rounded-md border border-white/10 hover:bg-white/5" onClick={()=> setEditingEvent(ev)}>
+                            <i className="fa-regular fa-pen-to-square" />
+                          </button>
                           <button title="Delete event" className="px-2 py-1 rounded-md border border-red-400 text-red-300 hover:bg-red-500/10" onClick={()=> deleteEvent(ev)}>
                             <i className="fa-regular fa-trash-can" />
                           </button>
@@ -396,6 +420,43 @@ export default function CommunityCalendar(){
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {editingEvent && (
+        <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur flex items-center justify-center" onClick={(e)=> e.currentTarget===e.target && setEditingEvent(null)}>
+          <div className="w-[96%] max-w-[560px] rounded-2xl border border-white/10 bg-black p-3">
+            <div className="flex items-center justify-between mb-3">
+              <div className="font-semibold">Edit Event</div>
+              <button className="px-2 py-1 rounded-full border border-white/10" onClick={()=> setEditingEvent(null)}>✕</button>
+            </div>
+            <form className="space-y-3" onSubmit={(e)=> { e.preventDefault(); saveEditedEvent(new FormData(e.currentTarget)) }}>
+              <div className="grid grid-cols-2 gap-2">
+                <label className="col-span-2 text-xs text-[#9fb0b5]">Title
+                  <input name="title" defaultValue={editingEvent.title} placeholder="Title" className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none" required />
+                </label>
+                <label className="text-xs text-[#9fb0b5]">Start date
+                  <input name="date" type="date" defaultValue={editingEvent.date} className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none" required />
+                </label>
+                <label className="text-xs text-[#9fb0b5]">End date
+                  <input name="end_date" type="date" defaultValue={editingEvent.end_date || ''} className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none" />
+                </label>
+                <label className="text-xs text-[#9fb0b5]">Start time
+                  <input name="start_time" type="time" defaultValue={editingEvent.start_time || ''} className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none" />
+                </label>
+                <label className="text-xs text-[#9fb0b5]">End time
+                  <input name="end_time" type="time" defaultValue={editingEvent.end_time || ''} className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none" />
+                </label>
+                <label className="col-span-2 text-xs text-[#9fb0b5]">Description
+                  <input name="description" defaultValue={editingEvent.description || ''} placeholder="Description" className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none" />
+                </label>
+              </div>
+              <div className="flex justify-end gap-2">
+                <button type="button" className="px-3 py-1.5 rounded-md border border-white/10 hover:bg-white/5 text-sm" onClick={()=> setEditingEvent(null)}>Cancel</button>
+                <button type="submit" className="px-3 py-1.5 rounded-md bg-[#4db6ac] text-black text-sm hover:brightness-110">Save Changes</button>
+              </div>
+            </form>
           </div>
         </div>
       )}
