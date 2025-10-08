@@ -11488,6 +11488,9 @@ def admin_ads_overview():
         logger.error(f"Error loading admin ads overview: {e}")
         flash('Error loading ads overview', 'error')
         return redirect(url_for('admin'))
+
+@app.route('/get_calendar_events')
+@login_required
 def get_calendar_events():
     """Get calendar events visible to the current user (invited events only)"""
     try:
