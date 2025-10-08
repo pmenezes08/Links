@@ -11622,6 +11622,9 @@ def add_calendar_event():
         invited_members = request.form.getlist('invited_members[]')
         invite_all = request.form.get('invite_all') == 'true'
         
+        # Debug logging
+        logger.info(f"Creating event: title={title}, date={date}, start_time='{start_time}', end_time='{end_time}', community_id={community_id}")
+        
         # Validate required fields
         if not title or not date:
             return jsonify({'success': False, 'message': 'Title and start date are required'})
@@ -11669,6 +11672,7 @@ def add_calendar_event():
             
             # Insert the event (keeping 'time' field for backward compatibility)
             ph = get_sql_placeholder()
+            logger.info(f"Inserting event into DB: start_time={start_time}, end_time={end_time}, end_date={end_date}")
             c.execute(f"""
                 INSERT INTO calendar_events (username, title, date, end_date, time, start_time, end_time, description, created_at, community_id)
                 VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, NOW(), {ph})
