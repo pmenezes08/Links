@@ -289,7 +289,7 @@ export default function CommunityCalendar(){
             ) : (
               grouped.map(([date, items]) => (
                 <div key={date} className="rounded-2xl border border-white/10 bg-white/[0.035] overflow-hidden">
-                  <div className="px-3 py-2 bg-white/5 text-xs text-[#9fb0b5]">
+                  <div className="px-3 py-2 bg-[#4db6ac] text-xs text-black font-medium">
                     {(() => {
                       // Show end date if any event in this group has a different end date
                       const firstWithEndDate = items.find(ev => ev.end_date && ev.end_date !== date && ev.end_date !== '0000-00-00')
