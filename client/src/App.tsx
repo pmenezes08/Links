@@ -36,6 +36,7 @@ import ProductDevelopment from './pages/ProductDevelopment'
 import KeyPosts from './pages/KeyPosts'
 import OnboardingWelcome from './pages/OnboardingWelcome'
 import VerifyOverlay from './components/VerifyOverlay'
+import EventDetail from './pages/EventDetail'
 
 const queryClient = new QueryClient()
 
@@ -151,6 +152,7 @@ function AppRoutes(){
           <Route path="/community/:community_id/key_posts" element={<KeyPosts />} />
           <Route path="/community/:community_id/members" element={<Members />} />
           <Route path="/community/:community_id/edit" element={<EditCommunity />} />
+          <Route path="/event/:event_id" element={<EventDetail />} />
           <Route path="/post/:post_id" element={<PostDetail />} />
           <Route path="/compose" element={<CreatePost />} />
           <Route path="/product_development" element={<ProductDevelopment />} />

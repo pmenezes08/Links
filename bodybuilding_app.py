@@ -11730,11 +11730,11 @@ def add_calendar_event():
                 
                 if invite_all:
                     # Get all members of the community
-                    c.execute("""
+                    c.execute(f"""
                         SELECT DISTINCT u.username 
                         FROM user_communities uc
                         JOIN users u ON uc.user_id = u.id
-                        WHERE uc.community_id = ? AND u.username != ?
+                        WHERE uc.community_id = {ph} AND u.username != {ph}
                     """, (community_id, username))
                     invited_users = [row['username'] for row in c.fetchall()]
                 else:
@@ -11744,22 +11744,23 @@ def add_calendar_event():
                 # Insert invitations and create notifications
                 for invited_user in invited_users:
                     try:
-                        c.execute("""
+                        c.execute(f"""
                             INSERT INTO event_invitations (event_id, invited_username, invited_by, invited_at)
-                            VALUES (?, ?, ?, ?)
+                            VALUES ({ph}, {ph}, {ph}, {ph})
                         """, (event_id, invited_user, username, datetime.now().isoformat()))
                         
                         # Create notification for the invited user
                         notification_message = f"{username} invited you to the event: {title}"
-                        notification_link = f"/community/{community_id}/event/{event_id}/rsvp"
+                        notification_link = f"/event/{event_id}"
                         
-                        c.execute("""
+                        c.execute(f"""
                             INSERT INTO notifications (user_id, from_user, message, created_at, is_read, link, type, community_id)
-                            VALUES (?, ?, ?, ?, 0, ?, 'event_invitation', ?)
+                            VALUES ({ph}, {ph}, {ph}, {ph}, 0, {ph}, 'event_invitation', {ph})
                         """, (invited_user, username, notification_message, datetime.now().isoformat(), notification_link, community_id))
                         
-                    except sqlite3.IntegrityError:
-                        # Skip if already invited
+                    except Exception as inv_err:
+                        # Skip if already invited or other error
+                        logger.warning(f"Failed to invite {invited_user}: {inv_err}")
                         pass
             
             conn.commit()
@@ -12094,19 +12095,20 @@ def edit_calendar_event():
 @app.route('/get_calendar_event/<int:event_id>')
 @login_required
 def get_calendar_event(event_id):
-    """Get details of a specific calendar event for editing"""
+    """Get details of a specific calendar event with RSVP data"""
     try:
         username = session.get('username')
         
         with get_db_connection() as conn:
             c = conn.cursor()
+            ph = get_sql_placeholder()
             
-            # Get event details
-            c.execute("""
-                SELECT e.*, c.creator_username
+            # Get event details with community name
+            c.execute(f"""
+                SELECT e.*, c.creator_username, c.name as community_name
                 FROM calendar_events e
                 LEFT JOIN communities c ON e.community_id = c.id
-                WHERE e.id = ?
+                WHERE e.id = {ph}
             """, (event_id,))
             
             event = c.fetchone()
@@ -12114,10 +12116,38 @@ def get_calendar_event(event_id):
             if not event:
                 return jsonify({'success': False, 'message': 'Event not found'})
             
+            # Get RSVP counts
+            c.execute(f"""
+                SELECT response, COUNT(*) as count
+                FROM event_rsvps
+                WHERE event_id = {ph}
+                GROUP BY response
+            """, (event_id,))
+            
+            rsvp_counts = {'going': 0, 'maybe': 0, 'not_going': 0}
+            for row in c.fetchall():
+                rsvp_counts[row['response']] = row['count']
+            
+            # Calculate no_response
+            c.execute(f"SELECT COUNT(DISTINCT invited_username) FROM event_invitations WHERE event_id={ph}", (event_id,))
+            total_invited = (c.fetchone() or [0])[0] + 1  # +1 for creator
+            
+            c.execute(f"SELECT COUNT(DISTINCT username) FROM event_rsvps WHERE event_id={ph}", (event_id,))
+            responded = (c.fetchone() or [0])[0]
+            rsvp_counts['no_response'] = max(0, total_invited - responded)
+            
+            # Get current user's RSVP
+            c.execute(f"""
+                SELECT response FROM event_rsvps
+                WHERE event_id = {ph} AND username = {ph}
+            """, (event_id, username))
+            user_rsvp_row = c.fetchone()
+            user_rsvp = user_rsvp_row['response'] if user_rsvp_row else None
+            
             # Check if user is community admin
             is_community_admin = False
             if event['community_id']:
-                c.execute("SELECT 1 FROM community_admins WHERE community_id = ? AND username = ?",
+                c.execute(f"SELECT 1 FROM community_admins WHERE community_id = {ph} AND username = {ph}",
                          (event['community_id'], username))
                 is_community_admin = c.fetchone() is not None
             
@@ -12129,6 +12159,17 @@ def get_calendar_event(event_id):
                 is_community_admin
             )
             
+            # Extract time portion from datetime
+            def extract_time(dt_str):
+                if not dt_str or dt_str == '0000-00-00 00:00:00':
+                    return None
+                try:
+                    if ' ' in str(dt_str):
+                        return str(dt_str).split(' ')[1][:5]  # HH:MM
+                    return dt_str
+                except:
+                    return dt_str
+            
             return jsonify({
                 'success': True,
                 'event': {
@@ -12136,10 +12177,14 @@ def get_calendar_event(event_id):
                     'title': event['title'],
                     'date': event['date'],
                     'end_date': event['end_date'],
-                    'start_time': event['start_time'] or event['time'],
-                    'end_time': event['end_time'],
+                    'start_time': extract_time(event['start_time']),
+                    'end_time': extract_time(event['end_time']),
                     'description': event['description'],
                     'username': event['username'],
+                    'community_id': event['community_id'],
+                    'community_name': event['community_name'],
+                    'user_rsvp': user_rsvp,
+                    'rsvp_counts': rsvp_counts,
                     'can_edit': can_edit
                 }
             })
