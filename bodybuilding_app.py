@@ -11575,6 +11575,19 @@ def get_calendar_events():
                     """, (event_id, username))
                     is_invited = c.fetchone() is not None
                 
+                # Extract time portion from datetime fields (YYYY-MM-DD HH:MM:SS -> HH:MM)
+                def extract_time(dt_str):
+                    if not dt_str or dt_str == '0000-00-00 00:00:00':
+                        return None
+                    try:
+                        # If it's a datetime string, extract just the time portion
+                        if ' ' in str(dt_str):
+                            time_part = str(dt_str).split(' ')[1]  # Get HH:MM:SS
+                            return time_part[:5]  # Return just HH:MM
+                        return dt_str
+                    except:
+                        return dt_str
+                
                 events.append({
                     'id': event['id'],
                     'username': event['username'],
@@ -11582,8 +11595,8 @@ def get_calendar_events():
                     'date': event['date'],
                     'end_date': event['end_date'],
                     'time': event['time'],  # Keep for backward compatibility
-                    'start_time': event['start_time'],
-                    'end_time': event['end_time'],
+                    'start_time': extract_time(event['start_time']),
+                    'end_time': extract_time(event['end_time']),
                     'description': event['description'],
                     'created_at': event['created_at'],
                     'community_id': event['community_id'],
@@ -11645,13 +11658,7 @@ def add_calendar_event():
             except ValueError:
                 return jsonify({'success': False, 'message': 'Invalid end date format'})
         
-        # Convert empty strings to None for proper NULL storage
-        end_date = end_date if end_date else None
-        start_time = start_time if start_time else None
-        end_time = end_time if end_time else None
-        description = description if description else None
-        
-        # Validate time formats if provided
+        # Validate time formats if provided (before conversion)
         if start_time:
             try:
                 datetime.strptime(start_time, '%H:%M')
@@ -11661,25 +11668,46 @@ def add_calendar_event():
         if end_time:
             try:
                 datetime.strptime(end_time, '%H:%M')
-                # Validate end_time is after start_time if both provided
-                if start_time and end_time < start_time and date == end_date:
-                    return jsonify({'success': False, 'message': 'End time cannot be before start time on the same day'})
             except ValueError:
                 return jsonify({'success': False, 'message': 'Invalid end time format'})
+        
+        # Convert empty strings to None for proper NULL storage
+        end_date = end_date if end_date else None
+        description = description if description else None
+        
+        # Convert time (HH:MM) to datetime (YYYY-MM-DD HH:MM:00) for DATETIME columns
+        start_time_original = start_time
+        end_time_original = end_time
+        
+        if start_time:
+            start_time = f"{date} {start_time}:00"
+        else:
+            start_time = None
+            
+        if end_time:
+            # Use end_date if provided, otherwise use start date
+            time_date = end_date if end_date else date
+            end_time = f"{time_date} {end_time}:00"
+        else:
+            end_time = None
+        
+        # Validate end_time is after start_time if both provided
+        if start_time and end_time and end_time < start_time:
+            return jsonify({'success': False, 'message': 'End time cannot be before start time'})
         
         with get_db_connection() as conn:
             c = conn.cursor()
             
             # Insert the event (keeping 'time' field for backward compatibility)
             ph = get_sql_placeholder()
-            logger.info(f"Inserting event into DB: start_time={start_time}, end_time={end_time}, end_date={end_date}")
+            logger.info(f"Inserting event into DB: start_time='{start_time}', end_time='{end_time}', end_date={end_date}")
             c.execute(f"""
                 INSERT INTO calendar_events (username, title, date, end_date, time, start_time, end_time, description, created_at, community_id)
                 VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, NOW(), {ph})
             """, (username, title, date, end_date, 
-                  start_time,  # Keep time field for compatibility
-                  start_time,  # start_time
-                  end_time,    # end_time
+                  start_time_original,  # Keep time field as HH:MM for backward compatibility
+                  start_time,           # start_time as DATETIME
+                  end_time,             # end_time as DATETIME
                   description,
                   community_id))
             
