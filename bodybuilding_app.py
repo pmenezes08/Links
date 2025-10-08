@@ -11499,12 +11499,13 @@ def get_calendar_events():
             
             # Get current user
             username = session.get('username')
+            logger.info(f"get_calendar_events called for user: {username}")
             if not username:
                 return jsonify({'success': True, 'events': []})
             
             # Get calendar events where user is invited or is the creator
             ph = get_sql_placeholder()
-            c.execute(f"""
+            query = f"""
                 SELECT DISTINCT ce.id, ce.username, ce.title, ce.date, 
                        COALESCE(ce.end_date, ce.date) as end_date,
                        COALESCE(ce.start_time, ce.time) as start_time,
@@ -11514,8 +11515,11 @@ def get_calendar_events():
                 LEFT JOIN event_invitations ei ON ce.id = ei.event_id
                 WHERE ce.username = {ph} OR ei.invited_username = {ph}
                 ORDER BY ce.date ASC, COALESCE(ce.start_time, ce.time) ASC
-            """, (username, username))
+            """
+            logger.info(f"Executing calendar query for username: {username}")
+            c.execute(query, (username, username))
             events_raw = c.fetchall()
+            logger.info(f"Found {len(events_raw)} events for user {username}")
             
             events = []
             for event in events_raw:
@@ -11590,6 +11594,7 @@ def get_calendar_events():
                     'is_creator': event['username'] == username
                 })
             
+            logger.info(f"Returning {len(events)} events to frontend for user {username}")
             return jsonify({'success': True, 'events': events})
             
     except Exception as e:
