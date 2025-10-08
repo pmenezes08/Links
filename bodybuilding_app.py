@@ -11500,7 +11500,8 @@ def get_calendar_events():
                 return jsonify({'success': True, 'events': []})
             
             # Get calendar events where user is invited or is the creator
-            c.execute("""
+            ph = get_sql_placeholder()
+            c.execute(f"""
                 SELECT DISTINCT ce.id, ce.username, ce.title, ce.date, 
                        COALESCE(ce.end_date, ce.date) as end_date,
                        COALESCE(ce.start_time, ce.time) as start_time,
@@ -11508,7 +11509,7 @@ def get_calendar_events():
                        ce.time, ce.description, ce.created_at, ce.community_id
                 FROM calendar_events ce
                 LEFT JOIN event_invitations ei ON ce.id = ei.event_id
-                WHERE ce.username = ? OR ei.invited_username = ?
+                WHERE ce.username = {ph} OR ei.invited_username = {ph}
                 ORDER BY ce.date ASC, COALESCE(ce.start_time, ce.time) ASC
             """, (username, username))
             events_raw = c.fetchall()
@@ -11518,10 +11519,10 @@ def get_calendar_events():
                 event_id = event['id']
                 
                 # Get RSVP counts for this event
-                c.execute("""
+                c.execute(f"""
                     SELECT response, COUNT(*) as count
                     FROM event_rsvps
-                    WHERE event_id = ?
+                    WHERE event_id = {ph}
                     GROUP BY response
                 """, (event_id,))
                 
@@ -11532,14 +11533,14 @@ def get_calendar_events():
                 no_response = 0
                 try:
                     # Count total invited users (including creator)
-                    c.execute("SELECT COUNT(DISTINCT invited_username) FROM event_invitations WHERE event_id=?", (event_id,))
+                    c.execute(f"SELECT COUNT(DISTINCT invited_username) FROM event_invitations WHERE event_id={ph}", (event_id,))
                     invited_row = c.fetchone()
                     total_invited = invited_row[0] if invited_row is not None else 0
                     # Add 1 for the event creator (they're always "invited")
                     total_invited += 1
                     
                     # Count users who responded
-                    c.execute("SELECT COUNT(DISTINCT username) FROM event_rsvps WHERE event_id=?", (event_id,))
+                    c.execute(f"SELECT COUNT(DISTINCT username) FROM event_rsvps WHERE event_id={ph}", (event_id,))
                     responded_row = c.fetchone()
                     responded = responded_row[0] if responded_row is not None else 0
                     no_response = max(0, total_invited - responded)
@@ -11552,18 +11553,18 @@ def get_calendar_events():
                 user_rsvp = None
                 is_invited = False
                 if username:
-                    c.execute("""
+                    c.execute(f"""
                         SELECT response FROM event_rsvps
-                        WHERE event_id = ? AND username = ?
+                        WHERE event_id = {ph} AND username = {ph}
                     """, (event_id, username))
                     result = c.fetchone()
                     if result:
                         user_rsvp = result['response']
                     
                     # Check if user is invited
-                    c.execute("""
+                    c.execute(f"""
                         SELECT 1 FROM event_invitations
-                        WHERE event_id = ? AND invited_username = ?
+                        WHERE event_id = {ph} AND invited_username = {ph}
                     """, (event_id, username))
                     is_invited = c.fetchone() is not None
                 
