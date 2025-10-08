@@ -89,13 +89,6 @@ export default function EventDetail(){
       </div>
 
       <div className="max-w-2xl mx-auto pt-16 px-3 pb-24">
-        {/* Event Icon */}
-        <div className="flex justify-center mb-6">
-          <div className="w-20 h-20 rounded-full bg-gradient-to-br from-[#4db6ac] to-[#2d8a7e] flex items-center justify-center">
-            <i className="fa-solid fa-calendar-check text-3xl text-white" />
-          </div>
-        </div>
-
         {/* Event Info Card */}
         <div className="rounded-2xl border border-white/10 bg-white/[0.035] overflow-hidden mb-4">
           <div className="px-4 py-3 bg-[#4db6ac]">
@@ -217,15 +210,15 @@ export default function EventDetail(){
         <div className="grid grid-cols-2 gap-3">
           <button 
             className="py-3 rounded-lg bg-[#4db6ac] text-black font-medium hover:brightness-110"
-            onClick={()=> navigate(event.community_id ? `/community_feed_react/${event.community_id}` : '/communities_react')}
+            onClick={()=> navigate(event.community_id ? `/community/${event.community_id}/calendar_react` : '/communities_react')}
           >
-            View Community
+            View Events
           </button>
           <button 
             className="py-3 rounded-lg border border-white/10 bg-white/[0.035] hover:bg-white/5"
-            onClick={()=> navigate('/')}
+            onClick={()=> navigate(event.community_id ? `/community_feed_react/${event.community_id}` : '/communities_react')}
           >
-            Back to Home
+            Back to Community
           </button>
         </div>
       </div>

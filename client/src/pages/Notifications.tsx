@@ -22,6 +22,8 @@ function iconFor(type?: string){
     case 'mention_reply': return 'fa-solid fa-at'
     case 'follow': return 'fa-solid fa-user-plus'
     case 'poll_vote': return 'fa-solid fa-square-poll-vertical'
+    case 'event_invitation': return 'fa-solid fa-calendar-check'
+    case 'new_member': return 'fa-solid fa-user-plus'
     default: return 'fa-regular fa-bell'
   }
 }
@@ -84,7 +86,7 @@ export default function Notifications(){
     const url = n.link || (n.post_id ? `/post/${n.post_id}` : (n.community_id ? `/community_feed_react/${n.community_id}` : '/notifications'))
     if (url.startsWith('http') || url.startsWith('/')){
       // Use SPA navigation for known in-app routes
-      if (url.startsWith('/post/') || url.startsWith('/community_feed_react/')){
+      if (url.startsWith('/post/') || url.startsWith('/community_feed_react/') || url.startsWith('/event/')){
         navigate(url)
       } else {
         window.location.href = url
