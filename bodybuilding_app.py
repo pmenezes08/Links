@@ -8729,7 +8729,7 @@ def check_new_notifications():
             c = conn.cursor()
             # Get new unread notifications created after last check
             c.execute("""
-                SELECT id, from_user, type, post_id, community_id, message, is_read, created_at
+                SELECT id, from_user, type, post_id, community_id, message, is_read, created_at, link
                 FROM notifications
                 WHERE user_id = ? AND is_read = 0 AND created_at > ?
                 ORDER BY created_at DESC
@@ -8746,7 +8746,8 @@ def check_new_notifications():
                     'community_id': row['community_id'],
                     'message': row['message'],
                     'is_read': row['is_read'],
-                    'created_at': row['created_at']
+                    'created_at': row['created_at'],
+                    'link': row.get('link') if hasattr(row, 'get') else row.get('link', None) if hasattr(row, 'keys') else None
                 })
             
             return jsonify({
@@ -8785,7 +8786,7 @@ def get_notifications():
             if show_all:
                 # For notifications page, show all notifications
                 c.execute("""
-                    SELECT id, from_user, type, post_id, community_id, message, is_read, created_at
+                    SELECT id, from_user, type, post_id, community_id, message, is_read, created_at, link
                     FROM notifications
                     WHERE user_id = ?
                     ORDER BY created_at DESC
@@ -8794,7 +8795,7 @@ def get_notifications():
             else:
                 # For real-time checking, only show unread
                 c.execute("""
-                    SELECT id, from_user, type, post_id, community_id, message, is_read, created_at
+                    SELECT id, from_user, type, post_id, community_id, message, is_read, created_at, link
                     FROM notifications
                     WHERE user_id = ? AND is_read = 0
                     ORDER BY created_at DESC
@@ -8810,6 +8811,7 @@ def get_notifications():
                     'post_id': row['post_id'],
                     'community_id': row['community_id'],
                     'message': row['message'],
+                    'link': row.get('link') if hasattr(row, 'get') else row.get('link', None) if hasattr(row, 'keys') else None,
                     'is_read': bool(row['is_read']),
                     'created_at': row['created_at']
                 })
