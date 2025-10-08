@@ -274,7 +274,13 @@ export default function CommunityCalendar(){
                       <div key={ev.id} className="px-3 py-2">
                         <div className="flex items-center gap-2">
                           <div className="font-medium flex-1">{ev.title}</div>
-                          <div className="text-xs text-[#9fb0b5]">{[ev.start_time, ev.end_time].filter(Boolean).join(' - ')}</div>
+                          <div className="text-xs text-[#9fb0b5]">
+                            {(() => {
+                              const times = [ev.start_time, ev.end_time]
+                                .filter(t => t && t !== '0000-00-00 00:00:00' && t !== '00:00:00' && t !== '00:00')
+                              return times.length > 0 ? times.join(' - ') : ''
+                            })()}
+                          </div>
                         </div>
                         {ev.description ? (<div className="text-sm text-[#cfd8dc] mt-1">{ev.description}</div>) : null}
                         <div className="text-xs text-[#9fb0b5] mt-2 flex items-center gap-2 flex-wrap">
@@ -345,8 +351,9 @@ export default function CommunityCalendar(){
             <div className="mb-2">
               <div className="font-semibold text-white">{modalEvent.title}</div>
               <div className="text-xs text-[#9fb0b5]">
-                {modalEvent.date}{modalEvent.end_date ? ` → ${modalEvent.end_date}` : ''}
-                {modalEvent.start_time ? ` • ${modalEvent.start_time}` : ''}{modalEvent.end_time ? ` - ${modalEvent.end_time}` : ''}
+                {modalEvent.date}{modalEvent.end_date && modalEvent.end_date !== modalEvent.date && modalEvent.end_date !== '0000-00-00' ? ` → ${modalEvent.end_date}` : ''}
+                {modalEvent.start_time && modalEvent.start_time !== '0000-00-00 00:00:00' && modalEvent.start_time !== '00:00:00' && modalEvent.start_time !== '00:00' ? ` • ${modalEvent.start_time}` : ''}
+                {modalEvent.end_time && modalEvent.end_time !== '0000-00-00 00:00:00' && modalEvent.end_time !== '00:00:00' && modalEvent.end_time !== '00:00' ? ` - ${modalEvent.end_time}` : ''}
               </div>
               {modalEvent.description ? (<div className="text-sm text-[#cfd8dc] mt-1">{modalEvent.description}</div>) : null}
             </div>
