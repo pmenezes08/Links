@@ -499,8 +499,11 @@ function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDel
   // Note: connector uses fixed left offset; keep size constant in Avatar props
   return (
     <div className="relative border-b border-white/10 py-2">
-      {(depth > 0 || (reply.children && reply.children.length)) ? (
-        <div className="absolute" style={{ left: '32px', top: 0, bottom: 0, width: '1px', background: '#d1d5db', borderRadius: '9999px', pointerEvents: 'none', zIndex: 0 }} />
+      {depth > 0 ? (
+        <div className="absolute" style={{ left: '6px', top: 0, height: '12px', width: '1px', background: '#e5e7eb', borderRadius: '9999px', pointerEvents: 'none', zIndex: 0 }} />
+      ) : null}
+      {(reply.children && reply.children.length) ? (
+        <div className="absolute" style={{ left: '6px', top: '36px', bottom: 0, width: '1px', background: '#e5e7eb', borderRadius: '9999px', pointerEvents: 'none', zIndex: 0 }} />
       ) : null}
       <div className="relative flex items-start gap-2 px-3">
         <div className="relative w-10 flex-shrink-0" style={{ zIndex: 1 }}>
