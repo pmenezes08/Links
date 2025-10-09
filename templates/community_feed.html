@@ -5736,8 +5736,8 @@
                             <span class="event-creator-mini">By ${escapeHtml(event.username)}</span>
                             ${rsvpCounts.going > 0 || rsvpCounts.maybe > 0 ? `
                                 <span class="rsvp-summary-mini">
-                                    ${rsvpCounts.going > 0 ? `<i class="fas fa-check-circle" style="color: #4CAF50; font-size: 10px;"></i> ${rsvpCounts.going}` : ''}
-                                    ${rsvpCounts.maybe > 0 ? `<i class="fas fa-question-circle" style="color: #FFC107; font-size: 10px;"></i> ${rsvpCounts.maybe}` : ''}
+                            ${rsvpCounts.going > 0 ? `<i class="fas fa-check-circle" style="color: #4CAF50; font-size: 10px;"></i> ${rsvpCounts.going}` : ''}
+                            ${rsvpCounts.maybe > 0 ? `Maybe ${rsvpCounts.maybe}` : ''}
                                 </span>
                             ` : ''}
                         </div>
@@ -6349,7 +6349,7 @@
                                 <button class="compact-rsvp-btn ${userRsvp === 'maybe' ? 'active' : ''}" 
                                         onclick="submitRSVPFromDetails(${event.id}, 'maybe')"
                                         style="flex: 1; padding: 6px; font-size: 11px; border: 1px solid ${userRsvp === 'maybe' ? '#FFC107' : '{{ "rgba(0, 0, 0, 0.2)" if community.template == "light" else "rgba(255, 255, 255, 0.2)" }}'}; background: ${userRsvp === 'maybe' ? 'rgba(255, 193, 7, 0.2)' : 'transparent'}; color: ${userRsvp === 'maybe' ? '#FFC107' : '{{ "#495057" if community.template == "light" else "#e0e0e0" }}'}; border-radius: 4px; cursor: pointer;">
-                                    <i class="fas fa-question" style="font-size: 10px;"></i> Maybe
+                                    Maybe
                                 </button>
                                 <button class="compact-rsvp-btn ${userRsvp === 'not_going' ? 'active' : ''}" 
                                         onclick="submitRSVPFromDetails(${event.id}, 'not_going')"
@@ -6444,7 +6444,7 @@
                                 ${maybe.length > 0 ? `
                                     <div style="margin-bottom: 10px;">
                                         <div style="font-weight: 600; color: #FFC107; margin-bottom: 4px;">
-                                            <i class="fas fa-question-circle" style="font-size: 10px;"></i> Maybe (${maybe.length})
+                                            Maybe (${maybe.length})
                                         </div>
                                         <div style="display: flex; flex-wrap: wrap; gap: 4px;">
                                             ${maybe.map(user => `
