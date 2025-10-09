@@ -100,6 +100,7 @@ export default function PostDetail(){
   const [error, setError] = useState<string| null>(null)
   const [content, setContent] = useState('')
   const [file, setFile] = useState<File|null>(null)
+  const [filePreviewUrl, setFilePreviewUrl] = useState<string | null>(null)
   const [currentUser, setCurrentUser] = useState<string | null>(null)
   const [previewSrc, setPreviewSrc] = useState<string | null>(null)
   const [submittingReply, setSubmittingReply] = useState(false)
@@ -110,6 +111,24 @@ export default function PostDetail(){
   const [refreshHint, setRefreshHint] = useState(false)
   const [pullPx, setPullPx] = useState(0)
   const [refreshing, setRefreshing] = useState(false)
+
+  // Generate a stable preview URL only when the selected file changes
+  useEffect(() => {
+    let url: string | null = null
+    try {
+      if (file) {
+        url = URL.createObjectURL(file)
+        setFilePreviewUrl(url)
+      } else {
+        setFilePreviewUrl(null)
+      }
+    } catch {}
+    return () => {
+      if (url) {
+        try { URL.revokeObjectURL(url) } catch {}
+      }
+    }
+  }, [file])
 
   async function refreshPost(){
     try{
@@ -419,7 +438,9 @@ export default function PostDetail(){
             {file && (
               <div className="flex items-center gap-2 mr-auto">
                 <div className="w-16 h-16 rounded-md overflow-hidden border border-white/10">
-                  <img src={URL.createObjectURL(file)} alt="preview" className="w-full h-full object-cover" />
+                  {filePreviewUrl ? (
+                    <img src={filePreviewUrl} alt="preview" className="w-full h-full object-cover" decoding="async" />
+                  ) : null}
                 </div>
                 <div className="text-xs text-[#7fe7df] flex items-center gap-1">
                   <i className="fa-solid fa-image" />
