@@ -360,7 +360,15 @@ export default function CommunityFeed() {
           {/* Feed items */}
           {postsOnly.map((p: Post, idx: number) => (
             <div key={p.id} className="relative">
-              <PostCard post={p} idx={idx} currentUser={data.username} isAdmin={!!data.is_community_admin} highlightStep={highlightStep} onOpen={() => navigate(`/post/${p.id}`)} onToggleReaction={handleToggleReaction} />
+              <PostCard
+                post={p}
+                idx={idx}
+                currentUser={data.username}
+                isAdmin={!!(data?.is_community_admin || data?.community?.creator_username === data?.username || data?.username === 'admin')}
+                highlightStep={highlightStep}
+                onOpen={() => navigate(`/post/${p.id}`)}
+                onToggleReaction={handleToggleReaction}
+              />
               {/* Dark overlay for all posts except first one during reaction highlight */}
               {highlightStep === 'reaction' && idx !== 0 && (
                 <div className="absolute inset-0 bg-black/90 z-[45] pointer-events-none" />
