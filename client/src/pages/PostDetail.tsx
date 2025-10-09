@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, memo } from 'react'
 import type React from 'react'
 import MentionTextarea from '../components/MentionTextarea'
 import { useNavigate, useParams } from 'react-router-dom'
@@ -405,7 +405,18 @@ export default function PostDetail(){
 
         <div className="mt-3 rounded-2xl border border-white/10">
           {post.replies.map(r => (
-            <ReplyNode key={r.id} reply={r} currentUser={currentUser} onToggle={(id, reaction)=> toggleReplyReaction(id, reaction)} onInlineReply={(id, text, file)=> submitInlineReply(id, text, file)} onDelete={(id)=> deleteReply(id)} onPreviewImage={(src)=> setPreviewSrc(src)} inlineSending={inlineSending} communityId={(post as any)?.community_id} postId={post?.id} />
+            <ReplyNodeMemo
+              key={r.id}
+              reply={r}
+              currentUser={currentUser}
+              onToggle={(id, reaction)=> toggleReplyReaction(id, reaction)}
+              onInlineReply={(id, text, file)=> submitInlineReply(id, text, file)}
+              onDelete={(id)=> deleteReply(id)}
+              onPreviewImage={(src)=> setPreviewSrc(src)}
+              inlineSendingFlag={!!inlineSending[r.id]}
+              communityId={(post as any)?.community_id}
+              postId={post?.id}
+            />
           ))}
         </div>
         {/* Spacer to prevent fixed composer overlap with first replies */}
@@ -510,7 +521,7 @@ function Reaction({ icon, count, active, onClick }:{ icon: string, count: number
   )
 }
 
-function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDelete, onPreviewImage, inlineSending, communityId, postId }:{ reply: Reply, depth?: number, currentUser?: string|null, onToggle: (id:number, reaction:string)=>void, onInlineReply: (id:number, text:string, file?: File)=>void, onDelete: (id:number)=>void, onPreviewImage: (src:string)=>void, inlineSending: Record<number, boolean>, communityId?: number | string, postId?: number }){
+function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDelete, onPreviewImage, inlineSendingFlag, communityId, postId }:{ reply: Reply, depth?: number, currentUser?: string|null, onToggle: (id:number, reaction:string)=>void, onInlineReply: (id:number, text:string, file?: File)=>void, onDelete: (id:number)=>void, onPreviewImage: (src:string)=>void, inlineSendingFlag: boolean, communityId?: number | string, postId?: number }){
   const [showComposer, setShowComposer] = useState(false)
   const [text, setText] = useState('')
   const [img, setImg] = useState<File|null>(null)
@@ -613,8 +624,8 @@ function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDel
                   onChange={(e)=> setImg((e.target as HTMLInputElement).files?.[0]||null)}
                   className="hidden"
                 />
-                <button className="px-2.5 py-1.5 rounded-full bg-[#4db6ac] text-white border border-[#4db6ac] hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed" onClick={()=> { if (!text && !img) return; onInlineReply(reply.id, text, img || undefined); setText(''); setImg(null); if (inlineFileRef.current) inlineFileRef.current.value=''; setShowComposer(false) }} aria-label="Send reply" disabled={!text && !img || !!inlineSending[reply.id]}>
-                  {inlineSending[reply.id] ? <i className="fa-solid fa-spinner fa-spin" /> : <i className="fa-solid fa-paper-plane" />}
+                <button className="px-2.5 py-1.5 rounded-full bg-[#4db6ac] text-white border border-[#4db6ac] hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed" onClick={()=> { if (!text && !img) return; onInlineReply(reply.id, text, img || undefined); setText(''); setImg(null); if (inlineFileRef.current) inlineFileRef.current.value=''; setShowComposer(false) }} aria-label="Send reply" disabled={!text && !img || !!inlineSendingFlag}>
+                  {inlineSendingFlag ? <i className="fa-solid fa-spinner fa-spin" /> : <i className="fa-solid fa-paper-plane" />}
                 </button>
               </div>
               {img && (
@@ -640,3 +651,12 @@ function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDel
     </div>
   )
 }
+
+const ReplyNodeMemo = memo(ReplyNode, (prev, next) => {
+  // Only re-render when the actual reply data or sending flag for this reply changes, or identity-critical props change
+  if (prev.reply !== next.reply) return false
+  if (prev.inlineSendingFlag !== next.inlineSendingFlag) return false
+  if (prev.currentUser !== next.currentUser) return false
+  if (prev.depth !== next.depth) return false
+  return true
+})
