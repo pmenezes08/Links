@@ -112,20 +112,63 @@ export default function PostDetail(){
   const [pullPx, setPullPx] = useState(0)
   const [refreshing, setRefreshing] = useState(false)
 
-  // Generate a stable preview URL only when the selected file changes
+  // Generate a lightweight, stable preview URL only when the selected file changes
   useEffect(() => {
-    let url: string | null = null
-    try {
-      if (file) {
-        url = URL.createObjectURL(file)
-        setFilePreviewUrl(url)
-      } else {
-        setFilePreviewUrl(null)
+    let revokedUrl: string | null = null
+    let cancelled = false
+    async function buildPreview() {
+      if (!file) { setFilePreviewUrl(null); return }
+      try {
+        const isImage = typeof file.type === 'string' && file.type.startsWith('image/')
+        // Try off-main-thread decode + resize for very large images
+        if (isImage && 'createImageBitmap' in window) {
+          const maxEdge = 256
+          // Attempt resized bitmap (supported in most modern browsers)
+          // @ts-ignore - resize options may not be typed in TS lib yet
+          const bmp = await (window as any).createImageBitmap(file, { resizeWidth: maxEdge, resizeHeight: maxEdge, resizeQuality: 'high' })
+          // Draw to canvas to produce a small thumbnail blob
+          const scale = Math.min(maxEdge / bmp.width, maxEdge / bmp.height, 1)
+          const w = Math.max(1, Math.round(bmp.width * scale))
+          const h = Math.max(1, Math.round(bmp.height * scale))
+          const canvas = document.createElement('canvas')
+          canvas.width = w
+          canvas.height = h
+          const ctx = canvas.getContext('2d')
+          if (ctx) ctx.drawImage(bmp, 0, 0, w, h)
+          await new Promise<void>((resolve) => {
+            canvas.toBlob((blob) => {
+              if (cancelled) return resolve()
+              if (blob) {
+                const url = URL.createObjectURL(blob)
+                setFilePreviewUrl(url)
+                revokedUrl = url
+              } else {
+                const fallback = URL.createObjectURL(file)
+                setFilePreviewUrl(fallback)
+                revokedUrl = fallback
+              }
+              resolve()
+            }, 'image/jpeg', 0.8)
+          })
+        } else {
+          // Fallback to direct object URL once
+          const url = URL.createObjectURL(file)
+          setFilePreviewUrl(url)
+          revokedUrl = url
+        }
+      } catch {
+        try {
+          const url = URL.createObjectURL(file)
+          setFilePreviewUrl(url)
+          revokedUrl = url
+        } catch {}
       }
-    } catch {}
+    }
+    buildPreview()
     return () => {
-      if (url) {
-        try { URL.revokeObjectURL(url) } catch {}
+      cancelled = true
+      if (revokedUrl) {
+        try { URL.revokeObjectURL(revokedUrl) } catch {}
       }
     }
   }, [file])
@@ -450,7 +493,7 @@ export default function PostDetail(){
               <div className="flex items-center gap-2 mr-auto">
                 <div className="w-16 h-16 rounded-md overflow-hidden border border-white/10">
                   {filePreviewUrl ? (
-                    <img src={filePreviewUrl} alt="preview" className="w-full h-full object-cover" decoding="async" />
+                    <img src={filePreviewUrl} alt="preview" className="w-full h-full object-cover" decoding="async" width={64} height={64} draggable={false} />
                   ) : null}
                 </div>
                 <div className="text-xs text-[#7fe7df] flex items-center gap-1">
