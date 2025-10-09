@@ -150,18 +150,7 @@ export default function CommunityCalendar(){
     }catch{}
   }
 
-  async function openInviteDetails(ev: EventItem){
-    setModalEvent(ev)
-    setModalDetails(null)
-    try{
-      const q = new URLSearchParams({ event_id: String(ev.id) })
-      const r = await fetch(`/get_event_rsvp_details?${q.toString()}`, { credentials:'include' })
-      const j = await r.json()
-      if (j?.success){
-        setModalDetails(j.attendees as RSVPDetails)
-      }
-    }catch{}
-  }
+  // Removed invite details trigger; modal remains for future use if needed
 
   async function deleteEvent(ev: EventItem){
     if (!confirm('Delete this event?')) return
