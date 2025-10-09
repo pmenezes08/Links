@@ -3056,15 +3056,43 @@ def api_community_group_feed(parent_id: int):
         with get_db_connection() as conn:
             c = conn.cursor()
 
-            # Build list of community IDs: parent + children
+            # Build list of community IDs: parent + ONLY child communities the user is a member of
             ph = get_sql_placeholder()
             c.execute(f"SELECT id FROM communities WHERE parent_community_id = {ph}", (parent_id,))
             child_rows = c.fetchall()
-            community_ids = [parent_id]
-            for r in child_rows:
-                cid = r['id'] if hasattr(r, 'keys') else r[0]
-                if cid:
-                    community_ids.append(cid)
+            # Resolve current user's id
+            user_id = None
+            try:
+                c.execute(f"SELECT id FROM users WHERE username = {ph}", (username,))
+                ur = c.fetchone()
+                if ur:
+                    user_id = ur['id'] if hasattr(ur, 'keys') else ur[0]
+            except Exception:
+                user_id = None
+
+            # Filter children by membership
+            membership_child_ids = []
+            try:
+                child_ids = []
+                for r in child_rows:
+                    cid = r['id'] if hasattr(r, 'keys') else r[0]
+                    if cid:
+                        child_ids.append(cid)
+                if user_id is not None and child_ids:
+                    in_placeholders = ','.join([ph for _ in child_ids])
+                    c.execute(
+                        f"""
+                        SELECT community_id FROM user_communities
+                        WHERE user_id = {ph} AND community_id IN ({in_placeholders})
+                        """,
+                        (user_id, *child_ids) if ph == '%s' else (user_id, *child_ids)
+                    )
+                    membership_child_ids = [ (row['community_id'] if hasattr(row,'keys') else row[0]) for row in (c.fetchall() or []) ]
+            except Exception as me:
+                logger.warning(f"community_group_feed membership filter failed: {me}")
+
+            # Always include the parent community, and only child communities the user belongs to
+            community_ids = [parent_id] + membership_child_ids
 
             # Fetch recent posts across these communities
             if not community_ids:
