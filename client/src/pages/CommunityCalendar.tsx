@@ -334,10 +334,7 @@ export default function CommunityCalendar(){
                           {typeof ev.rsvp_counts?.no_response === 'number' && ev.rsvp_counts.no_response > 0 && (
                             <span className="px-2 py-1 rounded-full border border-white/10">No response {ev.rsvp_counts.no_response}</span>
                           )}
-                          <button title="Invite details" className="ml-auto px-2 py-1 rounded-md border border-white/10 hover:bg-white/5" onClick={(e)=> { e.stopPropagation(); openInviteDetails(ev) }}>
-                            <i className="fa-regular fa-circle-question" />
-                          </button>
-                          <button title="Edit event" className="px-2 py-1 rounded-md border border-white/10 hover:bg-white/5" onClick={(e)=> { e.stopPropagation(); setEditingEvent(ev) }}>
+                          <button title="Edit event" className="ml-auto px-2 py-1 rounded-md border border-white/10 hover:bg-white/5" onClick={(e)=> { e.stopPropagation(); setEditingEvent(ev) }}>
                             <i className="fa-regular fa-pen-to-square" />
                           </button>
                           <button title="Delete event" className="px-2 py-1 rounded-md border border-red-400 text-red-300 hover:bg-red-500/10" onClick={(e)=> { e.stopPropagation(); deleteEvent(ev) }}>
