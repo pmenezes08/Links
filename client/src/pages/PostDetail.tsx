@@ -502,23 +502,18 @@ function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDel
       <div className="relative flex items-start gap-2 px-3">
         <div className="relative w-10 flex-shrink-0">
           {depth > 0 ? (
-            <>
-              {/* Vertical line above avatar */}
-              <div className="absolute" style={{ left: '50%', transform: 'translateX(-0.5px)', top: 0, height: `calc(50% - ${avatarSizePx/2}px)`, width: '1px', background: 'rgba(255,255,255,0.15)', borderRadius: '9999px' }} />
-              {/* Elbow connector to content (like X) */}
-              <div className="absolute" style={{ top: `calc(50% - ${avatarSizePx/2}px)`, left: '50%', transform: 'translateX(-0.5px)', width: '16px', height: '1px', background: 'rgba(255,255,255,0.15)' }} />
-            </>
+            // Vertical connector above avatar center (behind avatar)
+            <div className="absolute" style={{ left: '50%', transform: 'translateX(-0.5px)', top: 0, height: `calc(50% - ${avatarSizePx/2}px)`, width: '1px', background: 'rgba(255,255,255,0.15)', borderRadius: '9999px', pointerEvents: 'none', zIndex: 0 }} />
           ) : null}
           {reply.children && reply.children.length ? (
-            <div className="absolute" style={{ left: '50%', transform: 'translateX(-0.5px)', top: `calc(50% + ${avatarSizePx/2}px)`, bottom: 0, width: '1px', background: 'rgba(255,255,255,0.15)', borderRadius: '9999px' }} />
+            // Vertical connector below avatar center (behind avatar)
+            <div className="absolute" style={{ left: '50%', transform: 'translateX(-0.5px)', top: `calc(50% + ${avatarSizePx/2}px)`, bottom: 0, width: '1px', background: 'rgba(255,255,255,0.15)', borderRadius: '9999px', pointerEvents: 'none', zIndex: 0 }} />
           ) : null}
-          <Avatar username={reply.username} url={reply.profile_picture || undefined} size={28} />
+          <div className="relative" style={{ zIndex: 1 }}>
+            <Avatar username={reply.username} url={reply.profile_picture || undefined} size={28} />
+          </div>
         </div>
         <div className="flex-1 min-w-0 pr-2">
-          {depth > 0 ? (
-            // Horizontal continuation from elbow to start of content block
-            <div className="absolute" style={{ top: `calc(50% - ${avatarSizePx/2}px)`, left: '40px', right: 'auto', width: '8px', height: '1px', background: 'rgba(255,255,255,0.15)' }} />
-          ) : null}
           <div className="flex items-center gap-2">
             <div className="font-medium">{reply.username}</div>
             <div className="text-[11px] text-[#9fb0b5] ml-auto">{formatSmartTime(reply.timestamp)}</div>
