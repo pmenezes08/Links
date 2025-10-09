@@ -146,7 +146,7 @@ export default function MentionTextarea({
     <div className="relative">
       {/* Highlight overlay (behind textarea) */}
       <MentionHighlightOverlay
-        overlayRef={overlayRef}
+        overlayRef={overlayRef as React.RefObject<HTMLDivElement>}
         text={value}
         enabled={enabled && !perfDegraded && value.length <= 2000 && value.indexOf('@') !== -1}
       />
@@ -200,7 +200,32 @@ function MentionHighlightOverlay({ overlayRef, text, enabled }:{ overlayRef: Rea
     if (!enabled){ setMaskHtml(''); return }
     if (debounceRef.current) clearTimeout(debounceRef.current)
     debounceRef.current = setTimeout(() => {
-      setMaskHtml(buildHighlightMask(text))
+      // local builder mirrors outer function
+      const mentionRe = /(^|\s)@([a-zA-Z0-9_]{1,30})/g
+      if (!text || text.indexOf('@') === -1){ setMaskHtml(''); return }
+      let out = ''
+      let idx = 0
+      let m: RegExpExecArray | null
+      while ((m = mentionRe.exec(text))){
+        const matchStart = m.index
+        const lead = m[1] || ''
+        const atStart = matchStart + lead.length
+        const mentionText = '@' + (m[2] || '')
+        const before = text.slice(idx, atStart)
+        for (let i = 0; i < before.length; i++){
+          const ch = before[i]
+          out += ch === '\n' ? '\n' : ' '
+        }
+        const esc = (s:string)=> s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+        out += `<span style="background: rgba(77,182,172,0.28); color: transparent; border-radius: 4px;">${esc(mentionText)}</span>`
+        idx = atStart + mentionText.length
+      }
+      const tail = text.slice(idx)
+      for (let i = 0; i < tail.length; i++){
+        const ch = tail[i]
+        out += ch === '\n' ? '\n' : ' '
+      }
+      setMaskHtml(out)
     }, 50)
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current) }
   }, [text, enabled])
