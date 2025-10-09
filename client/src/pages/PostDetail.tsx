@@ -499,15 +499,17 @@ function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDel
   // Note: connector uses fixed left offset; keep size constant in Avatar props
   return (
     <div className="relative border-b border-white/10 py-2">
-      {depth > 0 ? (
-        <div className="absolute" style={{ left: '6px', top: 0, height: '12px', width: '1px', background: '#e5e7eb', borderRadius: '9999px', pointerEvents: 'none', zIndex: 0 }} />
-      ) : null}
-      {(reply.children && reply.children.length) ? (
-        <div className="absolute" style={{ left: '6px', top: '36px', bottom: 0, width: '1px', background: '#e5e7eb', borderRadius: '9999px', pointerEvents: 'none', zIndex: 0 }} />
-      ) : null}
       <div className="relative flex items-start gap-2 px-3">
         <div className="relative w-10 flex-shrink-0" style={{ zIndex: 1 }}>
+          {/* Top connector stub (from parent avatar bottom to this avatar top) */}
+          {depth > 0 ? (
+            <div className="absolute" style={{ left: '50%', transform: 'translateX(-0.5px)', top: '-8px', height: '8px', width: '1px', background: '#e5e7eb', borderRadius: '9999px', pointerEvents: 'none' }} />
+          ) : null}
           <Avatar username={reply.username} url={reply.profile_picture || undefined} size={28} />
+          {/* Bottom connector stub (from this avatar bottom to child avatar top) */}
+          {(reply.children && reply.children.length) ? (
+            <div className="absolute" style={{ left: '50%', transform: 'translateX(-0.5px)', top: '28px', height: '8px', width: '1px', background: '#e5e7eb', borderRadius: '9999px', pointerEvents: 'none' }} />
+          ) : null}
         </div>
         <div className="flex-1 min-w-0 pr-2">
           <div className="flex items-center gap-2">
