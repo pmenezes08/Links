@@ -498,20 +498,13 @@ function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDel
   const [editText, setEditText] = useState(reply.content)
   const avatarSizePx = 28
   return (
-    <div className="border-b border-white/10 py-2">
+    <div className="relative border-b border-white/10 py-2">
+      {(depth > 0 || (reply.children && reply.children.length)) ? (
+        <div className="absolute" style={{ left: '32px', top: 0, bottom: 0, width: '1px', background: '#d1d5db', borderRadius: '9999px', pointerEvents: 'none', zIndex: 0 }} />
+      ) : null}
       <div className="relative flex items-start gap-2 px-3">
-        <div className="relative w-10 flex-shrink-0">
-          {depth > 0 ? (
-            // Vertical connector above avatar center (behind avatar)
-            <div className="absolute" style={{ left: '50%', transform: 'translateX(-0.5px)', top: 0, height: `calc(50% - ${avatarSizePx/2}px)`, width: '1px', background: 'rgba(255,255,255,0.15)', borderRadius: '9999px', pointerEvents: 'none', zIndex: 0 }} />
-          ) : null}
-          {reply.children && reply.children.length ? (
-            // Vertical connector below avatar center (behind avatar)
-            <div className="absolute" style={{ left: '50%', transform: 'translateX(-0.5px)', top: `calc(50% + ${avatarSizePx/2}px)`, bottom: 0, width: '1px', background: 'rgba(255,255,255,0.15)', borderRadius: '9999px', pointerEvents: 'none', zIndex: 0 }} />
-          ) : null}
-          <div className="relative" style={{ zIndex: 1 }}>
-            <Avatar username={reply.username} url={reply.profile_picture || undefined} size={28} />
-          </div>
+        <div className="relative w-10 flex-shrink-0" style={{ zIndex: 1 }}>
+          <Avatar username={reply.username} url={reply.profile_picture || undefined} size={28} />
         </div>
         <div className="flex-1 min-w-0 pr-2">
           <div className="flex items-center gap-2">
