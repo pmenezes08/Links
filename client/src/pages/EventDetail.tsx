@@ -9,6 +9,7 @@ type EventData = {
   end_date?: string|null
   start_time?: string|null
   end_time?: string|null
+  timezone?: string|null
   description?: string|null
   username: string
   community_id?: number
@@ -117,9 +118,12 @@ export default function EventDetail(){
                 <div className="flex-1">
                   <div className="text-xs text-[#9fb0b5] mb-0.5">Time</div>
                   <div className="text-white">
-                    {[event.start_time, event.end_time]
-                      .filter(t => t && t !== '0000-00-00 00:00:00' && t !== '00:00:00' && t !== '00:00')
-                      .join(' - ') || 'All day'}
+                    {(() => {
+                      const times = [event.start_time, event.end_time]
+                        .filter(t => t && t !== '0000-00-00 00:00:00' && t !== '00:00:00' && t !== '00:00')
+                      const timeStr = times.join(' - ') || 'All day'
+                      return event.timezone ? `${timeStr} ${event.timezone}` : timeStr
+                    })()}
                   </div>
                 </div>
               </div>

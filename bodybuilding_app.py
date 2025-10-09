@@ -1982,6 +1982,7 @@ def init_db():
                     location TEXT,
                     created_at DATETIME NOT NULL,
                     community_id INTEGER,
+                    timezone VARCHAR(100),
                     FOREIGN KEY (username) REFERENCES users(username)
                 )
             """)
@@ -1993,7 +1994,8 @@ def init_db():
                 'end_date': 'TEXT',
                 'time': 'TEXT',
                 'created_at': 'DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP',
-                'community_id': 'INTEGER'
+                'community_id': 'INTEGER',
+                'timezone': 'VARCHAR(100)'
             }
             
             for col_name, col_def in required_columns.items():
@@ -11525,7 +11527,7 @@ def get_calendar_events():
                        COALESCE(ce.end_date, ce.date) as end_date,
                        COALESCE(ce.start_time, ce.time) as start_time,
                        ce.end_time,
-                       ce.time, ce.description, ce.created_at, ce.community_id
+                       ce.time, ce.description, ce.created_at, ce.community_id, ce.timezone
                 FROM calendar_events ce
                 LEFT JOIN event_invitations ei ON ce.id = ei.event_id
                 WHERE ce.username = {ph} OR ei.invited_username = {ph}
@@ -11625,6 +11627,7 @@ def get_calendar_events():
                     'time': event['time'],  # Keep for backward compatibility
                     'start_time': extract_time(event['start_time']),
                     'end_time': extract_time(event['end_time']),
+                    'timezone': event.get('timezone') if hasattr(event, 'get') else event.get('timezone', None) if hasattr(event, 'keys') else None,
                     'description': event['description'],
                     'created_at': event['created_at'],
                     'community_id': event['community_id'],
@@ -11653,6 +11656,7 @@ def add_calendar_event():
         end_date = request.form.get('end_date', '').strip()
         start_time = request.form.get('start_time', '').strip()
         end_time = request.form.get('end_time', '').strip()
+        timezone = request.form.get('timezone', '').strip()
         # Fall back to 'time' field for backward compatibility
         if not start_time:
             start_time = request.form.get('time', '').strip()
@@ -11664,7 +11668,7 @@ def add_calendar_event():
         invite_all = request.form.get('invite_all') == 'true'
         
         # Debug logging
-        logger.info(f"Creating event: title={title}, date={date}, start_time='{start_time}', end_time='{end_time}', community_id={community_id}")
+        logger.info(f"Creating event: title={title}, date={date}, start_time='{start_time}', end_time='{end_time}', timezone='{timezone}', community_id={community_id}")
         
         # Validate required fields
         if not title or not date:
@@ -11702,6 +11706,7 @@ def add_calendar_event():
         # Convert empty strings to None for proper NULL storage
         end_date = end_date if end_date else None
         description = description if description else None
+        timezone = timezone if timezone else None
         
         # Convert time (HH:MM) to datetime (YYYY-MM-DD HH:MM:00) for DATETIME columns
         start_time_original = start_time
@@ -11728,16 +11733,17 @@ def add_calendar_event():
             
             # Insert the event (keeping 'time' field for backward compatibility)
             ph = get_sql_placeholder()
-            logger.info(f"Inserting event into DB: start_time='{start_time}', end_time='{end_time}', end_date={end_date}")
+            logger.info(f"Inserting event into DB: start_time='{start_time}', end_time='{end_time}', end_date={end_date}, timezone={timezone}")
             c.execute(f"""
-                INSERT INTO calendar_events (username, title, date, end_date, time, start_time, end_time, description, created_at, community_id)
-                VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, NOW(), {ph})
+                INSERT INTO calendar_events (username, title, date, end_date, time, start_time, end_time, description, created_at, community_id, timezone)
+                VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, NOW(), {ph}, {ph})
             """, (username, title, date, end_date, 
                   start_time_original,  # Keep time field as HH:MM for backward compatibility
                   start_time,           # start_time as DATETIME
                   end_time,             # end_time as DATETIME
                   description,
-                  community_id))
+                  community_id,
+                  timezone))
             
             event_id = c.lastrowid
             
@@ -12030,6 +12036,7 @@ def edit_calendar_event():
         end_date = request.form.get('end_date', '').strip()
         start_time = request.form.get('start_time', '').strip()
         end_time = request.form.get('end_time', '').strip()
+        timezone = request.form.get('timezone', '').strip()
         description = request.form.get('description', '').strip()
         
         if not all([event_id, title, date]):
@@ -12038,6 +12045,7 @@ def edit_calendar_event():
         # Convert empty strings to None
         end_date = end_date if end_date else None
         description = description if description else None
+        timezone = timezone if timezone else None
         
         # Convert time (HH:MM) to datetime (YYYY-MM-DD HH:MM:00) for DATETIME columns
         start_time_original = start_time
@@ -12094,12 +12102,12 @@ def edit_calendar_event():
             c.execute(f"""
                 UPDATE calendar_events 
                 SET title = {ph}, date = {ph}, end_date = {ph}, start_time = {ph}, end_time = {ph}, 
-                    time = {ph}, description = {ph}
+                    time = {ph}, description = {ph}, timezone = {ph}
                 WHERE id = {ph}
             """, (title, date, end_date, 
                   start_time, end_time,
                   start_time_original,  # Keep time field for compatibility
-                  description, event_id))
+                  description, timezone, event_id))
             
             conn.commit()
             
@@ -12204,6 +12212,7 @@ def get_calendar_event(event_id):
                     'end_date': event['end_date'],
                     'start_time': extract_time(event['start_time']),
                     'end_time': extract_time(event['end_time']),
+                    'timezone': event.get('timezone') if hasattr(event, 'get') else event.get('timezone', None) if hasattr(event, 'keys') else None,
                     'description': event['description'],
                     'username': event['username'],
                     'community_id': event['community_id'],

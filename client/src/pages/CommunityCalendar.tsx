@@ -9,6 +9,7 @@ type EventItem = {
   end_date?: string|null
   start_time?: string|null
   end_time?: string|null
+  timezone?: string|null
   description?: string|null
   user_rsvp?: string|null
   rsvp_counts?: { going: number; maybe: number; not_going: number; no_response?: number }
@@ -117,7 +118,7 @@ export default function CommunityCalendar(){
 
   async function createEvent(formData: FormData){
     const params = new URLSearchParams()
-    ;['title','date','end_date','start_time','end_time','description'].forEach(k => {
+    ;['title','date','end_date','start_time','end_time','timezone','description'].forEach(k => {
       const v = (formData.get(k) as string) || ''
       if (v) params.append(k, v)
     })
@@ -182,7 +183,7 @@ export default function CommunityCalendar(){
     if (!editingEvent) return
     const params = new URLSearchParams()
     params.append('event_id', String(editingEvent.id))
-    ;['title','date','end_date','start_time','end_time','description'].forEach(k => {
+    ;['title','date','end_date','start_time','end_time','timezone','description'].forEach(k => {
       const v = (formData.get(k) as string) || ''
       if (v) params.append(k, v)
     })
@@ -241,6 +242,21 @@ export default function CommunityCalendar(){
               </label>
               <label className="text-xs text-[#9fb0b5]">End time
                 <input name="end_time" type="time" className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none" />
+              </label>
+              <label className="col-span-2 text-xs text-[#9fb0b5]">Timezone
+                <select name="timezone" className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none" required>
+                  <option value="">Select timezone</option>
+                  <option value="EST">EST (Eastern Time)</option>
+                  <option value="CST">CST (Central Time)</option>
+                  <option value="MST">MST (Mountain Time)</option>
+                  <option value="PST">PST (Pacific Time)</option>
+                  <option value="GMT">GMT (Greenwich Mean Time)</option>
+                  <option value="CET">CET (Central European Time)</option>
+                  <option value="IST">IST (India Standard Time)</option>
+                  <option value="JST">JST (Japan Standard Time)</option>
+                  <option value="AEST">AEST (Australian Eastern Time)</option>
+                  <option value="UTC">UTC (Coordinated Universal Time)</option>
+                </select>
               </label>
               <label className="col-span-2 text-xs text-[#9fb0b5]">Description
                 <input name="description" placeholder="Description" className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none" />
@@ -305,7 +321,8 @@ export default function CommunityCalendar(){
                             {(() => {
                               const times = [ev.start_time, ev.end_time]
                                 .filter(t => t && t !== '0000-00-00 00:00:00' && t !== '00:00:00' && t !== '00:00')
-                              return times.length > 0 ? times.join(' - ') : ''
+                              const timeStr = times.length > 0 ? times.join(' - ') : ''
+                              return timeStr && ev.timezone ? `${timeStr} ${ev.timezone}` : timeStr
                             })()}
                           </div>
                         </div>
@@ -447,6 +464,21 @@ export default function CommunityCalendar(){
                 </label>
                 <label className="text-xs text-[#9fb0b5]">End time
                   <input name="end_time" type="time" defaultValue={editingEvent.end_time || ''} className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none" />
+                </label>
+                <label className="col-span-2 text-xs text-[#9fb0b5]">Timezone
+                  <select name="timezone" defaultValue={editingEvent.timezone || ''} className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none" required>
+                    <option value="">Select timezone</option>
+                    <option value="EST">EST (Eastern Time)</option>
+                    <option value="CST">CST (Central Time)</option>
+                    <option value="MST">MST (Mountain Time)</option>
+                    <option value="PST">PST (Pacific Time)</option>
+                    <option value="GMT">GMT (Greenwich Mean Time)</option>
+                    <option value="CET">CET (Central European Time)</option>
+                    <option value="IST">IST (India Standard Time)</option>
+                    <option value="JST">JST (Japan Standard Time)</option>
+                    <option value="AEST">AEST (Australian Eastern Time)</option>
+                    <option value="UTC">UTC (Coordinated Universal Time)</option>
+                  </select>
                 </label>
                 <label className="col-span-2 text-xs text-[#9fb0b5]">Description
                   <input name="description" defaultValue={editingEvent.description || ''} placeholder="Description" className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none" />
