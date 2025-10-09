@@ -118,8 +118,9 @@ export default function Members(){
         <button className="px-3 py-2 rounded-full text-[#cfd8dc] hover:text-[#4db6ac]" onClick={()=> navigate(`/community_feed_react/${community_id}`)} aria-label="Back">
           <i className="fa-solid fa-arrow-left" />
         </button>
-        <div className="ml-auto text-xs text-[#9fb0b5]">
-          {communityCode ? (<span>Community Code: <span className="font-mono text-white">{communityCode}</span></span>) : null}
+        <div className="ml-auto text-xs text-[#9fb0b5] flex items-center gap-3">
+          <span>Members: <span className="font-mono text-white">{members.length}</span></span>
+          {communityCode ? (<span>Code: <span className="font-mono text-white">{communityCode}</span></span>) : null}
         </div>
       </div>
       <div className="max-w-2xl mx-auto pt-28 px-3 pb-6">
