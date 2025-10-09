@@ -496,7 +496,7 @@ function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDel
   const inlineFileRef = useRef<HTMLInputElement|null>(null)
   const [isEditing, setIsEditing] = useState(false)
   const [editText, setEditText] = useState(reply.content)
-  const avatarSizePx = 28
+  // Note: connector uses fixed left offset; keep size constant in Avatar props
   return (
     <div className="relative border-b border-white/10 py-2">
       {(depth > 0 || (reply.children && reply.children.length)) ? (
