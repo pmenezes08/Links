@@ -4495,6 +4495,18 @@ def admin_delete_user():
                 c.execute(f"UPDATE communities SET creator_username={ph} WHERE creator_username={ph}", ('admin', target_username))
             except Exception:
                 pass
+            # Delete calendar and event related data
+            try:
+                # Delete RSVPs for events this user is involved in
+                c.execute(f"DELETE FROM event_rsvps WHERE username={ph}", (target_username,))
+                # Delete event invitations for this user
+                c.execute(f"DELETE FROM event_invitations WHERE invited_username={ph} OR invited_by={ph}", (target_username, target_username))
+                # Delete calendar events created by this user
+                c.execute(f"DELETE FROM calendar_events WHERE username={ph}", (target_username,))
+            except Exception as cal_err:
+                logger.warning(f"Error deleting calendar/event data for {target_username}: {cal_err}")
+                pass
+            
             # Remove profile row before user to satisfy FK fk_profile_user
             c.execute(f"DELETE FROM user_profiles WHERE username={ph}", (target_username,))
             try:
