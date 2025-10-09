@@ -662,6 +662,18 @@ def add_missing_tables():
                           FOREIGN KEY (post_id) REFERENCES posts(id),
                           FOREIGN KEY (community_id) REFERENCES communities(id),
                           UNIQUE(username, post_id))''')
+            # Create community_key_posts table (admin/owner highlighted posts for the community)
+            try:
+                c.execute('''CREATE TABLE IF NOT EXISTS community_key_posts
+                             (id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                              community_id INTEGER NOT NULL,
+                              post_id INTEGER NOT NULL,
+                              created_at TEXT NOT NULL,
+                              FOREIGN KEY (community_id) REFERENCES communities(id),
+                              FOREIGN KEY (post_id) REFERENCES posts(id),
+                              UNIQUE(community_id, post_id))''')
+            except Exception as e:
+                logger.warning(f"Could not ensure community_key_posts table: {e}")
             # Store web push subscriptions
             c.execute('''CREATE TABLE IF NOT EXISTS push_subscriptions
                          (id INTEGER PRIMARY KEY AUTO_INCREMENT,
@@ -14527,6 +14539,13 @@ def api_community_feed(community_id):
                 except Exception:
                     post['is_starred'] = False
 
+                # Is highlighted by community (owner/admin set)
+                try:
+                    c.execute("SELECT 1 FROM community_key_posts WHERE post_id = ? AND community_id = ?", (post_id, community_id))
+                    post['is_community_starred'] = True if c.fetchone() else False
+                except Exception:
+                    post['is_community_starred'] = False
+
                 # Active poll on this post (if any)
                 c.execute("SELECT * FROM polls WHERE post_id = ? AND is_active = 1", (post_id,))
                 poll_raw = c.fetchone()
@@ -14682,6 +14701,85 @@ def api_toggle_key_post():
                 return jsonify({'success': True, 'starred': True})
     except Exception as e:
         logger.error(f"toggle key post error: {e}")
+        return jsonify({'success': False, 'error': 'server error'}), 500
+
+# Toggle community key post (admin/owner only)
+@app.route('/api/toggle_community_key_post', methods=['POST'])
+@login_required
+def api_toggle_community_key_post():
+    try:
+        username = session.get('username')
+        post_id = request.form.get('post_id', type=int)
+        if not post_id:
+            return jsonify({'success': False, 'error': 'post_id required'}), 400
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            # Determine community_id from post
+            c.execute("SELECT community_id FROM posts WHERE id = ?", (post_id,))
+            row = c.fetchone()
+            if not row:
+                return jsonify({'success': False, 'error': 'Post not found'}), 404
+            community_id = row['community_id'] if hasattr(row, 'keys') else row[0]
+            if not community_id:
+                return jsonify({'success': False, 'error': 'Not a community post'}), 400
+            # Check permission (owner or community admin or app admin)
+            if not (is_app_admin(username) or is_community_owner(username, community_id) or is_community_admin(username, community_id)):
+                return jsonify({'success': False, 'error': 'Forbidden'}), 403
+            # Toggle in community_key_posts
+            c.execute("SELECT id FROM community_key_posts WHERE community_id = ? AND post_id = ?", (community_id, post_id))
+            existing = c.fetchone()
+            if existing:
+                c.execute("DELETE FROM community_key_posts WHERE community_id = ? AND post_id = ?", (community_id, post_id))
+                conn.commit()
+                return jsonify({'success': True, 'starred': False})
+            else:
+                now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                c.execute("INSERT INTO community_key_posts (community_id, post_id, created_at) VALUES (?, ?, ?)", (community_id, post_id, now))
+                conn.commit()
+                return jsonify({'success': True, 'starred': True})
+    except Exception as e:
+        logger.error(f"toggle community key post error: {e}")
+        return jsonify({'success': False, 'error': 'server error'}), 500
+
+# List community key posts for a community (admin/yellow stars)
+@app.route('/api/community_key_posts', methods=['GET'])
+@login_required
+def api_community_key_posts():
+    try:
+        community_id = request.args.get('community_id', type=int)
+        if not community_id:
+            return jsonify({'success': False, 'error': 'community_id required'}), 400
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            # Get post ids
+            c.execute("SELECT post_id FROM community_key_posts WHERE community_id = ? ORDER BY id DESC", (community_id,))
+            rows = c.fetchall() or []
+            post_ids = [(r['post_id'] if hasattr(r, 'keys') else r[0]) for r in rows]
+            if not post_ids:
+                return jsonify({'success': True, 'posts': []})
+            placeholders = ",".join(["?"] * len(post_ids))
+            c.execute(f"SELECT * FROM posts WHERE id IN ({placeholders}) ORDER BY id DESC", tuple(post_ids))
+            posts = [dict(r) for r in (c.fetchall() or [])]
+            # Enrich minimal fields similar to api_key_posts
+            # We will reuse current user's username for user_reaction enrichment
+            cur_user = session.get('username')
+            for post in posts:
+                pid = post['id']
+                try:
+                    c.execute("SELECT profile_picture FROM user_profiles WHERE username = ?", (post['username'],))
+                    pp = c.fetchone()
+                    post['profile_picture'] = pp['profile_picture'] if pp and 'profile_picture' in pp.keys() else None
+                except Exception:
+                    post['profile_picture'] = None
+                c.execute("SELECT reaction_type, COUNT(*) as count FROM reactions WHERE post_id = ? GROUP BY reaction_type", (pid,))
+                post['reactions'] = {row['reaction_type']: row['count'] for row in (c.fetchall() or [])}
+                c.execute("SELECT reaction_type FROM reactions WHERE post_id = ? AND username = ?", (pid, cur_user))
+                ur = c.fetchone()
+                post['user_reaction'] = ur['reaction_type'] if ur else None
+                post['is_starred'] = True  # community list implies highlighted
+            return jsonify({'success': True, 'posts': posts})
+    except Exception as e:
+        logger.error(f"community key posts error: {e}")
         return jsonify({'success': False, 'error': 'server error'}), 500
 
 # List current user's key posts for a community
