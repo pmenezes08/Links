@@ -3433,6 +3433,65 @@
     
     <!-- Global Poll Functions - Available Immediately -->
     <script>
+        function togglePersonalStar(postId){
+            const el = document.getElementById(`star-personal-${postId}`)
+            if (!el) return
+            const wasSolid = el.classList.contains('fas')
+            // optimistic flip
+            el.classList.toggle('fas', !wasSolid)
+            el.classList.toggle('far', wasSolid)
+            el.style.color = !wasSolid ? '#4db6ac' : (document.body.classList.contains('light') ? '#495057' : '#6c757d')
+            fetch('/api/toggle_key_post', {
+                method: 'POST',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: new URLSearchParams({ post_id: String(postId) })
+            }).then(r=> r.json()).then(j => {
+                if (!j?.success){
+                    // revert
+                    el.classList.toggle('fas', wasSolid)
+                    el.classList.toggle('far', !wasSolid)
+                    el.style.color = wasSolid ? '#4db6ac' : (document.body.classList.contains('light') ? '#495057' : '#6c757d')
+                    alert(j?.error || 'Failed to update')
+                }
+            }).catch(() => {
+                // revert
+                el.classList.toggle('fas', wasSolid)
+                el.classList.toggle('far', !wasSolid)
+                el.style.color = wasSolid ? '#4db6ac' : (document.body.classList.contains('light') ? '#495057' : '#6c757d')
+                alert('Network error')
+            })
+        }
+
+        function toggleCommunityStar(postId){
+            const el = document.getElementById(`star-community-${postId}`)
+            if (!el) return
+            const wasSolid = el.classList.contains('fas')
+            // optimistic flip
+            el.classList.toggle('fas', !wasSolid)
+            el.classList.toggle('far', wasSolid)
+            el.style.color = !wasSolid ? '#ffd54f' : (document.body.classList.contains('light') ? '#495057' : '#6c757d')
+            fetch('/api/toggle_community_key_post', {
+                method: 'POST',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: new URLSearchParams({ post_id: String(postId) })
+            }).then(r=> r.json()).then(j => {
+                if (!j?.success){
+                    // revert
+                    el.classList.toggle('fas', wasSolid)
+                    el.classList.toggle('far', !wasSolid)
+                    el.style.color = wasSolid ? '#ffd54f' : (document.body.classList.contains('light') ? '#495057' : '#6c757d')
+                    alert(j?.error || 'Failed to update')
+                }
+            }).catch(() => {
+                // revert
+                el.classList.toggle('fas', wasSolid)
+                el.classList.toggle('far', !wasSolid)
+                el.style.color = wasSolid ? '#ffd54f' : (document.body.classList.contains('light') ? '#495057' : '#6c757d')
+                alert('Network error')
+            })
+        }
         function handleImageError(imgElement, originalPath, cleanPath) {
             console.log('Image failed to load:', imgElement.src, 'Original path:', originalPath, 'Clean path:', cleanPath);
             imgElement.style.display = 'none';
@@ -4927,7 +4986,20 @@
             {% if posts %}
                 {% for post in posts %}
                     <div class="post clickable-post" data-post-id="{{ post.id }}" id="post-{{ post.id }}">
-                        <div class="post-header"><strong>@{{ post.username }}</strong><span class="timestamp">{{ post.timestamp | format_date('%m/%d/%y %I:%M %p') }}</span></div>
+                        <div class="post-header" style="display:flex; align-items:center; gap:8px;">
+                            <strong>@{{ post.username }}</strong>
+                            <span class="timestamp" style="margin-left:auto;">{{ post.timestamp | format_date('%m/%d/%y %I:%M %p') }}</span>
+                            <!-- Personal star (turquoise) -->
+                            <button class="inline-action" title="Star (yours)" onclick="event.stopPropagation(); togglePersonalStar({{ post.id }})" aria-label="Star post (yours)" style="margin-left:8px; background:transparent; border:none; cursor:pointer;">
+                                <i id="star-personal-{{ post.id }}" class="fa{{ 's' if post.is_starred else 'r' }} fa-star" style="color: {{ '#4db6ac' if post.is_starred else ('#495057' if community.template == 'light' else '#6c757d') }};"></i>
+                            </button>
+                            {% if username == community.creator_username or username == 'admin' or is_community_admin %}
+                            <!-- Community star (yellow) for owner/admins -->
+                            <button class="inline-action" title="Feature (community)" onclick="event.stopPropagation(); toggleCommunityStar({{ post.id }})" aria-label="Star post (community)" style="background:transparent; border:none; cursor:pointer;">
+                                <i id="star-community-{{ post.id }}" class="fa{{ 's' if post.is_community_starred else 'r' }} fa-star" style="color: {{ '#ffd54f' if post.is_community_starred else ('#495057' if community.template == 'light' else '#6c757d') }};"></i>
+                            </button>
+                            {% endif %}
+                        </div>
                         <p>{{ post.content }}</p>
                         
                         <!-- Poll indicator if post has a poll -->
