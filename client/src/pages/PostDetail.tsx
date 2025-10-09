@@ -731,7 +731,19 @@ function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDel
         </div>
       </div>
       {reply.children && reply.children.length ? reply.children.map(ch => (
-        <ReplyNode key={ch.id} reply={ch} depth={Math.min(depth+1, 3)} currentUser={currentUser} onToggle={onToggle} onInlineReply={onInlineReply} onDelete={onDelete} onPreviewImage={onPreviewImage} inlineSending={inlineSending} communityId={communityId} postId={postId} />
+        <ReplyNodeMemo
+          key={ch.id}
+          reply={ch}
+          depth={Math.min(depth+1, 3)}
+          currentUser={currentUser}
+          onToggle={onToggle}
+          onInlineReply={onInlineReply}
+          onDelete={onDelete}
+          onPreviewImage={onPreviewImage}
+          inlineSendingFlag={false}
+          communityId={communityId}
+          postId={postId}
+        />
       )) : null}
     </div>
   )

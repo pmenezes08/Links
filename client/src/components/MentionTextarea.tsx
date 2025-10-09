@@ -36,41 +36,9 @@ export default function MentionTextarea({
   const timerRef = useRef<any>(null)
   const [anchor, setAnchor] = useState<{left:number; top:number}>({ left: 0, top: 0 })
 
-  function escapeHtml(s: string){
-    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-  }
+  // escapeHtml no longer needed here; handled in overlay
 
-  function buildHighlightMask(text: string){
-    // Create a mask HTML that contains spaces for non-mention characters and
-    // spans with background for @mentions. Newlines preserved.
-    if (!text) return ''
-    const mentionRe = /(^|\s)@([a-zA-Z0-9_]{1,30})/g
-    let out = ''
-    let idx = 0
-    let m: RegExpExecArray | null
-    while ((m = mentionRe.exec(text))){
-      const matchStart = m.index
-      const lead = m[1] || ''
-      const atStart = matchStart + lead.length
-      const mentionText = '@' + (m[2] || '')
-      // preceding segment -> spaces (preserve newlines)
-      const before = text.slice(idx, atStart)
-      for (let i = 0; i < before.length; i++){
-        const ch = before[i]
-        out += ch === '\n' ? '\n' : ' '
-      }
-      // mention span with transparent text and colored background
-      out += `<span style="background: rgba(77,182,172,0.28); color: transparent; border-radius: 4px;">${escapeHtml(mentionText)}</span>`
-      idx = atStart + mentionText.length
-    }
-    // tail
-    const tail = text.slice(idx)
-    for (let i = 0; i < tail.length; i++){
-      const ch = tail[i]
-      out += ch === '\n' ? '\n' : ' '
-    }
-    return out
-  }
+  // highlight mask built in overlay component
 
   function getMentionQuery(text: string){
     const selStart = taRef.current?.selectionStart ?? text.length
