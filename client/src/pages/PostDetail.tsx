@@ -100,6 +100,7 @@ export default function PostDetail(){
   const [error, setError] = useState<string| null>(null)
   const [content, setContent] = useState('')
   const [file, setFile] = useState<File|null>(null)
+  const [uploadFile, setUploadFile] = useState<File|null>(null)
   const [filePreviewUrl, setFilePreviewUrl] = useState<string | null>(null)
   const [currentUser, setCurrentUser] = useState<string | null>(null)
   const [previewSrc, setPreviewSrc] = useState<string | null>(null)
@@ -112,12 +113,46 @@ export default function PostDetail(){
   const [pullPx, setPullPx] = useState(0)
   const [refreshing, setRefreshing] = useState(false)
 
+  async function compressImageFile(input: File, maxEdge = 1600, quality = 0.82): Promise<File> {
+    try {
+      const isImage = typeof input.type === 'string' && input.type.startsWith('image/')
+      if (!isImage) return input
+      const bmp = ('createImageBitmap' in window)
+        ? await (window as any).createImageBitmap(input)
+        : await new Promise<HTMLImageElement>((resolve, reject) => {
+            const img = new Image()
+            const url = URL.createObjectURL(input)
+            img.onload = () => { URL.revokeObjectURL(url); resolve(img) }
+            img.onerror = (e) => { URL.revokeObjectURL(url); reject(e) }
+            img.src = url
+            ;(img as any).decoding = 'async'
+          })
+      const width = (bmp as any).width
+      const height = (bmp as any).height
+      const scale = Math.min(maxEdge / width, maxEdge / height, 1)
+      const outW = Math.max(1, Math.round(width * scale))
+      const outH = Math.max(1, Math.round(height * scale))
+      const canvas = document.createElement('canvas')
+      canvas.width = outW
+      canvas.height = outH
+      const ctx = canvas.getContext('2d')
+      if (!ctx) return input
+      ctx.drawImage(bmp as any, 0, 0, outW, outH)
+      const blob: Blob | null = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', quality))
+      if (!blob) return input
+      const outName = input.name.toLowerCase().endsWith('.jpg') || input.name.toLowerCase().endsWith('.jpeg') ? input.name : (input.name.split('.')[0] + '.jpg')
+      return new File([blob], outName, { type: 'image/jpeg' })
+    } catch {
+      return input
+    }
+  }
+
   // Generate a lightweight, stable preview URL only when the selected file changes
   useEffect(() => {
     let revokedUrl: string | null = null
     let cancelled = false
     async function buildPreview() {
-      if (!file) { setFilePreviewUrl(null); return }
+      if (!file) { setFilePreviewUrl(null); setUploadFile(null); return }
       try {
         const isImage = typeof file.type === 'string' && file.type.startsWith('image/')
         // Try off-main-thread decode + resize for very large images
@@ -150,11 +185,17 @@ export default function PostDetail(){
               resolve()
             }, 'image/jpeg', 0.8)
           })
+          if (!cancelled) {
+            const compressed = await compressImageFile(file, 1600, 0.82)
+            if (!cancelled) setUploadFile(compressed)
+          }
         } else {
           // Fallback to direct object URL once
           const url = URL.createObjectURL(file)
           setFilePreviewUrl(url)
           revokedUrl = url
+          const compressed = await compressImageFile(file, 1600, 0.82)
+          if (!cancelled) setUploadFile(compressed)
         }
       } catch {
         try {
@@ -311,7 +352,7 @@ export default function PostDetail(){
     fd.append('post_id', String(post.id))
     fd.append('content', content)
     if (parentReplyId) fd.append('parent_reply_id', String(parentReplyId))
-    if (file) fd.append('image', file)
+    if (uploadFile) fd.append('image', uploadFile)
     fd.append('dedupe_token', replyTokenRef.current)
     const r = await fetch('/post_reply', { method:'POST', credentials:'include', body: fd })
     const j = await r.json().catch(()=>null)
@@ -333,7 +374,7 @@ export default function PostDetail(){
         }
         return { ...p, replies: [j.reply, ...p.replies] }
       })
-      setContent(''); setFile(null); if (fileInputRef.current) fileInputRef.current.value = ''
+      setContent(''); setFile(null); setUploadFile(null); if (fileInputRef.current) fileInputRef.current.value = ''
       replyTokenRef.current = `${Date.now()}_${Math.random().toString(36).slice(2)}`
     }
   }
@@ -487,6 +528,7 @@ export default function PostDetail(){
             placeholder="Write a reply…"
             className="w-full resize-none max-h-36 min-h-[30px] px-3 py-1.5 rounded-2xl bg-black border border-[#4db6ac] text-[16px] focus:outline-none focus:ring-1 focus:ring-[#4db6ac]"
             rows={3}
+            perfDegraded={!!uploadFile}
           />
           <div className="flex items-center justify-end gap-2 flex-wrap">
             {file && (
@@ -500,7 +542,7 @@ export default function PostDetail(){
                   <i className="fa-solid fa-image" />
                   <span className="max-w-[160px] truncate">{file.name}</span>
                   <button 
-                    onClick={() => { setFile(null); if (fileInputRef.current) fileInputRef.current.value = '' }}
+                    onClick={() => { setFile(null); setUploadFile(null); if (fileInputRef.current) fileInputRef.current.value = '' }}
                     className="ml-1 text-red-400 hover:text-red-300"
                     aria-label="Remove file"
                   >
