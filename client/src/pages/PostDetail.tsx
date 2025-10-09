@@ -501,15 +501,21 @@ function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDel
     <div className="relative border-b border-white/10 py-2">
       <div className="relative flex items-start gap-2 px-3">
         <div className="relative w-10 flex-shrink-0" style={{ zIndex: 1 }}>
-          {/* Top connector stub (from parent avatar bottom to this avatar top) */}
-          {depth > 0 ? (
-            <div className="absolute" style={{ left: '2px', top: '-16px', height: '32px', width: '2px', background: '#cbd5e1', borderRadius: '9999px', pointerEvents: 'none' }} />
-          ) : null}
-          <Avatar username={reply.username} url={reply.profile_picture || undefined} size={28} />
-          {/* Bottom connector stub (from this avatar bottom to child avatar top) */}
-          {(reply.children && reply.children.length) ? (
-            <div className="absolute" style={{ left: '2px', top: '28px', height: '32px', width: '2px', background: '#cbd5e1', borderRadius: '9999px', pointerEvents: 'none' }} />
-          ) : null}
+          {/* Single centered connector spanning this row, trimmed above for roots and below for leaves */}
+          {(() => {
+            const hasChildren = !!(reply.children && reply.children.length)
+            const topPx = depth > 0 ? 0 : 14  // hide above first-level reply
+            const bottomPx = hasChildren ? 0 : 14 // hide below last child
+            return (
+              <div
+                className="absolute"
+                style={{ left: '50%', transform: 'translateX(-1px)', top: `${topPx}px`, bottom: `${bottomPx}px`, width: '2px', background: '#cbd5e1', borderRadius: '9999px', pointerEvents: 'none', zIndex: 0 }}
+              />
+            )
+          })()}
+          <div className="relative" style={{ zIndex: 1 }}>
+            <Avatar username={reply.username} url={reply.profile_picture || undefined} size={28} />
+          </div>
         </div>
         <div className="flex-1 min-w-0 pr-2">
           <div className="flex items-center gap-2">
