@@ -11,7 +11,7 @@ import { renderTextWithLinks, detectLinks, replaceLinkInText, type DetectedLink 
 type PollOption = { id: number; text: string; votes: number }
 type Poll = { id: number; question: string; is_active: number; options: PollOption[]; user_vote: number|null; total_votes: number }
 type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null, profile_picture?: string|null }
-type Post = { id: number; username: string; content: string; image_path?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; poll?: Poll|null; replies: Reply[], profile_picture?: string|null, is_starred?: boolean }
+type Post = { id: number; username: string; content: string; image_path?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; poll?: Poll|null; replies: Reply[], profile_picture?: string|null, is_starred?: boolean, is_community_starred?: boolean }
 
 // old formatTimestamp removed; using formatSmartTime
 
@@ -650,6 +650,26 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
       setStarring(false)
     }
   }
+  async function toggleCommunityStar(e: React.MouseEvent){
+    e.stopPropagation()
+    if (starring) return
+    setStarring(true)
+    try{
+      const prev = post.is_community_starred
+      ;(post as any).is_community_starred = !prev
+      const fd = new URLSearchParams({ post_id: String(post.id) })
+      const r = await fetch('/api/toggle_community_key_post', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
+      const j = await r.json().catch(()=>null)
+      if (!j?.success){
+        ;(post as any).is_community_starred = prev
+        alert(j?.error || 'Failed to update')
+      } else {
+        ;(post as any).is_community_starred = !!j.starred
+      }
+    } finally {
+      setStarring(false)
+    }
+  }
   async function saveEdit(){
     const fd = new URLSearchParams({ post_id: String(post.id), content: editText })
     const r = await fetch('/edit_post', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
@@ -663,9 +683,16 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
         <Avatar username={post.username} url={post.profile_picture || undefined} size={32} />
         <div className="font-medium tracking-[-0.01em]">{post.username}</div>
         <div className="text-xs text-[#9fb0b5] ml-auto tabular-nums">{formatSmartTime((post as any).display_timestamp || post.timestamp)}</div>
-        <button className="ml-2 px-2 py-1 rounded-full" title={post.is_starred ? 'Unstar' : 'Star'} onClick={toggleStar} aria-label="Star post">
-          <i className={`${post.is_starred ? 'fa-solid' : 'fa-regular'} fa-star`} style={{ color: post.is_starred ? '#ffd54f' : '#6c757d' }} />
+        {/* Personal star (turquoise when selected) */}
+        <button className="ml-2 px-2 py-1 rounded-full" title={post.is_starred ? 'Unstar (yours)' : 'Star (yours)'} onClick={toggleStar} aria-label="Star post (yours)">
+          <i className={`${post.is_starred ? 'fa-solid' : 'fa-regular'} fa-star`} style={{ color: post.is_starred ? '#4db6ac' : '#6c757d' }} />
         </button>
+        {/* Community star (yellow) for owner/admins */}
+        {(isAdmin || currentUser === 'admin') && (
+          <button className="ml-1 px-2 py-1 rounded-full" title={post.is_community_starred ? 'Unfeature (community)' : 'Feature (community)'} onClick={toggleCommunityStar} aria-label="Star post (community)">
+            <i className={`${post.is_community_starred ? 'fa-solid' : 'fa-regular'} fa-star`} style={{ color: post.is_community_starred ? '#ffd54f' : '#6c757d' }} />
+          </button>
+        )}
         {(post.username === currentUser || isAdmin || currentUser === 'admin') && (
           <button className="ml-2 px-2 py-1 rounded-full text-[#6c757d] hover:text-[#4db6ac]" title="Delete"
             onClick={async(e)=> { e.stopPropagation(); const ok = confirm('Delete this post?'); if(!ok) return; const fd = new FormData(); fd.append('post_id', String(post.id)); await fetch('/delete_post', { method:'POST', credentials:'include', body: fd }); location.reload() }}>
