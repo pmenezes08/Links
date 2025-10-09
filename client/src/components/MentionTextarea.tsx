@@ -11,6 +11,7 @@ export default function MentionTextarea({
   placeholder,
   className,
   rows = 3,
+  perfDegraded = false,
 }: {
   value: string
   onChange: (v:string)=>void
@@ -20,6 +21,7 @@ export default function MentionTextarea({
   placeholder?: string
   className?: string
   rows?: number
+  perfDegraded?: boolean
 }){
   // Default to enabled when env flag is unset; only disable if explicitly set to 'false'
   const envVal = (import.meta as any).env?.VITE_MENTIONS_ENABLED
@@ -78,8 +80,10 @@ export default function MentionTextarea({
     return match[2] || ''
   }
 
+  // Suggestion fetching (throttled) — disabled in degraded mode
   useEffect(() => {
-    if (!enabled) return
+    const suggestionsEnabled = enabled && !perfDegraded
+    if (!suggestionsEnabled){ setOpen(false); setItems([]); return }
     const q = getMentionQuery(value)
     if (q === null){ setOpen(false); setItems([]); return }
     queryRef.current = q
@@ -103,7 +107,7 @@ export default function MentionTextarea({
         }
       }catch{ setItems([]) }
     }, 180)
-  }, [value, communityId, enabled])
+  }, [value, communityId, enabled, perfDegraded])
 
   useEffect(() => {
     const ta = taRef.current
@@ -141,18 +145,11 @@ export default function MentionTextarea({
   return (
     <div className="relative">
       {/* Highlight overlay (behind textarea) */}
-      <div
-        ref={overlayRef}
-        aria-hidden="true"
-        className="absolute inset-0 pointer-events-none"
-        style={{ padding: '0.375rem 0.75rem', whiteSpace: 'pre-wrap', overflow: 'hidden' }}
-      >
-        <div
-          // mask HTML draws only highlight backgrounds for @mentions
-          dangerouslySetInnerHTML={{ __html: buildHighlightMask(value) }}
-          style={{ font: 'inherit', lineHeight: 'inherit', wordBreak: 'break-word' }}
-        />
-      </div>
+      <MentionHighlightOverlay
+        overlayRef={overlayRef}
+        text={value}
+        enabled={enabled && !perfDegraded && value.length <= 2000 && value.indexOf('@') !== -1}
+      />
       <textarea
         ref={taRef}
         rows={rows}
@@ -192,6 +189,33 @@ export default function MentionTextarea({
           ))}
         </div>
       )}
+    </div>
+  )
+}
+
+function MentionHighlightOverlay({ overlayRef, text, enabled }:{ overlayRef: React.RefObject<HTMLDivElement>, text: string, enabled: boolean }){
+  const [maskHtml, setMaskHtml] = useState('')
+  const debounceRef = useRef<any>(null)
+  useEffect(() => {
+    if (!enabled){ setMaskHtml(''); return }
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => {
+      setMaskHtml(buildHighlightMask(text))
+    }, 50)
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current) }
+  }, [text, enabled])
+  if (!enabled) return null
+  return (
+    <div
+      ref={overlayRef}
+      aria-hidden="true"
+      className="absolute inset-0 pointer-events-none"
+      style={{ padding: '0.375rem 0.75rem', whiteSpace: 'pre-wrap', overflow: 'hidden' }}
+    >
+      <div
+        dangerouslySetInnerHTML={{ __html: maskHtml }}
+        style={{ font: 'inherit', lineHeight: 'inherit', wordBreak: 'break-word' }}
+      />
     </div>
   )
 }
