@@ -7,12 +7,7 @@ export default function MobileLogin() {
   const [resetEmail, setResetEmail] = useState('')
   const [resetSent, setResetSent] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  // PWA install state
-  const [deferredPrompt, setDeferredPrompt] = useState<any>(null)
-  const [isStandalone, setIsStandalone] = useState(false)
-  const [isIOS, setIsIOS] = useState(false)
-  const [showInstall, setShowInstall] = useState(false)
-  const [isInstalled, setIsInstalled] = useState(false)
+  // PWA install state (removed install UI)
 
   // If already authenticated, skip login
   useEffect(() => {
@@ -52,59 +47,9 @@ export default function MobileLogin() {
     setError(e)
   }, [])
 
-  // PWA install prompt wiring
-  useEffect(() => {
-    try{
-      const checkStandalone = () => {
-        const mql = window.matchMedia && window.matchMedia('(display-mode: standalone)')
-        const standalone = (mql && mql.matches) || (navigator as any).standalone === true
-        const asStandalone = !!standalone
-        setIsStandalone(asStandalone)
-        if (asStandalone) setIsInstalled(true)
-      }
-      checkStandalone()
-      const onChange = () => checkStandalone()
-      try{ window.matchMedia('(display-mode: standalone)').addEventListener('change', onChange) }catch{}
-      const onBIP = (e: any) => { e.preventDefault(); setDeferredPrompt(e) }
-      const onInstalled = () => { setDeferredPrompt(null); setIsStandalone(true); setIsInstalled(true) }
-      window.addEventListener('beforeinstallprompt', onBIP as any)
-      window.addEventListener('appinstalled', onInstalled as any)
-      setIsIOS(/iphone|ipad|ipod/i.test(navigator.userAgent))
-      // Best-effort: detect installed related apps (Android/Chrome)
-      ;(async () => {
-        try{
-          const navAny: any = navigator as any
-          if (typeof navAny.getInstalledRelatedApps === 'function'){
-            const related = await navAny.getInstalledRelatedApps()
-            if (Array.isArray(related) && related.length > 0){
-              setIsInstalled(true)
-            }
-          }
-        }catch{}
-      })()
-      return () => {
-        try{ window.matchMedia('(display-mode: standalone)').removeEventListener('change', onChange) }catch{}
-        window.removeEventListener('beforeinstallprompt', onBIP as any)
-        window.removeEventListener('appinstalled', onInstalled as any)
-      }
-    }catch{}
-  }, [])
+  // Removed install prompt wiring
 
-  async function handleInstall(){
-    try{
-      if (isIOS){
-        setShowInstall(true)
-        return
-      }
-      if (deferredPrompt && typeof deferredPrompt.prompt === 'function'){
-        await deferredPrompt.prompt()
-        try{ await deferredPrompt.userChoice }catch{}
-        setDeferredPrompt(null)
-      } else {
-        alert('Use your browser menu → Add to Home screen')
-      }
-    }catch{}
-  }
+  // Removed install handler
 
   // Allow natural page scroll (no viewport locking)
 
@@ -159,26 +104,7 @@ export default function MobileLogin() {
 
         <a href="/signup" className="block w-full text-center rounded-lg border border-white/10 bg-white/5 py-2 text-sm">Create Account</a>
 
-        <div className="flex items-center gap-3 my-4 text-white/40 text-[12px]">
-          <div className="flex-1 h-px bg-white/10" />
-          <span>get the app</span>
-          <div className="flex-1 h-px bg-white/10" />
-        </div>
-
-        {(!isStandalone && !isInstalled) ? (
-          <div className="mt-2">
-            <div
-              role="button"
-              tabIndex={0}
-              onClick={(e)=>{ try{ e.preventDefault() }catch{}; handleInstall() }}
-              onTouchEnd={(e)=>{ try{ e.preventDefault() }catch{}; handleInstall() }}
-              className="w-full text-center rounded-lg border border-white/10 bg-white/5 py-3 text-sm cursor-pointer select-none relative z-20"
-              style={{ WebkitTapHighlightColor: 'transparent', WebkitUserSelect: 'none', userSelect: 'none' }}
-            >
-              Install App
-            </div>
-          </div>
-        ) : null}
+        {/* Install app UI removed */}
       </div>
 
       {showForgot && (
@@ -218,41 +144,7 @@ export default function MobileLogin() {
         </div>
       )}
 
-      {showInstall && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center" onClick={(e)=> e.currentTarget===e.target && setShowInstall(false)}>
-          <div className="w-[92%] max-w-sm rounded-2xl border border-white/10 bg-[#0b0f10] text-white shadow-xl p-4">
-            <div className="flex items-center justify-between mb-2">
-              <div className="text-base font-semibold">Install C.Point</div>
-              <button aria-label="Close" className="text-white/60 hover:text-white" onClick={()=> setShowInstall(false)}>
-                <i className="fa-solid fa-xmark" />
-              </button>
-            </div>
-            <div>
-              <p className="text-sm text-white/75 mb-3">On iPhone/iPad:</p>
-              <ol className="space-y-2 text-sm text-white/85">
-                <li className="flex items-center gap-2">
-                  <svg className="text-[#4db6ac]" width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                    <path d="M7 10v7a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                    <path d="M12 3v10M12 3l-3.5 3.5M12 3l3.5 3.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                  <span>Tap <strong>Share</strong> in Safari</span>
-                </li>
-                <li className="flex items-center gap-2">
-                  <svg className="text-[#4db6ac]" width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                    <rect x="4" y="4" width="16" height="16" rx="4" stroke="currentColor" strokeWidth="1.8" />
-                    <path d="M12 8v8M8 12h8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-                  </svg>
-                  <span>Select <strong>Add to Home Screen</strong></span>
-                </li>
-              </ol>
-              <div className="text-xs text-white/60 mt-3">Tip: If you don’t see the option, scroll the sheet to find it.</div>
-              <div className="flex items-center justify-end mt-4">
-                <button className="px-3 py-2 rounded-lg border border-white/15 hover:bg-white/5 text-sm" onClick={()=> setShowInstall(false)}>Got it</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Install modal removed */}
     </div>
   )
 }
