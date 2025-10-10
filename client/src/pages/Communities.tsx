@@ -33,7 +33,10 @@ export default function Communities(){
     const qs = new URLSearchParams(location.search)
     return qs.get('parent_id') ? 'timeline' : 'management'
   })
-  // const [fabOpen, setFabOpen] = useState(false)
+  // Sub-community creation state
+  const [showCreateSubModal, setShowCreateSubModal] = useState(false)
+  const [newSubName, setNewSubName] = useState('')
+  const [newSubType, setNewSubType] = useState<string>('')
   const showTrainingTab = useMemo(() => {
     const parent = communities && communities.length > 0 ? communities[0] : null
     const parentTypeLower = ((parent as any)?.community_type || parent?.type || parentType || '').toLowerCase()
@@ -281,7 +284,89 @@ export default function Communities(){
           </div>
         )}
       </div>
-      
+      {/* Create Sub-Community FAB and Modal */}
+      {(() => {
+        const pidLocal = new URLSearchParams(location.search).get('parent_id')
+        const canCreateChild = activeTab === 'management' && !!pidLocal
+        if (!canCreateChild) return null
+        const parentTypeLabel = parentType || 'General'
+        const parentIdNum = Number(pidLocal)
+        return (
+          <>
+            <div className="fixed bottom-6 right-6 z-50">
+              <button
+                className="w-14 h-14 rounded-full bg-[#4db6ac] text-black shadow-lg hover:brightness-110 grid place-items-center border border-[#4db6ac]"
+                onClick={() => { setNewSubName(''); setNewSubType(parentTypeLabel); setShowCreateSubModal(true) }}
+                aria-label="Create sub-community"
+                title="Create sub-community"
+              >
+                <i className="fa-solid fa-plus" />
+              </button>
+            </div>
+
+            {showCreateSubModal && (
+              <div
+                className="fixed inset-0 z-50 bg-black/70 backdrop-blur flex items-center justify-center"
+                onClick={(e)=> { if (e.currentTarget === e.target) setShowCreateSubModal(false) }}
+              >
+                <div className="w-[92%] max-w-sm rounded-2xl border border-white/10 bg-[#0b0f10] p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="font-semibold text-sm">Create Sub-Community</div>
+                    <button className="p-2 rounded-md hover:bg:white/5" onClick={()=> setShowCreateSubModal(false)} aria-label="Close"><i className="fa-solid fa-xmark"/></button>
+                  </div>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-xs text-[#9fb0b5] mb-1">Parent Community</label>
+                      <input value={parentName || `ID ${parentIdNum}`}
+                             disabled
+                             className="w-full px-3 py-2 rounded-md bg-black border border-white/15 text-sm text-white/70 disabled:opacity-70"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-[#9fb0b5] mb-1">Sub-Community Name</label>
+                      <input value={newSubName}
+                             onChange={e=> setNewSubName(e.target.value)}
+                             placeholder="e.g., Powerlifting Club"
+                             className="w-full px-3 py-2 rounded-md bg-black border border-white/15 text-sm" />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-[#9fb0b5] mb-1">Community Type</label>
+                      <select value={newSubType || parentTypeLabel}
+                              onChange={e=> setNewSubType(e.target.value)}
+                              className="w-full px-3 py-2 rounded-md bg-black border border-white/15 text-sm">
+                        <option value={parentTypeLabel}>Parent Community Type ({parentTypeLabel || 'General'})</option>
+                        <option value="General">General</option>
+                      </select>
+                    </div>
+                    <div className="flex items-center justify-end gap-2">
+                      <button className="px-3 py-2 rounded-md bg:white/10 hover:bg:white/15" onClick={()=> setShowCreateSubModal(false)}>Cancel</button>
+                      <button className="px-3 py-2 rounded-md bg-[#4db6ac] text-black hover:brightness-110" onClick={async()=>{
+                        if (!newSubName.trim()) { alert('Please provide a sub-community name'); return }
+                        try{
+                          const fd = new URLSearchParams({ name: newSubName.trim(), type: (newSubType || parentTypeLabel || 'General') })
+                          fd.append('parent_community_id', String(parentIdNum))
+                          const r = await fetch('/create_community', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
+                          const j = await r.json().catch(()=>null)
+                          if (j?.success){
+                            setShowCreateSubModal(false)
+                            setNewSubName('')
+                            // Refresh current view to show the new child
+                            window.location.reload()
+                          } else {
+                            alert(j?.error || 'Failed to create sub-community')
+                          }
+                        }catch{
+                          alert('Network error')
+                        }
+                      }}>Create</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
+        )
+      })()}
     </div>
   )
 }
