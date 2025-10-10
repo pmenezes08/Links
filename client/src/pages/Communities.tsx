@@ -33,6 +33,7 @@ export default function Communities(){
     const qs = new URLSearchParams(location.search)
     return qs.get('parent_id') ? 'timeline' : 'management'
   })
+  const [fabOpen, setFabOpen] = useState(false)
   const showTrainingTab = useMemo(() => {
     const parent = communities && communities.length > 0 ? communities[0] : null
     const parentTypeLower = ((parent as any)?.community_type || parent?.type || parentType || '').toLowerCase()
@@ -629,6 +630,20 @@ function CommunityItem({
           <i className="fa-solid fa-chevron-right" />
         </div>
       </div>
+      {/* Floating Action Button in management tab to mirror dashboard */}
+      {activeTab === 'management' && (
+        <div className="fixed bottom-6 right-6 z-40">
+          {fabOpen && (
+            <div className="mb-2 rounded-xl border border-white/10 bg-black/80 backdrop-blur p-2 w-48 shadow-lg">
+              <button className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/5 text-sm" onClick={()=> { setFabOpen(false); navigate('/communities') }}>Manage Communities</button>
+              <button className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/5 text-sm" onClick={()=> { setFabOpen(false); navigate('/premium_dashboard') }}>Go to Dashboard</button>
+            </div>
+          )}
+          <button className="w-14 h-14 rounded-full bg-[#4db6ac] text-black shadow-lg hover:brightness-110 grid place-items-center border border-[#4db6ac]" onClick={()=> setFabOpen(v=>!v)} aria-label="Actions">
+            <i className="fa-solid fa-plus" />
+          </button>
+        </div>
+      )}
     </div>
   )
 }
