@@ -221,27 +221,7 @@ export default function PremiumDashboard() {
     }
   }, [communitiesLoaded, emailVerified, communities, hasProfilePic, username, onbStep, doneKey, isRecentlyVerified, emailVerifiedAt])
 
-  // Load available parent communities when opening create modal
-  useEffect(() => {
-    let mounted = true
-    async function loadParents(){
-      try{
-        const r = await fetch('/get_available_parent_communities', { credentials:'include' })
-        const j = await r.json().catch(()=>null)
-        if (!mounted) return
-        if (j?.success && Array.isArray(j.communities)){
-          setParentOptions(j.communities)
-        } else {
-          setParentOptions([])
-        }
-      }catch{ setParentOptions([]) }
-    }
-    if (showCreateModal){
-      setSelectedParentId('none')
-      loadParents()
-    }
-    return () => { mounted = false }
-  }, [showCreateModal])
+  // Parent-only creation: skip loading parent communities
 
 
   return (
