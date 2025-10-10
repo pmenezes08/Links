@@ -14,8 +14,7 @@ export default function PremiumDashboard() {
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [newCommName, setNewCommName] = useState('')
   const [newCommType, setNewCommType] = useState<'Gym'|'University'|'General'>('Gym')
-  const [parentOptions, setParentOptions] = useState<Array<{ id:number; name:string; type?:string }>>([])
-  const [selectedParentId, setSelectedParentId] = useState<string>('none')
+  // Parent-only creation; no parent selection
   // Removed parentsWithChildren usage in desktop since cards now route to unified communities page
   const [emailVerified, setEmailVerified] = useState<boolean|null>(null)
   const [showVerifyFirstModal, setShowVerifyFirstModal] = useState(false)
