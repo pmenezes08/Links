@@ -581,8 +581,8 @@ export default function PremiumDashboard() {
             </div>
             <div className="space-y-3">
               <div>
-                <label className="block text-xs text-[#9fb0b5] mb-1">Community Name</label>
-                <input value={newCommName} onChange={e=> setNewCommName(e.target.value)} placeholder="e.g., My Gym" className="w-full px-3 py-2 rounded-md bg-black border border:white/15 text-sm" />
+                <label className="block text-xs text-[#9fb0b5] mb-1">Community Name (Parent)</label>
+                <input value={newCommName} onChange={e=> setNewCommName(e.target.value)} placeholder="e.g., My Parent Community" className="w-full px-3 py-2 rounded-md bg-black border border:white/15 text-sm" />
               </div>
               <div>
                 <label className="block text-xs text-[#9fb0b5] mb-1">Community Type</label>
@@ -592,28 +592,15 @@ export default function PremiumDashboard() {
                   <option value="General">General</option>
                 </select>
               </div>
-              <div>
-                <label className="block text-xs text-[#9fb0b5] mb-1">Parent Community (optional)</label>
-                <select
-                  value={selectedParentId}
-                  onChange={(e)=> setSelectedParentId(e.target.value)}
-                  className="w-full px-3 py-2 rounded-md bg-black border border:white/15 text-sm"
-                >
-                  <option value="none">None</option>
-                  {parentOptions.map(opt => (
-                    <option key={opt.id} value={String(opt.id)}>{opt.name}{opt.type ? ` (${opt.type})` : ''}</option>
-                  ))}
-                </select>
-              </div>
+              {/* For parent-only creation: remove parent selector and always create top-level */}
+              <div className="text-xs text-[#9fb0b5]">This will create a parent community.</div>
               <div className="flex items-center justify-end gap-2">
                 <button className="px-3 py-2 rounded-md bg:white/10 hover:bg:white/15" onClick={()=> setShowCreateModal(false)}>Cancel</button>
                 <button className="px-3 py-2 rounded-md bg-[#4db6ac] text-black hover:brightness-110" onClick={async()=> {
                   if (!newCommName.trim()) { alert('Please provide a name'); return }
                   try{
                     const fd = new URLSearchParams({ name: newCommName.trim(), type: newCommType })
-                    if (selectedParentId && selectedParentId !== 'none'){
-                      fd.append('parent_community_id', selectedParentId)
-                    }
+                  // Force parent community creation: do not include parent_community_id
                     const r = await fetch('/create_community', { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
                     const j = await r.json().catch(()=>null)
                     if (j?.success){
