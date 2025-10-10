@@ -583,7 +583,7 @@ export default function PremiumDashboard() {
                     const r = await fetch('/create_community', { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
                     const j = await r.json().catch(()=>null)
                     if (j?.success){
-                      setShowCreateModal(false); setNewCommName(''); setSelectedParentId('none')
+                      setShowCreateModal(false); setNewCommName('')
                       // Refresh dashboard communities
                       const resp = await fetch('/api/user_parent_community', { method:'GET', credentials:'include' })
                       const data = await resp.json().catch(()=>null)
