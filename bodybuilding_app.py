@@ -16797,6 +16797,60 @@ def api_groups_my():
         logger.error(f"api_groups_my error: {e}")
         return jsonify({'success': False, 'error': 'Failed to load memberships'})
 
+# Group feed API: returns posts scoped to group membership
+@app.route('/api/group_feed')
+@login_required
+def api_group_feed():
+    username = session.get('username')
+    try:
+        group_id = int(request.args.get('group_id', '0'))
+    except Exception:
+        return jsonify({'success': False, 'error': 'Invalid group_id'})
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            # Load group and owning community
+            c.execute(f"SELECT g.id, g.name, g.community_id FROM {'`groups`' if USE_MYSQL else 'groups'} g WHERE g.id = {get_sql_placeholder()}", (group_id,))
+            g = c.fetchone()
+            if not g:
+                return jsonify({'success': False, 'error': 'Group not found'}), 404
+            community_id = g['community_id'] if hasattr(g, 'keys') else g[2]
+            group_name = g['name'] if hasattr(g, 'keys') else g[1]
+
+            # Verify user is member of community (or parent)
+            ph = get_sql_placeholder()
+            c.execute(f"SELECT 1 FROM user_communities uc JOIN users u ON uc.user_id=u.id WHERE u.username={ph} AND uc.community_id={ph}", (username, community_id))
+            if not c.fetchone():
+                # allow if member of parent
+                c.execute("SELECT parent_community_id FROM communities WHERE id=?", (community_id,))
+                row = c.fetchone()
+                pid = (row['parent_community_id'] if hasattr(row, 'keys') else row[0]) if row else None
+                if not pid:
+                    return jsonify({'success': False, 'error': 'Not a member'}), 403
+                c.execute(f"SELECT 1 FROM user_communities uc JOIN users u ON uc.user_id=u.id WHERE u.username={ph} AND uc.community_id={ph}", (username, pid))
+                if not c.fetchone():
+                    return jsonify({'success': False, 'error': 'Not a member'}), 403
+
+            # For now, reuse community posts as group feed (until posts are group-scoped)
+            c.execute("SELECT id, username, content, image_path, timestamp FROM posts WHERE community_id = ? ORDER BY id DESC LIMIT 50", (community_id,))
+            rows = c.fetchall() or []
+            posts = []
+            for r in rows:
+                posts.append({
+                    'id': r['id'] if hasattr(r, 'keys') else r[0],
+                    'username': r['username'] if hasattr(r, 'keys') else r[1],
+                    'content': r['content'] if hasattr(r, 'keys') else r[2],
+                    'image_path': r['image_path'] if hasattr(r, 'keys') else r[3],
+                    'timestamp': r['timestamp'] if hasattr(r, 'keys') else r[4],
+                    'reactions': {},
+                    'user_reaction': None,
+                    'profile_picture': None,
+                })
+            return jsonify({'success': True, 'group': { 'id': group_id, 'name': group_name }, 'posts': posts})
+    except Exception as e:
+        logger.error(f"api_group_feed error: {e}")
+        return jsonify({'success': False, 'error': 'Server error'})
+
 @app.route('/gym_react')
 @login_required
 def gym_react():

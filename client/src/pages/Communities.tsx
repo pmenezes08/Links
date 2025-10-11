@@ -464,7 +464,7 @@ function GroupsModal({ open, onClose, communityId }:{ open:boolean, onClose: ()=
       if (!open || !communityId) return
       setLoading(true)
       try{
-        const r = await fetch(`/api/groups?community_id=${communityId}&include_ancestors=1`, { credentials:'include' })
+        const r = await fetch(`/api/groups?community_id=${communityId}&include_ancestors=0`, { credentials:'include' })
         const j = await r.json().catch(()=>null)
         if (!ok) return
         if (j?.success) setItems(j.groups||[])
@@ -493,7 +493,7 @@ function GroupsModal({ open, onClose, communityId }:{ open:boolean, onClose: ()=
               return (
                 <div key={g.id} className="flex items-center gap-2 border border-white/10 rounded-lg p-2">
                   <div className="flex-1">
-                    <div className="font-medium text-white">{g.name}</div>
+                    <button className="font-medium text-white underline decoration-white/20 underline-offset-2" onClick={()=> { window.location.href = `/group_feed_react/${g.id}` }}>{g.name}</button>
                     <div className="text-xs text-[#9fb0b5]">{g.approval_required ? 'Approval required' : 'Open to members'}</div>
                   </div>
                   {status === 'member' ? (
