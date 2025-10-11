@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import CommunityFeed from './CommunityFeed'
 
 export default function GroupFeed(){
@@ -8,7 +8,6 @@ export default function GroupFeed(){
   // For now, simply render CommunityFeed-like shell by fetching group and composing similar markup would duplicate code.
   // Shortcut: redirect to a lightweight shell is not ideal; we wrap to preserve header and navigation.
   const { group_id } = useParams()
-  const [meta, setMeta] = useState<{ community_id?: number } | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -24,7 +23,7 @@ export default function GroupFeed(){
         if (j?.success){
           // Infer community id by fetching first post or fallback
           // For now, let CommunityFeed read its own community_id from URL if needed
-          setMeta({})
+          // meta not needed; just ensure auth and existence
         } else setError(j?.error || 'Failed to load group')
       }catch{ if (ok) setError('Failed to load group') }
       finally{ if (ok) setLoading(false) }
