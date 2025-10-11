@@ -1431,7 +1431,7 @@ def init_db():
             logger.info("Ensuring groups and group_members tables...")
             try:
                 if USE_MYSQL:
-                    c.execute('''CREATE TABLE IF NOT EXISTS groups (
+                    c.execute('''CREATE TABLE IF NOT EXISTS `groups` (
                         id INTEGER PRIMARY KEY AUTO_INCREMENT,
                         community_id INTEGER NOT NULL,
                         name VARCHAR(255) NOT NULL,
@@ -1457,13 +1457,13 @@ def init_db():
 
             try:
                 if USE_MYSQL:
-                    c.execute('''CREATE TABLE IF NOT EXISTS group_members (
+                    c.execute('''CREATE TABLE IF NOT EXISTS `group_members` (
                         id INTEGER PRIMARY KEY AUTO_INCREMENT,
                         group_id INTEGER NOT NULL,
                         username VARCHAR(191) NOT NULL,
                         status VARCHAR(16) NOT NULL DEFAULT 'member',
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE,
+                        FOREIGN KEY (group_id) REFERENCES `groups`(id) ON DELETE CASCADE,
                         FOREIGN KEY (username) REFERENCES users(username),
                         UNIQUE KEY uniq_group_user (group_id, username)
                     )''')
