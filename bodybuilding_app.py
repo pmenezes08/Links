@@ -2180,13 +2180,37 @@ def is_community_owner(username, community_id):
         return False
 
 def is_community_admin(username, community_id):
-    """Check if user is an admin of a community (MySQL/SQLite-safe)."""
+    """Check if user is an admin of a community (MySQL/SQLite-safe).
+    Accept admin via user_communities.role = 'admin' OR community_admins entry.
+    """
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
             ph = get_sql_placeholder()
-            c.execute(f"SELECT 1 FROM community_admins WHERE community_id = {ph} AND username = {ph}", 
-                     (community_id, username))
+            # Check user_communities role
+            try:
+                c.execute(
+                    f"""
+                    SELECT uc.role
+                    FROM user_communities uc
+                    JOIN users u ON uc.user_id = u.id
+                    WHERE u.username = {ph} AND uc.community_id = {ph}
+                    """,
+                    (username, community_id),
+                )
+                row = c.fetchone()
+                if row:
+                    role = row['role'] if hasattr(row, 'keys') else row[0]
+                    if (role or '').lower() == 'admin':
+                        return True
+            except Exception:
+                pass
+
+            # Fallback: explicit community_admins table
+            c.execute(
+                f"SELECT 1 FROM community_admins WHERE community_id = {ph} AND username = {ph}",
+                (community_id, username),
+            )
             return c.fetchone() is not None
     except Exception as _e:
         return False
@@ -16532,7 +16556,9 @@ def api_groups_create():
         return jsonify({'success': False, 'error': 'Group name is required'})
     approval_required = approval_required_raw in ('1', 'true', 'True', 'yes', 'on')
     try:
-        if not has_community_management_permission(username, community_id):
+        # Resolve parent chain: if community_id is child, owners/admins of parent also allowed to create groups at parent scope only.
+        # For now, enforce direct authorization on the specified community id.
+        if not (is_app_admin(username) or is_community_owner(username, community_id) or is_community_admin(username, community_id)):
             return jsonify({'success': False, 'error': 'Not authorized'}), 403
         with get_db_connection() as conn:
             c = conn.cursor()
