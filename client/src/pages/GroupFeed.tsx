@@ -16,7 +16,7 @@ export default function GroupFeed(){
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string| null>(null)
   const [groupName, setGroupName] = useState('Group')
-  const [communityMeta, setCommunityMeta] = useState<{ id?: number|string, name?: string, type?: string } | null>(null)
+  // const [communityMeta, setCommunityMeta] = useState<{ id?: number|string, name?: string, type?: string } | null>(null)
   const [posts, setPosts] = useState<Post[]>([])
   const [composerText, setComposerText] = useState('')
   const [composerFile, setComposerFile] = useState<File|null>(null)
@@ -35,7 +35,7 @@ export default function GroupFeed(){
         if (!ok) return
         if (fj?.success){
           setGroupName(fj.group?.name || 'Group')
-          setCommunityMeta(fj.community || null)
+          // setCommunityMeta(fj.community || null)
           setPosts(fj.posts || [])
           setError(null)
         } else {
