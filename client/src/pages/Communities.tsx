@@ -37,10 +37,15 @@ export default function Communities(){
   const [showCreateSubModal, setShowCreateSubModal] = useState(false)
   const [newSubName, setNewSubName] = useState('')
   const [newSubType, setNewSubType] = useState<string>('')
-  // Group creation state
+  // Group creation
   const [showCreateGroup, setShowCreateGroup] = useState(false)
   const [newGroupName, setNewGroupName] = useState('')
   const [approvalRequired, setApprovalRequired] = useState(false)
+  // Groups modal (list & join)
+  const [showGroupsModal, setShowGroupsModal] = useState(false)
+  const [groupsModalLoading, setGroupsModalLoading] = useState(false)
+  const [groupsModalCommunityId, setGroupsModalCommunityId] = useState<number|null>(null)
+  const [groupsModalList, setGroupsModalList] = useState<Array<{ id:number; name:string; approval_required:boolean; membership_status?: string | null; community_id:number }>>([])
   const showTrainingTab = useMemo(() => {
     const parent = communities && communities.length > 0 ? communities[0] : null
     const parentTypeLower = ((parent as any)?.community_type || parent?.type || parentType || '').toLowerCase()
@@ -178,6 +183,15 @@ export default function Communities(){
           </div>
         </div>
       </div>
+      {/* Groups Modal Root */}
+      <GroupsModal
+        open={showGroupsModal}
+        onClose={()=> setShowGroupsModal(false)}
+        communityId={groupsModalCommunityId}
+        onResolve={async(id)=>{
+          // no-op
+        }}
+      />
 
       {/* Slide-out menu (90% width) same as feed */}
       {/* Menu unified via HeaderBar */}
@@ -428,6 +442,78 @@ function PlusActions({ onCreateSub, onCreateGroup }:{ onCreateSub: ()=>void, onC
       <button className="w-14 h-14 rounded-full bg-[#4db6ac] text-black shadow-lg hover:brightness-110 grid place-items-center border border-[#4db6ac]" onClick={()=> setOpen(v=>!v)} aria-label="Actions">
         <i className="fa-solid fa-plus" />
       </button>
+    </div>
+  )
+}
+
+function GroupsModal({ open, onClose, communityId, onResolve }:{ open:boolean, onClose: ()=>void, communityId: number | null, onResolve: (groupId:number)=>Promise<void> }){
+  const [loading, setLoading] = useState(false)
+  const [items, setItems] = useState<Array<{ id:number; name:string; approval_required:boolean; membership_status?: string | null; community_id:number }>>([])
+  useEffect(() => {
+    (document.getElementById('groups-modal-root') as any).__open = (cid:number)=>{
+      // host-managed opener
+    }
+  }, [])
+  useEffect(() => {
+    let ok = true
+    async function load(){
+      if (!open || !communityId) return
+      setLoading(true)
+      try{
+        const r = await fetch(`/api/groups?community_id=${communityId}&include_ancestors=1`, { credentials:'include' })
+        const j = await r.json().catch(()=>null)
+        if (!ok) return
+        if (j?.success) setItems(j.groups||[])
+        else setItems([])
+      }catch{ if (ok) setItems([]) }
+      finally{ if (ok) setLoading(false) }
+    }
+    load(); return ()=> { ok = false }
+  }, [open, communityId])
+  if (!open) return <div id="groups-modal-root" />
+  return (
+    <div id="groups-modal-root" className="fixed inset-0 z-50 bg-black/70 backdrop-blur flex items-center justify-center" onClick={(e)=> { if (e.currentTarget === e.target) onClose() }}>
+      <div className="w-[92%] max-w-sm rounded-2xl border border-white/10 bg-[#0b0f10] p-4">
+        <div className="flex items-center justify-between mb-3">
+          <div className="font-semibold text-sm">Groups</div>
+          <button className="p-2 rounded-md hover:bg:white/5" onClick={onClose} aria-label="Close"><i className="fa-solid fa-xmark"/></button>
+        </div>
+        {loading ? (
+          <div className="text-[#9fb0b5] text-sm">Loading…</div>
+        ) : items.length === 0 ? (
+          <div className="text-[#9fb0b5] text-sm">No groups available.</div>
+        ) : (
+          <div className="space-y-2 max-h-[50vh] overflow-y-auto">
+            {items.map(g => {
+              const status = g.membership_status
+              const canJoin = !status
+              return (
+                <div key={g.id} className="flex items-center gap-2 border border-white/10 rounded-lg p-2">
+                  <div className="flex-1">
+                    <div className="font-medium text-white">{g.name}</div>
+                    <div className="text-xs text-[#9fb0b5]">{g.approval_required ? 'Approval required' : 'Open to members'}</div>
+                  </div>
+                  {status === 'member' ? (
+                    <span className="text-xs text-[#4db6ac]">Joined</span>
+                  ) : status === 'pending' ? (
+                    <span className="text-xs text-yellow-400">Pending</span>
+                  ) : (
+                    <button className="px-2.5 py-1.5 rounded-md bg-[#4db6ac] text-black text-xs hover:brightness-110" onClick={async()=>{
+                      try{
+                        const fd = new URLSearchParams({ group_id: String(g.id) })
+                        const r = await fetch('/api/groups/join', { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
+                        const j = await r.json().catch(()=>null)
+                        if (j?.success){ setItems(list => list.map(it => it.id===g.id ? ({ ...it, membership_status: j.status }) : it)) }
+                        else alert(j?.error || 'Failed to join group')
+                      }catch{ alert('Network error') }
+                    }}>Join</button>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
     </div>
   )
 }
@@ -718,6 +804,23 @@ function CommunityItem({
     >
       {/* Action button (Leave or Delete depending on ownership) */}
       <div className="absolute inset-y-0 right-0 flex items-center">
+        {/* Groups button */}
+        <button
+          className="h-full w-20 bg-[#4db6ac]/20 text-[#4db6ac] flex items-center justify-center hover:bg-[#4db6ac]/30 transition-all duration-200"
+          onClick={(e)=> { e.stopPropagation(); try{
+            (window as any).openGroupsModal?.(community.id)
+          }catch{} }}
+          style={{
+            opacity: isSwipedOpen || dragX < -20 ? 1 : 0,
+            transform: `translateX(${isSwipedOpen ? '0' : '100%'})`,
+            transition: isDragging ? 'none' : 'all 0.2s ease-out'
+          }}
+        >
+          <div className="flex flex-col items-center gap-1">
+            <i className="fa-solid fa-users text-sm" />
+            <span className="text-xs font-medium">Groups</span>
+          </div>
+        </button>
         {community.creator_username && currentUsername === community.creator_username ? (
           <button
             className="h-full w-20 bg-red-500/20 text-red-400 flex items-center justify-center hover:bg-red-500/30 transition-all duration-200 rounded-r-2xl"
@@ -780,6 +883,14 @@ function CommunityItem({
       {/* FAB removed pending proper state wiring */}
     </div>
   )
+}
+
+// Global opener for groups modal
+;(window as any).openGroupsModal = async (communityId: number) => {
+  try{
+    const el = document.getElementById('groups-modal-root') as any
+    if (el && el.__open){ el.__open(communityId) }
+  }catch{}
 }
 
 function JoinCommunity({ onJoined }:{ onJoined: ()=>void }){
