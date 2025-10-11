@@ -18,9 +18,6 @@ export default function GroupFeed(){
   const [groupName, setGroupName] = useState('Group')
   // const [communityMeta, setCommunityMeta] = useState<{ id?: number|string, name?: string, type?: string } | null>(null)
   const [posts, setPosts] = useState<Post[]>([])
-  const [composerText, setComposerText] = useState('')
-  const [composerFile, setComposerFile] = useState<File|null>(null)
-  const [posting, setPosting] = useState(false)
 
   useEffect(() => { setTitle(groupName ? `${groupName}` : 'Group') }, [groupName, setTitle])
 
@@ -54,75 +51,7 @@ export default function GroupFeed(){
     <div className="fixed inset-x-0 top-14 bottom-0 bg-black text-white">
       <div className="h-full max-w-2xl mx-auto overflow-y-auto no-scrollbar pb-28 px-3" style={{ WebkitOverflowScrolling: 'touch' as any }}>
         <div className="space-y-3">
-          {/* Back + Title bar + group name */}
-          <div className="flex items-center gap-2 pt-3">
-            <button className="px-3 py-1.5 rounded-lg border border-white/10 bg-white/[0.03] text-sm hover:bg-white/10" onClick={()=> navigate(-1)}>← Back</button>
-            <div className="ml-auto font-semibold">{groupName}</div>
-          </div>
-          {/* Community-style action bar for General type */}
-          <div className="rounded-2xl border border-white/10 bg-black/70 p-2 flex items-center justify-between text-[#cfd8dc]">
-            <button className="p-2 rounded-full hover:bg-white/5" title="Home" aria-label="Home" onClick={()=> { try{ (document.scrollingElement || document.documentElement)?.scrollTo({ top:0, behavior:'smooth' }) }catch{} }}>
-              <i className="fa-solid fa-house" />
-            </button>
-            <button className="p-2 rounded-full hover:bg-white/5" title="Members" aria-label="Members" onClick={()=> navigate(-1)}>
-              <i className="fa-solid fa-users" />
-            </button>
-            <button className="w-10 h-10 rounded-md bg-[#4db6ac] text-black hover:brightness-110 grid place-items-center" aria-label="New Post" onClick={()=> {
-              try{
-                const el = document.querySelector('textarea') as HTMLTextAreaElement|null
-                if (el){ el.focus(); el.scrollIntoView({ behavior:'smooth', block:'center' }) }
-              }catch{}
-            }}>
-              <i className="fa-solid fa-plus" />
-            </button>
-            <button className="p-2 rounded-full hover:bg-white/5" title="Announcements" aria-label="Announcements" onClick={()=> alert('No announcements for groups yet')}>
-              <i className="fa-solid fa-bullhorn" />
-            </button>
-            <button className="p-2 rounded-full hover:bg-white/5" title="More" aria-label="More" onClick={()=> alert('More menu coming soon for groups')}>
-              <i className="fa-solid fa-ellipsis" />
-            </button>
-          </div>
-          {/* Composer */}
-          <div className="rounded-2xl border border-white/10 bg-black p-3">
-            <MentionTextarea
-              value={composerText}
-              onChange={setComposerText}
-              placeholder="Write a post…"
-              className="w-full min-h-[80px] p-2 rounded-xl bg-black border border-white/10 text-sm focus:outline-none focus:ring-1 focus:ring-[#4db6ac]"
-              rows={4}
-              perfDegraded={!!composerFile}
-            />
-            {composerFile ? (
-              <div className="mt-2">
-                <img src={URL.createObjectURL(composerFile)} alt="preview" className="max-h-48 rounded border border-white/10" />
-              </div>
-            ) : null}
-            <div className="mt-2 flex items-center justify-between">
-              <label className="px-3 py-2 rounded-full hover:bg-white/5 cursor-pointer" aria-label="Add image">
-                <i className="fa-regular fa-image" style={{ color: '#4db6ac' }} />
-                <input type="file" accept="image/*" onChange={(e)=> setComposerFile(e.target.files?.[0]||null)} style={{ display: 'none' }} />
-              </label>
-              <button className={`px-4 py-2 rounded-full ${posting ? 'bg-white/20 text-white/60 cursor-not-allowed' : 'bg-[#4db6ac] text-black hover:brightness-110'}`} onClick={async()=>{
-                if (!group_id) return
-                if (!composerText && !composerFile) return
-                if (posting) return
-                setPosting(true)
-                try{
-                  const fd = new FormData()
-                  fd.append('group_id', String(group_id))
-                  fd.append('content', composerText)
-                  if (composerFile) fd.append('image', composerFile)
-                  fd.append('dedupe_token', `${Date.now()}_${Math.random().toString(36).slice(2)}`)
-                  const r = await fetch('/api/group_posts', { method:'POST', credentials:'include', body: fd })
-                  const j = await r.json().catch(()=>null)
-                  if (j?.success){ setComposerText(''); setComposerFile(null); await reloadFeed() }
-                  else alert(j?.error || 'Failed to post')
-                }catch{ alert('Failed to post') } finally { setPosting(false) }
-              }} disabled={posting}>
-                {posting ? 'Posting…' : 'Post'}
-              </button>
-            </div>
-          </div>
+          {/* Header removed; composer removed (use dedicated compose page) */}
           {posts.length === 0 ? (
             <div className="text-sm text-[#9fb0b5]">No posts yet.</div>
           ) : (
