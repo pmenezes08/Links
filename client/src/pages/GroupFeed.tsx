@@ -16,6 +16,7 @@ export default function GroupFeed(){
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string| null>(null)
   const [groupName, setGroupName] = useState('Group')
+  const [communityMeta, setCommunityMeta] = useState<{ id?: number|string, name?: string, type?: string } | null>(null)
   const [posts, setPosts] = useState<Post[]>([])
   const [composerText, setComposerText] = useState('')
   const [composerFile, setComposerFile] = useState<File|null>(null)
@@ -34,6 +35,7 @@ export default function GroupFeed(){
         if (!ok) return
         if (fj?.success){
           setGroupName(fj.group?.name || 'Group')
+          setCommunityMeta(fj.community || null)
           setPosts(fj.posts || [])
           setError(null)
         } else {
@@ -52,12 +54,33 @@ export default function GroupFeed(){
     <div className="fixed inset-x-0 top-14 bottom-0 bg-black text-white">
       <div className="h-full max-w-2xl mx-auto overflow-y-auto no-scrollbar pb-28 px-3" style={{ WebkitOverflowScrolling: 'touch' as any }}>
         <div className="space-y-3">
-          {/* Back + Title bar */}
+          {/* Back + Title bar + group name */}
           <div className="flex items-center gap-2 pt-3">
-            <button className="px-3 py-1.5 rounded-lg border border-white/10 bg-white/[0.03] text-sm hover:bg-white/10" onClick={()=> navigate(-1)}>
-              ← Back
-            </button>
+            <button className="px-3 py-1.5 rounded-lg border border-white/10 bg-white/[0.03] text-sm hover:bg-white/10" onClick={()=> navigate(-1)}>← Back</button>
             <div className="ml-auto font-semibold">{groupName}</div>
+          </div>
+          {/* Community-style action bar for General type */}
+          <div className="rounded-2xl border border-white/10 bg-black/70 p-2 flex items-center justify-between text-[#cfd8dc]">
+            <button className="p-2 rounded-full hover:bg-white/5" title="Home" aria-label="Home" onClick={()=> { try{ (document.scrollingElement || document.documentElement)?.scrollTo({ top:0, behavior:'smooth' }) }catch{} }}>
+              <i className="fa-solid fa-house" />
+            </button>
+            <button className="p-2 rounded-full hover:bg-white/5" title="Members" aria-label="Members" onClick={()=> navigate(-1)}>
+              <i className="fa-solid fa-users" />
+            </button>
+            <button className="w-10 h-10 rounded-md bg-[#4db6ac] text-black hover:brightness-110 grid place-items-center" aria-label="New Post" onClick={()=> {
+              try{
+                const el = document.querySelector('textarea') as HTMLTextAreaElement|null
+                if (el){ el.focus(); el.scrollIntoView({ behavior:'smooth', block:'center' }) }
+              }catch{}
+            }}>
+              <i className="fa-solid fa-plus" />
+            </button>
+            <button className="p-2 rounded-full hover:bg-white/5" title="Announcements" aria-label="Announcements" onClick={()=> alert('No announcements for groups yet')}>
+              <i className="fa-solid fa-bullhorn" />
+            </button>
+            <button className="p-2 rounded-full hover:bg-white/5" title="More" aria-label="More" onClick={()=> alert('More menu coming soon for groups')}>
+              <i className="fa-solid fa-ellipsis" />
+            </button>
           </div>
           {/* Composer */}
           <div className="rounded-2xl border border-white/10 bg-black p-3">

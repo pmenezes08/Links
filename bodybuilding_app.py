@@ -16907,6 +16907,11 @@ def api_group_feed():
                 return jsonify({'success': False, 'error': 'Group not found'}), 404
             community_id = g['community_id'] if hasattr(g, 'keys') else g[2]
             group_name = g['name'] if hasattr(g, 'keys') else g[1]
+            # Community meta
+            c.execute("SELECT name, type FROM communities WHERE id = ?", (community_id,))
+            cm = c.fetchone() or {}
+            community_name = cm['name'] if hasattr(cm, 'keys') else (cm[0] if cm else None)
+            community_type = cm['type'] if hasattr(cm, 'keys') else (cm[1] if cm else None)
 
             # Verify user is member of community (or parent)
             ph = get_sql_placeholder()
@@ -16985,7 +16990,7 @@ def api_group_feed():
                     'profile_picture': r['profile_picture'] if hasattr(r, 'keys') else r[5],
                     'replies': replies
                 })
-            return jsonify({'success': True, 'group': { 'id': group_id, 'name': group_name }, 'posts': posts})
+            return jsonify({'success': True, 'group': { 'id': group_id, 'name': group_name }, 'community': { 'id': community_id, 'name': community_name, 'type': community_type }, 'posts': posts})
     except Exception as e:
         logger.error(f"api_group_feed error: {e}")
         return jsonify({'success': False, 'error': 'Server error'})
