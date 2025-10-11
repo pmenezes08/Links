@@ -16320,9 +16320,9 @@ def get_user_communities_hierarchical():
 # Groups (horizontal) APIs
 # ----------------------
 
-@app.route('/api/groups/create', methods=['POST'])
+@app.route('/api/groups/create_legacy_disabled', methods=['POST'], endpoint='api_groups_create_legacy')
 @login_required
-def api_groups_create():
+def api_groups_create_legacy():
     """Create a group under a specific community/sub-community. Admins/owners only."""
     username = session.get('username')
     community_id_raw = request.form.get('community_id', '').strip()
@@ -16364,9 +16364,9 @@ def api_groups_create():
         return jsonify({'success': False, 'error': 'Failed to create group'})
 
 
-@app.route('/api/groups', methods=['GET'])
+@app.route('/api/groups_legacy_disabled', methods=['GET'], endpoint='api_groups_list_legacy')
 @login_required
-def api_groups_list():
+def api_groups_list_legacy():
     """List groups for a community. If include_ancestors=1, includes parent chain."""
     username = session.get('username')
     community_id_raw = request.args.get('community_id', '').strip()
@@ -16421,9 +16421,9 @@ def api_groups_list():
         return jsonify({'success': False, 'error': str(e)})
 
 
-@app.route('/api/groups/join', methods=['POST'])
+@app.route('/api/groups/join_legacy_disabled', methods=['POST'], endpoint='api_groups_join_legacy')
 @login_required
-def api_groups_join():
+def api_groups_join_legacy():
     username = session.get('username')
     group_id = request.form.get('group_id', '').strip()
     try:
@@ -16469,9 +16469,9 @@ def api_groups_join():
         return jsonify({'success': False, 'error': str(e)})
 
 
-@app.route('/api/groups/available_count', methods=['GET'])
+@app.route('/api/groups/available_count_legacy_disabled', methods=['GET'], endpoint='api_groups_available_count_legacy')
 @login_required
-def api_groups_available_count():
+def api_groups_available_count_legacy():
     username = session.get('username')
     community_id = request.args.get('community_id', '').strip()
     try:
@@ -16509,7 +16509,7 @@ def api_groups_available_count():
         logger.error(f"api_groups_available_count error: {e}")
         return jsonify({'success': False, 'error': str(e)})
 
-# ---------------------- Groups (horizontal to communities) APIs ----------------------
+# ---------------------- Groups (primary endpoints) ----------------------
 @app.route('/api/groups/create', methods=['POST'])
 @login_required
 def api_groups_create():
