@@ -16922,24 +16922,205 @@ def api_group_feed():
                 if not c.fetchone():
                     return jsonify({'success': False, 'error': 'Not a member'}), 403
 
-            # For now, reuse community posts as group feed (until posts are group-scoped)
-            c.execute("SELECT id, username, content, image_path, timestamp FROM posts WHERE community_id = ? ORDER BY id DESC LIMIT 50", (community_id,))
+            # Load latest group posts
+            c.execute(f"""
+                SELECT gp.id, gp.username, gp.content, gp.image_path, gp.created_at,
+                       up.profile_picture
+                FROM {'`group_posts`' if USE_MYSQL else 'group_posts'} gp
+                LEFT JOIN user_profiles up ON up.username = gp.username
+                WHERE gp.group_id = {get_sql_placeholder()}
+                ORDER BY gp.id DESC
+                LIMIT 50
+            """, (group_id,))
             rows = c.fetchall() or []
             posts = []
             for r in rows:
+                pid = r['id'] if hasattr(r, 'keys') else r[0]
+                uname = r['username'] if hasattr(r, 'keys') else r[1]
+                # Reactions
+                c.execute(f"SELECT reaction, COUNT(*) as c FROM {'`group_post_reactions`' if USE_MYSQL else 'group_post_reactions'} WHERE group_post_id = {get_sql_placeholder()} GROUP BY reaction", (pid,))
+                rx = c.fetchall() or []
+                reactions = { (row['reaction'] if hasattr(row, 'keys') else row[0]): (row['c'] if hasattr(row, 'keys') else row[1]) for row in rx }
+                c.execute(f"SELECT reaction FROM {'`group_post_reactions`' if USE_MYSQL else 'group_post_reactions'} WHERE group_post_id = {get_sql_placeholder()} AND username = {get_sql_placeholder()}", (pid, username))
+                urr = c.fetchone()
+                user_reaction = urr['reaction'] if hasattr(urr, 'keys') else (urr[0] if urr else None)
                 posts.append({
-                    'id': r['id'] if hasattr(r, 'keys') else r[0],
-                    'username': r['username'] if hasattr(r, 'keys') else r[1],
+                    'id': pid,
+                    'username': uname,
                     'content': r['content'] if hasattr(r, 'keys') else r[2],
                     'image_path': r['image_path'] if hasattr(r, 'keys') else r[3],
-                    'timestamp': r['timestamp'] if hasattr(r, 'keys') else r[4],
-                    'reactions': {},
-                    'user_reaction': None,
-                    'profile_picture': None,
+                    'timestamp': r['created_at'] if hasattr(r, 'keys') else r[4],
+                    'reactions': reactions,
+                    'user_reaction': user_reaction,
+                    'profile_picture': r['profile_picture'] if hasattr(r, 'keys') else r[5],
+                    'replies': []
                 })
             return jsonify({'success': True, 'group': { 'id': group_id, 'name': group_name }, 'posts': posts})
     except Exception as e:
         logger.error(f"api_group_feed error: {e}")
+        return jsonify({'success': False, 'error': 'Server error'})
+
+# Create group post
+@app.route('/api/group_posts', methods=['POST'])
+@login_required
+def api_group_posts_create():
+    username = session.get('username')
+    group_id_raw = request.form.get('group_id', '').strip()
+    content = (request.form.get('content', '') or '').strip()
+    dedupe_token = (request.form.get('dedupe_token') or '').strip()
+    try:
+        group_id = int(group_id_raw)
+    except Exception:
+        return jsonify({'success': False, 'error': 'Invalid group_id'})
+    if not content and 'image' not in request.files:
+        return jsonify({'success': False, 'error': 'Content or image is required'})
+    # Check membership
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            c.execute(f"SELECT 1 FROM group_members WHERE group_id={ph} AND username={ph}", (group_id, username))
+            if not c.fetchone():
+                # Also allow community-level members
+                c.execute(f"SELECT community_id FROM {'`groups`' if USE_MYSQL else 'groups'} WHERE id={ph}", (group_id,))
+                gr = c.fetchone(); comm_id = gr['community_id'] if hasattr(gr, 'keys') else (gr[0] if gr else None)
+                if not comm_id:
+                    return jsonify({'success': False, 'error': 'Group not found'}), 404
+                c.execute(f"SELECT 1 FROM user_communities uc JOIN users u ON uc.user_id=u.id WHERE u.username={ph} AND uc.community_id={ph}", (username, comm_id))
+                if not c.fetchone():
+                    return jsonify({'success': False, 'error': 'Not a member'}), 403
+            # Save file if any
+            image_path = None
+            if 'image' in request.files and request.files['image'].filename:
+                image_path = save_uploaded_file(request.files['image'])
+            # Dedupe (best effort)
+            if dedupe_token:
+                try:
+                    c.execute("CREATE TABLE IF NOT EXISTS recent_group_post_tokens (token TEXT, username TEXT, created_at TEXT)")
+                    c.execute("DELETE FROM recent_group_post_tokens WHERE created_at < ?", (datetime.now() - timedelta(seconds=60),))
+                    c.execute("SELECT 1 FROM recent_group_post_tokens WHERE token=? AND username=?", (dedupe_token, username))
+                    if c.fetchone():
+                        return jsonify({'success': True, 'deduped': True})
+                    c.execute("INSERT INTO recent_group_post_tokens (token, username, created_at) VALUES (?, ?, ?)", (dedupe_token, username, datetime.now().isoformat()))
+                except Exception:
+                    pass
+            # Insert
+            c.execute(f"INSERT INTO {'`group_posts`' if USE_MYSQL else 'group_posts'} (group_id, username, content, image_path, created_at) VALUES ({ph}, {ph}, {ph}, {ph}, {ph})",
+                      (group_id, username, content, image_path, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+            if not USE_MYSQL: conn.commit()
+            return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"api_group_posts_create error: {e}")
+        return jsonify({'success': False, 'error': 'Server error'})
+
+# Toggle reaction on group post
+@app.route('/api/group_posts/react', methods=['POST'])
+@login_required
+def api_group_posts_react():
+    username = session.get('username')
+    post_id_raw = request.form.get('post_id', '').strip()
+    reaction = (request.form.get('reaction', '') or '').strip()
+    try:
+        post_id = int(post_id_raw)
+    except Exception:
+        return jsonify({'success': False, 'error': 'Invalid post_id'})
+    if not reaction:
+        return jsonify({'success': False, 'error': 'reaction required'})
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            # Insert/Toggle
+            try:
+                c.execute(f"INSERT INTO {'`group_post_reactions`' if USE_MYSQL else 'group_post_reactions'} (group_post_id, username, reaction) VALUES ({get_sql_placeholder()}, {get_sql_placeholder()}, {get_sql_placeholder()})",
+                          (post_id, username, reaction))
+            except Exception:
+                # If exists, toggle to the same reaction (remove if same, set if different)
+                c.execute(f"SELECT reaction FROM {'`group_post_reactions`' if USE_MYSQL else 'group_post_reactions'} WHERE group_post_id={get_sql_placeholder()} AND username={get_sql_placeholder()}", (post_id, username))
+                row = c.fetchone()
+                if row:
+                    prev = row['reaction'] if hasattr(row, 'keys') else row[0]
+                    if prev == reaction:
+                        c.execute(f"DELETE FROM {'`group_post_reactions`' if USE_MYSQL else 'group_post_reactions'} WHERE group_post_id={get_sql_placeholder()} AND username={get_sql_placeholder()}", (post_id, username))
+                        if not USE_MYSQL: conn.commit()
+                        return jsonify({'success': True, 'user_reaction': None})
+                    else:
+                        c.execute(f"UPDATE {'`group_post_reactions`' if USE_MYSQL else 'group_post_reactions'} SET reaction={get_sql_placeholder()} WHERE group_post_id={get_sql_placeholder()} AND username={get_sql_placeholder()}", (reaction, post_id, username))
+                        if not USE_MYSQL: conn.commit()
+                        return jsonify({'success': True, 'user_reaction': reaction})
+            if not USE_MYSQL: conn.commit()
+            return jsonify({'success': True, 'user_reaction': reaction})
+    except Exception as e:
+        logger.error(f"api_group_posts_react error: {e}")
+        return jsonify({'success': False, 'error': 'Server error'})
+
+# Create group reply
+@app.route('/api/group_replies', methods=['POST'])
+@login_required
+def api_group_replies_create():
+    username = session.get('username')
+    post_id_raw = request.form.get('group_post_id', '').strip()
+    parent_id_raw = request.form.get('parent_reply_id', '').strip()
+    content = (request.form.get('content', '') or '').strip()
+    try:
+        post_id = int(post_id_raw)
+    except Exception:
+        return jsonify({'success': False, 'error': 'Invalid group_post_id'})
+    parent_id = None
+    if parent_id_raw:
+        try: parent_id = int(parent_id_raw)
+        except Exception: parent_id = None
+    if not content and 'image' not in request.files:
+        return jsonify({'success': False, 'error': 'Content or image is required'})
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            image_path = None
+            if 'image' in request.files and request.files['image'].filename:
+                image_path = save_uploaded_file(request.files['image'])
+            c.execute(f"INSERT INTO {'`group_replies`' if USE_MYSQL else 'group_replies'} (group_post_id, parent_reply_id, username, content, image_path, created_at) VALUES ({get_sql_placeholder()},{get_sql_placeholder()},{get_sql_placeholder()},{get_sql_placeholder()},{get_sql_placeholder()},{get_sql_placeholder()})",
+                      (post_id, parent_id, username, content, image_path, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+            if not USE_MYSQL: conn.commit()
+            return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"api_group_replies_create error: {e}")
+        return jsonify({'success': False, 'error': 'Server error'})
+
+# Toggle reaction on group reply
+@app.route('/api/group_replies/react', methods=['POST'])
+@login_required
+def api_group_replies_react():
+    username = session.get('username')
+    reply_id_raw = request.form.get('reply_id', '').strip()
+    reaction = (request.form.get('reaction', '') or '').strip()
+    try:
+        reply_id = int(reply_id_raw)
+    except Exception:
+        return jsonify({'success': False, 'error': 'Invalid reply_id'})
+    if not reaction:
+        return jsonify({'success': False, 'error': 'reaction required'})
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            try:
+                c.execute(f"INSERT INTO {'`group_reply_reactions`' if USE_MYSQL else 'group_reply_reactions'} (group_reply_id, username, reaction) VALUES ({get_sql_placeholder()},{get_sql_placeholder()},{get_sql_placeholder()})",
+                          (reply_id, username, reaction))
+            except Exception:
+                c.execute(f"SELECT reaction FROM {'`group_reply_reactions`' if USE_MYSQL else 'group_reply_reactions'} WHERE group_reply_id={get_sql_placeholder()} AND username={get_sql_placeholder()}", (reply_id, username))
+                row = c.fetchone()
+                if row:
+                    prev = row['reaction'] if hasattr(row, 'keys') else row[0]
+                    if prev == reaction:
+                        c.execute(f"DELETE FROM {'`group_reply_reactions`' if USE_MYSQL else 'group_reply_reactions'} WHERE group_reply_id={get_sql_placeholder()} AND username={get_sql_placeholder()}", (reply_id, username))
+                        if not USE_MYSQL: conn.commit()
+                        return jsonify({'success': True, 'user_reaction': None})
+                    else:
+                        c.execute(f"UPDATE {'`group_reply_reactions`' if USE_MYSQL else 'group_reply_reactions'} SET reaction={get_sql_placeholder()} WHERE group_reply_id={get_sql_placeholder()} AND username={get_sql_placeholder()}", (reaction, reply_id, username))
+                        if not USE_MYSQL: conn.commit()
+                        return jsonify({'success': True, 'user_reaction': reaction})
+            if not USE_MYSQL: conn.commit()
+            return jsonify({'success': True, 'user_reaction': reaction})
+    except Exception as e:
+        logger.error(f"api_group_replies_react error: {e}")
         return jsonify({'success': False, 'error': 'Server error'})
 
 # Serve React app for group feed route
