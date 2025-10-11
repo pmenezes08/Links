@@ -134,46 +134,4 @@ export default function GroupFeed(){
   )
 }
 
-function InlineReply({ postId, onPosted }:{ postId:number, onPosted: ()=>Promise<void>|void }){
-  const [text, setText] = useState('')
-  const [file, setFile] = useState<File|null>(null)
-  const [sending, setSending] = useState(false)
-  return (
-    <div className="mt-2">
-      <MentionTextarea
-        value={text}
-        onChange={setText}
-        placeholder="Write a reply…"
-        className="w-full min-h-[48px] p-2 rounded-xl bg-black border border-white/10 text-sm focus:outline-none focus:ring-1 focus:ring-[#4db6ac]"
-        rows={3}
-        perfDegraded={!!file}
-      />
-      {file ? <img src={URL.createObjectURL(file)} alt="reply" className="mt-1 max-h-40 rounded border border-white/10" /> : null}
-      <div className="mt-1 flex items-center justify-between">
-        <label className="px-2 py-1.5 rounded-full hover:bg-white/5 cursor-pointer" aria-label="Add image">
-          <i className="fa-regular fa-image" style={{ color:'#4db6ac' }} />
-          <input type="file" accept="image/*" onChange={(e)=> setFile(e.target.files?.[0]||null)} style={{ display:'none' }} />
-        </label>
-        <button className={`px-3 py-1.5 rounded-full ${sending ? 'bg-white/20 text-white/60 cursor-not-allowed' : 'bg-[#4db6ac] text-black hover:brightness-110'}`} onClick={async()=>{
-          if (sending) return
-          if (!text && !file) return
-          setSending(true)
-          try{
-            const fd = new FormData()
-            fd.append('group_post_id', String(postId))
-            fd.append('content', text)
-            if (file) fd.append('image', file)
-            const r = await fetch('/api/group_replies', { method:'POST', credentials:'include', body: fd })
-            const j = await r.json().catch(()=>null)
-            if (j?.success){ setText(''); setFile(null); await onPosted() }
-            else alert(j?.error || 'Failed')
-          }catch{ alert('Failed') } finally{ setSending(false) }
-        }} disabled={sending}>
-          {sending ? 'Replying…' : 'Reply'}
-        </button>
-      </div>
-    </div>
-  )
-}
-
 async function reloadFeed(){ try{ location.reload() }catch{} }
