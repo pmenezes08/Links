@@ -743,18 +743,19 @@ function CommunityItem({
   const [dragX, setDragX] = useState(0)
   const [isDragging, setIsDragging] = useState(false)
   const startXRef = useRef(0)
+  const ACTIONS_WIDTH = 160 // reveal width to show both action buttons (2 x 80px)
 
   const handleTouchStart = (e: React.TouchEvent) => {
     startXRef.current = e.touches[0].clientX
     setIsDragging(true)
-    setDragX(isSwipedOpen ? -80 : 0)
+    setDragX(isSwipedOpen ? -ACTIONS_WIDTH : 0)
   }
 
   const handleTouchMove = (e: React.TouchEvent) => {
     if (!isDragging) return
     const currentX = e.touches[0].clientX
     const deltaX = currentX - startXRef.current
-    const newDragX = Math.min(0, deltaX + (isSwipedOpen ? -80 : 0))
+    const newDragX = Math.max(-ACTIONS_WIDTH, Math.min(0, deltaX + (isSwipedOpen ? -ACTIONS_WIDTH : 0)))
     setDragX(newDragX)
   }
 
@@ -861,7 +862,7 @@ function CommunityItem({
       <div
         className={`w-full px-3 py-3 hover:bg-white/[0.03] flex items-center justify-between cursor-pointer bg-black ${isChild ? 'pl-4' : ''}`}
         style={{
-          transform: `translateX(${isDragging ? dragX : (isSwipedOpen ? -80 : 0)}px)`,
+          transform: `translateX(${isDragging ? dragX : (isSwipedOpen ? -ACTIONS_WIDTH : 0)}px)`,
           transition: isDragging ? 'none' : 'transform 0.2s ease-out'
         }}
         onTouchStart={handleTouchStart}
