@@ -189,7 +189,7 @@ export default function GroupFeed(){
                     ))}
                   </div>
                   {/* Inline reply composer */}
-                  <InlineReply groupId={String(group_id||'')} postId={p.id} onPosted={reloadFeed} />
+                  <InlineReply postId={p.id} onPosted={reloadFeed} />
                 </div>
               </div>
             ))
@@ -200,7 +200,7 @@ export default function GroupFeed(){
   )
 }
 
-function InlineReply({ groupId, postId, onPosted }:{ groupId:string, postId:number, onPosted: ()=>Promise<void>|void }){
+function InlineReply({ postId, onPosted }:{ postId:number, onPosted: ()=>Promise<void>|void }){
   const [text, setText] = useState('')
   const [file, setFile] = useState<File|null>(null)
   const [sending, setSending] = useState(false)
