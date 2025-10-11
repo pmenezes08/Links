@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import Avatar from '../components/Avatar'
 import ImageLoader from '../components/ImageLoader'
-import MentionTextarea from '../components/MentionTextarea'
 import { formatSmartTime } from '../utils/time'
 import { useHeader } from '../contexts/HeaderContext'
 
@@ -16,7 +15,7 @@ export default function GroupFeed(){
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string| null>(null)
   const [groupName, setGroupName] = useState('Group')
-  // const [communityMeta, setCommunityMeta] = useState<{ id?: number|string, name?: string, type?: string } | null>(null)
+  const [communityMeta, setCommunityMeta] = useState<{ id?: number|string, name?: string, type?: string } | null>(null)
   const [posts, setPosts] = useState<Post[]>([])
 
   useEffect(() => { setTitle(groupName ? `${groupName}` : 'Group') }, [groupName, setTitle])
@@ -32,7 +31,7 @@ export default function GroupFeed(){
         if (!ok) return
         if (fj?.success){
           setGroupName(fj.group?.name || 'Group')
-          // setCommunityMeta(fj.community || null)
+          setCommunityMeta(fj.community || null)
           setPosts(fj.posts || [])
           setError(null)
         } else {
@@ -56,7 +55,7 @@ export default function GroupFeed(){
             <div className="text-sm text-[#9fb0b5]">No posts yet.</div>
           ) : (
             posts.map(p => (
-              <div key={p.id} className="rounded-2xl border border-white/10 bg-black shadow-sm shadow-black/20">
+              <div key={p.id} className="rounded-2xl border border-white/10 bg-black shadow-sm shadow-black/20 cursor-pointer" onClick={()=> navigate(`/post/${p.id}`)}>
                 <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2">
                   <Avatar username={p.username} url={p.profile_picture || undefined} size={28} />
                   <div className="font-medium">{p.username}</div>
@@ -98,80 +97,35 @@ export default function GroupFeed(){
                       </button>
                     ))}
                   </div>
-                  {/* Replies */}
-                  <div className="mt-2 space-y-2">
-                    {p.replies.map(rr => (
-                      <div key={rr.id} className="rounded-xl border border-white/10 bg-white/5 p-2">
-                        <div className="flex items-center gap-2">
-                          <Avatar username={rr.username} url={rr.profile_picture || undefined} size={20} />
-                          <div className="text-sm font-medium">{rr.username}</div>
-                          <div className="text-[11px] text-[#9fb0b5] ml-auto">{formatSmartTime(rr.timestamp)}</div>
-                        </div>
-                        <div className="mt-1 text-[14px] whitespace-pre-wrap">{rr.content}</div>
-                        {rr.image_path ? (
-                          <ImageLoader
-                            src={(() => {
-                              const ip = String(rr.image_path || '').trim()
-                              if (!ip) return ''
-                              if (ip.startsWith('http')) return ip
-                              if (ip.startsWith('/uploads') || ip.startsWith('/static')) return ip
-                              return ip.startsWith('uploads') || ip.startsWith('static') ? `/${ip}` : `/uploads/${ip}`
-                            })()}
-                            alt="Reply image"
-                            className="mt-1 max-h-48 rounded border border-white/10"
-                          />
-                        ) : null}
-                        <div className="mt-1 flex items-center gap-2 text-xs">
-                          {['heart','thumbs-up','thumbs-down'].map((rname) => (
-                            <button key={rname} className="px-2 py-1 rounded" onClick={async()=>{
-                              try{
-                                const form = new URLSearchParams({ reply_id: String(rr.id), reaction: rname })
-                                const r = await fetch('/api/group_replies/react', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: form })
-                                const j = await r.json().catch(()=>null)
-                                if (j?.success){ setPosts(list => list.map(it => it.id===p.id ? ({ ...it, replies: it.replies.map(r2 => r2.id===rr.id ? ({ ...r2, user_reaction: j.user_reaction, reactions: (()=>{ const out = { ...(r2.reactions||{}) }; const prev = r2.user_reaction; if (prev){ out[prev] = Math.max(0, (out[prev]||0)-1) } if (j.user_reaction){ out[j.user_reaction] = (out[j.user_reaction]||0)+1 } return out })() }) : r2) }) : it)) }
-                                else alert(j?.error || 'Failed')
-                              }catch{}
-                            }}>
-                              <i className={`fa-regular ${rname==='heart'?'fa-heart':(rname==='thumbs-up'?'fa-thumbs-up':'fa-thumbs-down')}`} style={{ color: rr.user_reaction===rname ? '#4db6ac' : '#6c757d', WebkitTextStroke: rr.user_reaction===rname ? '1px #4db6ac' : undefined }} />
-                              <span className="ml-1" style={{ color: rr.user_reaction===rname ? '#cfe9e7' : '#9fb0b5' }}>{(rr.reactions?.[rname])||0}</span>
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  {/* Inline reply composer */}
-                  <InlineReply postId={p.id} onPosted={reloadFeed} />
+                  {/* Replies removed in feed; tap post card to open detail page to reply */}
                 </div>
               </div>
             ))
           )}
         </div>
       </div>
-      {/* Bottom navigation bar (General-like) */}
+      {/* Bottom navigation bar like community feed (General) */}
       <div className="fixed bottom-4 left-1/2 transform -translate-x-1/2 z-40 w-[94%] max-w-[1200px] rounded-2xl border border-white/10 bg-black/80 backdrop-blur shadow-lg">
         <div className="h-14 px-6 flex items-center justify-between text-[#cfd8dc]">
           <button className="p-2 rounded-full hover:bg-white/5" aria-label="Home" onClick={()=> { try{ (document.scrollingElement || document.documentElement)?.scrollTo({ top: 0, behavior: 'smooth' }) }catch{} }}>
             <i className="fa-solid fa-house" />
           </button>
-          {/* Groups mirror Members icon to list members in owning community (optional later) */}
-          <button className="p-2 rounded-full hover:bg-white/5" aria-label="Members" onClick={()=> navigate(-1)}>
+          <button className="p-2 rounded-full hover:bg-white/5" aria-label="Members" onClick={()=> communityMeta?.id ? navigate(`/community/${communityMeta.id}/members`) : navigate(-1)}>
             <i className="fa-solid fa-users" />
           </button>
-          {/* New Post handled by composer above; keep quick access */}
-          <button className="w-10 h-10 rounded-md bg-[#4db6ac] text-black hover:brightness-110 grid place-items-center" aria-label="New Post" onClick={()=> {
-            try{
-              const el = document.querySelector('textarea') as HTMLTextAreaElement|null
-              if (el){ el.focus(); el.scrollIntoView({ behavior:'smooth', block:'center' }) }
-            }catch{}
-          }}>
+          <button 
+            className={`w-10 h-10 rounded-md bg-[#4db6ac] text-black hover:brightness-110 grid place-items-center`}
+            aria-label="New Post" 
+            onClick={()=> { navigate(`/compose?group_id=${group_id}`) }}
+          >
             <i className="fa-solid fa-plus" />
           </button>
-          {/* Announcements not used in groups yet */}
-          <button className="relative p-2 rounded-full hover:bg-white/5" aria-label="Announcements" onClick={()=> alert('No announcements for groups yet') }>
-            <i className="fa-solid fa-bullhorn" />
+          <button className="relative p-2 rounded-full hover:bg-white/5" aria-label="Announcements" onClick={()=> alert('No announcements for groups yet')}>
+            <span className="relative inline-block">
+              <i className="fa-solid fa-bullhorn" />
+            </span>
           </button>
-          <button className="p-2 rounded-full hover:bg-white/5" aria-label="More" onClick={()=> alert('More menu coming soon for groups') }>
+          <button className="p-2 rounded-full hover:bg-white/5" aria-label="More" onClick={()=> alert('More coming soon') }>
             <i className="fa-solid fa-ellipsis" />
           </button>
         </div>
