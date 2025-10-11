@@ -16569,7 +16569,7 @@ def api_groups_create():
             # Insert group
             if USE_MYSQL:
                 c.execute("""
-                    INSERT INTO groups (community_id, name, approval_required, created_by)
+                    INSERT INTO `groups` (community_id, name, approval_required, created_by)
                     VALUES (%s, %s, %s, %s)
                 """, (community_id, name, 1 if approval_required else 0, username))
                 gid = c.lastrowid
