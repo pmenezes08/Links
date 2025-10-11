@@ -16944,6 +16944,36 @@ def api_group_feed():
                 c.execute(f"SELECT reaction FROM {'`group_post_reactions`' if USE_MYSQL else 'group_post_reactions'} WHERE group_post_id = {get_sql_placeholder()} AND username = {get_sql_placeholder()}", (pid, username))
                 urr = c.fetchone()
                 user_reaction = urr['reaction'] if hasattr(urr, 'keys') else (urr[0] if urr else None)
+                # Replies (latest 25)
+                c.execute(f"""
+                    SELECT gr.id, gr.username, gr.content, gr.image_path, gr.created_at,
+                           up.profile_picture
+                    FROM {'`group_replies`' if USE_MYSQL else 'group_replies'} gr
+                    LEFT JOIN user_profiles up ON up.username = gr.username
+                    WHERE gr.group_post_id = {get_sql_placeholder()}
+                    ORDER BY gr.id DESC
+                    LIMIT 25
+                """, (pid,))
+                rep_rows = c.fetchall() or []
+                replies = []
+                for rr in rep_rows:
+                    rid = rr['id'] if hasattr(rr, 'keys') else rr[0]
+                    c.execute(f"SELECT reaction, COUNT(*) as c FROM {'`group_reply_reactions`' if USE_MYSQL else 'group_reply_reactions'} WHERE group_reply_id = {get_sql_placeholder()} GROUP BY reaction", (rid,))
+                    rrx = c.fetchall() or []
+                    rreactions = { (row['reaction'] if hasattr(row, 'keys') else row[0]): (row['c'] if hasattr(row, 'keys') else row[1]) for row in rrx }
+                    c.execute(f"SELECT reaction FROM {'`group_reply_reactions`' if USE_MYSQL else 'group_reply_reactions'} WHERE group_reply_id = {get_sql_placeholder()} AND username = {get_sql_placeholder()}", (rid, username))
+                    rur = c.fetchone()
+                    reply_user_reaction = rur['reaction'] if hasattr(rur, 'keys') else (rur[0] if rur else None)
+                    replies.append({
+                        'id': rid,
+                        'username': rr['username'] if hasattr(rr, 'keys') else rr[1],
+                        'content': rr['content'] if hasattr(rr, 'keys') else rr[2],
+                        'image_path': rr['image_path'] if hasattr(rr, 'keys') else rr[3],
+                        'timestamp': rr['created_at'] if hasattr(rr, 'keys') else rr[4],
+                        'profile_picture': rr['profile_picture'] if hasattr(rr, 'keys') else rr[5],
+                        'reactions': rreactions,
+                        'user_reaction': reply_user_reaction,
+                    })
                 posts.append({
                     'id': pid,
                     'username': uname,
@@ -16953,7 +16983,7 @@ def api_group_feed():
                     'reactions': reactions,
                     'user_reaction': user_reaction,
                     'profile_picture': r['profile_picture'] if hasattr(r, 'keys') else r[5],
-                    'replies': []
+                    'replies': replies
                 })
             return jsonify({'success': True, 'group': { 'id': group_id, 'name': group_name }, 'posts': posts})
     except Exception as e:
