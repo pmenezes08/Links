@@ -44,17 +44,7 @@ export default function Communities(){
   // Groups modal (list & join)
   const [showGroupsModal, setShowGroupsModal] = useState(false)
   const [groupsModalCommunityId, setGroupsModalCommunityId] = useState<number|null>(null)
-  useEffect(() => {
-    const onOpen = (e: any) => {
-      const cid = e?.detail?.cid
-      if (typeof cid === 'number'){
-        setGroupsModalCommunityId(cid)
-        setShowGroupsModal(true)
-      }
-    }
-    window.addEventListener('open-groups-modal', onOpen as any)
-    return () => window.removeEventListener('open-groups-modal', onOpen as any)
-  }, [])
+  const openGroups = (cid: number) => { setGroupsModalCommunityId(cid); setShowGroupsModal(true) }
   const showTrainingTab = useMemo(() => {
     const parent = communities && communities.length > 0 ? communities[0] : null
     const parentTypeLower = ((parent as any)?.community_type || parent?.type || parentType || '').toLowerCase()
@@ -254,7 +244,7 @@ export default function Communities(){
                     <div className="text-[#9fb0b5]">You are not a member of any communities.</div>
                   ) : communities.map(c => (
                     <div key={c.id} className="space-y-2">
-                      <CommunityItem 
+                  <CommunityItem 
                         community={c} 
                         isSwipedOpen={swipedCommunity === c.id}
                         onSwipe={(isOpen) => setSwipedCommunity(isOpen ? c.id : null)}
@@ -272,6 +262,7 @@ export default function Communities(){
                           else alert(j?.error||`Error ${asDelete?'deleting':'leaving'} community`)
                         }}
                         currentUsername={_data?.username || ''}
+                        onOpenGroups={openGroups}
                       />
                       {c.children && c.children.length > 0 && (
                         <div className="ml-6 space-y-2">
@@ -296,6 +287,7 @@ export default function Communities(){
                               }}
                               isChild={true}
                               currentUsername={_data?.username || ''}
+                              onOpenGroups={openGroups}
                             />
                           ))}
                         </div>
@@ -736,7 +728,8 @@ function CommunityItem({
   onEnter, 
   onDeleteOrLeave,
   isChild = false,
-  currentUsername
+  currentUsername,
+  onOpenGroups
 }: { 
   community: Community
   isSwipedOpen: boolean
@@ -745,6 +738,7 @@ function CommunityItem({
   onDeleteOrLeave: (asDelete:boolean) => void
   isChild?: boolean
   currentUsername: string
+  onOpenGroups: (communityId:number)=>void
 }) {
   const [dragX, setDragX] = useState(0)
   const [isDragging, setIsDragging] = useState(false)
@@ -818,13 +812,7 @@ function CommunityItem({
         {/* Groups button */}
         <button
           className="h-full w-20 bg-[#4db6ac]/20 text-[#4db6ac] flex items-center justify-center hover:bg-[#4db6ac]/30 transition-all duration-200"
-          onClick={(e)=> { e.stopPropagation(); try{
-            const root = document.getElementById('groups-modal-root') as any
-            if (root && root.__reactOpen){ root.__reactOpen(community.id) }
-            else {
-              alert('Groups UI not available')
-            }
-          }catch{} }}
+          onClick={(e)=> { e.stopPropagation(); onOpenGroups(community.id) }}
           style={{
             opacity: isSwipedOpen || dragX < -20 ? 1 : 0,
             transform: `translateX(${isSwipedOpen ? '0' : '100%'})`,
