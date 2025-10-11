@@ -1481,6 +1481,97 @@ def init_db():
             except Exception as e:
                 logger.warning(f"Could not ensure group_members table: {e}")
 
+            # Group posts and replies (clean separation from community posts)
+            try:
+                if USE_MYSQL:
+                    c.execute('''CREATE TABLE IF NOT EXISTS `group_posts` (
+                        id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                        group_id INTEGER NOT NULL,
+                        username VARCHAR(150) NOT NULL,
+                        content TEXT NOT NULL,
+                        image_path TEXT,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY (group_id) REFERENCES `groups`(id) ON DELETE CASCADE,
+                        FOREIGN KEY (username) REFERENCES users(username)
+                    )''')
+                    c.execute('''CREATE TABLE IF NOT EXISTS `group_post_reactions` (
+                        id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                        group_post_id INTEGER NOT NULL,
+                        username VARCHAR(150) NOT NULL,
+                        reaction VARCHAR(32) NOT NULL,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY (group_post_id) REFERENCES `group_posts`(id) ON DELETE CASCADE,
+                        FOREIGN KEY (username) REFERENCES users(username),
+                        UNIQUE KEY uniq_gpr (group_post_id, username)
+                    )''')
+                    c.execute('''CREATE TABLE IF NOT EXISTS `group_replies` (
+                        id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                        group_post_id INTEGER NOT NULL,
+                        parent_reply_id INTEGER NULL,
+                        username VARCHAR(150) NOT NULL,
+                        content TEXT NOT NULL,
+                        image_path TEXT,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY (group_post_id) REFERENCES `group_posts`(id) ON DELETE CASCADE,
+                        FOREIGN KEY (parent_reply_id) REFERENCES `group_replies`(id) ON DELETE CASCADE,
+                        FOREIGN KEY (username) REFERENCES users(username)
+                    )''')
+                    c.execute('''CREATE TABLE IF NOT EXISTS `group_reply_reactions` (
+                        id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                        group_reply_id INTEGER NOT NULL,
+                        username VARCHAR(150) NOT NULL,
+                        reaction VARCHAR(32) NOT NULL,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY (group_reply_id) REFERENCES `group_replies`(id) ON DELETE CASCADE,
+                        FOREIGN KEY (username) REFERENCES users(username),
+                        UNIQUE KEY uniq_grr (group_reply_id, username)
+                    )''')
+                else:
+                    c.execute('''CREATE TABLE IF NOT EXISTS group_posts (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        group_id INTEGER NOT NULL,
+                        username TEXT NOT NULL,
+                        content TEXT NOT NULL,
+                        image_path TEXT,
+                        created_at TEXT DEFAULT (datetime('now')),
+                        FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE,
+                        FOREIGN KEY (username) REFERENCES users(username)
+                    )''')
+                    c.execute('''CREATE TABLE IF NOT EXISTS group_post_reactions (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        group_post_id INTEGER NOT NULL,
+                        username TEXT NOT NULL,
+                        reaction TEXT NOT NULL,
+                        created_at TEXT DEFAULT (datetime('now')),
+                        FOREIGN KEY (group_post_id) REFERENCES group_posts(id) ON DELETE CASCADE,
+                        FOREIGN KEY (username) REFERENCES users(username),
+                        UNIQUE(group_post_id, username)
+                    )''')
+                    c.execute('''CREATE TABLE IF NOT EXISTS group_replies (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        group_post_id INTEGER NOT NULL,
+                        parent_reply_id INTEGER NULL,
+                        username TEXT NOT NULL,
+                        content TEXT NOT NULL,
+                        image_path TEXT,
+                        created_at TEXT DEFAULT (datetime('now')),
+                        FOREIGN KEY (group_post_id) REFERENCES group_posts(id) ON DELETE CASCADE,
+                        FOREIGN KEY (parent_reply_id) REFERENCES group_replies(id) ON DELETE CASCADE,
+                        FOREIGN KEY (username) REFERENCES users(username)
+                    )''')
+                    c.execute('''CREATE TABLE IF NOT EXISTS group_reply_reactions (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        group_reply_id INTEGER NOT NULL,
+                        username TEXT NOT NULL,
+                        reaction TEXT NOT NULL,
+                        created_at TEXT DEFAULT (datetime('now')),
+                        FOREIGN KEY (group_reply_id) REFERENCES group_replies(id) ON DELETE CASCADE,
+                        FOREIGN KEY (username) REFERENCES users(username),
+                        UNIQUE(group_reply_id, username)
+                    )''')
+            except Exception as e:
+                logger.warning(f"Could not ensure group post tables: {e}")
+
             
             # Create community_files table
             logger.info("Creating community_files table...")
