@@ -134,4 +134,4 @@ export default function GroupFeed(){
   )
 }
 
-async function reloadFeed(){ try{ location.reload() }catch{} }
+// no-op
