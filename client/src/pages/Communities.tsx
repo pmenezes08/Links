@@ -37,6 +37,10 @@ export default function Communities(){
   const [showCreateSubModal, setShowCreateSubModal] = useState(false)
   const [newSubName, setNewSubName] = useState('')
   const [newSubType, setNewSubType] = useState<string>('')
+  // Group creation state
+  const [showCreateGroup, setShowCreateGroup] = useState(false)
+  const [newGroupName, setNewGroupName] = useState('')
+  const [approvalRequired, setApprovalRequired] = useState(false)
   const showTrainingTab = useMemo(() => {
     const parent = communities && communities.length > 0 ? communities[0] : null
     const parentTypeLower = ((parent as any)?.community_type || parent?.type || parentType || '').toLowerCase()
@@ -293,16 +297,10 @@ export default function Communities(){
         const parentIdNum = Number(pidLocal)
         return (
           <>
-            <div className="fixed bottom-6 right-6 z-50">
-              <button
-                className="w-14 h-14 rounded-full bg-[#4db6ac] text-black shadow-lg hover:brightness-110 grid place-items-center border border-[#4db6ac]"
-                onClick={() => { setNewSubName(''); setNewSubType(parentTypeLabel); setShowCreateSubModal(true) }}
-                aria-label="Create sub-community"
-                title="Create sub-community"
-              >
-                <i className="fa-solid fa-plus" />
-              </button>
-            </div>
+            <PlusActions
+              onCreateSub={() => { setNewSubName(''); setNewSubType(parentTypeLabel); setShowCreateSubModal(true) }}
+              onCreateGroup={() => { setShowCreateGroup(true); setNewGroupName(''); setApprovalRequired(false) }}
+            />
 
             {showCreateSubModal && (
               <div
@@ -364,9 +362,72 @@ export default function Communities(){
                 </div>
               </div>
             )}
+
+            {/* Create Group Modal */}
+            {showCreateGroup && (
+              <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur flex items-center justify-center" onClick={(e)=> { if (e.currentTarget === e.target) setShowCreateGroup(false) }}>
+                <div className="w-[92%] max-w-sm rounded-2xl border border-white/10 bg-[#0b0f10] p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="font-semibold text-sm">Create Group</div>
+                    <button className="p-2 rounded-md hover:bg:white/5" onClick={()=> setShowCreateGroup(false)} aria-label="Close"><i className="fa-solid fa-xmark"/></button>
+                  </div>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-xs text-[#9fb0b5] mb-1">Parent Community</label>
+                      <input value={parentName || `ID ${parentIdNum}`} disabled className="w-full px-3 py-2 rounded-md bg-black border border-white/15 text-sm text-white/70 disabled:opacity-70" />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-[#9fb0b5] mb-1">Group Name</label>
+                      <input value={newGroupName} onChange={e=> setNewGroupName(e.target.value)} placeholder="e.g., Morning Runners" className="w-full px-3 py-2 rounded-md bg-black border border-white/15 text-sm" />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-[#9fb0b5] mb-1">Join Policy</label>
+                      <select value={approvalRequired ? 'approval' : 'open'} onChange={e=> setApprovalRequired(e.target.value === 'approval')} className="w-full px-3 py-2 rounded-md bg-black border border-white/15 text-sm">
+                        <option value="open">Any member can join</option>
+                        <option value="approval">Approval required</option>
+                      </select>
+                    </div>
+                    <div className="flex items-center justify-end gap-2">
+                      <button className="px-3 py-2 rounded-md bg:white/10 hover:bg:white/15" onClick={()=> setShowCreateGroup(false)}>Cancel</button>
+                      <button className="px-3 py-2 rounded-md bg-[#4db6ac] text-black hover:brightness-110" onClick={async()=>{
+                        if (!newGroupName.trim()) { alert('Please provide a group name'); return }
+                        try{
+                          const fd = new URLSearchParams({ community_id: String(parentIdNum), name: newGroupName.trim(), approval_required: approvalRequired ? '1' : '0' })
+                          const r = await fetch('/api/groups/create', { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
+                          const j = await r.json().catch(()=>null)
+                          if (j?.success){ setShowCreateGroup(false); setNewGroupName(''); alert('Group created') }
+                          else alert(j?.error || 'Failed to create group')
+                        }catch{ alert('Network error') }
+                      }}>Create</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </>
         )
       })()}
+    </div>
+  )
+}
+
+function PlusActions({ onCreateSub, onCreateGroup }:{ onCreateSub: ()=>void, onCreateGroup: ()=>void }){
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="fixed bottom-6 right-6 z-50">
+      {open && (
+        <div className="mb-2 rounded-xl border border-white/10 bg-black/80 backdrop-blur p-2 w-56 shadow-lg">
+          <button className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/5 text-sm" onClick={()=> { setOpen(false); onCreateSub() }}>
+            Create Sub-Community
+          </button>
+          <button className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/5 text-sm" onClick={()=> { setOpen(false); onCreateGroup() }}>
+            Create Group
+          </button>
+        </div>
+      )}
+      <button className="w-14 h-14 rounded-full bg-[#4db6ac] text-black shadow-lg hover:brightness-110 grid place-items-center border border-[#4db6ac]" onClick={()=> setOpen(v=>!v)} aria-label="Actions">
+        <i className="fa-solid fa-plus" />
+      </button>
     </div>
   )
 }
