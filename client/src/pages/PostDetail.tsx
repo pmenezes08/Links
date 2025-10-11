@@ -216,8 +216,13 @@ export default function PostDetail(){
 
   async function refreshPost(){
     try{
-      const r = await fetch(`/get_post?post_id=${post_id}`, { credentials: 'include' })
-      const j = await r.json()
+      // Try group first
+      let r = await fetch(`/api/group_post?post_id=${post_id}`, { credentials: 'include' })
+      let j = await r.json().catch(()=>null)
+      if (!j?.success){
+        r = await fetch(`/get_post?post_id=${post_id}`, { credentials: 'include' })
+        j = await r.json().catch(()=>null)
+      }
       if (j?.success) setPost(j.post)
     }catch{}
   }
@@ -274,8 +279,12 @@ export default function PostDetail(){
     let mounted = true
     async function load(){
       try{
-        const r = await fetch(`/get_post?post_id=${post_id}`, { credentials: 'include' })
-        const j = await r.json()
+        let r = await fetch(`/api/group_post?post_id=${post_id}`, { credentials: 'include' })
+        let j = await r.json().catch(()=>null)
+        if (!j?.success){
+          r = await fetch(`/get_post?post_id=${post_id}`, { credentials: 'include' })
+          j = await r.json().catch(()=>null)
+        }
         if (!mounted) return
         if (j?.success) setPost(j.post)
         else setError(j?.error || 'Error')

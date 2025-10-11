@@ -16995,6 +16995,101 @@ def api_group_feed():
         logger.error(f"api_group_feed error: {e}")
         return jsonify({'success': False, 'error': 'Server error'})
 
+# Single group post API
+@app.route('/api/group_post')
+@login_required
+def api_group_post():
+    username = session.get('username')
+    try:
+        post_id = int(request.args.get('post_id', '0'))
+    except Exception:
+        return jsonify({'success': False, 'error': 'Invalid post_id'})
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            # Load post and group/community
+            c.execute(f"""
+                SELECT gp.id, gp.group_id, gp.username, gp.content, gp.image_path, gp.created_at,
+                       g.name as group_name, g.community_id
+                FROM {'`group_posts`' if USE_MYSQL else 'group_posts'} gp
+                JOIN {'`groups`' if USE_MYSQL else 'groups'} g ON g.id = gp.group_id
+                WHERE gp.id = {get_sql_placeholder()}
+            """, (post_id,))
+            row = c.fetchone()
+            if not row:
+                return jsonify({'success': False, 'error': 'Post not found'}), 404
+            group_id = row['group_id'] if hasattr(row, 'keys') else row[1]
+            community_id = row['community_id'] if hasattr(row, 'keys') else row[7]
+
+            # Membership check
+            ph = get_sql_placeholder()
+            c.execute(f"SELECT 1 FROM user_communities uc JOIN users u ON uc.user_id=u.id WHERE u.username={ph} AND uc.community_id={ph}", (username, community_id))
+            if not c.fetchone():
+                c.execute("SELECT parent_community_id FROM communities WHERE id=?", (community_id,))
+                r = c.fetchone(); pid = r['parent_community_id'] if hasattr(r, 'keys') else (r[0] if r else None)
+                if not pid:
+                    return jsonify({'success': False, 'error': 'Not a member'}), 403
+                c.execute(f"SELECT 1 FROM user_communities uc JOIN users u ON uc.user_id=u.id WHERE u.username={ph} AND uc.community_id={ph}", (username, pid))
+                if not c.fetchone():
+                    return jsonify({'success': False, 'error': 'Not a member'}), 403
+
+            # Build post
+            pid = row['id'] if hasattr(row, 'keys') else row[0]
+            uname = row['username'] if hasattr(row, 'keys') else row[2]
+            content = row['content'] if hasattr(row, 'keys') else row[3]
+            image_path = row['image_path'] if hasattr(row, 'keys') else row[4]
+            created_at = row['created_at'] if hasattr(row, 'keys') else row[5]
+            group_name = row['group_name'] if hasattr(row, 'keys') else row[6]
+
+            # Reactions
+            c.execute(f"SELECT reaction, COUNT(*) as c FROM {'`group_post_reactions`' if USE_MYSQL else 'group_post_reactions'} WHERE group_post_id = {get_sql_placeholder()} GROUP BY reaction", (pid,))
+            rx = c.fetchall() or []
+            reactions = { (r2['reaction'] if hasattr(r2, 'keys') else r2[0]): (r2['c'] if hasattr(r2, 'keys') else r2[1]) for r2 in rx }
+            c.execute(f"SELECT reaction FROM {'`group_post_reactions`' if USE_MYSQL else 'group_post_reactions'} WHERE group_post_id = {get_sql_placeholder()} AND username = {get_sql_placeholder()}", (pid, username))
+            urr = c.fetchone(); user_reaction = urr['reaction'] if hasattr(urr, 'keys') else (urr[0] if urr else None)
+
+            # Replies
+            c.execute(f"""
+                SELECT gr.id, gr.username, gr.content, gr.image_path, gr.created_at, up.profile_picture
+                FROM {'`group_replies`' if USE_MYSQL else 'group_replies'} gr
+                LEFT JOIN user_profiles up ON up.username = gr.username
+                WHERE gr.group_post_id = {get_sql_placeholder()}
+                ORDER BY gr.id DESC
+                LIMIT 100
+            """, (pid,))
+            rep_rows = c.fetchall() or []
+            replies = []
+            for rr in rep_rows:
+                rid = rr['id'] if hasattr(rr, 'keys') else rr[0]
+                c.execute(f"SELECT reaction, COUNT(*) as c FROM {'`group_reply_reactions`' if USE_MYSQL else 'group_reply_reactions'} WHERE group_reply_id = {get_sql_placeholder()} GROUP BY reaction", (rid,))
+                rrx = c.fetchall() or []
+                rreactions = { (r3['reaction'] if hasattr(r3, 'keys') else r3[0]): (r3['c'] if hasattr(r3, 'keys') else r3[1]) for r3 in rrx }
+                c.execute(f"SELECT reaction FROM {'`group_reply_reactions`' if USE_MYSQL else 'group_reply_reactions'} WHERE group_reply_id = {get_sql_placeholder()} AND username = {get_sql_placeholder()}", (rid, username))
+                rur = c.fetchone(); reply_user_reaction = rur['reaction'] if hasattr(rur, 'keys') else (rur[0] if rur else None)
+                replies.append({
+                    'id': rid,
+                    'username': rr['username'] if hasattr(rr, 'keys') else rr[1],
+                    'content': rr['content'] if hasattr(rr, 'keys') else rr[2],
+                    'image_path': rr['image_path'] if hasattr(rr, 'keys') else rr[3],
+                    'timestamp': rr['created_at'] if hasattr(rr, 'keys') else rr[4],
+                    'profile_picture': rr['profile_picture'] if hasattr(rr, 'keys') else rr[5],
+                    'reactions': rreactions,
+                    'user_reaction': reply_user_reaction,
+                })
+            post = {
+                'id': pid,
+                'username': uname,
+                'content': content,
+                'image_path': image_path,
+                'timestamp': created_at,
+                'reactions': reactions,
+                'user_reaction': user_reaction,
+                'replies': replies,
+            }
+            return jsonify({'success': True, 'post': post, 'group': { 'id': group_id, 'name': group_name }, 'community_id': community_id})
+    except Exception as e:
+        logger.error(f"api_group_post error: {e}")
+        return jsonify({'success': False, 'error': 'Server error'})
 # Create group post
 @app.route('/api/group_posts', methods=['POST'])
 @login_required
