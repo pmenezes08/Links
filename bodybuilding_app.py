@@ -2165,25 +2165,30 @@ def is_app_admin(username):
         return False
 
 def is_community_owner(username, community_id):
-    """Check if user is the owner of a community"""
+    """Check if user is the owner of a community (MySQL/SQLite-safe)."""
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
-            c.execute("SELECT creator_username FROM communities WHERE id = ?", (community_id,))
+            ph = get_sql_placeholder()
+            c.execute(f"SELECT creator_username FROM communities WHERE id = {ph}", (community_id,))
             result = c.fetchone()
-            return result and result['creator_username'] == username
-    except:
+            if not result:
+                return False
+            creator = result['creator_username'] if hasattr(result, 'keys') else result[0]
+            return creator == username
+    except Exception as _e:
         return False
 
 def is_community_admin(username, community_id):
-    """Check if user is an admin of a community"""
+    """Check if user is an admin of a community (MySQL/SQLite-safe)."""
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
-            c.execute("SELECT 1 FROM community_admins WHERE community_id = ? AND username = ?", 
+            ph = get_sql_placeholder()
+            c.execute(f"SELECT 1 FROM community_admins WHERE community_id = {ph} AND username = {ph}", 
                      (community_id, username))
             return c.fetchone() is not None
-    except:
+    except Exception as _e:
         return False
 
 def has_community_management_permission(username, community_id):
@@ -16336,6 +16341,7 @@ def api_groups_create_legacy():
         return jsonify({'success': False, 'error': 'Group name is required'})
     approval_required = approval_required_raw in ('1', 'true', 'True', 'yes', 'on')
     try:
+        # Treat community owner, admins, and app admin as authorized. Also allow the community's creator via user_communities role=admin fallback.
         if not has_community_management_permission(username, community_id):
             return jsonify({'success': False, 'error': 'Not authorized'}), 403
         with get_db_connection() as conn:
