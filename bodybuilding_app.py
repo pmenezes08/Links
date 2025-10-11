@@ -16851,6 +16851,18 @@ def api_group_feed():
         logger.error(f"api_group_feed error: {e}")
         return jsonify({'success': False, 'error': 'Server error'})
 
+# Serve React app for group feed route
+@app.route('/group_feed_react/<int:group_id>')
+@login_required
+def group_feed_react(group_id):
+    try:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        dist_dir = os.path.join(base_dir, 'client', 'dist')
+        return send_from_directory(dist_dir, 'index.html')
+    except Exception as e:
+        logger.error(f"Error serving group feed react: {str(e)}")
+        abort(500)
+
 @app.route('/gym_react')
 @login_required
 def gym_react():
