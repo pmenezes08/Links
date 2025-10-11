@@ -196,6 +196,34 @@ export default function GroupFeed(){
           )}
         </div>
       </div>
+      {/* Bottom navigation bar (General-like) */}
+      <div className="fixed bottom-4 left-1/2 transform -translate-x-1/2 z-40 w-[94%] max-w-[1200px] rounded-2xl border border-white/10 bg-black/80 backdrop-blur shadow-lg">
+        <div className="h-14 px-6 flex items-center justify-between text-[#cfd8dc]">
+          <button className="p-2 rounded-full hover:bg-white/5" aria-label="Home" onClick={()=> { try{ (document.scrollingElement || document.documentElement)?.scrollTo({ top: 0, behavior: 'smooth' }) }catch{} }}>
+            <i className="fa-solid fa-house" />
+          </button>
+          {/* Groups mirror Members icon to list members in owning community (optional later) */}
+          <button className="p-2 rounded-full hover:bg-white/5" aria-label="Members" onClick={()=> navigate(-1)}>
+            <i className="fa-solid fa-users" />
+          </button>
+          {/* New Post handled by composer above; keep quick access */}
+          <button className="w-10 h-10 rounded-md bg-[#4db6ac] text-black hover:brightness-110 grid place-items-center" aria-label="New Post" onClick={()=> {
+            try{
+              const el = document.querySelector('textarea') as HTMLTextAreaElement|null
+              if (el){ el.focus(); el.scrollIntoView({ behavior:'smooth', block:'center' }) }
+            }catch{}
+          }}>
+            <i className="fa-solid fa-plus" />
+          </button>
+          {/* Announcements not used in groups yet */}
+          <button className="relative p-2 rounded-full hover:bg-white/5" aria-label="Announcements" onClick={()=> alert('No announcements for groups yet') }>
+            <i className="fa-solid fa-bullhorn" />
+          </button>
+          <button className="p-2 rounded-full hover:bg-white/5" aria-label="More" onClick={()=> alert('More menu coming soon for groups') }>
+            <i className="fa-solid fa-ellipsis" />
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
