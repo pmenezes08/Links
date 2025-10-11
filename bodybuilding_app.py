@@ -16377,7 +16377,7 @@ def api_groups_create_legacy():
             # Insert group
             if USE_MYSQL:
                 c.execute("""
-                    INSERT INTO groups (community_id, name, approval_required, created_by)
+                    INSERT INTO `groups` (community_id, name, approval_required, created_by)
                     VALUES (%s, %s, %s, %s)
                 """, (community_id, name, 1 if approval_required else 0, username))
                 gid = c.lastrowid
@@ -16624,11 +16624,13 @@ def api_groups_list():
             placeholders = ','.join([get_sql_placeholder()]*len(eligible_ids)) if eligible_ids else 'NULL'
             params = tuple(eligible_ids)
             # Fetch groups and membership status
+            groups_table = '`groups`' if USE_MYSQL else 'groups'
+            group_members_table = '`group_members`' if USE_MYSQL else 'group_members'
             c.execute(f"""
                 SELECT g.id, g.name, g.community_id, g.approval_required,
                        COALESCE(gm.status, '') AS membership_status
-                FROM groups g
-                LEFT JOIN group_members gm ON gm.group_id = g.id AND gm.username = {ph}
+                FROM {groups_table} g
+                LEFT JOIN {group_members_table} gm ON gm.group_id = g.id AND gm.username = {ph}
                 WHERE g.community_id IN ({placeholders})
                 ORDER BY g.name
             """, (username, *params) if eligible_ids else (username,))
@@ -16663,7 +16665,7 @@ def api_groups_join():
             c = conn.cursor()
             ph = get_sql_placeholder()
             # Fetch group and owning community
-            c.execute("SELECT id, community_id, approval_required FROM groups WHERE id = ?", (group_id,))
+            c.execute(f"SELECT id, community_id, approval_required FROM {'`groups`' if USE_MYSQL else 'groups'} WHERE id = ?", (group_id,))
             g = c.fetchone()
             if not g:
                 return jsonify({'success': False, 'error': 'Group not found'}), 404
@@ -16748,12 +16750,14 @@ def api_groups_available_count():
             if not eligible:
                 return jsonify({'success': True, 'count': 0})
             placeholders = ','.join([get_sql_placeholder()]*len(eligible))
+            groups_table = '`groups`' if USE_MYSQL else 'groups'
+            group_members_table = '`group_members`' if USE_MYSQL else 'group_members'
             c.execute(f"""
                 SELECT COUNT(*) AS cnt
-                FROM groups g
+                FROM {groups_table} g
                 WHERE g.community_id IN ({placeholders})
                   AND NOT EXISTS (
-                      SELECT 1 FROM group_members gm
+                      SELECT 1 FROM {group_members_table} gm
                       WHERE gm.group_id = g.id AND gm.username = {get_sql_placeholder()}
                   )
             """, (*eligible, username))
