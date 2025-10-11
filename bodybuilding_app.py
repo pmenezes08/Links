@@ -16323,54 +16323,64 @@ def get_user_communities_hierarchical():
 @app.route('/api/groups/create', methods=['POST'])
 @login_required
 def api_groups_create():
+    """Create a group under a specific community/sub-community. Admins/owners only."""
     username = session.get('username')
-    community_id = request.form.get('community_id', '').strip()
+    community_id_raw = request.form.get('community_id', '').strip()
     name = request.form.get('name', '').strip()
-    approval_required = request.form.get('approval_required', '0').strip()
+    approval_required_raw = request.form.get('approval_required', '0').strip()
     try:
-        community_id_int = int(community_id)
+        community_id = int(community_id_raw)
     except Exception:
-        return jsonify({'success': False, 'error': 'Invalid community id'})
+        return jsonify({'success': False, 'error': 'Invalid community_id'})
     if not name:
-        return jsonify({'success': False, 'error': 'Name is required'})
-    # Permission: only owner/admin/app admin
-    if not (is_app_admin(username) or is_community_owner(username, community_id_int) or is_community_admin(username, community_id_int)):
-        return jsonify({'success': False, 'error': 'Not allowed'}), 403
+        return jsonify({'success': False, 'error': 'Group name is required'})
+    approval_required = approval_required_raw in ('1', 'true', 'True', 'yes', 'on')
     try:
+        if not has_community_management_permission(username, community_id):
+            return jsonify({'success': False, 'error': 'Not authorized'}), 403
         with get_db_connection() as conn:
             c = conn.cursor()
-            ar = 1 if str(approval_required) in ('1', 'true', 'True') else 0
-            c.execute(
-                """
-                INSERT INTO groups (community_id, name, approval_required, created_by)
-                VALUES (?, ?, ?, ?)
-                """,
-                (community_id_int, name, ar, username)
-            )
-            if not USE_MYSQL:
-                conn.commit()
-            return jsonify({'success': True})
+            # Ensure community exists
+            c.execute("SELECT id FROM communities WHERE id = ?", (community_id,))
+            if not c.fetchone():
+                return jsonify({'success': False, 'error': 'Community not found'}), 404
+            # Insert group
+            if USE_MYSQL:
+                c.execute("""
+                    INSERT INTO groups (community_id, name, approval_required, created_by)
+                    VALUES (%s, %s, %s, %s)
+                """, (community_id, name, 1 if approval_required else 0, username))
+                gid = c.lastrowid
+            else:
+                c.execute("""
+                    INSERT INTO groups (community_id, name, approval_required, created_by, created_at)
+                    VALUES (?, ?, ?, ?, ?)
+                """, (community_id, name, 1 if approval_required else 0, username, datetime.now().isoformat()))
+                gid = c.lastrowid
+            conn.commit()
+            return jsonify({'success': True, 'group_id': int(gid)})
     except Exception as e:
         logger.error(f"api_groups_create error: {e}")
-        return jsonify({'success': False, 'error': str(e)})
+        return jsonify({'success': False, 'error': 'Failed to create group'})
 
 
 @app.route('/api/groups', methods=['GET'])
 @login_required
 def api_groups_list():
+    """List groups for a community. If include_ancestors=1, includes parent chain."""
     username = session.get('username')
-    community_id = request.args.get('community_id', '').strip()
+    community_id_raw = request.args.get('community_id', '').strip()
+    include_ancestors = request.args.get('include_ancestors', '0') in ('1', 'true', 'True', 'yes')
     try:
-        community_id_int = int(community_id)
+        community_id = int(community_id_raw)
     except Exception:
-        return jsonify({'success': False, 'error': 'Invalid community id'})
+        return jsonify({'success': False, 'error': 'Invalid community_id'})
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
-            # User must be member of community or its parent to view groups
-            # Check ancestor membership: parent or same community
             placeholder = get_sql_placeholder()
-            c.execute(f"SELECT parent_community_id FROM communities WHERE id = {placeholder}", (community_id_int,))
+            # Determine parent for ancestor inclusion and membership checks
+            c.execute(f"SELECT parent_community_id FROM communities WHERE id = {placeholder}", (community_id,))
             row = c.fetchone()
             parent_id = (row['parent_community_id'] if hasattr(row, 'keys') else row[0]) if row else None
 
@@ -16381,26 +16391,30 @@ def api_groups_list():
                 except Exception:
                     return False
 
-            if not (is_member(community_id_int) or (parent_id and is_member(parent_id))):
+            # User must be member of the community or its parent
+            if not (is_member(community_id) or (parent_id and is_member(parent_id))):
                 return jsonify({'success': False, 'error': 'Not a member'}), 403
 
-            # List groups for this community only
-            c.execute("SELECT id, name, approval_required FROM groups WHERE community_id = ? ORDER BY name", (community_id_int,))
-            groups = c.fetchall()
+            community_ids = [community_id]
+            if include_ancestors and parent_id:
+                community_ids.append(parent_id)
 
-            # Attach membership status for current user
             out = []
-            for g in groups:
-                gid = g['id'] if hasattr(g, 'keys') else g[0]
-                c.execute("SELECT status FROM group_members WHERE group_id=? AND username=?", (gid, username))
-                gm = c.fetchone()
-                status = gm['status'] if hasattr(gm, 'keys') else (gm[0] if gm else None)
-                out.append({
-                    'id': gid,
-                    'name': g['name'] if hasattr(g, 'keys') else g[1],
-                    'approval_required': bool(g['approval_required'] if hasattr(g, 'keys') else g[2]),
-                    'membership_status': status or None,
-                })
+            for cid in community_ids:
+                c.execute("SELECT id, name, approval_required FROM groups WHERE community_id = ? ORDER BY name", (cid,))
+                groups = c.fetchall() or []
+                for g in groups:
+                    gid = g['id'] if hasattr(g, 'keys') else g[0]
+                    c.execute("SELECT status FROM group_members WHERE group_id=? AND username=?", (gid, username))
+                    gm = c.fetchone()
+                    status = gm['status'] if hasattr(gm, 'keys') else (gm[0] if gm else None)
+                    out.append({
+                        'id': gid,
+                        'name': g['name'] if hasattr(g, 'keys') else g[1],
+                        'approval_required': bool(g['approval_required'] if hasattr(g, 'keys') else g[2]),
+                        'membership_status': status or None,
+                        'community_id': cid,
+                    })
             return jsonify({'success': True, 'groups': out})
     except Exception as e:
         logger.error(f"api_groups_list error: {e}")
