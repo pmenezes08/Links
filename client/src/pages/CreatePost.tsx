@@ -7,6 +7,7 @@ export default function CreatePost(){
   const [params] = useSearchParams()
   const navigate = useNavigate()
   const communityId = params.get('community_id') || ''
+  const groupId = params.get('group_id') || ''
   const [content, setContent] = useState('')
   const [file, setFile] = useState<File|null>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -60,13 +61,19 @@ export default function CreatePost(){
     try{
       const fd = new FormData()
       fd.append('content', content)
-      if (communityId) fd.append('community_id', communityId)
       if (file) fd.append('image', file)
       fd.append('dedupe_token', tokenRef.current)
-      await fetch('/post_status', { method: 'POST', credentials: 'include', body: fd })
+      if (groupId){
+        fd.append('group_id', groupId)
+        const r = await fetch('/api/group_posts', { method: 'POST', credentials: 'include', body: fd })
+        await r.json().catch(()=>null)
+      } else {
+        if (communityId) fd.append('community_id', communityId)
+        await fetch('/post_status', { method: 'POST', credentials: 'include', body: fd })
+      }
       
       // Show praise for first post
-      if (isFirstPost) {
+      if (!groupId && isFirstPost) {
         setShowPraise(true)
         setTimeout(() => {
           setShowPraise(false)
@@ -75,7 +82,8 @@ export default function CreatePost(){
         }, 2000)
       } else {
         // Regardless of server response, navigate back to feed to avoid double tap
-        if (communityId) navigate(`/community_feed_react/${communityId}`)
+        if (groupId) navigate(`/group_feed_react/${groupId}`)
+        else if (communityId) navigate(`/community_feed_react/${communityId}`)
         else navigate(-1)
       }
     }catch{
