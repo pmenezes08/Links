@@ -43,9 +43,18 @@ export default function Communities(){
   const [approvalRequired, setApprovalRequired] = useState(false)
   // Groups modal (list & join)
   const [showGroupsModal, setShowGroupsModal] = useState(false)
-  const [groupsModalLoading, setGroupsModalLoading] = useState(false)
   const [groupsModalCommunityId, setGroupsModalCommunityId] = useState<number|null>(null)
-  const [groupsModalList, setGroupsModalList] = useState<Array<{ id:number; name:string; approval_required:boolean; membership_status?: string | null; community_id:number }>>([])
+  useEffect(() => {
+    const onOpen = (e: any) => {
+      const cid = e?.detail?.cid
+      if (typeof cid === 'number'){
+        setGroupsModalCommunityId(cid)
+        setShowGroupsModal(true)
+      }
+    }
+    window.addEventListener('open-groups-modal', onOpen as any)
+    return () => window.removeEventListener('open-groups-modal', onOpen as any)
+  }, [])
   const showTrainingTab = useMemo(() => {
     const parent = communities && communities.length > 0 ? communities[0] : null
     const parentTypeLower = ((parent as any)?.community_type || parent?.type || parentType || '').toLowerCase()
@@ -188,9 +197,6 @@ export default function Communities(){
         open={showGroupsModal}
         onClose={()=> setShowGroupsModal(false)}
         communityId={groupsModalCommunityId}
-        onResolve={async(id)=>{
-          // no-op
-        }}
       />
 
       {/* Slide-out menu (90% width) same as feed */}
@@ -446,12 +452,18 @@ function PlusActions({ onCreateSub, onCreateGroup }:{ onCreateSub: ()=>void, onC
   )
 }
 
-function GroupsModal({ open, onClose, communityId, onResolve }:{ open:boolean, onClose: ()=>void, communityId: number | null, onResolve: (groupId:number)=>Promise<void> }){
+function GroupsModal({ open, onClose, communityId }:{ open:boolean, onClose: ()=>void, communityId: number | null }){
   const [loading, setLoading] = useState(false)
   const [items, setItems] = useState<Array<{ id:number; name:string; approval_required:boolean; membership_status?: string | null; community_id:number }>>([])
   useEffect(() => {
-    (document.getElementById('groups-modal-root') as any).__open = (cid:number)=>{
-      // host-managed opener
+    const el = document.getElementById('groups-modal-root') as any
+    if (el){
+      el.__reactOpen = (cid:number)=>{
+        try{
+          const evt = new CustomEvent('open-groups-modal', { detail: { cid } })
+          window.dispatchEvent(evt)
+        }catch{}
+      }
     }
   }, [])
   useEffect(() => {
@@ -486,7 +498,6 @@ function GroupsModal({ open, onClose, communityId, onResolve }:{ open:boolean, o
           <div className="space-y-2 max-h-[50vh] overflow-y-auto">
             {items.map(g => {
               const status = g.membership_status
-              const canJoin = !status
               return (
                 <div key={g.id} className="flex items-center gap-2 border border-white/10 rounded-lg p-2">
                   <div className="flex-1">
@@ -808,7 +819,11 @@ function CommunityItem({
         <button
           className="h-full w-20 bg-[#4db6ac]/20 text-[#4db6ac] flex items-center justify-center hover:bg-[#4db6ac]/30 transition-all duration-200"
           onClick={(e)=> { e.stopPropagation(); try{
-            (window as any).openGroupsModal?.(community.id)
+            const root = document.getElementById('groups-modal-root') as any
+            if (root && root.__reactOpen){ root.__reactOpen(community.id) }
+            else {
+              alert('Groups UI not available')
+            }
           }catch{} }}
           style={{
             opacity: isSwipedOpen || dragX < -20 ? 1 : 0,
