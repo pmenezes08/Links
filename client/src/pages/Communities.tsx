@@ -483,17 +483,12 @@ function GroupsModal({ open, onClose, communityId }:{ open:boolean, onClose: ()=
       if (!open || !communityId) return
       setLoading(true)
       try{
-        // Check membership in this community first
-        try{
-          const rm = await fetch(`/api/is_member?community_id=${communityId}`, { credentials:'include' })
-          const jm = await rm.json().catch(()=>null)
-          setIsMember(!!(jm?.success && jm.member === true))
-        }catch{}
         const r = await fetch(`/api/groups?community_id=${communityId}&include_ancestors=0`, { credentials:'include' })
+        if (r.status === 403){ setIsMember(false); setItems([]); return }
         const j = await r.json().catch(()=>null)
         if (!ok) return
-        if (j?.success) setItems(j.groups||[])
-        else setItems([])
+        if (j?.success){ setItems(j.groups||[]); setIsMember(typeof j.member === 'boolean' ? j.member : true) }
+        else { setItems([]) }
       }catch{ if (ok) setItems([]) }
       finally{ if (ok) setLoading(false) }
     }
