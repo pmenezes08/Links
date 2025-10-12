@@ -50,6 +50,19 @@ export default function GroupFeed(){
     <div className="fixed inset-x-0 top-14 bottom-0 bg-black text-white">
       <div className="h-full max-w-2xl mx-auto overflow-y-auto no-scrollbar pb-28 px-3" style={{ WebkitOverflowScrolling: 'touch' as any }}>
         <div className="space-y-3">
+          {/* Back to communities (parent) to match CommunityFeed placement */}
+          <div className="flex items-center gap-2">
+            <button
+              className="px-3 py-1.5 rounded-lg border border-white/10 bg-white/[0.03] text-sm hover:bg-white/10"
+              onClick={()=> {
+                const cid = (communityMeta as any)?.id
+                if (cid) navigate(`/communities?parent_id=${cid}`)
+                else navigate('/communities')
+              }}
+            >
+              ← Back to Communities
+            </button>
+          </div>
           {/* Header removed; composer removed (use dedicated compose page) */}
           {posts.length === 0 ? (
             <div className="text-sm text-[#9fb0b5]">No posts yet.</div>
