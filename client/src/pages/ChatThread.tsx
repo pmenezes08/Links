@@ -9,6 +9,8 @@ interface Message {
   id: number | string
   text: string
   image_path?: string
+  audio_path?: string
+  audio_duration_seconds?: number
   sent: boolean
   time: string
   reaction?: string
@@ -41,6 +43,13 @@ export default function ChatThread(){
   const [showAttachMenu, setShowAttachMenu] = useState(false)
   const fileInputRef = useRef<HTMLInputElement|null>(null)
   const cameraInputRef = useRef<HTMLInputElement|null>(null)
+  const audioInputRef = useRef<HTMLInputElement|null>(null)
+  const [recording, setRecording] = useState(false)
+  const [recorder, setRecorder] = useState<MediaRecorder|null>(null)
+  const chunksRef = useRef<BlobPart[]>([])
+  const recordStartRef = useRef<number>(0)
+  const [recordMs, setRecordMs] = useState(0)
+  const recordTimerRef = useRef<any>(null)
   const [previewImage, setPreviewImage] = useState<string|null>(null)
   const lastFetchTime = useRef<number>(0)
   const pendingDeletions = useRef<Set<number|string>>(new Set())
@@ -733,6 +742,15 @@ export default function ChatThread(){
                         </div>
                       ) : null}
                       
+                      {/* Audio message */}
+                      {m.audio_path && !m.image_path ? (
+                        <div className="mb-2">
+                          <audio controls preload="none" src={m.audio_path.startsWith('blob:') ? m.audio_path : `/uploads/${m.audio_path}`} className="w-full" />
+                          {typeof m.audio_duration_seconds === 'number' ? (
+                            <div className="text-[11px] text-white/60 mt-1">{Math.max(0, m.audio_duration_seconds)}s</div>
+                          ) : null}
+                        </div>
+                      ) : null}
                       {/* Image display with loader */}
                       {m.image_path ? (
                         <div className="mb-2">
@@ -844,6 +862,18 @@ export default function ChatThread(){
                     <div className="text-white/60 text-xs">Take a photo</div>
                   </div>
                 </button>
+                <button
+                  className="w-full px-4 py-3 flex items-center gap-3 hover:bg-white/5 transition-colors text-left"
+                  onClick={()=> { setShowAttachMenu(false); startRecording() }}
+                >
+                  <div className="w-10 h-10 rounded-full bg-[#4db6ac]/20 flex items-center justify-center">
+                    <i className="fa-solid fa-microphone text-[#4db6ac]" />
+                  </div>
+                  <div>
+                    <div className="text-white font-medium">Voice Message</div>
+                    <div className="text-white/60 text-xs">Tap to record</div>
+                  </div>
+                </button>
               </div>
             </>
           )}
@@ -862,6 +892,14 @@ export default function ChatThread(){
             accept="image/*"
             capture="environment"
             onChange={handleFileChange}
+            className="hidden"
+          />
+          <input
+            ref={audioInputRef}
+            type="file"
+            accept="audio/*"
+            capture
+            onChange={(e)=>{ const f = e.target.files?.[0]; if (f) uploadAudioBlob(f as any as Blob); e.currentTarget.value=''; }}
             className="hidden"
           />
           
@@ -898,6 +936,14 @@ export default function ChatThread(){
               }}
             />
             
+            {/* Recording pill */}
+            {recording && (
+              <div className="absolute left-2 -top-7 text-xs text-white/70 flex items-center gap-2">
+                <span className="inline-block w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+                <span>{new Date(recordMs).toISOString().substr(14,5)}</span>
+                <button className="px-2 py-0.5 border border-white/20 rounded-md hover:bg-white/10" onClick={()=>{ try{ recorder && recorder.state!=='inactive' && recorder.stop() }catch{} }}>Stop</button>
+              </div>
+            )}
             {/* Send button - always visible */}
             <div className="absolute right-1 top-1/2 transform -translate-y-1/2 w-8 h-8 flex items-center justify-center">
               <button

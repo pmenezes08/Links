@@ -6796,7 +6796,7 @@ def get_messages():
             
             # Get messages between users
             c.execute("""
-                SELECT id, sender, receiver, message, image_path, timestamp
+                SELECT id, sender, receiver, message, image_path, audio_path, audio_duration_seconds, audio_mime, timestamp
                 FROM messages
                 WHERE (sender = ? AND receiver = ?) 
                    OR (sender = ? AND receiver = ?)
@@ -6809,6 +6809,9 @@ def get_messages():
                     'id': msg['id'],
                     'text': msg['message'],
                     'image_path': msg.get('image_path') if hasattr(msg, 'get') else msg[4],
+                    'audio_path': msg.get('audio_path') if hasattr(msg, 'get') else msg[5] if len(msg) > 5 else None,
+                    'audio_duration_seconds': msg.get('audio_duration_seconds') if hasattr(msg, 'get') else msg[6] if len(msg) > 6 else None,
+                    'audio_mime': msg.get('audio_mime') if hasattr(msg, 'get') else msg[7] if len(msg) > 7 else None,
                     'sent': msg['sender'] == username,
                     'time': msg['timestamp']
                 })
@@ -7057,6 +7060,137 @@ def send_photo_message():
         return jsonify({'success': False, 'error': 'Failed to send photo'})
 
 # Message photos served by web server static mapping (/uploads/message_photos -> uploads/message_photos)
+
+@app.route('/send_audio_message', methods=['POST'])
+@login_required
+def send_audio_message():
+    """Send a voice message to another user"""
+    username = session.get('username')
+    recipient_id = request.form.get('recipient_id')
+    duration_seconds_raw = (request.form.get('duration_seconds') or '').strip()
+    try:
+        duration_seconds = int(duration_seconds_raw) if duration_seconds_raw else None
+    except Exception:
+        duration_seconds = None
+
+    if not recipient_id:
+        return jsonify({'success': False, 'error': 'Recipient required'})
+    if 'audio' not in request.files:
+        return jsonify({'success': False, 'error': 'No audio uploaded'})
+    audio = request.files['audio']
+    if audio.filename == '':
+        return jsonify({'success': False, 'error': 'No audio selected'})
+
+    # Validate MIME (best-effort)
+    allowed_mimes = {
+        'audio/webm': 'webm', 'audio/ogg': 'ogg', 'audio/mpeg': 'mp3',
+        'audio/mp4': 'm4a', 'audio/x-m4a': 'm4a', 'audio/aac': 'aac',
+        'audio/wav': 'wav', 'audio/3gpp': '3gp', 'audio/3gpp2': '3g2'
+    }
+    mime = (audio.mimetype or '').lower()
+    ext = None
+    if mime in allowed_mimes:
+        ext = allowed_mimes[mime]
+    else:
+        # Fallback by filename extension
+        try:
+            ext = audio.filename.rsplit('.', 1)[1].lower()
+        except Exception:
+            ext = 'webm'
+
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            # Resolve recipient username
+            c.execute("SELECT username FROM users WHERE id = ?", (recipient_id,))
+            rec = c.fetchone()
+            if not rec:
+                return jsonify({'success': False, 'error': 'Recipient not found'})
+            recipient_username = rec['username'] if hasattr(rec, 'keys') else rec[0]
+
+            # Save file to uploads/voice_messages
+            import uuid
+            from werkzeug.utils import secure_filename
+            unique_filename = f"voice_{uuid.uuid4().hex[:12]}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.{ext}"
+            uploads_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads', 'voice_messages')
+            os.makedirs(uploads_dir, exist_ok=True)
+            file_path = os.path.join(uploads_dir, secure_filename(unique_filename))
+            audio.save(file_path)
+
+            rel_path = f"voice_messages/{unique_filename}"
+
+            # Insert audio message
+            c.execute(
+                """
+                INSERT INTO messages (sender, receiver, message, audio_path, audio_duration_seconds, audio_mime, timestamp)
+                VALUES (?, ?, ?, ?, ?, ?, NOW())
+                """,
+                (username, recipient_username, '', rel_path, duration_seconds, mime)
+            )
+            conn.commit()
+
+            # Invalidate caches
+            invalidate_message_cache(username, recipient_username)
+
+            # Notification (same as text/photo)
+            try:
+                c.execute(
+                    """
+                    INSERT INTO notifications (user_id, from_user, type, message, created_at, is_read)
+                    VALUES (?, ?, 'message', ?, NOW(), 0)
+                    ON DUPLICATE KEY UPDATE
+                        created_at = NOW(),
+                        message = VALUES(message),
+                        is_read = 0
+                    """,
+                    (recipient_username, username, f"You have new messages from {username}")
+                )
+                conn.commit()
+            except Exception as notif_e:
+                logger.warning(f"Could not create/update audio message notification: {notif_e}")
+
+            # Push (suppress if actively viewing)
+            try:
+                should_push = True
+                try:
+                    with get_db_connection() as conn2:
+                        c2 = conn2.cursor()
+                        if USE_MYSQL:
+                            c2.execute(
+                                """
+                                SELECT 1 FROM active_chat_status
+                                WHERE user=? AND peer=? AND updated_at > DATE_SUB(NOW(), INTERVAL 20 SECOND)
+                                LIMIT 1
+                                """,
+                                (recipient_username, username)
+                            )
+                        else:
+                            c2.execute(
+                                """
+                                SELECT 1 FROM active_chat_status
+                                WHERE user=? AND peer=? AND datetime(updated_at) > datetime('now','-20 seconds')
+                                LIMIT 1
+                                """,
+                                (recipient_username, username)
+                            )
+                        if c2.fetchone():
+                            should_push = False
+                except Exception as pe:
+                    logger.warning(f"active chat presence check (audio) failed: {pe}")
+                if should_push:
+                    send_push_to_user(recipient_username, {
+                        'title': f'Message from {username}',
+                        'body': f'You have new messages from {username}',
+                        'url': f'/user_chat/chat/{username}',
+                        'tag': f'message-{username}',
+                    })
+            except Exception as _e:
+                logger.warning(f"push send_audio_message warn: {_e}")
+
+            return jsonify({'success': True, 'audio_path': rel_path})
+    except Exception as e:
+        logger.error(f"Error sending audio message: {str(e)}")
+        return jsonify({'success': False, 'error': 'Failed to send audio'})
 
 @app.route('/debug/message_photos')
 @login_required
