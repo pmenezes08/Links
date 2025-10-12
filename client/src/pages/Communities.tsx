@@ -465,6 +465,7 @@ function PlusActions({ onCreateSub, onCreateGroup }:{ onCreateSub: ()=>void, onC
 function GroupsModal({ open, onClose, communityId }:{ open:boolean, onClose: ()=>void, communityId: number | null }){
   const [loading, setLoading] = useState(false)
   const [items, setItems] = useState<Array<{ id:number; name:string; approval_required:boolean; membership_status?: string | null; community_id:number }>>([])
+  const [isMember, setIsMember] = useState<boolean | null>(null)
   useEffect(() => {
     const el = document.getElementById('groups-modal-root') as any
     if (el){
@@ -482,6 +483,12 @@ function GroupsModal({ open, onClose, communityId }:{ open:boolean, onClose: ()=
       if (!open || !communityId) return
       setLoading(true)
       try{
+        // Check membership in this community first
+        try{
+          const rm = await fetch(`/api/is_member?community_id=${communityId}`, { credentials:'include' })
+          const jm = await rm.json().catch(()=>null)
+          setIsMember(!!(jm?.success && jm.member === true))
+        }catch{}
         const r = await fetch(`/api/groups?community_id=${communityId}&include_ancestors=0`, { credentials:'include' })
         const j = await r.json().catch(()=>null)
         if (!ok) return
@@ -502,6 +509,13 @@ function GroupsModal({ open, onClose, communityId }:{ open:boolean, onClose: ()=
         </div>
         {loading ? (
           <div className="text-[#9fb0b5] text-sm">Loading…</div>
+        ) : (isMember === false) ? (
+          <div className="space-y-3">
+            <div className="text-[#9fb0b5] text-sm">Join this community to view and join its groups.</div>
+            <div className="flex justify-end">
+              <button className="px-3 py-1.5 rounded-md bg-[#4db6ac] text:black text-sm hover:brightness-110" onClick={()=> { onClose(); window.location.href = `/community_feed_react/${communityId}` }}>Go to community</button>
+            </div>
+          </div>
         ) : items.length === 0 ? (
           <div className="text-[#9fb0b5] text-sm">No groups available.</div>
         ) : (
@@ -511,7 +525,13 @@ function GroupsModal({ open, onClose, communityId }:{ open:boolean, onClose: ()=
               return (
                 <div key={g.id} className="flex items-center gap-2 border border-white/10 rounded-lg p-2">
                   <div className="flex-1">
-                    <button className="font-medium text-white underline decoration-white/20 underline-offset-2" onClick={()=> { window.location.href = `/group_feed_react/${g.id}` }}>{g.name}</button>
+                    <button className="font-medium text-white underline decoration-white/20 underline-offset-2" onClick={()=> {
+                      if (status !== 'member'){
+                        alert(g.approval_required ? 'This group requires approval. Request to join and wait for approval.' : 'Join the community first, then join this group.')
+                        return
+                      }
+                      window.location.href = `/group_feed_react/${g.id}`
+                    }}>{g.name}</button>
                     <div className="text-xs text-[#9fb0b5]">{g.approval_required ? 'Approval required' : 'Open to members'}</div>
                   </div>
                   {status === 'member' ? (

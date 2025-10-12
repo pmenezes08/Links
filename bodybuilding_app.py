@@ -16697,7 +16697,8 @@ def api_groups_list():
                 JOIN users u ON uc.user_id = u.id
                 WHERE u.username = {ph} AND uc.community_id = {ph}
             """, (username, community_id))
-            if not c.fetchone():
+            member_direct = bool(c.fetchone())
+            if not member_direct:
                 # If include_ancestors is requested, also allow if user is member of parent
                 if not include_ancestors:
                     return jsonify({'success': False, 'error': 'Not a member'}), 403
@@ -16736,7 +16737,7 @@ def api_groups_list():
                     'membership_status': r['membership_status'] or None,
                 }
                 groups.append(item)
-            return jsonify({'success': True, 'groups': groups})
+            return jsonify({'success': True, 'groups': groups, 'member': bool(member_direct)})
     except Exception as e:
         logger.error(f"api_groups_list error: {e}")
         return jsonify({'success': False, 'error': 'Failed to list groups'})
