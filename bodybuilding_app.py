@@ -867,6 +867,26 @@ def add_missing_tables():
             except Exception as e:
                 logger.warning(f"Could not ensure image_path column on messages: {e}")
 
+            # Ensure messages table has audio columns for voice messages
+            for col_name, col_type in [
+                ('audio_path', 'TEXT'),
+                ('audio_duration_seconds', 'INTEGER'),
+                ('audio_mime', 'TEXT'),
+            ]:
+                try:
+                    exists = False
+                    try:
+                        c.execute(f"SHOW COLUMNS FROM messages LIKE '{col_name}'")
+                        exists = c.fetchone() is not None
+                    except Exception:
+                        exists = False
+                    if not exists:
+                        c.execute(f"ALTER TABLE messages ADD COLUMN {col_name} {col_type}")
+                        conn.commit()
+                        logger.info(f"Added {col_name} column to messages table")
+                except Exception as ae:
+                    logger.warning(f"Could not ensure {col_name} column on messages: {ae}")
+
             # Typing status table for realtime UX
             c.execute('''CREATE TABLE IF NOT EXISTS typing_status (
                              id INTEGER PRIMARY KEY AUTO_INCREMENT,
