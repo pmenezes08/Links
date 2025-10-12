@@ -84,7 +84,23 @@ export default function HeaderBar({ title, username, displayName, avatarUrl }: H
             <Avatar username={username || ''} url={resolvedAvatar} size={32} />
           </button>
         )}
-        <div className="font-semibold truncate tracking-[-0.01em] flex-1">{title}</div>
+        <div className="font-semibold tracking-[-0.01em] flex-1 min-w-0">
+          {(() => {
+            const t = String(title || '')
+            const idx = t.indexOf(' · ')
+            if (idx > -1){
+              const left = t.slice(0, idx)
+              const right = t.slice(idx + 3)
+              return (
+                <div className="whitespace-nowrap overflow-hidden text-ellipsis">
+                  <span className="truncate inline-block max-w-[60%] align-baseline">{left}</span>
+                  <span className="text-[#9fb0b5] align-baseline">{` · ${right}`}</span>
+                </div>
+              )
+            }
+            return <span className="truncate inline-block align-baseline">{t}</span>
+          })()}
+        </div>
         <div className="flex items-center gap-2">
           <button className="relative p-2 rounded-full hover:bg-white/5" onClick={()=> navigate('/user_chat')} aria-label="Messages">
             <i className="fa-solid fa-comments" />
