@@ -4,6 +4,7 @@ import Avatar from '../components/Avatar'
 import ImageLoader from '../components/ImageLoader'
 import { formatSmartTime } from '../utils/time'
 import { useHeader } from '../contexts/HeaderContext'
+import { renderTextWithLinks } from '../utils/linkUtils'
 
 type Reply = { id:number; username:string; content:string; image_path?:string|null; timestamp:string; profile_picture?:string|null; reactions: Record<string, number>; user_reaction: string|null }
 type Post = { id:number; username:string; content:string; image_path?:string|null; timestamp:string; profile_picture?:string|null; reactions: Record<string, number>; user_reaction: string|null, replies: Reply[], can_edit?: boolean, can_delete?: boolean }
@@ -118,7 +119,7 @@ export default function GroupFeed(){
                   ) : null}
                 </div>
                 <div className="px-3 py-2 space-y-2">
-                  <div className="whitespace-pre-wrap text-[14px] leading-relaxed">{p.content}</div>
+                  <div className="whitespace-pre-wrap text-[14px] leading-relaxed">{renderTextWithLinks(p.content)}</div>
                   {p.image_path ? (
                     <ImageLoader
                       src={(() => {
