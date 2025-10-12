@@ -82,7 +82,7 @@ export default function GroupFeed(){
                     <div className="ml-2 flex items-center gap-1">
                       {p.can_edit ? (
                         <button
-                          className="p-1.5 rounded hover:bg-white/5"
+                          className="ml-2 px-2 py-1 rounded-full text-[#6c757d] hover:text-[#4db6ac]"
                           aria-label="Edit post"
                           onClick={async (e)=> {
                             e.stopPropagation()
@@ -95,12 +95,12 @@ export default function GroupFeed(){
                             else { alert(j?.error || 'Failed to edit') }
                           }}
                         >
-                          <i className="fa-solid fa-pen" />
+                          <i className="fa-regular fa-pen-to-square" />
                         </button>
                       ) : null}
                       {p.can_delete ? (
                         <button
-                          className="p-1.5 rounded hover:bg-white/5 text-red-400"
+                          className="ml-2 px-2 py-1 rounded-full text-[#6c757d] hover:text-[#4db6ac]"
                           aria-label="Delete post"
                           onClick={async (e)=> {
                             e.stopPropagation()
@@ -112,7 +112,7 @@ export default function GroupFeed(){
                             else { alert(j?.error || 'Failed to delete') }
                           }}
                         >
-                          <i className="fa-solid fa-trash" />
+                          <i className="fa-regular fa-trash-can" style={{ color: 'inherit' }} />
                         </button>
                       ) : null}
                     </div>
