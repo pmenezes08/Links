@@ -8713,20 +8713,53 @@ def add_reaction():
                 c.execute("INSERT INTO reactions (post_id, username, reaction_type) VALUES (?, ?, ?)",
                           (post_id, username, reaction_type))
 
-            # Create notification for post owner (only if adding/changing reaction, not removing)
+            # Create notification for post owner and other engaged users (only if adding/changing reaction, not removing)
             if existing is None or (existing and existing['reaction_type'] != reaction_type):
                 # Get post owner and community_id
                 c.execute("SELECT username, community_id FROM posts WHERE id = ?", (post_id,))
                 post_data = c.fetchone()
                 logger.info(f"Reaction notification check - Post owner: {post_data['username'] if post_data else 'None'}, Reactor: {username}")
-                if post_data and post_data['username'] != username:
-                    # Insert notification directly in this transaction
-                    c.execute("""
-                        INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message)
-                        VALUES (?, ?, ?, ?, ?, ?)
-                    """, (post_data['username'], username, 'reaction', post_id, post_data['community_id'], 
-                          f"{username} reacted to your post"))
-                    logger.info(f"Created notification for {post_data['username']} from {username}")
+                if post_data:
+                    owner = post_data['username']
+                    comm_id = post_data['community_id']
+                    recipients = set()
+                    if owner and owner != username:
+                        recipients.add(owner)
+                    # Prior repliers
+                    try:
+                        c.execute("SELECT DISTINCT username FROM replies WHERE post_id=?", (post_id,))
+                        for rr in c.fetchall() or []:
+                            u = rr['username'] if hasattr(rr,'keys') else rr[0]
+                            if u and u != username and u != owner:
+                                recipients.add(u)
+                    except Exception:
+                        pass
+                    # Prior reactors
+                    try:
+                        c.execute("SELECT DISTINCT username FROM reactions WHERE post_id=?", (post_id,))
+                        for rv in c.fetchall() or []:
+                            u = rv['username'] if hasattr(rv,'keys') else rv[0]
+                            if u and u != username and u != owner:
+                                recipients.add(u)
+                    except Exception:
+                        pass
+                    # Insert notifications
+                    for target in recipients:
+                        try:
+                            c.execute("""
+                                INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message)
+                                VALUES (?, ?, 'reaction', ?, ?, ?)
+                            """, (target, username, post_id, comm_id, f"{username} reacted in a thread you follow"))
+                        except Exception:
+                            try:
+                                c.execute("""
+                                    INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read)
+                                    VALUES (?, ?, 'reaction', ?, ?, ?, NOW(), 0)
+                                    ON CONFLICT(user_id, from_user, type, post_id, community_id) DO UPDATE SET created_at=excluded.created_at, is_read=0, message=excluded.message
+                                """, (target, username, post_id, comm_id, f"{username} reacted in a thread you follow"))
+                            except Exception:
+                                pass
+                    logger.info(f"Created reaction notifications for {len(recipients)} recipients")
             
             conn.commit()
 
@@ -8778,6 +8811,7 @@ def create_notification(user_id, from_user, notification_type, post_id=None, com
 def notify_post_reply_recipients(*, post_id: int, from_user: str, community_id: int|None, parent_reply_id: int|None):
     """Create in-app notifications and web push for post reply recipients.
     Recipients: post owner and (if applicable) parent reply author; excludes sender; dedup within short window.
+    Additionally notify prior engagers (users who replied or reacted on the post), excluding the actor and already-notified recipients.
     """
     try:
         with get_db_connection() as conn:
@@ -8796,6 +8830,25 @@ def notify_post_reply_recipients(*, post_id: int, from_user: str, community_id: 
                 parent_author = (r2['username'] if hasattr(r2,'keys') else r2[0]) if r2 else None
                 if parent_author and parent_author not in (from_user, post_owner):
                     recipients.add(parent_author)
+
+            # Include prior engagers: anyone who replied on this post
+            try:
+                c.execute("SELECT DISTINCT username FROM replies WHERE post_id=?", (post_id,))
+                for rr in c.fetchall() or []:
+                    uname = rr['username'] if hasattr(rr,'keys') else rr[0]
+                    if uname and uname not in (from_user, post_owner, parent_author):
+                        recipients.add(uname)
+            except Exception as qe:
+                logger.warning(f"collect prior repliers failed: {qe}")
+            # Include prior reactors
+            try:
+                c.execute("SELECT DISTINCT username FROM reactions WHERE post_id=?", (post_id,))
+                for rv in c.fetchall() or []:
+                    uname = rv['username'] if hasattr(rv,'keys') else rv[0]
+                    if uname and uname not in (from_user, post_owner, parent_author):
+                        recipients.add(uname)
+            except Exception as qe2:
+                logger.warning(f"collect prior reactors failed: {qe2}")
 
             # Insert notifications (dedupe 10s by same from_user/post/type/recipient)
             for target in recipients:
