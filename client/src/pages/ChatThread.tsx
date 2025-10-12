@@ -496,6 +496,75 @@ export default function ChatThread(){
     event.target.value = ''
   }
 
+  async function uploadAudioBlob(blob: Blob){
+    if (!otherUserId) return
+    setSending(true)
+    try{
+      const url = URL.createObjectURL(blob)
+      const now = new Date().toISOString().slice(0,19).replace('T',' ')
+      const optimistic: Message = { id: `temp_audio_${Date.now()}`, text: '🎤 Voice message', audio_path: url, sent: true, time: now, isOptimistic: true }
+      setMessages(prev => [...prev, optimistic])
+      setTimeout(scrollToBottom, 50)
+      const fd = new FormData()
+      fd.append('recipient_id', String(otherUserId))
+      fd.append('duration_seconds', String(Math.round(recordMs/1000)))
+      fd.append('audio', blob, 'voice.webm')
+      const r = await fetch('/send_audio_message', { method:'POST', credentials:'include', body: fd })
+      const j = await r.json().catch(()=>null)
+      if (!j?.success){
+        setMessages(prev => prev.filter(m => m.id !== optimistic.id))
+        alert(j?.error || 'Failed to send audio')
+      }
+    }catch{
+      alert('Failed to send audio')
+    }finally{
+      setSending(false)
+    }
+  }
+
+  async function startRecording(){
+    try{
+      if (!('MediaRecorder' in window)){
+        audioInputRef.current?.click(); return
+      }
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const mr = new MediaRecorder(stream)
+      chunksRef.current = []
+      mr.ondataavailable = (e) => { if (e.data && e.data.size > 0) chunksRef.current.push(e.data) }
+      mr.onstop = async () => {
+        try{
+          const blob = new Blob(chunksRef.current, { type: mr.mimeType || 'audio/webm' })
+          await uploadAudioBlob(blob)
+        } finally {
+          setRecording(false)
+          setRecorder(null)
+          setRecordMs(0)
+          try{ stream.getTracks().forEach(t=> t.stop()) }catch{}
+          if (recordTimerRef.current) clearInterval(recordTimerRef.current)
+        }
+      }
+      mr.start()
+      setRecorder(mr)
+      setRecording(true)
+      recordStartRef.current = Date.now()
+      setRecordMs(0)
+      if (recordTimerRef.current) clearInterval(recordTimerRef.current)
+      recordTimerRef.current = setInterval(()=> setRecordMs(Date.now() - recordStartRef.current), 200)
+      setTimeout(()=> { try{ mr.state !== 'inactive' && mr.stop() }catch{} }, 60000)
+    }catch{
+      audioInputRef.current?.click()
+    }
+  }
+
+  function stopRecording(){ try{ recorder && recorder.state !== 'inactive' && recorder.stop() }catch{} }
+
+  function handleAudioFileChange(event: React.ChangeEvent<HTMLInputElement>){
+    const file = event.target.files?.[0]
+    if (!file) return
+    uploadAudioBlob(file)
+    event.target.value = ''
+  }
+
   function handleDeleteMessage(messageId: number | string, messageData: Message) {
     // Show confirmation dialog
     if (!confirm('Are you sure you want to delete this message?')) {
@@ -874,6 +943,18 @@ export default function ChatThread(){
                     <div className="text-white/60 text-xs">Tap to record</div>
                   </div>
                 </button>
+                <button
+                  className="w-full px-4 py-3 flex items-center gap-3 hover:bg-white/5 transition-colors text-left"
+                  onClick={()=> { setShowAttachMenu(false); startRecording() }}
+                >
+                  <div className="w-10 h-10 rounded-full bg-[#4db6ac]/20 flex items-center justify-center">
+                    <i className="fa-solid fa-microphone text-[#4db6ac]" />
+                  </div>
+                  <div>
+                    <div className="text-white font-medium">Voice Message</div>
+                    <div className="text-white/60 text-xs">Tap to record</div>
+                  </div>
+                </button>
               </div>
             </>
           )}
@@ -899,7 +980,7 @@ export default function ChatThread(){
             type="file"
             accept="audio/*"
             capture
-            onChange={(e)=>{ const f = e.target.files?.[0]; if (f) uploadAudioBlob(f as any as Blob); e.currentTarget.value=''; }}
+            onChange={handleAudioFileChange}
             className="hidden"
           />
           
@@ -942,6 +1023,14 @@ export default function ChatThread(){
                 <span className="inline-block w-2 h-2 bg-red-500 rounded-full animate-pulse" />
                 <span>{new Date(recordMs).toISOString().substr(14,5)}</span>
                 <button className="px-2 py-0.5 border border-white/20 rounded-md hover:bg-white/10" onClick={()=>{ try{ recorder && recorder.state!=='inactive' && recorder.stop() }catch{} }}>Stop</button>
+              </div>
+            )}
+            {/* Recording pill */}
+            {recording && (
+              <div className="absolute left-2 -top-7 text-xs text-white/70 flex items-center gap-2">
+                <span className="inline-block w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+                <span>{new Date(recordMs).toISOString().substr(14,5)}</span>
+                <button className="px-2 py-0.5 border border-white/20 rounded-md hover:bg-white/10" onClick={stopRecording}>Stop</button>
               </div>
             )}
             {/* Send button - always visible */}
