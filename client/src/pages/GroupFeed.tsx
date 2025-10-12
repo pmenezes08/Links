@@ -54,7 +54,7 @@ export default function GroupFeed(){
     <div className="fixed inset-x-0 top-14 bottom-0 bg-black text-white">
       <div className="h-full max-w-2xl mx-auto overflow-y-auto no-scrollbar pb-28 px-3" style={{ WebkitOverflowScrolling: 'touch' as any, paddingTop: '12px' }}>
         <div className="space-y-3">
-          {/* Back to communities (parent) to match CommunityFeed placement */}
+          {/* Back to communities (parent) and aligned header text */}
           <div className="flex items-center gap-2">
             <button
               className="px-3 py-1.5 rounded-lg border border-white/10 bg-white/[0.03] text-sm hover:bg-white/10"
@@ -66,6 +66,12 @@ export default function GroupFeed(){
             >
               ← Back to Communities
             </button>
+            <div className="ml-1 text-sm truncate">
+              <span className="font-semibold mr-1 truncate inline-block max-w-[40vw] align-baseline">{groupName}</span>
+              {communityMeta?.name ? (
+                <span className="text-[#9fb0b5] text-[13px] align-baseline">{`· ${communityMeta.name}`}</span>
+              ) : null}
+            </div>
           </div>
           {/* Header removed; composer removed (use dedicated compose page) */}
           {posts.length === 0 ? (

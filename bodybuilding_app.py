@@ -16901,12 +16901,13 @@ def api_group_feed():
         with get_db_connection() as conn:
             c = conn.cursor()
             # Load group and owning community
-            c.execute(f"SELECT g.id, g.name, g.community_id FROM {'`groups`' if USE_MYSQL else 'groups'} g WHERE g.id = {get_sql_placeholder()}", (group_id,))
+            c.execute(f"SELECT g.id, g.name, g.community_id, g.created_by FROM {'`groups`' if USE_MYSQL else 'groups'} g WHERE g.id = {get_sql_placeholder()}", (group_id,))
             g = c.fetchone()
             if not g:
                 return jsonify({'success': False, 'error': 'Group not found'}), 404
             community_id = g['community_id'] if hasattr(g, 'keys') else g[2]
             group_name = g['name'] if hasattr(g, 'keys') else g[1]
+            group_owner = g['created_by'] if hasattr(g, 'keys') else (g[3] if len(g) > 3 else None)
             # Community meta
             c.execute("SELECT name, type FROM communities WHERE id = ?", (community_id,))
             cm = c.fetchone() or {}
@@ -16926,6 +16927,14 @@ def api_group_feed():
                 c.execute(f"SELECT 1 FROM user_communities uc JOIN users u ON uc.user_id=u.id WHERE u.username={ph} AND uc.community_id={ph}", (username, pid))
                 if not c.fetchone():
                     return jsonify({'success': False, 'error': 'Not a member'}), 403
+
+            # Permission baseline for group managers
+            is_manager = (
+                is_app_admin(username)
+                or is_community_owner(username, community_id)
+                or is_community_admin(username, community_id)
+                or (group_owner is not None and username == group_owner)
+            )
 
             # Load latest group posts
             c.execute(f"""
@@ -16979,6 +16988,7 @@ def api_group_feed():
                         'reactions': rreactions,
                         'user_reaction': reply_user_reaction,
                     })
+                can_manage = bool(is_manager or (uname == username))
                 posts.append({
                     'id': pid,
                     'username': uname,
@@ -16988,7 +16998,9 @@ def api_group_feed():
                     'reactions': reactions,
                     'user_reaction': user_reaction,
                     'profile_picture': r['profile_picture'] if hasattr(r, 'keys') else r[5],
-                    'replies': replies
+                    'replies': replies,
+                    'can_edit': can_manage,
+                    'can_delete': can_manage,
                 })
             return jsonify({'success': True, 'group': { 'id': group_id, 'name': group_name }, 'community': { 'id': community_id, 'name': community_name, 'type': community_type }, 'posts': posts})
     except Exception as e:
@@ -17010,7 +17022,7 @@ def api_group_post():
             # Load post and group/community
             c.execute(f"""
                 SELECT gp.id, gp.group_id, gp.username, gp.content, gp.image_path, gp.created_at,
-                       g.name as group_name, g.community_id
+                       g.name as group_name, g.community_id, g.created_by
                 FROM {'`group_posts`' if USE_MYSQL else 'group_posts'} gp
                 JOIN {'`groups`' if USE_MYSQL else 'groups'} g ON g.id = gp.group_id
                 WHERE gp.id = {get_sql_placeholder()}
@@ -17020,6 +17032,7 @@ def api_group_post():
                 return jsonify({'success': False, 'error': 'Post not found'}), 404
             group_id = row['group_id'] if hasattr(row, 'keys') else row[1]
             community_id = row['community_id'] if hasattr(row, 'keys') else row[7]
+            group_owner = row['created_by'] if hasattr(row, 'keys') else (row[8] if len(row) > 8 else None)
 
             # Membership check
             ph = get_sql_placeholder()
@@ -17040,6 +17053,13 @@ def api_group_post():
             image_path = row['image_path'] if hasattr(row, 'keys') else row[4]
             created_at = row['created_at'] if hasattr(row, 'keys') else row[5]
             group_name = row['group_name'] if hasattr(row, 'keys') else row[6]
+
+            is_manager = (
+                is_app_admin(username)
+                or is_community_owner(username, community_id)
+                or is_community_admin(username, community_id)
+                or (group_owner is not None and username == group_owner)
+            )
 
             # Reactions
             c.execute(f"SELECT reaction, COUNT(*) as c FROM {'`group_post_reactions`' if USE_MYSQL else 'group_post_reactions'} WHERE group_post_id = {get_sql_placeholder()} GROUP BY reaction", (pid,))
@@ -17085,6 +17105,8 @@ def api_group_post():
                 'reactions': reactions,
                 'user_reaction': user_reaction,
                 'replies': replies,
+                'can_edit': bool(is_manager or (uname == username)),
+                'can_delete': bool(is_manager or (uname == username)),
             }
             return jsonify({'success': True, 'post': post, 'group': { 'id': group_id, 'name': group_name }, 'community_id': community_id})
     except Exception as e:
@@ -17181,6 +17203,95 @@ def api_group_posts_react():
             return jsonify({'success': True, 'user_reaction': reaction})
     except Exception as e:
         logger.error(f"api_group_posts_react error: {e}")
+        return jsonify({'success': False, 'error': 'Server error'})
+
+# Edit group post
+@app.route('/api/group_posts/edit', methods=['POST'])
+@login_required
+def api_group_posts_edit():
+    username = session.get('username')
+    post_id_raw = request.form.get('post_id', '').strip()
+    content = (request.form.get('content') or '').strip()
+    try:
+        post_id = int(post_id_raw)
+    except Exception:
+        return jsonify({'success': False, 'error': 'Invalid post_id'})
+    if not content and 'image' not in request.files:
+        return jsonify({'success': False, 'error': 'Nothing to update'})
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            # Load post and group
+            ph = get_sql_placeholder()
+            c.execute(f"SELECT gp.username, gp.group_id, g.community_id, g.created_by FROM {'`group_posts`' if USE_MYSQL else 'group_posts'} gp JOIN {'`groups`' if USE_MYSQL else 'groups'} g ON g.id=gp.group_id WHERE gp.id={ph}", (post_id,))
+            row = c.fetchone()
+            if not row:
+                return jsonify({'success': False, 'error': 'Post not found'}), 404
+            author = row['username'] if hasattr(row, 'keys') else row[0]
+            group_id = row['group_id'] if hasattr(row, 'keys') else row[1]
+            community_id = row['community_id'] if hasattr(row, 'keys') else row[2]
+            group_owner = row['created_by'] if hasattr(row, 'keys') else row[3]
+
+            allowed = (
+                username == author
+                or is_app_admin(username)
+                or is_community_owner(username, community_id)
+                or is_community_admin(username, community_id)
+                or (username == group_owner)
+            )
+            if not allowed:
+                return jsonify({'success': False, 'error': 'Forbidden'}), 403
+
+            image_path = None
+            if 'image' in request.files and request.files['image'].filename:
+                image_path = save_uploaded_file(request.files['image'])
+
+            # Build update
+            if image_path is not None:
+                c.execute(f"UPDATE {'`group_posts`' if USE_MYSQL else 'group_posts'} SET content={ph}, image_path={ph} WHERE id={ph}", (content, image_path, post_id))
+            else:
+                c.execute(f"UPDATE {'`group_posts`' if USE_MYSQL else 'group_posts'} SET content={ph} WHERE id={ph}", (content, post_id))
+            if not USE_MYSQL: conn.commit()
+            return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"api_group_posts_edit error: {e}")
+        return jsonify({'success': False, 'error': 'Server error'})
+
+# Delete group post
+@app.route('/api/group_posts/delete', methods=['POST'])
+@login_required
+def api_group_posts_delete():
+    username = session.get('username')
+    post_id_raw = request.form.get('post_id', '').strip()
+    try:
+        post_id = int(post_id_raw)
+    except Exception:
+        return jsonify({'success': False, 'error': 'Invalid post_id'})
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            c.execute(f"SELECT gp.username, gp.group_id, g.community_id, g.created_by FROM {'`group_posts`' if USE_MYSQL else 'group_posts'} gp JOIN {'`groups`' if USE_MYSQL else 'groups'} g ON g.id=gp.group_id WHERE gp.id={ph}", (post_id,))
+            row = c.fetchone()
+            if not row:
+                return jsonify({'success': False, 'error': 'Post not found'}), 404
+            author = row['username'] if hasattr(row, 'keys') else row[0]
+            community_id = row['community_id'] if hasattr(row, 'keys') else row[2]
+            group_owner = row['created_by'] if hasattr(row, 'keys') else row[3]
+            allowed = (
+                username == author
+                or is_app_admin(username)
+                or is_community_owner(username, community_id)
+                or is_community_admin(username, community_id)
+                or (username == group_owner)
+            )
+            if not allowed:
+                return jsonify({'success': False, 'error': 'Forbidden'}), 403
+            c.execute(f"DELETE FROM {'`group_posts`' if USE_MYSQL else 'group_posts'} WHERE id={ph}", (post_id,))
+            if not USE_MYSQL: conn.commit()
+            return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"api_group_posts_delete error: {e}")
         return jsonify({'success': False, 'error': 'Server error'})
 
 # Create group reply
