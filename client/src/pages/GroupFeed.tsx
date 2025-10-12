@@ -18,7 +18,11 @@ export default function GroupFeed(){
   const [communityMeta, setCommunityMeta] = useState<{ id?: number|string, name?: string, type?: string } | null>(null)
   const [posts, setPosts] = useState<Post[]>([])
 
-  useEffect(() => { setTitle(groupName ? `${groupName}` : 'Group') }, [groupName, setTitle])
+  useEffect(() => {
+    const communityName = (communityMeta && (communityMeta as any).name) ? (communityMeta as any).name : ''
+    const title = communityName ? `${groupName} · ${communityName}` : (groupName || 'Group')
+    setTitle(title)
+  }, [groupName, communityMeta, setTitle])
 
   useEffect(() => {
     let ok = true
@@ -48,7 +52,7 @@ export default function GroupFeed(){
 
   return (
     <div className="fixed inset-x-0 top-14 bottom-0 bg-black text-white">
-      <div className="h-full max-w-2xl mx-auto overflow-y-auto no-scrollbar pb-28 px-3" style={{ WebkitOverflowScrolling: 'touch' as any }}>
+      <div className="h-full max-w-2xl mx-auto overflow-y-auto no-scrollbar pb-28 px-3" style={{ WebkitOverflowScrolling: 'touch' as any, paddingTop: '12px' }}>
         <div className="space-y-3">
           {/* Back to communities (parent) to match CommunityFeed placement */}
           <div className="flex items-center gap-2">
