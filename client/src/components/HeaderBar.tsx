@@ -84,7 +84,7 @@ export default function HeaderBar({ title, username, displayName, avatarUrl }: H
             <Avatar username={username || ''} url={resolvedAvatar} size={32} />
           </button>
         )}
-        <div className="font-semibold tracking-[-0.01em] flex-1 min-w-0">
+        <div className="tracking-[-0.01em] flex-1 min-w-0">
           {(() => {
             const t = String(title || '')
             const idx = t.indexOf(' · ')
@@ -93,12 +93,12 @@ export default function HeaderBar({ title, username, displayName, avatarUrl }: H
               const right = t.slice(idx + 3)
               return (
                 <div className="whitespace-nowrap overflow-hidden text-ellipsis">
-                  <span className="truncate inline-block max-w-[60%] align-baseline">{left}</span>
-                  <span className="text-[#9fb0b5] align-baseline">{` · ${right}`}</span>
+                  <span className="font-semibold truncate inline-block max-w-[60%] align-baseline">{left}</span>
+                  <span className="text-[#9fb0b5] text-[13px] font-normal align-baseline">{` · ${right}`}</span>
                 </div>
               )
             }
-            return <span className="truncate inline-block align-baseline">{t}</span>
+            return <span className="font-semibold truncate inline-block align-baseline">{t}</span>
           })()}
         </div>
         <div className="flex items-center gap-2">

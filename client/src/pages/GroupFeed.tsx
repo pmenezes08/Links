@@ -54,7 +54,7 @@ export default function GroupFeed(){
     <div className="fixed inset-x-0 top-14 bottom-0 bg-black text-white">
       <div className="h-full max-w-2xl mx-auto overflow-y-auto no-scrollbar pb-28 px-3" style={{ WebkitOverflowScrolling: 'touch' as any, paddingTop: '12px' }}>
         <div className="space-y-3">
-          {/* Back to communities (parent) and aligned header text */}
+          {/* Back to communities (parent) */}
           <div className="flex items-center gap-2">
             <button
               className="px-3 py-1.5 rounded-lg border border-white/10 bg-white/[0.03] text-sm hover:bg-white/10"
@@ -66,12 +66,6 @@ export default function GroupFeed(){
             >
               ← Back to Communities
             </button>
-            <div className="ml-1 text-sm truncate">
-              <span className="font-semibold mr-1 truncate inline-block max-w-[40vw] align-baseline">{groupName}</span>
-              {communityMeta?.name ? (
-                <span className="text-[#9fb0b5] text-[13px] align-baseline">{`· ${communityMeta.name}`}</span>
-              ) : null}
-            </div>
           </div>
           {/* Header removed; composer removed (use dedicated compose page) */}
           {posts.length === 0 ? (
@@ -84,51 +78,42 @@ export default function GroupFeed(){
                   <div className="font-medium">{p.username}</div>
                   <div className="text-xs text-[#9fb0b5] ml-auto">{formatSmartTime((p as any).display_timestamp || p.timestamp)}</div>
                   {(p.can_edit || p.can_delete) ? (
-                    <div className="ml-2 relative">
-                      <button
-                        className="p-1.5 rounded hover:bg-white/5"
-                        aria-label="More"
-                        onClick={(e)=> {
-                          e.stopPropagation()
-                          const menu = document.getElementById(`gp-menu-${p.id}`)
-                          if (menu){
-                            const visible = menu.style.display === 'block'
-                            menu.style.display = visible ? 'none' : 'block'
-                          }
-                        }}
-                      >
-                        <i className="fa-solid fa-ellipsis" />
-                      </button>
-                      <div id={`gp-menu-${p.id}`} className="hidden absolute right-0 mt-1 w-32 rounded-md border border-white/10 bg-black shadow-lg z-50">
-                        {p.can_edit ? (
-                          <button className="w-full text-left px-3 py-2 text-sm hover:bg-white/5" onClick={async (e)=> {
+                    <div className="ml-2 flex items-center gap-1">
+                      {p.can_edit ? (
+                        <button
+                          className="p-1.5 rounded hover:bg-white/5"
+                          aria-label="Edit post"
+                          onClick={async (e)=> {
                             e.stopPropagation()
-                            const menu = document.getElementById(`gp-menu-${p.id}`); if (menu) menu.style.display = 'none'
                             const next = prompt('Edit post text:', p.content)
                             if (next === null) return
                             const fd = new URLSearchParams({ post_id: String(p.id), content: next })
                             const r = await fetch('/api/group_posts/edit', { method:'POST', credentials:'include', body: fd })
                             const j = await r.json().catch(()=>null)
-                            if (j?.success){
-                              setPosts(list => list.map(it => it.id === p.id ? ({ ...it, content: next }) : it))
-                            } else {
-                              alert(j?.error || 'Failed to edit')
-                            }
-                          }}>Edit</button>
-                        ) : null}
-                        {p.can_delete ? (
-                          <button className="w-full text-left px-3 py-2 text-sm text-red-400 hover:bg-white/5" onClick={async (e)=> {
+                            if (j?.success){ setPosts(list => list.map(it => it.id === p.id ? ({ ...it, content: next }) : it)) }
+                            else { alert(j?.error || 'Failed to edit') }
+                          }}
+                        >
+                          <i className="fa-solid fa-pen" />
+                        </button>
+                      ) : null}
+                      {p.can_delete ? (
+                        <button
+                          className="p-1.5 rounded hover:bg-white/5 text-red-400"
+                          aria-label="Delete post"
+                          onClick={async (e)=> {
                             e.stopPropagation()
-                            const menu = document.getElementById(`gp-menu-${p.id}`); if (menu) menu.style.display = 'none'
                             if (!confirm('Delete this post?')) return
                             const fd = new URLSearchParams({ post_id: String(p.id) })
                             const r = await fetch('/api/group_posts/delete', { method:'POST', credentials:'include', body: fd })
                             const j = await r.json().catch(()=>null)
                             if (j?.success){ setPosts(list => list.filter(it => it.id !== p.id)) }
                             else { alert(j?.error || 'Failed to delete') }
-                          }}>Delete</button>
-                        ) : null}
-                      </div>
+                          }}
+                        >
+                          <i className="fa-solid fa-trash" />
+                        </button>
+                      ) : null}
                     </div>
                   ) : null}
                 </div>
