@@ -545,7 +545,7 @@ function GroupsModal({ open, onClose, communityId }:{ open:boolean, onClose: ()=
                     }}>Join</button>
                   )}
                   {g.can_delete ? (
-                    <button className="ml-2 px-2.5 py-1.5 rounded-md border border-red-500/30 text-red-400 text-xs hover:bg-red-500/10" onClick={async()=>{
+                    <button className="ml-2 p-2 rounded-md hover:bg-red-500/10" title="Delete group" aria-label="Delete group" onClick={async()=>{
                       const ok = confirm('Delete this group? This cannot be undone.')
                       if (!ok) return
                       try{
@@ -555,7 +555,22 @@ function GroupsModal({ open, onClose, communityId }:{ open:boolean, onClose: ()=
                         if (j?.success){ setItems(list => list.filter(it => it.id !== g.id)) }
                         else alert(j?.error || 'Failed to delete group')
                       }catch{ alert('Network error') }
-                    }}>Delete</button>
+                    }}>
+                      <i className="fa-regular fa-trash-can text-red-400" />
+                    </button>
+                  ) : null}
+                  {status === 'member' ? (
+                    <button className="ml-2 px-2.5 py-1.5 rounded-md border border-white/15 text-[#cfd8dc] text-xs hover:bg-white/5" onClick={async()=>{
+                      const ok = confirm("Leave this group? You won't receive notifications or see any activity from it.")
+                      if (!ok) return
+                      try{
+                        const fd = new URLSearchParams({ group_id: String(g.id) })
+                        const r = await fetch('/api/groups/leave', { method:'POST', credentials:'include', body: fd })
+                        const j = await r.json().catch(()=>null)
+                        if (j?.success){ setItems(list => list.map(it => it.id===g.id ? ({ ...it, membership_status: null }) : it)) }
+                        else alert(j?.error || 'Failed to leave group')
+                      }catch{ alert('Network error') }
+                    }}>Leave</button>
                   ) : null}
                 </div>
               )

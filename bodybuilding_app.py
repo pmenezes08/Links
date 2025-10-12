@@ -16818,6 +16818,31 @@ def api_groups_join():
         logger.error(f"api_groups_join error: {e}")
         return jsonify({'success': False, 'error': 'Failed to join group'})
 
+# Leave a group (member can leave)
+@app.route('/api/groups/leave', methods=['POST'])
+@login_required
+def api_groups_leave():
+    username = session.get('username')
+    gid_raw = request.form.get('group_id', '').strip()
+    try:
+        group_id = int(gid_raw)
+    except Exception:
+        return jsonify({'success': False, 'error': 'Invalid group_id'})
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            # Verify group exists
+            c.execute(f"SELECT id FROM {'`groups`' if USE_MYSQL else 'groups'} WHERE id = {get_sql_placeholder()}", (group_id,))
+            if not c.fetchone():
+                return jsonify({'success': False, 'error': 'Group not found'}), 404
+            # Delete membership if present
+            c.execute(f"DELETE FROM {'`group_members`' if USE_MYSQL else 'group_members'} WHERE group_id = {get_sql_placeholder()} AND username = {get_sql_placeholder()}", (group_id, username))
+            if not USE_MYSQL: conn.commit()
+            return jsonify({'success': True, 'left': True})
+    except Exception as e:
+        logger.error(f"api_groups_leave error: {e}")
+        return jsonify({'success': False, 'error': 'Failed to leave group'})
+
 # Delete a group (group owner or app admin only)
 @app.route('/api/groups/delete', methods=['POST'])
 @login_required
