@@ -6,7 +6,7 @@ import { formatSmartTime } from '../utils/time'
 import { useHeader } from '../contexts/HeaderContext'
 
 type Reply = { id:number; username:string; content:string; image_path?:string|null; timestamp:string; profile_picture?:string|null; reactions: Record<string, number>; user_reaction: string|null }
-type Post = { id:number; username:string; content:string; image_path?:string|null; timestamp:string; profile_picture?:string|null; reactions: Record<string, number>; user_reaction: string|null, replies: Reply[] }
+type Post = { id:number; username:string; content:string; image_path?:string|null; timestamp:string; profile_picture?:string|null; reactions: Record<string, number>; user_reaction: string|null, replies: Reply[], can_edit?: boolean, can_delete?: boolean }
 
 export default function GroupFeed(){
   const { group_id } = useParams()
@@ -83,6 +83,54 @@ export default function GroupFeed(){
                   <Avatar username={p.username} url={p.profile_picture || undefined} size={28} />
                   <div className="font-medium">{p.username}</div>
                   <div className="text-xs text-[#9fb0b5] ml-auto">{formatSmartTime((p as any).display_timestamp || p.timestamp)}</div>
+                  {(p.can_edit || p.can_delete) ? (
+                    <div className="ml-2 relative">
+                      <button
+                        className="p-1.5 rounded hover:bg-white/5"
+                        aria-label="More"
+                        onClick={(e)=> {
+                          e.stopPropagation()
+                          const menu = document.getElementById(`gp-menu-${p.id}`)
+                          if (menu){
+                            const visible = menu.style.display === 'block'
+                            menu.style.display = visible ? 'none' : 'block'
+                          }
+                        }}
+                      >
+                        <i className="fa-solid fa-ellipsis" />
+                      </button>
+                      <div id={`gp-menu-${p.id}`} className="hidden absolute right-0 mt-1 w-32 rounded-md border border-white/10 bg-black shadow-lg z-50">
+                        {p.can_edit ? (
+                          <button className="w-full text-left px-3 py-2 text-sm hover:bg-white/5" onClick={async (e)=> {
+                            e.stopPropagation()
+                            const menu = document.getElementById(`gp-menu-${p.id}`); if (menu) menu.style.display = 'none'
+                            const next = prompt('Edit post text:', p.content)
+                            if (next === null) return
+                            const fd = new URLSearchParams({ post_id: String(p.id), content: next })
+                            const r = await fetch('/api/group_posts/edit', { method:'POST', credentials:'include', body: fd })
+                            const j = await r.json().catch(()=>null)
+                            if (j?.success){
+                              setPosts(list => list.map(it => it.id === p.id ? ({ ...it, content: next }) : it))
+                            } else {
+                              alert(j?.error || 'Failed to edit')
+                            }
+                          }}>Edit</button>
+                        ) : null}
+                        {p.can_delete ? (
+                          <button className="w-full text-left px-3 py-2 text-sm text-red-400 hover:bg-white/5" onClick={async (e)=> {
+                            e.stopPropagation()
+                            const menu = document.getElementById(`gp-menu-${p.id}`); if (menu) menu.style.display = 'none'
+                            if (!confirm('Delete this post?')) return
+                            const fd = new URLSearchParams({ post_id: String(p.id) })
+                            const r = await fetch('/api/group_posts/delete', { method:'POST', credentials:'include', body: fd })
+                            const j = await r.json().catch(()=>null)
+                            if (j?.success){ setPosts(list => list.filter(it => it.id !== p.id)) }
+                            else { alert(j?.error || 'Failed to delete') }
+                          }}>Delete</button>
+                        ) : null}
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
                 <div className="px-3 py-2 space-y-2">
                   <div className="whitespace-pre-wrap text-[14px] leading-relaxed">{p.content}</div>
