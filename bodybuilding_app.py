@@ -7356,79 +7356,53 @@ def user_chat():
         with get_db_connection() as conn:
             c = conn.cursor()
             # Allow verified users (and admin) to access messages regardless of subscription
-            c.execute("SELECT email_verified, subscription FROM users WHERE username=?", (username,))
-            user_row = c.fetchone()
-            if hasattr(user_row, 'keys'):
-                is_verified = bool(user_row.get('email_verified'))
-                subscription = user_row.get('subscription')
-            else:
-                is_verified = bool(user_row[0] if user_row else 0)
-                subscription = (user_row[1] if user_row else None)
+            c.execute("SELECT email_verified FROM users WHERE username=?", (username,))
+            row = c.fetchone()
+            is_verified = False
+            try:
+                is_verified = bool(row['email_verified'] if hasattr(row, 'keys') else (row[0] if row else 0))
+            except Exception:
+                is_verified = False
             if username != 'admin' and not is_verified:
                 return redirect(url_for('verify_required'))
-            
-            # Smart UA: mobile -> SPA, desktop -> HTML
-            ua = request.headers.get('User-Agent', '')
-            is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
-            if is_mobile:
-                base_dir = os.path.dirname(os.path.abspath(__file__))
-                dist_dir = os.path.join(base_dir, 'client', 'dist')
-                return send_from_directory(dist_dir, 'index.html')
-            
-            # Desktop: render HTML with context
-            c.execute("""
-                SELECT c.id, c.name, c.type, c.creator_username
-                FROM communities c
-                INNER JOIN user_communities uc ON c.id = uc.community_id
-                INNER JOIN users u ON uc.user_id = u.id
-                WHERE u.username = ?
-                ORDER BY c.name
-            """, (username,))
-            comm_rows = c.fetchall() or []
-            # Normalize communities rows to dicts
-            communities = []
-            for r in comm_rows:
-                if hasattr(r, 'keys'):
-                    communities.append({'id': r['id'], 'name': r['name'], 'type': r['type'], 'creator_username': r['creator_username']})
-                else:
-                    communities.append({'id': r[0], 'name': r[1], 'type': r[2], 'creator_username': r[3]})
 
-            community_members = {}
-            all_community_members = set()
-            for comm in communities:
-                comm_id = comm['id']
-                c.execute("""
-                    SELECT DISTINCT u.username
-                    FROM user_communities uc
-                    INNER JOIN users u ON uc.user_id = u.id
-                    WHERE uc.community_id = ? AND u.username != ?
-                    ORDER BY u.username
-                """, (comm_id, username))
-                rows = c.fetchall() or []
-                members = [ (row['username'] if hasattr(row,'keys') else row[0]) for row in rows ]
-                community_members[comm_id] = members
-                all_community_members.update(members)
-
-            all_users = sorted(all_community_members)
-
-        return render_template('user_chat.html', name=username, users=all_users, communities=communities, community_members=community_members, subscription=subscription)
+        # Serve React SPA (mobile and desktop) with cache-busting headers
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        dist_dir = os.path.join(base_dir, 'client', 'dist')
+        if not os.path.exists(dist_dir):
+            # Fallback to root dist if client build not present
+            dist_dir = os.path.join(base_dir, 'dist')
+        resp = send_from_directory(dist_dir, 'index.html')
+        try:
+            resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+            resp.headers['Pragma'] = 'no-cache'
+            resp.headers['Expires'] = '0'
+        except Exception:
+            pass
+        return resp
     except Exception as e:
-        logger.error(f"Error in user_chat for {username}: {str(e)}")
+        logger.error(f"Error in user_chat route: {e}")
         abort(500)
 
 @app.route('/user_chat/<path:subpath>')
 @login_required
 def user_chat_subpath(subpath):
     try:
-        ua = request.headers.get('User-Agent', '')
-        is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
-        if is_mobile:
-            base_dir = os.path.dirname(os.path.abspath(__file__))
-            dist_dir = os.path.join(base_dir, 'client', 'dist')
-            return send_from_directory(dist_dir, 'index.html')
-        return redirect(url_for('user_chat'))
-    except Exception:
-        return redirect(url_for('user_chat'))
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        dist_dir = os.path.join(base_dir, 'client', 'dist')
+        if not os.path.exists(dist_dir):
+            dist_dir = os.path.join(base_dir, 'dist')
+        resp = send_from_directory(dist_dir, 'index.html')
+        try:
+            resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+            resp.headers['Pragma'] = 'no-cache'
+            resp.headers['Expires'] = '0'
+        except Exception:
+            pass
+        return resp
+    except Exception as e:
+        logger.error(f"Error serving user_chat subpath {subpath}: {e}")
+        abort(500)
 
 @app.route('/delete_message', methods=['POST'])
 @login_required
