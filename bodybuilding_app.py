@@ -16719,7 +16719,7 @@ def api_groups_list():
             groups_table = '`groups`' if USE_MYSQL else 'groups'
             group_members_table = '`group_members`' if USE_MYSQL else 'group_members'
             c.execute(f"""
-                SELECT g.id, g.name, g.community_id, g.approval_required,
+                SELECT g.id, g.name, g.community_id, g.approval_required, g.created_by,
                        COALESCE(gm.status, '') AS membership_status
                 FROM {groups_table} g
                 LEFT JOIN {group_members_table} gm ON gm.group_id = g.id AND gm.username = {ph}
@@ -16735,6 +16735,7 @@ def api_groups_list():
                     'community_id': r['community_id'],
                     'approval_required': bool(r['approval_required']),
                     'membership_status': r['membership_status'] or None,
+                    'can_delete': bool((r['created_by'] if hasattr(r, 'keys') else None) == username or is_app_admin(username)),
                 }
                 groups.append(item)
             return jsonify({'success': True, 'groups': groups, 'member': bool(member_direct)})
@@ -16816,6 +16817,33 @@ def api_groups_join():
     except Exception as e:
         logger.error(f"api_groups_join error: {e}")
         return jsonify({'success': False, 'error': 'Failed to join group'})
+
+# Delete a group (group owner or app admin only)
+@app.route('/api/groups/delete', methods=['POST'])
+@login_required
+def api_groups_delete():
+    username = session.get('username')
+    gid_raw = request.form.get('group_id', '').strip()
+    try:
+        group_id = int(gid_raw)
+    except Exception:
+        return jsonify({'success': False, 'error': 'Invalid group_id'})
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute(f"SELECT id, created_by FROM {'`groups`' if USE_MYSQL else 'groups'} WHERE id = {get_sql_placeholder()}", (group_id,))
+            g = c.fetchone()
+            if not g:
+                return jsonify({'success': False, 'error': 'Group not found'}), 404
+            created_by = g['created_by'] if hasattr(g, 'keys') else g[1]
+            if not (username == created_by or is_app_admin(username)):
+                return jsonify({'success': False, 'error': 'Forbidden'}), 403
+            c.execute(f"DELETE FROM {'`groups`' if USE_MYSQL else 'groups'} WHERE id = {get_sql_placeholder()}", (group_id,))
+            if not USE_MYSQL: conn.commit()
+            return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"api_groups_delete error: {e}")
+        return jsonify({'success': False, 'error': 'Failed to delete group'})
 
 @app.route('/api/groups/available_count', methods=['GET'])
 @login_required

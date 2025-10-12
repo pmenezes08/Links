@@ -464,7 +464,7 @@ function PlusActions({ onCreateSub, onCreateGroup }:{ onCreateSub: ()=>void, onC
 
 function GroupsModal({ open, onClose, communityId }:{ open:boolean, onClose: ()=>void, communityId: number | null }){
   const [loading, setLoading] = useState(false)
-  const [items, setItems] = useState<Array<{ id:number; name:string; approval_required:boolean; membership_status?: string | null; community_id:number }>>([])
+  const [items, setItems] = useState<Array<{ id:number; name:string; approval_required:boolean; membership_status?: string | null; community_id:number, can_delete?: boolean }>>([])
   const [isMember, setIsMember] = useState<boolean | null>(null)
   useEffect(() => {
     const el = document.getElementById('groups-modal-root') as any
@@ -522,7 +522,7 @@ function GroupsModal({ open, onClose, communityId }:{ open:boolean, onClose: ()=
                   <div className="flex-1">
                     <button className="font-medium text-white underline decoration-white/20 underline-offset-2" onClick={()=> {
                       if (status !== 'member'){
-                        alert(g.approval_required ? 'This group requires approval. Request to join and wait for approval.' : 'Join the community first, then join this group.')
+                        alert('Join this group to view its activity')
                         return
                       }
                       window.location.href = `/group_feed_react/${g.id}`
@@ -544,6 +544,19 @@ function GroupsModal({ open, onClose, communityId }:{ open:boolean, onClose: ()=
                       }catch{ alert('Network error') }
                     }}>Join</button>
                   )}
+                  {g.can_delete ? (
+                    <button className="ml-2 px-2.5 py-1.5 rounded-md border border-red-500/30 text-red-400 text-xs hover:bg-red-500/10" onClick={async()=>{
+                      const ok = confirm('Delete this group? This cannot be undone.')
+                      if (!ok) return
+                      try{
+                        const fd = new URLSearchParams({ group_id: String(g.id) })
+                        const r = await fetch('/api/groups/delete', { method:'POST', credentials:'include', body: fd })
+                        const j = await r.json().catch(()=>null)
+                        if (j?.success){ setItems(list => list.filter(it => it.id !== g.id)) }
+                        else alert(j?.error || 'Failed to delete group')
+                      }catch{ alert('Network error') }
+                    }}>Delete</button>
+                  ) : null}
                 </div>
               )
             })}
