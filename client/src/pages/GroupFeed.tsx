@@ -4,7 +4,7 @@ import Avatar from '../components/Avatar'
 import ImageLoader from '../components/ImageLoader'
 import { formatSmartTime } from '../utils/time'
 import { useHeader } from '../contexts/HeaderContext'
-import { renderTextWithLinks } from '../utils/linkUtils'
+import { renderTextWithLinks, detectLinks, replaceLinkInText } from '../utils/linkUtils'
 
 type Reply = { id:number; username:string; content:string; image_path?:string|null; timestamp:string; profile_picture?:string|null; reactions: Record<string, number>; user_reaction: string|null }
 type Post = { id:number; username:string; content:string; image_path?:string|null; timestamp:string; profile_picture?:string|null; reactions: Record<string, number>; user_reaction: string|null, replies: Reply[], can_edit?: boolean, can_delete?: boolean }
@@ -18,6 +18,9 @@ export default function GroupFeed(){
   const [groupName, setGroupName] = useState('Group')
   const [communityMeta, setCommunityMeta] = useState<{ id?: number|string, name?: string, type?: string } | null>(null)
   const [posts, setPosts] = useState<Post[]>([])
+  const [editingId, setEditingId] = useState<number|null>(null)
+  const [editText, setEditText] = useState<string>('')
+  const [detectedLinks, setDetectedLinks] = useState<ReturnType<typeof detectLinks>>([])
 
   useEffect(() => {
     const communityName = (communityMeta && (communityMeta as any).name) ? (communityMeta as any).name : ''
@@ -86,13 +89,9 @@ export default function GroupFeed(){
                           aria-label="Edit post"
                           onClick={async (e)=> {
                             e.stopPropagation()
-                            const next = prompt('Edit post text:', p.content)
-                            if (next === null) return
-                            const fd = new URLSearchParams({ post_id: String(p.id), content: next })
-                            const r = await fetch('/api/group_posts/edit', { method:'POST', credentials:'include', body: fd })
-                            const j = await r.json().catch(()=>null)
-                            if (j?.success){ setPosts(list => list.map(it => it.id === p.id ? ({ ...it, content: next }) : it)) }
-                            else { alert(j?.error || 'Failed to edit') }
+                            setEditingId(p.id)
+                            setEditText(p.content)
+                            setDetectedLinks(detectLinks(p.content))
                           }}
                         >
                           <i className="fa-regular fa-pen-to-square" />
@@ -118,8 +117,51 @@ export default function GroupFeed(){
                     </div>
                   ) : null}
                 </div>
-                <div className="px-3 py-2 space-y-2">
-                  <div className="whitespace-pre-wrap text-[14px] leading-relaxed">{renderTextWithLinks(p.content)}</div>
+                <div className="px-3 py-2 space-y-2" onClick={(e)=> e.stopPropagation()}>
+                  {editingId !== p.id ? (
+                    <div className="whitespace-pre-wrap text-[14px] leading-relaxed">{renderTextWithLinks(p.content)}</div>
+                  ) : (
+                    <div className="space-y-2">
+                      <textarea className="w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none min-h-[100px]" value={editText} onChange={(e)=> { setEditText(e.target.value); setDetectedLinks(detectLinks(e.target.value)) }} />
+                      {detectedLinks.length > 0 && (
+                        <div className="space-y-2">
+                          <div className="text-xs text-[#9fb0b5] font-medium">Detected Links:</div>
+                          {detectedLinks.map((link, idx) => (
+                            <div key={idx} className="flex items-center gap-2 p-2 rounded-lg border border-white/10 bg-white/5">
+                              <div className="flex-1 min-w-0">
+                                <div className="text-xs text-[#4db6ac] truncate">{link.displayText}</div>
+                                {link.displayText !== link.url && (
+                                  <div className="text-xs text-white/50 truncate">{link.url}</div>
+                                )}
+                              </div>
+                              <button
+                                className="px-2 py-1 rounded text-xs border border-[#4db6ac]/30 text-[#4db6ac] hover:bg-[#4db6ac]/10"
+                                onClick={()=> {
+                                  const newText = prompt('Rename link display text', link.displayText)
+                                  if (newText == null) return
+                                  const updated = replaceLinkInText(editText, link.url, newText)
+                                  setEditText(updated)
+                                  setDetectedLinks(detectLinks(updated))
+                                }}
+                              >
+                                Rename
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      <div className="flex gap-2 justify-end">
+                        <button className="px-3 py-1.5 rounded-md border border-white/10 hover:bg-white/5 text-sm" onClick={()=> { setEditingId(null); setEditText('') }}>Cancel</button>
+                        <button className="px-3 py-1.5 rounded-md bg-[#4db6ac] text-black text-sm hover:brightness-110" onClick={async()=> {
+                          const fd = new URLSearchParams({ post_id: String(p.id), content: editText })
+                          const r = await fetch('/api/group_posts/edit', { method:'POST', credentials:'include', body: fd })
+                          const j = await r.json().catch(()=>null)
+                          if (j?.success){ setPosts(list => list.map(it => it.id === p.id ? ({ ...it, content: editText }) : it)); setEditingId(null) }
+                          else alert(j?.error || 'Failed to update')
+                        }}>Save</button>
+                      </div>
+                    </div>
+                  )}
                   {p.image_path ? (
                     <ImageLoader
                       src={(() => {
