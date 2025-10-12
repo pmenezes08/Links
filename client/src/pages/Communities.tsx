@@ -41,6 +41,7 @@ export default function Communities(){
   const [showCreateGroup, setShowCreateGroup] = useState(false)
   const [newGroupName, setNewGroupName] = useState('')
   const [approvalRequired, setApprovalRequired] = useState(false)
+  const [selectedSubCommunityId, setSelectedSubCommunityId] = useState<number | 'none'>('none')
   // Groups modal (list & join)
   const [showGroupsModal, setShowGroupsModal] = useState(false)
   const [groupsModalCommunityId, setGroupsModalCommunityId] = useState<number|null>(null)
@@ -389,6 +390,22 @@ export default function Communities(){
                       <input value={parentName || `ID ${parentIdNum}`} disabled className="w-full px-3 py-2 rounded-md bg-black border border-white/15 text-sm text-white/70 disabled:opacity-70" />
                     </div>
                     <div>
+                      <label className="block text-xs text-[#9fb0b5] mb-1">Sub-Community</label>
+                      <select value={selectedSubCommunityId === 'none' ? 'none' : String(selectedSubCommunityId)} onChange={e=> {
+                        const v = e.target.value
+                        setSelectedSubCommunityId(v === 'none' ? 'none' : Number(v))
+                      }} className="w-full px-3 py-2 rounded-md bg-black border border-white/15 text-sm">
+                        <option value="none">None (associate to parent only)</option>
+                        {(() => {
+                          const parent = communities.find(c => c.id === parentIdNum)
+                          const subs = parent?.children || []
+                          return subs.map(sc => (
+                            <option key={sc.id} value={String(sc.id)}>{sc.name}</option>
+                          ))
+                        })()}
+                      </select>
+                    </div>
+                    <div>
                       <label className="block text-xs text-[#9fb0b5] mb-1">Group Name</label>
                       <input value={newGroupName} onChange={e=> setNewGroupName(e.target.value)} placeholder="e.g., Morning Runners" className="w-full px-3 py-2 rounded-md bg-black border border-white/15 text-sm" />
                     </div>
@@ -404,7 +421,8 @@ export default function Communities(){
                       <button className="px-3 py-2 rounded-md bg-[#4db6ac] text-black hover:brightness-110" onClick={async()=>{
                         if (!newGroupName.trim()) { alert('Please provide a group name'); return }
                         try{
-                          const fd = new URLSearchParams({ community_id: String(parentIdNum), name: newGroupName.trim(), approval_required: approvalRequired ? '1' : '0' })
+                          const targetCommunityId = selectedSubCommunityId === 'none' ? parentIdNum : Number(selectedSubCommunityId)
+                          const fd = new URLSearchParams({ community_id: String(targetCommunityId), name: newGroupName.trim(), approval_required: approvalRequired ? '1' : '0' })
                           const r = await fetch('/api/groups/create', { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
                           const j = await r.json().catch(()=>null)
                           if (j?.success){ setShowCreateGroup(false); setNewGroupName(''); alert('Group created') }
