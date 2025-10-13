@@ -99,9 +99,12 @@ export default function ChatThread(){
   const lastFetchTime = useRef<number>(0)
   const pendingDeletions = useRef<Set<number|string>>(new Set())
 
-  // Disable microphone in production builds for main branch deployments
-  const isProdBuild = (typeof import.meta !== 'undefined' && (import.meta as any).env && (import.meta as any).env.PROD) === true
-  const MIC_ENABLED = !isProdBuild
+  // Mic gating by build flag: enable by default in dev; disabled in prod unless VITE_MIC_ENABLED=true
+  const envVars: any = (typeof import.meta !== 'undefined' && (import.meta as any).env) || {}
+  const micFlag = envVars.VITE_MIC_ENABLED
+  const MIC_ENABLED = typeof micFlag !== 'undefined' 
+    ? (micFlag === 'true' || micFlag === true)
+    : Boolean(envVars.DEV)
 
   // Date formatting functions
   function formatDateLabel(dateStr: string): string {
