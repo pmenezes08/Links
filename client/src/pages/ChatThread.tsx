@@ -505,8 +505,16 @@ export default function ChatThread(){
 
   async function uploadAudioBlob(blob: Blob){
     if (!otherUserId) return
+    
+    // Don't send if blob is empty (cancelled recording)
+    if (!blob || blob.size === 0) {
+      console.log('🎤 Empty audio blob, not sending')
+      return
+    }
+    
     setSending(true)
     try{
+      console.log('🎤 Uploading audio blob, size:', blob.size)
       const url = URL.createObjectURL(blob)
       const now = new Date().toISOString().slice(0,19).replace('T',' ')
       const optimistic: Message = { id: `temp_audio_${Date.now()}`, text: '🎤 Voice message', audio_path: url, sent: true, time: now, isOptimistic: true }
@@ -521,8 +529,11 @@ export default function ChatThread(){
       if (!j?.success){
         setMessages(prev => prev.filter(m => m.id !== optimistic.id))
         alert(j?.error || 'Failed to send audio')
+      } else {
+        console.log('🎤 Audio sent successfully')
       }
-    }catch{
+    }catch(err){
+      console.error('🎤 Upload error:', err)
       alert('Failed to send audio')
     }finally{
       setSending(false)
@@ -573,16 +584,33 @@ export default function ChatThread(){
 
   async function startRecording(){
     try{
-      if (!('MediaRecorder' in window)){
-        audioInputRef.current?.click(); return
+      console.log('🎤 Starting recording...')
+      
+      // Check browser support
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        alert('Voice messages are not supported in this browser. Please use a modern browser like Chrome, Firefox, or Safari.')
+        return
       }
+      
+      if (!('MediaRecorder' in window)){
+        alert('Voice recording is not supported in this browser.')
+        audioInputRef.current?.click()
+        return
+      }
+      
+      // Request microphone permission
+      console.log('🎤 Requesting microphone permission...')
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      console.log('🎤 Microphone permission granted, starting recorder...')
+      
       const mr = new MediaRecorder(stream)
       chunksRef.current = []
       mr.ondataavailable = (e) => { if (e.data && e.data.size > 0) chunksRef.current.push(e.data) }
       mr.onstop = async () => {
+        console.log('🎤 Recording stopped, processing audio...')
         try{
           const blob = new Blob(chunksRef.current, { type: mr.mimeType || 'audio/webm' })
+          console.log('🎤 Audio blob created, size:', blob.size)
           await uploadAudioBlob(blob)
         } finally {
           setRecording(false)
@@ -607,12 +635,39 @@ export default function ChatThread(){
       setTimeout(()=> { try{ mr.state !== 'inactive' && mr.stop() }catch{} }, 60000)
       // Start visualizer
       startVisualizer(stream)
-    }catch{
-      audioInputRef.current?.click()
+      console.log('🎤 Recording started successfully')
+    }catch(err){
+      console.error('🎤 Recording error:', err)
+      const error = err as Error
+      if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+        alert('Microphone permission was denied. Please allow microphone access in your browser settings to send voice messages.')
+      } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
+        alert('No microphone found. Please connect a microphone to send voice messages.')
+      } else {
+        alert('Could not access microphone: ' + error.message)
+      }
     }
   }
 
-  function stopRecording(){ try{ recorder && recorder.state !== 'inactive' && recorder.stop() }catch{} }
+  function stopRecording(){ 
+    console.log('🎤 Stopping recording and sending...')
+    try{ recorder && recorder.state !== 'inactive' && recorder.stop() }catch{} 
+  }
+  
+  function cancelRecording(){
+    console.log('🎤 Canceling recording...')
+    try{
+      // Clear chunks before stopping to prevent upload
+      chunksRef.current = []
+      if (recorder && recorder.state !== 'inactive') {
+        recorder.stop()
+      }
+      setRecording(false)
+      setRecorder(null)
+      setRecordMs(0)
+      setRecordLocked(false)
+    }catch{}
+  }
 
   function handleAudioFileChange(event: React.ChangeEvent<HTMLInputElement>){
     const file = event.target.files?.[0]
@@ -622,6 +677,7 @@ export default function ChatThread(){
   }
 
   function onMicPointerDown(e: React.MouseEvent | React.TouchEvent){
+    console.log('🎤 Mic button pressed')
     try{ e.preventDefault() }catch{}
     setRecordLocked(false)
     const y = 'touches' in e ? (e as React.TouchEvent).touches[0]?.clientY : (e as React.MouseEvent).clientY
@@ -636,7 +692,10 @@ export default function ChatThread(){
     const dy = curY - startY
     if (dy < -40){ setRecordLocked(true) }
   }
-  function onMicPointerUp(){ if (recording && !recordLocked) stopRecording() }
+  function onMicPointerUp(){ 
+    console.log('🎤 Mic button released, recording:', recording, 'locked:', recordLocked)
+    if (recording && !recordLocked) stopRecording() 
+  }
 
   function handleDeleteMessage(messageId: number | string, messageData: Message) {
     // Show confirmation dialog
@@ -1071,27 +1130,42 @@ export default function ChatThread(){
               }}
             />
             
-            {/* Recording pill */}
-            {recording && (
-              <div className="absolute left-2 -top-7 text-xs text-white/70 flex items-center gap-2">
+            {/* Recording UI */}
+            {recording && recordLocked && (
+              <div className="absolute left-2 -top-10 flex items-center gap-2 bg-black/90 px-3 py-2 rounded-full border border-white/20">
                 <span className="inline-block w-2 h-2 bg-red-500 rounded-full animate-pulse" />
-                <span>{new Date(recordMs).toISOString().substr(14,5)}</span>
-                <button className="px-2 py-0.5 border border-white/20 rounded-md hover:bg-white/10" onClick={()=>{ try{ recorder && recorder.state!=='inactive' && recorder.stop() }catch{} }}>Stop</button>
+                <span className="text-sm text-white font-mono">{new Date(recordMs).toISOString().substr(14,5)}</span>
+                <button 
+                  className="ml-2 w-6 h-6 rounded-full bg-red-500 hover:bg-red-600 flex items-center justify-center transition-colors"
+                  onClick={cancelRecording}
+                  title="Cancel recording"
+                >
+                  <i className="fa-solid fa-trash text-white text-[10px]" />
+                </button>
+                <button 
+                  className="ml-1 w-6 h-6 rounded-full bg-[#4db6ac] hover:bg-[#45a99c] flex items-center justify-center transition-colors"
+                  onClick={()=>{ try{ recorder && recorder.state!=='inactive' && recorder.stop() }catch{} }}
+                  title="Send voice message"
+                >
+                  <i className="fa-solid fa-paper-plane text-white text-[10px]" />
+                </button>
               </div>
             )}
-            {/* Recording hint (lock swipe) */}
-            {(recording && !recordLocked) && (
-              <div className="absolute left-2 -top-7 text-xs text-white/70 flex items-center gap-2">
+            {recording && !recordLocked && (
+              <div className="absolute left-2 -top-10 flex items-center gap-2 bg-black/90 px-3 py-2 rounded-full border border-white/20 animate-pulse">
                 <span className="inline-block w-2 h-2 bg-red-500 rounded-full animate-pulse" />
-                <span>{new Date(recordMs).toISOString().substr(14,5)}</span>
-                <span className="ml-2 text-white/50">Slide up to lock</span>
+                <span className="text-sm text-white font-mono">{new Date(recordMs).toISOString().substr(14,5)}</span>
+                <i className="fa-solid fa-arrow-up ml-2 text-white/70 text-xs animate-bounce" />
+                <span className="text-xs text-white/70">Slide up to lock</span>
               </div>
             )}
             {/* Mic + Send */}
             <div className="absolute right-1 top-1/2 transform -translate-y-1/2 flex items-center gap-1">
               <button
                 className={`w-7 h-7 rounded-full flex items-center justify-center transition-all duration-200 ease-out ${
-                  (recording||recordLocked) ? 'bg-red-600 text-white' : 'bg-white/20 text-white/80 hover:bg-white/30'
+                  (recording||recordLocked) 
+                    ? 'bg-red-600 text-white scale-110 shadow-lg shadow-red-500/50' 
+                    : 'bg-[#4db6ac] text-white hover:bg-[#45a99c] hover:scale-105 active:scale-95'
                 }`}
                 onMouseDown={onMicPointerDown as any}
                 onMouseUp={onMicPointerUp}
@@ -1100,8 +1174,11 @@ export default function ChatThread(){
                 onTouchMove={onMicPointerMove}
                 onTouchEnd={onMicPointerUp}
                 aria-label="Voice message"
+                title="Hold to record, release to send"
               >
-                {(recording||recordLocked) ? <i className="fa-solid fa-square-stop text-xs" /> : <i className="fa-solid fa-microphone text-xs" />}
+                <i className={`fa-solid ${
+                  (recording||recordLocked) ? 'fa-microphone' : 'fa-microphone'
+                } text-xs`} />
               </button>
               <button
                 className={`w-7 h-7 rounded-full flex items-center justify-center transition-all duration-200 ease-out ${
