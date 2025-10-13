@@ -24,6 +24,17 @@ export default function ChatThread(){
   const navigate = useNavigate()
   useEffect(() => { setTitle(username ? `Chat: ${username}` : 'Chat') }, [setTitle, username])
 
+  // Detect mobile device
+  useEffect(() => {
+    const checkMobile = () => {
+      const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
+                            (navigator.maxTouchPoints && navigator.maxTouchPoints > 2 && /MacIntel/.test(navigator.platform))
+      setIsMobile(Boolean(isMobileDevice))
+      console.log('📱 Mobile device detected:', isMobileDevice)
+    }
+    checkMobile()
+  }, [])
+
   // Add wave animation styles
   useEffect(() => {
     const style = document.createElement('style')
@@ -72,6 +83,7 @@ export default function ChatThread(){
   const [audioLevels, setAudioLevels] = useState<number[]>(Array(25).fill(0))
   const [previewImage, setPreviewImage] = useState<string|null>(null)
   const [recordingPreview, setRecordingPreview] = useState<{ blob: Blob; url: string; duration: number } | null>(null)
+  const [isMobile, setIsMobile] = useState(false)
   const lastFetchTime = useRef<number>(0)
   const pendingDeletions = useRef<Set<number|string>>(new Set())
 
@@ -619,12 +631,41 @@ export default function ChatThread(){
         return
       }
       
-      // Request microphone permission
+      // Request microphone permission with mobile-optimized constraints
       console.log('🎤 Requesting microphone permission...')
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      console.log('🎤 Microphone permission granted, starting recorder...')
+      const constraints = {
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          sampleRate: 44100,
+          channelCount: 1
+        }
+      }
       
-      const mr = new MediaRecorder(stream)
+      const stream = await navigator.mediaDevices.getUserMedia(constraints)
+      console.log('🎤 Microphone permission granted, starting recorder...')
+      console.log('🎤 Audio tracks:', stream.getAudioTracks().map(t => ({ label: t.label, enabled: t.enabled, readyState: t.readyState })))
+      
+      // Check for mobile-compatible MIME types
+      let mimeType = 'audio/webm;codecs=opus'
+      if (!MediaRecorder.isTypeSupported(mimeType)) {
+        mimeType = 'audio/webm'
+        if (!MediaRecorder.isTypeSupported(mimeType)) {
+          mimeType = 'audio/mp4'
+          if (!MediaRecorder.isTypeSupported(mimeType)) {
+            mimeType = 'audio/wav'
+            if (!MediaRecorder.isTypeSupported(mimeType)) {
+              mimeType = '' // Let browser choose
+            }
+          }
+        }
+      }
+      
+      console.log('🎤 Using MIME type:', mimeType)
+      
+      const options = mimeType ? { mimeType } : {}
+      const mr = new MediaRecorder(stream, options)
       chunksRef.current = []
       mr.ondataavailable = (e) => { if (e.data && e.data.size > 0) chunksRef.current.push(e.data) }
       mr.onstop = async () => {
@@ -672,11 +713,15 @@ export default function ChatThread(){
       console.error('🎤 Recording error:', err)
       const error = err as Error
       if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
-        alert('Microphone permission was denied. Please allow microphone access in your browser settings to send voice messages.')
+        alert('Microphone permission was denied. Please allow microphone access in your browser settings to send voice messages. On mobile, you may need to refresh the page and try again.')
       } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
-        alert('No microphone found. Please connect a microphone to send voice messages.')
+        alert('No microphone found. Please check your device settings and ensure microphone access is enabled.')
+      } else if (error.name === 'NotSupportedError') {
+        alert('Voice recording is not supported on this device or browser. Please try using a different browser.')
+      } else if (error.name === 'AbortError') {
+        alert('Microphone access was interrupted. Please try again.')
       } else {
-        alert('Could not access microphone: ' + error.message)
+        alert('Could not access microphone: ' + error.message + '. This may be due to browser security restrictions on mobile devices.')
       }
     }
   }
@@ -717,7 +762,19 @@ export default function ChatThread(){
       const fd = new FormData()
       fd.append('recipient_id', String(otherUserId))
       fd.append('duration_seconds', String(durationSeconds))
-      fd.append('audio', blob, 'voice.webm')
+      
+      // Determine file extension based on blob type
+      let filename = 'voice.webm'
+      if (blob.type.includes('mp4')) {
+        filename = 'voice.mp4'
+      } else if (blob.type.includes('wav')) {
+        filename = 'voice.wav'
+      } else if (blob.type.includes('ogg')) {
+        filename = 'voice.ogg'
+      }
+      
+      console.log('🎤 Uploading with filename:', filename, 'blob type:', blob.type)
+      fd.append('audio', blob, filename)
       const r = await fetch('/send_audio_message', { method:'POST', credentials:'include', body: fd })
       const j = await r.json().catch(()=>null)
       if (!j?.success){
@@ -750,17 +807,25 @@ export default function ChatThread(){
   }
 
   function handleMicClick(e: React.MouseEvent | React.TouchEvent){
-    console.log('🎤 Mic button clicked, recording:', recording)
-    try{ e.preventDefault() }catch{}
+    console.log('🎤 Mic button clicked, recording:', recording, 'mobile:', isMobile)
+    try{ 
+      e.preventDefault() 
+      e.stopPropagation()
+    }catch{}
     
     if (recording) {
       // Stop recording
       console.log('🎤 Stopping recording...')
       stopRecording()
     } else {
-      // Start recording
+      // Start recording - mobile devices need user gesture
       console.log('🎤 Starting recording...')
-      startRecording()
+      if (isMobile) {
+        // On mobile, we need to ensure this is a user gesture
+        setTimeout(() => startRecording(), 0)
+      } else {
+        startRecording()
+      }
     }
   }
 
@@ -1243,18 +1308,25 @@ export default function ChatThread(){
             {/* Mic + Send */}
             <div className="absolute right-1 top-1/2 transform -translate-y-1/2 flex items-center gap-1">
               <button
-                className={`w-8 h-8 rounded-full flex items-center justify-center transition-all duration-200 ease-out ${
+                className={`${isMobile ? 'w-10 h-10' : 'w-8 h-8'} rounded-full flex items-center justify-center transition-all duration-200 ease-out ${
                   recording 
                     ? 'bg-red-600 text-white scale-110 shadow-lg shadow-red-500/50 animate-pulse' 
                     : 'bg-[#4db6ac] text-white hover:bg-[#45a99c] hover:scale-110 active:scale-95 shadow-md'
                 }`}
                 onClick={handleMicClick}
+                onTouchStart={(e) => {
+                  // Prevent iOS zoom on double tap
+                  e.preventDefault()
+                }}
                 aria-label="Voice message"
                 title={recording ? "Tap to stop recording" : "Tap to start recording"}
                 style={{
                   touchAction: 'manipulation',
                   WebkitTapHighlightColor: 'transparent',
-                  userSelect: 'none'
+                  userSelect: 'none',
+                  WebkitUserSelect: 'none',
+                  minHeight: isMobile ? '44px' : 'auto', // iOS minimum touch target
+                  minWidth: isMobile ? '44px' : 'auto'
                 }}
               >
                 <i className={`fa-solid ${
@@ -1460,6 +1532,8 @@ function AudioMessage({ message, audioPath }: { message: Message; audioPath: str
           preload="metadata"
           src={audioPath} 
           className="w-full h-8"
+          playsInline
+          controlsList="nodownload"
           style={{
             background: 'transparent',
             borderRadius: '6px'
