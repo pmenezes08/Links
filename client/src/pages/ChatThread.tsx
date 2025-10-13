@@ -84,7 +84,7 @@ export default function ChatThread(){
   const stoppedRef = useRef(false)
   const finalizedRef = useRef(false)
   const finalizeTimerRef = useRef<any>(null)
-  const twoSecondCheckRef = useRef<any>(null)
+  // const twoSecondCheckRef = useRef<any>(null)
   const finalizeAttemptRef = useRef(0)
   const [recordLockActive, setRecordLockActive] = useState(false)
   const [showLockHint, setShowLockHint] = useState(false)
@@ -660,31 +660,9 @@ export default function ChatThread(){
     }
   }
 
-  function resetRecordingState(){
-    try { if (recordTimerRef.current) clearInterval(recordTimerRef.current) } catch {}
-    try { if (visRafRef.current) cancelAnimationFrame(visRafRef.current) } catch {}
-    try { analyserRef.current && analyserRef.current.disconnect() } catch {}
-    try { sourceRef.current && sourceRef.current.disconnect() } catch {}
-    try { audioCtxRef.current && audioCtxRef.current.close() } catch {}
-    try { recorder?.stream && recorder.stream.getTracks().forEach(t => t.stop()) } catch {}
-    analyserRef.current = null
-    sourceRef.current = null
-    audioCtxRef.current = null
-    chunksRef.current = []
-    stoppedRef.current = false
-    finalizedRef.current = false
-    if (finalizeTimerRef.current) clearTimeout(finalizeTimerRef.current)
-    if (twoSecondCheckRef.current) clearTimeout(twoSecondCheckRef.current)
-    setRecordMs(0)
-    setAudioLevels(Array(25).fill(0))
-    setRecording(false)
-    setRecorder(null)
-  }
+  // resetRecordingState utility not used currently (native fallback disabled)
 
-  function openNativeAudioCapture(){
-    // Use device-native recorder via file input
-    try { audioInputRef.current?.click() } catch {}
-  }
+  // Note: native audio capture fallback currently disabled
 
   async function startRecording(){
     try{
