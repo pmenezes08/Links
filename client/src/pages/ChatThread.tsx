@@ -693,8 +693,47 @@ export default function ChatThread(){
   
   function sendRecordingPreview(){
     if (!recordingPreview) return
-    uploadAudioBlob(recordingPreview.blob)
+    console.log('🎤 Sending recording preview, duration:', recordingPreview.duration)
+    uploadAudioBlobWithDuration(recordingPreview.blob, recordingPreview.duration)
     setRecordingPreview(null)
+  }
+  
+  async function uploadAudioBlobWithDuration(blob: Blob, durationSeconds: number){
+    if (!otherUserId) return
+    
+    // Don't send if blob is empty (cancelled recording)
+    if (!blob || blob.size === 0) {
+      console.log('🎤 Empty audio blob, not sending')
+      return
+    }
+    
+    setSending(true)
+    try{
+      console.log('🎤 Uploading audio blob, size:', blob.size, 'duration:', durationSeconds)
+      const url = URL.createObjectURL(blob)
+      const now = new Date().toISOString().slice(0,19).replace('T',' ')
+      const optimistic: Message = { id: `temp_audio_${Date.now()}`, text: '🎤 Voice message', audio_path: url, sent: true, time: now, isOptimistic: true }
+      setMessages(prev => [...prev, optimistic])
+      setTimeout(scrollToBottom, 50)
+      const fd = new FormData()
+      fd.append('recipient_id', String(otherUserId))
+      fd.append('duration_seconds', String(durationSeconds))
+      fd.append('audio', blob, 'voice.webm')
+      const r = await fetch('/send_audio_message', { method:'POST', credentials:'include', body: fd })
+      const j = await r.json().catch(()=>null)
+      if (!j?.success){
+        console.error('🎤 Send failed:', j?.error)
+        setMessages(prev => prev.filter(m => m.id !== optimistic.id))
+        alert(j?.error || 'Failed to send audio message')
+      } else {
+        console.log('🎤 Audio sent successfully')
+      }
+    }catch(err){
+      console.error('🎤 Upload error:', err)
+      alert('Failed to send voice message: ' + (err as Error).message)
+    } finally {
+      setSending(false)
+    }
   }
   
   function cancelRecordingPreview(){
@@ -1156,32 +1195,22 @@ export default function ChatThread(){
             {/* Recording sound bar - replaces text input during recording */}
             {recording && (
               <div className="flex-1 flex items-center px-4 py-2.5 gap-3">
-                <div className="flex items-center gap-2 flex-1">
-                  <span className="inline-block w-3 h-3 bg-red-500 rounded-full animate-pulse" />
-                  <div className="flex-1 h-8 bg-black/50 rounded-full flex items-center px-3 gap-1 relative overflow-hidden">
-                    {/* Sound bars animation */}
-                    {Array.from({length: 20}).map((_, i) => (
+                <div className="flex items-center gap-3 flex-1">
+                  <span className="inline-block w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+                  <div className="flex-1 h-6 bg-gray-800/80 rounded-full flex items-center justify-center px-2 gap-0.5 relative overflow-hidden">
+                    {/* Sleek sound bars */}
+                    {Array.from({length: 25}).map((_, i) => (
                       <div 
                         key={i}
-                        className="flex-1 bg-gradient-to-t from-[#4db6ac] to-[#66d9c2] rounded-full transition-all duration-150 animate-pulse"
+                        className="w-0.5 bg-gray-400 rounded-full transition-all duration-200"
                         style={{
-                          height: `${4 + Math.sin((Date.now() / 200 + i * 0.5)) * 12 + Math.random() * 8}px`,
-                          opacity: 0.4 + Math.sin((Date.now() / 300 + i * 0.3)) * 0.3 + 0.3,
-                          animationDelay: `${i * 30}ms`,
-                          animationDuration: `${800 + Math.random() * 400}ms`
+                          height: `${8 + Math.sin((recordMs / 100 + i * 0.3)) * 8}px`,
+                          opacity: 0.3 + Math.sin((recordMs / 150 + i * 0.2)) * 0.4,
                         }}
                       />
                     ))}
-                    {/* Animated wave effect */}
-                    <div 
-                      className="absolute inset-0 bg-gradient-to-r from-transparent via-[#4db6ac]/20 to-transparent"
-                      style={{
-                        animation: 'wave 2s ease-in-out infinite',
-                        transform: 'translateX(-100%)'
-                      }}
-                    />
                   </div>
-                  <span className="text-sm text-white font-mono min-w-[50px]">
+                  <span className="text-xs text-gray-300 font-mono min-w-[45px] tabular-nums">
                     {new Date(recordMs).toISOString().substr(14,5)}
                   </span>
                 </div>
