@@ -1013,10 +1013,27 @@ export default function ChatThread(){
                       {/* Audio message */}
                       {m.audio_path && !m.image_path ? (
                         <div className="mb-2">
-                          <audio controls preload="none" src={m.audio_path.startsWith('blob:') ? m.audio_path : `/uploads/${m.audio_path}`} className="w-full" />
-                          {typeof m.audio_duration_seconds === 'number' ? (
-                            <div className="text-[11px] text-white/60 mt-1">{Math.max(0, m.audio_duration_seconds)}s</div>
-                          ) : null}
+                          <div className="bg-gray-800/50 rounded-lg p-3 border border-gray-700/50">
+                            <div className="flex items-center gap-2 mb-2">
+                              <i className="fa-solid fa-microphone text-[#4db6ac] text-sm" />
+                              <span className="text-white/80 text-sm font-medium">Voice Message</span>
+                              {typeof m.audio_duration_seconds === 'number' ? (
+                                <span className="ml-auto text-xs text-white/60 bg-gray-700/50 px-2 py-1 rounded-full font-mono">
+                                  {Math.floor(Math.max(0, m.audio_duration_seconds) / 60)}:{String(Math.max(0, m.audio_duration_seconds) % 60).padStart(2, '0')}
+                                </span>
+                              ) : null}
+                            </div>
+                            <audio 
+                              controls 
+                              preload="none" 
+                              src={m.audio_path.startsWith('blob:') ? m.audio_path : `/uploads/${m.audio_path}`} 
+                              className="w-full h-8"
+                              style={{
+                                background: 'transparent',
+                                borderRadius: '6px'
+                              }}
+                            />
+                          </div>
                         </div>
                       ) : null}
                       {/* Image display with loader */}
@@ -1181,9 +1198,14 @@ export default function ChatThread(){
                       />
                     ))}
                   </div>
-                  <span className="text-xs text-gray-300 font-mono min-w-[45px] tabular-nums">
-                    {new Date(recordMs).toISOString().substr(14,5)}
-                  </span>
+                  <div className="text-xs text-gray-300 font-mono min-w-[50px] tabular-nums text-center">
+                    <div className="text-white font-medium">
+                      {new Date(recordMs).toISOString().substr(14,5)}
+                    </div>
+                    <div className="text-[10px] text-gray-400">
+                      REC
+                    </div>
+                  </div>
                 </div>
               </div>
             )}
