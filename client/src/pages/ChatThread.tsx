@@ -736,8 +736,8 @@ export default function ChatThread(){
           console.log('🎤 Audio blob created, size:', blob.size, 'duration:', Math.round(recordMs/1000))
           
           // Check minimum recording duration (especially important for mobile)
-          const duration = Math.round(recordMs/1000)
-          console.log('🎤 Recording duration:', duration, 'seconds, blob size:', blob.size)
+          const timerDuration = Math.round(recordMs/1000)
+          console.log('🎤 Timer duration:', timerDuration, 'seconds, blob size:', blob.size)
           
           if (blob.size === 0) {
             console.error('🎤 Empty blob - no audio data collected!')
@@ -749,16 +749,50 @@ export default function ChatThread(){
             return
           }
           
-          if (duration < 1) {
-            console.warn('🎤 Recording too short:', duration, 'seconds')
-            alert('Recording is too short. Please record for at least 1 second.')
+          // Smart duration validation - consider both timer and blob size
+          const minimumDuration = isMobile ? 0.5 : 1.0
+          const minimumBlobSize = isMobile ? 2000 : 5000 // bytes
+          
+          // If timer shows very short duration but we have substantial audio data, allow it
+          const hasSubstantialAudio = blob.size >= minimumBlobSize
+          const timerTooShort = timerDuration < minimumDuration
+          
+          if (timerTooShort && !hasSubstantialAudio) {
+            console.warn('🎤 Recording too short:', timerDuration, 'seconds, blob size:', blob.size)
+            alert(`Recording is too short. Please record for at least ${minimumDuration} second${minimumDuration > 1 ? 's' : ''}.`)
             return
+          }
+          
+          if (hasSubstantialAudio && timerTooShort) {
+            console.log('🎤 Timer shows short duration but blob size suggests longer recording - allowing')
+          }
+          
+          // Use actual duration or fallback to timer duration
+          let actualDuration = timerDuration
+          
+          // Try to get actual duration from the blob
+          try {
+            const tempUrl = URL.createObjectURL(blob)
+            const tempAudio = new Audio(tempUrl)
+            tempAudio.addEventListener('loadedmetadata', () => {
+              if (tempAudio.duration && isFinite(tempAudio.duration)) {
+                const blobDuration = Math.round(tempAudio.duration)
+                console.log('🎤 Actual blob duration:', blobDuration, 'vs timer:', timerDuration)
+                if (blobDuration > timerDuration) {
+                  actualDuration = blobDuration
+                  console.log('🎤 Using blob duration instead of timer duration')
+                }
+              }
+              URL.revokeObjectURL(tempUrl)
+            })
+          } catch (err) {
+            console.log('🎤 Could not get blob duration, using timer duration')
           }
           
           // Don't auto-send, show preview instead
           const url = URL.createObjectURL(blob)
-          console.log('🎤 Setting recording preview - duration:', duration, 'blob size:', blob.size, 'blob type:', blob.type)
-          setRecordingPreview({ blob, url, duration })
+          console.log('🎤 Setting recording preview - final duration:', actualDuration, 'blob size:', blob.size, 'blob type:', blob.type)
+          setRecordingPreview({ blob, url, duration: actualDuration })
         } finally {
           setRecording(false)
           setRecorder(null)
