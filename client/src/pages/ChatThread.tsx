@@ -1012,29 +1012,10 @@ export default function ChatThread(){
                       
                       {/* Audio message */}
                       {m.audio_path && !m.image_path ? (
-                        <div className="mb-2">
-                          <div className="bg-gray-800/50 rounded-lg p-3 border border-gray-700/50">
-                            <div className="flex items-center gap-2 mb-2">
-                              <i className="fa-solid fa-microphone text-[#4db6ac] text-sm" />
-                              <span className="text-white/80 text-sm font-medium">Voice Message</span>
-                              {typeof m.audio_duration_seconds === 'number' ? (
-                                <span className="ml-auto text-xs text-white/60 bg-gray-700/50 px-2 py-1 rounded-full font-mono">
-                                  {Math.floor(Math.max(0, m.audio_duration_seconds) / 60)}:{String(Math.max(0, m.audio_duration_seconds) % 60).padStart(2, '0')}
-                                </span>
-                              ) : null}
-                            </div>
-                            <audio 
-                              controls 
-                              preload="none" 
-                              src={m.audio_path.startsWith('blob:') ? m.audio_path : `/uploads/${m.audio_path}`} 
-                              className="w-full h-8"
-                              style={{
-                                background: 'transparent',
-                                borderRadius: '6px'
-                              }}
-                            />
-                          </div>
-                        </div>
+                        <AudioMessage 
+                          message={m}
+                          audioPath={m.audio_path.startsWith('blob:') ? m.audio_path : `/uploads/${m.audio_path}`}
+                        />
                       ) : null}
                       {/* Image display with loader */}
                       {m.image_path ? (
@@ -1244,13 +1225,18 @@ export default function ChatThread(){
               />
             )}
             
-            {/* Simple recording indicator */}
+            {/* Recording indicator with prominent timer */}
             {recording && (
-              <div className="absolute left-3 -top-8 flex items-center gap-2 bg-red-600/90 px-3 py-1.5 rounded-full border border-red-500/30">
+              <div className="absolute left-3 -top-10 flex items-center gap-3 bg-red-600/95 px-4 py-2 rounded-full border border-red-500/40 shadow-lg">
                 <span className="inline-block w-2 h-2 bg-white rounded-full animate-pulse" />
-                <span className="text-xs text-white font-mono">
-                  {new Date(recordMs).toISOString().substr(14,5)}
-                </span>
+                <div className="text-center">
+                  <div className="text-sm text-white font-mono font-bold">
+                    {new Date(recordMs).toISOString().substr(14,5)}
+                  </div>
+                  <div className="text-[10px] text-white/80 -mt-0.5">
+                    RECORDING
+                  </div>
+                </div>
                 <span className="text-xs text-white/80">• Tap mic to stop</span>
               </div>
             )}
@@ -1396,6 +1382,90 @@ export default function ChatThread(){
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+function AudioMessage({ message, audioPath }: { message: Message; audioPath: string }) {
+  const [duration, setDuration] = useState<number | null>(null)
+  const [loading, setLoading] = useState(true)
+  const audioRef = useRef<HTMLAudioElement>(null)
+
+  useEffect(() => {
+    console.log('🎵 AudioMessage - message data:', {
+      id: message.id,
+      audio_duration_seconds: message.audio_duration_seconds,
+      type: typeof message.audio_duration_seconds,
+      text: message.text
+    })
+    
+    // First try to use the duration from the message
+    if (typeof message.audio_duration_seconds === 'number' && message.audio_duration_seconds > 0) {
+      console.log('🎵 Using duration from message:', message.audio_duration_seconds)
+      setDuration(message.audio_duration_seconds)
+      setLoading(false)
+      return
+    }
+
+    // If no duration in message, try to get it from the audio element
+    const audio = audioRef.current
+    if (!audio) return
+
+    const handleLoadedMetadata = () => {
+      if (audio.duration && isFinite(audio.duration)) {
+        console.log('🎵 Got duration from audio element:', audio.duration)
+        setDuration(Math.round(audio.duration))
+        setLoading(false)
+      }
+    }
+
+    const handleError = () => {
+      setLoading(false)
+    }
+
+    audio.addEventListener('loadedmetadata', handleLoadedMetadata)
+    audio.addEventListener('error', handleError)
+
+    return () => {
+      audio.removeEventListener('loadedmetadata', handleLoadedMetadata)
+      audio.removeEventListener('error', handleError)
+    }
+  }, [message.audio_duration_seconds, audioPath])
+
+  const formatDuration = (seconds: number) => {
+    const mins = Math.floor(seconds / 60)
+    const secs = seconds % 60
+    return `${mins}:${String(secs).padStart(2, '0')}`
+  }
+
+  return (
+    <div className="mb-2">
+      <div className="bg-gray-800/50 rounded-lg p-3 border border-gray-700/50">
+        <div className="flex items-center gap-2 mb-2">
+          <i className="fa-solid fa-microphone text-[#4db6ac] text-sm" />
+          <span className="text-white/80 text-sm font-medium">Voice Message</span>
+          {duration !== null ? (
+            <span className="ml-auto text-xs text-white/60 bg-gray-700/50 px-2 py-1 rounded-full font-mono">
+              {formatDuration(duration)}
+            </span>
+          ) : loading ? (
+            <span className="ml-auto text-xs text-white/40 bg-gray-700/30 px-2 py-1 rounded-full">
+              --:--
+            </span>
+          ) : null}
+        </div>
+        <audio 
+          ref={audioRef}
+          controls 
+          preload="metadata"
+          src={audioPath} 
+          className="w-full h-8"
+          style={{
+            background: 'transparent',
+            borderRadius: '6px'
+          }}
+        />
+      </div>
     </div>
   )
 }
