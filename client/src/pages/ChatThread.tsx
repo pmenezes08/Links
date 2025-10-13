@@ -84,6 +84,7 @@ export default function ChatThread(){
   const stoppedRef = useRef(false)
   const finalizedRef = useRef(false)
   const finalizeTimerRef = useRef<any>(null)
+  const twoSecondCheckRef = useRef<any>(null)
   const [previewImage, setPreviewImage] = useState<string|null>(null)
   const [recordingPreview, setRecordingPreview] = useState<{ blob: Blob; url: string; duration: number } | null>(null)
   const [isMobile, setIsMobile] = useState(false)
@@ -653,6 +654,32 @@ export default function ChatThread(){
     }
   }
 
+  function resetRecordingState(){
+    try { if (recordTimerRef.current) clearInterval(recordTimerRef.current) } catch {}
+    try { if (visRafRef.current) cancelAnimationFrame(visRafRef.current) } catch {}
+    try { analyserRef.current && analyserRef.current.disconnect() } catch {}
+    try { sourceRef.current && sourceRef.current.disconnect() } catch {}
+    try { audioCtxRef.current && audioCtxRef.current.close() } catch {}
+    try { recorder?.stream && recorder.stream.getTracks().forEach(t => t.stop()) } catch {}
+    analyserRef.current = null
+    sourceRef.current = null
+    audioCtxRef.current = null
+    chunksRef.current = []
+    stoppedRef.current = false
+    finalizedRef.current = false
+    if (finalizeTimerRef.current) clearTimeout(finalizeTimerRef.current)
+    if (twoSecondCheckRef.current) clearTimeout(twoSecondCheckRef.current)
+    setRecordMs(0)
+    setAudioLevels(Array(25).fill(0))
+    setRecording(false)
+    setRecorder(null)
+  }
+
+  function openNativeAudioCapture(){
+    // Use device-native recorder via file input
+    try { audioInputRef.current?.click() } catch {}
+  }
+
   async function startRecording(){
     try{
       console.log('🎤 Starting recording...', 'mobile:', isMobile)
@@ -871,15 +898,14 @@ export default function ChatThread(){
       }
       // Start recording with mobile-specific handling
       try {
-        // Detect iOS Safari where timeslices can cause issues
+        // Detect iOS device (any browser)
         const ua = navigator.userAgent
         const isIOSDevice = /iPad|iPhone|iPod/.test(ua) || ((navigator.platform === 'MacIntel') && (navigator.maxTouchPoints || 0) > 1)
-        const isSafari = /^((?!chrome|android).)*safari/i.test(ua)
 
-        if (isMobile && (isIOSDevice && isSafari)) {
-          // iOS Safari: avoid timeslice to ensure data arrives only on stop
+        if (isMobile && isIOSDevice) {
+          // iOS: avoid timeslice to ensure data arrives only on stop
           mr.start()
-          console.log('🎤 iOS Safari: Starting without timeslice')
+          console.log('🎤 iOS: Starting without timeslice')
         } else if (isMobile) {
           // Other mobile browsers: use short timeslice to flush data
           mr.start(500)
@@ -903,10 +929,18 @@ export default function ChatThread(){
         console.log('🎤 Recording started successfully, state:', mr.state)
         
         // Test data collection after a short delay
-        setTimeout(() => {
-          console.log('🎤 Testing after 2s - chunks:', chunksRef.current.length, 'audio levels:', audioLevels.slice(0, 5))
-          if (chunksRef.current.length === 0) {
-            console.warn('🎤 WARNING: No data chunks collected after 2s on mobile!')
+        twoSecondCheckRef.current = setTimeout(() => {
+          const maxLevel = Math.max(...audioLevels)
+          console.log('🎤 Testing after 2s - chunks:', chunksRef.current.length, 'max level:', maxLevel.toFixed(3))
+          if (chunksRef.current.length === 0 && isMobile) {
+            // If also no visible audio levels, assume capture issue and fallback
+            if (!isFinite(maxLevel) || maxLevel < 0.05) {
+              console.warn('🎤 No audio data after 2s on mobile; falling back to native capture')
+              try { mr.state !== 'inactive' && mr.stop() } catch {}
+              resetRecordingState()
+              alert('Your mobile browser did not capture audio. Switching to device recorder...')
+              openNativeAudioCapture()
+            }
           }
         }, 2000)
         
