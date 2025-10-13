@@ -50,6 +50,13 @@ export default function ChatThread(){
   const recordStartRef = useRef<number>(0)
   const [recordMs, setRecordMs] = useState(0)
   const recordTimerRef = useRef<any>(null)
+  const [recordLocked, setRecordLocked] = useState(false)
+  const gestureStartYRef = useRef<number|null>(null)
+  const audioCtxRef = useRef<AudioContext|null>(null)
+  const analyserRef = useRef<AnalyserNode|null>(null)
+  const sourceRef = useRef<MediaStreamAudioSourceNode|null>(null)
+  const visRafRef = useRef<number| null>(null)
+  const visualizerCanvasRef = useRef<HTMLCanvasElement|null>(null)
   const [previewImage, setPreviewImage] = useState<string|null>(null)
   const lastFetchTime = useRef<number>(0)
   const pendingDeletions = useRef<Set<number|string>>(new Set())
@@ -522,6 +529,48 @@ export default function ChatThread(){
     }
   }
 
+  function startVisualizer(stream: MediaStream){
+    try{
+      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)()
+      const source = ctx.createMediaStreamSource(stream)
+      const analyser = ctx.createAnalyser()
+      analyser.fftSize = 512
+      source.connect(analyser)
+      audioCtxRef.current = ctx
+      analyserRef.current = analyser
+      sourceRef.current = source
+      const canvas = visualizerCanvasRef.current
+      if (!canvas) return
+      const c2d = canvas.getContext('2d')
+      if (!c2d) return
+      const bufferLength = analyser.frequencyBinCount
+      const dataArray = new Uint8Array(bufferLength)
+      const draw = () => {
+        if (!analyserRef.current || !canvas) return
+        analyserRef.current.getByteTimeDomainData(dataArray)
+        c2d.clearRect(0,0,canvas.width,canvas.height)
+        c2d.fillStyle = '#0b0f10'
+        c2d.fillRect(0,0,canvas.width,canvas.height)
+        c2d.strokeStyle = '#4db6ac'
+        c2d.lineWidth = 2
+        c2d.beginPath()
+        const sliceWidth = canvas.width / bufferLength
+        let x = 0
+        for (let i=0;i<bufferLength;i++){
+          const v = dataArray[i] / 128.0
+          const y = (v * canvas.height) / 2
+          if (i === 0) c2d.moveTo(x, y)
+          else c2d.lineTo(x, y)
+          x += sliceWidth
+        }
+        c2d.lineTo(canvas.width, canvas.height/2)
+        c2d.stroke()
+        visRafRef.current = requestAnimationFrame(draw)
+      }
+      visRafRef.current = requestAnimationFrame(draw)
+    }catch{}
+  }
+
   async function startRecording(){
     try{
       if (!('MediaRecorder' in window)){
@@ -541,6 +590,11 @@ export default function ChatThread(){
           setRecordMs(0)
           try{ stream.getTracks().forEach(t=> t.stop()) }catch{}
           if (recordTimerRef.current) clearInterval(recordTimerRef.current)
+          if (visRafRef.current) cancelAnimationFrame(visRafRef.current)
+          try{ analyserRef.current && analyserRef.current.disconnect() }catch{}
+          try{ sourceRef.current && sourceRef.current.disconnect() }catch{}
+          try{ audioCtxRef.current && audioCtxRef.current.close() }catch{}
+          analyserRef.current = null; sourceRef.current = null; audioCtxRef.current = null
         }
       }
       mr.start()
@@ -551,6 +605,8 @@ export default function ChatThread(){
       if (recordTimerRef.current) clearInterval(recordTimerRef.current)
       recordTimerRef.current = setInterval(()=> setRecordMs(Date.now() - recordStartRef.current), 200)
       setTimeout(()=> { try{ mr.state !== 'inactive' && mr.stop() }catch{} }, 60000)
+      // Start visualizer
+      startVisualizer(stream)
     }catch{
       audioInputRef.current?.click()
     }
@@ -564,6 +620,23 @@ export default function ChatThread(){
     uploadAudioBlob(file)
     event.target.value = ''
   }
+
+  function onMicPointerDown(e: React.MouseEvent | React.TouchEvent){
+    try{ e.preventDefault() }catch{}
+    setRecordLocked(false)
+    const y = 'touches' in e ? (e as React.TouchEvent).touches[0]?.clientY : (e as React.MouseEvent).clientY
+    gestureStartYRef.current = y || 0
+    startRecording()
+  }
+  function onMicPointerMove(e: React.TouchEvent){
+    if (!recording || recordLocked) return
+    const startY = gestureStartYRef.current
+    if (startY == null) return
+    const curY = e.touches?.[0]?.clientY || startY
+    const dy = curY - startY
+    if (dy < -40){ setRecordLocked(true) }
+  }
+  function onMicPointerUp(){ if (recording && !recordLocked) stopRecording() }
 
   function handleDeleteMessage(messageId: number | string, messageData: Message) {
     // Show confirmation dialog
@@ -963,6 +1036,10 @@ export default function ChatThread(){
           
           {/* Message input container */}
           <div className="flex-1 flex items-center bg-[#1a1a1a] rounded-3xl border border-white/20 overflow-hidden relative">
+            {/* Recording visualizer over input when locked/recording */}
+            {(recording || recordLocked) && (
+              <canvas ref={visualizerCanvasRef} width={600} height={40} className="absolute left-3 right-16 top-1/2 -translate-y-1/2 opacity-80 pointer-events-none" />
+            )}
             <textarea
               ref={textareaRef}
               rows={1}
@@ -1002,24 +1079,29 @@ export default function ChatThread(){
                 <button className="px-2 py-0.5 border border-white/20 rounded-md hover:bg-white/10" onClick={()=>{ try{ recorder && recorder.state!=='inactive' && recorder.stop() }catch{} }}>Stop</button>
               </div>
             )}
-            {/* Recording pill */}
-            {recording && (
+            {/* Recording hint (lock swipe) */}
+            {(recording && !recordLocked) && (
               <div className="absolute left-2 -top-7 text-xs text-white/70 flex items-center gap-2">
                 <span className="inline-block w-2 h-2 bg-red-500 rounded-full animate-pulse" />
                 <span>{new Date(recordMs).toISOString().substr(14,5)}</span>
-                <button className="px-2 py-0.5 border border-white/20 rounded-md hover:bg-white/10" onClick={stopRecording}>Stop</button>
+                <span className="ml-2 text-white/50">Slide up to lock</span>
               </div>
             )}
             {/* Mic + Send */}
             <div className="absolute right-1 top-1/2 transform -translate-y-1/2 flex items-center gap-1">
               <button
                 className={`w-7 h-7 rounded-full flex items-center justify-center transition-all duration-200 ease-out ${
-                  recording ? 'bg-red-600 text-white' : 'bg-white/20 text-white/80 hover:bg-white/30'
+                  (recording||recordLocked) ? 'bg-red-600 text-white' : 'bg-white/20 text-white/80 hover:bg-white/30'
                 }`}
-                onClick={recording ? stopRecording : startRecording}
+                onMouseDown={onMicPointerDown as any}
+                onMouseUp={onMicPointerUp}
+                onMouseLeave={onMicPointerUp}
+                onTouchStart={onMicPointerDown as any}
+                onTouchMove={onMicPointerMove}
+                onTouchEnd={onMicPointerUp}
                 aria-label="Voice message"
               >
-                {recording ? <i className="fa-solid fa-square-stop text-xs" /> : <i className="fa-solid fa-microphone text-xs" />}
+                {(recording||recordLocked) ? <i className="fa-solid fa-square-stop text-xs" /> : <i className="fa-solid fa-microphone text-xs" />}
               </button>
               <button
                 className={`w-7 h-7 rounded-full flex items-center justify-center transition-all duration-200 ease-out ${
