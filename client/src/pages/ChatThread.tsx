@@ -85,6 +85,11 @@ export default function ChatThread(){
   const finalizedRef = useRef(false)
   const finalizeTimerRef = useRef<any>(null)
   const twoSecondCheckRef = useRef<any>(null)
+  const [recordLockActive, setRecordLockActive] = useState(false)
+  const [showLockHint, setShowLockHint] = useState(false)
+  const touchStartYRef = useRef<number|null>(null)
+  const lockActiveRef = useRef(false)
+  const suppressClickRef = useRef(false)
   const [previewImage, setPreviewImage] = useState<string|null>(null)
   const [recordingPreview, setRecordingPreview] = useState<{ blob: Blob; url: string; duration: number } | null>(null)
   const [isMobile, setIsMobile] = useState(false)
@@ -888,6 +893,9 @@ export default function ChatThread(){
           try{ sourceRef.current && sourceRef.current.disconnect() }catch{}
           try{ audioCtxRef.current && audioCtxRef.current.close() }catch{}
           analyserRef.current = null; sourceRef.current = null; audioCtxRef.current = null
+          // Reset lock state after finalize
+          lockActiveRef.current = false
+          setRecordLockActive(false)
         }
       }
       mr.onstop = () => {
@@ -1078,17 +1086,16 @@ export default function ChatThread(){
 
   function handleMicClick(e: React.MouseEvent | React.TouchEvent){
     console.log('🎤 Mic button clicked, recording:', recording, 'mobile:', isMobile)
-    try{ 
-      e.preventDefault() 
-      e.stopPropagation()
-    }catch{}
-    
+    try{ e.preventDefault(); e.stopPropagation() }catch{}
+    if (suppressClickRef.current) {
+      // Suppress click caused by touchend
+      suppressClickRef.current = false
+      return
+    }
     if (recording) {
-      // Stop recording
-      console.log('🎤 Stopping recording...')
+      console.log('🎤 Click stop (no lock)')
       stopRecording()
     } else {
-      // Check if we need to request microphone permission
       checkMicrophonePermission()
     }
   }
@@ -1520,7 +1527,7 @@ export default function ChatThread(){
             className="hidden"
           />
           
-          {/* Recording counter - visible above text box */}
+            {/* Recording counter - visible above text box */}
           {recording && (
             <div className="mb-2 flex justify-center">
               <div className="bg-red-600/90 px-3 py-1.5 rounded-full border border-red-500/40 shadow-md">
@@ -1556,6 +1563,12 @@ export default function ChatThread(){
                       />
                     ))}
                   </div>
+                  {recordLockActive && (
+                    <div className="text-xs text-white/70 ml-2 flex items-center gap-1">
+                      <i className="fa-solid fa-lock" />
+                      <span>Locked</span>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -1595,17 +1608,45 @@ export default function ChatThread(){
             )}
             
             {/* Mic + Send */}
-            <div className="absolute right-1 top-1/2 transform -translate-y-1/2 flex items-center gap-1">
+            <div className="absolute right-1 top-1/2 transform -translate-y-1/2 flex items-center gap-2">
               <button
-                className={`w-7 h-7 rounded-full flex items-center justify-center transition-all duration-200 ease-out ${
+                className={`w-12 h-12 md:w-9 md:h-9 rounded-full flex items-center justify-center transition-all duration-200 ease-out ${
                   recording 
                     ? 'bg-red-600 text-white scale-105 shadow-lg shadow-red-500/50 animate-pulse' 
                     : 'bg-[#4db6ac] text-white hover:bg-[#45a99c] hover:scale-105 active:scale-95 shadow-md'
                 }`}
                 onClick={handleMicClick}
                 onTouchStart={(e) => {
-                  // Prevent iOS zoom on double tap
-                  e.preventDefault()
+                  try{ e.preventDefault(); e.stopPropagation() }catch{}
+                  suppressClickRef.current = true
+                  touchStartYRef.current = (e.touches && e.touches[0]?.clientY) || null
+                  setShowLockHint(true)
+                  if (!recording) checkMicrophonePermission()
+                }}
+                onTouchMove={(e) => {
+                  const startY = touchStartYRef.current
+                  if (startY == null) return
+                  const dy = startY - (e.touches && e.touches[0]?.clientY || startY)
+                  // Lock when user swipes up by 40px
+                  const shouldLock = dy > 40
+                  if (shouldLock && !lockActiveRef.current) {
+                    lockActiveRef.current = true
+                    setRecordLockActive(true)
+                    setShowLockHint(false)
+                    console.log('🔒 Recording locked')
+                  }
+                }}
+                onTouchEnd={(e) => {
+                  try{ e.preventDefault(); e.stopPropagation() }catch{}
+                  // If locked, do not stop; user must press stop icon
+                  if (!lockActiveRef.current) {
+                    console.log('🛑 Touch end - stopping (no lock)')
+                    stopRecording()
+                  }
+                  // reset gesture state
+                  touchStartYRef.current = null
+                  setShowLockHint(false)
+                  // leave lockActiveRef as-is; cleared when finalize
                 }}
                 aria-label="Voice message"
                 title={recording ? "Tap to stop recording" : "Tap to start recording"}
@@ -1617,9 +1658,14 @@ export default function ChatThread(){
                 }}
               >
                 <i className={`fa-solid ${
-                  recording ? 'fa-stop' : 'fa-microphone'
-                } text-sm`} />
+                  recording && !recordLockActive ? 'fa-stop' : 'fa-microphone'
+                } text-base`} />
               </button>
+              {showLockHint && !recordLockActive && (
+                <div className="absolute right-14 -top-4 bg-white/10 text-white text-[10px] px-2 py-1 rounded-md border border-white/20">
+                  Swipe up to lock
+                </div>
+              )}
               <button
                 className={`w-7 h-7 rounded-full flex items-center justify-center transition-all duration-200 ease-out ${
                   sending 
