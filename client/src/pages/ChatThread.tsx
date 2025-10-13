@@ -84,6 +84,7 @@ export default function ChatThread(){
   const [previewImage, setPreviewImage] = useState<string|null>(null)
   const [recordingPreview, setRecordingPreview] = useState<{ blob: Blob; url: string; duration: number } | null>(null)
   const [isMobile, setIsMobile] = useState(false)
+  const [showMicPermissionModal, setShowMicPermissionModal] = useState(false)
   const lastFetchTime = useRef<number>(0)
   const pendingDeletions = useRef<Set<number|string>>(new Set())
 
@@ -810,14 +811,18 @@ export default function ChatThread(){
     }catch(err){
       console.error('🎤 Recording error:', err)
       const error = err as Error
+      
+      // Show the permission modal with error context instead of alerts
       if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
-        alert('Microphone permission was denied. Please allow microphone access in your browser settings to send voice messages. On mobile, you may need to refresh the page and try again.')
+        console.log('🎤 Permission denied, showing modal')
+        setShowMicPermissionModal(true)
       } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
         alert('No microphone found. Please check your device settings and ensure microphone access is enabled.')
       } else if (error.name === 'NotSupportedError') {
         alert('Voice recording is not supported on this device or browser. Please try using a different browser.')
       } else if (error.name === 'AbortError') {
-        alert('Microphone access was interrupted. Please try again.')
+        console.log('🎤 Access aborted, showing modal')
+        setShowMicPermissionModal(true)
       } else {
         alert('Could not access microphone: ' + error.message + '. This may be due to browser security restrictions on mobile devices.')
       }
@@ -935,14 +940,41 @@ export default function ChatThread(){
       console.log('🎤 Stopping recording...')
       stopRecording()
     } else {
-      // Start recording - mobile devices need user gesture
-      console.log('🎤 Starting recording...')
-      if (isMobile) {
-        // On mobile, we need to ensure this is a user gesture
-        setTimeout(() => startRecording(), 0)
-      } else {
+      // Check if we need to request microphone permission
+      checkMicrophonePermission()
+    }
+  }
+
+  async function checkMicrophonePermission() {
+    try {
+      // Check current permission state
+      const permissionStatus = await navigator.permissions.query({ name: 'microphone' as PermissionName })
+      console.log('🎤 Current microphone permission:', permissionStatus.state)
+      
+      if (permissionStatus.state === 'granted') {
+        // Permission already granted, start recording directly
         startRecording()
+      } else if (permissionStatus.state === 'denied') {
+        // Permission denied, show help modal
+        setShowMicPermissionModal(true)
+      } else {
+        // Permission not yet requested, show pre-permission modal
+        setShowMicPermissionModal(true)
       }
+    } catch (error) {
+      // Fallback for browsers that don't support permissions API
+      console.log('🎤 Permissions API not supported, showing modal')
+      setShowMicPermissionModal(true)
+    }
+  }
+
+  function requestMicrophoneAccess() {
+    setShowMicPermissionModal(false)
+    // Start recording which will trigger the browser's permission dialog
+    if (isMobile) {
+      setTimeout(() => startRecording(), 0)
+    } else {
+      startRecording()
     }
   }
 
@@ -1467,6 +1499,58 @@ export default function ChatThread(){
         </div>
       </div>
 
+
+      {/* Microphone permission modal */}
+      {showMicPermissionModal && (
+        <div className="fixed inset-0 bg-black/90 z-[9999] flex items-center justify-center p-4">
+          <div className="bg-[#1a1a1a] rounded-2xl border border-white/20 p-6 max-w-sm w-full mx-4">
+            {/* Header */}
+            <div className="text-center mb-6">
+              <div className="w-16 h-16 bg-[#4db6ac]/20 rounded-full flex items-center justify-center mx-auto mb-3">
+                <i className="fa-solid fa-microphone text-[#4db6ac] text-2xl" />
+              </div>
+              <h3 className="text-white text-lg font-medium mb-2">Microphone Access</h3>
+              <p className="text-white/70 text-sm leading-relaxed">
+                To send voice messages, we need access to your microphone. 
+                {isMobile ? ' Your browser will ask for permission.' : ' Click "Allow" when your browser asks for permission.'}
+              </p>
+            </div>
+
+            {/* Features list */}
+            <div className="mb-6 space-y-2">
+              <div className="flex items-center gap-3 text-sm text-white/80">
+                <i className="fa-solid fa-check text-[#4db6ac] text-xs" />
+                <span>Record voice messages</span>
+              </div>
+              <div className="flex items-center gap-3 text-sm text-white/80">
+                <i className="fa-solid fa-check text-[#4db6ac] text-xs" />
+                <span>Preview before sending</span>
+              </div>
+              <div className="flex items-center gap-3 text-sm text-white/80">
+                <i className="fa-solid fa-check text-[#4db6ac] text-xs" />
+                <span>Your audio stays private</span>
+              </div>
+            </div>
+
+            {/* Action buttons */}
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowMicPermissionModal(false)}
+                className="flex-1 px-4 py-3 bg-gray-700/50 text-gray-300 border border-gray-600/50 rounded-xl hover:bg-gray-700/70 transition-colors font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={requestMicrophoneAccess}
+                className="flex-1 px-4 py-3 bg-[#4db6ac] text-black rounded-xl hover:bg-[#45a99c] transition-colors font-medium"
+              >
+                <i className="fa-solid fa-microphone mr-2" />
+                Allow Access
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Voice message preview modal */}
       {recordingPreview && (
