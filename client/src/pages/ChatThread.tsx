@@ -81,6 +81,9 @@ export default function ChatThread(){
   const sourceRef = useRef<MediaStreamAudioSourceNode|null>(null)
   const visRafRef = useRef<number| null>(null)
   const [audioLevels, setAudioLevels] = useState<number[]>(Array(25).fill(0))
+  const stoppedRef = useRef(false)
+  const finalizedRef = useRef(false)
+  const finalizeTimerRef = useRef<any>(null)
   const [previewImage, setPreviewImage] = useState<string|null>(null)
   const [recordingPreview, setRecordingPreview] = useState<{ blob: Blob; url: string; duration: number } | null>(null)
   const [isMobile, setIsMobile] = useState(false)
@@ -743,6 +746,13 @@ export default function ChatThread(){
       const mr = new MediaRecorder(stream, options)
       console.log('🎤 MediaRecorder created with state:', mr.state)
       chunksRef.current = []
+      stoppedRef.current = false
+      finalizedRef.current = false
+      if (finalizeTimerRef.current) clearTimeout(finalizeTimerRef.current)
+
+      mr.onerror = (evt) => {
+        console.error('🎤 MediaRecorder error:', (evt as any).error || evt)
+      }
       mr.ondataavailable = (e) => { 
         console.log('🎤 Data available:', e.data.size, 'bytes', 'type:', e.data.type, 'mobile:', isMobile)
         if (e.data && e.data.size > 0) {
@@ -752,11 +762,22 @@ export default function ChatThread(){
           console.warn('🎤 Empty or invalid data chunk received')
         }
       }
-      mr.onstop = async () => {
+      const finalizeRecording = async () => {
+        if (finalizedRef.current) return
+        finalizedRef.current = true
         console.log('🎤 Recording stopped, processing audio...')
         console.log('🎤 Chunks collected:', chunksRef.current.length)
         try{
-          const blob = new Blob(chunksRef.current, { type: mr.mimeType || 'audio/webm' })
+          // On some iOS/Safari builds, mimeType may be empty; fall back to common types
+          const preferredType = mr.mimeType || (isMobile ? 'audio/mp4' : 'audio/webm')
+          let blob = new Blob(chunksRef.current, { type: preferredType })
+
+          // iOS Safari sometimes produces empty-type blobs even with data; try rewrap
+          if (blob.size > 0 && (!blob.type || blob.type === '')) {
+            try {
+              blob = new Blob([blob], { type: preferredType })
+            } catch {}
+          }
           console.log('🎤 Audio blob created, size:', blob.size, 'duration:', Math.round(recordMs/1000))
           
           // Check minimum recording duration (especially important for mobile)
@@ -770,6 +791,8 @@ export default function ChatThread(){
             } else {
               alert('Recording failed - no audio data was captured.')
             }
+            // Fallback: open native file capture for immediate retry
+            try { audioInputRef.current?.click() } catch {}
             return
           }
           
@@ -831,6 +854,7 @@ export default function ChatThread(){
           analyserRef.current = null; sourceRef.current = null; audioCtxRef.current = null
         }
       }
+      mr.onstop = finalizeRecording
       // Start recording with mobile-specific handling
       try {
         if (isMobile) {
@@ -848,6 +872,7 @@ export default function ChatThread(){
         setRecordMs(0)
         if (recordTimerRef.current) clearInterval(recordTimerRef.current)
         recordTimerRef.current = setInterval(()=> setRecordMs(Date.now() - recordStartRef.current), 200)
+        // Safety auto-stop at 60s
         setTimeout(()=> { try{ mr.state !== 'inactive' && mr.stop() }catch{} }, 60000)
         
         // Start visualizer
@@ -901,7 +926,7 @@ export default function ChatThread(){
             if (recorder.state !== 'inactive') {
               recorder.stop()
             }
-          }, 100)
+          }, 120)
         } else {
           recorder.stop()
         }
