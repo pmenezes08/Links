@@ -1733,22 +1733,42 @@ function AudioMessage({ message, audioPath }: { message: Message; audioPath: str
 
     const handleCanPlay = () => {
       console.log('🎵 Audio can play:', audio.src)
+      // Ensure volume is set correctly
+      if (audio.volume === 0) {
+        audio.volume = 1.0
+        console.log('🎵 Fixed volume from 0 to 1.0')
+      }
     }
 
     const handleLoadStart = () => {
       console.log('🎵 Audio load started:', audio.src)
     }
 
+    const handlePlay = () => {
+      console.log('🎵 Audio play event - volume:', audio.volume, 'muted:', audio.muted)
+      // Ensure audio context is resumed (required on some mobile browsers)
+      if (typeof window !== 'undefined' && 'AudioContext' in window) {
+        const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
+        if (audioContext.state === 'suspended') {
+          audioContext.resume().then(() => {
+            console.log('🎵 AudioContext resumed for playback')
+          })
+        }
+      }
+    }
+
     audio.addEventListener('loadedmetadata', handleLoadedMetadata)
     audio.addEventListener('error', handleError)
     audio.addEventListener('canplay', handleCanPlay)
     audio.addEventListener('loadstart', handleLoadStart)
+    audio.addEventListener('play', handlePlay)
 
     return () => {
       audio.removeEventListener('loadedmetadata', handleLoadedMetadata)
       audio.removeEventListener('error', handleError)
       audio.removeEventListener('canplay', handleCanPlay)
       audio.removeEventListener('loadstart', handleLoadStart)
+      audio.removeEventListener('play', handlePlay)
     }
   }, [message.audio_duration_seconds, audioPath])
 
@@ -1766,28 +1786,60 @@ function AudioMessage({ message, audioPath }: { message: Message; audioPath: str
     }
   }
 
+  const testPlayAudio = async () => {
+    if (!audioRef.current) return
+    
+    try {
+      console.log('🎵 Manual play test - volume:', audioRef.current.volume, 'muted:', audioRef.current.muted)
+      
+      // Ensure volume is up and not muted
+      audioRef.current.volume = 1.0
+      audioRef.current.muted = false
+      
+      // Try to play
+      await audioRef.current.play()
+      console.log('🎵 Manual play successful')
+    } catch (err) {
+      console.error('🎵 Manual play failed:', err)
+      alert('Audio playback failed. Please check your device volume and try again.')
+    }
+  }
+
   return (
     <div className="mb-2">
       <div className="bg-gray-800/50 rounded-lg p-3 border border-gray-700/50">
         <div className="flex items-center gap-2 mb-2">
           <i className="fa-solid fa-microphone text-[#4db6ac] text-sm" />
           <span className="text-white/80 text-sm font-medium">Voice Message</span>
-          {duration !== null ? (
-            <span className="ml-auto text-xs text-white/60 bg-gray-700/50 px-2 py-1 rounded-full font-mono">
-              {formatDuration(duration)}
-            </span>
-          ) : loading ? (
-            <span className="ml-auto text-xs text-white/40 bg-gray-700/30 px-2 py-1 rounded-full">
-              --:--
-            </span>
-          ) : error ? (
-            <button 
-              onClick={retryAudio}
-              className="ml-auto text-xs text-red-400 bg-red-900/30 px-2 py-1 rounded-full hover:bg-red-900/50 transition-colors"
-            >
-              Retry
-            </button>
-          ) : null}
+          <div className="ml-auto flex items-center gap-2">
+            {duration !== null ? (
+              <span className="text-xs text-white/60 bg-gray-700/50 px-2 py-1 rounded-full font-mono">
+                {formatDuration(duration)}
+              </span>
+            ) : loading ? (
+              <span className="text-xs text-white/40 bg-gray-700/30 px-2 py-1 rounded-full">
+                --:--
+              </span>
+            ) : error ? (
+              <button 
+                onClick={retryAudio}
+                className="text-xs text-red-400 bg-red-900/30 px-2 py-1 rounded-full hover:bg-red-900/50 transition-colors"
+              >
+                Retry
+              </button>
+            ) : null}
+            
+            {/* Manual play button for troubleshooting */}
+            {!error && duration !== null && (
+              <button
+                onClick={testPlayAudio}
+                className="text-xs text-[#4db6ac] bg-[#4db6ac]/20 px-2 py-1 rounded-full hover:bg-[#4db6ac]/30 transition-colors"
+                title="Test audio playback"
+              >
+                <i className="fa-solid fa-play text-[10px]" />
+              </button>
+            )}
+          </div>
         </div>
         
         {error ? (
@@ -1802,19 +1854,35 @@ function AudioMessage({ message, audioPath }: { message: Message; audioPath: str
             </button>
           </div>
         ) : (
-          <audio 
-            ref={audioRef}
-            controls 
-            preload="metadata"
-            src={audioPath} 
-            className="w-full h-8"
-            playsInline
-            controlsList="nodownload"
-            style={{
-              background: 'transparent',
-              borderRadius: '6px'
-            }}
-          />
+          <div className="space-y-2">
+            <audio 
+              ref={audioRef}
+              controls 
+              preload="metadata"
+              src={audioPath} 
+              className="w-full h-8"
+              playsInline
+              controlsList="nodownload"
+              onPlay={() => console.log('🎵 Audio started playing:', audioPath)}
+              onPause={() => console.log('🎵 Audio paused')}
+              onEnded={() => console.log('🎵 Audio ended')}
+              onVolumeChange={(e) => console.log('🎵 Volume changed:', (e.target as HTMLAudioElement).volume)}
+              onLoadedData={() => console.log('🎵 Audio data loaded')}
+              style={{
+                background: 'transparent',
+                borderRadius: '6px'
+              }}
+            />
+            {/* Debug info and volume check */}
+            <div className="text-xs text-gray-500 text-center space-y-1">
+              <div>Path: {audioPath.length > 50 ? '...' + audioPath.slice(-50) : audioPath}</div>
+              <div className="flex justify-center gap-4">
+                <span>Vol: {audioRef.current?.volume.toFixed(1) || 'N/A'}</span>
+                <span>Muted: {audioRef.current?.muted ? 'Yes' : 'No'}</span>
+                <span>Ready: {audioRef.current?.readyState || 'N/A'}</span>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </div>
