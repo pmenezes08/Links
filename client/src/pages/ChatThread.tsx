@@ -568,21 +568,47 @@ export default function ChatThread(){
 
   function startVisualizer(stream: MediaStream){
     try{
-      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)()
+      console.log('🎤 Starting visualizer...')
+      
+      // Create audio context with mobile compatibility
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext
+      if (!AudioContextClass) {
+        console.warn('🎤 AudioContext not supported, skipping visualizer')
+        return
+      }
+      
+      const ctx = new AudioContextClass()
+      console.log('🎤 AudioContext state:', ctx.state)
+      
+      // Resume context if suspended (required on mobile)
+      if (ctx.state === 'suspended') {
+        ctx.resume().then(() => {
+          console.log('🎤 AudioContext resumed')
+        })
+      }
+      
       const source = ctx.createMediaStreamSource(stream)
       const analyser = ctx.createAnalyser()
-      analyser.fftSize = 256
-      analyser.smoothingTimeConstant = 0.8
+      
+      // Mobile-optimized settings
+      analyser.fftSize = isMobile ? 128 : 256
+      analyser.smoothingTimeConstant = isMobile ? 0.3 : 0.8
+      analyser.minDecibels = -90
+      analyser.maxDecibels = -10
+      
       source.connect(analyser)
       audioCtxRef.current = ctx
       analyserRef.current = analyser
       sourceRef.current = source
+      
+      console.log('🎤 Analyser setup - fftSize:', analyser.fftSize, 'mobile:', isMobile)
       
       const bufferLength = analyser.frequencyBinCount
       const dataArray = new Uint8Array(bufferLength)
       
       const updateAudioLevels = () => {
         if (!analyserRef.current) return
+        
         analyserRef.current.getByteFrequencyData(dataArray)
         
         // Create 25 bars from frequency data
@@ -590,6 +616,7 @@ export default function ChatThread(){
         const levels: number[] = []
         const samplesPerBar = Math.floor(bufferLength / barCount)
         
+        let maxLevel = 0
         for (let i = 0; i < barCount; i++) {
           let sum = 0
           const start = i * samplesPerBar
@@ -600,9 +627,16 @@ export default function ChatThread(){
           }
           
           const average = sum / (end - start)
-          // Normalize to 0-1 range and apply some sensitivity
-          const level = Math.min(1, (average / 255) * 2)
+          // Increase sensitivity for mobile
+          const sensitivity = isMobile ? 3 : 2
+          const level = Math.min(1, (average / 255) * sensitivity)
           levels.push(level)
+          maxLevel = Math.max(maxLevel, level)
+        }
+        
+        // Log audio levels periodically for debugging
+        if (Date.now() % 2000 < 100) { // Every ~2 seconds
+          console.log('🎤 Max audio level:', maxLevel.toFixed(3), 'levels sample:', levels.slice(0, 5).map(l => l.toFixed(2)))
         }
         
         setAudioLevels(levels)
@@ -634,7 +668,13 @@ export default function ChatThread(){
       // Request microphone permission with mobile-optimized constraints
       console.log('🎤 Requesting microphone permission...')
       const constraints = {
-        audio: {
+        audio: isMobile ? {
+          // Simplified constraints for mobile
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false
+        } : {
+          // Full constraints for desktop
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true,
@@ -643,31 +683,50 @@ export default function ChatThread(){
         }
       }
       
+      console.log('🎤 Using constraints:', constraints)
+      
       const stream = await navigator.mediaDevices.getUserMedia(constraints)
       console.log('🎤 Microphone permission granted, starting recorder...')
       console.log('🎤 Audio tracks:', stream.getAudioTracks().map(t => ({ label: t.label, enabled: t.enabled, readyState: t.readyState })))
       
-      // Check for mobile-compatible MIME types
-      let mimeType = 'audio/webm;codecs=opus'
-      if (!MediaRecorder.isTypeSupported(mimeType)) {
-        mimeType = 'audio/webm'
-        if (!MediaRecorder.isTypeSupported(mimeType)) {
-          mimeType = 'audio/mp4'
-          if (!MediaRecorder.isTypeSupported(mimeType)) {
-            mimeType = 'audio/wav'
-            if (!MediaRecorder.isTypeSupported(mimeType)) {
-              mimeType = '' // Let browser choose
-            }
-          }
+      // Check for mobile-compatible MIME types - prioritize mobile formats
+      let mimeType = ''
+      const supportedTypes = [
+        'audio/webm;codecs=opus',
+        'audio/webm',
+        'audio/mp4',
+        'audio/ogg;codecs=opus',
+        'audio/wav'
+      ]
+      
+      for (const type of supportedTypes) {
+        if (MediaRecorder.isTypeSupported(type)) {
+          mimeType = type
+          break
         }
       }
       
-      console.log('🎤 Using MIME type:', mimeType)
+      console.log('🎤 Supported MIME types:', supportedTypes.filter(t => MediaRecorder.isTypeSupported(t)))
+      console.log('🎤 Using MIME type:', mimeType || 'browser default')
       
       const options = mimeType ? { mimeType } : {}
+      
+      // Add mobile-specific options
+      if (isMobile && !mimeType) {
+        // Let mobile browser choose the best format
+        console.log('🎤 Mobile device: letting browser choose format')
+      }
+      
       const mr = new MediaRecorder(stream, options)
+      console.log('🎤 MediaRecorder created with state:', mr.state)
       chunksRef.current = []
-      mr.ondataavailable = (e) => { if (e.data && e.data.size > 0) chunksRef.current.push(e.data) }
+      mr.ondataavailable = (e) => { 
+        console.log('🎤 Data available:', e.data.size, 'bytes')
+        if (e.data && e.data.size > 0) {
+          chunksRef.current.push(e.data)
+          console.log('🎤 Total chunks so far:', chunksRef.current.length)
+        }
+      }
       mr.onstop = async () => {
         console.log('🎤 Recording stopped, processing audio...')
         console.log('🎤 Chunks collected:', chunksRef.current.length)
@@ -698,17 +757,39 @@ export default function ChatThread(){
           analyserRef.current = null; sourceRef.current = null; audioCtxRef.current = null
         }
       }
-      mr.start()
-      setRecorder(mr)
-      setRecording(true)
-      recordStartRef.current = Date.now()
-      setRecordMs(0)
-      if (recordTimerRef.current) clearInterval(recordTimerRef.current)
-      recordTimerRef.current = setInterval(()=> setRecordMs(Date.now() - recordStartRef.current), 200)
-      setTimeout(()=> { try{ mr.state !== 'inactive' && mr.stop() }catch{} }, 60000)
-      // Start visualizer
-      startVisualizer(stream)
-      console.log('🎤 Recording started successfully')
+      // Start recording with mobile-specific handling
+      try {
+        if (isMobile) {
+          // For mobile, start with shorter intervals to ensure data collection
+          mr.start(1000) // 1 second intervals
+          console.log('🎤 Mobile: Starting with 1s intervals')
+        } else {
+          mr.start()
+          console.log('🎤 Desktop: Starting with default intervals')
+        }
+        
+        setRecorder(mr)
+        setRecording(true)
+        recordStartRef.current = Date.now()
+        setRecordMs(0)
+        if (recordTimerRef.current) clearInterval(recordTimerRef.current)
+        recordTimerRef.current = setInterval(()=> setRecordMs(Date.now() - recordStartRef.current), 200)
+        setTimeout(()=> { try{ mr.state !== 'inactive' && mr.stop() }catch{} }, 60000)
+        
+        // Start visualizer
+        startVisualizer(stream)
+        console.log('🎤 Recording started successfully, state:', mr.state)
+        
+        // Test audio levels after a short delay
+        setTimeout(() => {
+          console.log('🎤 Testing audio levels after 2s...')
+          console.log('🎤 Current audio levels:', audioLevels.slice(0, 5))
+        }, 2000)
+        
+      } catch (startError) {
+        console.error('🎤 Failed to start recording:', startError)
+        throw startError
+      }
     }catch(err){
       console.error('🎤 Recording error:', err)
       const error = err as Error
@@ -1342,6 +1423,19 @@ export default function ChatThread(){
           </div>
         </div>
       </div>
+
+      {/* Recording counter popup */}
+      {recording && (
+        <div className="fixed top-20 left-1/2 transform -translate-x-1/2 z-50 bg-red-600/95 backdrop-blur-sm px-4 py-2 rounded-full border border-red-500/40 shadow-lg animate-pulse">
+          <div className="flex items-center gap-2">
+            <span className="inline-block w-2 h-2 bg-white rounded-full animate-pulse" />
+            <div className="text-white font-mono font-bold text-lg">
+              {new Date(recordMs).toISOString().substr(14,5)}
+            </div>
+            <span className="text-white/90 text-sm">REC</span>
+          </div>
+        </div>
+      )}
 
       {/* Voice message preview modal */}
       {recordingPreview && (
