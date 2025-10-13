@@ -65,8 +65,6 @@ export default function ChatThread(){
   const recordStartRef = useRef<number>(0)
   const [recordMs, setRecordMs] = useState(0)
   const recordTimerRef = useRef<any>(null)
-  const [recordLocked, setRecordLocked] = useState(false)
-  const gestureStartYRef = useRef<number|null>(null)
   const audioCtxRef = useRef<AudioContext|null>(null)
   const analyserRef = useRef<AnalyserNode|null>(null)
   const sourceRef = useRef<MediaStreamAudioSourceNode|null>(null)
@@ -637,7 +635,6 @@ export default function ChatThread(){
           setRecording(false)
           setRecorder(null)
           setRecordMs(0)
-          setRecordLocked(false)
           try{ stream.getTracks().forEach(t=> t.stop()) }catch{}
           if (recordTimerRef.current) clearInterval(recordTimerRef.current)
           if (visRafRef.current) cancelAnimationFrame(visRafRef.current)
@@ -676,20 +673,6 @@ export default function ChatThread(){
     try{ recorder && recorder.state !== 'inactive' && recorder.stop() }catch{} 
   }
   
-  function cancelRecording(){
-    console.log('🎤 Canceling recording...')
-    try{
-      // Clear chunks before stopping to prevent upload
-      chunksRef.current = []
-      if (recorder && recorder.state !== 'inactive') {
-        recorder.stop()
-      }
-      setRecording(false)
-      setRecorder(null)
-      setRecordMs(0)
-      setRecordLocked(false)
-    }catch{}
-  }
   
   function sendRecordingPreview(){
     if (!recordingPreview) return
@@ -750,47 +733,18 @@ export default function ChatThread(){
     event.target.value = ''
   }
 
-  function onMicPointerDown(e: React.MouseEvent | React.TouchEvent){
-    console.log('🎤 Mic button pressed')
+  function handleMicClick(e: React.MouseEvent | React.TouchEvent){
+    console.log('🎤 Mic button clicked, recording:', recording)
     try{ e.preventDefault() }catch{}
     
-    // Prevent accidental recordings during other interactions
-    if (recording) return
-    
-    setRecordLocked(false)
-    const y = 'touches' in e ? (e as React.TouchEvent).touches[0]?.clientY : (e as React.MouseEvent).clientY
-    gestureStartYRef.current = y || 0
-    
-    // Add small delay to distinguish between tap and hold
-    setTimeout(() => {
-      if (gestureStartYRef.current !== null) {
-        startRecording()
-      }
-    }, 100)
-  }
-  
-  function onMicPointerMove(e: React.TouchEvent){
-    if (!recording || recordLocked) return
-    const startY = gestureStartYRef.current
-    if (startY == null) return
-    const curY = e.touches?.[0]?.clientY || startY
-    const dy = curY - startY
-    if (dy < -40){ 
-      setRecordLocked(true)
-      console.log('🎤 Recording locked by gesture')
-    }
-  }
-  
-  function onMicPointerUp(){ 
-    console.log('🎤 Mic button released, recording:', recording, 'locked:', recordLocked)
-    
-    // Clear gesture start to prevent delayed recording start
-    gestureStartYRef.current = null
-    
-    // Only stop recording if it's active and not locked
-    if (recording && !recordLocked) {
-      console.log('🎤 Stopping recording (not locked)')
-      stopRecording() 
+    if (recording) {
+      // Stop recording
+      console.log('🎤 Stopping recording...')
+      stopRecording()
+    } else {
+      // Start recording
+      console.log('🎤 Starting recording...')
+      startRecording()
     }
   }
 
@@ -1251,51 +1205,27 @@ export default function ChatThread(){
               />
             )}
             
-            {/* Recording UI */}
-            {recording && recordLocked && (
-              <div className="absolute left-2 -top-10 flex items-center gap-2 bg-black/90 px-3 py-2 rounded-full border border-white/20">
-                <span className="inline-block w-2 h-2 bg-red-500 rounded-full animate-pulse" />
-                <span className="text-sm text-white font-mono">{new Date(recordMs).toISOString().substr(14,5)}</span>
-                <button 
-                  className="ml-2 w-6 h-6 rounded-full bg-red-500 hover:bg-red-600 flex items-center justify-center transition-colors"
-                  onClick={cancelRecording}
-                  title="Cancel recording"
-                >
-                  <i className="fa-solid fa-trash text-white text-[10px]" />
-                </button>
-                <button 
-                  className="ml-1 w-6 h-6 rounded-full bg-[#4db6ac] hover:bg-[#45a99c] flex items-center justify-center transition-colors"
-                  onClick={()=>{ try{ recorder && recorder.state!=='inactive' && recorder.stop() }catch{} }}
-                  title="Send voice message"
-                >
-                  <i className="fa-solid fa-paper-plane text-white text-[10px]" />
-                </button>
-              </div>
-            )}
-            {recording && !recordLocked && (
-              <div className="absolute left-2 -top-10 flex items-center gap-2 bg-black/90 px-3 py-2 rounded-full border border-white/20 animate-pulse">
-                <span className="inline-block w-2 h-2 bg-red-500 rounded-full animate-pulse" />
-                <span className="text-sm text-white font-mono">{new Date(recordMs).toISOString().substr(14,5)}</span>
-                <i className="fa-solid fa-arrow-up ml-2 text-white/70 text-xs animate-bounce" />
-                <span className="text-xs text-white/70">Slide up to lock</span>
+            {/* Simple recording indicator */}
+            {recording && (
+              <div className="absolute left-3 -top-8 flex items-center gap-2 bg-red-600/90 px-3 py-1.5 rounded-full border border-red-500/30">
+                <span className="inline-block w-2 h-2 bg-white rounded-full animate-pulse" />
+                <span className="text-xs text-white font-mono">
+                  {new Date(recordMs).toISOString().substr(14,5)}
+                </span>
+                <span className="text-xs text-white/80">• Tap mic to stop</span>
               </div>
             )}
             {/* Mic + Send */}
             <div className="absolute right-1 top-1/2 transform -translate-y-1/2 flex items-center gap-1">
               <button
-                className={`w-7 h-7 rounded-full flex items-center justify-center transition-all duration-150 ease-out ${
-                  (recording||recordLocked) 
+                className={`w-8 h-8 rounded-full flex items-center justify-center transition-all duration-200 ease-out ${
+                  recording 
                     ? 'bg-red-600 text-white scale-110 shadow-lg shadow-red-500/50 animate-pulse' 
                     : 'bg-[#4db6ac] text-white hover:bg-[#45a99c] hover:scale-110 active:scale-95 shadow-md'
                 }`}
-                onMouseDown={onMicPointerDown as any}
-                onMouseUp={onMicPointerUp}
-                onMouseLeave={onMicPointerUp}
-                onTouchStart={onMicPointerDown as any}
-                onTouchMove={onMicPointerMove}
-                onTouchEnd={onMicPointerUp}
+                onClick={handleMicClick}
                 aria-label="Voice message"
-                title={recording ? "Recording... Release to stop" : "Hold to record voice message"}
+                title={recording ? "Tap to stop recording" : "Tap to start recording"}
                 style={{
                   touchAction: 'manipulation',
                   WebkitTapHighlightColor: 'transparent',
@@ -1303,8 +1233,8 @@ export default function ChatThread(){
                 }}
               >
                 <i className={`fa-solid ${
-                  (recording||recordLocked) ? 'fa-microphone' : 'fa-microphone'
-                } text-xs`} />
+                  recording ? 'fa-stop' : 'fa-microphone'
+                } text-sm`} />
               </button>
               <button
                 className={`w-7 h-7 rounded-full flex items-center justify-center transition-all duration-200 ease-out ${
