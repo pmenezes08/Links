@@ -133,7 +133,7 @@ export default function HeaderBar({ title, username, displayName, avatarUrl }: H
             ) : null}
             <a className="block px-4 py-3 rounded-xl hover:bg:white/5 text-white" href="/premium_dashboard">Dashboard</a>
             <a className="block px-4 py-3 rounded-xl hover:bg:white/5 text-white" href="/profile">Profile</a>
-            <a className="block px-4 py-3 rounded-xl hover:bg:white/5 text:white" href="/user_chat">Messages</a>
+            <button className="block w-full text-left px-4 py-3 rounded-xl hover:bg:white/5 text:white" onClick={()=> { setMenuOpen(false); navigate('/user_chat') }}>Messages</button>
             <button className="block w-full text-left px-4 py-3 rounded-xl hover:bg:white/5 text:white" onClick={()=> { setMenuOpen(false); navigate('/communities') }}>Your Communities</button>
             <a className="block px-4 py-3 rounded-xl hover:bg:white/5 text:white" href="/logout">Logout</a>
             <a className="block px-4 py-3 rounded-xl hover:bg:white/5 text:white" href="/account_settings">Account Settings</a>
