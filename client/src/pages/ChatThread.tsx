@@ -833,12 +833,7 @@ export default function ChatThread(){
           console.log('🎤 Timer duration:', timerDuration, 'seconds, blob size:', blob.size)
           
           if (blob.size === 0) {
-            console.error('🎤 Empty blob - no audio data collected!')
-            if (isMobile) {
-              alert('Recording failed on mobile. Please try again and speak clearly into the microphone.')
-            } else {
-              alert('Recording failed - no audio data was captured.')
-            }
+            console.error('🎤 Empty blob after stop — treating as failure')
             // Ensure UI resets so mic button remains responsive
             setRecording(false)
             setRecorder(null)
@@ -940,21 +935,7 @@ export default function ChatThread(){
         startVisualizer(stream)
         console.log('🎤 Recording started successfully, state:', mr.state)
         
-        // Test data collection after a short delay
-        twoSecondCheckRef.current = setTimeout(() => {
-          const maxLevel = Math.max(...audioLevels)
-          console.log('🎤 Testing after 2s - chunks:', chunksRef.current.length, 'max level:', maxLevel.toFixed(3))
-          if (chunksRef.current.length === 0 && isMobile) {
-            // If also no visible audio levels, assume capture issue and fallback
-            if (!isFinite(maxLevel) || maxLevel < 0.01) {
-              console.warn('🎤 No audio data after 2s on mobile; falling back to native capture')
-              try { mr.state !== 'inactive' && mr.stop() } catch {}
-              resetRecordingState()
-              alert('Your mobile browser did not capture audio. Switching to device recorder...')
-              openNativeAudioCapture()
-            }
-          }
-        }, 2500)
+        // Skip mid-recording fallback checks; many mobile browsers only flush data on stop
         
       } catch (startError) {
         console.error('🎤 Failed to start recording:', startError)
