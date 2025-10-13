@@ -665,7 +665,6 @@ export default function ChatThread(){
       
       if (!('MediaRecorder' in window)){
         alert('Voice recording is not supported in this browser.')
-        audioInputRef.current?.click()
         return
       }
       
@@ -761,6 +760,13 @@ export default function ChatThread(){
         } else {
           console.warn('🎤 Empty or invalid data chunk received')
         }
+        // If we've already requested stop, schedule a short finalize after last chunk
+        if (stoppedRef.current) {
+          if (finalizeTimerRef.current) clearTimeout(finalizeTimerRef.current)
+          finalizeTimerRef.current = setTimeout(() => {
+            try { (mr.state === 'inactive') && finalizeRecording() } catch { finalizeRecording() }
+          }, 150)
+        }
       }
       const finalizeRecording = async () => {
         if (finalizedRef.current) return
@@ -791,8 +797,11 @@ export default function ChatThread(){
             } else {
               alert('Recording failed - no audio data was captured.')
             }
-            // Fallback: open native file capture for immediate retry
-            try { audioInputRef.current?.click() } catch {}
+            // Ensure UI resets so mic button remains responsive
+            setRecording(false)
+            setRecorder(null)
+            setRecordMs(0)
+            setAudioLevels(Array(25).fill(0))
             return
           }
           
@@ -854,12 +863,26 @@ export default function ChatThread(){
           analyserRef.current = null; sourceRef.current = null; audioCtxRef.current = null
         }
       }
-      mr.onstop = finalizeRecording
+      mr.onstop = () => {
+        // Give a tiny delay to allow the final dataavailable to fire
+        stoppedRef.current = true
+        if (finalizeTimerRef.current) clearTimeout(finalizeTimerRef.current)
+        finalizeTimerRef.current = setTimeout(finalizeRecording, 200)
+      }
       // Start recording with mobile-specific handling
       try {
-        if (isMobile) {
-          // For mobile, start with shorter intervals to ensure data collection
-          mr.start(500) // 500ms intervals for better mobile data collection
+        // Detect iOS Safari where timeslices can cause issues
+        const ua = navigator.userAgent
+        const isIOSDevice = /iPad|iPhone|iPod/.test(ua) || ((navigator.platform === 'MacIntel') && (navigator.maxTouchPoints || 0) > 1)
+        const isSafari = /^((?!chrome|android).)*safari/i.test(ua)
+
+        if (isMobile && (isIOSDevice && isSafari)) {
+          // iOS Safari: avoid timeslice to ensure data arrives only on stop
+          mr.start()
+          console.log('🎤 iOS Safari: Starting without timeslice')
+        } else if (isMobile) {
+          // Other mobile browsers: use short timeslice to flush data
+          mr.start(500)
           console.log('🎤 Mobile: Starting with 500ms intervals')
         } else {
           mr.start(1000) // 1s intervals for desktop
@@ -920,6 +943,7 @@ export default function ChatThread(){
         // For mobile, request data before stopping to ensure we get everything
         if (isMobile) {
           console.log('🎤 Mobile: Requesting final data before stop')
+          stoppedRef.current = true
           recorder.requestData()
           // Small delay to allow data collection
           setTimeout(() => {
@@ -934,6 +958,13 @@ export default function ChatThread(){
     }catch(e){ 
       console.error('🎤 Error stopping recorder:', e)
     } 
+    // Always schedule a UI reset safeguard in case onstop doesn't arrive on mobile
+    setTimeout(() => {
+      try {
+        setRecording(false)
+        setRecorder(null)
+      } catch {}
+    }, 800)
   }
   
   
