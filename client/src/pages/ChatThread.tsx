@@ -943,18 +943,6 @@ export default function ChatThread(){
                     <div className="text-white/60 text-xs">Tap to record</div>
                   </div>
                 </button>
-                <button
-                  className="w-full px-4 py-3 flex items-center gap-3 hover:bg-white/5 transition-colors text-left"
-                  onClick={()=> { setShowAttachMenu(false); startRecording() }}
-                >
-                  <div className="w-10 h-10 rounded-full bg-[#4db6ac]/20 flex items-center justify-center">
-                    <i className="fa-solid fa-microphone text-[#4db6ac]" />
-                  </div>
-                  <div>
-                    <div className="text-white font-medium">Voice Message</div>
-                    <div className="text-white/60 text-xs">Tap to record</div>
-                  </div>
-                </button>
               </div>
             </>
           )}
