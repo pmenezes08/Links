@@ -99,6 +99,10 @@ export default function ChatThread(){
   const lastFetchTime = useRef<number>(0)
   const pendingDeletions = useRef<Set<number|string>>(new Set())
 
+  // Disable microphone in production builds for main branch deployments
+  const isProdBuild = (typeof import.meta !== 'undefined' && (import.meta as any).env && (import.meta as any).env.PROD) === true
+  const MIC_ENABLED = !isProdBuild
+
   // Date formatting functions
   function formatDateLabel(dateStr: string): string {
     const messageDate = new Date(dateStr)
@@ -1490,8 +1494,8 @@ export default function ChatThread(){
             className="hidden"
           />
           
-            {/* Recording counter - visible above text box */}
-          {recording && (
+          {/* Recording counter - visible above text box */}
+          {MIC_ENABLED && recording && (
             <div className="mb-2 flex justify-center">
               <div className="bg-red-600/90 px-3 py-1.5 rounded-full border border-red-500/40 shadow-md">
                 <div className="flex items-center gap-2">
@@ -1508,7 +1512,7 @@ export default function ChatThread(){
           {/* Message input container */}
           <div className="flex-1 flex items-center bg-[#1a1a1a] rounded-3xl border border-white/20 overflow-hidden relative">
             {/* Recording sound bar - replaces text input during recording */}
-            {recording && (
+            {MIC_ENABLED && recording && (
               <div className="flex-1 flex items-center px-4 py-2.5 gap-3">
                 <div className="flex items-center gap-3 flex-1">
                   <span className="inline-block w-2 h-2 bg-red-500 rounded-full animate-pulse" />
@@ -1537,7 +1541,7 @@ export default function ChatThread(){
             )}
             
             {/* Regular text input - hidden during recording */}
-            {!recording && (
+            {!(MIC_ENABLED && recording) && (
               <textarea
                 ref={textareaRef}
                 rows={1}
@@ -1596,6 +1600,7 @@ export default function ChatThread(){
                 )}
               </button>
               {/* Mic button to the right of Send and outside textbox area */}
+              {MIC_ENABLED && (
               <button
                 className={`w-10 h-10 md:w-8 md:h-8 rounded-full flex items-center justify-center transition-all duration-200 ease-out ${
                   recording 
@@ -1650,7 +1655,8 @@ export default function ChatThread(){
                   recording && !recordLockActive ? 'fa-stop' : 'fa-microphone'
                 } text-[13px]`} />
               </button>
-              {showLockHint && !recordLockActive && (
+              )}
+              {MIC_ENABLED && showLockHint && !recordLockActive && (
                 <div className="absolute right-14 -top-4 bg-white/10 text-white text-[10px] px-2 py-1 rounded-md border border-white/20">
                   Swipe up to lock
                 </div>
