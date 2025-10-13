@@ -7366,12 +7366,9 @@ def user_chat():
             if username != 'admin' and not is_verified:
                 return redirect(url_for('verify_required'))
 
-        # Serve React SPA (mobile and desktop) with cache-busting headers
+        # Serve React SPA (always use root dist) with cache-busting headers
         base_dir = os.path.dirname(os.path.abspath(__file__))
-        dist_dir = os.path.join(base_dir, 'client', 'dist')
-        if not os.path.exists(dist_dir):
-            # Fallback to root dist if client build not present
-            dist_dir = os.path.join(base_dir, 'dist')
+        dist_dir = os.path.join(base_dir, 'dist')
         resp = send_from_directory(dist_dir, 'index.html')
         try:
             resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
@@ -7389,9 +7386,7 @@ def user_chat():
 def user_chat_subpath(subpath):
     try:
         base_dir = os.path.dirname(os.path.abspath(__file__))
-        dist_dir = os.path.join(base_dir, 'client', 'dist')
-        if not os.path.exists(dist_dir):
-            dist_dir = os.path.join(base_dir, 'dist')
+        dist_dir = os.path.join(base_dir, 'dist')
         resp = send_from_directory(dist_dir, 'index.html')
         try:
             resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
