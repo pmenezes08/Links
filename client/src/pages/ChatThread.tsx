@@ -85,6 +85,7 @@ export default function ChatThread(){
   const finalizedRef = useRef(false)
   const finalizeTimerRef = useRef<any>(null)
   const twoSecondCheckRef = useRef<any>(null)
+  const finalizeAttemptRef = useRef(0)
   const [recordLockActive, setRecordLockActive] = useState(false)
   const [showLockHint, setShowLockHint] = useState(false)
   const touchStartYRef = useRef<number|null>(null)
@@ -802,9 +803,18 @@ export default function ChatThread(){
       }
       const finalizeRecording = async () => {
         if (finalizedRef.current) return
-        finalizedRef.current = true
         console.log('🎤 Recording stopped, processing audio...')
         console.log('🎤 Chunks collected:', chunksRef.current.length)
+        // If chunks have not arrived yet, retry a couple of times
+        if (chunksRef.current.length === 0 && stoppedRef.current) {
+          if (finalizeAttemptRef.current < 2) {
+            finalizeAttemptRef.current += 1
+            console.log('🎤 No chunks yet, retrying finalize in 400ms (attempt', finalizeAttemptRef.current, ')')
+            if (finalizeTimerRef.current) clearTimeout(finalizeTimerRef.current)
+            finalizeTimerRef.current = setTimeout(finalizeRecording, 400)
+            return
+          }
+        }
         try{
           // On some iOS/Safari builds, mimeType may be empty; fall back to common types
           const preferredType = mr.mimeType || (isMobile ? 'audio/mp4' : 'audio/webm')
@@ -873,6 +883,7 @@ export default function ChatThread(){
           const url = URL.createObjectURL(blob)
           console.log('🎤 Setting recording preview - final duration:', actualDuration, 'blob size:', blob.size, 'blob type:', blob.type)
           setRecordingPreview({ blob, url, duration: actualDuration })
+          finalizedRef.current = true
         } finally {
           setRecording(false)
           setRecorder(null)
@@ -894,7 +905,8 @@ export default function ChatThread(){
         // Give a tiny delay to allow the final dataavailable to fire
         stoppedRef.current = true
         if (finalizeTimerRef.current) clearTimeout(finalizeTimerRef.current)
-        finalizeTimerRef.current = setTimeout(finalizeRecording, 200)
+        finalizeAttemptRef.current = 0
+        finalizeTimerRef.current = setTimeout(finalizeRecording, 400)
       }
       // Start recording with mobile-specific handling
       try {
@@ -1640,6 +1652,7 @@ export default function ChatThread(){
                   if (!recording) checkMicrophonePermission()
                 }}
                 onTouchMove={(e) => {
+                  try{ e.preventDefault(); e.stopPropagation() }catch{}
                   const startY = touchStartYRef.current
                   if (startY == null) return
                   const dy = startY - (e.touches && e.touches[0]?.clientY || startY)
@@ -1663,6 +1676,7 @@ export default function ChatThread(){
                   touchStartYRef.current = null
                   setShowLockHint(false)
                   // leave lockActiveRef as-is; cleared when finalize
+                  suppressClickRef.current = false
                 }}
                 aria-label="Voice message"
                 title={recording ? "Tap to stop recording" : "Tap to start recording"}
