@@ -85,6 +85,7 @@ export default function ChatThread(){
   const [recordingPreview, setRecordingPreview] = useState<{ blob: Blob; url: string; duration: number } | null>(null)
   const [isMobile, setIsMobile] = useState(false)
   const [showMicPermissionModal, setShowMicPermissionModal] = useState(false)
+  const [showPermissionGuide, setShowPermissionGuide] = useState(false)
   const lastFetchTime = useRef<number>(0)
   const pendingDeletions = useRef<Set<number|string>>(new Set())
 
@@ -846,17 +847,17 @@ export default function ChatThread(){
       console.error('🎤 Recording error:', err)
       const error = err as Error
       
-      // Show the permission modal with error context instead of alerts
+      // Show the permission guide for denied permissions
       if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
-        console.log('🎤 Permission denied, showing modal')
-        setShowMicPermissionModal(true)
+        console.log('🎤 Permission denied, showing guide')
+        setShowPermissionGuide(true)
       } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
         alert('No microphone found. Please check your device settings and ensure microphone access is enabled.')
       } else if (error.name === 'NotSupportedError') {
         alert('Voice recording is not supported on this device or browser. Please try using a different browser.')
       } else if (error.name === 'AbortError') {
-        console.log('🎤 Access aborted, showing modal')
-        setShowMicPermissionModal(true)
+        console.log('🎤 Access aborted, showing guide')
+        setShowPermissionGuide(true)
       } else {
         alert('Could not access microphone: ' + error.message + '. This may be due to browser security restrictions on mobile devices.')
       }
@@ -1533,6 +1534,92 @@ export default function ChatThread(){
         </div>
       </div>
 
+
+      {/* Permission guide modal */}
+      {showPermissionGuide && (
+        <div className="fixed inset-0 bg-black/90 z-[9999] flex items-center justify-center p-4">
+          <div className="bg-[#1a1a1a] rounded-2xl border border-white/20 p-6 max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto">
+            {/* Header */}
+            <div className="text-center mb-6">
+              <div className="w-16 h-16 bg-red-600/20 rounded-full flex items-center justify-center mx-auto mb-3">
+                <i className="fa-solid fa-microphone-slash text-red-400 text-2xl" />
+              </div>
+              <h3 className="text-white text-lg font-medium mb-2">Microphone Access Needed</h3>
+              <p className="text-white/70 text-sm">
+                To enable voice messages, please allow microphone access in your browser settings.
+              </p>
+            </div>
+
+            {/* Instructions based on device/browser */}
+            <div className="space-y-4 mb-6">
+              {/* Safari on iPhone */}
+              <div className="bg-gray-800/50 rounded-lg p-4">
+                <h4 className="text-white font-medium mb-3 flex items-center gap-2">
+                  <i className="fa-brands fa-safari text-blue-400" />
+                  Safari (iPhone/iPad)
+                </h4>
+                <ol className="text-sm text-white/80 space-y-2 list-decimal list-inside">
+                  <li>Tap the <strong>AA</strong> icon in the address bar</li>
+                  <li>Select <strong>"Website Settings"</strong></li>
+                  <li>Tap <strong>"Microphone"</strong></li>
+                  <li>Choose <strong>"Allow"</strong></li>
+                  <li>Refresh this page and try again</li>
+                </ol>
+              </div>
+
+              {/* Chrome on mobile */}
+              <div className="bg-gray-800/50 rounded-lg p-4">
+                <h4 className="text-white font-medium mb-3 flex items-center gap-2">
+                  <i className="fa-brands fa-chrome text-blue-400" />
+                  Chrome (Mobile)
+                </h4>
+                <ol className="text-sm text-white/80 space-y-2 list-decimal list-inside">
+                  <li>Tap the <strong>lock icon</strong> or <strong>three dots</strong> in the address bar</li>
+                  <li>Tap <strong>"Site settings"</strong> or <strong>"Permissions"</strong></li>
+                  <li>Find <strong>"Microphone"</strong></li>
+                  <li>Change to <strong>"Allow"</strong></li>
+                  <li>Refresh this page and try again</li>
+                </ol>
+              </div>
+
+              {/* General mobile */}
+              <div className="bg-gray-800/50 rounded-lg p-4">
+                <h4 className="text-white font-medium mb-3 flex items-center gap-2">
+                  <i className="fa-solid fa-mobile-alt text-green-400" />
+                  Other Mobile Browsers
+                </h4>
+                <ol className="text-sm text-white/80 space-y-2 list-decimal list-inside">
+                  <li>Look for a <strong>microphone icon</strong> or <strong>lock icon</strong> in the address bar</li>
+                  <li>Tap it and select <strong>"Allow microphone"</strong></li>
+                  <li>Or go to browser <strong>Settings → Site Permissions → Microphone</strong></li>
+                  <li>Refresh this page and try again</li>
+                </ol>
+              </div>
+            </div>
+
+            {/* Action buttons */}
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowPermissionGuide(false)}
+                className="flex-1 px-4 py-3 bg-gray-700/50 text-gray-300 border border-gray-600/50 rounded-xl hover:bg-gray-700/70 transition-colors font-medium"
+              >
+                Close
+              </button>
+              <button
+                onClick={() => {
+                  setShowPermissionGuide(false)
+                  // Try again after user has potentially changed settings
+                  setTimeout(() => checkMicrophonePermission(), 500)
+                }}
+                className="flex-1 px-4 py-3 bg-[#4db6ac] text-black rounded-xl hover:bg-[#45a99c] transition-colors font-medium"
+              >
+                <i className="fa-solid fa-refresh mr-2" />
+                Try Again
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Microphone permission modal */}
       {showMicPermissionModal && (
