@@ -668,19 +668,17 @@ export default function ChatThread(){
       // Request microphone permission with mobile-optimized constraints
       console.log('🎤 Requesting microphone permission...')
       const constraints = {
-        audio: isMobile ? {
-          // Simplified constraints for mobile
-          echoCancellation: false,
-          noiseSuppression: false,
-          autoGainControl: false
-        } : {
-          // Full constraints for desktop
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-          sampleRate: 44100,
-          channelCount: 1
-        }
+        audio: isMobile ? 
+          // Very basic constraints for mobile - just request audio
+          true : 
+          {
+            // Full constraints for desktop
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+            sampleRate: 44100,
+            channelCount: 1
+          }
       }
       
       console.log('🎤 Using constraints:', constraints)
@@ -721,10 +719,12 @@ export default function ChatThread(){
       console.log('🎤 MediaRecorder created with state:', mr.state)
       chunksRef.current = []
       mr.ondataavailable = (e) => { 
-        console.log('🎤 Data available:', e.data.size, 'bytes')
+        console.log('🎤 Data available:', e.data.size, 'bytes', 'type:', e.data.type, 'mobile:', isMobile)
         if (e.data && e.data.size > 0) {
           chunksRef.current.push(e.data)
-          console.log('🎤 Total chunks so far:', chunksRef.current.length)
+          console.log('🎤 Total chunks so far:', chunksRef.current.length, 'total size:', chunksRef.current.reduce((sum, chunk) => sum + (chunk as Blob).size, 0))
+        } else {
+          console.warn('🎤 Empty or invalid data chunk received')
         }
       }
       mr.onstop = async () => {
@@ -734,15 +734,30 @@ export default function ChatThread(){
           const blob = new Blob(chunksRef.current, { type: mr.mimeType || 'audio/webm' })
           console.log('🎤 Audio blob created, size:', blob.size, 'duration:', Math.round(recordMs/1000))
           
-          // Don't auto-send, show preview instead
-          if (blob.size > 0) {
-            const url = URL.createObjectURL(blob)
-            const duration = Math.round(recordMs/1000)
-            console.log('🎤 Setting recording preview with duration:', duration)
-            setRecordingPreview({ blob, url, duration })
-          } else {
-            console.log('🎤 Empty blob, not showing preview')
+          // Check minimum recording duration (especially important for mobile)
+          const duration = Math.round(recordMs/1000)
+          console.log('🎤 Recording duration:', duration, 'seconds, blob size:', blob.size)
+          
+          if (blob.size === 0) {
+            console.error('🎤 Empty blob - no audio data collected!')
+            if (isMobile) {
+              alert('Recording failed on mobile. Please try again and speak clearly into the microphone.')
+            } else {
+              alert('Recording failed - no audio data was captured.')
+            }
+            return
           }
+          
+          if (duration < 1) {
+            console.warn('🎤 Recording too short:', duration, 'seconds')
+            alert('Recording is too short. Please record for at least 1 second.')
+            return
+          }
+          
+          // Don't auto-send, show preview instead
+          const url = URL.createObjectURL(blob)
+          console.log('🎤 Setting recording preview - duration:', duration, 'blob size:', blob.size, 'blob type:', blob.type)
+          setRecordingPreview({ blob, url, duration })
         } finally {
           setRecording(false)
           setRecorder(null)
@@ -761,11 +776,11 @@ export default function ChatThread(){
       try {
         if (isMobile) {
           // For mobile, start with shorter intervals to ensure data collection
-          mr.start(1000) // 1 second intervals
-          console.log('🎤 Mobile: Starting with 1s intervals')
+          mr.start(500) // 500ms intervals for better mobile data collection
+          console.log('🎤 Mobile: Starting with 500ms intervals')
         } else {
-          mr.start()
-          console.log('🎤 Desktop: Starting with default intervals')
+          mr.start(1000) // 1s intervals for desktop
+          console.log('🎤 Desktop: Starting with 1s intervals')
         }
         
         setRecorder(mr)
@@ -780,10 +795,12 @@ export default function ChatThread(){
         startVisualizer(stream)
         console.log('🎤 Recording started successfully, state:', mr.state)
         
-        // Test audio levels after a short delay
+        // Test data collection after a short delay
         setTimeout(() => {
-          console.log('🎤 Testing audio levels after 2s...')
-          console.log('🎤 Current audio levels:', audioLevels.slice(0, 5))
+          console.log('🎤 Testing after 2s - chunks:', chunksRef.current.length, 'audio levels:', audioLevels.slice(0, 5))
+          if (chunksRef.current.length === 0) {
+            console.warn('🎤 WARNING: No data chunks collected after 2s on mobile!')
+          }
         }, 2000)
         
       } catch (startError) {
@@ -808,8 +825,27 @@ export default function ChatThread(){
   }
 
   function stopRecording(){ 
-    console.log('🎤 Stopping recording and sending...')
-    try{ recorder && recorder.state !== 'inactive' && recorder.stop() }catch{} 
+    console.log('🎤 Stopping recording and sending...', 'mobile:', isMobile, 'chunks so far:', chunksRef.current.length)
+    
+    try{ 
+      if (recorder && recorder.state !== 'inactive') {
+        // For mobile, request data before stopping to ensure we get everything
+        if (isMobile) {
+          console.log('🎤 Mobile: Requesting final data before stop')
+          recorder.requestData()
+          // Small delay to allow data collection
+          setTimeout(() => {
+            if (recorder.state !== 'inactive') {
+              recorder.stop()
+            }
+          }, 100)
+        } else {
+          recorder.stop()
+        }
+      }
+    }catch(e){ 
+      console.error('🎤 Error stopping recorder:', e)
+    } 
   }
   
   
