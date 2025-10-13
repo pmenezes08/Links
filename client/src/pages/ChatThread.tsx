@@ -568,7 +568,7 @@ export default function ChatThread(){
     }
   }
 
-  function startVisualizer(stream: MediaStream){
+  async function startVisualizer(stream: MediaStream){
     try{
       console.log('🎤 Starting visualizer...')
       
@@ -584,19 +584,18 @@ export default function ChatThread(){
       
       // Resume context if suspended (required on mobile)
       if (ctx.state === 'suspended') {
-        ctx.resume().then(() => {
-          console.log('🎤 AudioContext resumed')
-        })
+        await ctx.resume()
+        console.log('🎤 AudioContext resumed')
       }
       
       const source = ctx.createMediaStreamSource(stream)
       const analyser = ctx.createAnalyser()
       
-      // Mobile-optimized settings
-      analyser.fftSize = isMobile ? 128 : 256
-      analyser.smoothingTimeConstant = isMobile ? 0.3 : 0.8
-      analyser.minDecibels = -90
-      analyser.maxDecibels = -10
+      // Mobile-optimized settings - more sensitive for mobile
+      analyser.fftSize = isMobile ? 64 : 256
+      analyser.smoothingTimeConstant = isMobile ? 0.1 : 0.8
+      analyser.minDecibels = isMobile ? -100 : -90
+      analyser.maxDecibels = isMobile ? 0 : -10
       
       source.connect(analyser)
       audioCtxRef.current = ctx
@@ -629,8 +628,8 @@ export default function ChatThread(){
           }
           
           const average = sum / (end - start)
-          // Increase sensitivity for mobile
-          const sensitivity = isMobile ? 3 : 2
+          // Much higher sensitivity for mobile
+          const sensitivity = isMobile ? 8 : 2
           const level = Math.min(1, (average / 255) * sensitivity)
           levels.push(level)
           maxLevel = Math.max(maxLevel, level)
@@ -653,7 +652,7 @@ export default function ChatThread(){
 
   async function startRecording(){
     try{
-      console.log('🎤 Starting recording...')
+      console.log('🎤 Starting recording...', 'mobile:', isMobile)
       
       // Check browser support
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -665,6 +664,23 @@ export default function ChatThread(){
         alert('Voice recording is not supported in this browser.')
         audioInputRef.current?.click()
         return
+      }
+      
+      // For mobile, try to initialize audio context early with user gesture
+      if (isMobile) {
+        try {
+          const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext
+          if (AudioContextClass) {
+            const testCtx = new AudioContextClass()
+            if (testCtx.state === 'suspended') {
+              await testCtx.resume()
+              console.log('🎤 Mobile: Pre-initialized AudioContext')
+            }
+            testCtx.close()
+          }
+        } catch (err) {
+          console.log('🎤 Mobile: Could not pre-initialize AudioContext:', err)
+        }
       }
       
       // Request microphone permission with mobile-optimized constraints
@@ -691,7 +707,14 @@ export default function ChatThread(){
       
       // Check for mobile-compatible MIME types - prioritize mobile formats
       let mimeType = ''
-      const supportedTypes = [
+      const supportedTypes = isMobile ? [
+        // Mobile-prioritized formats
+        'audio/mp4',
+        'audio/webm',
+        'audio/wav',
+        'audio/ogg'
+      ] : [
+        // Desktop formats
         'audio/webm;codecs=opus',
         'audio/webm',
         'audio/mp4',
@@ -750,22 +773,22 @@ export default function ChatThread(){
             return
           }
           
-          // Smart duration validation - consider both timer and blob size
-          const minimumDuration = isMobile ? 0.5 : 1.0
-          const minimumBlobSize = isMobile ? 2000 : 5000 // bytes
-          
-          // If timer shows very short duration but we have substantial audio data, allow it
-          const hasSubstantialAudio = blob.size >= minimumBlobSize
-          const timerTooShort = timerDuration < minimumDuration
-          
-          if (timerTooShort && !hasSubstantialAudio) {
-            console.warn('🎤 Recording too short:', timerDuration, 'seconds, blob size:', blob.size)
-            alert(`Recording is too short. Please record for at least ${minimumDuration} second${minimumDuration > 1 ? 's' : ''}.`)
-            return
-          }
-          
-          if (hasSubstantialAudio && timerTooShort) {
-            console.log('🎤 Timer shows short duration but blob size suggests longer recording - allowing')
+          // For mobile, be much more lenient with duration validation
+          if (isMobile) {
+            // On mobile, only check if we have any audio data at all
+            if (blob.size < 1000) {
+              console.warn('🎤 Mobile: Very small blob size:', blob.size)
+              alert('Recording failed. Please try again and speak clearly into the microphone.')
+              return
+            }
+            console.log('🎤 Mobile: Accepting recording with blob size:', blob.size, 'timer duration:', timerDuration)
+          } else {
+            // Desktop: keep normal validation
+            if (timerDuration < 1) {
+              console.warn('🎤 Desktop: Recording too short:', timerDuration, 'seconds')
+              alert('Recording is too short. Please record for at least 1 second.')
+              return
+            }
           }
           
           // Use actual duration or fallback to timer duration
@@ -1980,7 +2003,6 @@ function AudioMessage({ message, audioPath }: { message: Message; audioPath: str
               ref={audioRef}
               controls 
               preload="metadata"
-              src={audioPath} 
               className="w-full h-8"
               playsInline
               controlsList="nodownload"
@@ -1993,7 +2015,13 @@ function AudioMessage({ message, audioPath }: { message: Message; audioPath: str
                 background: 'transparent',
                 borderRadius: '6px'
               }}
-            />
+            >
+              <source src={audioPath} type="audio/webm" />
+              <source src={audioPath} type="audio/mp4" />
+              <source src={audioPath} type="audio/wav" />
+              <source src={audioPath} type="audio/ogg" />
+              Your browser does not support audio playback.
+            </audio>
           </div>
         )}
       </div>
