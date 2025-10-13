@@ -1290,28 +1290,13 @@ export default function ChatThread(){
               />
             )}
             
-            {/* Recording indicator with prominent timer */}
-            {recording && (
-              <div className="absolute left-3 -top-10 flex items-center gap-3 bg-red-600/95 px-4 py-2 rounded-full border border-red-500/40 shadow-lg">
-                <span className="inline-block w-2 h-2 bg-white rounded-full animate-pulse" />
-                <div className="text-center">
-                  <div className="text-sm text-white font-mono font-bold">
-                    {new Date(recordMs).toISOString().substr(14,5)}
-                  </div>
-                  <div className="text-[10px] text-white/80 -mt-0.5">
-                    RECORDING
-                  </div>
-                </div>
-                <span className="text-xs text-white/80">• Tap mic to stop</span>
-              </div>
-            )}
             {/* Mic + Send */}
             <div className="absolute right-1 top-1/2 transform -translate-y-1/2 flex items-center gap-1">
               <button
-                className={`${isMobile ? 'w-10 h-10' : 'w-8 h-8'} rounded-full flex items-center justify-center transition-all duration-200 ease-out ${
+                className={`w-7 h-7 rounded-full flex items-center justify-center transition-all duration-200 ease-out ${
                   recording 
-                    ? 'bg-red-600 text-white scale-110 shadow-lg shadow-red-500/50 animate-pulse' 
-                    : 'bg-[#4db6ac] text-white hover:bg-[#45a99c] hover:scale-110 active:scale-95 shadow-md'
+                    ? 'bg-red-600 text-white scale-105 shadow-lg shadow-red-500/50 animate-pulse' 
+                    : 'bg-[#4db6ac] text-white hover:bg-[#45a99c] hover:scale-105 active:scale-95 shadow-md'
                 }`}
                 onClick={handleMicClick}
                 onTouchStart={(e) => {
@@ -1324,9 +1309,7 @@ export default function ChatThread(){
                   touchAction: 'manipulation',
                   WebkitTapHighlightColor: 'transparent',
                   userSelect: 'none',
-                  WebkitUserSelect: 'none',
-                  minHeight: isMobile ? '44px' : 'auto', // iOS minimum touch target
-                  minWidth: isMobile ? '44px' : 'auto'
+                  WebkitUserSelect: 'none'
                 }}
               >
                 <i className={`fa-solid ${
