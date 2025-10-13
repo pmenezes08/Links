@@ -1873,15 +1873,6 @@ function AudioMessage({ message, audioPath }: { message: Message; audioPath: str
                 borderRadius: '6px'
               }}
             />
-            {/* Debug info and volume check */}
-            <div className="text-xs text-gray-500 text-center space-y-1">
-              <div>Path: {audioPath.length > 50 ? '...' + audioPath.slice(-50) : audioPath}</div>
-              <div className="flex justify-center gap-4">
-                <span>Vol: {audioRef.current?.volume.toFixed(1) || 'N/A'}</span>
-                <span>Muted: {audioRef.current?.muted ? 'Yes' : 'No'}</span>
-                <span>Ready: {audioRef.current?.readyState || 'N/A'}</span>
-              </div>
-            </div>
           </div>
         )}
       </div>
