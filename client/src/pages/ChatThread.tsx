@@ -69,7 +69,7 @@ export default function ChatThread(){
   const analyserRef = useRef<AnalyserNode|null>(null)
   const sourceRef = useRef<MediaStreamAudioSourceNode|null>(null)
   const visRafRef = useRef<number| null>(null)
-  const visualizerCanvasRef = useRef<HTMLCanvasElement|null>(null)
+  const [audioLevels, setAudioLevels] = useState<number[]>(Array(25).fill(0))
   const [previewImage, setPreviewImage] = useState<string|null>(null)
   const [recordingPreview, setRecordingPreview] = useState<{ blob: Blob; url: string; duration: number } | null>(null)
   const lastFetchTime = useRef<number>(0)
@@ -559,41 +559,48 @@ export default function ChatThread(){
       const ctx = new (window.AudioContext || (window as any).webkitAudioContext)()
       const source = ctx.createMediaStreamSource(stream)
       const analyser = ctx.createAnalyser()
-      analyser.fftSize = 512
+      analyser.fftSize = 256
+      analyser.smoothingTimeConstant = 0.8
       source.connect(analyser)
       audioCtxRef.current = ctx
       analyserRef.current = analyser
       sourceRef.current = source
-      const canvas = visualizerCanvasRef.current
-      if (!canvas) return
-      const c2d = canvas.getContext('2d')
-      if (!c2d) return
+      
       const bufferLength = analyser.frequencyBinCount
       const dataArray = new Uint8Array(bufferLength)
-      const draw = () => {
-        if (!analyserRef.current || !canvas) return
-        analyserRef.current.getByteTimeDomainData(dataArray)
-        c2d.clearRect(0,0,canvas.width,canvas.height)
-        c2d.fillStyle = '#0b0f10'
-        c2d.fillRect(0,0,canvas.width,canvas.height)
-        c2d.strokeStyle = '#4db6ac'
-        c2d.lineWidth = 2
-        c2d.beginPath()
-        const sliceWidth = canvas.width / bufferLength
-        let x = 0
-        for (let i=0;i<bufferLength;i++){
-          const v = dataArray[i] / 128.0
-          const y = (v * canvas.height) / 2
-          if (i === 0) c2d.moveTo(x, y)
-          else c2d.lineTo(x, y)
-          x += sliceWidth
+      
+      const updateAudioLevels = () => {
+        if (!analyserRef.current) return
+        analyserRef.current.getByteFrequencyData(dataArray)
+        
+        // Create 25 bars from frequency data
+        const barCount = 25
+        const levels: number[] = []
+        const samplesPerBar = Math.floor(bufferLength / barCount)
+        
+        for (let i = 0; i < barCount; i++) {
+          let sum = 0
+          const start = i * samplesPerBar
+          const end = Math.min(start + samplesPerBar, bufferLength)
+          
+          for (let j = start; j < end; j++) {
+            sum += dataArray[j]
+          }
+          
+          const average = sum / (end - start)
+          // Normalize to 0-1 range and apply some sensitivity
+          const level = Math.min(1, (average / 255) * 2)
+          levels.push(level)
         }
-        c2d.lineTo(canvas.width, canvas.height/2)
-        c2d.stroke()
-        visRafRef.current = requestAnimationFrame(draw)
+        
+        setAudioLevels(levels)
+        visRafRef.current = requestAnimationFrame(updateAudioLevels)
       }
-      visRafRef.current = requestAnimationFrame(draw)
-    }catch{}
+      
+      updateAudioLevels()
+    }catch(err){
+      console.error('🎤 Visualizer error:', err)
+    }
   }
 
   async function startRecording(){
@@ -622,19 +629,25 @@ export default function ChatThread(){
       mr.ondataavailable = (e) => { if (e.data && e.data.size > 0) chunksRef.current.push(e.data) }
       mr.onstop = async () => {
         console.log('🎤 Recording stopped, processing audio...')
+        console.log('🎤 Chunks collected:', chunksRef.current.length)
         try{
           const blob = new Blob(chunksRef.current, { type: mr.mimeType || 'audio/webm' })
-          console.log('🎤 Audio blob created, size:', blob.size)
+          console.log('🎤 Audio blob created, size:', blob.size, 'duration:', Math.round(recordMs/1000))
           
           // Don't auto-send, show preview instead
           if (blob.size > 0) {
             const url = URL.createObjectURL(blob)
-            setRecordingPreview({ blob, url, duration: Math.round(recordMs/1000) })
+            const duration = Math.round(recordMs/1000)
+            console.log('🎤 Setting recording preview with duration:', duration)
+            setRecordingPreview({ blob, url, duration })
+          } else {
+            console.log('🎤 Empty blob, not showing preview')
           }
         } finally {
           setRecording(false)
           setRecorder(null)
           setRecordMs(0)
+          setAudioLevels(Array(25).fill(0))
           try{ stream.getTracks().forEach(t=> t.stop()) }catch{}
           if (recordTimerRef.current) clearInterval(recordTimerRef.current)
           if (visRafRef.current) cancelAnimationFrame(visRafRef.current)
@@ -675,8 +688,11 @@ export default function ChatThread(){
   
   
   function sendRecordingPreview(){
-    if (!recordingPreview) return
-    console.log('🎤 Sending recording preview, duration:', recordingPreview.duration)
+    if (!recordingPreview) {
+      console.log('🎤 No recording preview to send')
+      return
+    }
+    console.log('🎤 Sending recording preview, duration:', recordingPreview.duration, 'blob size:', recordingPreview.blob.size)
     uploadAudioBlobWithDuration(recordingPreview.blob, recordingPreview.duration)
     setRecordingPreview(null)
   }
@@ -1152,14 +1168,15 @@ export default function ChatThread(){
                 <div className="flex items-center gap-3 flex-1">
                   <span className="inline-block w-2 h-2 bg-red-500 rounded-full animate-pulse" />
                   <div className="flex-1 h-6 bg-gray-800/80 rounded-full flex items-center justify-center px-2 gap-0.5 relative overflow-hidden">
-                    {/* Sleek sound bars */}
-                    {Array.from({length: 25}).map((_, i) => (
+                    {/* Audio-reactive sound bars */}
+                    {audioLevels.map((level, i) => (
                       <div 
                         key={i}
-                        className="w-0.5 bg-gray-400 rounded-full transition-all duration-200"
+                        className="w-0.5 bg-gray-400 rounded-full transition-all duration-100"
                         style={{
-                          height: `${8 + Math.sin((recordMs / 100 + i * 0.3)) * 8}px`,
-                          opacity: 0.3 + Math.sin((recordMs / 150 + i * 0.2)) * 0.4,
+                          height: `${4 + level * 16}px`,
+                          opacity: 0.3 + level * 0.7,
+                          backgroundColor: level > 0.1 ? '#9ca3af' : '#6b7280'
                         }}
                       />
                     ))}
