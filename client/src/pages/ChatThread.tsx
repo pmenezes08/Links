@@ -837,16 +837,8 @@ export default function ChatThread(){
             return
           }
           
-          // For mobile, be much more lenient with duration validation
-          if (isMobile) {
-            // On mobile, only check if we have any audio data at all
-            if (blob.size < 1000) {
-              console.warn('🎤 Mobile: Very small blob size:', blob.size)
-              alert('Recording failed. Please try again and speak clearly into the microphone.')
-              return
-            }
-            console.log('🎤 Mobile: Accepting recording with blob size:', blob.size, 'timer duration:', timerDuration)
-          } else {
+          // For mobile, accept any non-zero blob (some browsers produce small initial chunks)
+          if (!isMobile) {
             // Desktop: keep normal validation
             if (timerDuration < 1) {
               console.warn('🎤 Desktop: Recording too short:', timerDuration, 'seconds')
@@ -942,7 +934,7 @@ export default function ChatThread(){
           console.log('🎤 Testing after 2s - chunks:', chunksRef.current.length, 'max level:', maxLevel.toFixed(3))
           if (chunksRef.current.length === 0 && isMobile) {
             // If also no visible audio levels, assume capture issue and fallback
-            if (!isFinite(maxLevel) || maxLevel < 0.05) {
+            if (!isFinite(maxLevel) || maxLevel < 0.01) {
               console.warn('🎤 No audio data after 2s on mobile; falling back to native capture')
               try { mr.state !== 'inactive' && mr.stop() } catch {}
               resetRecordingState()
@@ -950,7 +942,7 @@ export default function ChatThread(){
               openNativeAudioCapture()
             }
           }
-        }, 2000)
+        }, 2500)
         
       } catch (startError) {
         console.error('🎤 Failed to start recording:', startError)
@@ -1608,9 +1600,33 @@ export default function ChatThread(){
             )}
             
             {/* Mic + Send */}
-            <div className="absolute right-1 top-1/2 transform -translate-y-1/2 flex items-center gap-2">
+            <div className="absolute right-2 top-1/2 transform -translate-y-1/2 flex items-center gap-2">
+              {/* Send button first */}
               <button
-                className={`w-12 h-12 md:w-9 md:h-9 rounded-full flex items-center justify-center transition-all duration-200 ease-out ${
+                className={`w-8 h-8 rounded-full flex items-center justify-center transition-all duration-200 ease-out ${
+                  sending 
+                    ? 'bg-gray-600 text-gray-300 cursor-not-allowed' 
+                    : draft.trim()
+                      ? 'bg-[#4db6ac] text-black hover:bg-[#45a99c] hover:scale-105 active:scale-95'
+                      : 'bg-white/20 text-white/70 cursor-not-allowed'
+                }`}
+                onClick={draft.trim() ? send : undefined}
+                disabled={sending || !draft.trim()}
+                aria-label="Send"
+                style={{
+                  transform: 'scale(1)',
+                  transition: 'all 0.15s cubic-bezier(0.4, 0, 0.2, 1)'
+                }}
+              >
+                {sending ? (
+                  <i className="fa-solid fa-spinner fa-spin text-[11px]" />
+                ) : (
+                  <i className="fa-solid fa-paper-plane text-[11px]" />
+                )}
+              </button>
+              {/* Mic button to the right of Send and outside textbox area */}
+              <button
+                className={`w-10 h-10 md:w-8 md:h-8 rounded-full flex items-center justify-center transition-all duration-200 ease-out ${
                   recording 
                     ? 'bg-red-600 text-white scale-105 shadow-lg shadow-red-500/50 animate-pulse' 
                     : 'bg-[#4db6ac] text-white hover:bg-[#45a99c] hover:scale-105 active:scale-95 shadow-md'
@@ -1659,35 +1675,13 @@ export default function ChatThread(){
               >
                 <i className={`fa-solid ${
                   recording && !recordLockActive ? 'fa-stop' : 'fa-microphone'
-                } text-base`} />
+                } text-[13px]`} />
               </button>
               {showLockHint && !recordLockActive && (
                 <div className="absolute right-14 -top-4 bg-white/10 text-white text-[10px] px-2 py-1 rounded-md border border-white/20">
                   Swipe up to lock
                 </div>
               )}
-              <button
-                className={`w-7 h-7 rounded-full flex items-center justify-center transition-all duration-200 ease-out ${
-                  sending 
-                    ? 'bg-gray-600 text-gray-300 cursor-not-allowed' 
-                    : draft.trim()
-                      ? 'bg-[#4db6ac] text-black hover:bg-[#45a99c] hover:scale-105 active:scale-95'
-                      : 'bg-white/20 text-white/70 cursor-not-allowed'
-                }`}
-                onClick={draft.trim() ? send : undefined}
-                disabled={sending || !draft.trim()}
-                aria-label="Send"
-                style={{
-                  transform: 'scale(1)',
-                  transition: 'all 0.15s cubic-bezier(0.4, 0, 0.2, 1)'
-                }}
-              >
-                {sending ? (
-                  <i className="fa-solid fa-spinner fa-spin text-xs" />
-                ) : (
-                  <i className="fa-solid fa-paper-plane text-xs" />
-                )}
-              </button>
             </div>
           </div>
         </div>
