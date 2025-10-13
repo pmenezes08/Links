@@ -931,18 +931,7 @@ export default function ChatThread(){
                     <div className="text-white/60 text-xs">Take a photo</div>
                   </div>
                 </button>
-                <button
-                  className="w-full px-4 py-3 flex items-center gap-3 hover:bg-white/5 transition-colors text-left"
-                  onClick={()=> { setShowAttachMenu(false); startRecording() }}
-                >
-                  <div className="w-10 h-10 rounded-full bg-[#4db6ac]/20 flex items-center justify-center">
-                    <i className="fa-solid fa-microphone text-[#4db6ac]" />
-                  </div>
-                  <div>
-                    <div className="text-white font-medium">Voice Message</div>
-                    <div className="text-white/60 text-xs">Tap to record</div>
-                  </div>
-                </button>
+                {/* Voice message moved next to Send button */}
               </div>
             </>
           )}
@@ -1021,8 +1010,17 @@ export default function ChatThread(){
                 <button className="px-2 py-0.5 border border-white/20 rounded-md hover:bg-white/10" onClick={stopRecording}>Stop</button>
               </div>
             )}
-            {/* Send button - always visible */}
-            <div className="absolute right-1 top-1/2 transform -translate-y-1/2 w-8 h-8 flex items-center justify-center">
+            {/* Mic + Send */}
+            <div className="absolute right-1 top-1/2 transform -translate-y-1/2 flex items-center gap-1">
+              <button
+                className={`w-7 h-7 rounded-full flex items-center justify-center transition-all duration-200 ease-out ${
+                  recording ? 'bg-red-600 text-white' : 'bg-white/20 text-white/80 hover:bg-white/30'
+                }`}
+                onClick={recording ? stopRecording : startRecording}
+                aria-label="Voice message"
+              >
+                {recording ? <i className="fa-solid fa-square-stop text-xs" /> : <i className="fa-solid fa-microphone text-xs" />}
+              </button>
               <button
                 className={`w-7 h-7 rounded-full flex items-center justify-center transition-all duration-200 ease-out ${
                   sending 
