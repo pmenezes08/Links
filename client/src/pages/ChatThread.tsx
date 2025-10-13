@@ -24,6 +24,21 @@ export default function ChatThread(){
   const navigate = useNavigate()
   useEffect(() => { setTitle(username ? `Chat: ${username}` : 'Chat') }, [setTitle, username])
 
+  // Add wave animation styles
+  useEffect(() => {
+    const style = document.createElement('style')
+    style.textContent = `
+      @keyframes wave {
+        0% { transform: translateX(-100%); }
+        100% { transform: translateX(100%); }
+      }
+    `
+    document.head.appendChild(style)
+    return () => {
+      document.head.removeChild(style)
+    }
+  }, [])
+
   const [otherUserId, setOtherUserId] = useState<number|''>('')
   const [messages, setMessages] = useState<Message[]>([])
   const [draft, setDraft] = useState('')
@@ -58,6 +73,7 @@ export default function ChatThread(){
   const visRafRef = useRef<number| null>(null)
   const visualizerCanvasRef = useRef<HTMLCanvasElement|null>(null)
   const [previewImage, setPreviewImage] = useState<string|null>(null)
+  const [recordingPreview, setRecordingPreview] = useState<{ blob: Blob; url: string; duration: number } | null>(null)
   const lastFetchTime = useRef<number>(0)
   const pendingDeletions = useRef<Set<number|string>>(new Set())
 
@@ -611,11 +627,17 @@ export default function ChatThread(){
         try{
           const blob = new Blob(chunksRef.current, { type: mr.mimeType || 'audio/webm' })
           console.log('🎤 Audio blob created, size:', blob.size)
-          await uploadAudioBlob(blob)
+          
+          // Don't auto-send, show preview instead
+          if (blob.size > 0) {
+            const url = URL.createObjectURL(blob)
+            setRecordingPreview({ blob, url, duration: Math.round(recordMs/1000) })
+          }
         } finally {
           setRecording(false)
           setRecorder(null)
           setRecordMs(0)
+          setRecordLocked(false)
           try{ stream.getTracks().forEach(t=> t.stop()) }catch{}
           if (recordTimerRef.current) clearInterval(recordTimerRef.current)
           if (visRafRef.current) cancelAnimationFrame(visRafRef.current)
@@ -668,6 +690,19 @@ export default function ChatThread(){
       setRecordLocked(false)
     }catch{}
   }
+  
+  function sendRecordingPreview(){
+    if (!recordingPreview) return
+    uploadAudioBlob(recordingPreview.blob)
+    setRecordingPreview(null)
+  }
+  
+  function cancelRecordingPreview(){
+    if (recordingPreview) {
+      URL.revokeObjectURL(recordingPreview.url)
+      setRecordingPreview(null)
+    }
+  }
 
   function handleAudioFileChange(event: React.ChangeEvent<HTMLInputElement>){
     const file = event.target.files?.[0]
@@ -679,22 +714,45 @@ export default function ChatThread(){
   function onMicPointerDown(e: React.MouseEvent | React.TouchEvent){
     console.log('🎤 Mic button pressed')
     try{ e.preventDefault() }catch{}
+    
+    // Prevent accidental recordings during other interactions
+    if (recording) return
+    
     setRecordLocked(false)
     const y = 'touches' in e ? (e as React.TouchEvent).touches[0]?.clientY : (e as React.MouseEvent).clientY
     gestureStartYRef.current = y || 0
-    startRecording()
+    
+    // Add small delay to distinguish between tap and hold
+    setTimeout(() => {
+      if (gestureStartYRef.current !== null) {
+        startRecording()
+      }
+    }, 100)
   }
+  
   function onMicPointerMove(e: React.TouchEvent){
     if (!recording || recordLocked) return
     const startY = gestureStartYRef.current
     if (startY == null) return
     const curY = e.touches?.[0]?.clientY || startY
     const dy = curY - startY
-    if (dy < -40){ setRecordLocked(true) }
+    if (dy < -40){ 
+      setRecordLocked(true)
+      console.log('🎤 Recording locked by gesture')
+    }
   }
+  
   function onMicPointerUp(){ 
     console.log('🎤 Mic button released, recording:', recording, 'locked:', recordLocked)
-    if (recording && !recordLocked) stopRecording() 
+    
+    // Clear gesture start to prevent delayed recording start
+    gestureStartYRef.current = null
+    
+    // Only stop recording if it's active and not locked
+    if (recording && !recordLocked) {
+      console.log('🎤 Stopping recording (not locked)')
+      stopRecording() 
+    }
   }
 
   function handleDeleteMessage(messageId: number | string, messageData: Message) {
@@ -1095,40 +1153,74 @@ export default function ChatThread(){
           
           {/* Message input container */}
           <div className="flex-1 flex items-center bg-[#1a1a1a] rounded-3xl border border-white/20 overflow-hidden relative">
-            {/* Recording visualizer over input when locked/recording */}
-            {(recording || recordLocked) && (
-              <canvas ref={visualizerCanvasRef} width={600} height={40} className="absolute left-3 right-16 top-1/2 -translate-y-1/2 opacity-80 pointer-events-none" />
+            {/* Recording sound bar - replaces text input during recording */}
+            {recording && (
+              <div className="flex-1 flex items-center px-4 py-2.5 gap-3">
+                <div className="flex items-center gap-2 flex-1">
+                  <span className="inline-block w-3 h-3 bg-red-500 rounded-full animate-pulse" />
+                  <div className="flex-1 h-8 bg-black/50 rounded-full flex items-center px-3 gap-1 relative overflow-hidden">
+                    {/* Sound bars animation */}
+                    {Array.from({length: 20}).map((_, i) => (
+                      <div 
+                        key={i}
+                        className="flex-1 bg-gradient-to-t from-[#4db6ac] to-[#66d9c2] rounded-full transition-all duration-150 animate-pulse"
+                        style={{
+                          height: `${4 + Math.sin((Date.now() / 200 + i * 0.5)) * 12 + Math.random() * 8}px`,
+                          opacity: 0.4 + Math.sin((Date.now() / 300 + i * 0.3)) * 0.3 + 0.3,
+                          animationDelay: `${i * 30}ms`,
+                          animationDuration: `${800 + Math.random() * 400}ms`
+                        }}
+                      />
+                    ))}
+                    {/* Animated wave effect */}
+                    <div 
+                      className="absolute inset-0 bg-gradient-to-r from-transparent via-[#4db6ac]/20 to-transparent"
+                      style={{
+                        animation: 'wave 2s ease-in-out infinite',
+                        transform: 'translateX(-100%)'
+                      }}
+                    />
+                  </div>
+                  <span className="text-sm text-white font-mono min-w-[50px]">
+                    {new Date(recordMs).toISOString().substr(14,5)}
+                  </span>
+                </div>
+              </div>
             )}
-            <textarea
-              ref={textareaRef}
-              rows={1}
-              className="flex-1 bg-transparent px-4 py-2.5 text-[16px] text-white placeholder-white/50 outline-none resize-none max-h-24 min-h-[36px]"
-              placeholder="Message"
-              value={draft}
-              onChange={e=> {
-                setDraft(e.target.value)
-                fetch('/api/typing', { 
-                  method:'POST', 
-                  credentials:'include', 
-                  headers:{ 'Content-Type':'application/json' }, 
-                  body: JSON.stringify({ peer: username, is_typing: true }) 
-                }).catch(()=>{})
-                if (typingTimer.current) clearTimeout(typingTimer.current)
-                typingTimer.current = setTimeout(() => {
+            
+            {/* Regular text input - hidden during recording */}
+            {!recording && (
+              <textarea
+                ref={textareaRef}
+                rows={1}
+                className="flex-1 bg-transparent px-4 py-2.5 text-[16px] text-white placeholder-white/50 outline-none resize-none max-h-24 min-h-[36px]"
+                placeholder="Message"
+                value={draft}
+                onChange={e=> {
+                  setDraft(e.target.value)
                   fetch('/api/typing', { 
                     method:'POST', 
                     credentials:'include', 
                     headers:{ 'Content-Type':'application/json' }, 
-                    body: JSON.stringify({ peer: username, is_typing: false }) 
+                    body: JSON.stringify({ peer: username, is_typing: true }) 
                   }).catch(()=>{})
-                }, 1200)
-              }}
-              style={{
-                lineHeight: '1.4',
-                scrollbarWidth: 'none',
-                msOverflowStyle: 'none'
-              }}
-            />
+                  if (typingTimer.current) clearTimeout(typingTimer.current)
+                  typingTimer.current = setTimeout(() => {
+                    fetch('/api/typing', { 
+                      method:'POST', 
+                      credentials:'include', 
+                      headers:{ 'Content-Type':'application/json' }, 
+                      body: JSON.stringify({ peer: username, is_typing: false }) 
+                    }).catch(()=>{})
+                  }, 1200)
+                }}
+                style={{
+                  lineHeight: '1.4',
+                  scrollbarWidth: 'none',
+                  msOverflowStyle: 'none'
+                }}
+              />
+            )}
             
             {/* Recording UI */}
             {recording && recordLocked && (
@@ -1162,10 +1254,10 @@ export default function ChatThread(){
             {/* Mic + Send */}
             <div className="absolute right-1 top-1/2 transform -translate-y-1/2 flex items-center gap-1">
               <button
-                className={`w-7 h-7 rounded-full flex items-center justify-center transition-all duration-200 ease-out ${
+                className={`w-7 h-7 rounded-full flex items-center justify-center transition-all duration-150 ease-out ${
                   (recording||recordLocked) 
-                    ? 'bg-red-600 text-white scale-110 shadow-lg shadow-red-500/50' 
-                    : 'bg-[#4db6ac] text-white hover:bg-[#45a99c] hover:scale-105 active:scale-95'
+                    ? 'bg-red-600 text-white scale-110 shadow-lg shadow-red-500/50 animate-pulse' 
+                    : 'bg-[#4db6ac] text-white hover:bg-[#45a99c] hover:scale-110 active:scale-95 shadow-md'
                 }`}
                 onMouseDown={onMicPointerDown as any}
                 onMouseUp={onMicPointerUp}
@@ -1174,7 +1266,12 @@ export default function ChatThread(){
                 onTouchMove={onMicPointerMove}
                 onTouchEnd={onMicPointerUp}
                 aria-label="Voice message"
-                title="Hold to record, release to send"
+                title={recording ? "Recording... Release to stop" : "Hold to record voice message"}
+                style={{
+                  touchAction: 'manipulation',
+                  WebkitTapHighlightColor: 'transparent',
+                  userSelect: 'none'
+                }}
               >
                 <i className={`fa-solid ${
                   (recording||recordLocked) ? 'fa-microphone' : 'fa-microphone'
@@ -1206,6 +1303,54 @@ export default function ChatThread(){
           </div>
         </div>
       </div>
+
+      {/* Voice message preview modal */}
+      {recordingPreview && (
+        <div className="fixed inset-0 bg-black/90 z-[9999] flex items-center justify-center p-4">
+          <div className="bg-[#1a1a1a] rounded-2xl border border-white/20 p-6 max-w-sm w-full mx-4">
+            {/* Header */}
+            <div className="text-center mb-6">
+              <div className="w-16 h-16 bg-[#4db6ac]/20 rounded-full flex items-center justify-center mx-auto mb-3">
+                <i className="fa-solid fa-microphone text-[#4db6ac] text-2xl" />
+              </div>
+              <h3 className="text-white text-lg font-medium">Voice Message</h3>
+              <p className="text-white/60 text-sm">Duration: {recordingPreview.duration}s</p>
+            </div>
+
+            {/* Audio player */}
+            <div className="mb-6">
+              <audio 
+                controls 
+                src={recordingPreview.url}
+                className="w-full"
+                style={{
+                  background: '#2a2a2a',
+                  borderRadius: '8px',
+                  outline: 'none'
+                }}
+              />
+            </div>
+
+            {/* Action buttons */}
+            <div className="flex gap-3">
+              <button
+                onClick={cancelRecordingPreview}
+                className="flex-1 px-4 py-3 bg-red-600/20 text-red-400 border border-red-600/30 rounded-xl hover:bg-red-600/30 transition-colors font-medium"
+              >
+                <i className="fa-solid fa-trash mr-2" />
+                Delete
+              </button>
+              <button
+                onClick={sendRecordingPreview}
+                className="flex-1 px-4 py-3 bg-[#4db6ac] text-black rounded-xl hover:bg-[#45a99c] transition-colors font-medium"
+              >
+                <i className="fa-solid fa-paper-plane mr-2" />
+                Send
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Photo preview modal */}
       {previewImage && (
