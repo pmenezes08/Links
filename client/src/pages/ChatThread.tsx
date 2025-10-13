@@ -1538,6 +1538,7 @@ export default function ChatThread(){
 function AudioMessage({ message, audioPath }: { message: Message; audioPath: string }) {
   const [duration, setDuration] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const audioRef = useRef<HTMLAudioElement>(null)
 
   useEffect(() => {
@@ -1545,7 +1546,9 @@ function AudioMessage({ message, audioPath }: { message: Message; audioPath: str
       id: message.id,
       audio_duration_seconds: message.audio_duration_seconds,
       type: typeof message.audio_duration_seconds,
-      text: message.text
+      text: message.text,
+      audioPath: audioPath,
+      isBlob: audioPath.startsWith('blob:')
     })
     
     // First try to use the duration from the message
@@ -1554,6 +1557,25 @@ function AudioMessage({ message, audioPath }: { message: Message; audioPath: str
       setDuration(message.audio_duration_seconds)
       setLoading(false)
       return
+    }
+
+    // Test if audio file exists (for non-blob URLs)
+    if (!audioPath.startsWith('blob:')) {
+      fetch(audioPath, { method: 'HEAD' })
+        .then(response => {
+          console.log('🎵 Audio file check:', response.status, response.statusText, 'for', audioPath)
+          if (!response.ok) {
+            setError(`Audio file not found (${response.status})`)
+            setLoading(false)
+            return
+          }
+        })
+        .catch(err => {
+          console.error('🎵 Audio file check failed:', err, 'for', audioPath)
+          setError('Audio file not accessible')
+          setLoading(false)
+          return
+        })
     }
 
     // If no duration in message, try to get it from the audio element
@@ -1568,16 +1590,50 @@ function AudioMessage({ message, audioPath }: { message: Message; audioPath: str
       }
     }
 
-    const handleError = () => {
+    const handleError = (e: Event) => {
+      console.error('🎵 Audio loading error:', e, 'src:', audio.src)
+      const target = e.target as HTMLAudioElement
+      let errorMsg = 'Audio file could not be loaded'
+      
+      if (target.error) {
+        switch (target.error.code) {
+          case target.error.MEDIA_ERR_ABORTED:
+            errorMsg = 'Audio loading was aborted'
+            break
+          case target.error.MEDIA_ERR_NETWORK:
+            errorMsg = 'Network error while loading audio'
+            break
+          case target.error.MEDIA_ERR_DECODE:
+            errorMsg = 'Audio file format not supported'
+            break
+          case target.error.MEDIA_ERR_SRC_NOT_SUPPORTED:
+            errorMsg = 'Audio file not found or not supported'
+            break
+        }
+      }
+      
+      setError(errorMsg)
       setLoading(false)
+    }
+
+    const handleCanPlay = () => {
+      console.log('🎵 Audio can play:', audio.src)
+    }
+
+    const handleLoadStart = () => {
+      console.log('🎵 Audio load started:', audio.src)
     }
 
     audio.addEventListener('loadedmetadata', handleLoadedMetadata)
     audio.addEventListener('error', handleError)
+    audio.addEventListener('canplay', handleCanPlay)
+    audio.addEventListener('loadstart', handleLoadStart)
 
     return () => {
       audio.removeEventListener('loadedmetadata', handleLoadedMetadata)
       audio.removeEventListener('error', handleError)
+      audio.removeEventListener('canplay', handleCanPlay)
+      audio.removeEventListener('loadstart', handleLoadStart)
     }
   }, [message.audio_duration_seconds, audioPath])
 
@@ -1585,6 +1641,14 @@ function AudioMessage({ message, audioPath }: { message: Message; audioPath: str
     const mins = Math.floor(seconds / 60)
     const secs = seconds % 60
     return `${mins}:${String(secs).padStart(2, '0')}`
+  }
+
+  const retryAudio = () => {
+    setError(null)
+    setLoading(true)
+    if (audioRef.current) {
+      audioRef.current.load()
+    }
   }
 
   return (
@@ -1601,21 +1665,42 @@ function AudioMessage({ message, audioPath }: { message: Message; audioPath: str
             <span className="ml-auto text-xs text-white/40 bg-gray-700/30 px-2 py-1 rounded-full">
               --:--
             </span>
+          ) : error ? (
+            <button 
+              onClick={retryAudio}
+              className="ml-auto text-xs text-red-400 bg-red-900/30 px-2 py-1 rounded-full hover:bg-red-900/50 transition-colors"
+            >
+              Retry
+            </button>
           ) : null}
         </div>
-        <audio 
-          ref={audioRef}
-          controls 
-          preload="metadata"
-          src={audioPath} 
-          className="w-full h-8"
-          playsInline
-          controlsList="nodownload"
-          style={{
-            background: 'transparent',
-            borderRadius: '6px'
-          }}
-        />
+        
+        {error ? (
+          <div className="bg-red-900/20 border border-red-700/30 rounded-lg p-3 text-center">
+            <i className="fa-solid fa-exclamation-triangle text-red-400 mb-2" />
+            <div className="text-red-300 text-sm mb-2">{error}</div>
+            <button 
+              onClick={retryAudio}
+              className="text-xs text-red-400 hover:text-red-300 underline"
+            >
+              Try again
+            </button>
+          </div>
+        ) : (
+          <audio 
+            ref={audioRef}
+            controls 
+            preload="metadata"
+            src={audioPath} 
+            className="w-full h-8"
+            playsInline
+            controlsList="nodownload"
+            style={{
+              background: 'transparent',
+              borderRadius: '6px'
+            }}
+          />
+        )}
       </div>
     </div>
   )
