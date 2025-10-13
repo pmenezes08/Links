@@ -1304,6 +1304,21 @@ export default function ChatThread(){
             className="hidden"
           />
           
+          {/* Recording counter - visible above text box */}
+          {recording && (
+            <div className="mb-2 flex justify-center">
+              <div className="bg-red-600/90 px-3 py-1.5 rounded-full border border-red-500/40 shadow-md">
+                <div className="flex items-center gap-2">
+                  <span className="inline-block w-2 h-2 bg-white rounded-full animate-pulse" />
+                  <div className="text-white font-mono font-medium text-sm">
+                    {new Date(recordMs).toISOString().substr(14,5)}
+                  </div>
+                  <span className="text-white/90 text-xs">REC</span>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Message input container */}
           <div className="flex-1 flex items-center bg-[#1a1a1a] rounded-3xl border border-white/20 overflow-hidden relative">
             {/* Recording sound bar - replaces text input during recording */}
@@ -1324,14 +1339,6 @@ export default function ChatThread(){
                         }}
                       />
                     ))}
-                  </div>
-                  <div className="text-xs text-gray-300 font-mono min-w-[50px] tabular-nums text-center">
-                    <div className="text-white font-medium">
-                      {new Date(recordMs).toISOString().substr(14,5)}
-                    </div>
-                    <div className="text-[10px] text-gray-400">
-                      REC
-                    </div>
                   </div>
                 </div>
               </div>
@@ -1424,18 +1431,6 @@ export default function ChatThread(){
         </div>
       </div>
 
-      {/* Recording counter popup */}
-      {recording && (
-        <div className="fixed top-20 left-1/2 transform -translate-x-1/2 z-50 bg-red-600/95 backdrop-blur-sm px-4 py-2 rounded-full border border-red-500/40 shadow-lg animate-pulse">
-          <div className="flex items-center gap-2">
-            <span className="inline-block w-2 h-2 bg-white rounded-full animate-pulse" />
-            <div className="text-white font-mono font-bold text-lg">
-              {new Date(recordMs).toISOString().substr(14,5)}
-            </div>
-            <span className="text-white/90 text-sm">REC</span>
-          </div>
-        </div>
-      )}
 
       {/* Voice message preview modal */}
       {recordingPreview && (
