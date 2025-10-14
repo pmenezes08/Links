@@ -9270,6 +9270,8 @@ def api_create_task():
                             })
                         except Exception:
                             pass
+                except Exception as notify_all_err:
+                    logger.warning(f"notify all tasks error: {notify_all_err}")
             else:
                 # Individual assignments (one task row per assignee)
                 for assignee in assigned_members:
