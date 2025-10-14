@@ -14361,7 +14361,8 @@ def update_community():
     accent_color = request.form.get('accent_color', '#4db6ac')
     text_color = request.form.get('text_color', '#ffffff')
     parent_community_id = request.form.get('parent_community_id', None)
-    notify_on_new_member = 1 if request.form.get('notify_on_new_member') == 'true' else 0
+    notify_raw = (request.form.get('notify_on_new_member') or '').strip().lower()
+    notify_on_new_member = 1 if notify_raw in ('true','1','on','yes') else 0
     
     if not community_id or not name:
         return jsonify({'success': False, 'error': 'Community ID and name are required'}), 400
@@ -14369,9 +14370,26 @@ def update_community():
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
-            
+            # Ensure notify_on_new_member column exists (production safety)
+            try:
+                if 'USE_MYSQL' in globals() and USE_MYSQL:
+                    c.execute("SHOW COLUMNS FROM communities LIKE 'notify_on_new_member'")
+                    if not c.fetchone():
+                        c.execute("ALTER TABLE communities ADD COLUMN notify_on_new_member TINYINT(1) DEFAULT 0")
+                        conn.commit()
+                else:
+                    c.execute("PRAGMA table_info(communities)")
+                    cols = [row[1] if isinstance(row, (list, tuple)) else row['name'] for row in c.fetchall()]
+                    if 'notify_on_new_member' not in cols:
+                        c.execute("ALTER TABLE communities ADD COLUMN notify_on_new_member INTEGER DEFAULT 0")
+                        conn.commit()
+            except Exception as mig_e:
+                logger.warning(f"notify_on_new_member migration check failed: {mig_e}")
+
+            ph = get_sql_placeholder()
+
             # Check if community exists and who is the owner
-            c.execute("SELECT creator_username FROM communities WHERE id = ?", (community_id,))
+            c.execute(f"SELECT creator_username FROM communities WHERE id = {ph}", (community_id,))
             community = c.fetchone()
             
             if not community:
@@ -14409,25 +14427,39 @@ def update_community():
             
             # Update the community details
             if background_path:
-                c.execute("""UPDATE communities 
-                            SET name = ?, description = ?, type = ?, background_path = ?, template = ?, 
-                                background_color = ?, card_color = ?, accent_color = ?, text_color = ?, parent_community_id = ?, notify_on_new_member = ? 
-                            WHERE id = ?""", 
-                         (name, description, community_type, background_path, template, 
-                          background_color, card_color, accent_color, text_color, 
-                          parent_community_id if parent_community_id and parent_community_id != 'none' else None, 
-                          notify_on_new_member,
-                          community_id))
+                c.execute(
+                    f"""
+                    UPDATE communities 
+                    SET name = {ph}, description = {ph}, type = {ph}, background_path = {ph}, template = {ph},
+                        background_color = {ph}, card_color = {ph}, accent_color = {ph}, text_color = {ph},
+                        parent_community_id = {ph}, notify_on_new_member = {ph}
+                    WHERE id = {ph}
+                    """,
+                    (
+                        name, description, community_type, background_path, template,
+                        background_color, card_color, accent_color, text_color,
+                        (parent_community_id if parent_community_id and parent_community_id != 'none' else None),
+                        notify_on_new_member,
+                        community_id,
+                    ),
+                )
             else:
-                c.execute("""UPDATE communities 
-                            SET name = ?, description = ?, type = ?, template = ?, 
-                                background_color = ?, card_color = ?, accent_color = ?, text_color = ?, parent_community_id = ?, notify_on_new_member = ? 
-                            WHERE id = ?""", 
-                         (name, description, community_type, template, 
-                          background_color, card_color, accent_color, text_color, 
-                          parent_community_id if parent_community_id and parent_community_id != 'none' else None, 
-                          notify_on_new_member,
-                          community_id))
+                c.execute(
+                    f"""
+                    UPDATE communities 
+                    SET name = {ph}, description = {ph}, type = {ph}, template = {ph},
+                        background_color = {ph}, card_color = {ph}, accent_color = {ph}, text_color = {ph},
+                        parent_community_id = {ph}, notify_on_new_member = {ph}
+                    WHERE id = {ph}
+                    """,
+                    (
+                        name, description, community_type, template,
+                        background_color, card_color, accent_color, text_color,
+                        (parent_community_id if parent_community_id and parent_community_id != 'none' else None),
+                        notify_on_new_member,
+                        community_id,
+                    ),
+                )
             
             conn.commit()
             
