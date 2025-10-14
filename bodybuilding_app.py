@@ -9501,6 +9501,91 @@ def api_delete_task():
         logger.error(f"api_delete_task error: {e}")
         return jsonify({'success': False, 'error': 'Server error'}), 500
 
+
+@app.route('/admin/grant_admin', methods=['POST'])
+@login_required
+def admin_grant_admin():
+    """Grant community admin role to a user. Requires app admin or the community owner.
+    Accepts community_id or community_name, and username.
+    """
+    actor = session.get('username')
+    target_username = (request.form.get('username') or '').strip()
+    community_id = request.form.get('community_id', type=int)
+    community_name = (request.form.get('community_name') or '').strip()
+    if not target_username or (not community_id and not community_name):
+        return jsonify({'success': False, 'error': 'username and community_id or community_name required'}), 400
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            # Resolve community_id by name if needed
+            if not community_id and community_name:
+                c.execute("SELECT id, creator_username FROM communities WHERE name = ?", (community_name,))
+                row = c.fetchone()
+                if not row:
+                    return jsonify({'success': False, 'error': 'Community not found'}), 404
+                community_id = row['id'] if hasattr(row, 'keys') else row[0]
+                owner_username = row['creator_username'] if hasattr(row, 'keys') else row[1]
+            else:
+                c.execute("SELECT creator_username FROM communities WHERE id = ?", (community_id,))
+                rr = c.fetchone()
+                if not rr:
+                    return jsonify({'success': False, 'error': 'Community not found'}), 404
+                owner_username = rr['creator_username'] if hasattr(rr, 'keys') else rr[0]
+
+            # Permission: app admin or owner
+            if actor != 'admin' and actor != owner_username:
+                return jsonify({'success': False, 'error': 'Not authorized'}), 403
+
+            # Ensure target user exists
+            c.execute("SELECT id FROM users WHERE LOWER(username) = LOWER(?)", (target_username,))
+            ur = c.fetchone()
+            if not ur:
+                return jsonify({'success': False, 'error': 'Target user not found'}), 404
+            target_id = ur['id'] if hasattr(ur, 'keys') else ur[0]
+
+            # Ensure membership in user_communities
+            now_sql = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            try:
+                if 'USE_MYSQL' in globals() and USE_MYSQL:
+                    c.execute(
+                        """
+                        INSERT INTO user_communities (user_id, community_id, role, joined_at)
+                        VALUES (?, ?, 'admin', ?)
+                        ON DUPLICATE KEY UPDATE role='admin'
+                        """,
+                        (target_id, community_id, now_sql)
+                    )
+                else:
+                    c.execute(
+                        """
+                        INSERT INTO user_communities (user_id, community_id, role, joined_at)
+                        VALUES (?, ?, 'admin', ?)
+                        ON CONFLICT(user_id, community_id) DO UPDATE SET role='admin'
+                        """,
+                        (target_id, community_id, now_sql)
+                    )
+            except Exception:
+                # Fallback: update if exists
+                try:
+                    c.execute("UPDATE user_communities SET role='admin' WHERE user_id=? AND community_id=?", (target_id, community_id))
+                except Exception:
+                    pass
+
+            # Also record in legacy community_admins (best-effort)
+            try:
+                if 'USE_MYSQL' in globals() and USE_MYSQL:
+                    c.execute("INSERT IGNORE INTO community_admins (community_id, username) VALUES (?, ?)", (community_id, target_username))
+                else:
+                    c.execute("INSERT OR IGNORE INTO community_admins (community_id, username) VALUES (?, ?)", (community_id, target_username))
+            except Exception:
+                pass
+
+            conn.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"admin_grant_admin error: {e}")
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
 @app.route('/notifications')
 @login_required
 def notifications_page():
