@@ -9509,6 +9509,8 @@ def post_status():
                         )
                     except Exception as pe:
                         logger.warning(f"push notify community warn: {pe}")
+            except Exception as notify_err:
+                logger.warning(f"community notify block error: {notify_err}")
         
         # Check if this is an AJAX request
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
