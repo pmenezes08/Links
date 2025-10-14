@@ -6779,7 +6779,7 @@ def get_messages():
             c = conn.cursor()
             
             # Get current user ID
-            c.execute("SELECT id FROM users WHERE username = ?", (username,))
+            c.execute("SELECT id FROM users WHERE LOWER(username) = LOWER(?)", (username,))
             user = c.fetchone()
             if not user:
                 return jsonify({'success': False, 'error': 'User not found'})
@@ -9118,8 +9118,8 @@ def is_community_admin_or_owner(username: str, community_id: int) -> bool:
                 except Exception:
                     pass
 
-            # Legacy/fallback table community_admins
-            c.execute("SELECT 1 FROM community_admins WHERE community_id = ? AND username = ?", (community_id, username))
+            # Legacy/fallback table community_admins (case-insensitive username match)
+            c.execute("SELECT 1 FROM community_admins WHERE community_id = ? AND LOWER(username) = LOWER(?)", (community_id, username))
             return bool(c.fetchone())
     except Exception as e:
         logger.warning(f"is_community_admin_or_owner check failed: {e}")
