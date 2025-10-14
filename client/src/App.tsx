@@ -10,6 +10,7 @@ import PushInit from './components/PushInit'
 import CrossfitExact from './pages/CrossfitExact'
 import CommunityFeed from './pages/CommunityFeed'
 import CommunityCalendar from './pages/CommunityCalendar'
+import CommunityTasks from './pages/CommunityTasks'
 import CommunityPolls from './pages/CommunityPolls'
 import CommunityResources from './pages/CommunityResources'
 import UsefulLinks from './pages/UsefulLinks'
@@ -146,6 +147,7 @@ function AppRoutes(){
           <Route path="/workout_tracking" element={<WorkoutTracking />} />
           <Route path="/community_feed_react/:community_id" element={<CommunityFeed />} />
           <Route path="/community/:community_id/calendar_react" element={<CommunityCalendar />} />
+          <Route path="/community/:community_id/tasks_react" element={<CommunityTasks />} />
           <Route path="/community/:community_id/polls_react" element={<CommunityPolls />} />
           <Route path="/community/:community_id/resources_react" element={<CommunityResources />} />
           <Route path="/community/:community_id/useful_links_react" element={<UsefulLinks />} />
