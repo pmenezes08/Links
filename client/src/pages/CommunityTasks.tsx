@@ -46,8 +46,16 @@ export default function CommunityTasks(){
         if (mt?.success) setMyTasks(mt.tasks||[])
         if (mem?.success && Array.isArray(mem.members)){
           setMembers(mem.members.map((m:any)=> ({ username:m.username })))
-          const role = mem.current_user_role
+          const role = String(mem.current_user_role||'').toLowerCase()
           setIsAdmin(role==='owner' || role==='admin' || role==='app_admin')
+        } else {
+          // Fallback: if user can access edit page, consider admin
+          try{
+            const r = await fetch(`/community/${community_id}/members/list`, { credentials:'include' })
+            const j = await r.json().catch(()=>null)
+            const role = String(j?.current_user_role||'').toLowerCase()
+            setIsAdmin(role==='owner' || role==='admin' || role==='app_admin')
+          }catch{}
         }
       } finally { if (mounted) setLoading(false) }
     }
