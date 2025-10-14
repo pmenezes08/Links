@@ -17,6 +17,7 @@ type Notif = {
 function iconFor(type?: string){
   switch(type){
     case 'community_post': return 'fa-solid fa-bullhorn'
+    case 'task_assigned': return 'fa-solid fa-list-check'
     case 'reaction': return 'fa-regular fa-heart'
     case 'reply': return 'fa-regular fa-comment'
     case 'mention_post': return 'fa-solid fa-at'
@@ -137,6 +138,7 @@ export default function Notifications(){
                        n.type === 'community_post' ? (n.message || `@${n.from_user} made a new post`) : (
                         <>
                           <strong>@{n.from_user}</strong> {
+                            n.type === 'task_assigned' ? 'assigned you a task' :
                             n.type === 'reaction' ? 'reacted to your post' :
                             n.type === 'reply' ? 'replied to your post' :
                             n.type === 'mention_post' ? 'mentioned you in a post' :

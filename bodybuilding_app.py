@@ -9017,6 +9017,438 @@ def notify_post_reply_recipients(*, post_id: int, from_user: str, community_id: 
     except Exception as e:
         logger.error(f"notify_post_reply_recipients error: {e}")
 
+
+# ---- Community Tasks: DB helpers ----
+def ensure_tasks_table():
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            if 'USE_MYSQL' in globals() and USE_MYSQL:
+                c.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS tasks (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        community_id INT NOT NULL,
+                        title VARCHAR(255) NOT NULL,
+                        description TEXT,
+                        due_date DATE NULL,
+                        assigned_to_username VARCHAR(255) NULL,
+                        created_by_username VARCHAR(255) NOT NULL,
+                        created_at DATETIME NOT NULL DEFAULT NOW(),
+                        completed TINYINT(1) NOT NULL DEFAULT 0,
+                        INDEX idx_tasks_comm (community_id),
+                        INDEX idx_tasks_assignee (assigned_to_username)
+                    )
+                    """
+                )
+            else:
+                c.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS tasks (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        community_id INTEGER NOT NULL,
+                        title TEXT NOT NULL,
+                        description TEXT,
+                        due_date TEXT,
+                        assigned_to_username TEXT,
+                        created_by_username TEXT NOT NULL,
+                        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                        completed INTEGER NOT NULL DEFAULT 0
+                    )
+                    """
+                )
+            conn.commit()
+            # Try to add status column if missing
+            try:
+                if 'USE_MYSQL' in globals() and USE_MYSQL:
+                    c.execute("ALTER TABLE tasks ADD COLUMN status VARCHAR(32) NOT NULL DEFAULT 'not_started'")
+                else:
+                    c.execute("ALTER TABLE tasks ADD COLUMN status TEXT NOT NULL DEFAULT 'not_started'")
+                conn.commit()
+                # Backfill completed->status
+                try:
+                    if 'USE_MYSQL' in globals() and USE_MYSQL:
+                        c.execute("UPDATE tasks SET status='completed' WHERE completed=1")
+                    else:
+                        c.execute("UPDATE tasks SET status='completed' WHERE completed=1")
+                    conn.commit()
+                except Exception:
+                    pass
+            except Exception:
+                # Column likely exists
+                pass
+    except Exception as e:
+        logger.error(f"ensure_tasks_table error: {e}")
+
+
+def is_community_admin_or_owner(username: str, community_id: int) -> bool:
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            # Owner
+            c.execute("SELECT creator_username FROM communities WHERE id = ?", (community_id,))
+            row = c.fetchone()
+            owner = row['creator_username'] if row else None
+            if username == 'admin' or username == owner:
+                return True
+            # Admins
+            c.execute("SELECT 1 FROM community_admins WHERE community_id = ? AND username = ?", (community_id, username))
+            return bool(c.fetchone())
+    except Exception as e:
+        logger.warning(f"is_community_admin_or_owner check failed: {e}")
+        return False
+
+
+@app.route('/api/community_tasks')
+@login_required
+def api_community_tasks():
+    """List community-wide tasks (assigned to entire community)."""
+    community_id = request.args.get('community_id', type=int)
+    if not community_id:
+        return jsonify({'success': False, 'error': 'community_id required'}), 400
+    try:
+        ensure_tasks_table()
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute(
+                """
+                SELECT id, community_id, title, description, due_date, assigned_to_username, created_by_username, created_at, completed, status
+                FROM tasks
+                WHERE community_id = ? AND (assigned_to_username IS NULL OR assigned_to_username = '')
+                ORDER BY (CASE WHEN due_date IS NULL THEN 1 ELSE 0 END), due_date ASC, id DESC
+                """,
+                (community_id,)
+            )
+            tasks = [dict(row) for row in c.fetchall()]
+        return jsonify({'success': True, 'tasks': tasks})
+    except Exception as e:
+        logger.error(f"api_community_tasks error: {e}")
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
+
+@app.route('/api/my_tasks')
+@login_required
+def api_my_tasks():
+    """List tasks assigned to the current user for a community."""
+    username = session['username']
+    community_id = request.args.get('community_id', type=int)
+    if not community_id:
+        return jsonify({'success': False, 'error': 'community_id required'}), 400
+    try:
+        ensure_tasks_table()
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute(
+                """
+                SELECT id, community_id, title, description, due_date, assigned_to_username, created_by_username, created_at, completed, status
+                FROM tasks
+                WHERE community_id = ? AND assigned_to_username = ?
+                ORDER BY (CASE WHEN due_date IS NULL THEN 1 ELSE 0 END), due_date ASC, id DESC
+                """,
+                (community_id, username)
+            )
+            tasks = [dict(row) for row in c.fetchall()]
+        return jsonify({'success': True, 'tasks': tasks})
+    except Exception as e:
+        logger.error(f"api_my_tasks error: {e}")
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
+
+@app.route('/api/create_task', methods=['POST'])
+@login_required
+def api_create_task():
+    """Create a task. Non-admins can only assign to themselves. Admins can assign to any member or entire community."""
+    username = session['username']
+    title = (request.form.get('title') or '').strip()
+    description = (request.form.get('description') or '').strip()
+    due_date = (request.form.get('due_date') or '').strip()  # 'YYYY-MM-DD' or empty
+    community_id = request.form.get('community_id', type=int)
+    assign_all = (request.form.get('assign_all') or '').strip().lower() == 'true'
+    assigned_members = request.form.getlist('assigned_members[]') or []
+    status = (request.form.get('status') or 'not_started').strip().lower()
+    if status not in ('not_started','ongoing','completed'):
+        status = 'not_started'
+
+    if not community_id or not title:
+        return jsonify({'success': False, 'error': 'community_id and title are required'}), 400
+
+    try:
+        ensure_tasks_table()
+        # Permission checks
+        admin_ok = is_community_admin_or_owner(username, community_id)
+        if assign_all and not admin_ok:
+            return jsonify({'success': False, 'error': 'Only admins can assign to entire community'}), 403
+        if assigned_members:
+            # If non-admin, can only assign to self
+            if not admin_ok:
+                if not (len(assigned_members) == 1 and assigned_members[0] == username):
+                    return jsonify({'success': False, 'error': 'You can only assign tasks to yourself'}), 403
+        if not assign_all and not assigned_members:
+            # Default to self assignment
+            assigned_members = [username]
+
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            created_at_sql = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+            # Create tasks
+            created_ids = []
+            if assign_all:
+                # Community-wide task (single row with NULL assignee)
+                try:
+                    if 'USE_MYSQL' in globals() and USE_MYSQL:
+                        c.execute(
+                            """
+                            INSERT INTO tasks (community_id, title, description, due_date, assigned_to_username, created_by_username, created_at, completed, status)
+                            VALUES (?, ?, ?, NULLIF(?, ''), NULL, ?, NOW(), 0, ?)
+                            """,
+                            (community_id, title, description, due_date, username, status)
+                        )
+                    else:
+                        c.execute(
+                            """
+                            INSERT INTO tasks (community_id, title, description, due_date, assigned_to_username, created_by_username, created_at, completed, status)
+                            VALUES (?, ?, ?, NULLIF(?, ''), NULL, ?, ?, 0, ?)
+                            """,
+                            (community_id, title, description, due_date, username, created_at_sql, status)
+                        )
+                    task_id = c.lastrowid
+                    created_ids.append(task_id)
+                except Exception as ie:
+                    logger.error(f"insert community task error: {ie}")
+                # Notify all members except creator
+                try:
+                    c.execute(
+                        """
+                        SELECT u.username FROM users u
+                        JOIN user_communities uc ON u.id = uc.user_id
+                        WHERE uc.community_id = ? AND u.username != ?
+                        """,
+                        (community_id, username)
+                    )
+                    members = [r['username'] if hasattr(r, 'keys') else r[0] for r in c.fetchall()]
+                    # community name
+                    community_name = None
+                    try:
+                        c.execute("SELECT name FROM communities WHERE id = ?", (community_id,))
+                        rr = c.fetchone()
+                        if rr:
+                            community_name = rr['name'] if hasattr(rr, 'keys') else rr[0]
+                    except Exception:
+                        pass
+                    message = f"New community task in {community_name}: {title}" if community_name else f"New community task: {title}"
+                    link = f"/community/{community_id}/tasks_react"
+                    for m in members:
+                        try:
+                            if 'USE_MYSQL' in globals() and USE_MYSQL:
+                                c.execute(
+                                    """
+                                    INSERT INTO notifications (user_id, from_user, type, community_id, message, created_at, is_read, link)
+                                    VALUES (?, ?, 'task_assigned', ?, ?, NOW(), 0, ?)
+                                    ON DUPLICATE KEY UPDATE created_at = NOW(), message = VALUES(message), is_read = 0, link = VALUES(link)
+                                    """,
+                                    (m, username, community_id, message, link)
+                                )
+                            else:
+                                c.execute(
+                                    """
+                                    INSERT INTO notifications (user_id, from_user, type, community_id, message, created_at, is_read, link)
+                                    VALUES (?, ?, 'task_assigned', ?, ?, datetime('now'), 0, ?)
+                                    ON CONFLICT(user_id, from_user, type, community_id)
+                                    DO UPDATE SET created_at = datetime('now'), is_read = 0, message = excluded.message, link = excluded.link
+                                    """,
+                                    (m, username, community_id, message, link)
+                                )
+                        except Exception as ne:
+                            logger.warning(f"task assign notify (community) error to {m}: {ne}")
+                        try:
+                            send_push_to_user(m, {
+                                'title': 'New community task',
+                                'body': title[:100],
+                                'url': link,
+                                'tag': f'task-{community_id}-{m}'
+                            })
+                        except Exception:
+                            pass
+            else:
+                # Individual assignments (one task row per assignee)
+                for assignee in assigned_members:
+                    try:
+                        if 'USE_MYSQL' in globals() and USE_MYSQL:
+                            c.execute(
+                                """
+                                INSERT INTO tasks (community_id, title, description, due_date, assigned_to_username, created_by_username, created_at, completed, status)
+                                VALUES (?, ?, ?, NULLIF(?, ''), ?, ?, NOW(), 0, ?)
+                                """,
+                                (community_id, title, description, due_date, assignee, username, status)
+                            )
+                        else:
+                            c.execute(
+                                """
+                                INSERT INTO tasks (community_id, title, description, due_date, assigned_to_username, created_by_username, created_at, completed, status)
+                                VALUES (?, ?, ?, NULLIF(?, ''), ?, ?, ?, 0, ?)
+                                """,
+                                (community_id, title, description, due_date, assignee, username, created_at_sql, status)
+                            )
+                        task_id = c.lastrowid
+                        created_ids.append(task_id)
+                        # Notify assignee
+                        link = f"/community/{community_id}/tasks_react"
+                        message = f"{username} assigned you a task: {title}"
+                        try:
+                            if 'USE_MYSQL' in globals() and USE_MYSQL:
+                                c.execute(
+                                    """
+                                    INSERT INTO notifications (user_id, from_user, type, community_id, message, created_at, is_read, link)
+                                    VALUES (?, ?, 'task_assigned', ?, ?, NOW(), 0, ?)
+                                    ON DUPLICATE KEY UPDATE created_at = NOW(), message = VALUES(message), is_read = 0, link = VALUES(link)
+                                    """,
+                                    (assignee, username, community_id, message, link)
+                                )
+                            else:
+                                c.execute(
+                                    """
+                                    INSERT INTO notifications (user_id, from_user, type, community_id, message, created_at, is_read, link)
+                                    VALUES (?, ?, 'task_assigned', ?, ?, datetime('now'), 0, ?)
+                                    ON CONFLICT(user_id, from_user, type, community_id)
+                                    DO UPDATE SET created_at = datetime('now'), is_read = 0, message = excluded.message, link = excluded.link
+                                    """,
+                                    (assignee, username, community_id, message, link)
+                                )
+                        except Exception as ne:
+                            logger.warning(f"task assign notify error to {assignee}: {ne}")
+                        try:
+                            send_push_to_user(assignee, {
+                                'title': 'New task assigned',
+                                'body': title[:100],
+                                'url': link,
+                                'tag': f'task-{community_id}-{assignee}'
+                            })
+                        except Exception:
+                            pass
+                    except Exception as ie:
+                        logger.error(f"insert individual task error: {ie}")
+
+            conn.commit()
+        return jsonify({'success': True, 'task_ids': created_ids})
+    except Exception as e:
+        logger.error(f"api_create_task error: {e}")
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
+
+@app.route('/api/complete_task', methods=['POST'])
+@login_required
+def api_complete_task():
+    """Mark a task complete. Only assignee or admin/owner can mark complete."""
+    username = session['username']
+    task_id = request.form.get('task_id', type=int)
+    community_id = request.form.get('community_id', type=int)
+    completed = request.form.get('completed', 'true').lower() == 'true'
+    if not task_id or not community_id:
+        return jsonify({'success': False, 'error': 'task_id and community_id required'}), 400
+    try:
+        ensure_tasks_table()
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT assigned_to_username FROM tasks WHERE id = ? AND community_id = ?", (task_id, community_id))
+            row = c.fetchone()
+            if not row:
+                return jsonify({'success': False, 'error': 'Task not found'}), 404
+            assignee = row['assigned_to_username'] if hasattr(row, 'keys') else row[0]
+            admin_ok = is_community_admin_or_owner(username, community_id)
+            if assignee and assignee != username and not admin_ok:
+                return jsonify({'success': False, 'error': 'Not allowed'}), 403
+            if completed:
+                c.execute("UPDATE tasks SET completed = 1, status = 'completed' WHERE id = ?", (task_id,))
+            else:
+                # If unchecking completed, move to ongoing unless explicitly set otherwise later
+                c.execute("UPDATE tasks SET completed = 0, status = CASE WHEN status='completed' THEN 'ongoing' ELSE status END WHERE id = ?", (task_id,))
+            conn.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"api_complete_task error: {e}")
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
+
+@app.route('/api/edit_task', methods=['POST'])
+@login_required
+def api_edit_task():
+    """Edit a task (title, description, due_date, status). Only creator or admin/owner."""
+    username = session['username']
+    task_id = request.form.get('task_id', type=int)
+    community_id = request.form.get('community_id', type=int)
+    if not task_id or not community_id:
+        return jsonify({'success': False, 'error': 'task_id and community_id required'}), 400
+    title = (request.form.get('title') or '').strip()
+    description = (request.form.get('description') or '').strip()
+    due_date = (request.form.get('due_date') or '').strip()
+    status = (request.form.get('status') or '').strip().lower()
+    if status and status not in ('not_started','ongoing','completed'):
+        status = ''
+    try:
+        ensure_tasks_table()
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT created_by_username FROM tasks WHERE id=? AND community_id=?", (task_id, community_id))
+            row = c.fetchone()
+            if not row:
+                return jsonify({'success': False, 'error': 'Task not found'}), 404
+            creator = row['created_by_username'] if hasattr(row, 'keys') else row[0]
+            admin_ok = is_community_admin_or_owner(username, community_id)
+            if username != creator and not admin_ok:
+                return jsonify({'success': False, 'error': 'Not allowed'}), 403
+            sets = []
+            params = []
+            if title:
+                sets.append('title = ?')
+                params.append(title)
+            if description or description == '':
+                sets.append('description = ?')
+                params.append(description)
+            if due_date or due_date == '':
+                sets.append("due_date = NULLIF(?, '')")
+                params.append(due_date)
+            if status:
+                sets.append('status = ?')
+                params.append(status)
+            if not sets:
+                return jsonify({'success': True})
+            params.extend([task_id, community_id])
+            c.execute(f"UPDATE tasks SET {', '.join(sets)} WHERE id = ? AND community_id = ?", tuple(params))
+            conn.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"api_edit_task error: {e}")
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
+
+@app.route('/api/delete_task', methods=['POST'])
+@login_required
+def api_delete_task():
+    """Delete a task. Only creator or admin/owner."""
+    username = session['username']
+    task_id = request.form.get('task_id', type=int)
+    community_id = request.form.get('community_id', type=int)
+    if not task_id or not community_id:
+        return jsonify({'success': False, 'error': 'task_id and community_id required'}), 400
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT created_by_username FROM tasks WHERE id=? AND community_id=?", (task_id, community_id))
+            row = c.fetchone()
+            if not row:
+                return jsonify({'success': False, 'error': 'Task not found'}), 404
+            creator = row['created_by_username'] if hasattr(row, 'keys') else row[0]
+            admin_ok = is_community_admin_or_owner(username, community_id)
+            if username != creator and not admin_ok:
+                return jsonify({'success': False, 'error': 'Not allowed'}), 403
+            c.execute("DELETE FROM tasks WHERE id=? AND community_id=?", (task_id, community_id))
+            conn.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"api_delete_task error: {e}")
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
 @app.route('/notifications')
 @login_required
 def notifications_page():

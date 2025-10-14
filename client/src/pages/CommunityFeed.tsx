@@ -560,6 +560,9 @@ export default function CommunityFeed() {
             </button>
             <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); navigate(`/community/${community_id}/polls_react`) }}>Polls</button>
             <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); navigate(`/community/${community_id}/calendar_react`) }}>Calendar</button>
+            {((data?.community?.type||'').toLowerCase().includes('university') || (data?.community?.name||'').toLowerCase().includes('university')) && (
+              <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); navigate(`/community/${community_id}/tasks_react`) }}>Tasks</button>
+            )}
             <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); navigate(`/community/${community_id}/photos_react`) }}>Photos</button>
             {/* Hide Forum/Useful Links for General communities */}
             {((data?.community?.type||'').toLowerCase() !== 'general') && (
