@@ -16,6 +16,7 @@ type Notif = {
 
 function iconFor(type?: string){
   switch(type){
+    case 'community_post': return 'fa-solid fa-bullhorn'
     case 'reaction': return 'fa-regular fa-heart'
     case 'reply': return 'fa-regular fa-comment'
     case 'mention_post': return 'fa-solid fa-at'
@@ -132,7 +133,8 @@ export default function Notifications(){
                   <i className={`${iconFor(n.type)} text-[#4db6ac] mt-0.5`} />
                   <div className="flex-1 min-w-0">
                     <div className="text-sm truncate">
-                      {n.type === 'event_invitation' ? (n.message || 'Event invitation') : (
+                      {n.type === 'event_invitation' ? (n.message || 'Event invitation') :
+                       n.type === 'community_post' ? (n.message || `@${n.from_user} made a new post`) : (
                         <>
                           <strong>@{n.from_user}</strong> {
                             n.type === 'reaction' ? 'reacted to your post' :
