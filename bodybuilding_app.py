@@ -9210,6 +9210,28 @@ def api_create_task():
             if not admin_ok:
                 if not (len(assigned_members) == 1 and assigned_members[0] == username):
                     return jsonify({'success': False, 'error': 'You can only assign tasks to yourself'}), 403
+            else:
+                # Validate assignees are members of the community
+                try:
+                    with get_db_connection() as _conn2:
+                        _c2 = _conn2.cursor()
+                        placeholders = ','.join(['?'] * len(assigned_members)) if assigned_members else ''
+                        if placeholders:
+                            _c2.execute(
+                                f"""
+                                SELECT u.username
+                                FROM users u JOIN user_communities uc ON u.id = uc.user_id
+                                WHERE uc.community_id = ? AND u.username IN ({placeholders})
+                                """,
+                                (community_id, *assigned_members)
+                            )
+                            rows = _c2.fetchall() or []
+                            valid = set([r['username'] if hasattr(r, 'keys') else r[0] for r in rows])
+                            assigned_members = [u for u in assigned_members if u in valid]
+                except Exception as ve:
+                    logger.warning(f"assignee validation failed: {ve}")
+                if not assigned_members:
+                    return jsonify({'success': False, 'error': 'No valid assignees in this community'}), 400
         if not assign_all and not assigned_members:
             # Default to self assignment
             assigned_members = [username]
@@ -9321,40 +9343,41 @@ def api_create_task():
                             )
                         task_id = c.lastrowid
                         created_ids.append(task_id)
-                        # Notify assignee
+                        # Notify assignee (skip self-notification)
                         link = f"/community/{community_id}/tasks_react"
                         message = f"{username} assigned you a task: {title}"
-                        try:
-                            if 'USE_MYSQL' in globals() and USE_MYSQL:
-                                c.execute(
-                                    """
-                                    INSERT INTO notifications (user_id, from_user, type, community_id, message, created_at, is_read, link)
-                                    VALUES (?, ?, 'task_assigned', ?, ?, NOW(), 0, ?)
-                                    ON DUPLICATE KEY UPDATE created_at = NOW(), message = VALUES(message), is_read = 0, link = VALUES(link)
-                                    """,
-                                    (assignee, username, community_id, message, link)
-                                )
-                            else:
-                                c.execute(
-                                    """
-                                    INSERT INTO notifications (user_id, from_user, type, community_id, message, created_at, is_read, link)
-                                    VALUES (?, ?, 'task_assigned', ?, ?, datetime('now'), 0, ?)
-                                    ON CONFLICT(user_id, from_user, type, community_id)
-                                    DO UPDATE SET created_at = datetime('now'), is_read = 0, message = excluded.message, link = excluded.link
-                                    """,
-                                    (assignee, username, community_id, message, link)
-                                )
-                        except Exception as ne:
-                            logger.warning(f"task assign notify error to {assignee}: {ne}")
-                        try:
-                            send_push_to_user(assignee, {
-                                'title': 'New task assigned',
-                                'body': title[:100],
-                                'url': link,
-                                'tag': f'task-{community_id}-{assignee}'
-                            })
-                        except Exception:
-                            pass
+                        if assignee != username:
+                            try:
+                                if 'USE_MYSQL' in globals() and USE_MYSQL:
+                                    c.execute(
+                                        """
+                                        INSERT INTO notifications (user_id, from_user, type, community_id, message, created_at, is_read, link)
+                                        VALUES (?, ?, 'task_assigned', ?, ?, NOW(), 0, ?)
+                                        ON DUPLICATE KEY UPDATE created_at = NOW(), message = VALUES(message), is_read = 0, link = VALUES(link)
+                                        """,
+                                        (assignee, username, community_id, message, link)
+                                    )
+                                else:
+                                    c.execute(
+                                        """
+                                        INSERT INTO notifications (user_id, from_user, type, community_id, message, created_at, is_read, link)
+                                        VALUES (?, ?, 'task_assigned', ?, ?, datetime('now'), 0, ?)
+                                        ON CONFLICT(user_id, from_user, type, community_id)
+                                        DO UPDATE SET created_at = datetime('now'), is_read = 0, message = excluded.message, link = excluded.link
+                                        """,
+                                        (assignee, username, community_id, message, link)
+                                    )
+                            except Exception as ne:
+                                logger.warning(f"task assign notify error to {assignee}: {ne}")
+                            try:
+                                send_push_to_user(assignee, {
+                                    'title': 'New task assigned',
+                                    'body': title[:100],
+                                    'url': link,
+                                    'tag': f'task-{community_id}-{assignee}'
+                                })
+                            except Exception:
+                                pass
                     except Exception as ie:
                         logger.error(f"insert individual task error: {ie}")
 
