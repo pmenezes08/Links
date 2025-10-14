@@ -14370,19 +14370,27 @@ def update_community():
         with get_db_connection() as conn:
             c = conn.cursor()
             
-            # Check if user is the creator of this community or admin
+            # Check if community exists and who is the owner
             c.execute("SELECT creator_username FROM communities WHERE id = ?", (community_id,))
             community = c.fetchone()
             
             if not community:
                 return jsonify({'success': False, 'error': 'Community not found'}), 404
             
-            if community['creator_username'] != username and username != 'admin':
-                return jsonify({'success': False, 'error': 'Only the community creator or admin can edit the community'}), 403
+            owner_username = community['creator_username'] if hasattr(community, 'keys') else community[0]
+            is_owner = (owner_username == username)
+            is_app_admin = (username == 'admin')
+            # Allow community admins to edit general fields
+            try:
+                admin_ok = is_community_admin_or_owner(username, community_id)
+            except Exception:
+                admin_ok = False
+            if not (admin_ok or is_app_admin):
+                return jsonify({'success': False, 'error': 'Only community admins or owner can edit the community'}), 403
             
-            # Handle background file upload
+            # Handle background file upload (restrict to owner or app admin)
             background_path = None
-            if 'background_file' in request.files:
+            if (is_owner or is_app_admin) and ('background_file' in request.files):
                 file = request.files['background_file']
                 if file and file.filename:
                     # Save the uploaded file
