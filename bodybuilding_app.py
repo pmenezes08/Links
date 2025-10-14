@@ -9423,24 +9423,92 @@ def post_status():
             except Exception as e:
                 logger.warning(f"mention post helper error: {e}")
 
-            # Notify community members (excluding creator)
+            # Notify community members (excluding creator) - push + in-app notification row
             try:
-                c.execute("""
+                # Get all members of the community (excluding author)
+                c.execute(
+                    """
                     SELECT DISTINCT u.username
                     FROM users u
                     JOIN user_communities uc ON u.id = uc.user_id
                     WHERE uc.community_id = ? AND u.username != ?
-                """, (community_id, username))
+                    """,
+                    (community_id, username)
+                )
                 members = [row['username'] if hasattr(row, 'keys') else row[0] for row in c.fetchall()]
+
+                # Resolve community name for nicer message
+                community_name = None
+                try:
+                    c.execute("SELECT name FROM communities WHERE id = ?", (community_id,))
+                    r = c.fetchone()
+                    if r:
+                        try:
+                            community_name = r['name'] if hasattr(r, 'keys') else r[0]
+                        except Exception:
+                            community_name = None
+                except Exception:
+                    community_name = None
+
+                notif_message = (
+                    f"{username} made a new post on {community_name}" if community_name else f"{username} made a new post"
+                )
+                notif_link = f"/community_feed_react/{community_id}"
+
                 for member in members:
-                    send_push_to_user(member, {
-                        'title': 'New community post',
-                        'body': f"{username}: {content[:100]}",
-                        'url': f"/community_feed_react/{community_id}",
-                        'tag': f"community-post-{community_id}"
-                    })
-            except Exception as _e:
-                logger.warning(f"push notify community warn: {_e}")
+                    # In-app notification row (dedupe by unique key if present)
+                    try:
+                        if 'USE_MYSQL' in globals() and USE_MYSQL:
+                            c.execute(
+                                """
+                                INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read, link)
+                                VALUES (?, ?, 'community_post', ?, ?, ?, NOW(), 0, ?)
+                                ON DUPLICATE KEY UPDATE
+                                  created_at = NOW(),
+                                  message = VALUES(message),
+                                  is_read = 0,
+                                  link = VALUES(link)
+                                """,
+                                (member, username, post_id, community_id, notif_message, notif_link),
+                            )
+                        else:
+                            c.execute(
+                                """
+                                INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read, link)
+                                VALUES (?, ?, 'community_post', ?, ?, ?, datetime('now'), 0, ?)
+                                ON CONFLICT(user_id, from_user, type, post_id, community_id)
+                                DO UPDATE SET created_at = datetime('now'), is_read = 0, message = excluded.message, link = excluded.link
+                                """,
+                                (member, username, post_id, community_id, notif_message, notif_link),
+                            )
+                        conn.commit()
+                    except Exception as ne:
+                        try:
+                            # Fallback simple insert (best effort)
+                            c.execute(
+                                """
+                                INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read, link)
+                                VALUES (?, ?, 'community_post', ?, ?, ?, datetime('now'), 0, ?)
+                                """,
+                                (member, username, post_id, community_id, notif_message, notif_link),
+                            )
+                            conn.commit()
+                        except Exception as ne2:
+                            logger.warning(f"community post notify db error to {member}: {ne2}")
+
+                    # Web push (non-blocking)
+                    try:
+                        send_push_to_user(
+                            member,
+                            {
+                                'title': 'New community post',
+                                'body': f"{username}: {content[:100]}",
+                                'url': notif_link,
+                                'tag': f"community-post-{community_id}",
+                            },
+                        )
+                    except Exception as pe:
+                        logger.warning(f"push notify community warn: {pe}")
         
         # Check if this is an AJAX request
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
