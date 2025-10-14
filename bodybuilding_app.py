@@ -9085,13 +9085,40 @@ def is_community_admin_or_owner(username: str, community_id: int) -> bool:
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
-            # Owner
+            # Global app admin
+            if username == 'admin':
+                return True
+
+            # Owner by creator_username
             c.execute("SELECT creator_username FROM communities WHERE id = ?", (community_id,))
             row = c.fetchone()
             owner = row['creator_username'] if row else None
-            if username == 'admin' or username == owner:
+            if owner and username == owner:
                 return True
-            # Admins
+
+            # Get user's id
+            c.execute("SELECT id FROM users WHERE username = ?", (username,))
+            uid_row = c.fetchone()
+            user_id = uid_row['id'] if hasattr(uid_row, 'keys') and uid_row else (uid_row[0] if uid_row else None)
+
+            # Role in user_communities (admin/owner)
+            if user_id is not None:
+                try:
+                    c.execute(
+                        """
+                        SELECT role FROM user_communities
+                        WHERE user_id = ? AND community_id = ?
+                        """,
+                        (user_id, community_id),
+                    )
+                    role_row = c.fetchone()
+                    role = role_row['role'] if hasattr(role_row, 'keys') and role_row else (role_row[0] if role_row else None)
+                    if role and str(role).lower() in ('admin', 'owner'):
+                        return True
+                except Exception:
+                    pass
+
+            # Legacy/fallback table community_admins
             c.execute("SELECT 1 FROM community_admins WHERE community_id = ? AND username = ?", (community_id, username))
             return bool(c.fetchone())
     except Exception as e:

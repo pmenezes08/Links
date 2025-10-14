@@ -157,7 +157,9 @@ export default function CommunityTasks(){
                 ) : communityTasks.map(t => (
                   <div key={t.id} className="rounded-2xl border border-white/10 bg-white/[0.035] p-3">
                     <div className="flex items-center gap-2">
-                      <input type="checkbox" checked={!!t.completed} onChange={(e)=> toggleComplete(t, e.target.checked)} />
+                      <button aria-label="Complete task" className={`w-5 h-5 rounded grid place-items-center border ${t.completed ? 'border-[#4db6ac] bg-[#4db6ac]/20' : 'border-white/20 bg-transparent'}`} onClick={()=> toggleComplete(t, !t.completed)}>
+                        <i className={`fa-solid ${t.completed ? 'fa-square-check text-[#4db6ac]' : 'fa-square text-white/60'}`} />
+                      </button>
                       <div className="font-medium flex-1">{t.title}</div>
                       <StatusPill s={t.status} />
                     </div>
@@ -178,7 +180,9 @@ export default function CommunityTasks(){
                 ) : myTasks.map(t => (
                   <div key={t.id} className="rounded-2xl border border-white/10 bg-white/[0.035] p-3">
                     <div className="flex items-center gap-2">
-                      <input type="checkbox" checked={!!t.completed} onChange={(e)=> toggleComplete(t, e.target.checked)} />
+                      <button aria-label="Complete task" className={`w-5 h-5 rounded grid place-items-center border ${t.completed ? 'border-[#4db6ac] bg-[#4db6ac]/20' : 'border-white/20 bg-transparent'}`} onClick={()=> toggleComplete(t, !t.completed)}>
+                        <i className={`fa-solid ${t.completed ? 'fa-square-check text-[#4db6ac]' : 'fa-square text-white/60'}`} />
+                      </button>
                       <div className="font-medium flex-1">{t.title}</div>
                       <StatusPill s={t.status} />
                     </div>
