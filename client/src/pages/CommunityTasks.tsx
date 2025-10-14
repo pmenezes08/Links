@@ -36,27 +36,24 @@ export default function CommunityTasks(){
       if (!community_id) return
       setLoading(true)
       try{
-        const [ct, mt, mem] = await Promise.all([
+        const [ct, mt] = await Promise.all([
           fetch(`/api/community_tasks?community_id=${community_id}`, { credentials:'include' }).then(r=>r.json()).catch(()=>null),
           fetch(`/api/my_tasks?community_id=${community_id}`, { credentials:'include' }).then(r=>r.json()).catch(()=>null),
-          fetch(`/community/${community_id}/members/list`, { credentials:'include' }).then(r=>r.json()).catch(()=>null),
         ])
         if (!mounted) return
         if (ct?.success) setCommunityTasks(ct.tasks||[])
         if (mt?.success) setMyTasks(mt.tasks||[])
-        if (mem?.success && Array.isArray(mem.members)){
-          setMembers(mem.members.map((m:any)=> ({ username:m.username })))
-          const role = String(mem.current_user_role||'').toLowerCase()
-          setIsAdmin(role==='owner' || role==='admin' || role==='app_admin')
-        } else {
-          // Fallback: if user can access edit page, consider admin
-          try{
-            const r = await fetch(`/community/${community_id}/members/list`, { credentials:'include' })
-            const j = await r.json().catch(()=>null)
-            const role = String(j?.current_user_role||'').toLowerCase()
+        // Load members and role from backend POST API
+        try{
+          const body = new URLSearchParams({ community_id: String(community_id) })
+          const r = await fetch('/get_community_members', { method:'POST', credentials:'include', body })
+          const j = await r.json().catch(()=>null)
+          if (j?.success && Array.isArray(j.members)){
+            setMembers(j.members.map((m:any)=> ({ username:m.username })))
+            const role = String(j.current_user_role||'').toLowerCase()
             setIsAdmin(role==='owner' || role==='admin' || role==='app_admin')
-          }catch{}
-        }
+          }
+        } catch {}
       } finally { if (mounted) setLoading(false) }
     }
     load()
