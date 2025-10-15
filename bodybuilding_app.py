@@ -2675,9 +2675,13 @@ def login():
     # Dedicated login route: handles username submission -> login_password
     try:
         if request.method == 'GET':
-            if session.get('username'):
-                # Already authenticated; send to dashboard
-                return redirect(url_for('premium_dashboard'))
+            # Starting (or returning to) username entry: clear any staged or active login
+            try:
+                session.pop('pending_username', None)
+                session.pop('username', None)
+                session.permanent = False
+            except Exception:
+                pass
             ua = request.headers.get('User-Agent', '')
             is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
             if is_mobile:
@@ -2691,10 +2695,21 @@ def login():
                         resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
                         resp.headers['Pragma'] = 'no-cache'
                         resp.headers['Expires'] = '0'
+                        # Clear remember token cookie so back/forward cannot revive stale auth
+                        resp.set_cookie('remember_token', '', max_age=0, path='/', domain=app.config.get('SESSION_COOKIE_DOMAIN') or None)
                     except Exception:
                         pass
                     return resp
-            return render_template('index.html')
+            from flask import make_response
+            resp = make_response(render_template('index.html'))
+            try:
+                resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+                resp.headers['Pragma'] = 'no-cache'
+                resp.headers['Expires'] = '0'
+                resp.set_cookie('remember_token', '', max_age=0, path='/', domain=app.config.get('SESSION_COOKIE_DOMAIN') or None)
+            except Exception:
+                pass
+            return resp
         # POST
         username = (request.form.get('username') or '').strip()
         ua = request.headers.get('User-Agent', '')
@@ -2718,8 +2733,13 @@ def login():
             if is_mobile:
                 return redirect('/login?' + urlencode({'error': 'Username does not exist'}))
             return render_template('index.html', error="Username does not exist")
-        # Stage username for password entry; do NOT authenticate yet
-        session.permanent = True
+        # Stage username for password entry; do NOT authenticate yet.
+        # Also clear any previous active "username" to avoid remaining logged in during the flow.
+        try:
+            session.pop('username', None)
+        except Exception:
+            pass
+        session.permanent = False
         session['pending_username'] = username
         session.modified = True
         return redirect(url_for('login_password'))
