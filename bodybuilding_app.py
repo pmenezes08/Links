@@ -16298,17 +16298,20 @@ def api_home_timeline():
                     'posts': []
                 })
 
-            # Build IN clause safely
-            placeholders = ",".join(["?"] * len(community_ids))
-            params = list(community_ids)
-
-            # Fetch recent posts across user's communities (temporarily removed 48h filter for debugging)
-            c.execute(f"""
-                SELECT * FROM posts
-                WHERE community_id IN ({placeholders})
-                ORDER BY id DESC
+            # Strict: only posts from communities the user directly belongs to
+            ph = get_sql_placeholder()
+            c.execute(
+                f"""
+                SELECT p.*
+                FROM posts p
+                JOIN user_communities uc ON uc.community_id = p.community_id
+                JOIN users u ON u.id = uc.user_id
+                WHERE u.username = {ph}
+                ORDER BY p.id DESC
                 LIMIT 50
-            """, params)
+                """,
+                (username,),
+            )
             rows = [dict(row) for row in c.fetchall()]
 
             # Robust timestamp parsing
