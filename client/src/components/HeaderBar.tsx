@@ -127,7 +127,7 @@ export default function HeaderBar({ title, username, displayName, avatarUrl }: H
             {/* Install action moved to login page */}
             {username === 'admin' ? (
               <>
-                <a className="block px-4 py-3 rounded-xl hover:bg:white/5 text-white" href="/admin_profile">Admin Profile</a>
+                <a className="block px-4 py-3 rounded-xl hover:bg:white/5 text-white" href="/admin_profile_react">Admin Profile</a>
                 <a className="block px-4 py-3 rounded-xl hover:bg:white/5 text-white" href="/admin">Admin Dashboard</a>
               </>
             ) : null}

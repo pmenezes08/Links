@@ -2971,46 +2971,8 @@ def admin_profile():
     # Check if user is admin
     if username != 'admin':
         abort(403)  # Forbidden - only admin can access this page
-    
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            
-            # Get admin information including profile picture
-            c.execute(f"""
-                SELECT u.username, u.email, u.first_name, u.last_name, u.subscription, u.created_at,
-                       p.profile_picture
-                FROM users u
-                LEFT JOIN user_profiles p ON u.username = p.username
-                WHERE u.username = {get_sql_placeholder()}
-            """, (username,))
-            admin_info = dict(c.fetchone())
-            
-            # Get system statistics
-            c.execute("SELECT COUNT(*) as count FROM users")
-            total_users = c.fetchone()['count']
-            
-            c.execute("SELECT COUNT(*) as count FROM posts")
-            total_posts = c.fetchone()['count']
-            
-            c.execute("SELECT COUNT(*) as count FROM communities")
-            total_communities = c.fetchone()['count']
-            
-            c.execute("SELECT COUNT(*) as count FROM users WHERE subscription = 'premium'")
-            premium_users = c.fetchone()['count']
-            
-            stats = {
-                'total_users': total_users,
-                'total_posts': total_posts,
-                'total_communities': total_communities,
-                'premium_users': premium_users
-            }
-            
-        return render_template('admin_profile.html', admin_info=admin_info, stats=stats)
-        
-    except Exception as e:
-        logger.error(f"Error loading admin profile: {str(e)}")
-        abort(500)
+    # Redirect to React version to ensure consistent UI and scroll behavior
+    return redirect(url_for('admin_profile_react'))
 
 @app.route('/logout')
 def logout():
