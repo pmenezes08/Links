@@ -2676,7 +2676,8 @@ def login():
     try:
         if request.method == 'GET':
             if session.get('username'):
-                return redirect(url_for('login_password'))
+                # Already authenticated; send to dashboard
+                return redirect(url_for('premium_dashboard'))
             ua = request.headers.get('User-Agent', '')
             is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
             if is_mobile:
@@ -2717,8 +2718,9 @@ def login():
             if is_mobile:
                 return redirect('/login?' + urlencode({'error': 'Username does not exist'}))
             return render_template('index.html', error="Username does not exist")
+        # Stage username for password entry; do NOT authenticate yet
         session.permanent = True
-        session['username'] = username
+        session['pending_username'] = username
         session.modified = True
         return redirect(url_for('login_password'))
     except Exception as e:
@@ -2988,10 +2990,12 @@ def logout():
 # @csrf.exempt
 def login_password():
     # Quiet noisy logs in production
-    if 'username' not in session:
-        # If username isn't set, send user to the username entry page
+    # Use staged username for password entry; do not require full auth here
+    if 'pending_username' not in session and 'username' not in session:
+        # No staged login; return to username page
         return redirect(url_for('login'))
-    username = session['username']
+    # Prefer staged username for password flow; fall back to current session user
+    username = session.get('pending_username') or session.get('username')
     if request.method == 'POST':
         password = request.form.get('password', '')
         if username == 'admin' and password == '12345':
@@ -3046,8 +3050,13 @@ def login_password():
                     except Exception as e:
                         logger.error(f"Error tracking login: {e}")
                     
-                    # Ensure session persists for 30 days after successful login
+                    # Promote staged username to full login, persist session, clear pending
                     session.permanent = True
+                    session['username'] = username
+                    try:
+                        session.pop('pending_username', None)
+                    except Exception:
+                        pass
                     # Issue remember-me token
                     from flask import make_response
                     resp = make_response(redirect(url_for('communities')))
@@ -3091,7 +3100,7 @@ def login_password():
 def login_back():
     """Clear any staged login state and return to username entry page."""
     try:
-        session.pop('username', None)
+        session.pop('pending_username', None)
     except Exception:
         pass
     return redirect(url_for('login'))
