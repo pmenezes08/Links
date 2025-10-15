@@ -33,6 +33,7 @@ import AccountSettings from './pages/AccountSettings'
 import Signup from './pages/Signup'
 import Notifications from './pages/Notifications'
 import AdminDashboard from './pages/AdminDashboard'
+import AdminProfile from './pages/AdminProfile'
 import ProductDevelopment from './pages/ProductDevelopment'
 import KeyPosts from './pages/KeyPosts'
 import OnboardingWelcome from './pages/OnboardingWelcome'
@@ -143,6 +144,7 @@ function AppRoutes(){
           <Route path="/notifications" element={<Notifications />} />
           <Route path="/admin" element={<AdminDashboard />} />
           <Route path="/admin_dashboard" element={<AdminDashboard />} />
+          <Route path="/admin_profile_react" element={<AdminProfile />} />
           <Route path="/home" element={<HomeTimeline />} />
           <Route path="/workout_tracking" element={<WorkoutTracking />} />
           <Route path="/community_feed_react/:community_id" element={<CommunityFeed />} />

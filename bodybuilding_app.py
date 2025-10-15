@@ -3748,6 +3748,30 @@ def admin_dashboard_react():
         logger.error(f"Error serving React admin dashboard: {str(e)}")
         abort(500)
 
+@app.route('/admin_profile_react')
+@login_required
+def admin_profile_react():
+    """Serve the React SPA for the admin profile page."""
+    try:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        dist_dir = os.path.join(base_dir, 'client', 'dist')
+        index_path = os.path.join(dist_dir, 'index.html')
+        if os.path.exists(index_path):
+            logger.info("Serving React index.html for admin_profile_react")
+            resp = send_from_directory(dist_dir, 'index.html')
+            try:
+                resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+                resp.headers['Pragma'] = 'no-cache'
+                resp.headers['Expires'] = '0'
+            except Exception:
+                pass
+            return resp
+        # Fallback if React build not available
+        return redirect(url_for('communities'))
+    except Exception as e:
+        logger.error(f"Error serving React admin profile: {str(e)}")
+        abort(500)
+
 @app.route('/saved_workouts')
 @login_required
 def saved_workouts():
@@ -4460,6 +4484,64 @@ def admin_dashboard_api():
         logger.error(f"Error in admin dashboard API: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@app.route('/api/admin/profile', methods=['GET'])
+@login_required
+def admin_profile_api():
+    """Admin profile API returning admin info and system stats. Admin-only."""
+    username = session.get('username')
+    if not is_app_admin(username):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+
+            # Admin profile info (including profile picture if available)
+            c.execute(f"""
+                SELECT u.username, u.email, u.first_name, u.last_name, u.subscription, u.created_at,
+                       p.profile_picture
+                FROM users u
+                LEFT JOIN user_profiles p ON u.username = p.username
+                WHERE u.username = {get_sql_placeholder()}
+            """, (username,))
+            row = c.fetchone()
+            if not row:
+                return jsonify({'success': False, 'error': 'Admin user not found'}), 404
+            admin_info = {
+                'username': row['username'] if hasattr(row, 'keys') else row[0],
+                'email': row['email'] if hasattr(row, 'keys') else row[1],
+                'first_name': row['first_name'] if hasattr(row, 'keys') else row[2],
+                'last_name': row['last_name'] if hasattr(row, 'keys') else row[3],
+                'subscription': row['subscription'] if hasattr(row, 'keys') else row[4],
+                'created_at': row['created_at'] if hasattr(row, 'keys') else row[5],
+                'profile_picture': row['profile_picture'] if hasattr(row, 'keys') else row[6],
+            }
+
+            # System statistics (reuse logic from dashboard)
+            c.execute("SELECT COUNT(*) as count FROM users")
+            total_users = get_scalar_result(c.fetchone(), column_name='count')
+
+            c.execute("SELECT COUNT(*) as count FROM posts")
+            total_posts = get_scalar_result(c.fetchone(), column_name='count')
+
+            c.execute("SELECT COUNT(*) as count FROM communities")
+            total_communities = get_scalar_result(c.fetchone(), column_name='count')
+
+            c.execute("SELECT COUNT(*) as count FROM users WHERE subscription = 'premium'")
+            premium_users = get_scalar_result(c.fetchone(), column_name='count')
+
+            stats = {
+                'total_users': total_users,
+                'total_posts': total_posts,
+                'total_communities': total_communities,
+                'premium_users': premium_users,
+            }
+
+        return jsonify({'success': True, 'admin': admin_info, 'stats': stats})
+    except Exception as e:
+        logger.error(f"Error loading admin profile API: {str(e)}")
+        import traceback
+        return jsonify({'success': False, 'error': str(e), 'traceback': traceback.format_exc()}), 500
 @app.route('/api/admin/update_user', methods=['POST'])
 @login_required
 def admin_update_user():
