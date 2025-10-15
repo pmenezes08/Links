@@ -73,8 +73,8 @@ export default function AdminProfile(){
   const displayName = [admin.first_name, admin.last_name].filter(Boolean).join(' ') || admin.username
 
   return (
-    <div className="min-h-screen bg-black text-white">
-      <div className="max-w-3xl mx-auto px-4 py-4 space-y-4">
+    <div className="h-screen overflow-hidden bg-black text-white">
+      <div className="max-w-3xl mx-auto h-[calc(100vh-56px)] overflow-y-auto no-scrollbar px-4 py-4 space-y-4">
         {/* Header */}
         <div className="flex items-center gap-4 bg-white/5 border border-white/10 rounded-xl p-4">
           <div className="w-16 h-16 rounded-full overflow-hidden bg-white/10 flex items-center justify-center">
