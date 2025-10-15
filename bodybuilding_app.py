@@ -2989,7 +2989,8 @@ def logout():
 def login_password():
     # Quiet noisy logs in production
     if 'username' not in session:
-        return redirect(url_for('index'))
+        # If username isn't set, send user to the username entry page
+        return redirect(url_for('login'))
     username = session['username']
     if request.method == 'POST':
         password = request.form.get('password', '')
@@ -3054,13 +3055,46 @@ def login_password():
                     return resp
                     
                 else:
-                    return render_template('login.html', username=username, error="Incorrect password. Please try again.")
+                    from flask import make_response
+                    resp = make_response(render_template('login.html', username=username, error="Incorrect password. Please try again."))
+                    try:
+                        resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+                        resp.headers['Pragma'] = 'no-cache'
+                        resp.headers['Expires'] = '0'
+                    except Exception:
+                        pass
+                    return resp
             else:
-                return render_template('login.html', username=username, error="Incorrect password. Please try again.")
+                from flask import make_response
+                resp = make_response(render_template('login.html', username=username, error="Incorrect password. Please try again."))
+                try:
+                    resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+                    resp.headers['Pragma'] = 'no-cache'
+                    resp.headers['Expires'] = '0'
+                except Exception:
+                    pass
+                return resp
         except Exception as e:
             logger.error(f"Database error in login_password for {username}: {str(e)}")
             abort(500)
-    return render_template('login.html', username=username)
+    from flask import make_response
+    resp = make_response(render_template('login.html', username=username))
+    try:
+        resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+        resp.headers['Pragma'] = 'no-cache'
+        resp.headers['Expires'] = '0'
+    except Exception:
+        pass
+    return resp
+
+@app.route('/login_back', methods=['GET'])
+def login_back():
+    """Clear any staged login state and return to username entry page."""
+    try:
+        session.pop('username', None)
+    except Exception:
+        pass
+    return redirect(url_for('login'))
 
 @app.route('/dashboard')
 @login_required
