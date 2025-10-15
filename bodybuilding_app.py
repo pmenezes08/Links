@@ -7558,6 +7558,7 @@ def delete_chat_thread():
             if username != 'admin' and not is_verified:
                 return jsonify({'success': False, 'error': 'Email verification required!'})
 
+            # Delete messages in both directions
             c.execute(
                 """
                 DELETE FROM messages
@@ -7566,6 +7567,16 @@ def delete_chat_thread():
                 (username, other_username, other_username, username),
             )
             conn.commit()
+
+            # Invalidate chat threads cache for both users so the thread does not reappear
+            try:
+                cache.delete(f"chat_threads:{username}")
+            except Exception:
+                pass
+            try:
+                cache.delete(f"chat_threads:{other_username}")
+            except Exception:
+                pass
         return jsonify({'success': True})
     except Exception as e:
         logger.error(f"delete_chat_thread error for {username} with {other_username}: {e}")

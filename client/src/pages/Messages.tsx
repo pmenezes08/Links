@@ -116,6 +116,13 @@ export default function Messages(){
                             if (j?.success){
                               setThreads(prev => prev.filter(x => x.other_username !== t.other_username))
                               setSwipeId(null)
+                              // Immediately refetch to avoid cached reappearance
+                              fetch('/api/chat_threads', { credentials:'include' })
+                                .then(rr=> rr.json()).then(jj=>{
+                                  if (jj?.success && Array.isArray(jj.threads)){
+                                    setThreads(jj.threads)
+                                  }
+                                }).catch(()=>{})
                               try{ (window as any).__header_do_poll && (window as any).__header_do_poll() }catch{}
                             }
                           }).catch(()=>{})
