@@ -14097,7 +14097,7 @@ def create_community():
                 subscription = (sub_row['subscription'] if hasattr(sub_row,'keys') else (sub_row[0] if sub_row else 'free'))
             except Exception:
                 subscription = 'free'
-            if username != 'admin' and (not subscription or str(subscription).lower() != 'premium'):
+            if username.lower() != 'admin' and (not subscription or str(subscription).lower() != 'premium'):
                 return jsonify({'success': False, 'error': 'only premium users can create communities'}), 403
     except Exception as _e:
         pass
@@ -14137,7 +14137,8 @@ def create_community():
             # Generate unique join code
             join_code = generate_join_code()
             
-            # Create the community (support types like 'gym', 'crossfit', etc.)
+            # If creating a sub-community, enforce premium-only for creators as well
+            # (Already enforced above for community creation, but keep guard explicit)
             placeholders = ', '.join([get_sql_placeholder()] * 14)
             c.execute(f"""
                 INSERT INTO communities (name, type, creator_username, join_code, created_at, description, location, background_path, template, background_color, text_color, accent_color, card_color, parent_community_id)
@@ -17549,7 +17550,9 @@ def api_groups_available_count_legacy():
 @app.route('/api/groups/create', methods=['POST'])
 @login_required
 def api_groups_create():
-    """Create a group under a specific community/sub-community. Admins/owners only."""
+    """Create a group under a specific community/sub-community.
+    Only the global app admin and Paulo can create groups.
+    """
     username = session.get('username')
     community_id_raw = request.form.get('community_id', '').strip()
     name = request.form.get('name', '').strip()
@@ -17562,10 +17565,10 @@ def api_groups_create():
         return jsonify({'success': False, 'error': 'Group name is required'})
     approval_required = approval_required_raw in ('1', 'true', 'True', 'yes', 'on')
     try:
-        # Resolve parent chain: if community_id is child, owners/admins of parent also allowed to create groups at parent scope only.
-        # For now, enforce direct authorization on the specified community id.
-        if not (is_app_admin(username) or is_community_owner(username, community_id) or is_community_admin(username, community_id)):
-            return jsonify({'success': False, 'error': 'Not authorized'}), 403
+        # Restrict creators to app admin or Paulo only
+        allowed_creators = { 'admin', 'paulo' }
+        if not (username and username.lower() in allowed_creators):
+            return jsonify({'success': False, 'error': 'Only admin or Paulo can create groups'}), 403
         with get_db_connection() as conn:
             c = conn.cursor()
             # Ensure community exists

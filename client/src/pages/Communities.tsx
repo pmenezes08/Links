@@ -42,6 +42,8 @@ export default function Communities(){
   const [newGroupName, setNewGroupName] = useState('')
   const [approvalRequired, setApprovalRequired] = useState(false)
   const [selectedSubCommunityId, setSelectedSubCommunityId] = useState<number | 'none'>('none')
+  const [isAdminOrPaulo, setIsAdminOrPaulo] = useState(false)
+  const [isPremium, setIsPremium] = useState(false)
   // Groups modal (list & join)
   const [showGroupsModal, setShowGroupsModal] = useState(false)
   const [groupsModalCommunityId, setGroupsModalCommunityId] = useState<number|null>(null)
@@ -52,6 +54,23 @@ export default function Communities(){
     return parentTypeLower === 'gym'
   }, [communities, parentType])
   
+  // Load current user to drive UI permissions for creating sub-communities and groups
+  useEffect(() => {
+    let mounted = true
+    async function loadUser(){
+      try{
+        const r = await fetch('/api/profile_me', { credentials:'include' })
+        const j = await r.json().catch(()=>null)
+        if (mounted && j?.success && j.profile){
+          const u = String(j.profile.username || '')
+          setIsAdminOrPaulo(['admin','paulo'].includes(u.toLowerCase()))
+          setIsPremium(String(j.profile.subscription || '').toLowerCase() === 'premium')
+        }
+      }catch{}
+    }
+    loadUser()
+    return () => { mounted = false }
+  }, [])
 
   useEffect(() => {
     const link = document.getElementById('legacy-styles') as HTMLLinkElement | null
@@ -311,8 +330,8 @@ export default function Communities(){
         return (
           <>
             <PlusActions
-              onCreateSub={() => { setNewSubName(''); setNewSubType(parentTypeLabel); setShowCreateSubModal(true) }}
-              onCreateGroup={() => { setShowCreateGroup(true); setNewGroupName(''); setApprovalRequired(false) }}
+              onCreateSub={() => { if (!isPremium) { alert('Only premium users can create sub-communities'); return } setNewSubName(''); setNewSubType(parentTypeLabel); setShowCreateSubModal(true) }}
+              onCreateGroup={() => { if (!isAdminOrPaulo) { alert('Only admin or Paulo can create groups'); return } setShowCreateGroup(true); setNewGroupName(''); setApprovalRequired(false) }}
             />
 
             {showCreateSubModal && (
