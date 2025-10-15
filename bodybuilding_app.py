@@ -3273,19 +3273,23 @@ def api_community_group_feed(parent_id: int):
                 if cid:
                     community_ids.append(cid)
 
-            # Fetch recent posts across these communities
+            # Fetch recent posts across these communities, but only from communities the user belongs to
             if not community_ids:
                 return jsonify({'success': True, 'posts': []})
 
             placeholders = ','.join([ph for _ in community_ids])
-            logger.info(f"Community group feed: parent_id={parent_id}, fetching posts for communities: {community_ids}")
+            logger.info(f"Community group feed: parent_id={parent_id}, fetching posts for communities (pre-filter): {community_ids}")
+            # Strict membership join to avoid showing child posts the user doesn't belong to
             c.execute(f"""
-                SELECT *
-                FROM posts
-                WHERE community_id IN ({placeholders})
-                ORDER BY id DESC
+                SELECT p.*
+                FROM posts p
+                JOIN user_communities uc ON uc.community_id = p.community_id
+                JOIN users u ON u.id = uc.user_id
+                WHERE p.community_id IN ({placeholders})
+                  AND u.username = {ph}
+                ORDER BY p.id DESC
                 LIMIT 1000
-            """, tuple(community_ids))
+            """, tuple(community_ids) + (username,))
 
             rows = c.fetchall()
             logger.info(f"Community group feed: fetched {len(rows)} rows before filtering")
