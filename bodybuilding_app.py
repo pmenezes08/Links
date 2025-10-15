@@ -4906,18 +4906,21 @@ def admin():
                 try:
                     c.execute("""
                         SELECT c.id, c.name, c.type, c.creator_username, c.join_code,
-                               COUNT(uc.user_id) as member_count, c.is_active
+                               SUM(CASE WHEN u.username IS NOT NULL AND LOWER(u.username) <> 'admin' THEN 1 ELSE 0 END) as member_count,
+                               c.is_active
                         FROM communities c
                         LEFT JOIN user_communities uc ON c.id = uc.community_id
+                        LEFT JOIN users u ON uc.user_id = u.id
                         GROUP BY c.id, c.name, c.type, c.creator_username, c.join_code, c.is_active
                         ORDER BY c.name
                     """)
                 except Exception:
                     c.execute("""
                         SELECT c.id, c.name, c.type, c.creator_username, c.join_code,
-                               COUNT(uc.user_id) as member_count
+                               SUM(CASE WHEN u.username IS NOT NULL AND LOWER(u.username) <> 'admin' THEN 1 ELSE 0 END) as member_count
                         FROM communities c
                         LEFT JOIN user_communities uc ON c.id = uc.community_id
+                        LEFT JOIN users u ON uc.user_id = u.id
                         GROUP BY c.id, c.name, c.type, c.creator_username, c.join_code
                         ORDER BY c.name
                     """)
@@ -7541,6 +7544,9 @@ def get_community_members():
             members = []
             for row in c.fetchall():
                 member_username = row['username']
+                # Hide the global app admin from visible lists
+                if str(member_username).lower() == 'admin':
+                    continue
                 joined_date = row['joined_at'] if row['joined_at'] else 'Unknown'
                 profile_picture = row['profile_picture'] if 'profile_picture' in row.keys() else None
                 
@@ -7568,7 +7574,7 @@ def get_community_members():
             current_user_role = 'member'
             if username == creator_username:
                 current_user_role = 'owner'
-            elif username == 'admin':
+            elif str(username).lower() == 'admin':
                 current_user_role = 'app_admin'
             else:
                 c.execute("SELECT 1 FROM community_admins WHERE community_id = ? AND username = ?",
@@ -11920,6 +11926,9 @@ def get_community_members_list(community_id):
                     role_val = row[3]
                     is_creator_val = row[4]
 
+                # Hide the global app admin from visible lists
+                if str(username_val).lower() == 'admin':
+                    continue
                 members.append({
                     'username': username_val,
                     'profile_picture': profile_picture_val,
