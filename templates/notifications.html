@@ -323,8 +323,11 @@
                                     </div>
                                     <div class="notification-content">
                                         <div class="notification-message">
-                                            ${notification.type === 'event_invitation' ? notification.message : 
-                                             `<strong>@${notification.from_user}</strong> ${getNotificationText(notification.type)}`}
+                                            ${notification.type === 'event_invitation' 
+                                                ? (notification.message || 'Event invitation') 
+                                                : (notification.type === 'new_member' 
+                                                    ? (notification.message || `@${notification.from_user} joined the community. Go say hello!`) 
+                                                    : `<strong>@${notification.from_user}</strong> ${getNotificationText(notification.type)}`)}
                                         </div>
                                         <div class="notification-time">${timeAgo}</div>
                                     </div>
