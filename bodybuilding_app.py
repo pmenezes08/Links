@@ -15251,7 +15251,7 @@ def join_community():
                                 username,
                                 'new_member',
                                 community_id,
-                                f'{username} joined {community_name}. Go say hello!',
+                                f'{username} just joined "{community_name}". Say hi! 👋',
                                 f'/community_feed/{community_id}'
                             ))
                         except Exception as member_notify_err:
