@@ -135,7 +135,8 @@ export default function Notifications(){
                   <div className="flex-1 min-w-0">
                     <div className="text-sm truncate">
                       {n.type === 'event_invitation' ? (n.message || 'Event invitation') :
-                       n.type === 'community_post' ? (n.message || `@${n.from_user} made a new post`) : (
+                       n.type === 'community_post' ? (n.message || `@${n.from_user} made a new post`) :
+                       n.type === 'new_member' ? (n.message || `@${n.from_user} joined the community`) : (
                         <>
                           <strong>@{n.from_user}</strong> {
                             n.type === 'task_assigned' ? 'assigned you a task' :
