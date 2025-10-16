@@ -16645,6 +16645,25 @@ def community_calendar_react(community_id):
         logger.error(f"Error serving React community calendar: {str(e)}")
         abort(500)
 
+
+@app.route('/community/<int:community_id>/tasks_react')
+@login_required
+def community_tasks_react(community_id):
+    try:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        dist_dir = os.path.join(base_dir, 'client', 'dist')
+        resp = send_from_directory(dist_dir, 'index.html')
+        try:
+            resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+            resp.headers['Pragma'] = 'no-cache'
+            resp.headers['Expires'] = '0'
+        except Exception:
+            pass
+        return resp
+    except Exception as e:
+        logger.error(f"Error serving React community tasks: {str(e)}")
+        abort(500)
+
 @app.route('/post/<int:post_id>')
 @login_required
 def react_post_detail(post_id):
