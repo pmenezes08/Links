@@ -137,15 +137,17 @@ export default function Notifications(){
                       {n.type === 'event_invitation' ? (n.message || 'Event invitation') :
                        n.type === 'community_post' ? (n.message || `@${n.from_user} made a new post`) :
                        n.type === 'new_member' ? (n.message || `@${n.from_user} joined the community`) : (
-                        <>
-                          <strong>@{n.from_user}</strong> {
-                            n.type === 'task_assigned' ? 'assigned you a task' :
-                            n.type === 'reaction' ? 'reacted to your post' :
-                            n.type === 'reply' ? 'replied to your post' :
-                            n.type === 'mention_post' ? 'mentioned you in a post' :
-                            n.type === 'mention_reply' ? 'mentioned you in a reply' : 'interacted with you'
-                          }
-                        </>
+                        n.message ? (n.message) : (
+                          <>
+                            <strong>@{n.from_user}</strong> {
+                              n.type === 'task_assigned' ? 'assigned you a task' :
+                              n.type === 'reaction' ? 'reacted to your post' :
+                              n.type === 'reply' ? 'replied to your post' :
+                              n.type === 'mention_post' ? 'mentioned you in a post' :
+                              n.type === 'mention_reply' ? 'mentioned you in a reply' : 'interacted with you'
+                            }
+                          </>
+                        )
                       )}
                     </div>
                     <div className="text-[11px] text-[#9fb0b5]">{timeAgo(n.created_at)}</div>
