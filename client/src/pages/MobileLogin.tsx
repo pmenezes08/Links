@@ -91,9 +91,11 @@ export default function MobileLogin() {
           </div>
           <button type="submit" className="w-full rounded-lg bg-teal-400 text-white py-2 text-sm font-medium active:opacity-90">Sign In</button>
         </form>
-        <div className="mt-3">
-          <a href="/login_back" className="text-xs text-white/60 hover:text-white/80">Back</a>
-        </div>
+        {false && (
+          <div className="mt-3">
+            <a href="/login_back" className="text-xs text-white/60 hover:text-white/80">Back</a>
+          </div>
+        )}
 
         <div className="text-center mt-3">
           <button onClick={() => { setShowForgot(true); setResetSent(false) }} className="text-teal-300 text-sm">Forgot Password?</button>
