@@ -3616,7 +3616,14 @@
                     <div class="poll-item-header">
                         <div class="poll-item-question">${poll.question}</div>
                         <div class="poll-item-meta">
-                            <div class="poll-item-date">${poll.created_at}</div>
+                            <div class="poll-item-date">${(() => {
+                              try {
+                                const d = new Date(poll.created_at);
+                                if (!isNaN(d.getTime())) return d.toLocaleDateString();
+                              } catch(e) {}
+                              const s = String(poll.created_at||'').split(' ');
+                              return s[0] || '';
+                            })()}</div>
                             ${(!isHistorical && (poll.created_by === '{{ username }}' || '{{ username }}' === 'admin')) ? 
                                 `<button class=\"close-poll-btn\" onclick=\"closePoll(${poll.id})\"><i class=\"fas fa-lock\"></i></button>` : ''}
                             ${(isHistorical && ('{{ username }}' === 'admin' || poll.created_by === '{{ username }}')) ?
