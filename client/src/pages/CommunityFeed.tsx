@@ -401,7 +401,7 @@ export default function CommunityFeed() {
                 <div className="text-sm text-[#9fb0b5]">No announcements.</div>
               ) : _announcements.map((a:any)=> (
                 <div key={a.id} className="rounded-xl border border-white/10 p-3 bg-white/[0.03]">
-                  <div className="text-xs text-[#9fb0b5] mb-1">{a.created_by} • {a.created_at}</div>
+                  <div className="text-xs text-[#9fb0b5] mb-1">{a.created_by} • {(() => { try { const d = new Date(a.created_at); if (!isNaN(d.getTime())) return d.toLocaleDateString(); } catch(e) {} const s = String(a.created_at||'').split(' '); return s[0] || String(a.created_at||''); })()}</div>
                   <div className="whitespace-pre-wrap text-sm">{a.content}</div>
                   {(data?.is_community_admin || data?.community?.creator_username === data?.username || data?.username === 'admin') && (
                     <div className="mt-2 text-right">
