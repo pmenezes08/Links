@@ -21466,7 +21466,7 @@ def save_community_announcement():
         
         conn.commit()
 
-        # Notify all members of this community via Web Push (best-effort)
+        # Notify all members of this community via Web Push and in-app notifications (best-effort)
         try:
             # Fetch community name for nicer title
             community_name = None
@@ -21493,6 +21493,29 @@ def save_community_announcement():
             for m in members:
                 if not m or m == current_user:
                     continue
+                # In-app notification (announcement)
+                try:
+                    if 'USE_MYSQL' in globals() and USE_MYSQL:
+                        cursor.execute(
+                            """
+                            INSERT INTO notifications (user_id, from_user, type, community_id, message, created_at, is_read, link)
+                            VALUES (?, ?, 'announcement', ?, ?, NOW(), 0, ?)
+                            ON DUPLICATE KEY UPDATE created_at = NOW(), is_read = 0, message = VALUES(message), link = VALUES(link)
+                            """,
+                            (m, current_user, community_id, f"New announcement in {community_name}" if community_name else "New announcement", f"/community_feed_react/{community_id}")
+                        )
+                    else:
+                        cursor.execute(
+                            """
+                            INSERT INTO notifications (user_id, from_user, type, community_id, message, created_at, is_read, link)
+                            VALUES (?, ?, 'announcement', ?, ?, datetime('now'), 0, ?)
+                            ON CONFLICT(user_id, from_user, type, community_id)
+                            DO UPDATE SET created_at = datetime('now'), is_read = 0, message = excluded.message, link = excluded.link
+                            """,
+                            (m, current_user, community_id, f"New announcement in {community_name}" if community_name else "New announcement", f"/community_feed_react/{community_id}")
+                        )
+                except Exception as ne:
+                    logger.warning(f"announcement in-app notify warn to {m}: {ne}")
                 try:
                     send_push_to_user(m, {
                         'title': f"New announcement{(' in ' + community_name) if community_name else ''}",
