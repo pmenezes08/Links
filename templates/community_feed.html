@@ -4659,7 +4659,16 @@
                         </div>
                         <div class="announcement-meta">
                             <div class="announcement-date">
-                                <i class="fas fa-calendar-alt"></i> ${announcement.created_at}
+                                <i class="fas fa-calendar-alt"></i> ${(() => {
+                                  try {
+                                    const d = new Date(announcement.created_at);
+                                    if (!isNaN(d.getTime())) {
+                                      return d.toLocaleDateString();
+                                    }
+                                  } catch(e) {}
+                                  const s = String(announcement.created_at||'').split(' ');
+                                  return s[0] || '';
+                                })()}
                             </div>
                             <button onclick="deleteAnnouncement(${announcement.id})" class="delete-announcement-btn" title="Delete Announcement">
                                 <i class="fas fa-trash"></i>

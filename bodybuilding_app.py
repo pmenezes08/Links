@@ -21427,7 +21427,7 @@ def save_community_announcement():
         cursor.execute('''
             INSERT INTO community_announcements (community_id, content, created_by, created_at)
             VALUES (?, ?, ?, ?)
-        ''', (community_id, content, session['username'], datetime.now().strftime('%m.%d.%y %H:%M')))
+        ''', (community_id, content, session['username'], datetime.now().strftime('%Y-%m-%d')))
         
         announcement_id = cursor.lastrowid
         
@@ -21450,7 +21450,7 @@ def save_community_announcement():
                 cursor.execute('''
                     INSERT INTO community_files (announcement_id, community_id, filename, file_path, uploaded_by, uploaded_at, upload_date)
                     VALUES (?, ?, ?, ?, ?, ?, ?)
-                ''', (announcement_id, community_id, filename, unique_filename, session['username'], datetime.now().strftime('%m.%d.%y %H:%M'), datetime.now().strftime('%m.%d.%y %H:%M')))
+                ''', (announcement_id, community_id, filename, unique_filename, session['username'], datetime.now().strftime('%Y-%m-%d'), datetime.now().strftime('%Y-%m-%d')))
                 
                 uploaded_files.append({
                     'filename': filename,
@@ -21462,7 +21462,7 @@ def save_community_announcement():
             UPDATE communities 
             SET info = ?, info_updated_at = ? 
             WHERE id = ?
-        ''', (content, datetime.now().strftime('%m.%d.%y %H:%M'), community_id))
+        ''', (content, datetime.now().strftime('%Y-%m-%d'), community_id))
         
         conn.commit()
 
