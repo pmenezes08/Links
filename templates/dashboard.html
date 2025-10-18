@@ -271,68 +271,49 @@
 		<button class="edit-btn" onclick="location.href='{{ url_for('profile') }}'">Edit profile</button>
 	</div>
 	
-	<div class="container">
-		<div class="dashboard-content" style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center;">
-			<!-- Logo Section Above Buttons -->
-			<div class="logo-section" style="margin-bottom: 20px; text-align: center;">
-				<div class="logo-container" style="position: relative; display: inline-block;">
-					<img id="dashboardLogo" src="" alt="Logo" 
-					     style="max-height: 160px; max-width: 480px; width: auto; height: auto; opacity: 0.9; transition: opacity 0.3s;"
-					     onerror="this.style.display='none'; document.getElementById('logoPlaceholder').style.display='block';">
-					<div id="logoPlaceholder" style="display: none; color: #9fb0b5; font-size: 16px;">
-						<i class="fas fa-image" style="font-size: 50px; margin-bottom: 8px; display: block;"></i>
-						Logo
-					</div>
-					{% if session['username'] == 'admin' %}
-					<button class="logo-update-btn" onclick="document.getElementById('logoUpload').click()"
-					        style="position: absolute; top: -10px; right: -10px; background: rgba(77, 182, 172, 0.2); 
-					               border: 1px solid rgba(77, 182, 172, 0.4); border-radius: 50%; width: 30px; height: 30px;
-					               display: flex; align-items: center; justify-content: center; cursor: pointer;
-					               opacity: 0; transition: opacity 0.3s;">
-						<i class="fas fa-edit" style="color: #4db6ac; font-size: 12px;"></i>
-					</button>
-					<input type="file" id="logoUpload" accept="image/*" style="display: none;" onchange="uploadLogo(this)">
-					{% endif %}
-				</div>
-			</div>
-			<!-- Create/Join Community Button -->
-			<div class="create-community-section" style="margin-bottom: 15px;">
-				<button onclick="location.href='{{ url_for('communities') }}'" class="view-communities-btn">
-					<i class="fas fa-plus-circle"></i> Create/Join a Community
-				</button>
-			</div>
-			
-			<!-- View Communities Button -->
-			<div class="user-communities-section" style="margin-bottom: 15px;">
-				{% if communities and communities|length > 0 %}
-				<button id="viewCommunitiesBtn" class="view-communities-btn">
-					<i class="fas fa-home"></i> View Your Communities
-				</button>
-				{% else %}
-				<button class="view-communities-btn" style="opacity: 0.5; cursor: not-allowed;" disabled>
-					<i class="fas fa-home"></i> View Your Communities
-				</button>
-				{% endif %}
-			</div>
-			
-			<!-- View Your Sports Button -->
-			<div class="user-sports-section">
-				<button onclick="location.href='{{ url_for('your_sports') }}'" class="view-communities-btn">
-					<i class="fas fa-water"></i> View Your Sports
-				</button>
-			</div>
-			
-			{% if name == 'admin' %}
-			<!-- Admin Page Button -->
-			<div class="admin-section" style="margin-top: 15px;">
-				<button onclick="location.href='{{ url_for('admin') }}'" class="view-communities-btn">
-					<i class="fas fa-user-shield"></i> Admin Page
-				</button>
-			</div>
-			{% endif %}
-		</div>
-		
-	</div>
+    <div class="container" style="padding: 80px 24px 24px 24px; display: block;">
+        <!-- Notebook-like header with logo and quick actions -->
+        <div style="max-width: 1100px; margin: 0 auto;">
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom: 18px;">
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <img id="dashboardLogo" src="" alt="Logo" style="height:40px; width:auto; opacity:0.9;" onerror="this.style.display='none'; document.getElementById('logoPlaceholder').style.display='block';">
+                    <div id="logoPlaceholder" style="display:none; color:#9fb0b5; font-size:14px;">C.Point</div>
+                    <div style="font-size:14px; color:#9fb0b5">Dashboard</div>
+                </div>
+                <div style="display:flex; gap:8px;">
+                    <button onclick="location.href='{{ url_for('communities') }}'" class="view-communities-btn" style="width:auto; padding:8px 12px; font-size:12px;">Create/Join</button>
+                    <button onclick="location.href='{{ url_for('your_sports') }}'" class="view-communities-btn" style="width:auto; padding:8px 12px; font-size:12px;">Your Sports</button>
+                    {% if name == 'admin' %}
+                    <button onclick="location.href='{{ url_for('admin') }}'" class="view-communities-btn" style="width:auto; padding:8px 12px; font-size:12px;">Admin</button>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Notebook LLM style grid of cards -->
+            {% if communities and communities|length > 0 %}
+            <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap:12px;">
+                {% for c in communities %}
+                <a href="/communities?parent_id={{ c.id }}" style="display:block; text-decoration:none;">
+                    <div style="position:relative; height:140px; border:1px solid rgba(255,255,255,0.1); border-radius:12px; background:rgba(255,255,255,0.03); overflow:hidden;">
+                        <div style="position:absolute; inset:0; padding:14px; display:flex; align-items:center; gap:10px;">
+                            <i class="fas fa-house" style="color:#4db6ac; font-size:18px;"></i>
+                            <div style="font-size:14px; font-weight:600; color:#ffffff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ c.name }}</div>
+                        </div>
+                        <div style="position:absolute; inset-x:0; top:0; height:1px; background:linear-gradient(90deg, transparent, rgba(77,182,172,0.4), transparent);"></div>
+                    </div>
+                </a>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="px-3 py-10">
+                <div class="mx-auto max-w-xl rounded-2xl border border-white/10 bg-white/[0.03] p-6 text-center">
+                    <div class="text-sm font-bold text-white">Your new world awaits you</div>
+                    <div class="mt-2 text-sm" style="color:#9fb0b5">Enter an invite code to join a community or create your own. Welcome to CPoint, the network where ideas connect people.</div>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
 	
 	<!-- First-Time Join Community Modal -->
 	{% if show_join_prompt %}
