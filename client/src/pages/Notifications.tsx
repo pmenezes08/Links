@@ -17,6 +17,7 @@ type Notif = {
 function iconFor(type?: string){
   switch(type){
     case 'community_post': return 'fa-solid fa-bullhorn'
+    case 'announcement': return 'fa-solid fa-bullhorn'
     case 'task_assigned': return 'fa-solid fa-list-check'
     case 'reaction': return 'fa-regular fa-heart'
     case 'reply': return 'fa-regular fa-comment'
