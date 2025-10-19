@@ -15,6 +15,7 @@ export default function EditCommunity(){
   const [parentOptions, setParentOptions] = useState<Array<{ id:number; name:string; type?:string }>>([])
   const [selectedParentId, setSelectedParentId] = useState<string>('none')
   const [notifyOnNewMember, setNotifyOnNewMember] = useState(false)
+  const [maxMembers, setMaxMembers] = useState<string>('')
   const formRef = useRef<HTMLFormElement|null>(null)
 
   useEffect(() => {
@@ -41,6 +42,7 @@ export default function EditCommunity(){
           const pid = jc.community.parent_community_id
           if (pid){ setIsChild(true); setSelectedParentId(String(pid)) }
           setNotifyOnNewMember(!!jc.community.notify_on_new_member)
+          if (jc.community.max_members){ setMaxMembers(String(jc.community.max_members)) }
         }
         // Load available parents for dropdown
         try{
@@ -67,6 +69,7 @@ export default function EditCommunity(){
     // Parent setting
     fd.append('parent_community_id', isChild && selectedParentId !== 'none' ? selectedParentId : 'none')
     fd.append('notify_on_new_member', notifyOnNewMember ? 'true' : 'false')
+    if (maxMembers.trim()) fd.append('max_members', maxMembers.trim())
     if (imageFile) fd.append('background_file', imageFile)
     const r = await fetch('/update_community', { method:'POST', credentials:'include', body: fd })
     const j = await r.json().catch(()=>null)
@@ -140,6 +143,19 @@ export default function EditCommunity(){
                 </button>
               </div>
             </label>
+          </div>
+          <div>
+            <label className="block text-sm text-[#9fb0b5] mb-1">Member limit (optional)</label>
+            <input
+              type="number"
+              min={1}
+              inputMode="numeric"
+              placeholder="e.g., 100"
+              className="w-full rounded-md bg-black border border-white/15 px-3 py-2 text-[16px] focus:border-[#4db6ac] outline-none"
+              value={maxMembers}
+              onChange={e=> setMaxMembers(e.target.value.replace(/[^0-9]/g,''))}
+            />
+            <div className="text-xs text-[#9fb0b5] mt-1">When set, new joins are blocked once the limit is reached.</div>
           </div>
           <div>
             <label className="block text-sm text-[#9fb0b5] mb-1">Hierarchy</label>

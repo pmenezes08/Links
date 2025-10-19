@@ -14481,7 +14481,7 @@ def edit_community():
 @app.route('/update_community', methods=['POST'])
 @login_required
 def update_community():
-    """Update community details (name, description, type, background, template, colors, parent, notifications)"""
+    """Update community details (name, description, type, background, template, colors, parent, notifications, limits)"""
     username = session.get('username')
     community_id = request.form.get('community_id', type=int)
     name = request.form.get('name', '').strip()
@@ -14495,6 +14495,7 @@ def update_community():
     parent_community_id = request.form.get('parent_community_id', None)
     notify_raw = (request.form.get('notify_on_new_member') or '').strip().lower()
     notify_on_new_member = 1 if notify_raw in ('true','1','on','yes') else 0
+    max_members = request.form.get('max_members', type=int)
     
     if not community_id or not name:
         return jsonify({'success': False, 'error': 'Community ID and name are required'}), 400
@@ -14502,18 +14503,25 @@ def update_community():
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
-            # Ensure notify_on_new_member column exists (production safety)
+            # Ensure notify_on_new_member and max_members columns exist (production safety)
             try:
                 if 'USE_MYSQL' in globals() and USE_MYSQL:
                     c.execute("SHOW COLUMNS FROM communities LIKE 'notify_on_new_member'")
                     if not c.fetchone():
                         c.execute("ALTER TABLE communities ADD COLUMN notify_on_new_member TINYINT(1) DEFAULT 0")
                         conn.commit()
+                    c.execute("SHOW COLUMNS FROM communities LIKE 'max_members'")
+                    if not c.fetchone():
+                        c.execute("ALTER TABLE communities ADD COLUMN max_members INT NULL")
+                        conn.commit()
                 else:
                     c.execute("PRAGMA table_info(communities)")
                     cols = [row[1] if isinstance(row, (list, tuple)) else row['name'] for row in c.fetchall()]
                     if 'notify_on_new_member' not in cols:
                         c.execute("ALTER TABLE communities ADD COLUMN notify_on_new_member INTEGER DEFAULT 0")
+                        conn.commit()
+                    if 'max_members' not in cols:
+                        c.execute("ALTER TABLE communities ADD COLUMN max_members INTEGER NULL")
                         conn.commit()
             except Exception as mig_e:
                 logger.warning(f"notify_on_new_member migration check failed: {mig_e}")
@@ -14564,7 +14572,7 @@ def update_community():
                     UPDATE communities 
                     SET name = {ph}, description = {ph}, type = {ph}, background_path = {ph}, template = {ph},
                         background_color = {ph}, card_color = {ph}, accent_color = {ph}, text_color = {ph},
-                        parent_community_id = {ph}, notify_on_new_member = {ph}
+                        parent_community_id = {ph}, notify_on_new_member = {ph}, max_members = {ph}
                     WHERE id = {ph}
                     """,
                     (
@@ -14572,6 +14580,7 @@ def update_community():
                         background_color, card_color, accent_color, text_color,
                         (parent_community_id if parent_community_id and parent_community_id != 'none' else None),
                         notify_on_new_member,
+                        (max_members if (isinstance(max_members, int) and max_members > 0) else None),
                         community_id,
                     ),
                 )
@@ -14581,7 +14590,7 @@ def update_community():
                     UPDATE communities 
                     SET name = {ph}, description = {ph}, type = {ph}, template = {ph},
                         background_color = {ph}, card_color = {ph}, accent_color = {ph}, text_color = {ph},
-                        parent_community_id = {ph}, notify_on_new_member = {ph}
+                        parent_community_id = {ph}, notify_on_new_member = {ph}, max_members = {ph}
                     WHERE id = {ph}
                     """,
                     (
@@ -14589,6 +14598,7 @@ def update_community():
                         background_color, card_color, accent_color, text_color,
                         (parent_community_id if parent_community_id and parent_community_id != 'none' else None),
                         notify_on_new_member,
+                        (max_members if (isinstance(max_members, int) and max_members > 0) else None),
                         community_id,
                     ),
                 )
@@ -15153,6 +15163,26 @@ def join_community():
             community_type_result = c.fetchone()
             community_type = community_type_result['type'] if community_type_result else 'public'
             
+            # Check member limit (if any)
+            try:
+                c.execute("SELECT max_members FROM communities WHERE id = ?", (community_id,))
+                row_lim = c.fetchone()
+                max_members = None
+                if row_lim is not None:
+                    max_members = (row_lim['max_members'] if hasattr(row_lim,'keys') else row_lim[0]) or None
+                if max_members:
+                    # Count current members
+                    c.execute("""
+                        SELECT COUNT(*) FROM user_communities uc
+                        WHERE uc.community_id = ?
+                    """, (community_id,))
+                    cnt_row = c.fetchone()
+                    current_cnt = (cnt_row[0] if isinstance(cnt_row, (list, tuple)) else cnt_row['COUNT(*)'] if hasattr(cnt_row,'keys') and 'COUNT(*)' in cnt_row.keys() else list(cnt_row.values())[0]) if cnt_row is not None else 0
+                    if current_cnt >= int(max_members):
+                        return jsonify({'success': False, 'error': 'This community has reached its member limit'}), 403
+            except Exception as e:
+                logger.warning(f"member limit check failed for community {community_id}: {e}")
+
             # Check if user is already a member
             c.execute(f"""
                 SELECT id FROM user_communities 
