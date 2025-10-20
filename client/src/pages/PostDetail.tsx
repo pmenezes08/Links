@@ -748,7 +748,7 @@ function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDel
       </div>
       {reply.children && reply.children.length ? (
         <div className="relative">
-          {reply.children.map((ch, idx) => (
+          {reply.children.map((ch) => (
             <div key={ch.id} className="relative">
               {/* Horizontal connector from vertical line to child avatar */}
               <div 
