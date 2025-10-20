@@ -572,13 +572,6 @@ export default function CommunityFeed() {
               </>
             )}
             <EditCommunityButton communityId={String(community_id)} onClose={()=> setMoreOpen(false)} />
-            {/* Hide Report Issue and Anonymous Feedback for General and any University community */}
-            {!(((data?.community?.type||'').toLowerCase().trim()==='general') || ((data?.community?.type||'').toLowerCase().includes('university')) || ((data?.community?.name||'').toLowerCase().includes('university'))) && (
-              <>
-                <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); window.location.href = `/issues` }}>Report Issue</button>
-                <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); window.location.href = `/anonymous_feedback` }}>Anonymous feedback</button>
-              </>
-            )}
           </div>
         </div>
       )}
