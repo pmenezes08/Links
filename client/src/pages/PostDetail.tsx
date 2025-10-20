@@ -631,7 +631,7 @@ function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDel
           {/* Vertical connector line from avatar to children */}
           {hasChildren && (
             <div 
-              className="absolute left-1/2 top-[28px] bottom-0 w-[2px] bg-gradient-to-b from-[#4db6ac]/30 to-transparent" 
+              className="absolute left-1/2 top-[28px] bottom-0 w-[2px] bg-gradient-to-b from-[#4db6ac]/70 to-[#4db6ac]/20" 
               style={{ transform: 'translateX(-50%)', height: 'calc(100% - 28px)' }}
             />
           )}
@@ -752,7 +752,7 @@ function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDel
             <div key={ch.id} className="relative">
               {/* Horizontal connector from vertical line to child avatar */}
               <div 
-                className="absolute left-[24px] top-[16px] w-[20px] h-[2px] bg-gradient-to-r from-[#4db6ac]/30 to-[#4db6ac]/10"
+                className="absolute left-[17px] top-[14px] w-[10px] h-[2px] bg-[#4db6ac]/60"
                 style={{ zIndex: 0 }}
               />
               <ReplyNodeMemo
