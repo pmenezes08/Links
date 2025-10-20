@@ -10768,30 +10768,25 @@ def vote_poll():
             c.execute("SELECT id FROM poll_votes WHERE poll_id = ? AND username = ? AND option_id = ?", (poll_id, username, option_id))
             existing_vote_on_option = c.fetchone()
             
-            # Check if user already voted on this poll
+            # Check if user already voted on this poll (for single vote mode)
             c.execute("SELECT id, option_id FROM poll_votes WHERE poll_id = ? AND username = ?", (poll_id, username))
             existing_vote = c.fetchone()
             
-            if toggle_vote and existing_vote_on_option:
-                # Remove vote from this option
-                logger.info(f"Removing vote: poll_id={poll_id}, username={username}, option_id={option_id}")
+            if existing_vote_on_option:
+                # User already voted on this specific option - toggle it off (remove)
+                logger.info(f"Toggling vote off: poll_id={poll_id}, username={username}, option_id={option_id}")
                 c.execute("DELETE FROM poll_votes WHERE poll_id = ? AND username = ? AND option_id = ?", (poll_id, username, option_id))
                 message = "Vote removed!"
             elif existing_vote and poll_data['single_vote']:
-                # Update existing vote (single vote mode)
+                # Single vote mode: user voted on a different option - update to new option
                 c.execute("UPDATE poll_votes SET option_id = ?, voted_at = ? WHERE poll_id = ? AND username = ?",
                           (option_id, datetime.now().strftime('%m.%d.%y %H:%M'), poll_id, username))
                 message = "Vote updated!"
-            elif not existing_vote:
-                # Create new vote
+            else:
+                # User hasn't voted on this option yet - add vote
                 c.execute("INSERT INTO poll_votes (poll_id, option_id, username, voted_at) VALUES (?, ?, ?, ?)",
                           (poll_id, option_id, username, datetime.now().strftime('%m.%d.%y %H:%M')))
                 message = "Vote recorded successfully!"
-            else:
-                # Multiple vote mode - add another vote
-                c.execute("INSERT INTO poll_votes (poll_id, option_id, username, voted_at) VALUES (?, ?, ?, ?)",
-                          (poll_id, option_id, username, datetime.now().strftime('%m.%d.%y %H:%M')))
-                message = "Vote added!"
             
             # Update vote count for the selected option
             c.execute("UPDATE poll_options SET votes = (SELECT COUNT(*) FROM poll_votes WHERE option_id = ?) WHERE id = ?", (option_id, option_id))

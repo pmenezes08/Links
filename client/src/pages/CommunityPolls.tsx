@@ -139,27 +139,46 @@ export default function CommunityPolls(){
     }
   }
 
-  function optimisticVote(pollId:number, optionId:number, toggle:boolean){
+  function optimisticVote(pollId:number, optionId:number){
     setPolls(prev => prev.map(p => {
       if (p.id !== pollId) return p
       const next = { ...p, options: p.options.map(o => ({ ...o })) }
+      
+      // Check if user already voted on this specific option
+      const hasVotedOnThisOption = p.user_vote === optionId
+      
       if (p.single_vote){
+        // Single vote mode
         const prevOptId = p.user_vote || null
         if (prevOptId && prevOptId !== optionId){
+          // Moving vote from one option to another
           const prevOpt = next.options.find(o => o.id === prevOptId)
           if (prevOpt && prevOpt.votes > 0) prevOpt.votes -= 1
         }
         const cur = next.options.find(o => o.id === optionId)
-        if (cur) cur.votes += 1
-        next.user_vote = optionId
+        if (cur) {
+          if (hasVotedOnThisOption) {
+            // Toggle off
+            if (cur.votes > 0) cur.votes -= 1
+            next.user_vote = null
+          } else {
+            // Vote on this option
+            cur.votes += 1
+            next.user_vote = optionId
+          }
+        }
       } else {
-        // Multiple vote mode: toggle off if same option clicked and toggle is true
+        // Multiple vote mode: always toggle
         const cur = next.options.find(o => o.id === optionId)
         if (cur){
-          if (toggle){
+          if (hasVotedOnThisOption){
+            // Toggle off
             if (cur.votes > 0) cur.votes -= 1
+            next.user_vote = null
           } else {
+            // Toggle on
             cur.votes += 1
+            next.user_vote = optionId
           }
         }
       }
@@ -168,10 +187,8 @@ export default function CommunityPolls(){
   }
 
   async function vote(pollId:number, optionId:number){
-    const poll = polls.find(p => p.id === pollId)
-    const isToggle = poll && !poll.single_vote && !!poll.options.find(o => o.id===optionId) // allow toggle for multi-vote
-    optimisticVote(pollId, optionId, !!isToggle)
-    const res = await fetch('/vote_poll', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ poll_id: pollId, option_id: optionId, toggle_vote: !poll?.single_vote && poll?.options?.some(o=> o.id===optionId) ? true : false }) })
+    optimisticVote(pollId, optionId)
+    const res = await fetch('/vote_poll', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ poll_id: pollId, option_id: optionId }) })
     const j = await res.json().catch(()=>null)
     if (!j?.success){
       // Reload to reconcile on error

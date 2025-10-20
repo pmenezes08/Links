@@ -70,17 +70,25 @@ export default function HomeTimeline(){
       const updatedPosts = (prev.posts || []).map((p: any) => {
         if (p.id !== postId || !p.poll) return p
         const poll = p.poll
+        
+        // Check if user already voted on this specific option (for toggle behavior)
+        const hasVotedOnThisOption = poll.user_vote === optionId
+        
         const updatedOptions = poll.options.map((opt: PollOption) => {
           if (opt.id === optionId) {
-            return { ...opt, votes: opt.votes + 1 }
+            // Toggle: if already voted, remove vote; otherwise add vote
+            return { ...opt, votes: hasVotedOnThisOption ? Math.max(0, opt.votes - 1) : opt.votes + 1 }
           }
-          // If single vote, reduce previous vote
-          if (poll.user_vote && opt.id === poll.user_vote && poll.user_vote !== optionId) {
+          // If single vote, reduce previous vote when voting on different option
+          if (poll.single_vote !== false && poll.user_vote && opt.id === poll.user_vote && poll.user_vote !== optionId) {
             return { ...opt, votes: Math.max(0, opt.votes - 1) }
           }
           return opt
         })
-        return { ...p, poll: { ...poll, options: updatedOptions, user_vote: optionId } }
+        
+        // Update user_vote: if toggling off, set to null; otherwise set to optionId
+        const newUserVote = hasVotedOnThisOption ? null : optionId
+        return { ...p, poll: { ...poll, options: updatedOptions, user_vote: newUserVote } }
       })
       return { ...prev, posts: updatedPosts }
     })
