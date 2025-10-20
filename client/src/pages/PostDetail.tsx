@@ -635,12 +635,10 @@ function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDel
   useEffect(() => {
     if (!lineRef.current) return
     if (depth <= 0) { lineRef.current.style.height = '0px'; return }
-    if (centerY == null || parentCenterY == null) return
-    const lengthPx = Math.max(0, centerY - parentCenterY)
-    const topOffset = lengthPx - (AVATAR_SIZE/2)
-    lineRef.current.style.height = `${lengthPx}px`
-    lineRef.current.style.top = `-${Math.max(0, Math.floor(topOffset))}px`
-  }, [centerY, parentCenterY, depth])
+    // Fallback: span full container height to guarantee visibility
+    lineRef.current.style.top = '0px'
+    lineRef.current.style.bottom = '0px'
+  }, [depth])
   const isChild = depth > 0
   return (
     <div className="relative border-b border-white/10 py-2">
@@ -652,7 +650,7 @@ function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDel
               aria-hidden
               className="absolute left-1/2 -translate-x-1/2"
               ref={lineRef}
-              style={{ top: -10, height: 0, width: 2, background: '#4db6ac', borderRadius: 9999, boxShadow: '0 0 0 1px rgba(77,182,172,0.35) inset' }}
+              style={{ top: 0, bottom: 0, width: 2, background: '#4db6ac', borderRadius: 9999 }}
             />
           )}
           <Avatar username={reply.username} url={reply.profile_picture || undefined} size={28} />
