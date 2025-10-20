@@ -827,7 +827,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
         ) : null}
         {/* Poll display */}
         {post.poll && (
-          <div className="px-3 space-y-2">
+          <div className="px-3 space-y-2" onClick={(e)=> e.stopPropagation()}>
             <div className="flex items-center gap-2 mb-2">
               <i className="fa-solid fa-chart-bar text-[#4db6ac]" />
               <div className="font-medium text-sm">{post.poll.question}</div>
