@@ -10460,20 +10460,27 @@ def create_poll():
                 c.execute("INSERT INTO poll_options (poll_id, option_text) VALUES (?, ?)",
                           (poll_id, option_text))
             
-            conn.commit()
-            
-            # Notify all community members about the new poll
+            # Get community members before committing
+            member_ids = []
             if community_id:
                 try:
                     c.execute("""
-                        SELECT DISTINCT u.id, u.username
+                        SELECT DISTINCT u.id
                         FROM user_communities uc
                         JOIN users u ON uc.user_id = u.id
                         WHERE uc.community_id = ? AND u.username != ?
                     """, (community_id, username))
-                    members = c.fetchall()
-                    
-                    for member_id, member_username in members:
+                    member_ids = [row[0] for row in c.fetchall()]
+                    logger.info(f"Found {len(member_ids)} members to notify for poll in community {community_id}")
+                except Exception as e:
+                    logger.error(f"Error fetching community members for poll notifications: {str(e)}")
+            
+            conn.commit()
+            
+            # Notify all community members about the new poll (after commit)
+            if member_ids:
+                try:
+                    for member_id in member_ids:
                         create_notification(
                             user_id=member_id,
                             from_user=username,
@@ -10482,6 +10489,7 @@ def create_poll():
                             community_id=community_id,
                             message=f'New poll: {question}'
                         )
+                    logger.info(f"Created {len(member_ids)} poll notifications for post {post_id}")
                 except Exception as e:
                     logger.error(f"Error creating poll notifications: {str(e)}")
             
