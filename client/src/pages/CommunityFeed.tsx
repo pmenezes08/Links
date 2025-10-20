@@ -25,6 +25,7 @@ export default function CommunityFeed() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string| null>(null)
   const [hasUnseenAnnouncements, setHasUnseenAnnouncements] = useState(false)
+  const [hasUnansweredPolls, setHasUnansweredPolls] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
   const [showAnnouncements, _setShowAnnouncements] = useState(false)
   const [_announcements, _setAnnouncements] = useState<Array<{id:number, content:string, created_by:string, created_at:string}>>([])
@@ -172,6 +173,24 @@ export default function CommunityFeed() {
     return () => { mounted = false }
   }, [community_id])
 
+  useEffect(() => {
+    // Check for unanswered polls
+    let mounted = true
+    async function check(){
+      try{
+        const r = await fetch(`/get_active_polls?community_id=${community_id}`, { credentials: 'include' })
+        const j = await r.json()
+        if (!mounted) return
+        if (j?.success){
+          const unanswered = (j.polls || []).some((p:any) => !p.user_vote)
+          setHasUnansweredPolls(unanswered)
+        }
+      }catch{}
+    }
+    check()
+    return () => { mounted = false }
+  }, [community_id, refreshKey])
+
   async function fetchAnnouncements(){
     try{
       const r = await fetch(`/get_community_announcements?community_id=${community_id}`, { credentials: 'include' })
@@ -256,6 +275,41 @@ export default function CommunityFeed() {
   }
 
   // Reply reactions handled inside PostDetail page
+
+  async function handlePollVote(postId: number, pollId: number, optionId: number){
+    // Optimistic update for poll vote
+    setData((prev:any) => {
+      if (!prev) return prev
+      const updatedPosts = (prev.posts || []).map((p: any) => {
+        if (p.id !== postId || !p.poll) return p
+        const poll = p.poll
+        const updatedOptions = poll.options.map((opt: PollOption) => {
+          if (opt.id === optionId) {
+            return { ...opt, votes: opt.votes + 1 }
+          }
+          // If single vote, reduce previous vote
+          if (poll.user_vote && opt.id === poll.user_vote && poll.user_vote !== optionId) {
+            return { ...opt, votes: Math.max(0, opt.votes - 1) }
+          }
+          return opt
+        })
+        return { ...p, poll: { ...poll, options: updatedOptions, user_vote: optionId } }
+      })
+      return { ...prev, posts: updatedPosts }
+    })
+
+    // Send vote to server
+    try{
+      const res = await fetch('/vote_poll', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ poll_id: pollId, option_id: optionId }) })
+      const j = await res.json().catch(()=>null)
+      if (!j?.success){
+        // Reload on error
+        setRefreshKey(prev => prev + 1)
+      }
+    }catch{
+      setRefreshKey(prev => prev + 1)
+    }
+  }
 
   const postsOnly = useMemo(() => Array.isArray(data?.posts) ? data.posts : [], [data])
 
@@ -368,6 +422,8 @@ export default function CommunityFeed() {
                 highlightStep={highlightStep}
                 onOpen={() => navigate(`/post/${p.id}`)}
                 onToggleReaction={handleToggleReaction}
+                onPollVote={handlePollVote}
+                onPollClick={() => navigate(`/community/${community_id}/polls_react`)}
               />
               {/* Dark overlay for all posts except first one during reaction highlight */}
               {highlightStep === 'reaction' && idx !== 0 && (
@@ -558,7 +614,10 @@ export default function CommunityFeed() {
             <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); navigate(`/community/${community_id}/key_posts`) }}>
               Key Posts
             </button>
-            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); navigate(`/community/${community_id}/polls_react`) }}>Polls</button>
+            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5 flex items-center justify-end gap-2" onClick={()=> { setMoreOpen(false); navigate(`/community/${community_id}/polls_react`) }}>
+              Polls
+              {hasUnansweredPolls && <span className="w-2 h-2 bg-[#4db6ac] rounded-full" />}
+            </button>
             <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); navigate(`/community/${community_id}/calendar_react`) }}>Calendar</button>
             {((data?.community?.type||'').toLowerCase().includes('university') || (data?.community?.name||'').toLowerCase().includes('university')) && (
               <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); navigate(`/community/${community_id}/tasks_react`) }}>Tasks</button>
@@ -583,7 +642,7 @@ export default function CommunityFeed() {
 
 // Ad components removed
 
-function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onToggleReaction }: { post: Post & { display_timestamp?: string }, idx: number, currentUser: string, isAdmin: boolean, highlightStep: 'reaction' | 'post' | null, onOpen: ()=>void, onToggleReaction: (postId:number, reaction:string)=>void }) {
+function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onToggleReaction, onPollVote, onPollClick }: { post: Post & { display_timestamp?: string }, idx: number, currentUser: string, isAdmin: boolean, highlightStep: 'reaction' | 'post' | null, onOpen: ()=>void, onToggleReaction: (postId:number, reaction:string)=>void, onPollVote?: (postId:number, pollId:number, optionId:number)=>void, onPollClick?: ()=>void }) {
   const cardRef = useRef<HTMLDivElement|null>(null)
   const [isEditing, setIsEditing] = useState(false)
   const [editText, setEditText] = useState(post.content)
@@ -766,7 +825,37 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
             className="block mx-auto max-w-full max-h-[360px] rounded border border-white/10 px-3"
           />
         ) : null}
-        {/* Polls are not displayed on the timeline in React */}
+        {/* Poll display */}
+        {post.poll && (
+          <div className="px-3 space-y-2" onClick={(e)=> { e.stopPropagation(); if (onPollClick) onPollClick() }}>
+            <div className="flex items-center gap-2 mb-2">
+              <i className="fa-solid fa-chart-bar text-[#4db6ac]" />
+              <div className="font-medium text-sm">{post.poll.question}</div>
+            </div>
+            <div className="space-y-2">
+              {post.poll.options?.map(option => {
+                const percentage = post.poll?.total_votes ? Math.round((option.votes / post.poll.total_votes) * 100) : 0
+                const isUserVote = post.poll?.user_vote === option.id
+                return (
+                  <button
+                    key={option.id}
+                    className={`w-full text-left px-3 py-2 rounded-lg border relative overflow-hidden ${isUserVote ? 'border-[#4db6ac] bg-[#4db6ac]/10' : 'border-white/10 hover:bg-white/5'}`}
+                    onClick={(e)=> { e.stopPropagation(); if (onPollVote) onPollVote(post.id, post.poll!.id, option.id) }}
+                  >
+                    <div className="absolute inset-0 bg-[#4db6ac]/20" style={{ width: `${percentage}%`, transition: 'width 0.3s ease' }} />
+                    <div className="relative flex items-center justify-between">
+                      <span className="text-sm">{option.text}</span>
+                      <span className="text-xs text-[#9fb0b5] font-medium">{option.votes} {percentage > 0 ? `(${percentage}%)` : ''}</span>
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+            <div className="text-xs text-[#9fb0b5] pt-1">
+              {post.poll.total_votes || 0} {post.poll.total_votes === 1 ? 'vote' : 'votes'} · Click to view full poll
+            </div>
+          </div>
+        )}
         <div className={`flex items-center gap-2 text-xs ${highlightStep === 'reaction' && idx === 0 ? 'relative z-[9999] pointer-events-auto' : ''}`} onClick={(e)=> e.stopPropagation()}>
           <div className={`${highlightStep === 'reaction' && idx === 0 ? 'ring-[3px] ring-[#4db6ac] shadow-[0_0_25px_rgba(77,182,172,1),0_0_50px_rgba(77,182,172,0.8)] rounded-lg bg-[#4db6ac]/10 animate-pulse' : ''}`}>
             <ReactionFA 

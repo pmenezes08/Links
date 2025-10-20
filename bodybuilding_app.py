@@ -10402,7 +10402,7 @@ def create_poll():
     if len(options) > 6:
         return jsonify({'success': False, 'error': 'Maximum 6 options allowed!'})
     
-    timestamp = datetime.now().strftime('%d-%m-%Y %H:%M:%S')
+    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     expires_at_raw = request.form.get('expires_at', '').strip()
     expires_at_sql = None
     if expires_at_raw:
@@ -10460,7 +10460,39 @@ def create_poll():
                 c.execute("INSERT INTO poll_options (poll_id, option_text) VALUES (?, ?)",
                           (poll_id, option_text))
             
+            # Get community members before committing
+            member_ids = []
+            if community_id:
+                try:
+                    c.execute("""
+                        SELECT DISTINCT u.id
+                        FROM user_communities uc
+                        JOIN users u ON uc.user_id = u.id
+                        WHERE uc.community_id = ? AND u.username != ?
+                    """, (community_id, username))
+                    member_ids = [row[0] for row in c.fetchall()]
+                    logger.info(f"Found {len(member_ids)} members to notify for poll in community {community_id}")
+                except Exception as e:
+                    logger.error(f"Error fetching community members for poll notifications: {str(e)}")
+            
             conn.commit()
+            
+            # Notify all community members about the new poll (after commit)
+            if member_ids:
+                try:
+                    for member_id in member_ids:
+                        create_notification(
+                            user_id=member_id,
+                            from_user=username,
+                            notification_type='poll',
+                            post_id=post_id,
+                            community_id=community_id,
+                            message=f'New poll: {question}'
+                        )
+                    logger.info(f"Created {len(member_ids)} poll notifications for post {post_id}")
+                except Exception as e:
+                    logger.error(f"Error creating poll notifications: {str(e)}")
+            
             return jsonify({'success': True, 'message': 'Poll created successfully!', 'post_id': post_id})
             
     except Exception as e:
