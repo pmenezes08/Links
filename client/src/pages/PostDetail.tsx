@@ -615,41 +615,42 @@ function Reaction({ icon, count, active, onClick }:{ icon: string, count: number
   )
 }
 
-function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDelete, onPreviewImage, inlineSendingFlag, communityId, postId }:{ reply: Reply, depth?: number, currentUser?: string|null, onToggle: (id:number, reaction:string)=>void, onInlineReply: (id:number, text:string, file?: File)=>void, onDelete: (id:number)=>void, onPreviewImage: (src:string)=>void, inlineSendingFlag: boolean, communityId?: number | string, postId?: number }){
+function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDelete, onPreviewImage, inlineSendingFlag, communityId, postId, parentCenterVp }:{ reply: Reply, depth?: number, currentUser?: string|null, onToggle: (id:number, reaction:string)=>void, onInlineReply: (id:number, text:string, file?: File)=>void, onDelete: (id:number)=>void, onPreviewImage: (src:string)=>void, inlineSendingFlag: boolean, communityId?: number | string, postId?: number, parentCenterVp?: number|null }){
   const [showComposer, setShowComposer] = useState(false)
   const [text, setText] = useState('')
   const [img, setImg] = useState<File|null>(null)
   const inlineFileRef = useRef<HTMLInputElement|null>(null)
   const [isEditing, setIsEditing] = useState(false)
   const [editText, setEditText] = useState(reply.content)
-  // Dynamic connector geometry
+  // Connector geometry: draw only between parent and child avatar centers (no overlap with avatars)
   const avatarRef = useRef<HTMLDivElement|null>(null)
   const lineRef = useRef<HTMLDivElement|null>(null)
-  // reserved for future dynamic sizing (keep minimal state to avoid heavy reflows)
-  const [/*centerY*/, setCenterY] = useState<number|null>(null)
+  const [myCenterVp, setMyCenterVp] = useState<number|null>(null)
   useEffect(() => {
     if (!avatarRef.current) return
     const rect = avatarRef.current.getBoundingClientRect()
-    setCenterY(rect.top + rect.height/2)
+    setMyCenterVp(rect.top + rect.height/2)
   }, [reply.id])
   useEffect(() => {
     if (!lineRef.current || !avatarRef.current) return
     if (depth <= 0) { lineRef.current.style.height = '0px'; return }
-    // Compute segment strictly between avatar circles (no overlap)
-    const av = avatarRef.current.getBoundingClientRect()
-    const row = avatarRef.current.parentElement?.getBoundingClientRect()
-    if (!row) return
-    const r = 14, m = 3
-    const centerLocal = (av.top + av.height/2) - row.top
-    const top = centerLocal - (r + m)
-    const bottom = centerLocal + (r + m)
-    lineRef.current.style.top = `${top}px`
-    lineRef.current.style.bottom = `calc(100% - ${bottom}px)`
-    lineRef.current.style.left = '19px'
+    if (myCenterVp == null || parentCenterVp == null) return
+    // Map viewport centers to local coordinates of the avatar column container
+    const cont = avatarRef.current
+    const contRect = cont.getBoundingClientRect()
+    const childCenterLocal = myCenterVp - contRect.top
+    const parentCenterLocal = parentCenterVp - contRect.top
+    const r = 14, m = 3 // avatar radius and margin inside circle
+    const yTop = Math.min(childCenterLocal, parentCenterLocal) + r + m
+    const yBottom = Math.max(childCenterLocal, parentCenterLocal) - r - m
+    const height = Math.max(0, yBottom - yTop)
+    lineRef.current.style.top = `${yTop}px`
+    lineRef.current.style.height = `${height}px`
+    lineRef.current.style.left = '19px' // center of 40px gutter (2px line)
     lineRef.current.style.width = '2px'
     lineRef.current.style.background = '#4db6ac'
     lineRef.current.style.borderRadius = '9999px'
-  }, [depth, reply.id])
+  }, [depth, myCenterVp, parentCenterVp])
   const isChild = depth > 0
   return (
     <div className="relative border-b border-white/10 py-2">
@@ -776,6 +777,7 @@ function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDel
           key={ch.id}
           reply={ch}
           depth={Math.min(depth+1, 3)}
+          parentCenterVp={myCenterVp}
           currentUser={currentUser}
           onToggle={onToggle}
           onInlineReply={onInlineReply}
@@ -796,5 +798,6 @@ const ReplyNodeMemo = memo(ReplyNode, (prev, next) => {
   if (prev.inlineSendingFlag !== next.inlineSendingFlag) return false
   if (prev.currentUser !== next.currentUser) return false
   if (prev.depth !== next.depth) return false
+  if (prev.parentCenterVp !== next.parentCenterVp) return false
   return true
 })
