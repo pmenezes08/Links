@@ -623,10 +623,19 @@ function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDel
   const [isEditing, setIsEditing] = useState(false)
   const [editText, setEditText] = useState(reply.content)
   // Note: connector uses fixed left offset; keep size constant in Avatar props
+  const isChild = depth > 0
   return (
     <div className="relative border-b border-white/10 py-2">
       <div className="relative flex items-start gap-2 px-3">
         <div className="relative w-10 flex-shrink-0">
+          {/* Turquoise connector for child replies */}
+          {isChild && (
+            <div
+              aria-hidden
+              className="absolute left-1/2 -translate-x-1/2"
+              style={{ top: -8, bottom: 28, width: 2, background: '#4db6ac' }}
+            />
+          )}
           <Avatar username={reply.username} url={reply.profile_picture || undefined} size={28} />
         </div>
         <div className="flex-1 min-w-0 pr-2">
