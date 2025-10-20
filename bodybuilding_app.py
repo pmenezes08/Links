@@ -3433,6 +3433,35 @@ def api_community_group_feed(parent_id: int):
                         replies_count_val = rr['cnt'] if hasattr(rr, 'keys') else (rr[0] if rr else 0)
                     except Exception:
                         replies_count_val = 0
+                    
+                    # Poll (if active)
+                    poll_obj = None
+                    try:
+                        c.execute("SELECT * FROM polls WHERE post_id = ? AND is_active = 1", (pid,))
+                        poll_raw = c.fetchone()
+                        if poll_raw:
+                            poll = dict(poll_raw)
+                            c.execute("SELECT * FROM poll_options WHERE poll_id = ? ORDER BY id", (poll['id'],))
+                            options = [dict(o) for o in c.fetchall()]
+                            
+                            # Calculate vote counts for each option
+                            for opt in options:
+                                c.execute("SELECT COUNT(*) as count FROM poll_votes WHERE poll_id = ? AND option_id = ?", (poll['id'], opt['id']))
+                                vote_count = c.fetchone()
+                                opt['votes'] = vote_count['count'] if vote_count else 0
+                                # Rename option_text to text for frontend compatibility
+                                opt['text'] = opt.get('option_text', '')
+                            
+                            poll['options'] = options
+                            # Current user's vote
+                            c.execute("SELECT option_id FROM poll_votes WHERE poll_id = ? AND username = ?", (poll['id'], username))
+                            uv = c.fetchone()
+                            poll['user_vote'] = uv['option_id'] if uv else None
+                            poll['total_votes'] = sum(opt.get('votes', 0) for opt in options)
+                            poll_obj = poll
+                    except Exception:
+                        pass
+                    
                     post_obj = {
                         'id': pid,
                         'username': uname,
@@ -3444,7 +3473,8 @@ def api_community_group_feed(parent_id: int):
                         'profile_picture': get_profile_picture(uname),
                         'reactions': reaction_counts,
                         'user_reaction': user_reaction_val,
-                        'replies_count': replies_count_val
+                        'replies_count': replies_count_val,
+                        'poll': poll_obj
                     }
                     # Include posts missing a parsable datetime as a fallback
                     if (dt is None) or (dt >= cutoff):
@@ -3481,6 +3511,35 @@ def api_community_group_feed(parent_id: int):
                         replies_count_val = rr['cnt'] if hasattr(rr, 'keys') else (rr[0] if rr else 0)
                     except Exception:
                         replies_count_val = 0
+                    
+                    # Poll (if active)
+                    poll_obj = None
+                    try:
+                        c.execute("SELECT * FROM polls WHERE post_id = ? AND is_active = 1", (pid,))
+                        poll_raw = c.fetchone()
+                        if poll_raw:
+                            poll = dict(poll_raw)
+                            c.execute("SELECT * FROM poll_options WHERE poll_id = ? ORDER BY id", (poll['id'],))
+                            options = [dict(o) for o in c.fetchall()]
+                            
+                            # Calculate vote counts for each option
+                            for opt in options:
+                                c.execute("SELECT COUNT(*) as count FROM poll_votes WHERE poll_id = ? AND option_id = ?", (poll['id'], opt['id']))
+                                vote_count = c.fetchone()
+                                opt['votes'] = vote_count['count'] if vote_count else 0
+                                # Rename option_text to text for frontend compatibility
+                                opt['text'] = opt.get('option_text', '')
+                            
+                            poll['options'] = options
+                            # Current user's vote
+                            c.execute("SELECT option_id FROM poll_votes WHERE poll_id = ? AND username = ?", (poll['id'], username))
+                            uv = c.fetchone()
+                            poll['user_vote'] = uv['option_id'] if uv else None
+                            poll['total_votes'] = sum(opt.get('votes', 0) for opt in options)
+                            poll_obj = poll
+                    except Exception:
+                        pass
+                    
                     post_obj = {
                         'id': pid,
                         'username': uname,
@@ -3492,7 +3551,8 @@ def api_community_group_feed(parent_id: int):
                         'profile_picture': get_profile_picture(uname),
                         'reactions': reaction_counts,
                         'user_reaction': user_reaction_val,
-                        'replies_count': replies_count_val
+                        'replies_count': replies_count_val,
+                        'poll': poll_obj
                     }
                     # Include posts missing a parsable datetime as a fallback
                     if (dt is None) or (dt >= cutoff):

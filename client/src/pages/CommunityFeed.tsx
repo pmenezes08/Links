@@ -740,33 +740,35 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
   }
   return (
     <div id={`post-${post.id}`} ref={cardRef} className="rounded-2xl border border-white/10 bg-black shadow-sm shadow-black/20" onClick={post.poll ? undefined : onOpen}>
-      <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2">
-        <Avatar username={post.username} url={post.profile_picture || undefined} size={32} />
-        <div className="font-medium tracking-[-0.01em]">{post.username}</div>
-        <div className="text-xs text-[#9fb0b5] ml-auto tabular-nums">{formatSmartTime((post as any).display_timestamp || post.timestamp)}</div>
-        {/* Personal star (turquoise when selected) */}
-        <button className="ml-2 px-2 py-1 rounded-full" title={post.is_starred ? 'Unstar (yours)' : 'Star (yours)'} onClick={toggleStar} aria-label="Star post (yours)">
-          <i className={`${post.is_starred ? 'fa-solid' : 'fa-regular'} fa-star`} style={{ color: post.is_starred ? '#4db6ac' : '#6c757d' }} />
-        </button>
-        {/* Community star (yellow) for owner/admins */}
-        {(isAdmin || currentUser === 'admin') && (
-          <button className="ml-1 px-2 py-1 rounded-full" title={post.is_community_starred ? 'Unfeature (community)' : 'Feature (community)'} onClick={toggleCommunityStar} aria-label="Star post (community)">
-            <i className={`${post.is_community_starred ? 'fa-solid' : 'fa-regular'} fa-star`} style={{ color: post.is_community_starred ? '#ffd54f' : '#6c757d' }} />
+      {!post.poll && (
+        <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2">
+          <Avatar username={post.username} url={post.profile_picture || undefined} size={32} />
+          <div className="font-medium tracking-[-0.01em]">{post.username}</div>
+          <div className="text-xs text-[#9fb0b5] ml-auto tabular-nums">{formatSmartTime((post as any).display_timestamp || post.timestamp)}</div>
+          {/* Personal star (turquoise when selected) */}
+          <button className="ml-2 px-2 py-1 rounded-full" title={post.is_starred ? 'Unstar (yours)' : 'Star (yours)'} onClick={toggleStar} aria-label="Star post (yours)">
+            <i className={`${post.is_starred ? 'fa-solid' : 'fa-regular'} fa-star`} style={{ color: post.is_starred ? '#4db6ac' : '#6c757d' }} />
           </button>
-        )}
-        {(post.username === currentUser || isAdmin || currentUser === 'admin') && (
-          <button className="ml-2 px-2 py-1 rounded-full text-[#6c757d] hover:text-[#4db6ac]" title="Delete"
-            onClick={async(e)=> { e.stopPropagation(); const ok = confirm('Delete this post?'); if(!ok) return; const fd = new FormData(); fd.append('post_id', String(post.id)); await fetch('/delete_post', { method:'POST', credentials:'include', body: fd }); location.reload() }}>
-            <i className="fa-regular fa-trash-can" style={{ color: 'inherit' }} />
-          </button>
-        )}
-        {(post.username === currentUser || isAdmin || currentUser === 'admin') && (
-          <button className="ml-2 px-2 py-1 rounded-full text-[#6c757d] hover:text-[#4db6ac]" title="Edit"
-            onClick={(e)=> { e.stopPropagation(); setIsEditing(true) }}>
-            <i className="fa-regular fa-pen-to-square" />
-          </button>
-        )}
-      </div>
+          {/* Community star (yellow) for owner/admins */}
+          {(isAdmin || currentUser === 'admin') && (
+            <button className="ml-1 px-2 py-1 rounded-full" title={post.is_community_starred ? 'Unfeature (community)' : 'Feature (community)'} onClick={toggleCommunityStar} aria-label="Star post (community)">
+              <i className={`${post.is_community_starred ? 'fa-solid' : 'fa-regular'} fa-star`} style={{ color: post.is_community_starred ? '#ffd54f' : '#6c757d' }} />
+            </button>
+          )}
+          {(post.username === currentUser || isAdmin || currentUser === 'admin') && (
+            <button className="ml-2 px-2 py-1 rounded-full text-[#6c757d] hover:text-[#4db6ac]" title="Delete"
+              onClick={async(e)=> { e.stopPropagation(); const ok = confirm('Delete this post?'); if(!ok) return; const fd = new FormData(); fd.append('post_id', String(post.id)); await fetch('/delete_post', { method:'POST', credentials:'include', body: fd }); location.reload() }}>
+              <i className="fa-regular fa-trash-can" style={{ color: 'inherit' }} />
+            </button>
+          )}
+          {(post.username === currentUser || isAdmin || currentUser === 'admin') && (
+            <button className="ml-2 px-2 py-1 rounded-full text-[#6c757d] hover:text-[#4db6ac]" title="Edit"
+              onClick={(e)=> { e.stopPropagation(); setIsEditing(true) }}>
+              <i className="fa-regular fa-pen-to-square" />
+            </button>
+          )}
+        </div>
+      )}
       <div className="py-2 space-y-2">
         {!isEditing ? (
           <>
