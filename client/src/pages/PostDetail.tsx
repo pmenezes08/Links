@@ -615,25 +615,44 @@ function Reaction({ icon, count, active, onClick }:{ icon: string, count: number
   )
 }
 
-function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDelete, onPreviewImage, inlineSendingFlag, communityId, postId }:{ reply: Reply, depth?: number, currentUser?: string|null, onToggle: (id:number, reaction:string)=>void, onInlineReply: (id:number, text:string, file?: File)=>void, onDelete: (id:number)=>void, onPreviewImage: (src:string)=>void, inlineSendingFlag: boolean, communityId?: number | string, postId?: number }){
+function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDelete, onPreviewImage, inlineSendingFlag, communityId, postId, parentCenterY }:{ reply: Reply, depth?: number, currentUser?: string|null, onToggle: (id:number, reaction:string)=>void, onInlineReply: (id:number, text:string, file?: File)=>void, onDelete: (id:number)=>void, onPreviewImage: (src:string)=>void, inlineSendingFlag: boolean, communityId?: number | string, postId?: number, parentCenterY?: number|null }){
   const [showComposer, setShowComposer] = useState(false)
   const [text, setText] = useState('')
   const [img, setImg] = useState<File|null>(null)
   const inlineFileRef = useRef<HTMLInputElement|null>(null)
   const [isEditing, setIsEditing] = useState(false)
   const [editText, setEditText] = useState(reply.content)
-  // Note: connector uses fixed left offset; keep size constant in Avatar props
+  // Dynamic connector geometry
+  const avatarRef = useRef<HTMLDivElement|null>(null)
+  const lineRef = useRef<HTMLDivElement|null>(null)
+  const [centerY, setCenterY] = useState<number|null>(null)
+  const AVATAR_SIZE = 28
+  useEffect(() => {
+    if (!avatarRef.current) return
+    const rect = avatarRef.current.getBoundingClientRect()
+    setCenterY(rect.top + rect.height/2)
+  }, [reply.id])
+  useEffect(() => {
+    if (!lineRef.current) return
+    if (depth <= 0) { lineRef.current.style.height = '0px'; return }
+    if (centerY == null || parentCenterY == null) return
+    const lengthPx = Math.max(0, centerY - parentCenterY)
+    const topOffset = lengthPx - (AVATAR_SIZE/2)
+    lineRef.current.style.height = `${lengthPx}px`
+    lineRef.current.style.top = `-${Math.max(0, Math.floor(topOffset))}px`
+  }, [centerY, parentCenterY, depth])
   const isChild = depth > 0
   return (
     <div className="relative border-b border-white/10 py-2">
       <div className="relative flex items-start gap-2 px-3">
-        <div className="relative w-10 flex-shrink-0">
+        <div className="relative w-10 flex-shrink-0" ref={avatarRef}>
           {/* Turquoise connector for child replies */}
           {isChild && (
             <div
               aria-hidden
               className="absolute left-1/2 -translate-x-1/2"
-              style={{ top: -10, bottom: 26, width: 4, background: '#4db6ac', borderRadius: 9999, boxShadow: '0 0 0 1px rgba(77,182,172,0.5) inset, 0 0 8px rgba(77,182,172,0.35)' }}
+              ref={lineRef}
+              style={{ top: -10, height: 0, width: 2, background: '#4db6ac', borderRadius: 9999, boxShadow: '0 0 0 1px rgba(77,182,172,0.35) inset' }}
             />
           )}
           <Avatar username={reply.username} url={reply.profile_picture || undefined} size={28} />
@@ -753,6 +772,7 @@ function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDel
           key={ch.id}
           reply={ch}
           depth={Math.min(depth+1, 3)}
+          parentCenterY={centerY}
           currentUser={currentUser}
           onToggle={onToggle}
           onInlineReply={onInlineReply}
@@ -773,5 +793,6 @@ const ReplyNodeMemo = memo(ReplyNode, (prev, next) => {
   if (prev.inlineSendingFlag !== next.inlineSendingFlag) return false
   if (prev.currentUser !== next.currentUser) return false
   if (prev.depth !== next.depth) return false
+  if (prev.parentCenterY !== next.parentCenterY) return false
   return true
 })
