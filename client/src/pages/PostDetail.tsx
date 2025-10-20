@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useLayoutEffect, memo } from 'react'
+import { useEffect, useRef, useState, memo } from 'react'
 import type React from 'react'
 import MentionTextarea from '../components/MentionTextarea'
 import { useNavigate, useParams } from 'react-router-dom'
