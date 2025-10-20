@@ -24,6 +24,7 @@ function iconFor(type?: string){
     case 'mention_post': return 'fa-solid fa-at'
     case 'mention_reply': return 'fa-solid fa-at'
     case 'follow': return 'fa-solid fa-user-plus'
+    case 'poll': return 'fa-solid fa-chart-bar'
     case 'poll_vote': return 'fa-solid fa-square-poll-vertical'
     case 'event_invitation': return 'fa-solid fa-calendar-check'
     case 'new_member': return 'fa-solid fa-user-plus'
@@ -86,11 +87,19 @@ export default function Notifications(){
   async function onClick(n: Notif){
     // Mark read (fire and forget)
     fetch(`/api/notifications/${n.id}/read`, { method:'POST', credentials:'include' }).catch(()=>{})
-    const url = n.link || (n.post_id ? `/post/${n.post_id}` : (n.community_id ? `/community_feed_react/${n.community_id}` : '/notifications'))
+    
+    // For poll notifications, navigate to polls page
+    let url = n.link
+    if (!url && n.type === 'poll' && n.community_id) {
+      url = `/community/${n.community_id}/polls_react`
+    } else if (!url) {
+      url = n.post_id ? `/post/${n.post_id}` : (n.community_id ? `/community_feed_react/${n.community_id}` : '/notifications')
+    }
+    
     console.log('Notification clicked:', { id: n.id, type: n.type, link: n.link, url })
     if (url.startsWith('http') || url.startsWith('/')){
       // Use SPA navigation for known in-app routes
-      if (url.startsWith('/post/') || url.startsWith('/community_feed_react/') || url.startsWith('/event/') || url.includes('/tasks_react')){
+      if (url.startsWith('/post/') || url.startsWith('/community_feed_react/') || url.startsWith('/event/') || url.includes('/tasks_react') || url.includes('/polls_react')){
         console.log('Using SPA navigation to:', url)
         navigate(url)
       } else {
@@ -137,7 +146,8 @@ export default function Notifications(){
                     <div className="text-sm truncate">
                       {n.type === 'event_invitation' ? (n.message || 'Event invitation') :
                        n.type === 'community_post' ? (n.message || `@${n.from_user} made a new post`) :
-                       n.type === 'new_member' ? (n.message || `@${n.from_user} joined the community`) : (
+                       n.type === 'new_member' ? (n.message || `@${n.from_user} joined the community`) :
+                       n.type === 'poll' ? (n.message || `@${n.from_user} created a new poll`) : (
                         n.message ? (n.message) : (
                           <>
                             <strong>@{n.from_user}</strong> {

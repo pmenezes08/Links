@@ -10461,6 +10461,30 @@ def create_poll():
                           (poll_id, option_text))
             
             conn.commit()
+            
+            # Notify all community members about the new poll
+            if community_id:
+                try:
+                    c.execute("""
+                        SELECT DISTINCT u.id, u.username
+                        FROM user_communities uc
+                        JOIN users u ON uc.user_id = u.id
+                        WHERE uc.community_id = ? AND u.username != ?
+                    """, (community_id, username))
+                    members = c.fetchall()
+                    
+                    for member_id, member_username in members:
+                        create_notification(
+                            user_id=member_id,
+                            from_user=username,
+                            notification_type='poll',
+                            post_id=post_id,
+                            community_id=community_id,
+                            message=f'New poll: {question}'
+                        )
+                except Exception as e:
+                    logger.error(f"Error creating poll notifications: {str(e)}")
+            
             return jsonify({'success': True, 'message': 'Poll created successfully!', 'post_id': post_id})
             
     except Exception as e:
