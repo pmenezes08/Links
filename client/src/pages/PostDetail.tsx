@@ -615,7 +615,7 @@ function Reaction({ icon, count, active, onClick }:{ icon: string, count: number
   )
 }
 
-function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDelete, onPreviewImage, inlineSendingFlag, communityId, postId, parentCenterY }:{ reply: Reply, depth?: number, currentUser?: string|null, onToggle: (id:number, reaction:string)=>void, onInlineReply: (id:number, text:string, file?: File)=>void, onDelete: (id:number)=>void, onPreviewImage: (src:string)=>void, inlineSendingFlag: boolean, communityId?: number | string, postId?: number, parentCenterY?: number|null }){
+function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDelete, onPreviewImage, inlineSendingFlag, communityId, postId }:{ reply: Reply, depth?: number, currentUser?: string|null, onToggle: (id:number, reaction:string)=>void, onInlineReply: (id:number, text:string, file?: File)=>void, onDelete: (id:number)=>void, onPreviewImage: (src:string)=>void, inlineSendingFlag: boolean, communityId?: number | string, postId?: number }){
   const [showComposer, setShowComposer] = useState(false)
   const [text, setText] = useState('')
   const [img, setImg] = useState<File|null>(null)
@@ -625,8 +625,8 @@ function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDel
   // Dynamic connector geometry
   const avatarRef = useRef<HTMLDivElement|null>(null)
   const lineRef = useRef<HTMLDivElement|null>(null)
-  const [centerY, setCenterY] = useState<number|null>(null)
-  const AVATAR_SIZE = 28
+  // reserved for future dynamic sizing (keep minimal state to avoid heavy reflows)
+  const [/*centerY*/, setCenterY] = useState<number|null>(null)
   useEffect(() => {
     if (!avatarRef.current) return
     const rect = avatarRef.current.getBoundingClientRect()
@@ -635,7 +635,7 @@ function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDel
   useEffect(() => {
     if (!lineRef.current) return
     if (depth <= 0) { lineRef.current.style.height = '0px'; return }
-    // Fallback: span full container height to guarantee visibility
+    // Span full container height to guarantee visibility
     lineRef.current.style.top = '0px'
     lineRef.current.style.bottom = '0px'
   }, [depth])
@@ -770,7 +770,6 @@ function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDel
           key={ch.id}
           reply={ch}
           depth={Math.min(depth+1, 3)}
-          parentCenterY={centerY}
           currentUser={currentUser}
           onToggle={onToggle}
           onInlineReply={onInlineReply}
@@ -791,6 +790,5 @@ const ReplyNodeMemo = memo(ReplyNode, (prev, next) => {
   if (prev.inlineSendingFlag !== next.inlineSendingFlag) return false
   if (prev.currentUser !== next.currentUser) return false
   if (prev.depth !== next.depth) return false
-  if (prev.parentCenterY !== next.parentCenterY) return false
   return true
 })
