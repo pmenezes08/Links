@@ -827,7 +827,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
         ) : null}
         {/* Poll display */}
         {post.poll && (
-          <div className="px-3 space-y-2" onClick={(e)=> { e.stopPropagation(); if (onPollClick) onPollClick() }}>
+          <div className="px-3 space-y-2">
             <div className="flex items-center gap-2 mb-2">
               <i className="fa-solid fa-chart-bar text-[#4db6ac]" />
               <div className="font-medium text-sm">{post.poll.question}</div>
@@ -851,8 +851,14 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                 )
               })}
             </div>
-            <div className="text-xs text-[#9fb0b5] pt-1">
-              {post.poll.total_votes || 0} {post.poll.total_votes === 1 ? 'vote' : 'votes'} · Click to view full poll
+            <div className="flex items-center justify-between text-xs text-[#9fb0b5] pt-1">
+              <span>{post.poll.total_votes || 0} {post.poll.total_votes === 1 ? 'vote' : 'votes'}</span>
+              <button 
+                onClick={(e)=> { e.stopPropagation(); if (onPollClick) onPollClick() }}
+                className="text-[#4db6ac] hover:underline"
+              >
+                View all polls →
+              </button>
             </div>
           </div>
         )}
