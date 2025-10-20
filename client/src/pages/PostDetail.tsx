@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, memo } from 'react'
+import { useEffect, useRef, useState, useLayoutEffect, memo } from 'react'
 import type React from 'react'
 import MentionTextarea from '../components/MentionTextarea'
 import { useNavigate, useParams } from 'react-router-dom'
@@ -646,12 +646,9 @@ function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDel
         <div className="relative w-10 flex-shrink-0 self-stretch" ref={avatarRef} style={{ zIndex: 1 }}>
           {/* Turquoise connector for child replies */}
           {isChild && (
-            <div
-              aria-hidden
-              className="absolute pointer-events-none"
-              ref={lineRef}
-              style={{ top: 0, bottom: 0, left: 14, width: 2, background: '#4db6ac', borderRadius: 9999, zIndex: 0 }}
-            />
+            <div className="absolute inset-0 pointer-events-none" style={{ zIndex: 0 }}>
+              <div style={{ position:'absolute', left:14, top:0, bottom:0, width:2, background:'#4db6ac', borderRadius:9999 }} />
+            </div>
           )}
           <Avatar username={reply.username} url={reply.profile_picture || undefined} size={28} />
         </div>
