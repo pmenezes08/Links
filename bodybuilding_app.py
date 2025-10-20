@@ -15789,6 +15789,15 @@ def api_community_feed(community_id):
                     poll = dict(poll_raw)
                     c.execute("SELECT * FROM poll_options WHERE poll_id = ? ORDER BY id", (poll['id'],))
                     options = [dict(o) for o in c.fetchall()]
+                    
+                    # Calculate vote counts for each option
+                    for opt in options:
+                        c.execute("SELECT COUNT(*) as count FROM poll_votes WHERE poll_id = ? AND option_id = ?", (poll['id'], opt['id']))
+                        vote_count = c.fetchone()
+                        opt['votes'] = vote_count['count'] if vote_count else 0
+                        # Rename option_text to text for frontend compatibility
+                        opt['text'] = opt.get('option_text', '')
+                    
                     poll['options'] = options
                     # Current user's vote
                     c.execute("SELECT option_id FROM poll_votes WHERE poll_id = ? AND username = ?", (poll['id'], username))
