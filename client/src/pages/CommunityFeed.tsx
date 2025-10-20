@@ -839,8 +839,9 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                 return (
                   <button
                     key={option.id}
+                    type="button"
                     className={`w-full text-left px-3 py-2 rounded-lg border relative overflow-hidden ${isUserVote ? 'border-[#4db6ac] bg-[#4db6ac]/10' : 'border-white/10 hover:bg-white/5'}`}
-                    onClick={(e)=> { e.stopPropagation(); if (onPollVote) onPollVote(post.id, post.poll!.id, option.id) }}
+                    onClick={(e)=> { e.preventDefault(); e.stopPropagation(); if (onPollVote) onPollVote(post.id, post.poll!.id, option.id) }}
                   >
                     <div className="absolute inset-0 bg-[#4db6ac]/20" style={{ width: `${percentage}%`, transition: 'width 0.3s ease' }} />
                     <div className="relative flex items-center justify-between">
@@ -854,7 +855,8 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
             <div className="flex items-center justify-between text-xs text-[#9fb0b5] pt-1">
               <span>{post.poll.total_votes || 0} {post.poll.total_votes === 1 ? 'vote' : 'votes'}</span>
               <button 
-                onClick={(e)=> { e.stopPropagation(); if (onPollClick) onPollClick() }}
+                type="button"
+                onClick={(e)=> { e.preventDefault(); e.stopPropagation(); if (onPollClick) onPollClick() }}
                 className="text-[#4db6ac] hover:underline"
               >
                 View all polls →
