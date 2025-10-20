@@ -631,8 +631,8 @@ function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDel
           {/* Vertical connector line from avatar to children */}
           {hasChildren && (
             <div 
-              className="absolute left-1/2 top-[28px] bottom-0 w-[2px] bg-gradient-to-b from-[#4db6ac]/70 to-[#4db6ac]/20" 
-              style={{ transform: 'translateX(-50%)', height: 'calc(100% - 28px)' }}
+              className="absolute left-[13px] top-[28px] bottom-0 w-[2px] bg-gradient-to-b from-[#4db6ac]/70 to-[#4db6ac]/20" 
+              style={{ height: 'calc(100% - 28px)' }}
             />
           )}
         </div>
