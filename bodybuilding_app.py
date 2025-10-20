@@ -10562,6 +10562,104 @@ def close_poll():
         logger.error(f"Error closing poll: {str(e)}")
         return jsonify({'success': False, 'error': 'Error closing poll'})
 
+@app.route('/edit_poll', methods=['POST'])
+@login_required
+def edit_poll():
+    """Edit an existing poll - question and options"""
+    username = session['username']
+    
+    if request.is_json:
+        data = request.get_json()
+        poll_id = data.get('poll_id')
+        question = data.get('question', '').strip()
+        options = data.get('options', [])
+    else:
+        poll_id = request.form.get('poll_id', type=int)
+        question = request.form.get('question', '').strip()
+        options = request.form.getlist('options[]')
+    
+    if not poll_id or not question:
+        return jsonify({'success': False, 'error': 'Poll ID and question are required'})
+    
+    # Remove empty options
+    options = [opt.strip() for opt in options if opt.strip()]
+    if len(options) < 2:
+        return jsonify({'success': False, 'error': 'At least 2 non-empty options are required'})
+    
+    if len(options) > 6:
+        return jsonify({'success': False, 'error': 'Maximum 6 options allowed'})
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Check if poll exists and user has permission to edit it
+            c.execute("SELECT created_by, post_id FROM polls WHERE id = ? AND is_active = 1", (poll_id,))
+            poll_data = c.fetchone()
+            
+            if not poll_data:
+                return jsonify({'success': False, 'error': 'Poll not found or already closed'})
+            
+            # Only poll creator, community admin/owner, or global admin can edit
+            allowed = False
+            if poll_data['created_by'] == username or username == 'admin':
+                allowed = True
+            else:
+                # Determine community of the poll via post
+                c.execute("SELECT community_id FROM posts WHERE id = ?", (poll_data['post_id'],))
+                pr = c.fetchone()
+                community_id = pr['community_id'] if pr else None
+                if community_id:
+                    # Check if user is community admin or owner
+                    c.execute("SELECT creator_username FROM communities WHERE id = ?", (community_id,))
+                    cr = c.fetchone()
+                    if cr and cr['creator_username'] == username:
+                        allowed = True
+                    else:
+                        c.execute("""
+                            SELECT 1 FROM community_admins
+                            WHERE community_id = ? AND username = ?
+                        """, (community_id, username))
+                        if c.fetchone():
+                            allowed = True
+            
+            if not allowed:
+                return jsonify({'success': False, 'error': 'You do not have permission to edit this poll'})
+            
+            # Update poll question
+            c.execute("UPDATE polls SET question = ? WHERE id = ?", (question, poll_id))
+            
+            # Get existing options
+            c.execute("SELECT id, option_text FROM poll_options WHERE poll_id = ? ORDER BY id", (poll_id,))
+            existing_options = c.fetchall()
+            
+            # Update existing options and add new ones
+            for idx, option_text in enumerate(options):
+                if idx < len(existing_options):
+                    # Update existing option
+                    c.execute("UPDATE poll_options SET option_text = ? WHERE id = ?", 
+                             (option_text, existing_options[idx]['id']))
+                else:
+                    # Add new option
+                    c.execute("INSERT INTO poll_options (poll_id, option_text, votes) VALUES (?, ?, 0)",
+                             (poll_id, option_text))
+            
+            # Remove extra options if new list is shorter
+            if len(options) < len(existing_options):
+                for idx in range(len(options), len(existing_options)):
+                    option_id = existing_options[idx]['id']
+                    # Delete votes for this option first
+                    c.execute("DELETE FROM poll_votes WHERE option_id = ?", (option_id,))
+                    # Delete the option
+                    c.execute("DELETE FROM poll_options WHERE id = ?", (option_id,))
+            
+            conn.commit()
+            return jsonify({'success': True, 'message': 'Poll updated successfully'})
+            
+    except Exception as e:
+        logger.error(f"Error editing poll: {str(e)}")
+        return jsonify({'success': False, 'error': 'Error editing poll'})
+
 @app.route('/vote_poll', methods=['POST'])
 @login_required
 def vote_poll():
@@ -16642,7 +16740,17 @@ def api_home_timeline():
                     poll = dict(poll_raw)
                     c.execute("SELECT * FROM poll_options WHERE poll_id = ? ORDER BY id", (poll['id'],))
                     options = [dict(o) for o in c.fetchall()]
+                    
+                    # Calculate vote counts for each option
+                    for opt in options:
+                        c.execute("SELECT COUNT(*) as count FROM poll_votes WHERE poll_id = ? AND option_id = ?", (poll['id'], opt['id']))
+                        vote_count = c.fetchone()
+                        opt['votes'] = vote_count['count'] if vote_count else 0
+                        # Rename option_text to text for frontend compatibility
+                        opt['text'] = opt.get('option_text', '')
+                    
                     poll['options'] = options
+                    # Current user's vote
                     c.execute("SELECT option_id FROM poll_votes WHERE poll_id = ? AND username = ?", (poll['id'], username))
                     uv = c.fetchone()
                     poll['user_vote'] = uv['option_id'] if uv else None

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
 
 type PollOption = { id: number; option_text: string; votes: number }
@@ -8,6 +8,7 @@ type ActivePoll = { id:number; question:string; options: PollOption[]; single_vo
 export default function CommunityPolls(){
   const { community_id } = useParams()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const { setTitle } = useHeader()
   const [activeTab, setActiveTab] = useState<'active'|'create'>('active')
   const [polls, setPolls] = useState<ActivePoll[]>([])
@@ -17,12 +18,13 @@ export default function CommunityPolls(){
   const [options, setOptions] = useState<string[]>(['',''])
   const [singleVote, setSingleVote] = useState(true)
   const [expiresAt, setExpiresAt] = useState('')
+  const [editingPollId, setEditingPollId] = useState<number|null>(null)
   const formRef = useRef<HTMLFormElement|null>(null)
   const scrollRef = useRef<HTMLDivElement|null>(null)
   const [moreOpen, setMoreOpen] = useState(false)
   const [hasUnseenAnnouncements, setHasUnseenAnnouncements] = useState(false)
 
-  useEffect(() => { setTitle('Polls') }, [setTitle])
+  useEffect(() => { setTitle(editingPollId ? 'Edit Poll' : 'Polls') }, [setTitle, editingPollId])
 
   async function load(){
     setLoading(true)
@@ -35,6 +37,23 @@ export default function CommunityPolls(){
     }finally{ setLoading(false) }
   }
   useEffect(()=>{ load() }, [community_id])
+
+  // Check for edit query parameter and load poll data
+  useEffect(() => {
+    const editParam = searchParams.get('edit')
+    if (editParam) {
+      const pollId = parseInt(editParam)
+      setEditingPollId(pollId)
+      setActiveTab('create')
+      // Load poll data
+      const poll = polls.find(p => p.id === pollId)
+      if (poll) {
+        setQuestion(poll.question)
+        setOptions(poll.options.map(o => o.option_text))
+        setSingleVote(poll.single_vote ?? true)
+      }
+    }
+  }, [searchParams, polls])
 
   useEffect(() => {
     let mounted = true

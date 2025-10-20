@@ -830,7 +830,16 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
           <div className="px-3 space-y-2" onClick={(e)=> e.stopPropagation()}>
             <div className="flex items-center gap-2 mb-2">
               <i className="fa-solid fa-chart-bar text-[#4db6ac]" />
-              <div className="font-medium text-sm">{post.poll.question}</div>
+              <div className="font-medium text-sm flex-1">{post.poll.question}</div>
+              {(post.username === currentUser || isAdmin || currentUser === 'admin') && (
+                <button 
+                  className="ml-auto px-2 py-1 rounded-full text-[#6c757d] hover:text-[#4db6ac]" 
+                  title="Edit poll"
+                  onClick={(e)=> { e.preventDefault(); e.stopPropagation(); navigate(`/community/${communityId}/polls_react?edit=${post.poll?.id}`) }}
+                >
+                  <i className="fa-regular fa-pen-to-square" />
+                </button>
+              )}
             </div>
             <div className="space-y-2">
               {post.poll.options?.map(option => {
