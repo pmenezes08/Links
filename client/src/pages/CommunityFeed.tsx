@@ -737,7 +737,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
     else alert(j?.error || 'Failed to update post')
   }
   return (
-    <div id={`post-${post.id}`} ref={cardRef} className="rounded-2xl border border-white/10 bg-black shadow-sm shadow-black/20" onClick={onOpen}>
+    <div id={`post-${post.id}`} ref={cardRef} className="rounded-2xl border border-white/10 bg-black shadow-sm shadow-black/20" onClick={post.poll ? undefined : onOpen}>
       <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2">
         <Avatar username={post.username} url={post.profile_picture || undefined} size={32} />
         <div className="font-medium tracking-[-0.01em]">{post.username}</div>
@@ -864,24 +864,27 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
             </div>
           </div>
         )}
-        <div className={`flex items-center gap-2 text-xs ${highlightStep === 'reaction' && idx === 0 ? 'relative z-[9999] pointer-events-auto' : ''}`} onClick={(e)=> e.stopPropagation()}>
-          <div className={`${highlightStep === 'reaction' && idx === 0 ? 'ring-[3px] ring-[#4db6ac] shadow-[0_0_25px_rgba(77,182,172,1),0_0_50px_rgba(77,182,172,0.8)] rounded-lg bg-[#4db6ac]/10 animate-pulse' : ''}`}>
-            <ReactionFA 
-              icon="fa-regular fa-heart" 
-              count={post.reactions?.['heart']||0} 
-              active={post.user_reaction==='heart'} 
-              onClick={()=> onToggleReaction(post.id, 'heart')}
-              isHighlighted={highlightStep === 'reaction' && idx === 0}
-            />
+        {/* Hide reactions and comments for poll posts */}
+        {!post.poll && (
+          <div className={`flex items-center gap-2 text-xs ${highlightStep === 'reaction' && idx === 0 ? 'relative z-[9999] pointer-events-auto' : ''}`} onClick={(e)=> e.stopPropagation()}>
+            <div className={`${highlightStep === 'reaction' && idx === 0 ? 'ring-[3px] ring-[#4db6ac] shadow-[0_0_25px_rgba(77,182,172,1),0_0_50px_rgba(77,182,172,0.8)] rounded-lg bg-[#4db6ac]/10 animate-pulse' : ''}`}>
+              <ReactionFA 
+                icon="fa-regular fa-heart" 
+                count={post.reactions?.['heart']||0} 
+                active={post.user_reaction==='heart'} 
+                onClick={()=> onToggleReaction(post.id, 'heart')}
+                isHighlighted={highlightStep === 'reaction' && idx === 0}
+              />
+            </div>
+            <ReactionFA icon="fa-regular fa-thumbs-up" count={post.reactions?.['thumbs-up']||0} active={post.user_reaction==='thumbs-up'} onClick={()=> onToggleReaction(post.id, 'thumbs-up')} />
+            <ReactionFA icon="fa-regular fa-thumbs-down" count={post.reactions?.['thumbs-down']||0} active={post.user_reaction==='thumbs-down'} onClick={()=> onToggleReaction(post.id, 'thumbs-down')} />
+            <button className="ml-auto px-2.5 py-1 rounded-full text-[#cfd8dc]"
+              onClick={(e)=> { e.stopPropagation(); onOpen() }}>
+              <i className="fa-regular fa-comment" />
+              <span className="ml-1">{post.replies?.length || 0}</span>
+            </button>
           </div>
-          <ReactionFA icon="fa-regular fa-thumbs-up" count={post.reactions?.['thumbs-up']||0} active={post.user_reaction==='thumbs-up'} onClick={()=> onToggleReaction(post.id, 'thumbs-up')} />
-          <ReactionFA icon="fa-regular fa-thumbs-down" count={post.reactions?.['thumbs-down']||0} active={post.user_reaction==='thumbs-down'} onClick={()=> onToggleReaction(post.id, 'thumbs-down')} />
-          <button className="ml-auto px-2.5 py-1 rounded-full text-[#cfd8dc]"
-            onClick={(e)=> { e.stopPropagation(); onOpen() }}>
-            <i className="fa-regular fa-comment" />
-            <span className="ml-1">{post.replies?.length || 0}</span>
-          </button>
-        </div>
+        )}
       </div>
       
       {/* Rename link modal */}
