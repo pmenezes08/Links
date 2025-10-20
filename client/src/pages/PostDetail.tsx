@@ -749,25 +749,19 @@ function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDel
       {reply.children && reply.children.length ? (
         <div className="relative">
           {reply.children.map((ch) => (
-            <div key={ch.id} className="relative">
-              {/* Horizontal connector from vertical line to child avatar */}
-              <div 
-                className="absolute left-[17px] top-[14px] w-[10px] h-[2px] bg-[#4db6ac]/60"
-                style={{ zIndex: 0 }}
-              />
-              <ReplyNodeMemo
-                reply={ch}
-                depth={Math.min(depth+1, 3)}
-                currentUser={currentUser}
-                onToggle={onToggle}
-                onInlineReply={onInlineReply}
-                onDelete={onDelete}
-                onPreviewImage={onPreviewImage}
-                inlineSendingFlag={false}
-                communityId={communityId}
-                postId={postId}
-              />
-            </div>
+            <ReplyNodeMemo
+              key={ch.id}
+              reply={ch}
+              depth={Math.min(depth+1, 3)}
+              currentUser={currentUser}
+              onToggle={onToggle}
+              onInlineReply={onInlineReply}
+              onDelete={onDelete}
+              onPreviewImage={onPreviewImage}
+              inlineSendingFlag={false}
+              communityId={communityId}
+              postId={postId}
+            />
           ))}
         </div>
       ) : null}
