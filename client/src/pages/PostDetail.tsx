@@ -615,51 +615,18 @@ function Reaction({ icon, count, active, onClick }:{ icon: string, count: number
   )
 }
 
-function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDelete, onPreviewImage, inlineSendingFlag, communityId, postId, parentCenterVp }:{ reply: Reply, depth?: number, currentUser?: string|null, onToggle: (id:number, reaction:string)=>void, onInlineReply: (id:number, text:string, file?: File)=>void, onDelete: (id:number)=>void, onPreviewImage: (src:string)=>void, inlineSendingFlag: boolean, communityId?: number | string, postId?: number, parentCenterVp?: number|null }){
+function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDelete, onPreviewImage, inlineSendingFlag, communityId, postId }:{ reply: Reply, depth?: number, currentUser?: string|null, onToggle: (id:number, reaction:string)=>void, onInlineReply: (id:number, text:string, file?: File)=>void, onDelete: (id:number)=>void, onPreviewImage: (src:string)=>void, inlineSendingFlag: boolean, communityId?: number | string, postId?: number }){
   const [showComposer, setShowComposer] = useState(false)
   const [text, setText] = useState('')
   const [img, setImg] = useState<File|null>(null)
   const inlineFileRef = useRef<HTMLInputElement|null>(null)
   const [isEditing, setIsEditing] = useState(false)
   const [editText, setEditText] = useState(reply.content)
-  // Connector geometry: draw only between parent and child avatar centers (no overlap with avatars)
-  const avatarRef = useRef<HTMLDivElement|null>(null)
-  const lineRef = useRef<HTMLDivElement|null>(null)
-  const [myCenterVp, setMyCenterVp] = useState<number|null>(null)
-  useEffect(() => {
-    if (!avatarRef.current) return
-    const rect = avatarRef.current.getBoundingClientRect()
-    setMyCenterVp(rect.top + rect.height/2)
-  }, [reply.id])
-  useEffect(() => {
-    if (!lineRef.current || !avatarRef.current) return
-    if (depth <= 0) { lineRef.current.style.height = '0px'; return }
-    if (myCenterVp == null || parentCenterVp == null) return
-    // Map viewport centers to local coordinates of the avatar column container
-    const cont = avatarRef.current
-    const contRect = cont.getBoundingClientRect()
-    const childCenterLocal = myCenterVp - contRect.top
-    const parentCenterLocal = parentCenterVp - contRect.top
-    const r = 14, m = 3 // avatar radius and margin inside circle
-    const yTop = Math.min(childCenterLocal, parentCenterLocal) + r + m
-    const yBottom = Math.max(childCenterLocal, parentCenterLocal) - r - m
-    const height = Math.max(0, yBottom - yTop)
-    lineRef.current.style.top = `${yTop}px`
-    lineRef.current.style.height = `${height}px`
-    lineRef.current.style.left = '19px' // center of 40px gutter (2px line)
-    lineRef.current.style.width = '2px'
-    lineRef.current.style.background = '#4db6ac'
-    lineRef.current.style.borderRadius = '9999px'
-  }, [depth, myCenterVp, parentCenterVp])
-  const isChild = depth > 0
+  const isChild = false
   return (
     <div className="relative border-b border-white/10 py-2">
       <div className="relative flex items-start gap-2 px-3">
-        <div className="relative w-10 flex-shrink-0 self-stretch" ref={avatarRef} style={{ zIndex: 1 }}>
-          {/* Turquoise connector for child replies */}
-          {isChild && (
-            <div aria-hidden ref={lineRef} className="absolute pointer-events-none" style={{ zIndex: 0 }} />
-          )}
+        <div className="relative w-10 flex-shrink-0 self-stretch" style={{ zIndex: 1 }}>
           <Avatar username={reply.username} url={reply.profile_picture || undefined} size={28} />
         </div>
         <div className="flex-1 min-w-0 pr-2">
@@ -777,7 +744,6 @@ function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDel
           key={ch.id}
           reply={ch}
           depth={Math.min(depth+1, 3)}
-          parentCenterVp={myCenterVp}
           currentUser={currentUser}
           onToggle={onToggle}
           onInlineReply={onInlineReply}
@@ -798,6 +764,5 @@ const ReplyNodeMemo = memo(ReplyNode, (prev, next) => {
   if (prev.inlineSendingFlag !== next.inlineSendingFlag) return false
   if (prev.currentUser !== next.currentUser) return false
   if (prev.depth !== next.depth) return false
-  if (prev.parentCenterVp !== next.parentCenterVp) return false
   return true
 })
