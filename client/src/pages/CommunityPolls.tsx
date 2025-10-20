@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
+import Avatar from '../components/Avatar'
 
-type PollOption = { id: number; option_text: string; votes: number }
+type PollOption = { id: number; option_text: string; votes: number; voters?: { username: string; profile_picture?: string; voted_at: string }[] }
 type ActivePoll = { id:number; question:string; options: PollOption[]; single_vote?: boolean; total_votes?: number; user_vote?: number|null }
 
 export default function CommunityPolls(){
@@ -23,6 +24,9 @@ export default function CommunityPolls(){
   const scrollRef = useRef<HTMLDivElement|null>(null)
   const [moreOpen, setMoreOpen] = useState(false)
   const [hasUnseenAnnouncements, setHasUnseenAnnouncements] = useState(false)
+  const [viewingVoters, setViewingVoters] = useState<number|null>(null)
+  const [votersData, setVotersData] = useState<any>(null)
+  const [loadingVoters, setLoadingVoters] = useState(false)
 
   useEffect(() => { setTitle(editingPollId ? 'Edit Poll' : 'Polls') }, [setTitle, editingPollId])
 
@@ -202,6 +206,18 @@ export default function CommunityPolls(){
     if (j?.success) load()
   }
 
+  async function loadVoters(pollId:number){
+    setViewingVoters(pollId)
+    setLoadingVoters(true)
+    try{
+      const r = await fetch(`/get_poll_voters/${pollId}`, { credentials:'include' })
+      const j = await r.json()
+      if (j?.success){
+        setVotersData(j.options || [])
+      }
+    }finally{ setLoadingVoters(false) }
+  }
+
   return (
     <div className="h-screen overflow-hidden bg-black text-white">
       <div className="fixed left-0 right-0 top-14 h-10 bg-black/70 backdrop-blur z-40">
@@ -268,6 +284,10 @@ export default function CommunityPolls(){
                 <div key={p.id} className="rounded-2xl border border-white/10 bg-white/[0.035] overflow-hidden">
                   <div className="px-3 py-2 flex items-center gap-2 border-b border-white/10">
                     <div className="font-medium flex-1">{p.question}</div>
+                    <button title="View voters" className="px-2 py-1 rounded-md border border-[#4db6ac] text-[#4db6ac] hover:bg-[#4db6ac]/10 text-sm" onClick={()=> loadVoters(p.id)}>
+                      <i className="fa-solid fa-users mr-1" />
+                      Voters
+                    </button>
                     <button title="Close poll" className="px-2 py-1 rounded-md border border-red-400 text-red-300 hover:bg-red-500/10" onClick={()=> closePoll(p.id)}>
                       <i className="fa-regular fa-trash-can" />
                     </button>
@@ -286,6 +306,47 @@ export default function CommunityPolls(){
           </div>
         )}
       </div>
+
+      {/* Voters Modal */}
+      {viewingVoters && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={()=> { setViewingVoters(null); setVotersData(null) }}>
+          <div className="bg-black border border-white/10 rounded-2xl max-w-2xl w-full max-h-[80vh] overflow-hidden" onClick={(e)=> e.stopPropagation()}>
+            <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
+              <div className="font-medium">Poll Voters</div>
+              <button className="p-2 hover:bg-white/5 rounded-full" onClick={()=> { setViewingVoters(null); setVotersData(null) }}>
+                <i className="fa-solid fa-xmark" />
+              </button>
+            </div>
+            <div className="overflow-y-auto max-h-[calc(80vh-60px)] p-4">
+              {loadingVoters ? (
+                <div className="text-[#9fb0b5]">Loading voters...</div>
+              ) : votersData ? (
+                <div className="space-y-4">
+                  {votersData.map((opt: any) => (
+                    <div key={opt.id} className="border border-white/10 rounded-lg p-3">
+                      <div className="font-medium text-sm mb-2 text-[#4db6ac]">{opt.option_text}</div>
+                      {opt.voters && opt.voters.length > 0 ? (
+                        <div className="space-y-2">
+                          {opt.voters.map((voter: any, idx: number) => (
+                            <div key={idx} className="flex items-center gap-2 text-sm">
+                              <Avatar username={voter.username} url={voter.profile_picture} size={24} />
+                              <span>{voter.username}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-xs text-[#9fb0b5]">No votes yet</div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-[#9fb0b5]">No data</div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Bottom navigation bar - floating (same as community) */}
       <div className="fixed bottom-4 left-1/2 transform -translate-x-1/2 z-40 w-[94%] max-w-[1200px] rounded-2xl border border-white/10 bg-black/80 backdrop-blur shadow-lg">

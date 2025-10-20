@@ -10850,6 +10850,60 @@ def get_poll_results(poll_id):
     except Exception as e:
         logger.error(f"Error getting poll results: {str(e)}")
         return jsonify({'success': False, 'error': 'Error retrieving poll results'})
+
+@app.route('/get_poll_voters/<int:poll_id>')
+@login_required
+def get_poll_voters(poll_id):
+    """Get list of voters for each option in a poll"""
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Verify poll exists
+            c.execute("SELECT id FROM polls WHERE id = ?", (poll_id,))
+            if not c.fetchone():
+                return jsonify({'success': False, 'error': 'Poll not found'})
+            
+            # Get all poll options
+            c.execute("SELECT id, option_text FROM poll_options WHERE poll_id = ? ORDER BY id", (poll_id,))
+            options = [dict(row) for row in c.fetchall()]
+            
+            # For each option, get the list of voters
+            for option in options:
+                c.execute("""
+                    SELECT pv.username, up.profile_picture, pv.voted_at
+                    FROM poll_votes pv
+                    LEFT JOIN user_profiles up ON pv.username = up.username
+                    WHERE pv.poll_id = ? AND pv.option_id = ?
+                    ORDER BY pv.voted_at DESC
+                """, (poll_id, option['id']))
+                voters = []
+                for row in c.fetchall():
+                    voter_data = dict(row)
+                    # Normalize profile picture path
+                    pp = voter_data.get('profile_picture')
+                    if pp:
+                        pp_str = str(pp).strip()
+                        if pp_str.startswith('http://') or pp_str.startswith('https://'):
+                            voter_data['profile_picture'] = pp_str
+                        elif pp_str.startswith('/uploads') or pp_str.startswith('/static'):
+                            voter_data['profile_picture'] = pp_str
+                        elif pp_str.startswith('uploads/'):
+                            voter_data['profile_picture'] = '/' + pp_str
+                        else:
+                            voter_data['profile_picture'] = f"/uploads/{pp_str}"
+                    voters.append(voter_data)
+                option['voters'] = voters
+            
+            return jsonify({
+                'success': True,
+                'options': options
+            })
+            
+    except Exception as e:
+        logger.error(f"Error getting poll voters: {str(e)}")
+        return jsonify({'success': False, 'error': 'Error getting poll voters'})
+
 @app.route('/get_active_polls')
 @login_required
 def get_active_polls():
