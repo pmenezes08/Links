@@ -643,14 +643,14 @@ function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDel
   return (
     <div className="relative border-b border-white/10 py-2">
       <div className="relative flex items-start gap-2 px-3">
-        <div className="relative w-10 flex-shrink-0" ref={avatarRef} style={{ zIndex: 1 }}>
+        <div className="relative w-10 flex-shrink-0 self-stretch" ref={avatarRef} style={{ zIndex: 1 }}>
           {/* Turquoise connector for child replies */}
           {isChild && (
             <div
               aria-hidden
-              className="absolute"
+              className="absolute pointer-events-none"
               ref={lineRef}
-              style={{ top: -18, bottom: -18, left: 6, width: 2, background: '#4db6ac', borderRadius: 9999, zIndex: 0 }}
+              style={{ top: 0, bottom: 0, left: 14, width: 2, background: '#4db6ac', borderRadius: 9999, zIndex: 0 }}
             />
           )}
           <Avatar username={reply.username} url={reply.profile_picture || undefined} size={28} />
