@@ -10402,7 +10402,7 @@ def create_poll():
     if len(options) > 6:
         return jsonify({'success': False, 'error': 'Maximum 6 options allowed!'})
     
-    timestamp = datetime.now().strftime('%d-%m-%Y %H:%M:%S')
+    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     expires_at_raw = request.form.get('expires_at', '').strip()
     expires_at_sql = None
     if expires_at_raw:
