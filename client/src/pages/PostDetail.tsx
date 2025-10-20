@@ -633,12 +633,23 @@ function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDel
     setCenterY(rect.top + rect.height/2)
   }, [reply.id])
   useEffect(() => {
-    if (!lineRef.current) return
+    if (!lineRef.current || !avatarRef.current) return
     if (depth <= 0) { lineRef.current.style.height = '0px'; return }
-    // Span full container height to guarantee visibility
-    lineRef.current.style.top = '0px'
-    lineRef.current.style.bottom = '0px'
-  }, [depth])
+    // Compute segment strictly between avatar circles (no overlap)
+    const av = avatarRef.current.getBoundingClientRect()
+    const row = avatarRef.current.parentElement?.getBoundingClientRect()
+    if (!row) return
+    const r = 14, m = 3
+    const centerLocal = (av.top + av.height/2) - row.top
+    const top = centerLocal - (r + m)
+    const bottom = centerLocal + (r + m)
+    lineRef.current.style.top = `${top}px`
+    lineRef.current.style.bottom = `calc(100% - ${bottom}px)`
+    lineRef.current.style.left = '19px'
+    lineRef.current.style.width = '2px'
+    lineRef.current.style.background = '#4db6ac'
+    lineRef.current.style.borderRadius = '9999px'
+  }, [depth, reply.id])
   const isChild = depth > 0
   return (
     <div className="relative border-b border-white/10 py-2">
@@ -646,9 +657,7 @@ function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDel
         <div className="relative w-10 flex-shrink-0 self-stretch" ref={avatarRef} style={{ zIndex: 1 }}>
           {/* Turquoise connector for child replies */}
           {isChild && (
-            <div className="absolute inset-0 pointer-events-none" style={{ zIndex: 0 }}>
-              <div style={{ position:'absolute', left:14, top:0, bottom:0, width:2, background:'#4db6ac', borderRadius:9999 }} />
-            </div>
+            <div aria-hidden ref={lineRef} className="absolute pointer-events-none" style={{ zIndex: 0 }} />
           )}
           <Avatar username={reply.username} url={reply.profile_picture || undefined} size={28} />
         </div>
