@@ -622,12 +622,19 @@ function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDel
   const inlineFileRef = useRef<HTMLInputElement|null>(null)
   const [isEditing, setIsEditing] = useState(false)
   const [editText, setEditText] = useState(reply.content)
-  // Note: connector uses fixed left offset; keep size constant in Avatar props
+  const hasChildren = reply.children && reply.children.length > 0
   return (
     <div className="relative border-b border-white/10 py-2">
       <div className="relative flex items-start gap-2 px-3">
-        <div className="relative w-10 flex-shrink-0">
+        <div className="relative w-10 flex-shrink-0 self-stretch" style={{ zIndex: 1 }}>
           <Avatar username={reply.username} url={reply.profile_picture || undefined} size={28} />
+          {/* Vertical connector line from avatar to children */}
+          {hasChildren && (
+            <div 
+              className="absolute left-[13px] top-[28px] bottom-0 w-[2px] bg-gradient-to-b from-[#4db6ac]/70 to-[#4db6ac]/20" 
+              style={{ height: 'calc(100% - 28px)' }}
+            />
+          )}
         </div>
         <div className="flex-1 min-w-0 pr-2">
           <div className="flex items-center gap-2">
@@ -739,21 +746,25 @@ function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDel
           ) : null}
         </div>
       </div>
-      {reply.children && reply.children.length ? reply.children.map(ch => (
-        <ReplyNodeMemo
-          key={ch.id}
-          reply={ch}
-          depth={Math.min(depth+1, 3)}
-          currentUser={currentUser}
-          onToggle={onToggle}
-          onInlineReply={onInlineReply}
-          onDelete={onDelete}
-          onPreviewImage={onPreviewImage}
-          inlineSendingFlag={false}
-          communityId={communityId}
-          postId={postId}
-        />
-      )) : null}
+      {reply.children && reply.children.length ? (
+        <div className="relative">
+          {reply.children.map((ch) => (
+            <ReplyNodeMemo
+              key={ch.id}
+              reply={ch}
+              depth={Math.min(depth+1, 3)}
+              currentUser={currentUser}
+              onToggle={onToggle}
+              onInlineReply={onInlineReply}
+              onDelete={onDelete}
+              onPreviewImage={onPreviewImage}
+              inlineSendingFlag={false}
+              communityId={communityId}
+              postId={postId}
+            />
+          ))}
+        </div>
+      ) : null}
     </div>
   )
 }
