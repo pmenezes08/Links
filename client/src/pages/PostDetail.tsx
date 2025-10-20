@@ -633,7 +633,7 @@ function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDel
             <div
               aria-hidden
               className="absolute left-1/2 -translate-x-1/2"
-              style={{ top: -8, bottom: 28, width: 2, background: '#4db6ac' }}
+              style={{ top: -10, bottom: 26, width: 4, background: '#4db6ac', borderRadius: 9999, boxShadow: '0 0 0 1px rgba(77,182,172,0.5) inset, 0 0 8px rgba(77,182,172,0.35)' }}
             />
           )}
           <Avatar username={reply.username} url={reply.profile_picture || undefined} size={28} />
