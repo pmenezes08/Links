@@ -423,6 +423,8 @@ export default function CommunityFeed() {
                 onOpen={() => navigate(`/post/${p.id}`)}
                 onToggleReaction={handleToggleReaction}
                 onPollVote={handlePollVote}
+                communityId={community_id}
+                navigate={navigate}
                 onPollClick={() => navigate(`/community/${community_id}/polls_react`)}
               />
               {/* Dark overlay for all posts except first one during reaction highlight */}
@@ -642,7 +644,7 @@ export default function CommunityFeed() {
 
 // Ad components removed
 
-function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onToggleReaction, onPollVote, onPollClick }: { post: Post & { display_timestamp?: string }, idx: number, currentUser: string, isAdmin: boolean, highlightStep: 'reaction' | 'post' | null, onOpen: ()=>void, onToggleReaction: (postId:number, reaction:string)=>void, onPollVote?: (postId:number, pollId:number, optionId:number)=>void, onPollClick?: ()=>void }) {
+function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onToggleReaction, onPollVote, onPollClick, communityId, navigate }: { post: Post & { display_timestamp?: string }, idx: number, currentUser: string, isAdmin: boolean, highlightStep: 'reaction' | 'post' | null, onOpen: ()=>void, onToggleReaction: (postId:number, reaction:string)=>void, onPollVote?: (postId:number, pollId:number, optionId:number)=>void, onPollClick?: ()=>void, communityId?: string, navigate?: any }) {
   const cardRef = useRef<HTMLDivElement|null>(null)
   const [isEditing, setIsEditing] = useState(false)
   const [editText, setEditText] = useState(post.content)
@@ -835,7 +837,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                 <button 
                   className="ml-auto px-2 py-1 rounded-full text-[#6c757d] hover:text-[#4db6ac]" 
                   title="Edit poll"
-                  onClick={(e)=> { e.preventDefault(); e.stopPropagation(); navigate(`/community/${communityId}/polls_react?edit=${post.poll?.id}`) }}
+                  onClick={(e)=> { e.preventDefault(); e.stopPropagation(); if (navigate && communityId) navigate(`/community/${communityId}/polls_react?edit=${post.poll?.id}`) }}
                 >
                   <i className="fa-regular fa-pen-to-square" />
                 </button>

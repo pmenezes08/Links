@@ -91,25 +91,51 @@ export default function CommunityPolls(){
   }
 
   async function createPoll(){
-    const fd = new URLSearchParams()
-    fd.append('question', question.trim())
-    options.filter(x=> x.trim()).forEach(o => fd.append('options[]', o.trim()))
-    if (community_id) fd.append('community_id', String(community_id))
-    fd.append('single_vote', String(singleVote))
-    if (expiresAt) fd.append('expires_at', expiresAt)
-    const r = await fetch('/create_poll', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
-    const j = await r.json().catch(()=>null)
-    if (j?.success){
-      setSuccessMsg('Poll created')
-      setQuestion('')
-      setOptions(['',''])
-      setSingleVote(true)
-      setExpiresAt('')
-      setActiveTab('active')
-      setTimeout(()=> setSuccessMsg(null), 2000)
-      load()
+    if (editingPollId) {
+      // Edit existing poll
+      const payload = {
+        poll_id: editingPollId,
+        question: question.trim(),
+        options: options.filter(x=> x.trim()).map(o => o.trim())
+      }
+      const r = await fetch('/edit_poll', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(payload) })
+      const j = await r.json().catch(()=>null)
+      if (j?.success){
+        setSuccessMsg('Poll updated')
+        setQuestion('')
+        setOptions(['',''])
+        setSingleVote(true)
+        setExpiresAt('')
+        setEditingPollId(null)
+        setActiveTab('active')
+        setTimeout(()=> setSuccessMsg(null), 2000)
+        navigate(`/community/${community_id}/polls_react`)
+        load()
+      } else {
+        alert(j?.error || 'Failed to update poll')
+      }
     } else {
-      alert(j?.error || 'Failed to create poll')
+      // Create new poll
+      const fd = new URLSearchParams()
+      fd.append('question', question.trim())
+      options.filter(x=> x.trim()).forEach(o => fd.append('options[]', o.trim()))
+      if (community_id) fd.append('community_id', String(community_id))
+      fd.append('single_vote', String(singleVote))
+      if (expiresAt) fd.append('expires_at', expiresAt)
+      const r = await fetch('/create_poll', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
+      const j = await r.json().catch(()=>null)
+      if (j?.success){
+        setSuccessMsg('Poll created')
+        setQuestion('')
+        setOptions(['',''])
+        setSingleVote(true)
+        setExpiresAt('')
+        setActiveTab('active')
+        setTimeout(()=> setSuccessMsg(null), 2000)
+        load()
+      } else {
+        alert(j?.error || 'Failed to create poll')
+      }
     }
   }
 
@@ -186,7 +212,7 @@ export default function CommunityPolls(){
 
         {activeTab === 'create' ? (
           <form ref={formRef} className="rounded-2xl border border-white/10 p-3 bg-white/[0.035] space-y-3" onSubmit={(e)=> { e.preventDefault(); createPoll() }}>
-            <div className="text-sm font-medium">Create Poll</div>
+            <div className="text-sm font-medium">{editingPollId ? 'Edit Poll' : 'Create Poll'}</div>
             <label className="text-xs text-[#9fb0b5]">Question
               <input value={question} onChange={e=> setQuestion(e.target.value)} className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none" placeholder="What should we do?" />
             </label>
@@ -207,8 +233,11 @@ export default function CommunityPolls(){
                 <input type="datetime-local" value={expiresAt} onChange={e=> setExpiresAt(e.target.value)} className="mt-1 w-60 rounded-md bg-black border border-white/10 px-3 py-2 text-sm focus:border-teal-400/70 outline-none" />
               </label>
             </div>
-            <div className="flex justify-end">
-              <button className="px-3 py-1.5 rounded-md bg-[#4db6ac] text-black text-sm hover:brightness-110">Create</button>
+            <div className="flex justify-end gap-2">
+              {editingPollId && (
+                <button type="button" className="px-3 py-1.5 rounded-md border border-white/10 text-sm hover:bg-white/5" onClick={()=> { setEditingPollId(null); setQuestion(''); setOptions(['','']); setSingleVote(true); setExpiresAt(''); navigate(`/community/${community_id}/polls_react`) }}>Cancel</button>
+              )}
+              <button className="px-3 py-1.5 rounded-md bg-[#4db6ac] text-black text-sm hover:brightness-110">{editingPollId ? 'Update' : 'Create'}</button>
             </div>
           </form>
         ) : (
