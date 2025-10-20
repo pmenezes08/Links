@@ -622,7 +622,7 @@ function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDel
   const inlineFileRef = useRef<HTMLInputElement|null>(null)
   const [isEditing, setIsEditing] = useState(false)
   const [editText, setEditText] = useState(reply.content)
-  const isChild = false
+  // connector removed
   return (
     <div className="relative border-b border-white/10 py-2">
       <div className="relative flex items-start gap-2 px-3">
