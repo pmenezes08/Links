@@ -110,6 +110,8 @@ export default function ChatThread(){
   })
   // Track recently sent optimistic messages to prevent poll from removing them
   const recentOptimisticRef = useRef<Map<string, { message: Message; timestamp: number }>>(new Map())
+  // Skip polling while actively sending to prevent race condition
+  const sendingInProgressRef = useRef(false)
 
   // Mic gating by build flag: enable by default in dev; disabled in prod unless VITE_MIC_ENABLED=true
   const envVars: any = (typeof import.meta !== 'undefined' && (import.meta as any).env) || {}
@@ -322,6 +324,12 @@ export default function ChatThread(){
     if (!username || !otherUserId) return
     
     async function poll(){
+      // Skip poll if we're actively sending a message to prevent race condition
+      if (sendingInProgressRef.current) {
+        console.log('Skipping poll - send in progress')
+        return
+      }
+      
       try{
         const fd = new URLSearchParams({ other_user_id: String(otherUserId) })
         const r = await fetch('/get_messages', { 
@@ -502,6 +510,9 @@ export default function ChatThread(){
   function send(){
     if (!otherUserId || !draft.trim() || sending) return
     
+    // Block polling during send to prevent race condition
+    sendingInProgressRef.current = true
+    
     const messageText = draft.trim()
     const now = new Date().toISOString().slice(0,19).replace('T',' ')
     const tempId = `temp_${Date.now()}_${Math.random()}`
@@ -578,16 +589,25 @@ export default function ChatThread(){
         }
         // Keep optimistic bubble until server row arrives
         setMessages(prev => prev.map(m => m.id === tempId ? ({ ...m, isOptimistic: true }) : m))
+        
+        // Allow polling again after brief delay to let state settle
+        setTimeout(() => {
+          sendingInProgressRef.current = false
+        }, 500)
       } else {
         // Mark as retryable instead of removing immediately
         setMessages(prev => prev.map(m => m.id === tempId ? ({ ...m, text: m.text, isOptimistic: true }) : m))
         setDraft(messageText)
+        // Re-enable polling on error
+        setTimeout(() => { sendingInProgressRef.current = false }, 500)
       }
     })
     .catch(()=>{
       // Keep optimistic bubble to avoid flicker; allow resend by tapping send again
       setMessages(prev => prev.map(m => m.id === tempId ? ({ ...m, text: m.text, isOptimistic: true }) : m))
       setDraft(messageText)
+      // Re-enable polling on error
+      setTimeout(() => { sendingInProgressRef.current = false }, 500)
     })
     .finally(() => setSending(false))
   }
