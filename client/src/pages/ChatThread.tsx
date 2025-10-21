@@ -1467,10 +1467,12 @@ export default function ChatThread(){
                       
                       {/* Audio message */}
                       {m.audio_path && !m.image_path ? (
-                        <AudioMessage 
-                          message={m}
-                          audioPath={m.audio_path.startsWith('blob:') ? m.audio_path : `/uploads/${m.audio_path}`}
-                        />
+                        <div className="my-2">
+                          <AudioMessage 
+                            message={m}
+                            audioPath={m.audio_path.startsWith('blob:') ? m.audio_path : `/uploads/${m.audio_path}`}
+                          />
+                        </div>
                       ) : null}
                       {/* Image display with loader */}
                       {m.image_path ? (
@@ -1754,10 +1756,10 @@ export default function ChatThread(){
                     )}
                   </button>
                   
-                  {/* Mic icon - simple like WhatsApp, same size as send button */}
+                  {/* Mic icon - simple like WhatsApp */}
                   {MIC_ENABLED && (
                   <button
-                    className="w-8 h-8 flex items-center justify-center text-white/70 hover:text-white transition-colors"
+                    className="w-9 h-9 flex items-center justify-center text-white/70 hover:text-white transition-colors"
                     onClick={checkMicrophonePermission}
                     onTouchStart={(e) => {
                       try{ e.preventDefault(); e.stopPropagation() }catch{}
@@ -1796,7 +1798,7 @@ export default function ChatThread(){
                       WebkitUserSelect: 'none'
                     }}
                   >
-                    <i className="fa-solid fa-microphone text-[11px]" />
+                    <i className="fa-solid fa-microphone text-lg" />
                   </button>
                   )}
                 </>
@@ -2044,126 +2046,48 @@ export default function ChatThread(){
 }
 
 function AudioMessage({ message, audioPath }: { message: Message; audioPath: string }) {
-  const [duration, setDuration] = useState<number | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [playing, setPlaying] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const audioRef = useRef<HTMLAudioElement>(null)
 
   useEffect(() => {
-    console.log('🎵 AudioMessage - message data:', {
-      id: message.id,
-      audio_duration_seconds: message.audio_duration_seconds,
-      type: typeof message.audio_duration_seconds,
-      text: message.text,
-      audioPath: audioPath,
-      isBlob: audioPath.startsWith('blob:')
-    })
-    
-    // First try to use the duration from the message
-    if (typeof message.audio_duration_seconds === 'number' && message.audio_duration_seconds > 0) {
-      console.log('🎵 Using duration from message:', message.audio_duration_seconds)
-      setDuration(message.audio_duration_seconds)
-      setLoading(false)
-      return
-    }
-
-    // Test if audio file exists (for non-blob URLs)
-    if (!audioPath.startsWith('blob:')) {
-      fetch(audioPath, { method: 'HEAD' })
-        .then(response => {
-          console.log('🎵 Audio file check:', response.status, response.statusText, 'for', audioPath)
-          if (!response.ok) {
-            setError(`Audio file not found (${response.status})`)
-            setLoading(false)
-            return
-          }
-        })
-        .catch(err => {
-          console.error('🎵 Audio file check failed:', err, 'for', audioPath)
-          setError('Audio file not accessible')
-          setLoading(false)
-          return
-        })
-    }
-
-    // If no duration in message, try to get it from the audio element
     const audio = audioRef.current
     if (!audio) return
 
-    const handleLoadedMetadata = () => {
-      if (audio.duration && isFinite(audio.duration)) {
-        console.log('🎵 Got duration from audio element:', audio.duration)
-        setDuration(Math.round(audio.duration))
-        setLoading(false)
-      }
-    }
-
-    const handleError = (e: Event) => {
-      console.error('🎵 Audio loading error:', e, 'src:', audio.src)
-      const target = e.target as HTMLAudioElement
-      let errorMsg = 'Audio file could not be loaded'
-      
-      if (target.error) {
-        switch (target.error.code) {
-          case target.error.MEDIA_ERR_ABORTED:
-            errorMsg = 'Audio loading was aborted'
-            break
-          case target.error.MEDIA_ERR_NETWORK:
-            errorMsg = 'Network error while loading audio'
-            break
-          case target.error.MEDIA_ERR_DECODE:
-            errorMsg = 'Audio file format not supported'
-            break
-          case target.error.MEDIA_ERR_SRC_NOT_SUPPORTED:
-            errorMsg = 'Audio file not found or not supported'
-            break
-        }
-      }
-      
-      setError(errorMsg)
-      setLoading(false)
+    const handleError = () => {
+      console.error('🎵 Audio error:', audioPath)
+      setError('Could not load audio')
     }
 
     const handleCanPlay = () => {
-      console.log('🎵 Audio can play:', audio.src)
-      // Ensure volume is set correctly
-      if (audio.volume === 0) {
-        audio.volume = 1.0
-        console.log('🎵 Fixed volume from 0 to 1.0')
-      }
+      setError(null)
     }
 
-    const handleLoadStart = () => {
-      console.log('🎵 Audio load started:', audio.src)
-    }
-
-    const handlePlay = () => {
-      console.log('🎵 Audio play event - volume:', audio.volume, 'muted:', audio.muted)
-      // Ensure audio context is resumed (required on some mobile browsers)
-      if (typeof window !== 'undefined' && 'AudioContext' in window) {
-        const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
-        if (audioContext.state === 'suspended') {
-          audioContext.resume().then(() => {
-            console.log('🎵 AudioContext resumed for playback')
-          })
-        }
-      }
-    }
-
-    audio.addEventListener('loadedmetadata', handleLoadedMetadata)
     audio.addEventListener('error', handleError)
     audio.addEventListener('canplay', handleCanPlay)
-    audio.addEventListener('loadstart', handleLoadStart)
-    audio.addEventListener('play', handlePlay)
 
     return () => {
-      audio.removeEventListener('loadedmetadata', handleLoadedMetadata)
       audio.removeEventListener('error', handleError)
       audio.removeEventListener('canplay', handleCanPlay)
-      audio.removeEventListener('loadstart', handleLoadStart)
-      audio.removeEventListener('play', handlePlay)
     }
-  }, [message.audio_duration_seconds, audioPath])
+  }, [audioPath])
+
+  const togglePlay = async () => {
+    if (!audioRef.current) return
+    
+    try {
+      if (playing) {
+        audioRef.current.pause()
+        setPlaying(false)
+      } else {
+        await audioRef.current.play()
+        setPlaying(true)
+      }
+    } catch (err) {
+      console.error('🎵 Playback error:', err)
+      setError('Playback failed')
+    }
+  }
 
   const formatDuration = (seconds: number) => {
     const mins = Math.floor(seconds / 60)
@@ -2171,109 +2095,38 @@ function AudioMessage({ message, audioPath }: { message: Message; audioPath: str
     return `${mins}:${String(secs).padStart(2, '0')}`
   }
 
-  const retryAudio = () => {
-    setError(null)
-    setLoading(true)
-    if (audioRef.current) {
-      audioRef.current.load()
-    }
-  }
-
-  const testPlayAudio = async () => {
-    if (!audioRef.current) return
-    
-    try {
-      console.log('🎵 Manual play test - volume:', audioRef.current.volume, 'muted:', audioRef.current.muted)
-      
-      // Ensure volume is up and not muted
-      audioRef.current.volume = 1.0
-      audioRef.current.muted = false
-      
-      // Try to play
-      await audioRef.current.play()
-      console.log('🎵 Manual play successful')
-    } catch (err) {
-      console.error('🎵 Manual play failed:', err)
-      alert('Audio playback failed. Please check your device volume and try again.')
-    }
-  }
-
   return (
-    <div className="mb-2">
-      <div className="bg-gray-800/50 rounded-lg p-3 border border-gray-700/50">
-        <div className="flex items-center gap-2 mb-2">
-          <i className="fa-solid fa-microphone text-[#4db6ac] text-sm" />
-          <span className="text-white/80 text-sm font-medium">Voice Message</span>
-          <div className="ml-auto flex items-center gap-2">
-            {duration !== null ? (
-              <span className="text-xs text-white/60 bg-gray-700/50 px-2 py-1 rounded-full font-mono">
-                {formatDuration(duration)}
-              </span>
-            ) : loading ? (
-              <span className="text-xs text-white/40 bg-gray-700/30 px-2 py-1 rounded-full">
-                --:--
-              </span>
-            ) : error ? (
-              <button 
-                onClick={retryAudio}
-                className="text-xs text-red-400 bg-red-900/30 px-2 py-1 rounded-full hover:bg-red-900/50 transition-colors"
-              >
-                Retry
-              </button>
-            ) : null}
-            
-            {/* Manual play button for troubleshooting */}
-            {!error && duration !== null && (
-              <button
-                onClick={testPlayAudio}
-                className="text-xs text-[#4db6ac] bg-[#4db6ac]/20 px-2 py-1 rounded-full hover:bg-[#4db6ac]/30 transition-colors"
-                title="Test audio playback"
-              >
-                <i className="fa-solid fa-play text-[10px]" />
-              </button>
-            )}
-          </div>
+    <div className="flex items-center gap-2 bg-[#1f3933]/40 rounded-2xl px-3 py-2 border border-[#4db6ac]/20">
+      <button
+        onClick={togglePlay}
+        className="w-8 h-8 rounded-full bg-[#4db6ac] hover:bg-[#45a99c] flex items-center justify-center transition-colors"
+        disabled={!!error}
+      >
+        <i className={`fa-solid ${playing ? 'fa-pause' : 'fa-play'} text-white text-xs`} />
+      </button>
+      
+      <div className="flex-1 flex items-center gap-2">
+        <div className="h-1 bg-white/10 rounded-full flex-1 overflow-hidden">
+          <div className="h-full bg-[#4db6ac]/60 rounded-full transition-all" style={{ width: '0%' }} />
         </div>
-        
-        {error ? (
-          <div className="bg-red-900/20 border border-red-700/30 rounded-lg p-3 text-center">
-            <i className="fa-solid fa-exclamation-triangle text-red-400 mb-2" />
-            <div className="text-red-300 text-sm mb-2">{error}</div>
-            <button 
-              onClick={retryAudio}
-              className="text-xs text-red-400 hover:text-red-300 underline"
-            >
-              Try again
-            </button>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            <audio 
-              ref={audioRef}
-              controls 
-              preload="metadata"
-              className="w-full h-8"
-              playsInline
-              controlsList="nodownload"
-              onPlay={() => console.log('🎵 Audio started playing:', audioPath)}
-              onPause={() => console.log('🎵 Audio paused')}
-              onEnded={() => console.log('🎵 Audio ended')}
-              onVolumeChange={(e) => console.log('🎵 Volume changed:', (e.target as HTMLAudioElement).volume)}
-              onLoadedData={() => console.log('🎵 Audio data loaded')}
-              style={{
-                background: 'transparent',
-                borderRadius: '6px'
-              }}
-            >
-              <source src={audioPath} type="audio/webm" />
-              <source src={audioPath} type="audio/mp4" />
-              <source src={audioPath} type="audio/wav" />
-              <source src={audioPath} type="audio/ogg" />
-              Your browser does not support audio playback.
-            </audio>
-          </div>
-        )}
+        <span className="text-xs text-white/60 font-mono min-w-[32px]">
+          {message.audio_duration_seconds ? formatDuration(message.audio_duration_seconds) : '--:--'}
+        </span>
       </div>
+
+      {error && (
+        <span className="text-xs text-red-400">{error}</span>
+      )}
+
+      <audio
+        ref={audioRef}
+        src={audioPath}
+        preload="metadata"
+        onEnded={() => setPlaying(false)}
+        onPlay={() => setPlaying(true)}
+        onPause={() => setPlaying(false)}
+        className="hidden"
+      />
     </div>
   )
 }
