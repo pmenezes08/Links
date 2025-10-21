@@ -55,6 +55,7 @@ export default function ChatThread(){
   const [messages, setMessages] = useState<Message[]>([])
   const [editingId, setEditingId] = useState<number|string| null>(null)
   const [editText, setEditText] = useState('')
+  const [editingSaving, setEditingSaving] = useState(false)
   const [draft, setDraft] = useState('')
   const [replyTo, setReplyTo] = useState<{ text:string; sender?:string }|null>(null)
   const [sending, setSending] = useState(false)
@@ -144,13 +145,21 @@ export default function ChatThread(){
     const newBody = editText.trim()
     if (!newBody) { alert('Message cannot be empty'); return }
     const prev = messages
+    setEditingSaving(true)
     setMessages(list => list.map(m => m.id===editingId ? ({ ...m, text: newBody, edited_at: new Date().toISOString() }) : m))
-    setEditingId(null); setEditText('')
     try{
       const res = await fetch('/api/chat/edit_message', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ message_id: editingId, text: newBody }) })
       const j = await res.json().catch(()=>null)
-      if (!j?.success){ setMessages(prev) }
-    }catch{ setMessages(prev) }
+      if (!j?.success){
+        alert(j?.error || 'Edit failed')
+        setMessages(prev)
+      } else {
+        setEditingId(null); setEditText('')
+      }
+    }catch{
+      alert('Network error while editing')
+      setMessages(prev)
+    } finally { setEditingSaving(false) }
   }
 
   // Convert URLs in plain text into clickable links
@@ -1392,15 +1401,29 @@ export default function ChatThread(){
                       {/* Text content or editor */}
                       {editingId === m.id ? (
                         <div className="space-y-2">
-                          <textarea
-                            className="w-full bg-black/20 border border-white/20 rounded-lg px-2 py-1 text-sm"
-                            value={editText}
-                            onChange={e=> setEditText(e.target.value)}
-                            rows={3}
-                          />
+                          <div className="flex items-center gap-2 text-xs text-white/60">
+                            <i className="fa-regular fa-pen-to-square" />
+                            <span>Edit message</span>
+                          </div>
+                          <div className="relative group">
+                            <textarea
+                              className="w-full bg-black/30 border border-white/15 rounded-xl px-3 py-2 text-sm pr-10 focus:outline-none focus:border-[#4db6ac] shadow-inner"
+                              value={editText}
+                              onChange={e=> setEditText(e.target.value)}
+                              rows={3}
+                              placeholder="Edit your message..."
+                            />
+                            <button
+                              className={`absolute top-2 right-2 w-8 h-8 rounded-lg flex items-center justify-center ${editingSaving ? 'bg-gray-600 text-gray-300' : 'bg-[#4db6ac] text-black hover:brightness-110'}`}
+                              onClick={editingSaving ? undefined : commitEdit}
+                              disabled={editingSaving}
+                              title="Save"
+                            >
+                              {editingSaving ? <i className="fa-solid fa-spinner fa-spin" /> : <i className="fa-solid fa-check" />}
+                            </button>
+                          </div>
                           <div className="flex gap-2 justify-end">
-                            <button className="px-2 py-1 text-xs bg-white/10 border border-white/20 rounded" onClick={()=> { setEditingId(null); setEditText('') }}>Cancel</button>
-                            <button className="px-2 py-1 text-xs bg-[#4db6ac] text-black rounded" onClick={commitEdit}>Save</button>
+                            <button className="px-3 py-1.5 text-xs bg-white/10 border border-white/20 rounded-lg hover:bg-white/15" onClick={()=> { setEditingId(null); setEditText('') }}>Cancel</button>
                           </div>
                         </div>
                       ) : (
