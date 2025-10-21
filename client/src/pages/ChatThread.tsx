@@ -594,9 +594,6 @@ export default function ChatThread(){
           // Clean up ref
           setTimeout(() => recentOptimisticRef.current.delete(tempId), 1000)
         }
-        
-        // Allow polling again immediately since we've already updated the message
-        sendingInProgressRef.current = false
       } else {
         console.log('❌ Send failed:', j.error)
         // Keep optimistic message, restore draft for retry
