@@ -117,9 +117,9 @@ export default function ChatThread(){
   const envVars: any = (typeof import.meta !== 'undefined' && (import.meta as any).env) || {}
   const micFlag = envVars.VITE_MIC_ENABLED
   const isDev = import.meta.env.DEV
-  const MIC_ENABLED = typeof micFlag !== 'undefined' 
-    ? (micFlag === 'true' || micFlag === true)
-    : isDev  // Enable in dev mode by default
+  
+  // TEMPORARY: Enable mic for testing in develop branch (remove when merging to main)
+  const MIC_ENABLED = true
   
   console.log('🎤 Audio config:', { isDev, micFlag, MIC_ENABLED })
 
