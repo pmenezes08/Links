@@ -369,7 +369,26 @@ export default function ChatThread(){
               // Determine 'sent' strictly from server sender match
               const isSentByMe = m.sender === undefined ? (m.sent === true) : (m.sender === username)
               // If server id maps to a temp id, use the temp id as clientKey for stable React keys
-              const bridgedTemp = idBridgeRef.current.serverToTemp.get(m.id)
+              let bridgedTemp = idBridgeRef.current.serverToTemp.get(m.id)
+              
+              // Fallback: If no bridge mapping exists, try to find matching optimistic message
+              // This handles race condition where poll returns before send response sets up bridge
+              if (!bridgedTemp) {
+                const matchingOpt = optimisticMessages.find(opt => {
+                  if (opt.sent !== isSentByMe) return false
+                  if (opt.text !== messageText) return false
+                  // Check if times are very close (within 5 seconds)
+                  const timeDiff = Math.abs(new Date(m.time).getTime() - new Date(opt.time).getTime())
+                  return timeDiff < 5000
+                })
+                if (matchingOpt) {
+                  bridgedTemp = String(matchingOpt.clientKey || matchingOpt.id)
+                  // Set up bridge mapping for future polls
+                  idBridgeRef.current.serverToTemp.set(m.id, bridgedTemp)
+                  idBridgeRef.current.tempToServer.set(bridgedTemp, m.id)
+                }
+              }
+              
               return {
                 ...m,
                 text: messageText,
@@ -381,47 +400,33 @@ export default function ChatThread(){
               }
             }).filter(Boolean)
             
-            // Keep optimistic messages that don't have a server match yet
-            // Use clientKey for stable matching to avoid flicker
+            // Build a Set of all clientKeys present in server messages for O(1) lookup
+            const serverKeys = new Set()
+            serverMessages.forEach((srv: any) => {
+              const srvKey = srv.clientKey || srv.id
+              serverKeys.add(String(srvKey))
+            })
+            
+            // Filter optimistic: Remove only when server definitely has it
             const remainingOptimistic = optimisticMessages.filter(opt => {
-              // 1) If server already has this exact id, drop optimistic copy
-              const idMatch = serverMessages.some((srv:any) => String(srv.id) === String(opt.id))
-              if (idMatch) return false
-
-              // 2) Check if server message has the same clientKey (more reliable than text/time matching)
-              const optKey = opt.clientKey || opt.id
-              const keyMatch = serverMessages.some((srv:any) => {
-                const srvKey = srv.clientKey || srv.id
-                return String(srvKey) === String(optKey)
-              })
-              if (keyMatch) return false
-
-              // 3) Fallback: For temp_* messages, check for exact text match with very recent server messages
-              // This handles race condition where poll runs before bridge is set up
-              // Only remove if we're confident it's the same message
-              const isTemp = typeof opt.id === 'string' && opt.id.startsWith('temp_')
-              if (isTemp) {
-                const exactMatch = serverMessages.some((srv:any) => {
-                  // Must match: sent status, exact text, and time within 3 seconds
-                  if (srv.sent !== opt.sent || srv.text !== opt.text) return false
-                  const timeDiff = Math.abs(new Date(srv.time).getTime() - new Date(opt.time).getTime())
-                  // Very tight time window and only for very recent messages to avoid false positives
-                  const optAge = Date.now() - new Date(opt.time).getTime()
-                  return timeDiff < 3000 && optAge < 10000 // Only dedupe if message is less than 10s old
-                })
-                if (exactMatch) return false
-              }
-
-              // 4) Keep optimistic around for longer to avoid disappear/reappear
-              const optAge = Date.now() - new Date(opt.time).getTime()
-              if (optAge > 600000) { // 10 minutes safety cap
+              const optKey = String(opt.clientKey || opt.id)
+              
+              // If server has this key, remove optimistic version
+              // React will smoothly reconcile because they share the same key
+              if (serverKeys.has(optKey)) {
                 return false
               }
-
+              
+              // Safety: Remove very old optimistic messages (network failure case)
+              const optAge = Date.now() - new Date(opt.time).getTime()
+              if (optAge > 30000) { // 30 seconds without server confirmation
+                return false
+              }
+              
               return true
             })
             
-            // Combine and sort
+            // Combine and sort - no duplicates because we filtered out matched optimistic messages
             const allMessages = [...serverMessages, ...remainingOptimistic]
             return allMessages.sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime())
           })
@@ -449,10 +454,10 @@ export default function ChatThread(){
     }
     
     // Initial poll after a short delay to let optimistic messages show
-    setTimeout(poll, 250)
+    setTimeout(poll, 500)
     
-    // Poll frequently but not too aggressive to avoid flicker
-    pollTimer.current = setInterval(poll, 1800)
+    // Poll for updates, but not too aggressively to avoid race conditions
+    pollTimer.current = setInterval(poll, 2500)
     
     return () => { 
       if (pollTimer.current) clearInterval(pollTimer.current) 
