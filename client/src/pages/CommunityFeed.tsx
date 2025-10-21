@@ -459,6 +459,7 @@ export default function CommunityFeed() {
                 communityId={community_id}
                 navigate={navigate}
                 onPollClick={() => navigate(`/community/${community_id}/polls_react`)}
+                onOpenVoters={openVoters}
               />
               {/* Dark overlay for all posts except first one during reaction highlight */}
               {highlightStep === 'reaction' && idx !== 0 && (
@@ -711,7 +712,7 @@ export default function CommunityFeed() {
 
 // Ad components removed
 
-function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onToggleReaction, onPollVote, onPollClick, communityId, navigate }: { post: Post & { display_timestamp?: string }, idx: number, currentUser: string, isAdmin: boolean, highlightStep: 'reaction' | 'post' | null, onOpen: ()=>void, onToggleReaction: (postId:number, reaction:string)=>void, onPollVote?: (postId:number, pollId:number, optionId:number)=>void, onPollClick?: ()=>void, communityId?: string, navigate?: any }) {
+function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onToggleReaction, onPollVote, onPollClick, onOpenVoters, communityId, navigate }: { post: Post & { display_timestamp?: string }, idx: number, currentUser: string, isAdmin: boolean, highlightStep: 'reaction' | 'post' | null, onOpen: ()=>void, onToggleReaction: (postId:number, reaction:string)=>void, onPollVote?: (postId:number, pollId:number, optionId:number)=>void, onPollClick?: ()=>void, onOpenVoters?: (pollId:number)=>void, communityId?: string, navigate?: any }) {
   const cardRef = useRef<HTMLDivElement|null>(null)
   const [isEditing, setIsEditing] = useState(false)
   const [editText, setEditText] = useState(post.content)
@@ -914,7 +915,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
               <button 
                 className="ml-1 px-2 py-1 rounded-full text-[#6c757d] hover:text-[#4db6ac]" 
                 title="Voters"
-                onClick={(e)=> { e.preventDefault(); e.stopPropagation(); openVoters(post.poll!.id) }}
+                onClick={(e)=> { e.preventDefault(); e.stopPropagation(); onOpenVoters && onOpenVoters(post.poll!.id) }}
               >
                 <i className="fa-solid fa-users" />
               </button>
@@ -940,7 +941,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
               })}
             </div>
             <div className="flex items-center justify-between text-xs text-[#9fb0b5] pt-1">
-              {(() => { const sv = (post.poll as any)?.single_vote; const isSingle = sv === true || sv === 1 || sv === '1' || sv === 'true'; return isSingle })() && (
+              {(() => { const sv = (post.poll as any)?.single_vote; const isSingle = !(sv === false || sv === 0 || sv === '0' || sv === 'false'); return isSingle })() && (
                 <span>{post.poll.total_votes || 0} {post.poll.total_votes === 1 ? 'vote' : 'votes'}</span>
               )}
               <button 
