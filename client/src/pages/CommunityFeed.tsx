@@ -861,6 +861,13 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                   <i className="fa-regular fa-pen-to-square" />
                 </button>
               )}
+              <button 
+                className="ml-1 px-2 py-1 rounded-full text-[#6c757d] hover:text-[#4db6ac]" 
+                title="Voters"
+                onClick={(e)=> { e.preventDefault(); e.stopPropagation(); if (navigate && communityId) navigate(`/community/${communityId}/polls_react`) }}
+              >
+                <i className="fa-solid fa-users" />
+              </button>
             </div>
             <div className="space-y-2">
               {post.poll.options?.map(option => {
@@ -883,7 +890,9 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
               })}
             </div>
             <div className="flex items-center justify-between text-xs text-[#9fb0b5] pt-1">
-              <span>{post.poll.total_votes || 0} {post.poll.total_votes === 1 ? 'vote' : 'votes'}</span>
+              {post.poll.single_vote !== false && (
+                <span>{post.poll.total_votes || 0} {post.poll.total_votes === 1 ? 'vote' : 'votes'}</span>
+              )}
               <button 
                 type="button"
                 onClick={(e)=> { e.preventDefault(); e.stopPropagation(); if (onPollClick) onPollClick() }}
