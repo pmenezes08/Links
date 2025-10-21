@@ -1629,7 +1629,7 @@ export default function ChatThread(){
               <textarea
                 ref={textareaRef}
                 rows={1}
-                className="flex-1 bg-transparent px-4 py-2.5 text-[16px] text-white placeholder-white/50 outline-none resize-none max-h-24 min-h-[36px]"
+                className="flex-1 bg-transparent px-4 pr-20 py-2.5 text-[16px] text-white placeholder-white/50 outline-none resize-none max-h-24 min-h-[36px]"
                 placeholder="Message"
                 value={draft}
                 onChange={e=> {
