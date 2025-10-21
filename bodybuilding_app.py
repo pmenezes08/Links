@@ -4459,11 +4459,75 @@ def admin_dashboard_api():
             c.execute("SELECT COUNT(*) as count FROM posts")
             total_posts = get_scalar_result(c.fetchone(), column_name='count')
             
+            # Activity windows
+            from datetime import datetime, timedelta
+            today = datetime.utcnow().date()
+            start_of_day = datetime(today.year, today.month, today.day)
+            start_of_30 = start_of_day - timedelta(days=30)
+
+            # DAU/MAU (unique usernames with any activity: post, reaction, vote, or reading timeline)
+            # Reading timeline proxy: community_feed/api hits tracked in community_visit_history
+            def get_unique_between(table, field, ts_field, start_ts):
+                try:
+                    q = f"SELECT DISTINCT {field} FROM {table} WHERE {ts_field} >= ?"
+                    c.execute(q, (start_ts.strftime('%Y-%m-%d %H:%M:%S'),))
+                    rows = c.fetchall() or []
+                    vals = set()
+                    for r in rows:
+                        try:
+                            vals.add(r[field] if hasattr(r, 'keys') else r[0])
+                        except Exception:
+                            pass
+                    return vals
+                except Exception:
+                    return set()
+
+            dau_sets = []
+            mau_sets = []
+            for tbl, user_field, ts_field in (
+                ('posts','username','timestamp'),
+                ('reactions','username','created_at'),
+                ('poll_votes','username','voted_at'),
+                ('community_visit_history','username','visit_time'),
+            ):
+                dau_sets.append(get_unique_between(tbl, user_field, ts_field, start_of_day))
+                mau_sets.append(get_unique_between(tbl, user_field, ts_field, start_of_30))
+
+            dau = len(set().union(*dau_sets))
+            mau = len(set().union(*mau_sets))
+            dau_pct = round((dau / total_users) * 100, 2) if total_users else 0.0
+            mau_pct = round((mau / total_users) * 100, 2) if total_users else 0.0
+
+            # Leaderboards
+            def scalar_list(query, params=()):
+                c.execute(query, params)
+                rows = c.fetchall() or []
+                out = []
+                for r in rows:
+                    if hasattr(r, 'keys'):
+                        out.append({'username': r['username'], 'count': r['cnt']})
+                    else:
+                        out.append({'username': r[0], 'count': r[1]})
+                return out
+
+            top_posters = scalar_list("SELECT username, COUNT(*) as cnt FROM posts GROUP BY username ORDER BY cnt DESC LIMIT 10")
+            top_reactors = scalar_list("SELECT username, COUNT(*) as cnt FROM reactions GROUP BY username ORDER BY cnt DESC LIMIT 10")
+            top_voters = scalar_list("SELECT username, COUNT(*) as cnt FROM poll_votes GROUP BY username ORDER BY cnt DESC LIMIT 10")
+
             stats = {
                 'total_users': total_users,
                 'premium_users': premium_users,
                 'total_communities': total_communities,
-                'total_posts': total_posts
+                'total_posts': total_posts,
+                'dau': dau,
+                'mau': mau,
+                'dau_pct': dau_pct,
+                'mau_pct': mau_pct,
+                'leaderboards': {
+                    'top_posters': top_posters,
+                    'top_reactors': top_reactors,
+                    'top_voters': top_voters,
+                }
             }
             
             # Get users list

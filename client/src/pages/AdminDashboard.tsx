@@ -7,6 +7,15 @@ interface Stats {
   premium_users: number
   total_communities: number
   total_posts: number
+  dau?: number
+  mau?: number
+  dau_pct?: number
+  mau_pct?: number
+  leaderboards?: {
+    top_posters: { username: string; count: number }[]
+    top_reactors: { username: string; count: number }[]
+    top_voters: { username: string; count: number }[]
+  }
 }
 
 interface User {
@@ -396,6 +405,31 @@ export default function AdminDashboard() {
               </div>
             </div>
 
+            {/* Key Metrics */}
+            <div className="bg-white/5 backdrop-blur rounded-xl p-6 border border-white/10">
+              <h3 className="text-lg font-semibold mb-3 text-[#4db6ac]">Key Metrics</h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="bg-white/5 rounded-lg p-3 border border-white/10">
+                  <div className="text-xs text-white/60">DAU</div>
+                  <div className="text-xl font-bold">{stats.dau ?? '—'}</div>
+                  <div className="text-xs text-white/60">{stats.dau_pct != null ? `${stats.dau_pct}% of users` : ''}</div>
+                </div>
+                <div className="bg-white/5 rounded-lg p-3 border border-white/10">
+                  <div className="text-xs text-white/60">MAU</div>
+                  <div className="text-xl font-bold">{stats.mau ?? '—'}</div>
+                  <div className="text-xs text-white/60">{stats.mau_pct != null ? `${stats.mau_pct}% of users` : ''}</div>
+                </div>
+                <div className="bg-white/5 rounded-lg p-3 border border-white/10">
+                  <div className="text-xs text-white/60">Total Users</div>
+                  <div className="text-xl font-bold">{stats.total_users}</div>
+                </div>
+                <div className="bg-white/5 rounded-lg p-3 border border-white/10">
+                  <div className="text-xs text-white/60">Total Communities</div>
+                  <div className="text-xl font-bold">{stats.total_communities}</div>
+                </div>
+              </div>
+            </div>
+
             {/* Stats Grid */}
             <div className="grid grid-cols-2 gap-3">
               <div className="bg-white/5 backdrop-blur rounded-xl p-4 border border-white/10">
@@ -413,6 +447,43 @@ export default function AdminDashboard() {
               <div className="bg-white/5 backdrop-blur rounded-xl p-4 border border-white/10">
                 <div className="text-2xl font-bold text-[#4db6ac]">{stats.total_posts}</div>
                 <div className="text-xs text-white/60 mt-1">Total Posts</div>
+              </div>
+            </div>
+
+            {/* Leaderboards */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="bg-white/5 rounded-lg p-4 border border-white/10">
+                <div className="text-sm font-semibold mb-2">Top Posters</div>
+                <div className="space-y-1 text-sm">
+                  {stats.leaderboards?.top_posters?.length ? stats.leaderboards.top_posters.map((u, i) => (
+                    <div key={u.username} className="flex items-center justify-between">
+                      <span className="text-white/80">{i+1}. {u.username}</span>
+                      <span className="text-white/60">{u.count}</span>
+                    </div>
+                  )) : <div className="text-white/60">No data</div>}
+                </div>
+              </div>
+              <div className="bg-white/5 rounded-lg p-4 border border-white/10">
+                <div className="text-sm font-semibold mb-2">Top Reactors</div>
+                <div className="space-y-1 text-sm">
+                  {stats.leaderboards?.top_reactors?.length ? stats.leaderboards.top_reactors.map((u, i) => (
+                    <div key={u.username} className="flex items-center justify-between">
+                      <span className="text-white/80">{i+1}. {u.username}</span>
+                      <span className="text-white/60">{u.count}</span>
+                    </div>
+                  )) : <div className="text-white/60">No data</div>}
+                </div>
+              </div>
+              <div className="bg-white/5 rounded-lg p-4 border border-white/10">
+                <div className="text-sm font-semibold mb-2">Top Voters</div>
+                <div className="space-y-1 text-sm">
+                  {stats.leaderboards?.top_voters?.length ? stats.leaderboards.top_voters.map((u, i) => (
+                    <div key={u.username} className="flex items-center justify-between">
+                      <span className="text-white/80">{i+1}. {u.username}</span>
+                      <span className="text-white/60">{u.count}</span>
+                    </div>
+                  )) : <div className="text-white/60">No data</div>}
+                </div>
               </div>
             </div>
 
