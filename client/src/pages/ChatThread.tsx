@@ -1651,21 +1651,6 @@ export default function ChatThread(){
             onChange={handleAudioFileChange}
             className="hidden"
           />
-          
-          {/* Recording counter - visible above text box */}
-          {MIC_ENABLED && recording && (
-            <div className="mb-2 flex justify-center">
-              <div className="bg-red-600/90 px-3 py-1.5 rounded-full border border-red-500/40 shadow-md">
-                <div className="flex items-center gap-2">
-                  <span className="inline-block w-2 h-2 bg-white rounded-full animate-pulse" />
-                  <div className="text-white font-mono font-medium text-sm">
-                    {new Date(recordMs).toISOString().substr(14,5)}
-                  </div>
-                  <span className="text-white/90 text-xs">REC</span>
-                </div>
-              </div>
-            </div>
-          )}
 
           {/* Message input container */}
           <div className="flex-1 flex items-center bg-[#1a1a1a] rounded-3xl border border-white/20 overflow-hidden relative">
