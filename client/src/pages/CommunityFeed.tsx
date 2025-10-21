@@ -295,6 +295,8 @@ export default function CommunityFeed() {
         const clickedOption = poll.options.find((opt: any) => opt.id === optionId)
         const hasVotedOnThisOption = clickedOption?.user_voted || false
         
+        const sv = (poll as any)?.single_vote
+        const isSingle = (sv === true || sv === 1 || sv === '1' || sv === 'true')
         const updatedOptions = poll.options.map((opt: any) => {
           if (opt.id === optionId) {
             // Toggle: if already voted, remove vote; otherwise add vote
@@ -305,7 +307,7 @@ export default function CommunityFeed() {
             }
           }
           // If single vote, reduce previous vote when voting on different option
-          if (poll.single_vote !== false && opt.user_voted && opt.id !== optionId) {
+          if (isSingle && opt.user_voted && opt.id !== optionId) {
             return { ...opt, votes: Math.max(0, opt.votes - 1), user_voted: false }
           }
           return opt
@@ -313,7 +315,7 @@ export default function CommunityFeed() {
         
         // Update user_vote for single vote polls
         const newUserVote = hasVotedOnThisOption ? null : optionId
-        return { ...p, poll: { ...poll, options: updatedOptions, user_vote: poll.single_vote !== false ? newUserVote : poll.user_vote } }
+        return { ...p, poll: { ...poll, options: updatedOptions, user_vote: isSingle ? newUserVote : poll.user_vote } }
       })
       return { ...prev, posts: updatedPosts }
     })
