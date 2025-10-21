@@ -4576,9 +4576,9 @@ def admin_dashboard_api():
                         out.append({'username': r[0], 'count': r[1]})
                 return out
 
-            top_posters = scalar_list("SELECT username, COUNT(*) as cnt FROM posts GROUP BY username ORDER BY cnt DESC LIMIT 10")
-            top_reactors = scalar_list("SELECT username, COUNT(*) as cnt FROM reactions GROUP BY username ORDER BY cnt DESC LIMIT 10")
-            top_voters = scalar_list("SELECT username, COUNT(*) as cnt FROM poll_votes GROUP BY username ORDER BY cnt DESC LIMIT 10")
+            top_posters = scalar_list("SELECT username, COUNT(*) as cnt FROM posts WHERE LOWER(username) <> 'admin' GROUP BY username ORDER BY cnt DESC LIMIT 10")
+            top_reactors = scalar_list("SELECT username, COUNT(*) as cnt FROM reactions WHERE LOWER(username) <> 'admin' GROUP BY username ORDER BY cnt DESC LIMIT 10")
+            top_voters = scalar_list("SELECT username, COUNT(*) as cnt FROM poll_votes WHERE LOWER(username) <> 'admin' GROUP BY username ORDER BY cnt DESC LIMIT 10")
 
             stats = {
                 'total_users': total_users,
