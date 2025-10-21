@@ -7292,6 +7292,33 @@ def edit_message_api():
                         c.execute("ALTER TABLE messages ADD COLUMN edited_at TEXT")
             except Exception:
                 pass
+            # Enforce sender and 5-minute edit window
+            c.execute("SELECT sender, timestamp FROM messages WHERE id = ?", (message_id,))
+            row = c.fetchone()
+            if not row:
+                return jsonify({'success': False, 'error': 'Not found'}), 404
+            sender = row['sender'] if hasattr(row, 'keys') else row[0]
+            sent_ts_val = row['timestamp'] if hasattr(row, 'keys') else row[1]
+            if str(sender) != str(username):
+                return jsonify({'success': False, 'error': 'Not permitted'}), 403
+            # Parse timestamp
+            from datetime import datetime as _dt
+            sent_dt = None
+            s = str(sent_ts_val or '')
+            try:
+                sent_dt = _dt.strptime(s[:19].replace('T',' '), '%Y-%m-%d %H:%M:%S')
+            except Exception:
+                for fmt in ('%Y-%m-%d %H:%M', '%Y-%m-%d'):
+                    try:
+                        sent_dt = _dt.strptime(s, fmt)
+                        break
+                    except Exception:
+                        continue
+            if not sent_dt:
+                # If unknown, deny edit to be safe
+                return jsonify({'success': False, 'error': 'Invalid timestamp'}), 400
+            if (_dt.now() - sent_dt).total_seconds() > 5*60:
+                return jsonify({'success': False, 'error': 'Edit window expired'}), 400
             # Update only if sender is current user
             c.execute(
                 "UPDATE messages SET message = ?, edited_at = ? WHERE id = ? AND sender = ?",
