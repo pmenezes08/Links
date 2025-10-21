@@ -116,9 +116,12 @@ export default function ChatThread(){
   // Mic gating by build flag: enable by default in dev; disabled in prod unless VITE_MIC_ENABLED=true
   const envVars: any = (typeof import.meta !== 'undefined' && (import.meta as any).env) || {}
   const micFlag = envVars.VITE_MIC_ENABLED
+  const isDev = import.meta.env.DEV
   const MIC_ENABLED = typeof micFlag !== 'undefined' 
     ? (micFlag === 'true' || micFlag === true)
-    : Boolean(envVars.DEV)
+    : isDev  // Enable in dev mode by default
+  
+  console.log('🎤 Audio config:', { isDev, micFlag, MIC_ENABLED })
 
   // Date formatting functions
   function formatDateLabel(dateStr: string): string {
