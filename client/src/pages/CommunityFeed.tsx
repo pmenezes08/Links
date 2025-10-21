@@ -8,8 +8,8 @@ import VideoEmbed from '../components/VideoEmbed'
 import { extractVideoEmbed, removeVideoUrlFromText } from '../utils/videoEmbed'
 import { renderTextWithLinks, detectLinks, replaceLinkInText, type DetectedLink } from '../utils/linkUtils.tsx'
 
-type PollOption = { id: number; text: string; votes: number }
-type Poll = { id: number; question: string; is_active: number; options: PollOption[]; user_vote: number|null; total_votes: number }
+type PollOption = { id: number; text: string; votes: number; user_voted?: boolean }
+type Poll = { id: number; question: string; is_active: number; options: PollOption[]; user_vote: number|null; total_votes: number; single_vote?: boolean }
 type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null, profile_picture?: string|null }
 type Post = { id: number; username: string; content: string; image_path?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; poll?: Poll|null; replies: Reply[], profile_picture?: string|null, is_starred?: boolean, is_community_starred?: boolean }
 
@@ -284,24 +284,29 @@ export default function CommunityFeed() {
         if (p.id !== postId || !p.poll) return p
         const poll = p.poll
         
-        // Check if user already voted on this specific option (for toggle behavior)
-        const hasVotedOnThisOption = poll.user_vote === optionId
+        // Find the option being clicked
+        const clickedOption = poll.options.find((opt: any) => opt.id === optionId)
+        const hasVotedOnThisOption = clickedOption?.user_voted || false
         
-        const updatedOptions = poll.options.map((opt: PollOption) => {
+        const updatedOptions = poll.options.map((opt: any) => {
           if (opt.id === optionId) {
             // Toggle: if already voted, remove vote; otherwise add vote
-            return { ...opt, votes: hasVotedOnThisOption ? Math.max(0, opt.votes - 1) : opt.votes + 1 }
+            return { 
+              ...opt, 
+              votes: hasVotedOnThisOption ? Math.max(0, opt.votes - 1) : opt.votes + 1,
+              user_voted: !hasVotedOnThisOption 
+            }
           }
           // If single vote, reduce previous vote when voting on different option
-          if (poll.single_vote !== false && poll.user_vote && opt.id === poll.user_vote && poll.user_vote !== optionId) {
-            return { ...opt, votes: Math.max(0, opt.votes - 1) }
+          if (poll.single_vote !== false && opt.user_voted && opt.id !== optionId) {
+            return { ...opt, votes: Math.max(0, opt.votes - 1), user_voted: false }
           }
           return opt
         })
         
-        // Update user_vote: if toggling off, set to null; otherwise set to optionId
+        // Update user_vote for single vote polls
         const newUserVote = hasVotedOnThisOption ? null : optionId
-        return { ...p, poll: { ...poll, options: updatedOptions, user_vote: newUserVote } }
+        return { ...p, poll: { ...poll, options: updatedOptions, user_vote: poll.single_vote !== false ? newUserVote : poll.user_vote } }
       })
       return { ...prev, posts: updatedPosts }
     })
@@ -856,7 +861,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
             <div className="space-y-2">
               {post.poll.options?.map(option => {
                 const percentage = post.poll?.total_votes ? Math.round((option.votes / post.poll.total_votes) * 100) : 0
-                const isUserVote = post.poll?.user_vote === option.id
+                const isUserVote = option.user_voted || false
                 return (
                   <button
                     key={option.id}

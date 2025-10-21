@@ -3451,9 +3451,13 @@ def api_community_group_feed(parent_id: int):
                                 opt['votes'] = vote_count['count'] if vote_count else 0
                                 # Rename option_text to text for frontend compatibility
                                 opt['text'] = opt.get('option_text', '')
+                                # Check if current user voted on this specific option
+                                c.execute("SELECT COUNT(*) as count FROM poll_votes WHERE poll_id = ? AND option_id = ? AND username = ?", (poll['id'], opt['id'], username))
+                                user_vote_check = c.fetchone()
+                                opt['user_voted'] = (user_vote_check['count'] if user_vote_check else 0) > 0
                             
                             poll['options'] = options
-                            # Current user's vote
+                            # Current user's vote (for single vote polls - keeps first one found)
                             c.execute("SELECT option_id FROM poll_votes WHERE poll_id = ? AND username = ?", (poll['id'], username))
                             uv = c.fetchone()
                             poll['user_vote'] = uv['option_id'] if uv else None
@@ -3529,9 +3533,13 @@ def api_community_group_feed(parent_id: int):
                                 opt['votes'] = vote_count['count'] if vote_count else 0
                                 # Rename option_text to text for frontend compatibility
                                 opt['text'] = opt.get('option_text', '')
+                                # Check if current user voted on this specific option
+                                c.execute("SELECT COUNT(*) as count FROM poll_votes WHERE poll_id = ? AND option_id = ? AND username = ?", (poll['id'], opt['id'], username))
+                                user_vote_check = c.fetchone()
+                                opt['user_voted'] = (user_vote_check['count'] if user_vote_check else 0) > 0
                             
                             poll['options'] = options
-                            # Current user's vote
+                            # Current user's vote (for single vote polls - keeps first one found)
                             c.execute("SELECT option_id FROM poll_votes WHERE poll_id = ? AND username = ?", (poll['id'], username))
                             uv = c.fetchone()
                             poll['user_vote'] = uv['option_id'] if uv else None
