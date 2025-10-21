@@ -1181,22 +1181,6 @@ export default function ChatThread(){
     event.target.value = ''
   }
 
-  function handleMicClick(e: React.MouseEvent | React.TouchEvent){
-    console.log('🎤 Mic button clicked, recording:', recording, 'mobile:', isMobile)
-    try{ e.preventDefault(); e.stopPropagation() }catch{}
-    if (suppressClickRef.current) {
-      // Suppress click caused by touchend
-      suppressClickRef.current = false
-      return
-    }
-    if (recording) {
-      console.log('🎤 Click stop (no lock)')
-      stopRecording()
-    } else {
-      checkMicrophonePermission()
-    }
-  }
-
   async function checkMicrophonePermission() {
     try {
       // Check current permission state
@@ -1687,7 +1671,7 @@ export default function ChatThread(){
           <div className="flex-1 flex items-center bg-[#1a1a1a] rounded-3xl border border-white/20 overflow-hidden relative">
             {/* Recording sound bar - replaces text input during recording */}
             {MIC_ENABLED && recording && (
-              <div className="flex-1 flex items-center px-4 py-2.5 gap-3">
+              <div className="flex-1 flex items-center px-4 py-2.5 gap-3 pr-16">
                 <div className="flex items-center gap-3 flex-1">
                   <span className="inline-block w-2 h-2 bg-red-500 rounded-full animate-pulse" />
                   <div className="flex-1 h-6 bg-gray-800/80 rounded-full flex items-center justify-center px-2 gap-0.5 relative overflow-hidden">
@@ -1748,87 +1732,95 @@ export default function ChatThread(){
               />
             )}
             
-            {/* Mic + Send */}
+            {/* Mic + Send - Conditional based on recording state */}
             <div className="absolute right-2 top-1/2 transform -translate-y-1/2 flex items-center gap-2">
-              {/* Send button first */}
-              <button
-                className={`w-8 h-8 rounded-full flex items-center justify-center transition-all duration-200 ease-out ${
-                  sending 
-                    ? 'bg-gray-600 text-gray-300 cursor-not-allowed' 
-                    : draft.trim()
-                      ? 'bg-[#4db6ac] text-black hover:bg-[#45a99c] hover:scale-105 active:scale-95'
-                      : 'bg-white/20 text-white/70 cursor-not-allowed'
-                }`}
-                onClick={draft.trim() ? send : undefined}
-                disabled={sending || !draft.trim()}
-                aria-label="Send"
-                style={{
-                  transform: 'scale(1)',
-                  transition: 'all 0.15s cubic-bezier(0.4, 0, 0.2, 1)'
-                }}
-              >
-                {sending ? (
-                  <i className="fa-solid fa-spinner fa-spin text-[11px]" />
-                ) : (
-                  <i className="fa-solid fa-paper-plane text-[11px]" />
-                )}
-              </button>
-              {/* Mic button to the right of Send and outside textbox area */}
-              {MIC_ENABLED && (
-              <button
-                className={`w-10 h-10 md:w-8 md:h-8 rounded-full flex items-center justify-center transition-all duration-200 ease-out ${
-                  recording 
-                    ? 'bg-red-600 text-white scale-105 shadow-lg shadow-red-500/50 animate-pulse' 
-                    : 'bg-[#4db6ac] text-white hover:bg-[#45a99c] hover:scale-105 active:scale-95 shadow-md'
-                }`}
-                onClick={handleMicClick}
-                onTouchStart={(e) => {
-                  try{ e.preventDefault(); e.stopPropagation() }catch{}
-                  suppressClickRef.current = true
-                  touchStartYRef.current = (e.touches && e.touches[0]?.clientY) || null
-                  setShowLockHint(true)
-                  if (!recording) checkMicrophonePermission()
-                }}
-                onTouchMove={(e) => {
-                  try{ e.preventDefault(); e.stopPropagation() }catch{}
-                  const startY = touchStartYRef.current
-                  if (startY == null) return
-                  const dy = startY - (e.touches && e.touches[0]?.clientY || startY)
-                  // Lock when user swipes up by 40px
-                  const shouldLock = dy > 40
-                  if (shouldLock && !lockActiveRef.current) {
-                    lockActiveRef.current = true
-                    setRecordLockActive(true)
-                    setShowLockHint(false)
-                    console.log('🔒 Recording locked')
-                  }
-                }}
-                onTouchEnd={(e) => {
-                  try{ e.preventDefault(); e.stopPropagation() }catch{}
-                  // If locked, do not stop; user must press stop icon
-                  if (!lockActiveRef.current) {
-                    console.log('🛑 Touch end - stopping (no lock)')
-                    stopRecording()
-                  }
-                  // reset gesture state
-                  touchStartYRef.current = null
-                  setShowLockHint(false)
-                  // leave lockActiveRef as-is; cleared when finalize
-                  suppressClickRef.current = false
-                }}
-                aria-label="Voice message"
-                title={recording ? "Tap to stop recording" : "Tap to start recording"}
-                style={{
-                  touchAction: 'manipulation',
-                  WebkitTapHighlightColor: 'transparent',
-                  userSelect: 'none',
-                  WebkitUserSelect: 'none'
-                }}
-              >
-                <i className={`fa-solid ${
-                  recording && !recordLockActive ? 'fa-stop' : 'fa-microphone'
-                } text-[13px]`} />
-              </button>
+              {/* When recording: Show STOP button (large, red, clear) */}
+              {MIC_ENABLED && recording ? (
+                <button
+                  className="w-12 h-12 rounded-full flex items-center justify-center bg-red-600 text-white hover:bg-red-700 active:scale-95 transition-all duration-200 shadow-lg"
+                  onClick={stopRecording}
+                  aria-label="Stop recording"
+                  title="Stop recording"
+                >
+                  <i className="fa-solid fa-stop text-lg" />
+                </button>
+              ) : (
+                <>
+                  {/* Send button - only show when NOT recording */}
+                  <button
+                    className={`w-8 h-8 rounded-full flex items-center justify-center transition-all duration-200 ease-out ${
+                      sending 
+                        ? 'bg-gray-600 text-gray-300 cursor-not-allowed' 
+                        : draft.trim()
+                          ? 'bg-[#4db6ac] text-black hover:bg-[#45a99c] hover:scale-105 active:scale-95'
+                          : 'bg-white/20 text-white/70 cursor-not-allowed'
+                    }`}
+                    onClick={draft.trim() ? send : undefined}
+                    disabled={sending || !draft.trim()}
+                    aria-label="Send"
+                    style={{
+                      transform: 'scale(1)',
+                      transition: 'all 0.15s cubic-bezier(0.4, 0, 0.2, 1)'
+                    }}
+                  >
+                    {sending ? (
+                      <i className="fa-solid fa-spinner fa-spin text-[11px]" />
+                    ) : (
+                      <i className="fa-solid fa-paper-plane text-[11px]" />
+                    )}
+                  </button>
+                  
+                  {/* Mic button - only show when NOT recording */}
+                  {MIC_ENABLED && (
+                      <button
+                    className="w-10 h-10 md:w-8 md:h-8 rounded-full flex items-center justify-center transition-all duration-200 ease-out bg-[#4db6ac] text-white hover:bg-[#45a99c] hover:scale-105 active:scale-95 shadow-md"
+                    onClick={checkMicrophonePermission}
+                    onTouchStart={(e) => {
+                      try{ e.preventDefault(); e.stopPropagation() }catch{}
+                      suppressClickRef.current = true
+                      touchStartYRef.current = (e.touches && e.touches[0]?.clientY) || null
+                      setShowLockHint(true)
+                      checkMicrophonePermission()
+                    }}
+                    onTouchMove={(e) => {
+                      try{ e.preventDefault(); e.stopPropagation() }catch{}
+                      const startY = touchStartYRef.current
+                      if (startY == null) return
+                      const dy = startY - (e.touches && e.touches[0]?.clientY || startY)
+                      // Lock when user swipes up by 40px
+                      const shouldLock = dy > 40
+                      if (shouldLock && !lockActiveRef.current) {
+                        lockActiveRef.current = true
+                        setRecordLockActive(true)
+                        setShowLockHint(false)
+                        console.log('🔒 Recording locked')
+                      }
+                    }}
+                    onTouchEnd={(e) => {
+                      try{ e.preventDefault(); e.stopPropagation() }catch{}
+                      // If locked, do not stop; user must press stop button
+                      if (!lockActiveRef.current && recording) {
+                        console.log('🛑 Touch end - stopping (no lock)')
+                        stopRecording()
+                      }
+                      // reset gesture state
+                      touchStartYRef.current = null
+                      setShowLockHint(false)
+                      suppressClickRef.current = false
+                    }}
+                    aria-label="Voice message"
+                    title="Tap and hold to record"
+                    style={{
+                      touchAction: 'manipulation',
+                      WebkitTapHighlightColor: 'transparent',
+                      userSelect: 'none',
+                      WebkitUserSelect: 'none'
+                    }}
+                  >
+                    <i className="fa-solid fa-microphone text-[13px]" />
+                  </button>
+                  )}
+                </>
               )}
               {MIC_ENABLED && showLockHint && !recordLockActive && (
                 <div className="absolute right-14 -top-4 bg-white/10 text-white text-[10px] px-2 py-1 rounded-md border border-white/20">
