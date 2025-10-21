@@ -10641,10 +10641,12 @@ def edit_poll():
         poll_id = data.get('poll_id')
         question = data.get('question', '').strip()
         options = data.get('options', [])
+        expires_at_raw = (data.get('expires_at') or '').strip() if isinstance(data.get('expires_at'), str) else ''
     else:
         poll_id = request.form.get('poll_id', type=int)
         question = request.form.get('question', '').strip()
         options = request.form.getlist('options[]')
+        expires_at_raw = request.form.get('expires_at', '').strip()
     
     if not poll_id or not question:
         return jsonify({'success': False, 'error': 'Poll ID and question are required'})
@@ -10694,8 +10696,24 @@ def edit_poll():
             if not allowed:
                 return jsonify({'success': False, 'error': 'You do not have permission to edit this poll'})
             
-            # Update poll question
-            c.execute("UPDATE polls SET question = ? WHERE id = ?", (question, poll_id))
+            # Parse optional deadline
+            expires_at_sql = None
+            if expires_at_raw:
+                try:
+                    if 'T' in expires_at_raw:
+                        dt = datetime.strptime(expires_at_raw, '%Y-%m-%dT%H:%M')
+                    else:
+                        dt = datetime.strptime(expires_at_raw, '%Y-%m-%d')
+                    expires_at_sql = dt.strftime('%Y-%m-%d %H:%M:%S')
+                except Exception:
+                    expires_at_sql = None
+
+            # Update poll question and optional expires_at (if column exists)
+            try:
+                c.execute("UPDATE polls SET question = ?, expires_at = ? WHERE id = ?", (question, expires_at_sql, poll_id))
+            except Exception:
+                # Fallback for schemas without expires_at column
+                c.execute("UPDATE polls SET question = ? WHERE id = ?", (question, poll_id))
             
             # Get existing options
             c.execute("SELECT id, option_text FROM poll_options WHERE poll_id = ? ORDER BY id", (poll_id,))

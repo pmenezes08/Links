@@ -55,6 +55,21 @@ export default function CommunityPolls(){
         setQuestion(poll.question)
         setOptions(poll.options.map(o => o.option_text))
         setSingleVote(poll.single_vote ?? true)
+        // Prefill expiry if present
+        try {
+          const raw = (poll as any).expires_at as string | undefined
+          if (raw) {
+            const d = new Date(raw)
+            if (!isNaN(d.getTime())) {
+              const tz = new Date(d.getTime() - d.getTimezoneOffset() * 60000)
+              setExpiresAt(tz.toISOString().slice(0,16))
+            } else {
+              setExpiresAt('')
+            }
+          } else {
+            setExpiresAt('')
+          }
+        } catch { setExpiresAt('') }
       }
     }
   }, [searchParams, polls])
@@ -100,7 +115,8 @@ export default function CommunityPolls(){
       const payload = {
         poll_id: editingPollId,
         question: question.trim(),
-        options: options.filter(x=> x.trim()).map(o => o.trim())
+        options: options.filter(x=> x.trim()).map(o => o.trim()),
+        expires_at: expiresAt
       }
       const r = await fetch('/edit_poll', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(payload) })
       const j = await r.json().catch(()=>null)
