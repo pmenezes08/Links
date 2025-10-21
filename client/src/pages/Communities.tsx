@@ -755,12 +755,14 @@ function ParentTimeline({ parentId }:{ parentId:number }){
                                   const poll = it.poll
                                   const clicked = poll.options.find((o:any)=> o.id===option.id)
                                   const hasVoted = clicked?.user_voted || false
+                                  const sv = (poll as any)?.single_vote
+                                  const isSingle = (sv === true || sv === 1 || sv === '1' || sv === 'true')
                                   const nextOpts = poll.options.map((o:any)=> {
                                     if (o.id === option.id){ return { ...o, votes: hasVoted ? Math.max(0, o.votes-1) : o.votes+1, user_voted: !hasVoted } }
-                                    if (poll.single_vote !== false && o.user_voted){ return { ...o, votes: Math.max(0, o.votes-1), user_voted: false } }
+                                    if (isSingle && o.user_voted){ return { ...o, votes: Math.max(0, o.votes-1), user_voted: false } }
                                     return o
                                   })
-                                  const newUserVote = (poll.single_vote !== false) ? (hasVoted ? null : option.id) : poll.user_vote
+                                  const newUserVote = isSingle ? (hasVoted ? null : option.id) : poll.user_vote
                                   const totalVotes = nextOpts.reduce((a:number,b:any)=> a + (b.votes||0), 0)
                                   return { ...it, poll: { ...poll, options: nextOpts, user_vote: newUserVote, total_votes: totalVotes } }
                                 }))
