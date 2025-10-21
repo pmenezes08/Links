@@ -746,7 +746,42 @@ function ParentTimeline({ parentId }:{ parentId:number }){
                             key={option.id}
                             type="button"
                             className={`w-full text-left px-3 py-2 rounded-lg border relative overflow-hidden ${isUserVote ? 'border-[#4db6ac] bg-[#4db6ac]/10' : 'border-white/10 hover:bg-white/5'}`}
-                            onClick={(e)=> { e.preventDefault(); e.stopPropagation(); handlePollVote(p.id, p.poll!.id, option.id) }}
+                            onClick={async (e)=> { 
+                              e.preventDefault(); e.stopPropagation();
+                              try{
+                                // Optimistic update
+                                setPosts(list => list.map(it => {
+                                  if (it.id !== p.id || !it.poll) return it
+                                  const poll = it.poll
+                                  const clicked = poll.options.find((o:any)=> o.id===option.id)
+                                  const hasVoted = clicked?.user_voted || false
+                                  const nextOpts = poll.options.map((o:any)=> {
+                                    if (o.id === option.id){ return { ...o, votes: hasVoted ? Math.max(0, o.votes-1) : o.votes+1, user_voted: !hasVoted } }
+                                    if (poll.single_vote !== false && o.user_voted){ return { ...o, votes: Math.max(0, o.votes-1), user_voted: false } }
+                                    return o
+                                  })
+                                  const newUserVote = (poll.single_vote !== false) ? (hasVoted ? null : option.id) : poll.user_vote
+                                  const totalVotes = nextOpts.reduce((a:number,b:any)=> a + (b.votes||0), 0)
+                                  return { ...it, poll: { ...poll, options: nextOpts, user_vote: newUserVote, total_votes: totalVotes } }
+                                }))
+                                // Server
+                                const res = await fetch('/vote_poll', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ poll_id: p.poll!.id, option_id: option.id }) })
+                                const j = await res.json().catch(()=>null)
+                                if (j?.success && Array.isArray(j.poll_results)){
+                                  setPosts(list => list.map(it => {
+                                    if (it.id !== p.id || !it.poll) return it
+                                    const rows = j.poll_results as Array<any>
+                                    const newOpts = it.poll.options.map((o:any)=> {
+                                      const row = rows.find(r => r.id === o.id)
+                                      return row ? { ...o, votes: row.votes, user_voted: !!row.user_voted } : o
+                                    })
+                                    const newUserVote = typeof rows[0]?.user_vote !== 'undefined' ? (rows[0].user_vote || null) : it.poll.user_vote
+                                    const totalVotes = rows[0]?.total_votes ?? newOpts.reduce((a:number, b:any) => a + (b.votes||0), 0)
+                                    return { ...it, poll: { ...it.poll, options: newOpts, user_vote: newUserVote, total_votes: totalVotes } }
+                                  }))
+                                }
+                              }catch{}
+                            }}
                           >
                             <div className="absolute inset-0 bg-[#4db6ac]/20" style={{ width: `${percentage}%`, transition: 'width 0.3s ease' }} />
                             <div className="relative flex items-center justify-between">
