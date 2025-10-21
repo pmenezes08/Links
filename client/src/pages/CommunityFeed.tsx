@@ -202,15 +202,7 @@ export default function CommunityFeed() {
     }catch{}
   }
 
-  async function openVoters(pollId: number){
-    try{
-      setViewingVotersPollId(pollId)
-      setVotersLoading(true)
-      const r = await fetch(`/get_poll_voters/${pollId}`, { credentials:'include' })
-      const j = await r.json().catch(()=>null)
-      if (j?.success){ setVotersData(j.options || []) } else { setVotersData([]) }
-    } finally { setVotersLoading(false) }
-  }
+  // inline voters loader lives in onClick handler below
 
   async function saveAnnouncement(){
     if (!community_id) return
@@ -245,7 +237,15 @@ export default function CommunityFeed() {
     }catch{}
   }
 
-  // voters helpers removed after inlining
+  async function openVoters(pollId: number){
+    try{
+      setViewingVotersPollId(pollId)
+      setVotersLoading(true)
+      const r = await fetch(`/get_poll_voters/${pollId}`, { credentials:'include' })
+      const j = await r.json().catch(()=>null)
+      if (j?.success){ setVotersData(j.options || []) } else { setVotersData([]) }
+    } finally { setVotersLoading(false) }
+  }
 
   async function handleToggleReaction(postId: number, reaction: string){
     // Optimistic update: toggle user reaction and adjust counts immediately
