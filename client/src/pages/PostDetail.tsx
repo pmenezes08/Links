@@ -624,7 +624,7 @@ function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDel
   const [editText, setEditText] = useState(reply.content)
   const hasChildren = reply.children && reply.children.length > 0
   return (
-    <div className="relative border-b border-white/10 py-2">
+    <div className="relative py-2">
       <div className="relative flex items-start gap-2 px-3">
         <div className="relative w-10 flex-shrink-0 self-stretch" style={{ zIndex: 1 }}>
           <Avatar username={reply.username} url={reply.profile_picture || undefined} size={28} />
