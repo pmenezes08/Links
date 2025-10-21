@@ -17,6 +17,7 @@ interface Message {
   replySnippet?: string
   isOptimistic?: boolean // Track if this is an optimistic update
   edited_at?: string | null
+  clientKey?: string | number
 }
 
 export default function ChatThread(){
@@ -102,6 +103,11 @@ export default function ChatThread(){
   const [showPermissionGuide, setShowPermissionGuide] = useState(false)
   const lastFetchTime = useRef<number>(0)
   const pendingDeletions = useRef<Set<number|string>>(new Set())
+  // Bridge between temp ids and server ids to avoid flicker and keep stable keys
+  const idBridgeRef = useRef<{ tempToServer: Map<string, string|number>; serverToTemp: Map<string|number, string> }>({
+    tempToServer: new Map(),
+    serverToTemp: new Map(),
+  })
 
   // Mic gating by build flag: enable by default in dev; disabled in prod unless VITE_MIC_ENABLED=true
   const envVars: any = (typeof import.meta !== 'undefined' && (import.meta as any).env) || {}
@@ -360,12 +366,18 @@ export default function ChatThread(){
               const k = `${m.time}|${messageText}|${m.sent ? 'me' : 'other'}`
               const meta = metaRef.current[k] || {}
               
+              // Determine 'sent' strictly from server sender match
+              const isSentByMe = m.sender === undefined ? (m.sent === true) : (m.sender === username)
+              // If server id maps to a temp id, use the temp id as clientKey for stable React keys
+              const bridgedTemp = idBridgeRef.current.serverToTemp.get(m.id)
               return {
                 ...m,
                 text: messageText,
+                sent: isSentByMe,
                 reaction: existing?.reaction ?? meta.reaction,
                 replySnippet: replySnippet || existing?.replySnippet || meta.replySnippet,
-                isOptimistic: false
+                isOptimistic: false,
+                clientKey: bridgedTemp || m.id
               }
             }).filter(Boolean)
             
@@ -477,7 +489,7 @@ export default function ChatThread(){
     setSending(true)
     
     // Add optimistic message immediately
-    setMessages(prev => [...prev, optimisticMessage])
+    setMessages(prev => [...prev, { ...optimisticMessage, clientKey: tempId }])
     
     // Force scroll to bottom for sent messages
     setTimeout(scrollToBottom, 50)
@@ -508,16 +520,13 @@ export default function ChatThread(){
           headers:{ 'Content-Type':'application/json' }, 
           body: JSON.stringify({ peer: username, is_typing: false }) 
         }).catch(()=>{})
-        // Replace optimistic bubble immediately with server-confirmed data if present
+        // Map tempId -> server id so reconciliation can swap without flicker
         if (j.message_id){
-          const confirmedId = j.message_id
-          const confirmedTime = j.time || new Date().toISOString().slice(0,19).replace('T',' ')
-          // Keep as optimistic until poll confirms to avoid disappear/reappear flicker
-          setMessages(prev => prev.map(m => m.id === tempId ? ({ ...m, id: confirmedId, time: confirmedTime, isOptimistic: true }) : m))
-        } else {
-          // Keep optimistic until server list includes it
-          setMessages(prev => prev.map(m => m.id === tempId ? ({ ...m, isOptimistic: true }) : m))
+          idBridgeRef.current.tempToServer.set(tempId, j.message_id)
+          idBridgeRef.current.serverToTemp.set(j.message_id, tempId)
         }
+        // Keep optimistic bubble until server row arrives
+        setMessages(prev => prev.map(m => m.id === tempId ? ({ ...m, isOptimistic: true }) : m))
       } else {
         // Mark as retryable instead of removing immediately
         setMessages(prev => prev.map(m => m.id === tempId ? ({ ...m, text: m.text, isOptimistic: true }) : m))
@@ -1345,7 +1354,7 @@ export default function ChatThread(){
           const showDateSeparator = messageDate !== prevMessageDate
           
           return (
-            <div key={m.id}>
+            <div key={m.clientKey ?? m.id}>
               {showDateSeparator && (
                 <div className="flex justify-center my-4">
                   <div className="bg-black/60 backdrop-blur-sm px-3 py-1 rounded-lg text-xs text-white/70 border border-white/10">
