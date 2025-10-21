@@ -7193,7 +7193,7 @@ def get_messages():
     if not other_user_id:
         return jsonify({'success': False, 'error': 'Other user ID required'})
     
-    # Short-lived cache to reduce DB latency (safe to enable; invalidated on write)
+    # Short-lived cache to reduce DB latency (viewer-specific; invalidated on write)
     cache_key = None
     try:
         # Resolve other username for stable key
@@ -7203,8 +7203,8 @@ def get_messages():
             _row = _c.fetchone()
             if _row:
                 other_username_for_key = _row['username'] if hasattr(_row, 'keys') else _row[0]
-                from redis_cache import messages_cache_key
-                cache_key = messages_cache_key(username, other_username_for_key)
+                from redis_cache import messages_view_cache_key
+                cache_key = messages_view_cache_key(username, other_username_for_key)
     except Exception:
         cache_key = None
     if cache_key:
