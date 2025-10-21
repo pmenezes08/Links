@@ -373,7 +373,7 @@ export default function AdminDashboard() {
                 </div>
 
                 <div className="flex-1">
-                  <div className="grid grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 gap-3">
                     <div className="bg-white/5 rounded-lg p-3 border border-white/10">
                       <div className="text-sm font-medium mb-1">Logo Status</div>
                       <div className="text-xs">
@@ -382,14 +382,6 @@ export default function AdminDashboard() {
                         {logoStatus === 'success' && !currentLogo && <span className="text-yellow-400">Not Set</span>}
                         {logoStatus === 'error' && <span className="text-red-400">Error</span>}
                       </div>
-                    </div>
-                    <div className="bg-white/5 rounded-lg p-3 border border-white/10">
-                      <div className="text-sm font-medium mb-1">Supported Formats</div>
-                      <div className="text-xs text-white/60">PNG, JPG, SVG, WEBP</div>
-                    </div>
-                    <div className="bg-white/5 rounded-lg p-3 border border-white/10">
-                      <div className="text-sm font-medium mb-1">Size Limit</div>
-                      <div className="text-xs text-white/60">Max 200×100px</div>
                     </div>
                   </div>
                   <div className="mt-3">
