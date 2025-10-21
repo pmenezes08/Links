@@ -117,10 +117,10 @@ export default function ChatThread(){
   const micFlag = envVars.VITE_MIC_ENABLED
   const isDev = import.meta.env.DEV
   
-  // TEMPORARY: Enable mic for testing in develop branch (remove when merging to main)
-  const MIC_ENABLED = true
-  
-  console.log('🎤 Audio config:', { isDev, micFlag, MIC_ENABLED })
+  // Enable mic in dev mode, or if explicitly enabled via env var
+  const MIC_ENABLED = typeof micFlag !== 'undefined'
+    ? (micFlag === 'true' || micFlag === true)
+    : isDev
 
   // Date formatting functions
   function formatDateLabel(dateStr: string): string {
