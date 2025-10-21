@@ -16,6 +16,7 @@ interface Message {
   reaction?: string
   replySnippet?: string
   isOptimistic?: boolean // Track if this is an optimistic update
+  edited_at?: string | null
 }
 
 export default function ChatThread(){
@@ -52,6 +53,8 @@ export default function ChatThread(){
 
   const [otherUserId, setOtherUserId] = useState<number|''>('')
   const [messages, setMessages] = useState<Message[]>([])
+  const [editingId, setEditingId] = useState<number|string| null>(null)
+  const [editText, setEditText] = useState('')
   const [draft, setDraft] = useState('')
   const [replyTo, setReplyTo] = useState<{ text:string; sender?:string }|null>(null)
   const [sending, setSending] = useState(false)
@@ -134,6 +137,20 @@ export default function ChatThread(){
 
   function getDateKey(dateStr: string): string {
     return new Date(dateStr).toDateString()
+  }
+
+  async function commitEdit(){
+    if (!editingId) return
+    const newBody = editText.trim()
+    if (!newBody) { alert('Message cannot be empty'); return }
+    const prev = messages
+    setMessages(list => list.map(m => m.id===editingId ? ({ ...m, text: newBody, edited_at: new Date().toISOString() }) : m))
+    setEditingId(null); setEditText('')
+    try{
+      const res = await fetch('/api/chat/edit_message', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ message_id: editingId, text: newBody }) })
+      const j = await res.json().catch(()=>null)
+      if (!j?.success){ setMessages(prev) }
+    }catch{ setMessages(prev) }
   }
 
   // Convert URLs in plain text into clickable links
@@ -1370,11 +1387,29 @@ export default function ChatThread(){
                         </div>
                       ) : null}
                       
-                      {/* Text content with linkification */}
-                      {m.text && (
-                        <div>
-                          {linkifyText(m.text)}
+                      {/* Text content or editor */}
+                      {editingId === m.id ? (
+                        <div className="space-y-2">
+                          <textarea
+                            className="w-full bg-black/20 border border-white/20 rounded-lg px-2 py-1 text-sm"
+                            value={editText}
+                            onChange={e=> setEditText(e.target.value)}
+                            rows={3}
+                          />
+                          <div className="flex gap-2 justify-end">
+                            <button className="px-2 py-1 text-xs bg-white/10 border border-white/20 rounded" onClick={()=> { setEditingId(null); setEditText('') }}>Cancel</button>
+                            <button className="px-2 py-1 text-xs bg-[#4db6ac] text-black rounded" onClick={commitEdit}>Save</button>
+                          </div>
                         </div>
+                      ) : (
+                        m.text ? (
+                          <div onDoubleClick={()=> { if (m.sent) { setEditingId(m.id); setEditText(m.text) } }}>
+                            {linkifyText(m.text)}
+                            {m.edited_at ? (
+                              <div className="text-[10px] text-white/50 mt-0.5">edited</div>
+                            ) : null}
+                          </div>
+                        ) : null
                       )}
                       <div className={`text-[10px] mt-1 ${m.sent ? 'text-white/70' : 'text-white/50'} text-right`}>
                         {new Date(m.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}

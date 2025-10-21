@@ -7109,7 +7109,7 @@ def get_messages():
             
             # Get messages between users
             c.execute("""
-                SELECT id, sender, receiver, message, image_path, audio_path, audio_duration_seconds, audio_mime, timestamp
+                SELECT id, sender, receiver, message, image_path, audio_path, audio_duration_seconds, audio_mime, timestamp, edited_at
                 FROM messages
                 WHERE (sender = ? AND receiver = ?) 
                    OR (sender = ? AND receiver = ?)
@@ -7126,7 +7126,8 @@ def get_messages():
                     'audio_duration_seconds': msg.get('audio_duration_seconds') if hasattr(msg, 'get') else msg[6] if len(msg) > 6 else None,
                     'audio_mime': msg.get('audio_mime') if hasattr(msg, 'get') else msg[7] if len(msg) > 7 else None,
                     'sent': msg['sender'] == username,
-                    'time': msg['timestamp']
+                    'time': msg['timestamp'],
+                    'edited_at': (msg.get('edited_at') if hasattr(msg,'get') else (msg[9] if len(msg) > 9 else None))
                 })
             
             # Mark messages from other user as read
@@ -7242,6 +7243,50 @@ def send_message():
     except Exception as e:
         logger.error(f"Error sending message: {str(e)}")
         return jsonify({'success': False, 'error': 'Failed to send message'})
+
+@app.route('/api/chat/edit_message', methods=['POST'])
+@login_required
+def edit_message_api():
+    """Edit an existing message's text. Only the sender can edit. Records edited_at."""
+    username = session.get('username')
+    if request.is_json:
+        data = request.get_json(silent=True) or {}
+        message_id = data.get('message_id')
+        new_text = (data.get('text') or '').strip()
+    else:
+        message_id = request.form.get('message_id')
+        new_text = (request.form.get('text') or '').strip()
+    if not message_id or new_text is None:
+        return jsonify({'success': False, 'error': 'message_id and text required'}), 400
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            # Ensure edited_at column exists (best-effort)
+            try:
+                if USE_MYSQL:
+                    c.execute("SHOW COLUMNS FROM messages LIKE 'edited_at'")
+                    if not c.fetchone():
+                        c.execute("ALTER TABLE messages ADD COLUMN edited_at DATETIME NULL")
+                else:
+                    # SQLite: check pragma
+                    c.execute("PRAGMA table_info(messages)")
+                    cols = [row[1] for row in c.fetchall()]
+                    if 'edited_at' not in cols:
+                        c.execute("ALTER TABLE messages ADD COLUMN edited_at TEXT")
+            except Exception:
+                pass
+            # Update only if sender is current user
+            c.execute(
+                "UPDATE messages SET message = ?, edited_at = ? WHERE id = ? AND sender = ?",
+                (new_text, datetime.now().strftime('%Y-%m-%d %H:%M:%S'), message_id, username)
+            )
+            if c.rowcount == 0:
+                return jsonify({'success': False, 'error': 'Not found or not permitted'}), 403
+            conn.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"edit_message_api error: {e}")
+        return jsonify({'success': False, 'error': 'Failed to edit message'}), 500
 
 @app.route('/send_photo_message', methods=['POST'])
 @login_required
