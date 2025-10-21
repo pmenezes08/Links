@@ -438,55 +438,7 @@ export default function AdminDashboard() {
 
             {/* Leaderboards removed from overview; available in Metrics tab */}
 
-            {/* Parent Communities Cards */}
-            <div>
-              <h3 className="text-sm font-semibold mb-3 text-white/80">Parent Communities</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {communities.filter(c => !c.parent_community_id || c.parent_community_id === null).map(community => (
-                  <div key={community.id} className="bg-white/5 backdrop-blur rounded-xl p-4 border border-white/10">
-                    <div className="flex justify-between items-start mb-2">
-                      <div>
-                        <h4 className="font-semibold text-sm">{community.name}</h4>
-                        <p className="text-xs text-white/60">{community.type}</p>
-                      </div>
-                      <span className="text-xs bg-[#4db6ac]/20 text-[#4db6ac] px-2 py-1 rounded">
-                        {community.member_count} members
-                      </span>
-                    </div>
-                    
-                    {/* Show child communities if any */}
-                    {community.children && community.children.length > 0 && (
-                      <div className="mt-3 pt-3 border-t border-white/10">
-                        <p className="text-xs text-white/60 mb-2">Sub-communities:</p>
-                        <div className="space-y-1">
-                          {community.children.map(child => (
-                            <div key={child.id} className="flex justify-between items-center text-xs">
-                              <span className="text-white/80">• {child.name}</span>
-                              <span className="text-white/50">{child.member_count} members</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    
-                    <div className="flex gap-2 mt-3">
-                      <button
-                        onClick={() => navigate(`/community_feed_react/${community.id}`)}
-                        className="flex-1 py-1 text-xs bg-white/5 border border-white/10 rounded-lg hover:bg-white/10"
-                      >
-                        View
-                      </button>
-                      <button
-                        onClick={() => setActiveTab('communities')}
-                        className="flex-1 py-1 text-xs bg-white/5 border border-white/10 rounded-lg hover:bg-white/10"
-                      >
-                        Manage
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+            {/* Parent Communities section removed per request */}
 
             {/* Quick Actions */}
             <div className="bg-white/5 backdrop-blur rounded-xl p-4 border border-white/10">
