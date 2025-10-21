@@ -235,7 +235,7 @@ export default function CommunityFeed() {
     }catch{}
   }
 
-  async function openVoters(pollId: number){
+  const openVoters = async (pollId: number) => {
     try{
       setViewingVotersPollId(pollId)
       setVotersLoading(true)
