@@ -110,8 +110,6 @@ export default function ChatThread(){
   })
   // Track recently sent optimistic messages to prevent poll from removing them
   const recentOptimisticRef = useRef<Map<string, { message: Message; timestamp: number }>>(new Map())
-  // Skip polling while actively sending to prevent race condition
-  const sendingInProgressRef = useRef(false)
 
   // Mic gating by build flag: enable by default in dev; disabled in prod unless VITE_MIC_ENABLED=true
   const envVars: any = (typeof import.meta !== 'undefined' && (import.meta as any).env) || {}
@@ -324,12 +322,6 @@ export default function ChatThread(){
     if (!username || !otherUserId) return
     
     async function poll(){
-      // Skip poll if we're actively sending a message to prevent race condition
-      if (sendingInProgressRef.current) {
-        console.log('Skipping poll - send in progress')
-        return
-      }
-      
       try{
         const fd = new URLSearchParams({ other_user_id: String(otherUserId) })
         const r = await fetch('/get_messages', { 
@@ -502,9 +494,6 @@ export default function ChatThread(){
   function send(){
     if (!otherUserId || !draft.trim() || sending) return
     
-    // Block polling during send to prevent race condition
-    sendingInProgressRef.current = true
-    
     const messageText = draft.trim()
     const now = new Date().toISOString().slice(0,19).replace('T',' ')
     const tempId = `temp_${Date.now()}_${Math.random()}`
@@ -577,39 +566,47 @@ export default function ChatThread(){
           headers:{ 'Content-Type':'application/json' }, 
           body: JSON.stringify({ peer: username, is_typing: false }) 
         }).catch(()=>{})
-        // Map tempId -> server id so reconciliation can swap without flicker
+        
+        // CRITICAL: Update optimistic message immediately with server confirmation
         if (j.message_id){
-          console.log('✅ Server response - mapping:', tempId, '→', j.message_id)
+          console.log('✅ Server confirmed - updating optimistic', tempId, '→', j.message_id)
+          
+          // Set up bridge mapping
           idBridgeRef.current.tempToServer.set(tempId, j.message_id)
           idBridgeRef.current.serverToTemp.set(j.message_id, tempId)
-          console.log('✅ Bridge set up, serverToTemp size:', idBridgeRef.current.serverToTemp.size)
-          // Can remove from recent optimistic now that bridge is set up
-          setTimeout(() => {
-            console.log('🧹 Cleaning up recentOptimisticRef for:', tempId)
-            recentOptimisticRef.current.delete(tempId)
-          }, 1000)
+          
+          // Immediately update the optimistic message to be confirmed
+          // Keep the same clientKey (tempId) so React doesn't remount
+          setMessages(prev => prev.map(m => {
+            if ((m.clientKey || m.id) === tempId) {
+              console.log('✅ Confirming optimistic message:', tempId)
+              return {
+                ...m,
+                id: j.message_id, // Update to server ID
+                isOptimistic: false, // No longer optimistic
+                time: j.time || m.time, // Use server time if available
+                clientKey: tempId // Keep stable key for React
+              }
+            }
+            return m
+          }))
+          
+          // Clean up ref
+          setTimeout(() => recentOptimisticRef.current.delete(tempId), 1000)
         }
-        // Keep optimistic bubble until server row arrives
-        setMessages(prev => prev.map(m => m.id === tempId ? ({ ...m, isOptimistic: true }) : m))
         
-        // Allow polling again after brief delay to let state settle
-        setTimeout(() => {
-          sendingInProgressRef.current = false
-        }, 500)
+        // Allow polling again immediately since we've already updated the message
+        sendingInProgressRef.current = false
       } else {
-        // Mark as retryable instead of removing immediately
-        setMessages(prev => prev.map(m => m.id === tempId ? ({ ...m, text: m.text, isOptimistic: true }) : m))
+        console.log('❌ Send failed:', j.error)
+        // Keep optimistic message, restore draft for retry
         setDraft(messageText)
-        // Re-enable polling on error
-        setTimeout(() => { sendingInProgressRef.current = false }, 500)
       }
     })
-    .catch(()=>{
-      // Keep optimistic bubble to avoid flicker; allow resend by tapping send again
-      setMessages(prev => prev.map(m => m.id === tempId ? ({ ...m, text: m.text, isOptimistic: true }) : m))
+    .catch((err)=>{
+      console.log('❌ Send error:', err)
+      // Keep optimistic message, restore draft for retry
       setDraft(messageText)
-      // Re-enable polling on error
-      setTimeout(() => { sendingInProgressRef.current = false }, 500)
     })
     .finally(() => setSending(false))
   }
