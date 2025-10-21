@@ -342,11 +342,27 @@ export default function ChatThread(){
         
         if (j?.success && Array.isArray(j.messages)){
           setMessages(prev => {
+            console.log('🔍 Poll reconciliation - prev has', prev.length, 'messages')
+            console.log('🔍 Server returned', j.messages.length, 'messages')
+            console.log('🔍 Recent optimistic ref has', recentOptimisticRef.current.size, 'entries')
+            
             // Build map of existing messages by their stable key (clientKey or id)
             const messagesByKey = new Map()
             prev.forEach(m => {
               const key = String(m.clientKey || m.id)
               messagesByKey.set(key, m)
+              if (m.isOptimistic) {
+                console.log('🔍 Found optimistic in prev:', key, m.text.substring(0, 20))
+              }
+            })
+            
+            // CRITICAL: Add recent optimistic messages that might not be in prev yet
+            // This handles React state batching race condition
+            recentOptimisticRef.current.forEach((entry, key) => {
+              if (!messagesByKey.has(key)) {
+                console.log('🔍 Restoring missing optimistic from ref:', key, entry.message.text.substring(0, 20))
+                messagesByKey.set(key, entry.message)
+              }
             })
             
             // Process server messages
@@ -375,12 +391,14 @@ export default function ChatThread(){
               
               if (!stableKey) {
                 // Try to find matching optimistic by content
+                console.log('🔍 No bridge for server msg', m.id, '- searching for optimistic match')
                 for (const [key, existing] of messagesByKey.entries()) {
                   if (!existing.isOptimistic) continue
                   if (existing.sent !== isSentByMe) continue
                   if (existing.text !== messageText) continue
                   const timeDiff = Math.abs(new Date(m.time).getTime() - new Date(existing.time).getTime())
                   if (timeDiff < 5000) {
+                    console.log('✅ Found matching optimistic:', key, '↔', m.id)
                     stableKey = key
                     // Set up bridge for future
                     idBridgeRef.current.serverToTemp.set(m.id, key)
@@ -388,6 +406,11 @@ export default function ChatThread(){
                     break
                   }
                 }
+                if (!stableKey) {
+                  console.log('❌ No matching optimistic found for server msg', m.id)
+                }
+              } else {
+                console.log('✅ Found bridge mapping:', m.id, '→', stableKey)
               }
               
               // Use stable key if found, otherwise use server id
@@ -427,6 +450,8 @@ export default function ChatThread(){
             
             // Convert map to array and sort
             const allMessages = Array.from(messagesByKey.values())
+            const optimisticCount = allMessages.filter(m => m.isOptimistic).length
+            console.log('📊 Reconciliation complete:', allMessages.length, 'total messages,', optimisticCount, 'still optimistic')
             return allMessages.sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime())
           })
         }
@@ -510,13 +535,18 @@ export default function ChatThread(){
     
     // Add optimistic message immediately
     const optimisticWithKey = { ...optimisticMessage, clientKey: tempId }
-    setMessages(prev => [...prev, optimisticWithKey])
+    console.log('📤 Sending message - adding optimistic:', tempId, messageText.substring(0, 20))
+    setMessages(prev => {
+      console.log('📤 setMessages prev length:', prev.length)
+      return [...prev, optimisticWithKey]
+    })
     
     // Register in recent optimistic to prevent poll from removing it due to stale state
     recentOptimisticRef.current.set(tempId, {
       message: optimisticWithKey,
       timestamp: Date.now()
     })
+    console.log('📤 Registered in recentOptimisticRef, size:', recentOptimisticRef.current.size)
     
     // Force scroll to bottom for sent messages
     setTimeout(scrollToBottom, 50)
@@ -549,10 +579,15 @@ export default function ChatThread(){
         }).catch(()=>{})
         // Map tempId -> server id so reconciliation can swap without flicker
         if (j.message_id){
+          console.log('✅ Server response - mapping:', tempId, '→', j.message_id)
           idBridgeRef.current.tempToServer.set(tempId, j.message_id)
           idBridgeRef.current.serverToTemp.set(j.message_id, tempId)
+          console.log('✅ Bridge set up, serverToTemp size:', idBridgeRef.current.serverToTemp.size)
           // Can remove from recent optimistic now that bridge is set up
-          setTimeout(() => recentOptimisticRef.current.delete(tempId), 1000)
+          setTimeout(() => {
+            console.log('🧹 Cleaning up recentOptimisticRef for:', tempId)
+            recentOptimisticRef.current.delete(tempId)
+          }, 1000)
         }
         // Keep optimistic bubble until server row arrives
         setMessages(prev => prev.map(m => m.id === tempId ? ({ ...m, isOptimistic: true }) : m))
