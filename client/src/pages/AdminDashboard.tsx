@@ -12,6 +12,13 @@ interface Stats {
   dau_pct?: number
   mau_pct?: number
   avg_dau_30?: number
+  mau_month?: number
+  mru?: number
+  mru_repeat_rate_pct?: number
+  wau?: number
+  wru?: number
+  wru_repeat_rate_pct?: number
+  cohorts?: { month: string; size: number; retention: number[] }[]
   leaderboards?: {
     top_posters: { username: string; count: number }[]
     top_reactors: { username: string; count: number }[]
@@ -531,6 +538,77 @@ export default function AdminDashboard() {
                   <div className="text-xl font-bold">{stats.avg_dau_30 ?? '—'}</div>
                   <div className="text-xs text-white/60">daily avg</div>
                 </div>
+              </div>
+            </div>
+
+            {/* Returning Users */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="bg-white/5 rounded-lg p-4 border border-white/10">
+                <div className="text-sm font-semibold mb-1">Monthly Returning Users</div>
+                <div className="text-xs text-white/60 mb-2">Previous month ∩ current month</div>
+                <div className="flex items-end gap-4">
+                  <div>
+                    <div className="text-[11px] text-white/60">MRU</div>
+                    <div className="text-xl font-bold">{stats.mru ?? '—'}</div>
+                  </div>
+                  <div>
+                    <div className="text-[11px] text-white/60">MAU (month)</div>
+                    <div className="text-xl font-bold">{stats.mau_month ?? '—'}</div>
+                  </div>
+                  <div>
+                    <div className="text-[11px] text-white/60">Repeat rate</div>
+                    <div className="text-xl font-bold">{stats.mru_repeat_rate_pct != null ? `${stats.mru_repeat_rate_pct}%` : '—'}</div>
+                  </div>
+                </div>
+              </div>
+              <div className="bg-white/5 rounded-lg p-4 border border-white/10">
+                <div className="text-sm font-semibold mb-1">Weekly Returning Users</div>
+                <div className="text-xs text-white/60 mb-2">Previous week ∩ current week</div>
+                <div className="flex items-end gap-4">
+                  <div>
+                    <div className="text-[11px] text-white/60">WRU</div>
+                    <div className="text-xl font-bold">{stats.wru ?? '—'}</div>
+                  </div>
+                  <div>
+                    <div className="text-[11px] text-white/60">WAU</div>
+                    <div className="text-xl font-bold">{stats.wau ?? '—'}</div>
+                  </div>
+                  <div>
+                    <div className="text-[11px] text-white/60">Repeat rate</div>
+                    <div className="text-xl font-bold">{stats.wru_repeat_rate_pct != null ? `${stats.wru_repeat_rate_pct}%` : '—'}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Cohort Retention (last 6 months) */}
+            <div className="bg-white/5 rounded-lg p-4 border border-white/10">
+              <div className="text-sm font-semibold mb-2">Cohort Retention (Last 6 Months)</div>
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead>
+                    <tr className="text-white/70">
+                      <th className="text-left py-1 pr-4">Cohort</th>
+                      <th className="text-left py-1 pr-4">Size</th>
+                      <th className="text-left py-1">Retention by month →</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(stats.cohorts || []).map(c => (
+                      <tr key={c.month} className="border-t border-white/10">
+                        <td className="py-1 pr-4 text-white/80">{c.month}</td>
+                        <td className="py-1 pr-4 text-white/60">{c.size}</td>
+                        <td className="py-1">
+                          <div className="flex gap-2">
+                            {c.retention.map((r, idx) => (
+                              <span key={idx} className="px-2 py-0.5 rounded bg-white/10 text-white/70">{r}%</span>
+                            ))}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">

@@ -4564,6 +4564,110 @@ def admin_dashboard_api():
                 daily_counts.append(len(set().union(*day_sets)))
             avg_dau_30 = round(sum(daily_counts) / len(daily_counts), 2) if daily_counts else 0.0
 
+            # Helper: get activity users for a window [start, end)
+            def get_activity_users(start_ts, end_ts):
+                users_union = set()
+                for tbl, user_field, ts_field in (
+                    ('posts','username','timestamp'),
+                    ('reactions','username','created_at'),
+                    ('poll_votes','username','voted_at'),
+                    ('community_visit_history','username','visit_time'),
+                ):
+                    users_union |= get_unique_between_window(tbl, user_field, ts_field, start_ts, end_ts)
+                return users_union
+
+            # Monthly returning users (current month vs previous month)
+            from calendar import monthrange
+            cur_month_start = start_of_day.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            # Prev month start
+            if cur_month_start.month == 1:
+                prev_month_start = cur_month_start.replace(year=cur_month_start.year-1, month=12)
+            else:
+                prev_month_start = cur_month_start.replace(month=cur_month_start.month-1)
+            # Month ends
+            days_in_prev_month = monthrange(prev_month_start.year, prev_month_start.month)[1]
+            prev_month_end = prev_month_start.replace(day=days_in_prev_month, hour=23, minute=59, second=59)
+            days_in_cur_month = monthrange(cur_month_start.year, cur_month_start.month)[1]
+            cur_month_end = cur_month_start.replace(day=days_in_cur_month, hour=23, minute=59, second=59)
+
+            users_prev_month = get_activity_users(prev_month_start, prev_month_end)
+            users_cur_month = get_activity_users(cur_month_start, cur_month_end)
+            mau_month = len(users_cur_month)
+            mru = len(users_prev_month & users_cur_month)
+            mru_repeat_rate = round((mru / mau_month) * 100, 2) if mau_month else 0.0
+
+            # Weekly returning users (current week vs previous week), week starts Monday
+            weekday = start_of_day.weekday()  # Mon=0
+            start_of_week = start_of_day.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=weekday)
+            prev_week_start = start_of_week - timedelta(days=7)
+            prev_week_end = start_of_week - timedelta(seconds=1)
+            cur_week_end = start_of_week + timedelta(days=7) - timedelta(seconds=1)
+            users_prev_week = get_activity_users(prev_week_start, prev_week_end)
+            users_cur_week = get_activity_users(start_of_week, cur_week_end)
+            wau = len(users_cur_week)
+            wru = len(users_prev_week & users_cur_week)
+            wru_repeat_rate = round((wru / wau) * 100, 2) if wau else 0.0
+
+            # Cohort retention (last 6 calendar months)
+            cohorts = []
+            # Build list of month starts (oldest to newest)
+            month_starts = []
+            ms = cur_month_start
+            for _ in range(6):
+                month_starts.append(ms)
+                # go back one month
+                if ms.month == 1:
+                    ms = ms.replace(year=ms.year-1, month=12)
+                else:
+                    ms = ms.replace(month=ms.month-1)
+            month_starts = list(reversed(month_starts))
+
+            # Preload user signups
+            c.execute("SELECT username, created_at FROM users")
+            all_users = c.fetchall() or []
+            def in_month(dt, y, m):
+                return (dt.year == y and dt.month == m)
+            # Pre-calc month windows
+            month_windows = []
+            for ms in month_starts:
+                y = ms.year; m = ms.month
+                days_in_month = monthrange(y, m)[1]
+                start = ms
+                end = ms.replace(day=days_in_month, hour=23, minute=59, second=59)
+                month_windows.append((y, m, start, end))
+
+            # Build cohorts
+            for i, (y, m, start, end) in enumerate(month_windows):
+                cohort_users = set()
+                for u in all_users:
+                    uname = u['username'] if hasattr(u,'keys') else u[0]
+                    created = u['created_at'] if hasattr(u,'keys') else (u[1] if len(u)>1 else None)
+                    if not created: continue
+                    try:
+                        s = str(created)
+                        dtc = _dt.strptime(s[:19].replace('T',' '), '%Y-%m-%d %H:%M:%S')
+                    except Exception:
+                        try:
+                            dtc = _dt.strptime(str(created), '%Y-%m-%d')
+                        except Exception:
+                            continue
+                    if in_month(dtc, y, m):
+                        cohort_users.add(uname)
+                cohort_size = len(cohort_users)
+                # Compute retention for subsequent months up to the latest window
+                retention = []
+                if cohort_size:
+                    for j in range(i, len(month_windows)):
+                        ys, ms_, ws, we = month_windows[j]
+                        active = get_activity_users(ws, we)
+                        retained = len(active & cohort_users)
+                        retention.append(round((retained / cohort_size) * 100, 2))
+                cohorts.append({
+                    'month': f"{y:04d}-{m:02d}",
+                    'size': cohort_size,
+                    'retention': retention,
+                })
+
             # Leaderboards
             def scalar_list(query, params=()):
                 c.execute(query, params)
@@ -4590,6 +4694,13 @@ def admin_dashboard_api():
                 'dau_pct': dau_pct,
                 'mau_pct': mau_pct,
                 'avg_dau_30': avg_dau_30,
+                'mau_month': mau_month,
+                'mru': mru,
+                'mru_repeat_rate_pct': mru_repeat_rate,
+                'wau': wau,
+                'wru': wru,
+                'wru_repeat_rate_pct': wru_repeat_rate,
+                'cohorts': cohorts,
                 'leaderboards': {
                     'top_posters': top_posters,
                     'top_reactors': top_reactors,
