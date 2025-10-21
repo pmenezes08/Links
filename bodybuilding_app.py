@@ -7107,14 +7107,31 @@ def get_messages():
             
             other_username = other_user['username'] if hasattr(other_user, 'keys') else other_user[0]
             
-            # Get messages between users
-            c.execute("""
-                SELECT id, sender, receiver, message, image_path, audio_path, audio_duration_seconds, audio_mime, timestamp, edited_at
-                FROM messages
-                WHERE (sender = ? AND receiver = ?) 
-                   OR (sender = ? AND receiver = ?)
-                ORDER BY timestamp ASC
-            """, (username, other_username, other_username, username))
+            # Get messages between users (compat: edited_at may not exist yet)
+            with_edited = True
+            try:
+                c.execute(
+                    """
+                    SELECT id, sender, receiver, message, image_path, audio_path, audio_duration_seconds, audio_mime, timestamp, edited_at
+                    FROM messages
+                    WHERE (sender = ? AND receiver = ?)
+                       OR (sender = ? AND receiver = ?)
+                    ORDER BY timestamp ASC
+                    """,
+                    (username, other_username, other_username, username),
+                )
+            except Exception:
+                with_edited = False
+                c.execute(
+                    """
+                    SELECT id, sender, receiver, message, image_path, audio_path, audio_duration_seconds, audio_mime, timestamp
+                    FROM messages
+                    WHERE (sender = ? AND receiver = ?)
+                       OR (sender = ? AND receiver = ?)
+                    ORDER BY timestamp ASC
+                    """,
+                    (username, other_username, other_username, username),
+                )
             
             messages = []
             for msg in c.fetchall():
@@ -7127,7 +7144,7 @@ def get_messages():
                     'audio_mime': msg.get('audio_mime') if hasattr(msg, 'get') else msg[7] if len(msg) > 7 else None,
                     'sent': msg['sender'] == username,
                     'time': msg['timestamp'],
-                    'edited_at': (msg.get('edited_at') if hasattr(msg,'get') else (msg[9] if len(msg) > 9 else None))
+                    'edited_at': (msg.get('edited_at') if (with_edited and hasattr(msg,'get')) else ((msg[9] if (with_edited and len(msg) > 9) else None)))
                 })
             
             # Mark messages from other user as read

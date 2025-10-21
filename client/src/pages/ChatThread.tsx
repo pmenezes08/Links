@@ -222,7 +222,8 @@ export default function ChatThread(){
                 text: messageText,
                 reaction: meta.reaction, 
                 replySnippet: replySnippet || meta.replySnippet,
-                isOptimistic: false 
+                isOptimistic: false,
+                edited_at: m.edited_at || null
               }
             })
             setMessages(processedMessages)
