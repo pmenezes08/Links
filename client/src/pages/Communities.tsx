@@ -690,7 +690,7 @@ function ParentTimeline({ parentId }:{ parentId:number }){
         <div className="space-y-3">
           {posts.map((p:any) => (
             <div key={p.id} className="rounded-2xl border border-white/10 bg-black shadow-sm shadow-black/20 cursor-pointer"
-              onClick={() => navigate(`/post/${p.id}`)}
+              onClick={() => { if (!p.poll) navigate(`/post/${p.id}`) }}
             >
               <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2" onClick={(e)=> e.stopPropagation()}>
                 <Avatar username={p.username || ''} url={p.profile_picture || undefined} size={28} />
@@ -728,6 +728,49 @@ function ParentTimeline({ parentId }:{ parentId:number }){
                     className="block mx-auto max-w-full max-h-[360px] rounded border border-white/10"
                   />
                 ) : null}
+                {/* Inline Poll (interactive) if present */}
+                {p.poll && (
+                  <div className="space-y-2" onClick={(e)=> e.stopPropagation()}>
+                    <div className="flex items-center gap-2 mb-1">
+                      <i className="fa-solid fa-chart-bar text-[#4db6ac]" />
+                      <div className="font-medium text-sm">
+                        {p.poll.question}
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      {p.poll.options?.map((option:any) => {
+                        const percentage = p.poll?.total_votes ? Math.round((option.votes / p.poll.total_votes) * 100) : 0
+                        const isUserVote = option.user_voted || false
+                        return (
+                          <button
+                            key={option.id}
+                            type="button"
+                            className={`w-full text-left px-3 py-2 rounded-lg border relative overflow-hidden ${isUserVote ? 'border-[#4db6ac] bg-[#4db6ac]/10' : 'border-white/10 hover:bg-white/5'}`}
+                            onClick={(e)=> { e.preventDefault(); e.stopPropagation(); handlePollVote(p.id, p.poll!.id, option.id) }}
+                          >
+                            <div className="absolute inset-0 bg-[#4db6ac]/20" style={{ width: `${percentage}%`, transition: 'width 0.3s ease' }} />
+                            <div className="relative flex items-center justify-between">
+                              <span className="text-sm">{option.text || option.option_text}</span>
+                              <span className="text-xs text-[#9fb0b5] font-medium">{option.votes} {percentage > 0 ? `(${percentage}%)` : ''}</span>
+                            </div>
+                          </button>
+                        )
+                      })}
+                    </div>
+                    <div className="flex items-center justify-between text-xs text-[#9fb0b5] pt-1">
+                      {(() => { const sv = (p.poll as any)?.single_vote; const isSingle = !(sv === false || sv === 0 || sv === '0' || sv === 'false'); return isSingle })() && (
+                        <span>{p.poll.total_votes || 0} {p.poll.total_votes === 1 ? 'vote' : 'votes'}</span>
+                      )}
+                      <button 
+                        type="button"
+                        onClick={()=> navigate(`/community/${p.community_id}/polls_react`)}
+                        className="text-[#4db6ac] hover:underline"
+                      >
+                        View all polls →
+                      </button>
+                    </div>
+                  </div>
+                )}
                 <div className="flex items-center gap-2 text-xs" onClick={(e)=> e.stopPropagation()}>
                   <button className="px-2 py-1 rounded transition-colors" onClick={async()=>{
                     // Optimistic toggle
