@@ -39,6 +39,10 @@ export default function CommunityFeed() {
   const scrollRef = useRef<HTMLDivElement|null>(null)
   const [refreshHint, setRefreshHint] = useState(false)
   const [pullPx, setPullPx] = useState(0)
+  // Voters modal state
+  const [viewingVotersPollId, setViewingVotersPollId] = useState<number|null>(null)
+  const [votersLoading, setVotersLoading] = useState(false)
+  const [votersData, setVotersData] = useState<Array<{ id:number; option_text:string; voters:Array<{ username:string; profile_picture?:string|null; voted_at?:string }> }>>([])
   
   // Check if we should highlight from onboarding
   const [highlightStep, setHighlightStep] = useState<'reaction' | 'post' | null>(null)
@@ -229,6 +233,20 @@ export default function CommunityFeed() {
       if (j?.success){ fetchAnnouncements() }
       else alert(j?.error || 'Failed to delete')
     }catch{}
+  }
+
+  async function openVoters(pollId: number){
+    try{
+      setViewingVotersPollId(pollId)
+      setVotersLoading(true)
+      const r = await fetch(`/get_poll_voters/${pollId}`, { credentials:'include' })
+      const j = await r.json().catch(()=>null)
+      if (j?.success){
+        setVotersData(j.options || [])
+      } else {
+        setVotersData([])
+      }
+    } finally { setVotersLoading(false) }
   }
 
   async function handleToggleReaction(postId: number, reaction: string){
@@ -653,6 +671,40 @@ export default function CommunityFeed() {
           </div>
         </div>
       )}
+
+      {/* Voters modal */}
+      {viewingVotersPollId && (
+        <div className="fixed inset-0 z-[95] bg-black/70 backdrop-blur flex items-center justify-center" onClick={(e)=> e.currentTarget===e.target && setViewingVotersPollId(null)}>
+          <div className="w-[92%] max-w-[560px] rounded-2xl border border-white/10 bg-black p-3">
+            <div className="flex items-center justify-between mb-2">
+              <div className="font-semibold">Voters</div>
+              <button className="px-2 py-1 rounded-full border border-white/10" onClick={()=> setViewingVotersPollId(null)}>✕</button>
+            </div>
+            {votersLoading ? (
+              <div className="text-[#9fb0b5] text-sm">Loading voters…</div>
+            ) : (
+              <div className="space-y-3 max-h-[420px] overflow-y-auto">
+                {votersData.length === 0 ? (
+                  <div className="text-sm text-[#9fb0b5]">No voters yet.</div>
+                ) : votersData.map(opt => (
+                  <div key={opt.id} className="rounded-lg border border-white/10 p-2">
+                    <div className="text-xs text-white/80 mb-1">{opt.option_text}</div>
+                    <div className="flex flex-col gap-1">
+                      {(opt.voters||[]).map(v => (
+                        <div key={`${opt.id}-${v.username}-${v.voted_at||''}`} className="flex items-center gap-2 text-xs text-[#9fb0b5]">
+                          <Avatar username={v.username} url={v.profile_picture || undefined} size={18} />
+                          <div className="flex-1 truncate">@{v.username}</div>
+                          <div className="tabular-nums">{v.voted_at || ''}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -864,7 +916,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
               <button 
                 className="ml-1 px-2 py-1 rounded-full text-[#6c757d] hover:text-[#4db6ac]" 
                 title="Voters"
-                onClick={(e)=> { e.preventDefault(); e.stopPropagation(); if (navigate && communityId) navigate(`/community/${communityId}/polls_react`) }}
+                onClick={(e)=> { e.preventDefault(); e.stopPropagation(); openVoters(post.poll!.id) }}
               >
                 <i className="fa-solid fa-users" />
               </button>
@@ -890,7 +942,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
               })}
             </div>
             <div className="flex items-center justify-between text-xs text-[#9fb0b5] pt-1">
-              {post.poll.single_vote !== false && (
+              {(() => { const sv = (post.poll as any)?.single_vote; const isSingle = sv === true || sv === 1 || sv === '1' || sv === 'true'; return isSingle })() && (
                 <span>{post.poll.total_votes || 0} {post.poll.total_votes === 1 ? 'vote' : 'votes'}</span>
               )}
               <button 
