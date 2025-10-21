@@ -140,6 +140,16 @@ export default function ChatThread(){
     return new Date(dateStr).toDateString()
   }
 
+  function parseMessageTime(s: string | undefined): Date | null {
+    if (!s) return null
+    try {
+      // Normalize "YYYY-MM-DD HH:MM:SS" -> "YYYY-MM-DDTHH:MM:SS"
+      const norm = s.includes('T') ? s : s.replace(' ', 'T')
+      const d = new Date(norm)
+      return isNaN(d.getTime()) ? null : d
+    } catch { return null }
+  }
+
   async function commitEdit(){
     if (!editingId) return
     const newBody = editText.trim()
@@ -1350,7 +1360,11 @@ export default function ChatThread(){
                   onCopy={() => {
                     try{ navigator.clipboard && navigator.clipboard.writeText(m.text) }catch{}
                   }}
-                  onEdit={m.sent ? () => { setEditingId(m.id); setEditText(m.text) } : undefined}
+                  onEdit={m.sent ? () => {
+                    const dt = parseMessageTime(m.time)
+                    if (dt && (Date.now() - dt.getTime()) > 5*60*1000) return
+                    setEditingId(m.id); setEditText(m.text)
+                  } : undefined}
                 >
                   <div className={`flex ${m.sent ? 'justify-end' : 'justify-start'}`}>
                     <div
@@ -1428,7 +1442,13 @@ export default function ChatThread(){
                         </div>
                       ) : (
                         m.text ? (
-                          <div onDoubleClick={()=> { if (m.sent) { setEditingId(m.id); setEditText(m.text) } }}>
+                          <div onDoubleClick={()=> {
+                            if (!m.sent) return
+                            // Enforce 5-minute window on client: hide editor entry if expired
+                            const dt = parseMessageTime(m.time)
+                            if (dt && (Date.now() - dt.getTime()) > 5*60*1000) return
+                            setEditingId(m.id); setEditText(m.text)
+                          }}>
                             {linkifyText(m.text)}
                             {m.edited_at ? (
                               <div className="text-[10px] text-white/50 mt-0.5">edited</div>
