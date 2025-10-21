@@ -406,30 +406,7 @@ export default function AdminDashboard() {
               </div>
             </div>
 
-            {/* Key Metrics (also available in dedicated tab) */}
-            <div className="bg-white/5 backdrop-blur rounded-xl p-6 border border-white/10">
-              <h3 className="text-lg font-semibold mb-3 text-[#4db6ac]">Key Metrics</h3>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <div className="bg-white/5 rounded-lg p-3 border border-white/10">
-                  <div className="text-xs text-white/60">DAU</div>
-                  <div className="text-xl font-bold">{stats.dau ?? '—'}</div>
-                  <div className="text-xs text-white/60">{stats.dau_pct != null ? `${stats.dau_pct}% of users` : ''}</div>
-                </div>
-                <div className="bg-white/5 rounded-lg p-3 border border-white/10">
-                  <div className="text-xs text-white/60">MAU</div>
-                  <div className="text-xl font-bold">{stats.mau ?? '—'}</div>
-                  <div className="text-xs text-white/60">{stats.mau_pct != null ? `${stats.mau_pct}% of users` : ''}</div>
-                </div>
-                <div className="bg-white/5 rounded-lg p-3 border border-white/10">
-                  <div className="text-xs text-white/60">Total Users</div>
-                  <div className="text-xl font-bold">{stats.total_users}</div>
-                </div>
-                <div className="bg-white/5 rounded-lg p-3 border border-white/10">
-                  <div className="text-xs text-white/60">Total Communities</div>
-                  <div className="text-xl font-bold">{stats.total_communities}</div>
-                </div>
-              </div>
-            </div>
+            {/* Key Metrics removed from overview; available in Metrics tab */}
 
             {/* Stats Grid */}
             <div className="grid grid-cols-2 gap-3">
