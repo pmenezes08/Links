@@ -382,24 +382,37 @@ export default function ChatThread(){
             }).filter(Boolean)
             
             // Keep optimistic messages that don't have a server match yet
-            // Be more lenient with matching to avoid duplicates
+            // Use clientKey for stable matching to avoid flicker
             const remainingOptimistic = optimisticMessages.filter(opt => {
               // 1) If server already has this exact id, drop optimistic copy
               const idMatch = serverMessages.some((srv:any) => String(srv.id) === String(opt.id))
               if (idMatch) return false
 
-              // 2) For temp_* ids only, allow a very tight text/time match to dedupe
+              // 2) Check if server message has the same clientKey (more reliable than text/time matching)
+              const optKey = opt.clientKey || opt.id
+              const keyMatch = serverMessages.some((srv:any) => {
+                const srvKey = srv.clientKey || srv.id
+                return String(srvKey) === String(optKey)
+              })
+              if (keyMatch) return false
+
+              // 3) Fallback: For temp_* messages, check for exact text match with very recent server messages
+              // This handles race condition where poll runs before bridge is set up
+              // Only remove if we're confident it's the same message
               const isTemp = typeof opt.id === 'string' && opt.id.startsWith('temp_')
               if (isTemp) {
-                const looseMatch = serverMessages.some((srv:any) => {
+                const exactMatch = serverMessages.some((srv:any) => {
+                  // Must match: sent status, exact text, and time within 3 seconds
                   if (srv.sent !== opt.sent || srv.text !== opt.text) return false
                   const timeDiff = Math.abs(new Date(srv.time).getTime() - new Date(opt.time).getTime())
-                  return timeDiff < 5000 // 5s window to prevent false positives
+                  // Very tight time window and only for very recent messages to avoid false positives
+                  const optAge = Date.now() - new Date(opt.time).getTime()
+                  return timeDiff < 3000 && optAge < 10000 // Only dedupe if message is less than 10s old
                 })
-                if (looseMatch) return false
+                if (exactMatch) return false
               }
 
-              // 3) Keep optimistic around for longer to avoid disappear/reappear
+              // 4) Keep optimistic around for longer to avoid disappear/reappear
               const optAge = Date.now() - new Date(opt.time).getTime()
               if (optAge > 600000) { // 10 minutes safety cap
                 return false
