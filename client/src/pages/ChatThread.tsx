@@ -372,24 +372,28 @@ export default function ChatThread(){
             // Keep optimistic messages that don't have a server match yet
             // Be more lenient with matching to avoid duplicates
             const remainingOptimistic = optimisticMessages.filter(opt => {
-              const serverMatch = serverMessages.some((srv:any) => {
-                // Match by text and sender, with a reasonable time window
-                if (srv.sent === opt.sent && srv.text === opt.text) {
+              // 1) If server already has this exact id, drop optimistic copy
+              const idMatch = serverMessages.some((srv:any) => String(srv.id) === String(opt.id))
+              if (idMatch) return false
+
+              // 2) For temp_* ids only, allow a very tight text/time match to dedupe
+              const isTemp = typeof opt.id === 'string' && opt.id.startsWith('temp_')
+              if (isTemp) {
+                const looseMatch = serverMessages.some((srv:any) => {
+                  if (srv.sent !== opt.sent || srv.text !== opt.text) return false
                   const timeDiff = Math.abs(new Date(srv.time).getTime() - new Date(opt.time).getTime())
-                  // If IDs match (from immediate confirm), drop optimistic
-                  if (String(opt.id) === String(srv.id)) return false
-                  return timeDiff < 60000 // Within 60 seconds
-                }
-                return false
-              })
-              
-              // Also remove old optimistic messages (older than 2 minutes)
-              const optAge = Date.now() - new Date(opt.time).getTime()
-              if (optAge > 120000) {
-                return false // Remove stale optimistic messages
+                  return timeDiff < 5000 // 5s window to prevent false positives
+                })
+                if (looseMatch) return false
               }
-              
-              return !serverMatch
+
+              // 3) Keep optimistic around for longer to avoid disappear/reappear
+              const optAge = Date.now() - new Date(opt.time).getTime()
+              if (optAge > 600000) { // 10 minutes safety cap
+                return false
+              }
+
+              return true
             })
             
             // Combine and sort
