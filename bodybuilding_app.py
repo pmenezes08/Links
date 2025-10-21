@@ -4507,6 +4507,7 @@ def admin_dashboard_api():
                 ('reactions','username','created_at'),
                 ('poll_votes','username','voted_at'),
                 ('community_visit_history','username','visit_time'),
+                ('messages','sender','timestamp'),
             ):
                 dau_sets.append(get_unique_between(tbl, user_field, ts_field, start_of_day))
                 mau_sets.append(get_unique_between(tbl, user_field, ts_field, start_of_30))
@@ -4559,6 +4560,7 @@ def admin_dashboard_api():
                     ('reactions','username','created_at'),
                     ('poll_votes','username','voted_at'),
                     ('community_visit_history','username','visit_time'),
+                    ('messages','sender','timestamp'),
                 ):
                     day_sets.append(get_unique_between_window(tbl, user_field, ts_field, day_start, day_end))
                 daily_counts.append(len(set().union(*day_sets)))
@@ -4572,6 +4574,7 @@ def admin_dashboard_api():
                     ('reactions','username','created_at'),
                     ('poll_votes','username','voted_at'),
                     ('community_visit_history','username','visit_time'),
+                    ('messages','sender','timestamp'),
                 ):
                     users_union |= get_unique_between_window(tbl, user_field, ts_field, start_ts, end_ts)
                 return users_union
