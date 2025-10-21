@@ -7313,24 +7313,55 @@ def send_message():
             recipient_username = recipient['username'] if hasattr(recipient, 'keys') else recipient[0]
             
             # Check for duplicate message in last 5 seconds to prevent double-sends
-            c.execute("""
-                SELECT id FROM messages 
-                WHERE sender = ? AND receiver = ? AND message = ?
-                AND timestamp > DATE_SUB(NOW(), INTERVAL 5 SECOND)
-                LIMIT 1
-            """, (username, recipient_username, message))
+            if USE_MYSQL:
+                c.execute("""
+                    SELECT id FROM messages 
+                    WHERE sender = %s AND receiver = %s AND message = %s
+                    AND timestamp > DATE_SUB(NOW(), INTERVAL 5 SECOND)
+                    LIMIT 1
+                """, (username, recipient_username, message))
+            else:
+                c.execute("""
+                    SELECT id FROM messages 
+                    WHERE sender = ? AND receiver = ? AND message = ?
+                    AND datetime(timestamp) > datetime('now','-5 seconds')
+                    LIMIT 1
+                """, (username, recipient_username, message))
             
             if c.fetchone():
                 # Duplicate message detected, return success but don't insert
                 return jsonify({'success': True, 'message': 'Message already sent'})
             
-            # Insert message
-            c.execute("""
-                INSERT INTO messages (sender, receiver, message, timestamp)
-                VALUES (?, ?, ?, NOW())
-            """, (username, recipient_username, message))
+            # Insert message with correct timestamp function for the active DB
+            if USE_MYSQL:
+                c.execute("""
+                    INSERT INTO messages (sender, receiver, message, timestamp)
+                    VALUES (%s, %s, %s, NOW())
+                """, (username, recipient_username, message))
+            else:
+                # SQLite: store as text 'YYYY-MM-DD HH:MM:SS'
+                _ts = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                c.execute("""
+                    INSERT INTO messages (sender, receiver, message, timestamp)
+                    VALUES (?, ?, ?, ?)
+                """, (username, recipient_username, message, _ts))
             
             conn.commit()
+            # Fetch inserted id and timestamp for immediate client update
+            try:
+                inserted_id = getattr(c, 'lastrowid', None)
+                inserted_time = None
+                if inserted_id:
+                    if USE_MYSQL:
+                        c.execute("SELECT timestamp FROM messages WHERE id = %s", (inserted_id,))
+                    else:
+                        c.execute("SELECT timestamp FROM messages WHERE id = ?", (inserted_id,))
+                    row = c.fetchone()
+                    if row is not None:
+                        inserted_time = row['timestamp'] if hasattr(row, 'keys') else row[0]
+            except Exception as _fe:
+                inserted_id = None
+                inserted_time = None
             
             # Invalidate message caches for faster updates
             invalidate_message_cache(username, recipient_username)
@@ -7383,7 +7414,7 @@ def send_message():
             except Exception as _e:
                 logger.warning(f"push send_message warn: {_e}")
 
-            return jsonify({'success': True, 'message': 'Message sent successfully'})
+            return jsonify({'success': True, 'message': 'Message sent successfully', 'message_id': inserted_id, 'time': inserted_time})
             
     except Exception as e:
         logger.error(f"Error sending message: {str(e)}")

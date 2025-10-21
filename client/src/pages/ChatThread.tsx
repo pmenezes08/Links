@@ -502,36 +502,15 @@ export default function ChatThread(){
           headers:{ 'Content-Type':'application/json' }, 
           body: JSON.stringify({ peer: username, is_typing: false }) 
         }).catch(()=>{})
-        // Mark optimistic as acknowledged; polling will reconcile and remove duplicates
-        setMessages(prev => prev.map(m => m.id === tempId ? ({ ...m, isOptimistic: false }) : m))
-        // Force immediate refresh to show server-confirmed row
-        lastFetchTime.current = 0
-        setTimeout(() => {
-          const fd2 = new URLSearchParams({ other_user_id: String(otherUserId) })
-          fetch('/get_messages', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd2 })
-            .then(r => r.json())
-            .then(j2 => {
-              if (j2?.success && Array.isArray(j2.messages)){
-                setMessages(prev => {
-                  const existingById = new Map()
-                  prev.forEach(m => { if (!m.isOptimistic && m.id) existingById.set(m.id, m) })
-                  const serverMessages = j2.messages.map((m:any) => {
-                    const existing = existingById.get(m.id)
-                    let messageText = m.text
-                    let replySnippet = undefined
-                    const replyMatch = messageText.match(/^\[REPLY:([^:]+):([^\]]+)\]\n(.*)$/s)
-                    if (replyMatch) { replySnippet = replyMatch[2]; messageText = replyMatch[3] }
-                    return { ...m, text: messageText, reaction: existing?.reaction, replySnippet: replySnippet || existing?.replySnippet, isOptimistic: false }
-                  })
-                  const optimisticMessages = prev.filter(m => m.isOptimistic === true)
-                  const remainingOptimistic = optimisticMessages.filter(opt => !serverMessages.some((srv:any) => srv.sent === opt.sent && srv.text === opt.text))
-                  const all = [...serverMessages, ...remainingOptimistic]
-                  return all.sort((a,b) => new Date(a.time).getTime() - new Date(b.time).getTime())
-                })
-                lastFetchTime.current = Date.now()
-              }
-            }).catch(()=>{})
-        }, 50)
+        // Replace optimistic bubble immediately with server-confirmed data if present
+        if (j.message_id){
+          const confirmedId = j.message_id
+          const confirmedTime = j.time || new Date().toISOString().slice(0,19).replace('T',' ')
+          setMessages(prev => prev.map(m => m.id === tempId ? ({ ...m, id: confirmedId, time: confirmedTime, isOptimistic: false }) : m))
+        } else {
+          // Fallback: mark acknowledged; polling will reconcile
+          setMessages(prev => prev.map(m => m.id === tempId ? ({ ...m, isOptimistic: false }) : m))
+        }
       } else {
         // Mark as retryable instead of removing immediately
         setMessages(prev => prev.map(m => m.id === tempId ? ({ ...m, text: m.text, isOptimistic: true }) : m))
