@@ -7193,13 +7193,24 @@ def get_messages():
     if not other_user_id:
         return jsonify({'success': False, 'error': 'Other user ID required'})
     
-    # Skip cache for now - it's causing issues with message synchronization
-    # TODO: Fix cache key consistency between get_messages and invalidate_message_cache
-    # cache_key = f"messages:{username}:{other_user_id}"
-    # cached_messages = cache.get(cache_key)
-    # if cached_messages:
-    #     logger.debug(f"🚀 Cache hit: messages for {username} ↔ {other_user_id}")
-    #     return jsonify({'success': True, 'messages': cached_messages})
+    # Short-lived cache to reduce DB latency (safe to enable; invalidated on write)
+    cache_key = None
+    try:
+        # Resolve other username for stable key
+        with get_db_connection() as _conn:
+            _c = _conn.cursor()
+            _c.execute("SELECT username FROM users WHERE id = ?", (other_user_id,))
+            _row = _c.fetchone()
+            if _row:
+                other_username_for_key = _row['username'] if hasattr(_row, 'keys') else _row[0]
+                from redis_cache import messages_cache_key
+                cache_key = messages_cache_key(username, other_username_for_key)
+    except Exception:
+        cache_key = None
+    if cache_key:
+        cached_messages = cache.get(cache_key)
+        if cached_messages:
+            return jsonify({'success': True, 'messages': cached_messages})
     
     try:
         with get_db_connection() as conn:
@@ -7265,10 +7276,13 @@ def get_messages():
             c.execute("UPDATE messages SET is_read=1 WHERE sender=? AND receiver=? AND is_read=0", (other_username, username))
             conn.commit()
             
-            # Skip caching for now - disabled due to cache key inconsistency
-            # from redis_cache import MESSAGE_CACHE_TTL
-            # cache.set(cache_key, messages, MESSAGE_CACHE_TTL)  # Optimized TTL
-            # logger.debug(f"💾 Cached messages for {username} ↔ {other_user_id}")
+            # Write-through cache for fast subsequent polls
+            try:
+                from redis_cache import MESSAGE_CACHE_TTL
+                if cache_key:
+                    cache.set(cache_key, messages, MESSAGE_CACHE_TTL)
+            except Exception:
+                pass
             
             return jsonify({'success': True, 'messages': messages})
             
