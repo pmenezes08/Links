@@ -428,42 +428,7 @@ export default function AdminDashboard() {
               </div>
             </div>
 
-            {/* Leaderboards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <div className="bg-white/5 rounded-lg p-4 border border-white/10">
-                <div className="text-sm font-semibold mb-2">Top Posters</div>
-                <div className="space-y-1 text-sm">
-                  {stats.leaderboards?.top_posters?.length ? stats.leaderboards.top_posters.map((u, i) => (
-                    <div key={u.username} className="flex items-center justify-between">
-                      <span className="text-white/80">{i+1}. {u.username}</span>
-                      <span className="text-white/60">{u.count}</span>
-                    </div>
-                  )) : <div className="text-white/60">No data</div>}
-                </div>
-              </div>
-              <div className="bg-white/5 rounded-lg p-4 border border-white/10">
-                <div className="text-sm font-semibold mb-2">Top Reactors</div>
-                <div className="space-y-1 text-sm">
-                  {stats.leaderboards?.top_reactors?.length ? stats.leaderboards.top_reactors.map((u, i) => (
-                    <div key={u.username} className="flex items-center justify-between">
-                      <span className="text-white/80">{i+1}. {u.username}</span>
-                      <span className="text-white/60">{u.count}</span>
-                    </div>
-                  )) : <div className="text-white/60">No data</div>}
-                </div>
-              </div>
-              <div className="bg-white/5 rounded-lg p-4 border border-white/10">
-                <div className="text-sm font-semibold mb-2">Top Voters</div>
-                <div className="space-y-1 text-sm">
-                  {stats.leaderboards?.top_voters?.length ? stats.leaderboards.top_voters.map((u, i) => (
-                    <div key={u.username} className="flex items-center justify-between">
-                      <span className="text-white/80">{i+1}. {u.username}</span>
-                      <span className="text-white/60">{u.count}</span>
-                    </div>
-                  )) : <div className="text-white/60">No data</div>}
-                </div>
-              </div>
-            </div>
+            {/* Leaderboards removed from overview; available in Metrics tab */}
 
             {/* Parent Communities Cards */}
             <div>
