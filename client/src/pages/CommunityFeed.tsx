@@ -930,12 +930,14 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
               {post.poll.options?.map(option => {
                 const percentage = post.poll?.total_votes ? Math.round((option.votes / post.poll.total_votes) * 100) : 0
                 const isUserVote = option.user_voted || false
+                const isExpired = (() => { try { const raw = (post.poll as any)?.expires_at; if (!raw) return false; const d = new Date(raw); return !isNaN(d.getTime()) && Date.now() >= d.getTime(); } catch { return false } })()
                 return (
                   <button
                     key={option.id}
                     type="button"
-                    className={`w-full text-left px-3 py-2 rounded-lg border relative overflow-hidden ${isUserVote ? 'border-[#4db6ac] bg-[#4db6ac]/10' : 'border-white/10 hover:bg-white/5'}`}
-                    onClick={(e)=> { e.preventDefault(); e.stopPropagation(); if (onPollVote) onPollVote(post.id, post.poll!.id, option.id) }}
+                    disabled={isExpired}
+                    className={`w-full text-left px-3 py-2 rounded-lg border relative overflow-hidden ${isExpired ? 'opacity-60 cursor-not-allowed' : (isUserVote ? 'border-[#4db6ac] bg-[#4db6ac]/10' : 'border-white/10 hover:bg-white/5')}`}
+                    onClick={(e)=> { e.preventDefault(); e.stopPropagation(); if (!isExpired && onPollVote) onPollVote(post.id, post.poll!.id, option.id) }}
                   >
                     <div className="absolute inset-0 bg-[#4db6ac]/20" style={{ width: `${percentage}%`, transition: 'width 0.3s ease' }} />
                     <div className="relative flex items-center justify-between">

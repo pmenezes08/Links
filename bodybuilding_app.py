@@ -10790,6 +10790,28 @@ def vote_poll():
             if not poll_data:
                 return jsonify({'success': False, 'error': 'Poll not found or inactive'})
             
+            # Block voting if poll is past its deadline (expires_at <= now)
+            try:
+                expires_at_val = poll_data.get('expires_at') if hasattr(poll_data, 'keys') else None
+            except Exception:
+                expires_at_val = None
+            if expires_at_val:
+                try:
+                    exp = None
+                    try:
+                        exp = datetime.strptime(str(expires_at_val)[:19].replace('T',' '), '%Y-%m-%d %H:%M:%S')
+                    except Exception:
+                        for fmt in ('%Y-%m-%d %H:%M', '%Y-%m-%d'):
+                            try:
+                                exp = datetime.strptime(str(expires_at_val).replace('T',' '), fmt)
+                                break
+                            except Exception:
+                                continue
+                    if exp and datetime.now() >= exp:
+                        return jsonify({'success': False, 'error': 'Poll has expired'}), 400
+                except Exception:
+                    pass
+            
             # Check if user already voted on this specific option
             c.execute("SELECT id FROM poll_votes WHERE poll_id = ? AND username = ? AND option_id = ?", (poll_id, username, option_id))
             existing_vote_on_option = c.fetchone()
