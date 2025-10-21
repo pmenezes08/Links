@@ -173,23 +173,14 @@ export default function CommunityFeed() {
     return () => { mounted = false }
   }, [community_id])
 
+  // Derive unanswered polls flag from feed data to avoid extra network roundtrip
   useEffect(() => {
-    // Check for unanswered polls
-    let mounted = true
-    async function check(){
-      try{
-        const r = await fetch(`/get_active_polls?community_id=${community_id}`, { credentials: 'include' })
-        const j = await r.json()
-        if (!mounted) return
-        if (j?.success){
-          const unanswered = (j.polls || []).some((p:any) => !p.user_vote)
-          setHasUnansweredPolls(unanswered)
-        }
-      }catch{}
-    }
-    check()
-    return () => { mounted = false }
-  }, [community_id, refreshKey])
+    try{
+      const posts = Array.isArray(data?.posts) ? data.posts : []
+      const hasUnanswered = posts.some((p:any) => p?.poll && (p.poll.user_vote == null))
+      setHasUnansweredPolls(hasUnanswered)
+    }catch{ setHasUnansweredPolls(false) }
+  }, [data])
 
   async function fetchAnnouncements(){
     try{
@@ -315,16 +306,26 @@ export default function CommunityFeed() {
     try{
       const res = await fetch('/vote_poll', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ poll_id: pollId, option_id: optionId }) })
       const j = await res.json().catch(()=>null)
-      if (!j?.success){
-        // Reload on error
-        setRefreshKey(prev => prev + 1)
-      } else {
-        // Reload to get correct user_voted state from server
-        setRefreshKey(prev => prev + 1)
+      if (!j?.success) return
+      if (Array.isArray(j.poll_results)){
+        // Reconcile this post's poll counts with server truth without full reload
+        setData((prev:any) => {
+          if (!prev) return prev
+          const updatedPosts = (prev.posts || []).map((p: any) => {
+            if (p.id !== postId || !p.poll) return p
+            const rows = j.poll_results as Array<any>
+            const newOptions = p.poll.options.map((opt:any) => {
+              const row = rows.find(r => r.id === opt.id)
+              return row ? { ...opt, votes: row.votes, user_voted: (row.user_voted ? true : false) } : opt
+            })
+            const newUserVote = typeof rows[0]?.user_vote !== 'undefined' ? (rows[0].user_vote || null) : p.poll.user_vote
+            const totalVotes = rows[0]?.total_votes ?? newOptions.reduce((a:number, b:any) => a + (b.votes||0), 0)
+            return { ...p, poll: { ...p.poll, options: newOptions, user_vote: newUserVote, total_votes: totalVotes } }
+          })
+          return { ...prev, posts: updatedPosts }
+        })
       }
-    }catch{
-      setRefreshKey(prev => prev + 1)
-    }
+    }catch{}
   }
 
   const postsOnly = useMemo(() => Array.isArray(data?.posts) ? data.posts : [], [data])
