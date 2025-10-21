@@ -495,7 +495,6 @@ export default function ChatThread(){
     .then(r=>r.json())
     .then(j=>{
       if (j?.success){
-        // Message sent successfully - the polling will pick up the real message
         // Stop typing indicator
         fetch('/api/typing', { 
           method:'POST', 
@@ -503,18 +502,18 @@ export default function ChatThread(){
           headers:{ 'Content-Type':'application/json' }, 
           body: JSON.stringify({ peer: username, is_typing: false }) 
         }).catch(()=>{})
+        // Mark optimistic as acknowledged; polling will reconcile and remove duplicates
+        setMessages(prev => prev.map(m => m.id === tempId ? ({ ...m, isOptimistic: false }) : m))
       } else {
-        // If sending failed, remove the optimistic message
-        setMessages(prev => prev.filter(m => m.id !== tempId))
-        setDraft(messageText) // Restore the draft
-        alert('Failed to send message. Please try again.')
+        // Mark as retryable instead of removing immediately
+        setMessages(prev => prev.map(m => m.id === tempId ? ({ ...m, text: m.text, isOptimistic: true }) : m))
+        setDraft(messageText)
       }
     })
     .catch(()=>{
-      // Network error - remove optimistic message and restore draft
-      setMessages(prev => prev.filter(m => m.id !== tempId))
+      // Keep optimistic bubble to avoid flicker; allow resend by tapping send again
+      setMessages(prev => prev.map(m => m.id === tempId ? ({ ...m, text: m.text, isOptimistic: true }) : m))
       setDraft(messageText)
-      alert('Network error. Please check your connection and try again.')
     })
     .finally(() => setSending(false))
   }
