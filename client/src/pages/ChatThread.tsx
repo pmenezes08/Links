@@ -110,6 +110,8 @@ export default function ChatThread(){
   })
   // Track recently sent optimistic messages to prevent poll from removing them
   const recentOptimisticRef = useRef<Map<string, { message: Message; timestamp: number }>>(new Map())
+  // Pause polling briefly after sending to avoid race condition with server confirmation
+  const skipNextPollsUntil = useRef<number>(0)
 
   // Mic gating by build flag: enable by default in dev; disabled in prod unless VITE_MIC_ENABLED=true
   const envVars: any = (typeof import.meta !== 'undefined' && (import.meta as any).env) || {}
@@ -322,6 +324,11 @@ export default function ChatThread(){
     if (!username || !otherUserId) return
     
     async function poll(){
+      // Skip polling if we're waiting for server confirmation after sending
+      if (Date.now() < skipNextPollsUntil.current) {
+        return
+      }
+      
       try{
         const fd = new URLSearchParams({ other_user_id: String(otherUserId) })
         const r = await fetch('/get_messages', { 
@@ -487,6 +494,9 @@ export default function ChatThread(){
 
   function send(){
     if (!otherUserId || !draft.trim() || sending) return
+    
+    // Pause polling for 2 seconds to avoid race condition with server confirmation
+    skipNextPollsUntil.current = Date.now() + 2000
     
     const messageText = draft.trim()
     const now = new Date().toISOString().slice(0,19).replace('T',' ')
