@@ -342,55 +342,24 @@ export default function ChatThread(){
         
         if (j?.success && Array.isArray(j.messages)){
           setMessages(prev => {
-            // Create a map of all existing messages by ID for quick lookup
-            const existingById = new Map()
+            // Build map of existing messages by their stable key (clientKey or id)
+            const messagesByKey = new Map()
             prev.forEach(m => {
-              if (!m.isOptimistic && m.id) {
-                existingById.set(m.id, m)
-              }
+              const key = String(m.clientKey || m.id)
+              messagesByKey.set(key, m)
             })
             
-            // Keep optimistic messages from current state
-            const optimisticMessages = prev.filter(m => m.isOptimistic === true)
-            
-            // CRITICAL: Add any recent optimistic messages that might not be in prev yet
-            // This handles race condition where send() adds optimistic but poll runs with stale prev
-            const now = Date.now()
-            recentOptimisticRef.current.forEach((entry, key) => {
-              // Only include if:
-              // 1) Not already in optimisticMessages
-              // 2) Still recent (within 10 seconds)
-              const age = now - entry.timestamp
-              if (age < 10000) {
-                const alreadyExists = optimisticMessages.some(m => {
-                  const mKey = String(m.clientKey || m.id)
-                  return mKey === key
-                })
-                if (!alreadyExists) {
-                  optimisticMessages.push(entry.message)
-                }
-              } else {
-                // Clean up old entries
-                recentOptimisticRef.current.delete(key)
-              }
-            })
-            
-            // Process server messages, preserving local state
-            const serverMessages = j.messages.map((m:any) => {
+            // Process server messages
+            const serverMessageKeys = new Set()
+            j.messages.forEach((m: any) => {
               // Skip if pending deletion
-              if (pendingDeletions.current.has(m.id)) {
-                return null
-              }
-              
-              const existing = existingById.get(m.id)
+              if (pendingDeletions.current.has(m.id)) return
               
               // Parse reply information from message text
               let messageText = m.text
               let replySnippet = undefined
               const replyMatch = messageText.match(/^\[REPLY:([^:]+):([^\]]+)\]\n(.*)$/s)
               if (replyMatch) {
-                // Extract reply info and actual message
-                // const replySender = replyMatch[1] // Can use this later if needed
                 replySnippet = replyMatch[2]
                 messageText = replyMatch[3]
               }
@@ -400,66 +369,64 @@ export default function ChatThread(){
               
               // Determine 'sent' strictly from server sender match
               const isSentByMe = m.sender === undefined ? (m.sent === true) : (m.sender === username)
-              // If server id maps to a temp id, use the temp id as clientKey for stable React keys
-              let bridgedTemp = idBridgeRef.current.serverToTemp.get(m.id)
               
-              // Fallback: If no bridge mapping exists, try to find matching optimistic message
-              // This handles race condition where poll returns before send response sets up bridge
-              if (!bridgedTemp) {
-                const matchingOpt = optimisticMessages.find(opt => {
-                  if (opt.sent !== isSentByMe) return false
-                  if (opt.text !== messageText) return false
-                  // Check if times are very close (within 5 seconds)
-                  const timeDiff = Math.abs(new Date(m.time).getTime() - new Date(opt.time).getTime())
-                  return timeDiff < 5000
-                })
-                if (matchingOpt) {
-                  bridgedTemp = String(matchingOpt.clientKey || matchingOpt.id)
-                  // Set up bridge mapping for future polls
-                  idBridgeRef.current.serverToTemp.set(m.id, bridgedTemp)
-                  idBridgeRef.current.tempToServer.set(bridgedTemp, m.id)
+              // Check if we have a bridge mapping or matching optimistic message
+              let stableKey = idBridgeRef.current.serverToTemp.get(m.id)
+              
+              if (!stableKey) {
+                // Try to find matching optimistic by content
+                for (const [key, existing] of messagesByKey.entries()) {
+                  if (!existing.isOptimistic) continue
+                  if (existing.sent !== isSentByMe) continue
+                  if (existing.text !== messageText) continue
+                  const timeDiff = Math.abs(new Date(m.time).getTime() - new Date(existing.time).getTime())
+                  if (timeDiff < 5000) {
+                    stableKey = key
+                    // Set up bridge for future
+                    idBridgeRef.current.serverToTemp.set(m.id, key)
+                    idBridgeRef.current.tempToServer.set(key, m.id)
+                    break
+                  }
                 }
               }
               
-              return {
-                ...m,
+              // Use stable key if found, otherwise use server id
+              const finalKey = stableKey || String(m.id)
+              serverMessageKeys.add(finalKey)
+              
+              // Get existing message to preserve local state
+              const existing = messagesByKey.get(finalKey)
+              
+              // Update or create message
+              messagesByKey.set(finalKey, {
+                id: m.id, // Use server ID now
                 text: messageText,
+                image_path: m.image_path,
+                audio_path: m.audio_path,
+                audio_duration_seconds: m.audio_duration_seconds,
                 sent: isSentByMe,
+                time: m.time,
                 reaction: existing?.reaction ?? meta.reaction,
                 replySnippet: replySnippet || existing?.replySnippet || meta.replySnippet,
-                isOptimistic: false,
-                clientKey: bridgedTemp || m.id
-              }
-            }).filter(Boolean)
-            
-            // Build a Set of all clientKeys present in server messages for O(1) lookup
-            const serverKeys = new Set()
-            serverMessages.forEach((srv: any) => {
-              const srvKey = srv.clientKey || srv.id
-              serverKeys.add(String(srvKey))
+                isOptimistic: false, // No longer optimistic
+                edited_at: m.edited_at || null,
+                clientKey: finalKey // Keep stable key
+              })
             })
             
-            // Filter optimistic: Remove only when server definitely has it
-            const remainingOptimistic = optimisticMessages.filter(opt => {
-              const optKey = String(opt.clientKey || opt.id)
-              
-              // If server has this key, remove optimistic version
-              // React will smoothly reconcile because they share the same key
-              if (serverKeys.has(optKey)) {
-                return false
+            // Clean up very old optimistic messages (30s timeout)
+            const now = Date.now()
+            for (const [key, msg] of messagesByKey.entries()) {
+              if (msg.isOptimistic) {
+                const age = now - new Date(msg.time).getTime()
+                if (age > 30000) {
+                  messagesByKey.delete(key)
+                }
               }
-              
-              // Safety: Remove very old optimistic messages (network failure case)
-              const optAge = Date.now() - new Date(opt.time).getTime()
-              if (optAge > 30000) { // 30 seconds without server confirmation
-                return false
-              }
-              
-              return true
-            })
+            }
             
-            // Combine and sort - no duplicates because we filtered out matched optimistic messages
-            const allMessages = [...serverMessages, ...remainingOptimistic]
+            // Convert map to array and sort
+            const allMessages = Array.from(messagesByKey.values())
             return allMessages.sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime())
           })
         }
