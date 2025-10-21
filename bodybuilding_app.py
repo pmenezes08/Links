@@ -4461,7 +4461,8 @@ def admin_dashboard_api():
             
             # Activity windows
             from datetime import datetime, timedelta
-            today = datetime.utcnow().date()
+            # Use server-local midnight for "today" to better match stored timestamps
+            today = datetime.now().date()
             start_of_day = datetime(today.year, today.month, today.day)
             start_of_30 = start_of_day - timedelta(days=30)
 
@@ -4469,13 +4470,30 @@ def admin_dashboard_api():
             # Reading timeline proxy: community_feed/api hits tracked in community_visit_history
             def get_unique_between(table, field, ts_field, start_ts):
                 try:
-                    q = f"SELECT DISTINCT {field} FROM {table} WHERE {ts_field} >= ?"
-                    c.execute(q, (start_ts.strftime('%Y-%m-%d %H:%M:%S'),))
+                    q = f"SELECT DISTINCT {field}, {ts_field} FROM {table} WHERE {ts_field} IS NOT NULL"
+                    c.execute(q)
                     rows = c.fetchall() or []
                     vals = set()
                     for r in rows:
                         try:
-                            vals.add(r[field] if hasattr(r, 'keys') else r[0])
+                            username_val = r[field] if hasattr(r, 'keys') else r[0]
+                            ts_val = r[ts_field] if hasattr(r, 'keys') else (r[1] if len(r) > 1 else None)
+                            if not ts_val:
+                                continue
+                            s = str(ts_val)
+                            dtv = None
+                            # Fast path ISO-like
+                            try:
+                                dtv = datetime.strptime(s[:19].replace('T',' '), '%Y-%m-%d %H:%M:%S')
+                            except Exception:
+                                for fmt in ('%Y-%m-%d %H:%M', '%Y-%m-%d', '%m.%d.%y %H:%M'):
+                                    try:
+                                        dtv = datetime.strptime(s, fmt)
+                                        break
+                                    except Exception:
+                                        continue
+                            if dtv and dtv >= start_ts:
+                                vals.add(username_val)
                         except Exception:
                             pass
                     return vals
@@ -10892,12 +10910,12 @@ def vote_poll():
             elif existing_vote and poll_data['single_vote']:
                 # Single vote mode: user voted on a different option - update to new option
                 c.execute("UPDATE poll_votes SET option_id = ?, voted_at = ? WHERE poll_id = ? AND username = ?",
-                          (option_id, datetime.now().strftime('%m.%d.%y %H:%M'), poll_id, username))
+                          (option_id, datetime.now().strftime('%Y-%m-%d %H:%M:%S'), poll_id, username))
                 message = "Vote updated!"
             else:
                 # User hasn't voted on this option yet - add vote
                 c.execute("INSERT INTO poll_votes (poll_id, option_id, username, voted_at) VALUES (?, ?, ?, ?)",
-                          (poll_id, option_id, username, datetime.now().strftime('%m.%d.%y %H:%M')))
+                          (poll_id, option_id, username, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
                 message = "Vote recorded successfully!"
             
             # Update vote count for the selected option
@@ -16008,6 +16026,16 @@ def api_community_feed(community_id):
                         return jsonify({'success': False, 'error': 'Forbidden'}), 403
             except Exception as me:
                 logger.warning(f"membership check failed on api_community_feed: {me}")
+
+            # Track visit as an activity (counts towards DAU/MAU)
+            try:
+                c.execute(
+                    "INSERT INTO community_visit_history (username, community_id, visit_time) VALUES (?, ?, ?)",
+                    (username, community_id, datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+                )
+                conn.commit()
+            except Exception:
+                pass
 
             # Posts
             # Limit initial posts returned to reduce payload; clients can paginate if needed
