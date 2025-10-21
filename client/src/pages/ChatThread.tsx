@@ -376,6 +376,8 @@ export default function ChatThread(){
                 // Match by text and sender, with a reasonable time window
                 if (srv.sent === opt.sent && srv.text === opt.text) {
                   const timeDiff = Math.abs(new Date(srv.time).getTime() - new Date(opt.time).getTime())
+                  // If IDs match (from immediate confirm), drop optimistic
+                  if (String(opt.id) === String(srv.id)) return false
                   return timeDiff < 60000 // Within 60 seconds
                 }
                 return false
@@ -420,8 +422,8 @@ export default function ChatThread(){
     // Initial poll after a short delay to let optimistic messages show
     setTimeout(poll, 250)
     
-    // Poll more frequently for snappier delivery
-    pollTimer.current = setInterval(poll, 1200)
+    // Poll frequently but not too aggressive to avoid flicker
+    pollTimer.current = setInterval(poll, 1800)
     
     return () => { 
       if (pollTimer.current) clearInterval(pollTimer.current) 
@@ -506,10 +508,11 @@ export default function ChatThread(){
         if (j.message_id){
           const confirmedId = j.message_id
           const confirmedTime = j.time || new Date().toISOString().slice(0,19).replace('T',' ')
-          setMessages(prev => prev.map(m => m.id === tempId ? ({ ...m, id: confirmedId, time: confirmedTime, isOptimistic: false }) : m))
+          // Keep as optimistic until poll confirms to avoid disappear/reappear flicker
+          setMessages(prev => prev.map(m => m.id === tempId ? ({ ...m, id: confirmedId, time: confirmedTime, isOptimistic: true }) : m))
         } else {
-          // Fallback: mark acknowledged; polling will reconcile
-          setMessages(prev => prev.map(m => m.id === tempId ? ({ ...m, isOptimistic: false }) : m))
+          // Keep optimistic until server list includes it
+          setMessages(prev => prev.map(m => m.id === tempId ? ({ ...m, isOptimistic: true }) : m))
         }
       } else {
         // Mark as retryable instead of removing immediately
