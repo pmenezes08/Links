@@ -4516,6 +4516,54 @@ def admin_dashboard_api():
             dau_pct = round((dau / total_users) * 100, 2) if total_users else 0.0
             mau_pct = round((mau / total_users) * 100, 2) if total_users else 0.0
 
+            # Average DAU over the past 30 days (including today):
+            # For each day window [day_start, day_end), union distinct users across activity tables, then average the counts
+            def get_unique_between_window(table, field, ts_field, start_ts, end_ts):
+                try:
+                    q = f"SELECT DISTINCT {field}, {ts_field} FROM {table} WHERE {ts_field} IS NOT NULL"
+                    c.execute(q)
+                    rows = c.fetchall() or []
+                    vals = set()
+                    for r in rows:
+                        try:
+                            username_val = r[field] if hasattr(r, 'keys') else r[0]
+                            ts_val = r[ts_field] if hasattr(r, 'keys') else (r[1] if len(r) > 1 else None)
+                            if not ts_val:
+                                continue
+                            s = str(ts_val)
+                            dtv = None
+                            try:
+                                dtv = datetime.strptime(s[:19].replace('T',' '), '%Y-%m-%d %H:%M:%S')
+                            except Exception:
+                                for fmt in ('%Y-%m-%d %H:%M', '%Y-%m-%d', '%m.%d.%y %H:%M'):
+                                    try:
+                                        dtv = datetime.strptime(s, fmt)
+                                        break
+                                    except Exception:
+                                        continue
+                            if dtv and (dtv >= start_ts) and (dtv < end_ts):
+                                vals.add(username_val)
+                        except Exception:
+                            pass
+                    return vals
+                except Exception:
+                    return set()
+
+            daily_counts = []
+            for i in range(0, 30):
+                day_start = start_of_day - timedelta(days=i)
+                day_end = day_start + timedelta(days=1)
+                day_sets = []
+                for tbl, user_field, ts_field in (
+                    ('posts','username','timestamp'),
+                    ('reactions','username','created_at'),
+                    ('poll_votes','username','voted_at'),
+                    ('community_visit_history','username','visit_time'),
+                ):
+                    day_sets.append(get_unique_between_window(tbl, user_field, ts_field, day_start, day_end))
+                daily_counts.append(len(set().union(*day_sets)))
+            avg_dau_30 = round(sum(daily_counts) / len(daily_counts), 2) if daily_counts else 0.0
+
             # Leaderboards
             def scalar_list(query, params=()):
                 c.execute(query, params)
@@ -4541,6 +4589,7 @@ def admin_dashboard_api():
                 'mau': mau,
                 'dau_pct': dau_pct,
                 'mau_pct': mau_pct,
+                'avg_dau_30': avg_dau_30,
                 'leaderboards': {
                     'top_posters': top_posters,
                     'top_reactors': top_reactors,
