@@ -92,7 +92,6 @@ export default function ChatThread(){
   // const twoSecondCheckRef = useRef<any>(null)
   const finalizeAttemptRef = useRef(0)
   const [recordLockActive, setRecordLockActive] = useState(false)
-  const [showLockHint, setShowLockHint] = useState(false)
   const touchStartYRef = useRef<number|null>(null)
   const lockActiveRef = useRef(false)
   const suppressClickRef = useRef(false)
@@ -1755,16 +1754,15 @@ export default function ChatThread(){
                     )}
                   </button>
                   
-                  {/* Mic button - only show when NOT recording */}
+                  {/* Mic icon - simple like WhatsApp, same size as send button */}
                   {MIC_ENABLED && (
-                      <button
-                    className="w-10 h-10 md:w-8 md:h-8 rounded-full flex items-center justify-center transition-all duration-200 ease-out bg-[#4db6ac] text-white hover:bg-[#45a99c] hover:scale-105 active:scale-95 shadow-md"
+                  <button
+                    className="w-8 h-8 flex items-center justify-center text-white/70 hover:text-white transition-colors"
                     onClick={checkMicrophonePermission}
                     onTouchStart={(e) => {
                       try{ e.preventDefault(); e.stopPropagation() }catch{}
                       suppressClickRef.current = true
                       touchStartYRef.current = (e.touches && e.touches[0]?.clientY) || null
-                      setShowLockHint(true)
                       checkMicrophonePermission()
                     }}
                     onTouchMove={(e) => {
@@ -1777,20 +1775,16 @@ export default function ChatThread(){
                       if (shouldLock && !lockActiveRef.current) {
                         lockActiveRef.current = true
                         setRecordLockActive(true)
-                        setShowLockHint(false)
-                        console.log('🔒 Recording locked')
                       }
                     }}
                     onTouchEnd={(e) => {
                       try{ e.preventDefault(); e.stopPropagation() }catch{}
                       // If locked, do not stop; user must press stop button
                       if (!lockActiveRef.current && recording) {
-                        console.log('🛑 Touch end - stopping (no lock)')
                         stopRecording()
                       }
                       // reset gesture state
                       touchStartYRef.current = null
-                      setShowLockHint(false)
                       suppressClickRef.current = false
                     }}
                     aria-label="Voice message"
@@ -1802,15 +1796,10 @@ export default function ChatThread(){
                       WebkitUserSelect: 'none'
                     }}
                   >
-                    <i className="fa-solid fa-microphone text-[13px]" />
+                    <i className="fa-solid fa-microphone text-[11px]" />
                   </button>
                   )}
                 </>
-              )}
-              {MIC_ENABLED && showLockHint && !recordLockActive && (
-                <div className="absolute right-14 -top-4 bg-white/10 text-white text-[10px] px-2 py-1 rounded-md border border-white/20">
-                  Swipe up to lock
-                </div>
               )}
             </div>
           </div>
