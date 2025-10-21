@@ -1365,6 +1365,7 @@ export default function ChatThread(){
                     if (dt && (Date.now() - dt.getTime()) > 5*60*1000) return
                     setEditingId(m.id); setEditText(m.text)
                   } : undefined}
+                  disabled={editingId === m.id}
                 >
                   <div className={`flex ${m.sent ? 'justify-end' : 'justify-start'}`}>
                     <div
@@ -1419,7 +1420,7 @@ export default function ChatThread(){
                             <i className="fa-regular fa-pen-to-square" />
                             <span>Edit message</span>
                           </div>
-                          <div className="relative group">
+                          <div className="relative group" onClick={(e)=> e.stopPropagation()} onMouseDown={(e)=> e.stopPropagation()} onTouchStart={(e)=> e.stopPropagation()}>
                             <textarea
                               className="w-full bg-black/30 border border-white/15 rounded-xl px-3 py-2 text-sm pr-10 focus:outline-none focus:border-[#4db6ac] shadow-inner"
                               value={editText}
@@ -2227,7 +2228,8 @@ function LongPressActionable({
   onReact, 
   onReply, 
   onCopy, 
-  onEdit 
+  onEdit, 
+  disabled 
 }: { 
   children: React.ReactNode
   onDelete: () => void
@@ -2235,12 +2237,14 @@ function LongPressActionable({
   onReply: ()=>void
   onCopy: ()=>void
   onEdit?: ()=>void
+  disabled?: boolean
 }){
   const [showMenu, setShowMenu] = useState(false)
   const [isPressed, setIsPressed] = useState(false)
   const timerRef = useRef<any>(null)
   
   function handleStart(e?: any){
+    if (disabled) return
     try{ e && e.preventDefault && e.preventDefault() }catch{}
     setIsPressed(true)
     if (timerRef.current) clearTimeout(timerRef.current)
@@ -2251,20 +2255,22 @@ function LongPressActionable({
   }
   
   function handleEnd(){
+    if (disabled) return
     setIsPressed(false)
     if (timerRef.current) clearTimeout(timerRef.current)
   }
   
   return (
-    <div className="relative select-none" style={{ userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none' as any }}>
+    <div className="relative" style={{ userSelect: disabled ? 'text' : 'none', WebkitUserSelect: disabled ? 'text' : 'none', WebkitTouchCallout: 'none' as any }}>
       <div
-        className={`transition-opacity ${isPressed ? 'opacity-70' : 'opacity-100'}`}
-        onMouseDown={handleStart}
-        onMouseUp={handleEnd}
-        onMouseLeave={handleEnd}
-        onTouchStart={handleStart}
-        onTouchEnd={handleEnd}
+        className={`transition-opacity ${!disabled && isPressed ? 'opacity-70' : 'opacity-100'}`}
+        onMouseDown={disabled ? undefined : handleStart}
+        onMouseUp={disabled ? undefined : handleEnd}
+        onMouseLeave={disabled ? undefined : handleEnd}
+        onTouchStart={disabled ? undefined : handleStart}
+        onTouchEnd={disabled ? undefined : handleEnd}
         onContextMenu={(e) => {
+          if (disabled) return
           e.preventDefault()
           setShowMenu(true)
         }}
@@ -2272,7 +2278,7 @@ function LongPressActionable({
       >
         {children}
       </div>
-      {showMenu && (
+      {!disabled && showMenu && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setShowMenu(false)} />
           <div className="absolute z-50 -top-12 right-2 bg-[#111] border border-white/15 rounded-lg shadow-xl px-2 py-2 min-w-[160px]">
