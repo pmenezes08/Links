@@ -318,6 +318,9 @@ export default function CommunityFeed() {
       if (!j?.success){
         // Reload on error
         setRefreshKey(prev => prev + 1)
+      } else {
+        // Reload to get correct user_voted state from server
+        setRefreshKey(prev => prev + 1)
       }
     }catch{
       setRefreshKey(prev => prev + 1)
