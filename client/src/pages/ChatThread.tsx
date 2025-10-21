@@ -429,21 +429,34 @@ export default function ChatThread(){
               })
             })
             
-            // Clean up very old optimistic messages (30s timeout)
+            // Clean up very old UNCONFIRMED optimistic messages (30s timeout)
+            // CRITICAL: Never remove confirmed messages (isOptimistic=false) even if server doesn't return them
+            // This handles server-side caching where newly sent messages don't appear in polls immediately
             const now = Date.now()
             for (const [key, msg] of messagesByKey.entries()) {
               if (msg.isOptimistic) {
                 const age = now - new Date(msg.time).getTime()
                 if (age > 30000) {
+                  console.log('🧹 Removing old unconfirmed optimistic:', key)
                   messagesByKey.delete(key)
                 }
               }
+              // Never remove confirmed messages (isOptimistic=false), even if not in latest server response
+              // The server confirmed it exists via send response, so trust that over stale poll data
             }
             
             // Convert map to array and sort
             const allMessages = Array.from(messagesByKey.values())
             const optimisticCount = allMessages.filter(m => m.isOptimistic).length
-            console.log('📊 Reconciliation complete:', allMessages.length, 'total messages,', optimisticCount, 'still optimistic')
+            const confirmedCount = allMessages.filter(m => !m.isOptimistic).length
+            
+            // Track if we're preserving messages not in server response (server caching issue)
+            const preservedCount = allMessages.length - j.messages.length
+            if (preservedCount > 0) {
+              console.log('🛡️ Preserving', preservedCount, 'confirmed messages not in server response (server caching)')
+            }
+            
+            console.log('📊 Reconciliation complete:', allMessages.length, 'total (', optimisticCount, 'optimistic,', confirmedCount, 'confirmed )')
             return allMessages.sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime())
           })
         }
