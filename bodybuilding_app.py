@@ -15752,27 +15752,8 @@ def community_feed(community_id):
                     post['poll'] = None
 
                 # Fetch replies for each post
-                c.execute("SELECT * FROM replies WHERE post_id = ? ORDER BY timestamp DESC", (post['id'],))
-                replies_raw = c.fetchall()
-                post['replies'] = [dict(row) for row in replies_raw]
-                
-                # Add reaction counts for each reply
-                for reply in post['replies']:
-                    reply['reactions'] = {}
-                    reply['user_reaction'] = None
-                    
-                    c.execute("""
-                        SELECT reaction_type, COUNT(*) as count
-                        FROM reply_reactions
-                        WHERE reply_id = ?
-                        GROUP BY reaction_type
-                    """, (reply['id'],))
-                    rr = c.fetchall()
-                    reply['reactions'] = {r['reaction_type']: r['count'] for r in rr}
-                    
-                    c.execute("SELECT reaction_type FROM reply_reactions WHERE reply_id = ? AND username = ?", (reply['id'], username))
-                    ur = c.fetchone()
-                    reply['user_reaction'] = ur['reaction_type'] if ur else None
+                # Do not include replies payload in feed list for performance; fetch on-demand on post detail
+                post['replies'] = []
             
             # Get unread notification count (safely handle if table doesn't exist)
             unread_notifications = 0
@@ -15965,11 +15946,13 @@ def api_community_feed(community_id):
                 logger.warning(f"membership check failed on api_community_feed: {me}")
 
             # Posts
+            # Limit initial posts returned to reduce payload; clients can paginate if needed
             c.execute(
                 """
                 SELECT * FROM posts 
                 WHERE community_id = ? 
                 ORDER BY id DESC
+                LIMIT 200
                 """,
                 (community_id,)
             )
@@ -16042,23 +16025,38 @@ def api_community_feed(community_id):
                 poll_raw = c.fetchone()
                 if poll_raw:
                     poll = dict(poll_raw)
+                    # Fetch options once; rely on denormalized votes column to avoid per-option COUNT queries
                     c.execute("SELECT * FROM poll_options WHERE poll_id = ? ORDER BY id", (poll['id'],))
                     options = [dict(o) for o in c.fetchall()]
-                    
-                    # Calculate vote counts for each option
+                    # Compute which options the current user voted on (for multi-select highlight)
+                    try:
+                        c.execute("SELECT option_id FROM poll_votes WHERE poll_id = ? AND username = ?", (poll['id'], username))
+                        user_vote_rows = c.fetchall()
+                        user_voted_ids = set([r['option_id'] if hasattr(r, 'keys') else r[0] for r in user_vote_rows])
+                    except Exception:
+                        user_voted_ids = set()
+                    # Normalize option fields
                     for opt in options:
-                        c.execute("SELECT COUNT(*) as count FROM poll_votes WHERE poll_id = ? AND option_id = ?", (poll['id'], opt['id']))
-                        vote_count = c.fetchone()
-                        opt['votes'] = vote_count['count'] if vote_count else 0
-                        # Rename option_text to text for frontend compatibility
-                        opt['text'] = opt.get('option_text', '')
-                    
+                        # Frontend expects 'text'
+                        if 'text' not in opt:
+                            opt['text'] = opt.get('option_text', '')
+                        # Add per-option user_voted for styling
+                        try:
+                            oid = opt['id'] if hasattr(opt, 'keys') else opt[0]
+                            opt['user_voted'] = (oid in user_voted_ids)
+                        except Exception:
+                            opt['user_voted'] = False
+                        # Ensure 'votes' exists (fallback to 0)
+                        if 'votes' not in opt:
+                            opt['votes'] = 0
                     poll['options'] = options
-                    # Current user's vote
-                    c.execute("SELECT option_id FROM poll_votes WHERE poll_id = ? AND username = ?", (poll['id'], username))
-                    uv = c.fetchone()
-                    poll['user_vote'] = uv['option_id'] if uv else None
-                    poll['total_votes'] = sum(opt.get('votes', 0) for opt in options)
+                    # For single-vote polls, set a convenience user_vote (first if any)
+                    try:
+                        poll['user_vote'] = next(iter(user_voted_ids)) if user_voted_ids else None
+                    except Exception:
+                        poll['user_vote'] = None
+                    # Total votes from options without additional queries
+                    poll['total_votes'] = sum(int(opt.get('votes', 0) or 0) for opt in options)
                     post['poll'] = poll
                 else:
                     post['poll'] = None
