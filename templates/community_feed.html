@@ -5018,10 +5018,27 @@
                         </div>
                         <p>{{ post.content }}</p>
                         
-                        <!-- Poll indicator if post has a poll -->
                         {% if post.poll %}
-                        <div class="poll-indicator">
-                            <i class="fas fa-poll-h"></i> This post has a poll - view in sidebar
+                        <div class="poll-container-compact" data-poll-id="{{ post.poll.id }}">
+                            <div class="poll-header-compact">
+                                <i class="fas fa-poll-h"></i>
+                                <span class="poll-question-compact">{{ post.poll.question }}</span>
+                                {% if post.poll.expires_at %}
+                                  <span class="poll-deadline-compact">• closes {{ post.poll.expires_at.split(' ')[0] }}</span>
+                                {% endif %}
+                            </div>
+                            <div class="poll-options-compact">
+                              {% for opt in post.poll.options %}
+                                <div class="poll-option-compact {{ 'voted' if opt.user_voted }}" data-poll-id="{{ post.poll.id }}" data-option-id="{{ opt.id }}" onclick="voteOnPoll({{ post.poll.id }}, {{ opt.id }}, this)">
+                                  <span class="poll-option-text-compact">{{ opt.option_text or opt.text }}</span>
+                                  <span class="poll-option-votes-compact">{{ opt.votes }}</span>
+                                </div>
+                              {% endfor %}
+                            </div>
+                            <div class="poll-footer-compact">
+                              <span class="poll-total-compact">{{ post.poll.total_votes }} votes</span>
+                              {% if post.poll.user_vote %}<span class="poll-voted-compact"><i class="fas fa-check"></i></span>{% endif %}
+                            </div>
                         </div>
                         {% endif %}
                         
