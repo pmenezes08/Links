@@ -2047,6 +2047,8 @@ export default function ChatThread(){
 
 function AudioMessage({ message, audioPath }: { message: Message; audioPath: string }) {
   const [playing, setPlaying] = useState(false)
+  const [currentTime, setCurrentTime] = useState(0)
+  const [duration, setDuration] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const audioRef = useRef<HTMLAudioElement>(null)
 
@@ -2054,23 +2056,50 @@ function AudioMessage({ message, audioPath }: { message: Message; audioPath: str
     const audio = audioRef.current
     if (!audio) return
 
-    const handleError = () => {
-      console.error('🎵 Audio error:', audioPath)
+    console.log('🎵 AudioMessage mounted:', { audioPath, messageId: message.id })
+
+    const handleError = (e: Event) => {
+      const target = e.target as HTMLAudioElement
+      const errorCode = target.error?.code
+      const errorMessage = target.error?.message
+      console.error('🎵 Audio load error:', { 
+        audioPath, 
+        errorCode, 
+        errorMessage,
+        networkState: target.networkState,
+        readyState: target.readyState
+      })
       setError('Could not load audio')
     }
 
     const handleCanPlay = () => {
+      console.log('🎵 Audio can play:', audioPath)
       setError(null)
+    }
+
+    const handleLoadedMetadata = () => {
+      if (audio.duration && isFinite(audio.duration)) {
+        setDuration(audio.duration)
+        console.log('🎵 Audio duration loaded:', audio.duration)
+      }
+    }
+
+    const handleTimeUpdate = () => {
+      setCurrentTime(audio.currentTime)
     }
 
     audio.addEventListener('error', handleError)
     audio.addEventListener('canplay', handleCanPlay)
+    audio.addEventListener('loadedmetadata', handleLoadedMetadata)
+    audio.addEventListener('timeupdate', handleTimeUpdate)
 
     return () => {
       audio.removeEventListener('error', handleError)
       audio.removeEventListener('canplay', handleCanPlay)
+      audio.removeEventListener('loadedmetadata', handleLoadedMetadata)
+      audio.removeEventListener('timeupdate', handleTimeUpdate)
     }
-  }, [audioPath])
+  }, [audioPath, message.id])
 
   const togglePlay = async () => {
     if (!audioRef.current) return
@@ -2080,26 +2109,29 @@ function AudioMessage({ message, audioPath }: { message: Message; audioPath: str
         audioRef.current.pause()
         setPlaying(false)
       } else {
+        console.log('🎵 Attempting to play:', audioPath)
         await audioRef.current.play()
         setPlaying(true)
       }
     } catch (err) {
-      console.error('🎵 Playback error:', err)
+      console.error('🎵 Playback error:', err, 'for:', audioPath)
       setError('Playback failed')
     }
   }
 
   const formatDuration = (seconds: number) => {
     const mins = Math.floor(seconds / 60)
-    const secs = seconds % 60
+    const secs = Math.floor(seconds % 60)
     return `${mins}:${String(secs).padStart(2, '0')}`
   }
+
+  const progress = duration > 0 ? (currentTime / duration) * 100 : 0
 
   return (
     <div className="flex items-center gap-2 bg-[#1f3933]/40 rounded-2xl px-3 py-2 border border-[#4db6ac]/20">
       <button
         onClick={togglePlay}
-        className="w-8 h-8 rounded-full bg-[#4db6ac] hover:bg-[#45a99c] flex items-center justify-center transition-colors"
+        className="w-8 h-8 rounded-full bg-[#4db6ac] hover:bg-[#45a99c] flex items-center justify-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         disabled={!!error}
       >
         <i className={`fa-solid ${playing ? 'fa-pause' : 'fa-play'} text-white text-xs`} />
@@ -2107,10 +2139,20 @@ function AudioMessage({ message, audioPath }: { message: Message; audioPath: str
       
       <div className="flex-1 flex items-center gap-2">
         <div className="h-1 bg-white/10 rounded-full flex-1 overflow-hidden">
-          <div className="h-full bg-[#4db6ac]/60 rounded-full transition-all" style={{ width: '0%' }} />
+          <div 
+            className="h-full bg-[#4db6ac]/60 rounded-full transition-all" 
+            style={{ width: `${progress}%` }} 
+          />
         </div>
         <span className="text-xs text-white/60 font-mono min-w-[32px]">
-          {message.audio_duration_seconds ? formatDuration(message.audio_duration_seconds) : '--:--'}
+          {playing && duration > 0 
+            ? formatDuration(currentTime) 
+            : message.audio_duration_seconds 
+              ? formatDuration(message.audio_duration_seconds) 
+              : duration > 0 
+                ? formatDuration(duration)
+                : '--:--'
+          }
         </span>
       </div>
 
