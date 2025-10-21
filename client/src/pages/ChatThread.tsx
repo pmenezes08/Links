@@ -108,6 +108,8 @@ export default function ChatThread(){
     tempToServer: new Map(),
     serverToTemp: new Map(),
   })
+  // Track recently sent optimistic messages to prevent poll from removing them
+  const recentOptimisticRef = useRef<Map<string, { message: Message; timestamp: number }>>(new Map())
 
   // Mic gating by build flag: enable by default in dev; disabled in prod unless VITE_MIC_ENABLED=true
   const envVars: any = (typeof import.meta !== 'undefined' && (import.meta as any).env) || {}
@@ -340,8 +342,30 @@ export default function ChatThread(){
               }
             })
             
-            // Keep optimistic messages separate
+            // Keep optimistic messages from current state
             const optimisticMessages = prev.filter(m => m.isOptimistic === true)
+            
+            // CRITICAL: Add any recent optimistic messages that might not be in prev yet
+            // This handles race condition where send() adds optimistic but poll runs with stale prev
+            const now = Date.now()
+            recentOptimisticRef.current.forEach((entry, key) => {
+              // Only include if:
+              // 1) Not already in optimisticMessages
+              // 2) Still recent (within 10 seconds)
+              const age = now - entry.timestamp
+              if (age < 10000) {
+                const alreadyExists = optimisticMessages.some(m => {
+                  const mKey = String(m.clientKey || m.id)
+                  return mKey === key
+                })
+                if (!alreadyExists) {
+                  optimisticMessages.push(entry.message)
+                }
+              } else {
+                // Clean up old entries
+                recentOptimisticRef.current.delete(key)
+              }
+            })
             
             // Process server messages, preserving local state
             const serverMessages = j.messages.map((m:any) => {
@@ -507,7 +531,14 @@ export default function ChatThread(){
     setSending(true)
     
     // Add optimistic message immediately
-    setMessages(prev => [...prev, { ...optimisticMessage, clientKey: tempId }])
+    const optimisticWithKey = { ...optimisticMessage, clientKey: tempId }
+    setMessages(prev => [...prev, optimisticWithKey])
+    
+    // Register in recent optimistic to prevent poll from removing it due to stale state
+    recentOptimisticRef.current.set(tempId, {
+      message: optimisticWithKey,
+      timestamp: Date.now()
+    })
     
     // Force scroll to bottom for sent messages
     setTimeout(scrollToBottom, 50)
@@ -542,6 +573,8 @@ export default function ChatThread(){
         if (j.message_id){
           idBridgeRef.current.tempToServer.set(tempId, j.message_id)
           idBridgeRef.current.serverToTemp.set(j.message_id, tempId)
+          // Can remove from recent optimistic now that bridge is set up
+          setTimeout(() => recentOptimisticRef.current.delete(tempId), 1000)
         }
         // Keep optimistic bubble until server row arrives
         setMessages(prev => prev.map(m => m.id === tempId ? ({ ...m, isOptimistic: true }) : m))
