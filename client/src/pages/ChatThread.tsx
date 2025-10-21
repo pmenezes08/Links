@@ -1341,6 +1341,7 @@ export default function ChatThread(){
                   onCopy={() => {
                     try{ navigator.clipboard && navigator.clipboard.writeText(m.text) }catch{}
                   }}
+                  onEdit={m.sent ? () => { setEditingId(m.id); setEditText(m.text) } : undefined}
                 >
                   <div className={`flex ${m.sent ? 'justify-end' : 'justify-start'}`}>
                     <div
@@ -2182,13 +2183,15 @@ function LongPressActionable({
   onDelete, 
   onReact, 
   onReply, 
-  onCopy 
+  onCopy, 
+  onEdit 
 }: { 
   children: React.ReactNode
   onDelete: () => void
   onReact: (emoji:string)=>void
   onReply: ()=>void
   onCopy: ()=>void
+  onEdit?: ()=>void
 }){
   const [showMenu, setShowMenu] = useState(false)
   const [isPressed, setIsPressed] = useState(false)
@@ -2238,6 +2241,7 @@ function LongPressActionable({
             <div className="pt-2 flex flex-col">
               <button className="text-left px-2 py-1 text-sm hover:bg-white/5" onClick={()=> { setShowMenu(false); onReply() }}>Reply</button>
               <button className="text-left px-2 py-1 text-sm hover:bg-white/5" onClick={()=> { setShowMenu(false); onCopy() }}>Copy</button>
+              {onEdit && <button className="text-left px-2 py-1 text-sm hover:bg-white/5" onClick={()=> { setShowMenu(false); onEdit() }}>Edit</button>}
               <button className="text-left px-2 py-1 text-sm text-red-400 hover:bg-white/5" onClick={()=> { setShowMenu(false); onDelete() }}>Delete</button>
             </div>
           </div>
