@@ -197,6 +197,9 @@ export default function CommunityPolls(){
     if (!j?.success){
       // Reload to reconcile on error
       load()
+    } else {
+      // Reload to get correct user_voted state from server
+      load()
     }
   }
 
