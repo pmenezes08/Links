@@ -581,36 +581,7 @@ export default function AdminDashboard() {
               </div>
             </div>
 
-            {/* Cohort Retention (last 6 months) */}
-            <div className="bg-white/5 rounded-lg p-4 border border-white/10">
-              <div className="text-sm font-semibold mb-2">Cohort Retention (Last 6 Months)</div>
-              <div className="overflow-x-auto">
-                <table className="min-w-full text-sm">
-                  <thead>
-                    <tr className="text-white/70">
-                      <th className="text-left py-1 pr-4">Cohort</th>
-                      <th className="text-left py-1 pr-4">Size</th>
-                      <th className="text-left py-1">Retention by month →</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(stats.cohorts || []).map(c => (
-                      <tr key={c.month} className="border-t border-white/10">
-                        <td className="py-1 pr-4 text-white/80">{c.month}</td>
-                        <td className="py-1 pr-4 text-white/60">{c.size}</td>
-                        <td className="py-1">
-                          <div className="flex gap-2">
-                            {c.retention.map((r, idx) => (
-                              <span key={idx} className="px-2 py-0.5 rounded bg-white/10 text-white/70">{r}%</span>
-                            ))}
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+            {/* Cohort Retention removed per request */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div className="bg-white/5 rounded-lg p-4 border border-white/10">
                 <div className="text-sm font-semibold mb-2">Top Posters</div>
