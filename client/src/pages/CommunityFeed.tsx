@@ -9,7 +9,7 @@ import { extractVideoEmbed, removeVideoUrlFromText } from '../utils/videoEmbed'
 import { renderTextWithLinks, detectLinks, replaceLinkInText, type DetectedLink } from '../utils/linkUtils.tsx'
 
 type PollOption = { id: number; text: string; votes: number; user_voted?: boolean }
-type Poll = { id: number; question: string; is_active: number; options: PollOption[]; user_vote: number|null; total_votes: number; single_vote?: boolean }
+type Poll = { id: number; question: string; is_active: number; options: PollOption[]; user_vote: number|null; total_votes: number; single_vote?: boolean; expires_at?: string | null }
 type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null, profile_picture?: string|null }
 type Post = { id: number; username: string; content: string; image_path?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; poll?: Poll|null; replies: Reply[], profile_picture?: string|null, is_starred?: boolean, is_community_starred?: boolean }
 
@@ -693,7 +693,8 @@ export default function CommunityFeed() {
                         <div key={`${opt.id}-${v.username}-${v.voted_at||''}`} className="flex items-center gap-2 text-xs text-[#9fb0b5]">
                           <Avatar username={v.username} url={v.profile_picture || undefined} size={18} />
                           <div className="flex-1 truncate">@{v.username}</div>
-                          <div className="tabular-nums">{v.voted_at || ''}</div>
+                          {/* remove timestamp in feed voters modal */}
+                          <div className="tabular-nums" />
                         </div>
                       ))}
                     </div>
@@ -902,7 +903,12 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
           <div className="px-3 space-y-2" onClick={(e)=> e.stopPropagation()}>
             <div className="flex items-center gap-2 mb-2">
               <i className="fa-solid fa-chart-bar text-[#4db6ac]" />
-              <div className="font-medium text-sm flex-1">{post.poll.question}</div>
+              <div className="font-medium text-sm flex-1">
+                {post.poll.question}
+                {post.poll.expires_at ? (
+                  <span className="ml-2 text-[11px] text-[#9fb0b5]">• closes {(() => { try { const d = new Date(post.poll.expires_at as any); if (!isNaN(d.getTime())) return d.toLocaleDateString(); } catch(e) {} return String(post.poll.expires_at) })()}</span>
+                ) : null}
+              </div>
               {(post.username === currentUser || isAdmin || currentUser === 'admin') && (
                 <button 
                   className="ml-auto px-2 py-1 rounded-full text-[#6c757d] hover:text-[#4db6ac]" 
