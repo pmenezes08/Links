@@ -554,85 +554,86 @@ export default function ChatThread(){
   async function send(){
     if (!otherUserId || !draft.trim() || sending) return
     
-    // Pause polling for 2 seconds to avoid race condition with server confirmation
-    skipNextPollsUntil.current = Date.now() + 2000
-    
     const messageText = draft.trim()
-    const now = new Date().toISOString().slice(0,19).replace('T',' ')
-    const tempId = `temp_${Date.now()}_${Math.random()}`
-    const replySnippet = replyTo ? (replyTo.text.length > 90 ? replyTo.text.slice(0,90) + '…' : replyTo.text) : undefined
     
-    // Format message with reply if needed
-    let formattedMessage = messageText
-    if (replyTo) {
-      // Add a special format that we can parse later
-      // Using a format that won't interfere with normal messages
-      formattedMessage = `[REPLY:${replyTo.sender}:${replyTo.text.slice(0,90)}]\n${messageText}`
-    }
-    
-    // Create optimistic message
-    const optimisticMessage: Message = { 
-      id: tempId, 
-      text: messageText, 
-      sent: true, 
-      time: now, 
-      replySnippet,
-      isOptimistic: true
-    }
-    
-    // Clear input immediately for better UX
-    setDraft('')
-    setReplyTo(null)
-    setSending(true)
-    
-    // Add optimistic message immediately
-    const optimisticWithKey = { ...optimisticMessage, clientKey: tempId }
-    setMessages(prev => [...prev, optimisticWithKey])
-    
-    // Register in recent optimistic to prevent poll from removing it due to stale state
-    recentOptimisticRef.current.set(tempId, {
-      message: optimisticWithKey,
-      timestamp: Date.now()
-    })
-    
-    // Force scroll to bottom for sent messages
-    setTimeout(scrollToBottom, 50)
-    
-    // Store reply snippet in metadata if needed
-    if (replySnippet){
-      const k = `${now}|${messageText}|me`
-      metaRef.current[k] = { ...(metaRef.current[k]||{}), replySnippet }
-      try{ localStorage.setItem(storageKey, JSON.stringify(metaRef.current)) }catch{}
-    }
-    
-    // Try to encrypt message if encryption is ready
-    let isEncrypted = false
-    let encryptedBody = ''
-    
-    if (encryptionReady && username) {
-      try {
-        console.log('🔐 Encrypting message...')
-        encryptedBody = await encryptionService.encryptMessage(username, formattedMessage)
-        isEncrypted = true
-        console.log('🔐 ✅ Message encrypted')
-      } catch (error) {
-        console.error('🔐 ❌ Encryption failed:', error)
-        // Continue with unencrypted
+    try {
+      // Pause polling for 2 seconds to avoid race condition with server confirmation
+      skipNextPollsUntil.current = Date.now() + 2000
+      const now = new Date().toISOString().slice(0,19).replace('T',' ')
+      const tempId = `temp_${Date.now()}_${Math.random()}`
+      const replySnippet = replyTo ? (replyTo.text.length > 90 ? replyTo.text.slice(0,90) + '…' : replyTo.text) : undefined
+      
+      // Format message with reply if needed
+      let formattedMessage = messageText
+      if (replyTo) {
+        // Add a special format that we can parse later
+        // Using a format that won't interfere with normal messages
+        formattedMessage = `[REPLY:${replyTo.sender}:${replyTo.text.slice(0,90)}]\n${messageText}`
       }
-    }
-    
-    // Send to server
-    const fd = new URLSearchParams({ recipient_id: String(otherUserId) })
-    
-    if (isEncrypted) {
-      fd.append('message', '') // Empty plaintext
-      fd.append('is_encrypted', '1')
-      fd.append('encrypted_body', encryptedBody)
-    } else {
-      fd.append('message', formattedMessage)
-    }
-    
-    fetch('/send_message', { 
+      
+      // Create optimistic message
+      const optimisticMessage: Message = { 
+        id: tempId, 
+        text: messageText, 
+        sent: true, 
+        time: now, 
+        replySnippet,
+        isOptimistic: true
+      }
+      
+      // Clear input immediately for better UX
+      setDraft('')
+      setReplyTo(null)
+      setSending(true)
+      
+      // Add optimistic message immediately
+      const optimisticWithKey = { ...optimisticMessage, clientKey: tempId }
+      setMessages(prev => [...prev, optimisticWithKey])
+      
+      // Register in recent optimistic to prevent poll from removing it due to stale state
+      recentOptimisticRef.current.set(tempId, {
+        message: optimisticWithKey,
+        timestamp: Date.now()
+      })
+      
+      // Force scroll to bottom for sent messages
+      setTimeout(scrollToBottom, 50)
+      
+      // Store reply snippet in metadata if needed
+      if (replySnippet){
+        const k = `${now}|${messageText}|me`
+        metaRef.current[k] = { ...(metaRef.current[k]||{}), replySnippet }
+        try{ localStorage.setItem(storageKey, JSON.stringify(metaRef.current)) }catch{}
+      }
+      
+      // Try to encrypt message if encryption is ready
+      let isEncrypted = false
+      let encryptedBody = ''
+      
+      if (encryptionReady && username) {
+        try {
+          console.log('🔐 Encrypting message...')
+          encryptedBody = await encryptionService.encryptMessage(username, formattedMessage)
+          isEncrypted = true
+          console.log('🔐 ✅ Message encrypted')
+        } catch (error) {
+          console.error('🔐 ❌ Encryption failed:', error)
+          // Continue with unencrypted
+        }
+      }
+      
+      // Send to server
+      const fd = new URLSearchParams({ recipient_id: String(otherUserId) })
+      
+      if (isEncrypted) {
+        fd.append('message', '') // Empty plaintext
+        fd.append('is_encrypted', '1')
+        fd.append('encrypted_body', encryptedBody)
+      } else {
+        fd.append('message', formattedMessage)
+      }
+      
+      fetch('/send_message', { 
       method:'POST', 
       credentials:'include', 
       headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, 
@@ -680,13 +681,19 @@ export default function ChatThread(){
         // Keep optimistic message, restore draft for retry
         setDraft(messageText)
       }
-    })
-    .catch((err)=>{
-      console.log('❌ Send error:', err)
-      // Keep optimistic message, restore draft for retry
+      })
+      .catch((err)=>{
+        console.log('❌ Send error:', err)
+        // Keep optimistic message, restore draft for retry
+        setDraft(messageText)
+      })
+      .finally(() => setSending(false))
+    } catch (error) {
+      console.error('❌ Send function error:', error)
+      setSending(false)
+      // Restore draft on error
       setDraft(messageText)
-    })
-    .finally(() => setSending(false))
+    }
   }
 
   function handlePhotoSelect() {
@@ -1912,7 +1919,7 @@ export default function ChatThread(){
                           ? 'bg-[#4db6ac] text-black hover:bg-[#45a99c] hover:scale-105 active:scale-95'
                           : 'bg-white/20 text-white/70 cursor-not-allowed'
                     }`}
-                    onClick={draft.trim() ? send : undefined}
+                    onClick={draft.trim() ? () => send().catch(err => console.error('Send error:', err)) : undefined}
                     disabled={sending || !draft.trim()}
                     aria-label="Send"
                     style={{
