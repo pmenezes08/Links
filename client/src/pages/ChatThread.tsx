@@ -588,14 +588,40 @@ export default function ChatThread(){
         formattedMessage = `[REPLY:${replyTo.sender}:${replyTo.text.slice(0,90)}]\n${messageText}`
       }
       
-      // Create optimistic message
+      // Try to encrypt message FIRST (before creating optimistic message)
+      let isEncrypted = false
+      let encryptedBody = ''
+      
+      if (username) {
+        try {
+          console.log('🔐 Attempting to encrypt message...')
+          
+          // Race encryption against 3 second timeout
+          const encryptPromise = encryptionService.encryptMessage(username, formattedMessage)
+          const timeoutPromise = new Promise<never>((_, reject) => 
+            setTimeout(() => reject(new Error('Encryption timeout')), 3000)
+          )
+          
+          encryptedBody = await Promise.race([encryptPromise, timeoutPromise])
+          isEncrypted = true
+          console.log('🔐 ✅ Message encrypted!')
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : 'Unknown error'
+          console.warn('🔐 ⚠️ Encryption failed, sending unencrypted:', errorMsg)
+          // Continue with unencrypted - this is perfectly fine!
+        }
+      }
+      
+      // Create optimistic message WITH encryption flags
       const optimisticMessage: Message = { 
         id: tempId, 
         text: messageText, 
         sent: true, 
         time: now, 
         replySnippet,
-        isOptimistic: true
+        isOptimistic: true,
+        is_encrypted: isEncrypted,
+        encrypted_body: isEncrypted ? encryptedBody : undefined
       }
       
       // Clear input immediately for better UX
@@ -621,30 +647,6 @@ export default function ChatThread(){
         const k = `${now}|${messageText}|me`
         metaRef.current[k] = { ...(metaRef.current[k]||{}), replySnippet }
         try{ localStorage.setItem(storageKey, JSON.stringify(metaRef.current)) }catch{}
-      }
-      
-      // Try to encrypt message with timeout protection
-      let isEncrypted = false
-      let encryptedBody = ''
-      
-      if (username) {
-        try {
-          console.log('🔐 Attempting to encrypt message...')
-          
-          // Race encryption against 3 second timeout
-          const encryptPromise = encryptionService.encryptMessage(username, formattedMessage)
-          const timeoutPromise = new Promise<never>((_, reject) => 
-            setTimeout(() => reject(new Error('Encryption timeout')), 3000)
-          )
-          
-          encryptedBody = await Promise.race([encryptPromise, timeoutPromise])
-          isEncrypted = true
-          console.log('🔐 ✅ Message encrypted!')
-        } catch (error) {
-          const errorMsg = error instanceof Error ? error.message : 'Unknown error'
-          console.warn('🔐 ⚠️ Encryption failed, sending unencrypted:', errorMsg)
-          // Continue with unencrypted - this is perfectly fine!
-        }
       }
       
       // Send to server
@@ -688,6 +690,7 @@ export default function ChatThread(){
           
           // Immediately update the optimistic message to be confirmed
           // Keep the same clientKey (tempId) so React doesn't remount
+          // PRESERVE encryption flags!
           setMessages(prev => prev.map(m => {
             if ((m.clientKey || m.id) === tempId) {
               return {
@@ -695,7 +698,10 @@ export default function ChatThread(){
                 id: j.message_id, // Update to server ID
                 isOptimistic: false, // No longer optimistic
                 time: j.time || m.time, // Use server time if available
-                clientKey: tempId // Keep stable key for React
+                clientKey: tempId, // Keep stable key for React
+                // Keep encryption flags from optimistic message
+                is_encrypted: m.is_encrypted,
+                encrypted_body: m.encrypted_body
               }
             }
             return m
