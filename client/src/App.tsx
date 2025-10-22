@@ -7,6 +7,7 @@ import PremiumDashboard from './pages/PremiumDashboard'
 import HeaderBar from './components/HeaderBar'
 import { HeaderContext } from './contexts/HeaderContext'
 import PushInit from './components/PushInit'
+import { encryptionService } from './services/simpleEncryption'
 import CrossfitExact from './pages/CrossfitExact'
 import CommunityFeed from './pages/CommunityFeed'
 import CommunityCalendar from './pages/CommunityCalendar'
@@ -61,6 +62,17 @@ function AppRoutes(){
         const j = await r.json().catch(()=>null)
         if (j?.success && j.profile){
           setUserMeta({ username: j.profile.username, displayName: j.profile.display_name || j.profile.username, avatarUrl: j.profile.profile_picture || null })
+          
+          // Initialize E2E encryption for this user
+          try {
+            console.log('🔐 Initializing encryption for:', j.profile.username)
+            await encryptionService.init(j.profile.username)
+            console.log('🔐 ✅ Encryption ready globally!')
+          } catch (encError) {
+            console.error('🔐 ❌ Encryption init failed:', encError)
+            // Continue without encryption
+          }
+          
           // If already authenticated and at root, send to dashboard
           if (location.pathname === '/'){
             navigate('/premium_dashboard', { replace: true })

@@ -606,14 +606,34 @@ export default function ChatThread(){
         try{ localStorage.setItem(storageKey, JSON.stringify(metaRef.current)) }catch{}
       }
       
-      // Encryption temporarily disabled - needs both users to have keys
-      // Will re-enable after fixing key exchange
-      const fd = new URLSearchParams({ 
-        recipient_id: String(otherUserId),
-        message: formattedMessage
-      })
+      // Try to encrypt message if possible
+      let isEncrypted = false
+      let encryptedBody = ''
       
-      console.log('📤 Sending message (encryption disabled temporarily):', messageText.substring(0, 20) + '...')
+      if (username) {
+        try {
+          console.log('🔐 Attempting to encrypt message...')
+          encryptedBody = await encryptionService.encryptMessage(username, formattedMessage)
+          isEncrypted = true
+          console.log('🔐 ✅ Message encrypted!')
+        } catch (error) {
+          console.warn('🔐 ⚠️ Encryption not available, sending unencrypted:', error instanceof Error ? error.message : 'Unknown error')
+          // Continue with unencrypted - this is OK!
+        }
+      }
+      
+      // Send to server
+      const fd = new URLSearchParams({ recipient_id: String(otherUserId) })
+      
+      if (isEncrypted) {
+        fd.append('message', '') // Empty plaintext
+        fd.append('is_encrypted', '1')
+        fd.append('encrypted_body', encryptedBody)
+        console.log('🔐 Sending encrypted message')
+      } else {
+        fd.append('message', formattedMessage)
+        console.log('📤 Sending unencrypted message')
+      }
       
       fetch('/send_message', { 
       method:'POST', 
@@ -1645,9 +1665,17 @@ export default function ChatThread(){
                       
                       {/* Encryption indicator */}
                       {m.is_encrypted && !m.decryption_error && (
-                        <div className="flex items-center gap-1 mb-1 text-[10px] text-white/40">
-                          <i className="fa-solid fa-lock" />
-                          <span>Encrypted</span>
+                        <div className="flex items-center gap-1 mb-1 text-[9px] text-[#4db6ac]/60">
+                          <i className="fa-solid fa-lock text-[8px]" />
+                          <span>End-to-end encrypted</span>
+                        </div>
+                      )}
+                      
+                      {/* Decryption error indicator */}
+                      {m.decryption_error && (
+                        <div className="flex items-center gap-1 mb-1 text-[9px] text-red-400/60">
+                          <i className="fa-solid fa-triangle-exclamation text-[8px]" />
+                          <span>Decryption failed</span>
                         </div>
                       )}
                       
