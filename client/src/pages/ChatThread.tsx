@@ -493,7 +493,11 @@ export default function ChatThread(){
                 replySnippet: replySnippet || existing?.replySnippet || meta.replySnippet,
                 isOptimistic: false, // No longer optimistic
                 edited_at: m.edited_at || null,
-                clientKey: finalKey // Keep stable key
+                clientKey: finalKey, // Keep stable key
+                // CRITICAL: Include encryption fields from server!
+                is_encrypted: m.is_encrypted,
+                encrypted_body: m.encrypted_body,
+                decryption_error: m.decryption_error
               })
             })
             
