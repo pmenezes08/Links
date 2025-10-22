@@ -1908,7 +1908,7 @@ export default function ChatThread(){
                           ? 'bg-[#4db6ac] text-black hover:bg-[#45a99c] hover:scale-105 active:scale-95'
                           : 'bg-white/20 text-white/70 cursor-not-allowed'
                     }`}
-                    onClick={draft.trim() ? () => send().catch(err => console.error('Send error:', err)) : undefined}
+                    onClick={draft.trim() ? send : undefined}
                     disabled={sending || !draft.trim()}
                     aria-label="Send"
                     style={{
