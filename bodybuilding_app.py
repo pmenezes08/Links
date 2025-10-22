@@ -22,6 +22,7 @@ from hashlib import sha256
 from redis_cache import cache, cache_result, invalidate_user_cache, invalidate_community_cache, invalidate_message_cache
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from urllib.parse import urlencode
+from encryption_endpoints import register_encryption_endpoints
 try:
     from PIL import Image
     PIL_AVAILABLE = True
@@ -895,6 +896,38 @@ def add_missing_tables():
                              is_typing INTEGER DEFAULT 0,
                              updated_at TEXT NOT NULL,
                              UNIQUE(user, peer))''')
+            
+            # E2E Encryption tables
+            logger.info("Creating encryption_keys table...")
+            c.execute('''CREATE TABLE IF NOT EXISTS encryption_keys (
+                             id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                             username VARCHAR(191) UNIQUE NOT NULL,
+                             identity_key TEXT NOT NULL,
+                             signed_prekey_id INTEGER NOT NULL,
+                             signed_prekey_public TEXT NOT NULL,
+                             signed_prekey_signature TEXT NOT NULL,
+                             registration_id INTEGER NOT NULL,
+                             created_at TEXT NOT NULL,
+                             updated_at TEXT NOT NULL)''')
+            
+            logger.info("Creating encryption_prekeys table...")
+            c.execute('''CREATE TABLE IF NOT EXISTS encryption_prekeys (
+                             id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                             username VARCHAR(191) NOT NULL,
+                             key_id INTEGER NOT NULL,
+                             public_key TEXT NOT NULL,
+                             used INTEGER DEFAULT 0,
+                             created_at TEXT NOT NULL,
+                             UNIQUE(username, key_id))''')
+            
+            logger.info("Creating encryption_backups table...")
+            c.execute('''CREATE TABLE IF NOT EXISTS encryption_backups (
+                             id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                             username VARCHAR(191) UNIQUE NOT NULL,
+                             encrypted_backup TEXT NOT NULL,
+                             salt TEXT NOT NULL,
+                             created_at TEXT NOT NULL,
+                             updated_at TEXT NOT NULL)''')
 
             # Ensure helpful indexes
             try:
@@ -23155,6 +23188,12 @@ def get_active_chat_counts():
     except Exception as e:
         logger.error(f"Error in get_active_chat_counts: {e}")
         return jsonify({ 'success': False, 'error': 'server error' }), 500
+
+# Register encryption endpoints for E2E encryption
+try:
+    register_encryption_endpoints(app, get_db_connection, logger)
+except Exception as e:
+    logger.error(f"Failed to register encryption endpoints: {e}")
 
 if __name__ == '__main__':
     app.run(debug=False, host='0.0.0.0', port=8080)
