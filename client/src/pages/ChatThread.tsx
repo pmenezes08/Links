@@ -116,9 +116,7 @@ export default function ChatThread(){
   // Mic always enabled for audio messages
   const MIC_ENABLED = true
   
-  // E2E Encryption state
-  const [encryptionReady, setEncryptionReady] = useState(false)
-  const currentUsername = useRef<string | null>(null)
+  // E2E Encryption is initialized globally in App.tsx, so it's always ready
 
   // Date formatting functions
   function formatDateLabel(dateStr: string): string {
@@ -207,12 +205,14 @@ export default function ChatThread(){
 
   // Decrypt message if it's encrypted
   async function decryptMessageIfNeeded(message: any): Promise<any> {
-    if (!message.is_encrypted || !message.encrypted_body || !encryptionReady) {
+    if (!message.is_encrypted || !message.encrypted_body) {
       return message
     }
     
     try {
+      console.log('🔐 Decrypting message:', message.id)
       const decryptedText = await encryptionService.decryptMessage(message.encrypted_body)
+      console.log('🔐 ✅ Message decrypted successfully!')
       
       return {
         ...message,
@@ -229,30 +229,7 @@ export default function ChatThread(){
     }
   }
 
-  // Initialize encryption for current user
-  useEffect(() => {
-    const initEncryption = async () => {
-      try {
-        // Get current user's username from session
-        const response = await fetch('/api/get_user_profile_brief?username=', { credentials: 'include' })
-        const data = await response.json()
-        
-        if (data?.username) {
-          currentUsername.current = data.username
-          console.log('🔐 Initializing encryption for:', data.username)
-          
-          await encryptionService.init(data.username)
-          setEncryptionReady(true)
-          console.log('🔐 ✅ Encryption ready!')
-        }
-      } catch (error) {
-        console.error('🔐 ❌ Encryption init failed:', error)
-        // Continue without encryption
-      }
-    }
-    
-    initEncryption()
-  }, [])
+  // Encryption is initialized globally in App.tsx - no need for per-chat init
 
   // Initial load of messages and other user info
   useEffect(() => {
