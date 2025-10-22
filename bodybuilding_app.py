@@ -891,7 +891,6 @@ def add_missing_tables():
             # Ensure messages table has E2E encryption columns
             for col_name, col_type in [
                 ('is_encrypted', 'INTEGER DEFAULT 0'),
-                ('encryption_type', 'INTEGER'),
                 ('encrypted_body', 'TEXT'),
             ]:
                 try:
@@ -7292,7 +7291,7 @@ def get_messages():
                 c.execute(
                     """
                     SELECT id, sender, receiver, message, image_path, audio_path, audio_duration_seconds, audio_mime, 
-                           is_encrypted, encryption_type, encrypted_body, timestamp, edited_at
+                           is_encrypted, encrypted_body, timestamp, edited_at
                     FROM messages
                     WHERE (sender = ? AND receiver = ?)
                        OR (sender = ? AND receiver = ?)
@@ -7344,8 +7343,7 @@ def get_messages():
                 # Add encryption fields if available
                 if with_encryption:
                     msg_dict['is_encrypted'] = msg.get('is_encrypted') if hasattr(msg, 'get') else msg[8] if len(msg) > 8 else 0
-                    msg_dict['encryption_type'] = msg.get('encryption_type') if hasattr(msg, 'get') else msg[9] if len(msg) > 9 else None
-                    msg_dict['encrypted_body'] = msg.get('encrypted_body') if hasattr(msg, 'get') else msg[10] if len(msg) > 10 else None
+                    msg_dict['encrypted_body'] = msg.get('encrypted_body') if hasattr(msg, 'get') else msg[9] if len(msg) > 9 else None
                 
                 messages.append(msg_dict)
             

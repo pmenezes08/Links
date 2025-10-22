@@ -20,6 +20,80 @@ def login_required(f):
 def register_encryption_endpoints(app, get_db_connection, logger):
     """Register all encryption-related endpoints"""
     
+    @app.route('/api/encryption/upload-public-key', methods=['POST'])
+    @login_required
+    def upload_public_key():
+        """Upload user's RSA public key"""
+        try:
+            username = session.get('username')
+            data = request.get_json()
+            
+            if not data or 'publicKey' not in data:
+                return jsonify({'success': False, 'error': 'No public key provided'}), 400
+            
+            public_key_jwk = json.dumps(data['publicKey'])
+            
+            with get_db_connection() as conn:
+                c = conn.cursor()
+                now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                
+                # Check if user already has a key
+                c.execute("SELECT id FROM encryption_keys WHERE username = ?", (username,))
+                existing = c.fetchone()
+                
+                if existing:
+                    # Update existing key
+                    c.execute("""
+                        UPDATE encryption_keys
+                        SET identity_key = ?, updated_at = ?
+                        WHERE username = ?
+                    """, (public_key_jwk, now, username))
+                else:
+                    # Insert new key
+                    c.execute("""
+                        INSERT INTO encryption_keys
+                        (username, identity_key, signed_prekey_id, signed_prekey_public, 
+                         signed_prekey_signature, registration_id, created_at, updated_at)
+                        VALUES (?, ?, 0, '', '', 0, ?, ?)
+                    """, (username, public_key_jwk, now, now))
+                
+                conn.commit()
+                logger.info(f"Public key uploaded for user: {username}")
+                return jsonify({'success': True})
+                
+        except Exception as e:
+            logger.error(f"Error uploading public key: {str(e)}")
+            return jsonify({'success': False, 'error': str(e)}), 500
+    
+    @app.route('/api/encryption/get-public-key/<username>', methods=['GET'])
+    @login_required
+    def get_public_key(username):
+        """Get public key for a specific user"""
+        try:
+            with get_db_connection() as conn:
+                c = conn.cursor()
+                
+                c.execute("""
+                    SELECT identity_key
+                    FROM encryption_keys
+                    WHERE username = ?
+                """, (username,))
+                
+                result = c.fetchone()
+                if not result:
+                    return jsonify({'success': False, 'error': 'User has no public key'}), 404
+                
+                public_key_jwk = result[0] if isinstance(result, tuple) else result['identity_key']
+                
+                return jsonify({
+                    'success': True,
+                    'publicKey': json.loads(public_key_jwk)
+                })
+                
+        except Exception as e:
+            logger.error(f"Error getting public key for {username}: {str(e)}")
+            return jsonify({'success': False, 'error': str(e)}), 500
+    
     @app.route('/api/encryption/upload-keys', methods=['POST'])
     @login_required
     def upload_encryption_keys():
