@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useHeader } from '../contexts/HeaderContext'
+import { encryptionService } from '../services/simpleEncryption'
 
 export default function EncryptionSettings() {
   const { setTitle } = useHeader()
@@ -45,26 +46,48 @@ export default function EncryptionSettings() {
     setResetting(true)
 
     try {
+      console.log('🔐 Closing database connection...')
+      
+      // CRITICAL: Close the database connection first
+      encryptionService.closeDatabase()
+      
+      // Wait a moment for the close to complete
+      await new Promise(resolve => setTimeout(resolve, 100))
+      
+      console.log('🔐 Deleting encryption database...')
+      
       // Delete the encryption database
       await new Promise<void>((resolve, reject) => {
         const request = indexedDB.deleteDatabase('chat-encryption')
-        request.onsuccess = () => resolve()
-        request.onerror = () => reject(request.error)
+        
+        request.onsuccess = () => {
+          console.log('🔐 ✅ Database deleted successfully')
+          resolve()
+        }
+        
+        request.onerror = () => {
+          console.error('🔐 ❌ Database deletion error:', request.error)
+          reject(request.error)
+        }
+        
         request.onblocked = () => {
+          console.error('🔐 ❌ Database deletion blocked')
           alert('Please close all other tabs with this app open, then try again.')
           reject(new Error('Database deletion blocked'))
         }
       })
 
-      console.log('🔐 Encryption database deleted')
-
+      console.log('🔐 Storing new timestamp...')
+      
       // Store timestamp
       localStorage.setItem('encryption_keys_generated_at', Date.now().toString())
 
+      console.log('🔐 Reloading page to generate fresh keys...')
+      
       // Reload page to reinitialize encryption
       window.location.reload()
     } catch (error) {
-      console.error('Error resetting keys:', error)
+      console.error('🔐 ❌ Error resetting keys:', error)
       alert('Failed to reset encryption keys. Please try again.')
       setResetting(false)
     }

@@ -39,6 +39,17 @@ class SimpleEncryptionService {
   }
 
   /**
+   * Close database connection (needed before deletion)
+   */
+  closeDatabase(): void {
+    if (this.db) {
+      this.db.close()
+      this.db = null
+      console.log('🔐 Database connection closed')
+    }
+  }
+
+  /**
    * Open IndexedDB
    */
   private async openDatabase(): Promise<void> {
