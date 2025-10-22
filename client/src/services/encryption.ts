@@ -44,6 +44,7 @@ interface StoredKeys {
 class EncryptionService {
   private db: IDBDatabase | null = null
   private currentUser: string | null = null
+  private store: SignalProtocolStore | null = null
 
   /**
    * Initialize the encryption service for a user
@@ -61,6 +62,10 @@ class EncryptionService {
     } else {
       console.log('🔐 Loaded existing encryption keys for user:', username)
     }
+    
+    // Initialize Signal Protocol Store
+    this.store = new SignalProtocolStore(username)
+    await this.store.init()
   }
 
   /**
@@ -264,6 +269,212 @@ class EncryptionService {
       },
       registrationId: data.registrationId,
     }
+  }
+
+  /**
+   * Establish or load session with another user
+   */
+  private async ensureSession(recipientUsername: string): Promise<void> {
+    if (!this.store || !this.currentUser) {
+      throw new Error('Encryption service not initialized')
+    }
+
+    const address = new SignalProtocolAddress(recipientUsername, 1)
+    const sessionCipher = new SessionCipher(this.store, address)
+
+    // Check if we already have a session
+    const existingSession = await this.store.loadSession(address.toString())
+    
+    if (existingSession) {
+      console.log('🔐 Using existing session with', recipientUsername)
+      return
+    }
+
+    console.log('🔐 Creating new session with', recipientUsername)
+
+    // Get recipient's public key bundle
+    const bundle = await this.getPublicKeyBundle(recipientUsername)
+
+    // Build session
+    const sessionBuilder = new SessionBuilder(this.store, address)
+    
+    await sessionBuilder.processPreKey({
+      registrationId: bundle.registrationId,
+      identityKey: bundle.identityKey,
+      signedPreKey: {
+        keyId: bundle.signedPreKey.keyId,
+        publicKey: bundle.signedPreKey.keyPair.pubKey,
+        signature: bundle.signedPreKey.signature,
+      },
+      preKey: {
+        keyId: bundle.preKey.keyId,
+        publicKey: bundle.preKey.keyPair.pubKey,
+      },
+    })
+
+    console.log('🔐 Session established with', recipientUsername)
+  }
+
+  /**
+   * Encrypt a text message
+   */
+  async encryptMessage(recipientUsername: string, message: string): Promise<{ type: number; body: string }> {
+    if (!this.store || !this.currentUser) {
+      throw new Error('Encryption service not initialized')
+    }
+
+    // Ensure we have a session
+    await this.ensureSession(recipientUsername)
+
+    const address = new SignalProtocolAddress(recipientUsername, 1)
+    const sessionCipher = new SessionCipher(this.store, address)
+
+    // Convert message to ArrayBuffer
+    const messageBuffer = new TextEncoder().encode(message)
+
+    // Encrypt the message
+    const ciphertext = await sessionCipher.encrypt(messageBuffer.buffer)
+
+    console.log('🔐 Message encrypted for', recipientUsername, 'type:', ciphertext.type)
+
+    // Return encrypted message with type
+    return {
+      type: ciphertext.type,
+      body: this.arrayBufferToBase64(ciphertext.body),
+    }
+  }
+
+  /**
+   * Decrypt a text message
+   */
+  async decryptMessage(
+    senderUsername: string,
+    encryptedMessage: { type: number; body: string }
+  ): Promise<string> {
+    if (!this.store || !this.currentUser) {
+      throw new Error('Encryption service not initialized')
+    }
+
+    const address = new SignalProtocolAddress(senderUsername, 1)
+    const sessionCipher = new SessionCipher(this.store, address)
+
+    // Convert base64 body to ArrayBuffer
+    const ciphertext = {
+      type: encryptedMessage.type,
+      body: this.base64ToArrayBuffer(encryptedMessage.body),
+    }
+
+    let plaintext: ArrayBuffer
+
+    // Decrypt based on message type
+    if (ciphertext.type === MessageType.PreKey) {
+      // This is a session-establishing message
+      console.log('🔐 Decrypting PreKey message from', senderUsername)
+      plaintext = await sessionCipher.decryptPreKeyWhisperMessage(ciphertext.body, 'binary')
+    } else {
+      // This is a regular message in an existing session
+      console.log('🔐 Decrypting regular message from', senderUsername)
+      plaintext = await sessionCipher.decryptWhisperMessage(ciphertext.body, 'binary')
+    }
+
+    // Convert ArrayBuffer back to string
+    const decoder = new TextDecoder()
+    return decoder.decode(plaintext)
+  }
+
+  /**
+   * Encrypt binary data (for audio/images)
+   */
+  async encryptBinaryData(
+    recipientUsername: string,
+    data: ArrayBuffer
+  ): Promise<{ type: number; body: string }> {
+    if (!this.store || !this.currentUser) {
+      throw new Error('Encryption service not initialized')
+    }
+
+    // Ensure we have a session
+    await this.ensureSession(recipientUsername)
+
+    const address = new SignalProtocolAddress(recipientUsername, 1)
+    const sessionCipher = new SessionCipher(this.store, address)
+
+    // Encrypt the binary data
+    const ciphertext = await sessionCipher.encrypt(data)
+
+    console.log('🔐 Binary data encrypted for', recipientUsername, 'size:', data.byteLength)
+
+    return {
+      type: ciphertext.type,
+      body: this.arrayBufferToBase64(ciphertext.body),
+    }
+  }
+
+  /**
+   * Decrypt binary data (for audio/images)
+   */
+  async decryptBinaryData(
+    senderUsername: string,
+    encryptedData: { type: number; body: string }
+  ): Promise<ArrayBuffer> {
+    if (!this.store || !this.currentUser) {
+      throw new Error('Encryption service not initialized')
+    }
+
+    const address = new SignalProtocolAddress(senderUsername, 1)
+    const sessionCipher = new SessionCipher(this.store, address)
+
+    // Convert base64 body to ArrayBuffer
+    const ciphertext = {
+      type: encryptedData.type,
+      body: this.base64ToArrayBuffer(encryptedData.body),
+    }
+
+    let plaintext: ArrayBuffer
+
+    // Decrypt based on message type
+    if (ciphertext.type === MessageType.PreKey) {
+      plaintext = await sessionCipher.decryptPreKeyWhisperMessage(ciphertext.body, 'binary')
+    } else {
+      plaintext = await sessionCipher.decryptWhisperMessage(ciphertext.body, 'binary')
+    }
+
+    console.log('🔐 Binary data decrypted from', senderUsername, 'size:', plaintext.byteLength)
+
+    return plaintext
+  }
+
+  /**
+   * Encrypt a file (Blob) for sending
+   */
+  async encryptFile(recipientUsername: string, file: Blob): Promise<{ type: number; body: string; mimeType: string }> {
+    // Convert Blob to ArrayBuffer
+    const arrayBuffer = await file.arrayBuffer()
+    
+    // Encrypt the data
+    const encrypted = await this.encryptBinaryData(recipientUsername, arrayBuffer)
+    
+    return {
+      ...encrypted,
+      mimeType: file.type,
+    }
+  }
+
+  /**
+   * Decrypt a file and return as Blob
+   */
+  async decryptFile(
+    senderUsername: string,
+    encryptedData: { type: number; body: string; mimeType: string }
+  ): Promise<Blob> {
+    // Decrypt the data
+    const arrayBuffer = await this.decryptBinaryData(senderUsername, {
+      type: encryptedData.type,
+      body: encryptedData.body,
+    })
+    
+    // Convert back to Blob
+    return new Blob([arrayBuffer], { type: encryptedData.mimeType })
   }
 
   /**

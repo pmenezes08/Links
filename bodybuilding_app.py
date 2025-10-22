@@ -887,6 +887,26 @@ def add_missing_tables():
                         logger.info(f"Added {col_name} column to messages table")
                 except Exception as ae:
                     logger.warning(f"Could not ensure {col_name} column on messages: {ae}")
+            
+            # Ensure messages table has E2E encryption columns
+            for col_name, col_type in [
+                ('is_encrypted', 'INTEGER DEFAULT 0'),
+                ('encryption_type', 'INTEGER'),
+                ('encrypted_body', 'TEXT'),
+            ]:
+                try:
+                    exists = False
+                    try:
+                        c.execute(f"SHOW COLUMNS FROM messages LIKE '{col_name}'")
+                        exists = c.fetchone() is not None
+                    except Exception:
+                        exists = False
+                    if not exists:
+                        c.execute(f"ALTER TABLE messages ADD COLUMN {col_name} {col_type}")
+                        conn.commit()
+                        logger.info(f"Added {col_name} column to messages table for E2E encryption")
+                except Exception as ae:
+                    logger.warning(f"Could not ensure {col_name} column on messages: {ae}")
 
             # Typing status table for realtime UX
             c.execute('''CREATE TABLE IF NOT EXISTS typing_status (
