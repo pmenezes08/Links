@@ -7367,19 +7367,24 @@ def get_messages():
 @app.route('/send_message', methods=['POST'])
 @login_required
 def send_message():
-    """Send a message to another user"""
+    """Send a message to another user (supports E2E encryption)"""
     username = session.get('username')
     recipient_id = request.form.get('recipient_id')
     message = request.form.get('message', '')
     
-    # Encryption fields (optional, disabled for now)
+    # Encryption fields
     is_encrypted = request.form.get('is_encrypted', '0') == '1'
     encrypted_body = request.form.get('encrypted_body', '')
+    plaintext_for_sender = request.form.get('plaintext_for_sender', '')  # Keep plaintext for sender to see what they sent
     
     if not recipient_id:
         return jsonify({'success': False, 'error': 'Recipient required'})
     
-    if not is_encrypted and not message:
+    # For encrypted messages, we need either message or plaintext_for_sender
+    if is_encrypted and plaintext_for_sender:
+        message = plaintext_for_sender  # Store plaintext so sender can see their own sent message
+    
+    if not message:
         return jsonify({'success': False, 'error': 'Message required'})
     
     try:

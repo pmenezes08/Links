@@ -212,6 +212,28 @@ export default function ChatThread(){
       return message
     }
     
+    // IMPORTANT: Don't try to decrypt messages YOU sent!
+    // You encrypted them with the recipient's public key, so only THEY can decrypt
+    // For sent messages, the server should include plaintext in 'message' field
+    if (message.sent) {
+      console.log('🔐 Skipping decryption for sent message:', message.id, '(you encrypted it for recipient)')
+      
+      // If we have plaintext, use it; otherwise show encrypted indicator
+      if (message.text && message.text.trim()) {
+        return {
+          ...message,
+          decryption_error: false,
+        }
+      } else {
+        return {
+          ...message,
+          text: '[🔒 Encrypted message you sent]',
+          decryption_error: false, // Not really an error, just info
+        }
+      }
+    }
+    
+    // Only decrypt RECEIVED messages (from others)
     // If we already tried and failed, don't retry (prevent infinite loop)
     if (failedDecryption.current.has(message.id)) {
       return {
@@ -222,7 +244,7 @@ export default function ChatThread(){
     }
     
     try {
-      console.log('🔐 Decrypting message:', message.id)
+      console.log('🔐 Decrypting received message:', message.id)
       const decryptedText = await encryptionService.decryptMessage(message.encrypted_body)
       console.log('🔐 ✅ Message', message.id, 'decrypted successfully!')
       
@@ -627,13 +649,14 @@ export default function ChatThread(){
       const fd = new URLSearchParams({ recipient_id: String(otherUserId) })
       
       if (isEncrypted) {
-        fd.append('message', '') // Empty plaintext
+        fd.append('message', '') // Empty for recipient
+        fd.append('plaintext_for_sender', formattedMessage) // Store so sender can see their own message
         fd.append('is_encrypted', '1')
         fd.append('encrypted_body', encryptedBody)
-        console.log('📤 Sending ENCRYPTED message to server')
+        console.log('📤 Sending ENCRYPTED message')
       } else {
         fd.append('message', formattedMessage)
-        console.log('📤 Sending UNENCRYPTED message to server')
+        console.log('📤 Sending UNENCRYPTED message')
       }
       
       fetch('/send_message', { 
