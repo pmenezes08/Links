@@ -84,6 +84,7 @@ export default function ChatThread(){
   const audioCtxRef = useRef<AudioContext|null>(null)
   const analyserRef = useRef<AnalyserNode|null>(null)
   const sourceRef = useRef<MediaStreamAudioSourceNode|null>(null)
+  const streamRef = useRef<MediaStream|null>(null)
   const visRafRef = useRef<number| null>(null)
   const [audioLevels, setAudioLevels] = useState<number[]>(Array(25).fill(0))
   const stoppedRef = useRef(false)
@@ -688,9 +689,13 @@ export default function ChatThread(){
       const j = await r.json().catch(()=>null)
       if (!j?.success){
         setMessages(prev => prev.filter(m => m.id !== optimistic.id))
+        // Revoke blob URL on failure
+        URL.revokeObjectURL(url)
         alert(j?.error || 'Failed to send audio')
       } else {
         console.log('🎤 Audio sent successfully')
+        // Revoke blob URL after successful upload to free memory
+        setTimeout(() => URL.revokeObjectURL(url), 100)
       }
     }catch(err){
       console.error('🎤 Upload error:', err)
@@ -843,6 +848,7 @@ export default function ChatThread(){
       console.log('🎤 Using constraints:', constraints)
       
       const stream = await navigator.mediaDevices.getUserMedia(constraints)
+      streamRef.current = stream
       console.log('🎤 ✅ Microphone permission granted!')
       
       const audioTracks = stream.getAudioTracks()
@@ -1017,18 +1023,44 @@ export default function ChatThread(){
           setRecordingPreview({ blob, url, duration: actualDuration })
           finalizedRef.current = true
         } finally {
+          console.log('🎤 🧽 Cleaning up recording resources...')
           setRecording(false)
           setRecorder(null)
           setRecordMs(0)
           setAudioLevels(Array(25).fill(0))
-          try{ stream.getTracks().forEach(t=> t.stop()) }catch{}
+          
+          // Stop all media tracks
+          try {
+            if (streamRef.current) {
+              streamRef.current.getTracks().forEach(track => {
+                console.log('🎤 Stopping track:', track.label)
+                track.stop()
+              })
+              streamRef.current = null
+            }
+          } catch(err) {
+            console.error('🎤 Error stopping tracks:', err)
+          }
+          
+          // Clear timers and animations
           if (recordTimerRef.current) clearInterval(recordTimerRef.current)
           if (visRafRef.current) cancelAnimationFrame(visRafRef.current)
+          
+          // Disconnect and close audio nodes
           try{ analyserRef.current && analyserRef.current.disconnect() }catch{}
           try{ sourceRef.current && sourceRef.current.disconnect() }catch{}
-          try{ audioCtxRef.current && audioCtxRef.current.close() }catch{}
-          analyserRef.current = null; sourceRef.current = null; audioCtxRef.current = null
-          // Recording finalized
+          try{ 
+            if (audioCtxRef.current) {
+              audioCtxRef.current.close()
+              console.log('🎤 AudioContext closed')
+            }
+          }catch{}
+          
+          analyserRef.current = null
+          sourceRef.current = null
+          audioCtxRef.current = null
+          
+          console.log('🎤 ✅ Cleanup complete - mic should be available for next recording')
         }
       }
       mr.onstop = () => {
@@ -1079,6 +1111,24 @@ export default function ChatThread(){
     }catch(err){
       console.error('🎤 Recording error:', err)
       const error = err as Error
+      
+      // Clean up any resources that might have been allocated
+      try {
+        if (streamRef.current) {
+          streamRef.current.getTracks().forEach(track => track.stop())
+          streamRef.current = null
+        }
+        if (audioCtxRef.current) {
+          audioCtxRef.current.close()
+          audioCtxRef.current = null
+        }
+      } catch (cleanupErr) {
+        console.error('🎤 Cleanup error:', cleanupErr)
+      }
+      
+      // Reset UI state
+      setRecording(false)
+      setRecorder(null)
       
       // Show the permission guide for denied permissions
       if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
@@ -1137,6 +1187,7 @@ export default function ChatThread(){
     }
     console.log('🎤 Sending recording preview, duration:', recordingPreview.duration, 'blob size:', recordingPreview.blob.size)
     uploadAudioBlobWithDuration(recordingPreview.blob, recordingPreview.duration)
+    // Clean up preview (URL will be revoked after upload in uploadAudioBlobWithDuration)
     setRecordingPreview(null)
   }
   
@@ -1178,9 +1229,13 @@ export default function ChatThread(){
       if (!j?.success){
         console.error('🎤 Send failed:', j?.error)
         setMessages(prev => prev.filter(m => m.id !== optimistic.id))
+        // Revoke blob URL on failure
+        URL.revokeObjectURL(url)
         alert(j?.error || 'Failed to send audio message')
       } else {
         console.log('🎤 Audio sent successfully')
+        // Revoke blob URL after successful upload to free memory
+        setTimeout(() => URL.revokeObjectURL(url), 100)
       }
     }catch(err){
       console.error('🎤 Upload error:', err)
