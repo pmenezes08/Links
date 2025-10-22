@@ -18,6 +18,10 @@ interface Message {
   isOptimistic?: boolean // Track if this is an optimistic update
   edited_at?: string | null
   clientKey?: string | number
+  is_encrypted?: boolean
+  encryption_type?: number
+  encrypted_body?: string
+  decryption_error?: boolean
 }
 
 export default function ChatThread(){
@@ -111,6 +115,41 @@ export default function ChatThread(){
 
   // Mic always enabled for audio messages
   const MIC_ENABLED = true
+  
+  // E2E Encryption state
+  const [encryptionReady, setEncryptionReady] = useState(false)
+  const [encryptionError, setEncryptionError] = useState<string | null>(null)
+  const currentUsername = useRef<string | null>(null)
+
+  // Decrypt message if it's encrypted
+  async function decryptMessageIfNeeded(message: any, senderUsername: string): Promise<any> {
+    if (!message.is_encrypted || !message.encrypted_body || !encryptionReady) {
+      return message
+    }
+    
+    try {
+      const decryptedText = await encryptionService.decryptMessage(
+        senderUsername,
+        {
+          type: message.encryption_type,
+          body: message.encrypted_body,
+        }
+      )
+      
+      return {
+        ...message,
+        text: decryptedText,
+        decryption_error: false,
+      }
+    } catch (error) {
+      console.error('🔐 ❌ Failed to decrypt message:', message.id, error)
+      return {
+        ...message,
+        text: '[🔒 Encrypted message - failed to decrypt]',
+        decryption_error: true,
+      }
+    }
+  }
 
   // Date formatting functions
   function formatDateLabel(dateStr: string): string {
@@ -197,6 +236,32 @@ export default function ChatThread(){
     return nodes
   }
 
+  // Initialize encryption for current user
+  useEffect(() => {
+    const initEncryption = async () => {
+      try {
+        // Get current user's username from session
+        const response = await fetch('/api/get_user_profile_brief?username=', { credentials: 'include' })
+        const data = await response.json()
+        
+        if (data?.username) {
+          currentUsername.current = data.username
+          console.log('🔐 Initializing encryption for user:', data.username)
+          
+          await encryptionService.init(data.username)
+          setEncryptionReady(true)
+          console.log('🔐 ✅ Encryption ready!')
+        }
+      } catch (error) {
+        console.error('🔐 ❌ Encryption initialization failed:', error)
+        setEncryptionError('Encryption unavailable')
+        // Continue without encryption
+      }
+    }
+    
+    initEncryption()
+  }, [])
+
   // Initial load of messages and other user info
   useEffect(() => {
     if (!username) return
@@ -222,9 +287,17 @@ export default function ChatThread(){
           body: fd 
         })
         .then(r=>r.json())
-        .then(j=>{
+        .then(async (j) => {
           if (j?.success && Array.isArray(j.messages)) {
-            const processedMessages = j.messages.map((m:any) => {
+            // Decrypt encrypted messages first
+            const decryptedMessages = await Promise.all(
+              j.messages.map(async (m: any) => {
+                const senderUsername = m.sent ? currentUsername.current : username
+                return await decryptMessageIfNeeded(m, senderUsername || '')
+              })
+            )
+            
+            const processedMessages = decryptedMessages.map((m:any) => {
               // Parse reply information from message text
               let messageText = m.text
               let replySnippet = undefined
@@ -332,6 +405,14 @@ export default function ChatThread(){
         const j = await r.json()
         
         if (j?.success && Array.isArray(j.messages)){
+          // Decrypt encrypted messages before processing
+          const decryptedMessages = await Promise.all(
+            j.messages.map(async (m: any) => {
+              const senderUsername = m.sent ? currentUsername.current : username
+              return await decryptMessageIfNeeded(m, senderUsername || '')
+            })
+          )
+          
           setMessages(prev => {
             // Build map of existing messages by their stable key (clientKey or id)
             const messagesByKey = new Map()
@@ -348,9 +429,9 @@ export default function ChatThread(){
               }
             })
             
-            // Process server messages
+            // Process server messages (now decrypted)
             const serverMessageKeys = new Set()
-            j.messages.forEach((m: any) => {
+            decryptedMessages.forEach((m: any) => {
               // Skip if pending deletion
               if (pendingDeletions.current.has(m.id)) return
               
@@ -484,7 +565,7 @@ export default function ChatThread(){
   useEffect(() => { adjustTextareaHeight() }, [])
   useEffect(() => { adjustTextareaHeight() }, [draft])
 
-  function send(){
+  async function send(){
     if (!otherUserId || !draft.trim() || sending) return
     
     // Pause polling for 2 seconds to avoid race condition with server confirmation
@@ -538,8 +619,32 @@ export default function ChatThread(){
       try{ localStorage.setItem(storageKey, JSON.stringify(metaRef.current)) }catch{}
     }
     
+    // Try to encrypt message if encryption is ready
+    let encryptedData: { type: number; body: string } | null = null
+    if (encryptionReady && username) {
+      try {
+        console.log('🔐 Encrypting message...')
+        encryptedData = await encryptionService.encryptMessage(username, formattedMessage)
+        console.log('🔐 ✅ Message encrypted')
+      } catch (error) {
+        console.error('🔐 ❌ Encryption failed, sending unencrypted:', error)
+        // Continue with unencrypted message
+      }
+    }
+    
     // Send to server with formatted message
-    const fd = new URLSearchParams({ recipient_id: String(otherUserId), message: formattedMessage })
+    const fd = new URLSearchParams({ recipient_id: String(otherUserId) })
+    
+    if (encryptedData) {
+      // Send encrypted message
+      fd.append('message', '') // Empty plaintext
+      fd.append('is_encrypted', '1')
+      fd.append('encryption_type', String(encryptedData.type))
+      fd.append('encrypted_body', encryptedData.body)
+    } else {
+      // Send unencrypted message
+      fd.append('message', formattedMessage)
+    }
     
     fetch('/send_message', { 
       method:'POST', 
@@ -1562,6 +1667,14 @@ export default function ChatThread(){
                           />
                         </div>
                       ) : null}
+                      
+                      {/* Encryption indicator */}
+                      {m.is_encrypted && !m.decryption_error && (
+                        <div className="flex items-center gap-1 mb-1 text-[10px] text-white/40">
+                          <i className="fa-solid fa-lock" />
+                          <span>Encrypted</span>
+                        </div>
+                      )}
                       
                       {/* Text content or editor */}
                       {editingId === m.id ? (

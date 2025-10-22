@@ -7285,12 +7285,14 @@ def get_messages():
             
             other_username = other_user['username'] if hasattr(other_user, 'keys') else other_user[0]
             
-            # Get messages between users (compat: edited_at may not exist yet)
+            # Get messages between users (compat: edited_at and encryption fields may not exist yet)
             with_edited = True
+            with_encryption = True
             try:
                 c.execute(
                     """
-                    SELECT id, sender, receiver, message, image_path, audio_path, audio_duration_seconds, audio_mime, timestamp, edited_at
+                    SELECT id, sender, receiver, message, image_path, audio_path, audio_duration_seconds, audio_mime, 
+                           is_encrypted, encryption_type, encrypted_body, timestamp, edited_at
                     FROM messages
                     WHERE (sender = ? AND receiver = ?)
                        OR (sender = ? AND receiver = ?)
@@ -7299,21 +7301,35 @@ def get_messages():
                     (username, other_username, other_username, username),
                 )
             except Exception:
-                with_edited = False
-                c.execute(
-                    """
-                    SELECT id, sender, receiver, message, image_path, audio_path, audio_duration_seconds, audio_mime, timestamp
-                    FROM messages
-                    WHERE (sender = ? AND receiver = ?)
-                       OR (sender = ? AND receiver = ?)
-                    ORDER BY timestamp ASC
-                    """,
-                    (username, other_username, other_username, username),
-                )
+                # Fallback without encryption fields
+                with_encryption = False
+                try:
+                    c.execute(
+                        """
+                        SELECT id, sender, receiver, message, image_path, audio_path, audio_duration_seconds, audio_mime, timestamp, edited_at
+                        FROM messages
+                        WHERE (sender = ? AND receiver = ?)
+                           OR (sender = ? AND receiver = ?)
+                        ORDER BY timestamp ASC
+                        """,
+                        (username, other_username, other_username, username),
+                    )
+                except Exception:
+                    with_edited = False
+                    c.execute(
+                        """
+                        SELECT id, sender, receiver, message, image_path, audio_path, audio_duration_seconds, audio_mime, timestamp
+                        FROM messages
+                        WHERE (sender = ? AND receiver = ?)
+                           OR (sender = ? AND receiver = ?)
+                        ORDER BY timestamp ASC
+                        """,
+                        (username, other_username, other_username, username),
+                    )
             
             messages = []
             for msg in c.fetchall():
-                messages.append({
+                msg_dict = {
                     'id': msg['id'],
                     'text': msg['message'],
                     'image_path': msg.get('image_path') if hasattr(msg, 'get') else msg[4],
@@ -7323,7 +7339,15 @@ def get_messages():
                     'sent': msg['sender'] == username,
                     'time': msg['timestamp'],
                     'edited_at': (msg.get('edited_at') if (with_edited and hasattr(msg,'get')) else ((msg[9] if (with_edited and len(msg) > 9) else None)))
-                })
+                }
+                
+                # Add encryption fields if available
+                if with_encryption:
+                    msg_dict['is_encrypted'] = msg.get('is_encrypted') if hasattr(msg, 'get') else msg[8] if len(msg) > 8 else 0
+                    msg_dict['encryption_type'] = msg.get('encryption_type') if hasattr(msg, 'get') else msg[9] if len(msg) > 9 else None
+                    msg_dict['encrypted_body'] = msg.get('encrypted_body') if hasattr(msg, 'get') else msg[10] if len(msg) > 10 else None
+                
+                messages.append(msg_dict)
             
             # Mark messages from other user as read
             c.execute("UPDATE messages SET is_read=1 WHERE sender=? AND receiver=? AND is_read=0", (other_username, username))
@@ -7385,19 +7409,19 @@ def send_message():
                 # Duplicate message detected, return success but don't insert
                 return jsonify({'success': True, 'message': 'Message already sent'})
             
-            # Insert message with correct timestamp function for the active DB
+            # Insert message with encryption support
             if USE_MYSQL:
                 c.execute("""
-                    INSERT INTO messages (sender, receiver, message, timestamp)
-                    VALUES (%s, %s, %s, NOW())
-                """, (username, recipient_username, message))
+                    INSERT INTO messages (sender, receiver, message, is_encrypted, encryption_type, encrypted_body, timestamp)
+                    VALUES (%s, %s, %s, %s, %s, %s, NOW())
+                """, (username, recipient_username, message, 1 if is_encrypted else 0, encryption_type, encrypted_body))
             else:
                 # SQLite: store as text 'YYYY-MM-DD HH:MM:SS'
                 _ts = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                 c.execute("""
-                    INSERT INTO messages (sender, receiver, message, timestamp)
-                    VALUES (?, ?, ?, ?)
-                """, (username, recipient_username, message, _ts))
+                    INSERT INTO messages (sender, receiver, message, is_encrypted, encryption_type, encrypted_body, timestamp)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (username, recipient_username, message, 1 if is_encrypted else 0, encryption_type, encrypted_body, _ts))
             
             conn.commit()
             # Fetch inserted id and timestamp for immediate client update
