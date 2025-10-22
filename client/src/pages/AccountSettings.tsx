@@ -178,6 +178,30 @@ export default function AccountSettings(){
             </div>
           </div>
 
+          {/* Privacy & Security */}
+          <div className="bg-white/5 rounded-xl p-6 border border-white/10">
+            <h2 className="text-lg font-semibold mb-4">Privacy & Security</h2>
+            
+            <div className="space-y-3">
+              <button
+                type="button"
+                onClick={() => navigate('/encryption_settings')}
+                className="w-full flex items-center justify-between p-4 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg transition-colors group"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-[#4db6ac]/20 flex items-center justify-center">
+                    <i className="fa-solid fa-lock text-[#4db6ac]" />
+                  </div>
+                  <div className="text-left">
+                    <div className="font-medium">Encryption Settings</div>
+                    <div className="text-sm text-white/60">Manage your end-to-end encryption keys</div>
+                  </div>
+                </div>
+                <i className="fa-solid fa-chevron-right text-white/40 group-hover:text-white/60" />
+              </button>
+            </div>
+          </div>
+
           {/* Password Update */}
           <div className="bg-white/5 rounded-xl p-6 border border-white/10">
             <h2 className="text-lg font-semibold mb-4">Change Password</h2>
