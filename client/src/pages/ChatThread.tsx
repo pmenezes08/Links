@@ -792,7 +792,13 @@ export default function ChatThread(){
 
   async function startRecording(){
     try{
-      console.log('🎤 Starting recording...', 'mobile:', isMobile)
+      console.log('🎤 ========== STARTING RECORDING ==========')
+      console.log('🎤 Device info:', {
+        mobile: isMobile,
+        userAgent: navigator.userAgent,
+        platform: navigator.platform,
+        language: navigator.language
+      })
       
       // Check browser support
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -841,8 +847,37 @@ export default function ChatThread(){
       console.log('🎤 Using constraints:', constraints)
       
       const stream = await navigator.mediaDevices.getUserMedia(constraints)
-      console.log('🎤 Microphone permission granted, starting recorder...')
-      console.log('🎤 Audio tracks:', stream.getAudioTracks().map(t => ({ label: t.label, enabled: t.enabled, readyState: t.readyState })))
+      console.log('🎤 ✅ Microphone permission granted!')
+      
+      const audioTracks = stream.getAudioTracks()
+      console.log('🎤 Audio tracks count:', audioTracks.length)
+      
+      if (audioTracks.length === 0) {
+        alert('⚠️ No audio tracks available. Please check your microphone.')
+        throw new Error('No audio tracks')
+      }
+      
+      audioTracks.forEach((track, idx) => {
+        console.log(`🎤 Track ${idx}:`, {
+          label: track.label,
+          enabled: track.enabled,
+          readyState: track.readyState,
+          muted: track.muted
+        })
+        
+        // Check if track is muted or disabled
+        if (track.muted) {
+          console.warn('⚠️ WARNING: Audio track is MUTED!')
+        }
+        if (!track.enabled) {
+          console.warn('⚠️ WARNING: Audio track is DISABLED!')
+        }
+        if (track.readyState !== 'live') {
+          console.warn('⚠️ WARNING: Audio track is not live! State:', track.readyState)
+        }
+      })
+      
+      console.log('🎤 Stream active:', stream.active)
       
       // Check for mobile-compatible MIME types - prioritize mobile formats
       let mimeType = ''
@@ -890,12 +925,14 @@ export default function ChatThread(){
         console.error('🎤 MediaRecorder error:', (evt as any).error || evt)
       }
       mr.ondataavailable = (e) => { 
-        console.log('🎤 Data available:', e.data.size, 'bytes', 'type:', e.data.type, 'mobile:', isMobile)
+        console.log('🎤 ⚡ DATA RECEIVED:', e.data.size, 'bytes', 'type:', e.data.type)
         if (e.data && e.data.size > 0) {
           chunksRef.current.push(e.data)
-          console.log('🎤 Total chunks so far:', chunksRef.current.length, 'total size:', chunksRef.current.reduce((sum, chunk) => sum + (chunk as Blob).size, 0))
+          const totalSize = chunksRef.current.reduce((sum, chunk) => sum + (chunk as Blob).size, 0)
+          console.log('🎤 ✅ Chunk saved! Total:', chunksRef.current.length, 'chunks,', totalSize, 'bytes')
         } else {
-          console.warn('🎤 Empty or invalid data chunk received')
+          console.error('🎤 ❌ EMPTY DATA CHUNK - NO AUDIO CAPTURED!')
+          console.error('🎤 This means your microphone is not capturing sound.')
         }
         // If we've already requested stop, schedule a short finalize after last chunk
         if (stoppedRef.current) {
