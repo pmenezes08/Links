@@ -606,32 +606,14 @@ export default function ChatThread(){
         try{ localStorage.setItem(storageKey, JSON.stringify(metaRef.current)) }catch{}
       }
       
-      // Try to encrypt message if encryption is ready
-      let isEncrypted = false
-      let encryptedBody = ''
+      // Encryption temporarily disabled - needs both users to have keys
+      // Will re-enable after fixing key exchange
+      const fd = new URLSearchParams({ 
+        recipient_id: String(otherUserId),
+        message: formattedMessage
+      })
       
-      if (encryptionReady && username) {
-        try {
-          console.log('🔐 Encrypting message...')
-          encryptedBody = await encryptionService.encryptMessage(username, formattedMessage)
-          isEncrypted = true
-          console.log('🔐 ✅ Message encrypted')
-        } catch (error) {
-          console.error('🔐 ❌ Encryption failed:', error)
-          // Continue with unencrypted
-        }
-      }
-      
-      // Send to server
-      const fd = new URLSearchParams({ recipient_id: String(otherUserId) })
-      
-      if (isEncrypted) {
-        fd.append('message', '') // Empty plaintext
-        fd.append('is_encrypted', '1')
-        fd.append('encrypted_body', encryptedBody)
-      } else {
-        fd.append('message', formattedMessage)
-      }
+      console.log('📤 Sending message (encryption disabled temporarily):', messageText.substring(0, 20) + '...')
       
       fetch('/send_message', { 
       method:'POST', 
