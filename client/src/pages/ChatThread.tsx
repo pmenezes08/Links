@@ -91,10 +91,6 @@ export default function ChatThread(){
   const finalizeTimerRef = useRef<any>(null)
   // const twoSecondCheckRef = useRef<any>(null)
   const finalizeAttemptRef = useRef(0)
-  const [recordLockActive, setRecordLockActive] = useState(false)
-  const touchStartYRef = useRef<number|null>(null)
-  const lockActiveRef = useRef(false)
-  const suppressClickRef = useRef(false)
   const [previewImage, setPreviewImage] = useState<string|null>(null)
   const [recordingPreview, setRecordingPreview] = useState<{ blob: Blob; url: string; duration: number } | null>(null)
   const [isMobile, setIsMobile] = useState(false)
@@ -1032,9 +1028,7 @@ export default function ChatThread(){
           try{ sourceRef.current && sourceRef.current.disconnect() }catch{}
           try{ audioCtxRef.current && audioCtxRef.current.close() }catch{}
           analyserRef.current = null; sourceRef.current = null; audioCtxRef.current = null
-          // Reset lock state after finalize
-          lockActiveRef.current = false
-          setRecordLockActive(false)
+          // Recording finalized
         }
       }
       mr.onstop = () => {
@@ -1228,19 +1222,15 @@ export default function ChatThread(){
       }
     } catch (error) {
       // Fallback for browsers that don't support permissions API
-      console.log('🎤 Permissions API not supported, showing modal')
-      setShowMicPermissionModal(true)
+      console.log('🎤 Permissions API not supported, starting recording')
+      startRecording()
     }
   }
 
   function requestMicrophoneAccess() {
     setShowMicPermissionModal(false)
     // Start recording which will trigger the browser's permission dialog
-    if (isMobile) {
-      setTimeout(() => startRecording(), 0)
-    } else {
-      startRecording()
-    }
+    startRecording()
   }
 
   function handleDeleteMessage(messageId: number | string, messageData: Message) {
@@ -1704,12 +1694,9 @@ export default function ChatThread(){
                       />
                     ))}
                   </div>
-                  {recordLockActive && (
-                    <div className="text-xs text-white/70 ml-2 flex items-center gap-1">
-                      <i className="fa-solid fa-lock" />
-                      <span>Locked</span>
-                    </div>
-                  )}
+                  <div className="text-xs text-white/70 ml-2">
+                    Recording...
+                  </div>
                 </div>
               </div>
             )}
@@ -1786,47 +1773,13 @@ export default function ChatThread(){
                     )}
                   </button>
                   
-                  {/* Mic icon - simple like WhatsApp */}
+                  {/* Mic icon - click to start recording */}
                   {MIC_ENABLED && (
                   <button
                     className="w-9 h-9 flex items-center justify-center text-white/70 hover:text-white transition-colors"
                     onClick={checkMicrophonePermission}
-                    onTouchStart={(e) => {
-                      try{ e.preventDefault(); e.stopPropagation() }catch{}
-                      suppressClickRef.current = true
-                      touchStartYRef.current = (e.touches && e.touches[0]?.clientY) || null
-                      checkMicrophonePermission()
-                    }}
-                    onTouchMove={(e) => {
-                      try{ e.preventDefault(); e.stopPropagation() }catch{}
-                      const startY = touchStartYRef.current
-                      if (startY == null) return
-                      const dy = startY - (e.touches && e.touches[0]?.clientY || startY)
-                      // Lock when user swipes up by 40px
-                      const shouldLock = dy > 40
-                      if (shouldLock && !lockActiveRef.current) {
-                        lockActiveRef.current = true
-                        setRecordLockActive(true)
-                      }
-                    }}
-                    onTouchEnd={(e) => {
-                      try{ e.preventDefault(); e.stopPropagation() }catch{}
-                      // If locked, do not stop; user must press stop button
-                      if (!lockActiveRef.current && recording) {
-                        stopRecording()
-                      }
-                      // reset gesture state
-                      touchStartYRef.current = null
-                      suppressClickRef.current = false
-                    }}
-                    aria-label="Voice message"
-                    title="Tap and hold to record"
-                    style={{
-                      touchAction: 'manipulation',
-                      WebkitTapHighlightColor: 'transparent',
-                      userSelect: 'none',
-                      WebkitUserSelect: 'none'
-                    }}
+                    aria-label="Start voice message"
+                    title="Click to start recording"
                   >
                     <i className="fa-solid fa-microphone text-lg" />
                   </button>
