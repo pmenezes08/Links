@@ -174,36 +174,64 @@ class SimpleEncryptionService {
   }
 
   /**
-   * Get public key for another user
+   * Get public key for another user with timeout
    */
   async getPublicKey(username: string): Promise<CryptoKey> {
     // Check cache first
     const cached = await this.getCachedPublicKey(username)
-    if (cached) return cached
-
-    // Fetch from server
-    const response = await fetch(`/api/encryption/get-public-key/${username}`, {
-      method: 'GET',
-      credentials: 'include',
-    })
-
-    if (!response.ok) {
-      throw new Error(`Failed to get public key for ${username}`)
+    if (cached) {
+      console.log('🔐 Using cached public key for', username)
+      return cached
     }
 
-    const data = await response.json()
-    const publicKey = await window.crypto.subtle.importKey(
-      'jwk',
-      data.publicKey,
-      { name: 'RSA-OAEP', hash: 'SHA-256' },
-      true,
-      ['encrypt']
-    )
+    console.log('🔐 Fetching public key for', username, 'from server...')
 
-    // Cache it
-    await this.cachePublicKey(username, data.publicKey)
+    // Fetch from server with timeout
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 5000) // 5 second timeout
 
-    return publicKey
+    try {
+      const response = await fetch(`/api/encryption/get-public-key/${username}`, {
+        method: 'GET',
+        credentials: 'include',
+        signal: controller.signal,
+      })
+
+      clearTimeout(timeoutId)
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          throw new Error(`User ${username} has no encryption keys yet`)
+        }
+        throw new Error(`Failed to get public key: ${response.status}`)
+      }
+
+      const data = await response.json()
+      
+      if (!data.success || !data.publicKey) {
+        throw new Error('Invalid public key response from server')
+      }
+
+      const publicKey = await window.crypto.subtle.importKey(
+        'jwk',
+        data.publicKey,
+        { name: 'RSA-OAEP', hash: 'SHA-256' },
+        true,
+        ['encrypt']
+      )
+
+      // Cache it
+      await this.cachePublicKey(username, data.publicKey)
+      console.log('🔐 ✅ Public key fetched and cached for', username)
+
+      return publicKey
+    } catch (error) {
+      clearTimeout(timeoutId)
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error(`Timeout fetching public key for ${username}`)
+      }
+      throw error
+    }
   }
 
   /**
@@ -254,10 +282,14 @@ class SimpleEncryptionService {
   }
 
   /**
-   * Encrypt a text message
+   * Encrypt a text message with timeout protection
    */
   async encryptMessage(recipientUsername: string, message: string): Promise<string> {
+    console.log('🔐 Starting encryption for recipient:', recipientUsername)
+    
     const publicKey = await this.getPublicKey(recipientUsername)
+    
+    console.log('🔐 Got public key, encrypting message...')
     
     // Convert message to ArrayBuffer
     const messageBuffer = new TextEncoder().encode(message)
@@ -269,6 +301,8 @@ class SimpleEncryptionService {
       messageBuffer
     )
 
+    console.log('🔐 Message encrypted successfully!')
+    
     // Convert to base64
     return this.arrayBufferToBase64(encrypted)
   }
@@ -292,84 +326,6 @@ class SimpleEncryptionService {
     // Convert back to string
     const decoder = new TextDecoder()
     return decoder.decode(decrypted)
-  }
-
-  /**
-   * Encrypt binary data (for files)
-   */
-  async encryptBinary(recipientUsername: string, data: ArrayBuffer): Promise<string> {
-    const publicKey = await this.getPublicKey(recipientUsername)
-    
-    // For large files, use AES-GCM with RSA-encrypted key
-    // Generate random AES key
-    const aesKey = await window.crypto.subtle.generateKey(
-      { name: 'AES-GCM', length: 256 },
-      true,
-      ['encrypt', 'decrypt']
-    )
-
-    // Encrypt data with AES
-    const iv = window.crypto.getRandomValues(new Uint8Array(12))
-    const encryptedData = await window.crypto.subtle.encrypt(
-      { name: 'AES-GCM', iv },
-      aesKey,
-      data
-    )
-
-    // Export and encrypt AES key with RSA
-    const aesKeyRaw = await window.crypto.subtle.exportKey('raw', aesKey)
-    const encryptedKey = await window.crypto.subtle.encrypt(
-      { name: 'RSA-OAEP' },
-      publicKey,
-      aesKeyRaw
-    )
-
-    // Combine: encrypted key + iv + encrypted data
-    const combined = new Uint8Array(encryptedKey.byteLength + 12 + encryptedData.byteLength)
-    combined.set(new Uint8Array(encryptedKey), 0)
-    combined.set(iv, encryptedKey.byteLength)
-    combined.set(new Uint8Array(encryptedData), encryptedKey.byteLength + 12)
-
-    return this.arrayBufferToBase64(combined.buffer)
-  }
-
-  /**
-   * Decrypt binary data
-   */
-  async decryptBinary(encryptedData: string): Promise<ArrayBuffer> {
-    if (!this.keyPair) throw new Error('Keys not loaded')
-
-    const combined = this.base64ToArrayBuffer(encryptedData)
-    
-    // Extract parts: encrypted key (256 bytes) + iv (12 bytes) + encrypted data
-    const encryptedKey = combined.slice(0, 256)
-    const iv = combined.slice(256, 268)
-    const encryptedContent = combined.slice(268)
-
-    // Decrypt AES key with RSA
-    const aesKeyRaw = await window.crypto.subtle.decrypt(
-      { name: 'RSA-OAEP' },
-      this.keyPair.privateKey,
-      encryptedKey
-    )
-
-    // Import AES key
-    const aesKey = await window.crypto.subtle.importKey(
-      'raw',
-      aesKeyRaw,
-      { name: 'AES-GCM', length: 256 },
-      false,
-      ['decrypt']
-    )
-
-    // Decrypt data with AES
-    const decrypted = await window.crypto.subtle.decrypt(
-      { name: 'AES-GCM', iv: new Uint8Array(iv) },
-      aesKey,
-      encryptedContent
-    )
-
-    return decrypted
   }
 
   /**

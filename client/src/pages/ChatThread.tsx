@@ -606,13 +606,42 @@ export default function ChatThread(){
         try{ localStorage.setItem(storageKey, JSON.stringify(metaRef.current)) }catch{}
       }
       
-      // ENCRYPTION DISABLED - was blocking message sending
-      // Will re-enable after proper debugging
-      const fd = new URLSearchParams({ 
-        recipient_id: String(otherUserId),
-        message: formattedMessage
-      })
-      console.log('📤 Sending message:', messageText.substring(0, 30) + '...')
+      // Try to encrypt message with timeout protection
+      let isEncrypted = false
+      let encryptedBody = ''
+      
+      if (username) {
+        try {
+          console.log('🔐 Attempting to encrypt message...')
+          
+          // Race encryption against 3 second timeout
+          const encryptPromise = encryptionService.encryptMessage(username, formattedMessage)
+          const timeoutPromise = new Promise<never>((_, reject) => 
+            setTimeout(() => reject(new Error('Encryption timeout')), 3000)
+          )
+          
+          encryptedBody = await Promise.race([encryptPromise, timeoutPromise])
+          isEncrypted = true
+          console.log('🔐 ✅ Message encrypted!')
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : 'Unknown error'
+          console.warn('🔐 ⚠️ Encryption failed, sending unencrypted:', errorMsg)
+          // Continue with unencrypted - this is perfectly fine!
+        }
+      }
+      
+      // Send to server
+      const fd = new URLSearchParams({ recipient_id: String(otherUserId) })
+      
+      if (isEncrypted) {
+        fd.append('message', '') // Empty plaintext
+        fd.append('is_encrypted', '1')
+        fd.append('encrypted_body', encryptedBody)
+        console.log('📤 Sending ENCRYPTED message to server')
+      } else {
+        fd.append('message', formattedMessage)
+        console.log('📤 Sending UNENCRYPTED message to server')
+      }
       
       fetch('/send_message', { 
       method:'POST', 
