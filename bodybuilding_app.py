@@ -7370,10 +7370,17 @@ def send_message():
     """Send a message to another user"""
     username = session.get('username')
     recipient_id = request.form.get('recipient_id')
-    message = request.form.get('message')
+    message = request.form.get('message', '')
     
-    if not recipient_id or not message:
-        return jsonify({'success': False, 'error': 'Recipient and message required'})
+    # Encryption fields (optional, disabled for now)
+    is_encrypted = request.form.get('is_encrypted', '0') == '1'
+    encrypted_body = request.form.get('encrypted_body', '')
+    
+    if not recipient_id:
+        return jsonify({'success': False, 'error': 'Recipient required'})
+    
+    if not is_encrypted and not message:
+        return jsonify({'success': False, 'error': 'Message required'})
     
     try:
         with get_db_connection() as conn:
@@ -7407,19 +7414,19 @@ def send_message():
                 # Duplicate message detected, return success but don't insert
                 return jsonify({'success': True, 'message': 'Message already sent'})
             
-            # Insert message with encryption support
+            # Insert message with optional encryption support
             if USE_MYSQL:
                 c.execute("""
-                    INSERT INTO messages (sender, receiver, message, is_encrypted, encryption_type, encrypted_body, timestamp)
-                    VALUES (%s, %s, %s, %s, %s, %s, NOW())
-                """, (username, recipient_username, message, 1 if is_encrypted else 0, encryption_type, encrypted_body))
+                    INSERT INTO messages (sender, receiver, message, is_encrypted, encrypted_body, timestamp)
+                    VALUES (%s, %s, %s, %s, %s, NOW())
+                """, (username, recipient_username, message, 1 if is_encrypted else 0, encrypted_body if is_encrypted else None))
             else:
                 # SQLite: store as text 'YYYY-MM-DD HH:MM:SS'
                 _ts = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                 c.execute("""
-                    INSERT INTO messages (sender, receiver, message, is_encrypted, encryption_type, encrypted_body, timestamp)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                """, (username, recipient_username, message, 1 if is_encrypted else 0, encryption_type, encrypted_body, _ts))
+                    INSERT INTO messages (sender, receiver, message, is_encrypted, encrypted_body, timestamp)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """, (username, recipient_username, message, 1 if is_encrypted else 0, encrypted_body if is_encrypted else None, _ts))
             
             conn.commit()
             # Fetch inserted id and timestamp for immediate client update
