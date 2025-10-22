@@ -112,15 +112,8 @@ export default function ChatThread(){
   // Pause polling briefly after sending to avoid race condition with server confirmation
   const skipNextPollsUntil = useRef<number>(0)
 
-  // Mic gating by build flag: enable by default in dev; disabled in prod unless VITE_MIC_ENABLED=true
-  const envVars: any = (typeof import.meta !== 'undefined' && (import.meta as any).env) || {}
-  const micFlag = envVars.VITE_MIC_ENABLED
-  const isDev = import.meta.env.DEV
-  
-  // Enable mic in dev mode, or if explicitly enabled via env var
-  const MIC_ENABLED = typeof micFlag !== 'undefined'
-    ? (micFlag === 'true' || micFlag === true)
-    : isDev
+  // Mic always enabled for audio messages
+  const MIC_ENABLED = true
 
   // Date formatting functions
   function formatDateLabel(dateStr: string): string {
@@ -1659,7 +1652,7 @@ export default function ChatThread(){
             {MIC_ENABLED && recording && (
               <div className="flex-1 flex items-center px-4 py-2.5 gap-3 pr-16">
                 <div className="flex items-center gap-3 flex-1">
-                  <span className="inline-block w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+                  <span className="inline-block w-2 h-2 bg-[#4db6ac] rounded-full animate-pulse" />
                   <div className="flex-1 h-6 bg-gray-800/80 rounded-full flex items-center justify-center px-2 gap-0.5 relative overflow-hidden">
                     {/* Audio-reactive sound bars */}
                     {audioLevels.map((level, i) => (
@@ -1720,15 +1713,15 @@ export default function ChatThread(){
             
             {/* Mic + Send - Conditional based on recording state */}
             <div className="absolute right-2 top-1/2 transform -translate-y-1/2 flex items-center gap-2">
-              {/* When recording: Show STOP button (large, red, clear) */}
+              {/* When recording: Show STOP button (modern, sleek, turquoise) */}
               {MIC_ENABLED && recording ? (
                 <button
-                  className="w-12 h-12 rounded-full flex items-center justify-center bg-red-600 text-white hover:bg-red-700 active:scale-95 transition-all duration-200 shadow-lg"
+                  className="w-9 h-9 rounded-full flex items-center justify-center bg-[#4db6ac] text-white hover:bg-[#45a99c] active:scale-95 transition-all duration-200"
                   onClick={stopRecording}
                   aria-label="Stop recording"
                   title="Stop recording"
                 >
-                  <i className="fa-solid fa-stop text-lg" />
+                  <i className="fa-solid fa-stop text-sm" />
                 </button>
               ) : (
                 <>
