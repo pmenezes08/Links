@@ -1689,19 +1689,19 @@ export default function ChatThread(){
                         </div>
                       ) : null}
                       
-                      {/* Encryption indicator */}
+                      {/* Encryption indicator - BIGGER AND MORE VISIBLE */}
                       {m.is_encrypted && !m.decryption_error && (
-                        <div className="flex items-center gap-1 mb-1 text-[9px] text-[#4db6ac]/60">
-                          <i className="fa-solid fa-lock text-[8px]" />
-                          <span>End-to-end encrypted</span>
+                        <div className="flex items-center gap-1.5 mb-2 text-[11px] text-[#4db6ac]">
+                          <i className="fa-solid fa-lock text-[10px]" />
+                          <span className="font-medium">End-to-end encrypted</span>
                         </div>
                       )}
                       
                       {/* Decryption error indicator */}
                       {m.decryption_error && (
-                        <div className="flex items-center gap-1 mb-1 text-[9px] text-red-400/60">
-                          <i className="fa-solid fa-triangle-exclamation text-[8px]" />
-                          <span>Decryption failed</span>
+                        <div className="flex items-center gap-1.5 mb-2 text-[11px] text-red-400">
+                          <i className="fa-solid fa-triangle-exclamation text-[10px]" />
+                          <span className="font-medium">Decryption failed</span>
                         </div>
                       )}
                       
