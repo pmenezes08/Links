@@ -606,34 +606,13 @@ export default function ChatThread(){
         try{ localStorage.setItem(storageKey, JSON.stringify(metaRef.current)) }catch{}
       }
       
-      // Try to encrypt message if possible
-      let isEncrypted = false
-      let encryptedBody = ''
-      
-      if (username) {
-        try {
-          console.log('🔐 Attempting to encrypt message...')
-          encryptedBody = await encryptionService.encryptMessage(username, formattedMessage)
-          isEncrypted = true
-          console.log('🔐 ✅ Message encrypted!')
-        } catch (error) {
-          console.warn('🔐 ⚠️ Encryption not available, sending unencrypted:', error instanceof Error ? error.message : 'Unknown error')
-          // Continue with unencrypted - this is OK!
-        }
-      }
-      
-      // Send to server
-      const fd = new URLSearchParams({ recipient_id: String(otherUserId) })
-      
-      if (isEncrypted) {
-        fd.append('message', '') // Empty plaintext
-        fd.append('is_encrypted', '1')
-        fd.append('encrypted_body', encryptedBody)
-        console.log('🔐 Sending encrypted message')
-      } else {
-        fd.append('message', formattedMessage)
-        console.log('📤 Sending unencrypted message')
-      }
+      // ENCRYPTION DISABLED - was blocking message sending
+      // Will re-enable after proper debugging
+      const fd = new URLSearchParams({ 
+        recipient_id: String(otherUserId),
+        message: formattedMessage
+      })
+      console.log('📤 Sending message:', messageText.substring(0, 30) + '...')
       
       fetch('/send_message', { 
       method:'POST', 
