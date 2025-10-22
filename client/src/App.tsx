@@ -41,6 +41,7 @@ import OnboardingWelcome from './pages/OnboardingWelcome'
 import VerifyOverlay from './components/VerifyOverlay'
 import EventDetail from './pages/EventDetail'
 import GroupFeed from './pages/GroupFeed'
+import EncryptionSettings from './pages/EncryptionSettings'
 
 const queryClient = new QueryClient()
 
@@ -67,6 +68,13 @@ function AppRoutes(){
           try {
             console.log('🔐 Initializing encryption for:', j.profile.username)
             await encryptionService.init(j.profile.username)
+            
+            // Store timestamp of key generation
+            const existingTimestamp = localStorage.getItem('encryption_keys_generated_at')
+            if (!existingTimestamp) {
+              localStorage.setItem('encryption_keys_generated_at', Date.now().toString())
+            }
+            
             console.log('🔐 ✅ Encryption ready globally!')
           } catch (encError) {
             console.error('🔐 ❌ Encryption init failed:', encError)
@@ -174,6 +182,7 @@ function AppRoutes(){
           <Route path="/compose" element={<CreatePost />} />
           <Route path="/product_development" element={<ProductDevelopment />} />
           <Route path="/group_feed_react/:group_id" element={<GroupFeed />} />
+          <Route path="/encryption_settings" element={<EncryptionSettings />} />
           <Route path="*" element={<PremiumDashboard />} />
           </Routes>
         </ErrorBoundary>
