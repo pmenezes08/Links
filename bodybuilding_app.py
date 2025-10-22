@@ -22,6 +22,7 @@ from hashlib import sha256
 from redis_cache import cache, cache_result, invalidate_user_cache, invalidate_community_cache, invalidate_message_cache
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from urllib.parse import urlencode
+from encryption_endpoints import register_encryption_endpoints
 try:
     from PIL import Image
     PIL_AVAILABLE = True
@@ -886,6 +887,25 @@ def add_missing_tables():
                         logger.info(f"Added {col_name} column to messages table")
                 except Exception as ae:
                     logger.warning(f"Could not ensure {col_name} column on messages: {ae}")
+            
+            # Ensure messages table has E2E encryption columns
+            for col_name, col_type in [
+                ('is_encrypted', 'INTEGER DEFAULT 0'),
+                ('encrypted_body', 'TEXT'),
+            ]:
+                try:
+                    exists = False
+                    try:
+                        c.execute(f"SHOW COLUMNS FROM messages LIKE '{col_name}'")
+                        exists = c.fetchone() is not None
+                    except Exception:
+                        exists = False
+                    if not exists:
+                        c.execute(f"ALTER TABLE messages ADD COLUMN {col_name} {col_type}")
+                        conn.commit()
+                        logger.info(f"Added {col_name} column to messages table for E2E encryption")
+                except Exception as ae:
+                    logger.warning(f"Could not ensure {col_name} column on messages: {ae}")
 
             # Typing status table for realtime UX
             c.execute('''CREATE TABLE IF NOT EXISTS typing_status (
@@ -895,6 +915,38 @@ def add_missing_tables():
                              is_typing INTEGER DEFAULT 0,
                              updated_at TEXT NOT NULL,
                              UNIQUE(user, peer))''')
+            
+            # E2E Encryption tables
+            logger.info("Creating encryption_keys table...")
+            c.execute('''CREATE TABLE IF NOT EXISTS encryption_keys (
+                             id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                             username VARCHAR(191) UNIQUE NOT NULL,
+                             identity_key TEXT NOT NULL,
+                             signed_prekey_id INTEGER NOT NULL,
+                             signed_prekey_public TEXT NOT NULL,
+                             signed_prekey_signature TEXT NOT NULL,
+                             registration_id INTEGER NOT NULL,
+                             created_at TEXT NOT NULL,
+                             updated_at TEXT NOT NULL)''')
+            
+            logger.info("Creating encryption_prekeys table...")
+            c.execute('''CREATE TABLE IF NOT EXISTS encryption_prekeys (
+                             id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                             username VARCHAR(191) NOT NULL,
+                             key_id INTEGER NOT NULL,
+                             public_key TEXT NOT NULL,
+                             used INTEGER DEFAULT 0,
+                             created_at TEXT NOT NULL,
+                             UNIQUE(username, key_id))''')
+            
+            logger.info("Creating encryption_backups table...")
+            c.execute('''CREATE TABLE IF NOT EXISTS encryption_backups (
+                             id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                             username VARCHAR(191) UNIQUE NOT NULL,
+                             encrypted_backup TEXT NOT NULL,
+                             salt TEXT NOT NULL,
+                             created_at TEXT NOT NULL,
+                             updated_at TEXT NOT NULL)''')
 
             # Ensure helpful indexes
             try:
@@ -7232,12 +7284,14 @@ def get_messages():
             
             other_username = other_user['username'] if hasattr(other_user, 'keys') else other_user[0]
             
-            # Get messages between users (compat: edited_at may not exist yet)
+            # Get messages between users (compat: edited_at and encryption fields may not exist yet)
             with_edited = True
+            with_encryption = True
             try:
                 c.execute(
                     """
-                    SELECT id, sender, receiver, message, image_path, audio_path, audio_duration_seconds, audio_mime, timestamp, edited_at
+                    SELECT id, sender, receiver, message, image_path, audio_path, audio_duration_seconds, audio_mime, 
+                           is_encrypted, encrypted_body, timestamp, edited_at
                     FROM messages
                     WHERE (sender = ? AND receiver = ?)
                        OR (sender = ? AND receiver = ?)
@@ -7246,21 +7300,35 @@ def get_messages():
                     (username, other_username, other_username, username),
                 )
             except Exception:
-                with_edited = False
-                c.execute(
-                    """
-                    SELECT id, sender, receiver, message, image_path, audio_path, audio_duration_seconds, audio_mime, timestamp
-                    FROM messages
-                    WHERE (sender = ? AND receiver = ?)
-                       OR (sender = ? AND receiver = ?)
-                    ORDER BY timestamp ASC
-                    """,
-                    (username, other_username, other_username, username),
-                )
+                # Fallback without encryption fields
+                with_encryption = False
+                try:
+                    c.execute(
+                        """
+                        SELECT id, sender, receiver, message, image_path, audio_path, audio_duration_seconds, audio_mime, timestamp, edited_at
+                        FROM messages
+                        WHERE (sender = ? AND receiver = ?)
+                           OR (sender = ? AND receiver = ?)
+                        ORDER BY timestamp ASC
+                        """,
+                        (username, other_username, other_username, username),
+                    )
+                except Exception:
+                    with_edited = False
+                    c.execute(
+                        """
+                        SELECT id, sender, receiver, message, image_path, audio_path, audio_duration_seconds, audio_mime, timestamp
+                        FROM messages
+                        WHERE (sender = ? AND receiver = ?)
+                           OR (sender = ? AND receiver = ?)
+                        ORDER BY timestamp ASC
+                        """,
+                        (username, other_username, other_username, username),
+                    )
             
             messages = []
             for msg in c.fetchall():
-                messages.append({
+                msg_dict = {
                     'id': msg['id'],
                     'text': msg['message'],
                     'image_path': msg.get('image_path') if hasattr(msg, 'get') else msg[4],
@@ -7270,7 +7338,14 @@ def get_messages():
                     'sent': msg['sender'] == username,
                     'time': msg['timestamp'],
                     'edited_at': (msg.get('edited_at') if (with_edited and hasattr(msg,'get')) else ((msg[9] if (with_edited and len(msg) > 9) else None)))
-                })
+                }
+                
+                # Add encryption fields if available
+                if with_encryption:
+                    msg_dict['is_encrypted'] = msg.get('is_encrypted') if hasattr(msg, 'get') else msg[8] if len(msg) > 8 else 0
+                    msg_dict['encrypted_body'] = msg.get('encrypted_body') if hasattr(msg, 'get') else msg[9] if len(msg) > 9 else None
+                
+                messages.append(msg_dict)
             
             # Mark messages from other user as read
             c.execute("UPDATE messages SET is_read=1 WHERE sender=? AND receiver=? AND is_read=0", (other_username, username))
@@ -7292,13 +7367,25 @@ def get_messages():
 @app.route('/send_message', methods=['POST'])
 @login_required
 def send_message():
-    """Send a message to another user"""
+    """Send a message to another user (supports E2E encryption)"""
     username = session.get('username')
     recipient_id = request.form.get('recipient_id')
-    message = request.form.get('message')
+    message = request.form.get('message', '')
     
-    if not recipient_id or not message:
-        return jsonify({'success': False, 'error': 'Recipient and message required'})
+    # Encryption fields
+    is_encrypted = request.form.get('is_encrypted', '0') == '1'
+    encrypted_body = request.form.get('encrypted_body', '')
+    plaintext_for_sender = request.form.get('plaintext_for_sender', '')  # Keep plaintext for sender to see what they sent
+    
+    if not recipient_id:
+        return jsonify({'success': False, 'error': 'Recipient required'})
+    
+    # For encrypted messages, we need either message or plaintext_for_sender
+    if is_encrypted and plaintext_for_sender:
+        message = plaintext_for_sender  # Store plaintext so sender can see their own sent message
+    
+    if not message:
+        return jsonify({'success': False, 'error': 'Message required'})
     
     try:
         with get_db_connection() as conn:
@@ -7332,19 +7419,19 @@ def send_message():
                 # Duplicate message detected, return success but don't insert
                 return jsonify({'success': True, 'message': 'Message already sent'})
             
-            # Insert message with correct timestamp function for the active DB
+            # Insert message with optional encryption support
             if USE_MYSQL:
                 c.execute("""
-                    INSERT INTO messages (sender, receiver, message, timestamp)
-                    VALUES (%s, %s, %s, NOW())
-                """, (username, recipient_username, message))
+                    INSERT INTO messages (sender, receiver, message, is_encrypted, encrypted_body, timestamp)
+                    VALUES (%s, %s, %s, %s, %s, NOW())
+                """, (username, recipient_username, message, 1 if is_encrypted else 0, encrypted_body if is_encrypted else None))
             else:
                 # SQLite: store as text 'YYYY-MM-DD HH:MM:SS'
                 _ts = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                 c.execute("""
-                    INSERT INTO messages (sender, receiver, message, timestamp)
-                    VALUES (?, ?, ?, ?)
-                """, (username, recipient_username, message, _ts))
+                    INSERT INTO messages (sender, receiver, message, is_encrypted, encrypted_body, timestamp)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """, (username, recipient_username, message, 1 if is_encrypted else 0, encrypted_body if is_encrypted else None, _ts))
             
             conn.commit()
             # Fetch inserted id and timestamp for immediate client update
@@ -23155,6 +23242,12 @@ def get_active_chat_counts():
     except Exception as e:
         logger.error(f"Error in get_active_chat_counts: {e}")
         return jsonify({ 'success': False, 'error': 'server error' }), 500
+
+# Register encryption endpoints for E2E encryption
+try:
+    register_encryption_endpoints(app, get_db_connection, logger)
+except Exception as e:
+    logger.error(f"Failed to register encryption endpoints: {e}")
 
 if __name__ == '__main__':
     app.run(debug=False, host='0.0.0.0', port=8080)

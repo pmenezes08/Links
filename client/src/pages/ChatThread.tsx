@@ -4,6 +4,7 @@ import { useHeader } from '../contexts/HeaderContext'
 import Avatar from '../components/Avatar'
 import ImageLoader from '../components/ImageLoader'
 import MessageImage from '../components/MessageImage'
+import { encryptionService } from '../services/simpleEncryption'
 
 interface Message {
   id: number | string
@@ -18,6 +19,9 @@ interface Message {
   isOptimistic?: boolean // Track if this is an optimistic update
   edited_at?: string | null
   clientKey?: string | number
+  is_encrypted?: boolean
+  encrypted_body?: string
+  decryption_error?: boolean
 }
 
 export default function ChatThread(){
@@ -111,6 +115,8 @@ export default function ChatThread(){
 
   // Mic always enabled for audio messages
   const MIC_ENABLED = true
+  
+  // E2E Encryption is initialized globally in App.tsx, so it's always ready
 
   // Date formatting functions
   function formatDateLabel(dateStr: string): string {
@@ -197,6 +203,74 @@ export default function ChatThread(){
     return nodes
   }
 
+  // Track messages that have been processed (don't decrypt multiple times)
+  const decryptionCache = useRef<Map<number | string, { text: string; error: boolean }>>(new Map())
+
+  // Decrypt message if it's encrypted
+  async function decryptMessageIfNeeded(message: any): Promise<any> {
+    if (!message.is_encrypted || !message.encrypted_body) {
+      return message
+    }
+    
+    // IMPORTANT: Don't try to decrypt messages YOU sent!
+    // You encrypted them with the recipient's public key, so only THEY can decrypt
+    // For sent messages, the server should include plaintext in 'message' field
+    if (message.sent) {
+      // If we have plaintext, use it; otherwise show encrypted indicator
+      if (message.text && message.text.trim()) {
+        return {
+          ...message,
+          decryption_error: false,
+        }
+      } else {
+        return {
+          ...message,
+          text: '[🔒 Encrypted message you sent]',
+          decryption_error: false,
+        }
+      }
+    }
+    
+    // Only decrypt RECEIVED messages (from others)
+    // Check cache first - don't decrypt the same message multiple times!
+    const cached = decryptionCache.current.get(message.id)
+    if (cached) {
+      return {
+        ...message,
+        text: cached.text,
+        decryption_error: cached.error,
+      }
+    }
+    
+    try {
+      console.log('🔐 Decrypting received message:', message.id)
+      const decryptedText = await encryptionService.decryptMessage(message.encrypted_body)
+      console.log('🔐 ✅ Message', message.id, 'decrypted successfully!')
+      
+      // Cache the decrypted text
+      decryptionCache.current.set(message.id, { text: decryptedText, error: false })
+      
+      return {
+        ...message,
+        text: decryptedText,
+        decryption_error: false,
+      }
+    } catch (error) {
+      console.error('🔐 ❌ Failed to decrypt message:', message.id, error)
+      
+      // Cache the failure
+      decryptionCache.current.set(message.id, { text: '[🔒 Encrypted - decryption failed]', error: true })
+      
+      return {
+        ...message,
+        text: '[🔒 Encrypted - decryption failed]',
+        decryption_error: true,
+      }
+    }
+  }
+
+  // Encryption is initialized globally in App.tsx - no need for per-chat init
+
   // Initial load of messages and other user info
   useEffect(() => {
     if (!username) return
@@ -222,9 +296,14 @@ export default function ChatThread(){
           body: fd 
         })
         .then(r=>r.json())
-        .then(j=>{
+        .then(async (j) => {
           if (j?.success && Array.isArray(j.messages)) {
-            const processedMessages = j.messages.map((m:any) => {
+            // Decrypt encrypted messages first
+            const decryptedMessages = await Promise.all(
+              j.messages.map(async (m: any) => await decryptMessageIfNeeded(m))
+            )
+            
+            const processedMessages = decryptedMessages.map((m:any) => {
               // Parse reply information from message text
               let messageText = m.text
               let replySnippet = undefined
@@ -332,6 +411,11 @@ export default function ChatThread(){
         const j = await r.json()
         
         if (j?.success && Array.isArray(j.messages)){
+          // Decrypt encrypted messages before processing
+          const decryptedMessages = await Promise.all(
+            j.messages.map(async (m: any) => await decryptMessageIfNeeded(m))
+          )
+          
           setMessages(prev => {
             // Build map of existing messages by their stable key (clientKey or id)
             const messagesByKey = new Map()
@@ -348,9 +432,9 @@ export default function ChatThread(){
               }
             })
             
-            // Process server messages
+            // Process server messages (now decrypted)
             const serverMessageKeys = new Set()
-            j.messages.forEach((m: any) => {
+            decryptedMessages.forEach((m: any) => {
               // Skip if pending deletion
               if (pendingDeletions.current.has(m.id)) return
               
@@ -409,7 +493,11 @@ export default function ChatThread(){
                 replySnippet: replySnippet || existing?.replySnippet || meta.replySnippet,
                 isOptimistic: false, // No longer optimistic
                 edited_at: m.edited_at || null,
-                clientKey: finalKey // Keep stable key
+                clientKey: finalKey, // Keep stable key
+                // CRITICAL: Include encryption fields from server!
+                is_encrypted: m.is_encrypted,
+                encrypted_body: m.encrypted_body,
+                decryption_error: m.decryption_error
               })
             })
             
@@ -484,64 +572,102 @@ export default function ChatThread(){
   useEffect(() => { adjustTextareaHeight() }, [])
   useEffect(() => { adjustTextareaHeight() }, [draft])
 
-  function send(){
+  async function send(){
     if (!otherUserId || !draft.trim() || sending) return
     
-    // Pause polling for 2 seconds to avoid race condition with server confirmation
-    skipNextPollsUntil.current = Date.now() + 2000
-    
     const messageText = draft.trim()
-    const now = new Date().toISOString().slice(0,19).replace('T',' ')
-    const tempId = `temp_${Date.now()}_${Math.random()}`
-    const replySnippet = replyTo ? (replyTo.text.length > 90 ? replyTo.text.slice(0,90) + '…' : replyTo.text) : undefined
     
-    // Format message with reply if needed
-    let formattedMessage = messageText
-    if (replyTo) {
-      // Add a special format that we can parse later
-      // Using a format that won't interfere with normal messages
-      formattedMessage = `[REPLY:${replyTo.sender}:${replyTo.text.slice(0,90)}]\n${messageText}`
-    }
-    
-    // Create optimistic message
-    const optimisticMessage: Message = { 
-      id: tempId, 
-      text: messageText, 
-      sent: true, 
-      time: now, 
-      replySnippet,
-      isOptimistic: true
-    }
-    
-    // Clear input immediately for better UX
-    setDraft('')
-    setReplyTo(null)
-    setSending(true)
-    
-    // Add optimistic message immediately
-    const optimisticWithKey = { ...optimisticMessage, clientKey: tempId }
-    setMessages(prev => [...prev, optimisticWithKey])
-    
-    // Register in recent optimistic to prevent poll from removing it due to stale state
-    recentOptimisticRef.current.set(tempId, {
-      message: optimisticWithKey,
-      timestamp: Date.now()
-    })
-    
-    // Force scroll to bottom for sent messages
-    setTimeout(scrollToBottom, 50)
-    
-    // Store reply snippet in metadata if needed
-    if (replySnippet){
-      const k = `${now}|${messageText}|me`
-      metaRef.current[k] = { ...(metaRef.current[k]||{}), replySnippet }
-      try{ localStorage.setItem(storageKey, JSON.stringify(metaRef.current)) }catch{}
-    }
-    
-    // Send to server with formatted message
-    const fd = new URLSearchParams({ recipient_id: String(otherUserId), message: formattedMessage })
-    
-    fetch('/send_message', { 
+    try {
+      // Pause polling for 2 seconds to avoid race condition with server confirmation
+      skipNextPollsUntil.current = Date.now() + 2000
+      const now = new Date().toISOString().slice(0,19).replace('T',' ')
+      const tempId = `temp_${Date.now()}_${Math.random()}`
+      const replySnippet = replyTo ? (replyTo.text.length > 90 ? replyTo.text.slice(0,90) + '…' : replyTo.text) : undefined
+      
+      // Format message with reply if needed
+      let formattedMessage = messageText
+      if (replyTo) {
+        // Add a special format that we can parse later
+        // Using a format that won't interfere with normal messages
+        formattedMessage = `[REPLY:${replyTo.sender}:${replyTo.text.slice(0,90)}]\n${messageText}`
+      }
+      
+      // Try to encrypt message FIRST (before creating optimistic message)
+      let isEncrypted = false
+      let encryptedBody = ''
+      
+      if (username) {
+        try {
+          console.log('🔐 Attempting to encrypt message...')
+          
+          // Race encryption against 3 second timeout
+          const encryptPromise = encryptionService.encryptMessage(username, formattedMessage)
+          const timeoutPromise = new Promise<never>((_, reject) => 
+            setTimeout(() => reject(new Error('Encryption timeout')), 3000)
+          )
+          
+          encryptedBody = await Promise.race([encryptPromise, timeoutPromise])
+          isEncrypted = true
+          console.log('🔐 ✅ Message encrypted!')
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : 'Unknown error'
+          console.warn('🔐 ⚠️ Encryption failed, sending unencrypted:', errorMsg)
+          // Continue with unencrypted - this is perfectly fine!
+        }
+      }
+      
+      // Create optimistic message WITH encryption flags
+      const optimisticMessage: Message = { 
+        id: tempId, 
+        text: messageText, 
+        sent: true, 
+        time: now, 
+        replySnippet,
+        isOptimistic: true,
+        is_encrypted: isEncrypted,
+        encrypted_body: isEncrypted ? encryptedBody : undefined
+      }
+      
+      // Clear input immediately for better UX
+      setDraft('')
+      setReplyTo(null)
+      setSending(true)
+      
+      // Add optimistic message immediately
+      const optimisticWithKey = { ...optimisticMessage, clientKey: tempId }
+      setMessages(prev => [...prev, optimisticWithKey])
+      
+      // Register in recent optimistic to prevent poll from removing it due to stale state
+      recentOptimisticRef.current.set(tempId, {
+        message: optimisticWithKey,
+        timestamp: Date.now()
+      })
+      
+      // Force scroll to bottom for sent messages
+      setTimeout(scrollToBottom, 50)
+      
+      // Store reply snippet in metadata if needed
+      if (replySnippet){
+        const k = `${now}|${messageText}|me`
+        metaRef.current[k] = { ...(metaRef.current[k]||{}), replySnippet }
+        try{ localStorage.setItem(storageKey, JSON.stringify(metaRef.current)) }catch{}
+      }
+      
+      // Send to server
+      const fd = new URLSearchParams({ recipient_id: String(otherUserId) })
+      
+      if (isEncrypted) {
+        fd.append('message', '') // Empty for recipient
+        fd.append('plaintext_for_sender', formattedMessage) // Store so sender can see their own message
+        fd.append('is_encrypted', '1')
+        fd.append('encrypted_body', encryptedBody)
+        console.log('📤 Sending ENCRYPTED message')
+      } else {
+        fd.append('message', formattedMessage)
+        console.log('📤 Sending UNENCRYPTED message')
+      }
+      
+      fetch('/send_message', { 
       method:'POST', 
       credentials:'include', 
       headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, 
@@ -568,6 +694,7 @@ export default function ChatThread(){
           
           // Immediately update the optimistic message to be confirmed
           // Keep the same clientKey (tempId) so React doesn't remount
+          // PRESERVE encryption flags!
           setMessages(prev => prev.map(m => {
             if ((m.clientKey || m.id) === tempId) {
               return {
@@ -575,7 +702,10 @@ export default function ChatThread(){
                 id: j.message_id, // Update to server ID
                 isOptimistic: false, // No longer optimistic
                 time: j.time || m.time, // Use server time if available
-                clientKey: tempId // Keep stable key for React
+                clientKey: tempId, // Keep stable key for React
+                // Keep encryption flags from optimistic message
+                is_encrypted: m.is_encrypted,
+                encrypted_body: m.encrypted_body
               }
             }
             return m
@@ -589,13 +719,19 @@ export default function ChatThread(){
         // Keep optimistic message, restore draft for retry
         setDraft(messageText)
       }
-    })
-    .catch((err)=>{
-      console.log('❌ Send error:', err)
-      // Keep optimistic message, restore draft for retry
+      })
+      .catch((err)=>{
+        console.log('❌ Send error:', err)
+        // Keep optimistic message, restore draft for retry
+        setDraft(messageText)
+      })
+      .finally(() => setSending(false))
+    } catch (error) {
+      console.error('❌ Send function error:', error)
+      setSending(false)
+      // Restore draft on error
       setDraft(messageText)
-    })
-    .finally(() => setSending(false))
+    }
   }
 
   function handlePhotoSelect() {
@@ -1562,6 +1698,22 @@ export default function ChatThread(){
                           />
                         </div>
                       ) : null}
+                      
+                      {/* Encryption indicator - BIGGER AND MORE VISIBLE */}
+                      {m.is_encrypted && !m.decryption_error && (
+                        <div className="flex items-center gap-1.5 mb-2 text-[11px] text-[#4db6ac]">
+                          <i className="fa-solid fa-lock text-[10px]" />
+                          <span className="font-medium">End-to-end encrypted</span>
+                        </div>
+                      )}
+                      
+                      {/* Decryption error indicator */}
+                      {m.decryption_error && (
+                        <div className="flex items-center gap-1.5 mb-2 text-[11px] text-red-400">
+                          <i className="fa-solid fa-triangle-exclamation text-[10px]" />
+                          <span className="font-medium">Decryption failed</span>
+                        </div>
+                      )}
                       
                       {/* Text content or editor */}
                       {editingId === m.id ? (
