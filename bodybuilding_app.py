@@ -892,6 +892,7 @@ def add_missing_tables():
             for col_name, col_type in [
                 ('is_encrypted', 'INTEGER DEFAULT 0'),
                 ('encrypted_body', 'TEXT'),
+                ('encrypted_body_for_sender', 'TEXT'),
             ]:
                 try:
                     exists = False
@@ -7291,7 +7292,7 @@ def get_messages():
                 c.execute(
                     """
                     SELECT id, sender, receiver, message, image_path, audio_path, audio_duration_seconds, audio_mime, 
-                           is_encrypted, encrypted_body, timestamp, edited_at
+                           is_encrypted, encrypted_body, encrypted_body_for_sender, timestamp, edited_at
                     FROM messages
                     WHERE (sender = ? AND receiver = ?)
                        OR (sender = ? AND receiver = ?)
@@ -7344,6 +7345,7 @@ def get_messages():
                 if with_encryption:
                     msg_dict['is_encrypted'] = msg.get('is_encrypted') if hasattr(msg, 'get') else msg[8] if len(msg) > 8 else 0
                     msg_dict['encrypted_body'] = msg.get('encrypted_body') if hasattr(msg, 'get') else msg[9] if len(msg) > 9 else None
+                    msg_dict['encrypted_body_for_sender'] = msg.get('encrypted_body_for_sender') if hasattr(msg, 'get') else msg[10] if len(msg) > 10 else None
                 
                 messages.append(msg_dict)
             
@@ -7374,17 +7376,15 @@ def send_message():
     
     # Encryption fields
     is_encrypted = request.form.get('is_encrypted', '0') == '1'
-    encrypted_body = request.form.get('encrypted_body', '')
-    plaintext_for_sender = request.form.get('plaintext_for_sender', '')  # Keep plaintext for sender to see what they sent
+    encrypted_body = request.form.get('encrypted_body', '')  # Encrypted for recipient
+    encrypted_body_for_sender = request.form.get('encrypted_body_for_sender', '')  # Encrypted for sender
     
     if not recipient_id:
         return jsonify({'success': False, 'error': 'Recipient required'})
     
-    # For encrypted messages, we need either message or plaintext_for_sender
-    if is_encrypted and plaintext_for_sender:
-        message = plaintext_for_sender  # Store plaintext so sender can see their own sent message
-    
-    if not message:
+    # For encrypted messages, we don't store plaintext at all
+    # For unencrypted messages, we need the message
+    if not is_encrypted and not message:
         return jsonify({'success': False, 'error': 'Message required'})
     
     try:
@@ -7422,16 +7422,18 @@ def send_message():
             # Insert message with optional encryption support
             if USE_MYSQL:
                 c.execute("""
-                    INSERT INTO messages (sender, receiver, message, is_encrypted, encrypted_body, timestamp)
-                    VALUES (%s, %s, %s, %s, %s, NOW())
-                """, (username, recipient_username, message, 1 if is_encrypted else 0, encrypted_body if is_encrypted else None))
+                    INSERT INTO messages (sender, receiver, message, is_encrypted, encrypted_body, encrypted_body_for_sender, timestamp)
+                    VALUES (%s, %s, %s, %s, %s, %s, NOW())
+                """, (username, recipient_username, message if not is_encrypted else '', 1 if is_encrypted else 0, 
+                     encrypted_body if is_encrypted else None, encrypted_body_for_sender if is_encrypted else None))
             else:
                 # SQLite: store as text 'YYYY-MM-DD HH:MM:SS'
                 _ts = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                 c.execute("""
-                    INSERT INTO messages (sender, receiver, message, is_encrypted, encrypted_body, timestamp)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                """, (username, recipient_username, message, 1 if is_encrypted else 0, encrypted_body if is_encrypted else None, _ts))
+                    INSERT INTO messages (sender, receiver, message, is_encrypted, encrypted_body, encrypted_body_for_sender, timestamp)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (username, recipient_username, message if not is_encrypted else '', 1 if is_encrypted else 0, 
+                     encrypted_body if is_encrypted else None, encrypted_body_for_sender if is_encrypted else None, _ts))
             
             conn.commit()
             # Fetch inserted id and timestamp for immediate client update

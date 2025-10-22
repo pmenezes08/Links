@@ -20,7 +20,8 @@ interface Message {
   edited_at?: string | null
   clientKey?: string | number
   is_encrypted?: boolean
-  encrypted_body?: string
+  encrypted_body?: string // Encrypted for recipient
+  encrypted_body_for_sender?: string // Encrypted for sender
   decryption_error?: boolean
 }
 
@@ -208,30 +209,10 @@ export default function ChatThread(){
 
   // Decrypt message if it's encrypted
   async function decryptMessageIfNeeded(message: any): Promise<any> {
-    if (!message.is_encrypted || !message.encrypted_body) {
+    if (!message.is_encrypted) {
       return message
     }
     
-    // IMPORTANT: Don't try to decrypt messages YOU sent!
-    // You encrypted them with the recipient's public key, so only THEY can decrypt
-    // For sent messages, the server should include plaintext in 'message' field
-    if (message.sent) {
-      // If we have plaintext, use it; otherwise show encrypted indicator
-      if (message.text && message.text.trim()) {
-        return {
-          ...message,
-          decryption_error: false,
-        }
-      } else {
-        return {
-          ...message,
-          text: '[🔒 Encrypted message you sent]',
-          decryption_error: false,
-        }
-      }
-    }
-    
-    // Only decrypt RECEIVED messages (from others)
     // Check cache first - don't decrypt the same message multiple times!
     const cached = decryptionCache.current.get(message.id)
     if (cached) {
@@ -242,9 +223,41 @@ export default function ChatThread(){
       }
     }
     
+    // TRUE E2E ENCRYPTION:
+    // - Sent messages: decrypt encrypted_body_for_sender (encrypted with YOUR public key)
+    // - Received messages: decrypt encrypted_body (encrypted with YOUR public key)
+    
+    let encryptedData: string | null = null
+    
+    if (message.sent) {
+      // You sent this - decrypt the copy encrypted for you
+      encryptedData = message.encrypted_body_for_sender
+      if (!encryptedData) {
+        // Backward compatibility: old messages might have plaintext
+        if (message.text && message.text.trim()) {
+          return { ...message, decryption_error: false }
+        }
+        return {
+          ...message,
+          text: '[🔒 Encrypted message - missing sender copy]',
+          decryption_error: true,
+        }
+      }
+    } else {
+      // You received this - decrypt the copy encrypted for you
+      encryptedData = message.encrypted_body
+      if (!encryptedData) {
+        return {
+          ...message,
+          text: '[🔒 Encrypted message - missing data]',
+          decryption_error: true,
+        }
+      }
+    }
+    
     try {
-      console.log('🔐 Decrypting received message:', message.id)
-      const decryptedText = await encryptionService.decryptMessage(message.encrypted_body)
+      console.log('🔐 Decrypting', message.sent ? 'SENT' : 'RECEIVED', 'message:', message.id)
+      const decryptedText = await encryptionService.decryptMessage(encryptedData)
       console.log('🔐 ✅ Message', message.id, 'decrypted successfully!')
       
       // Cache the decrypted text
@@ -497,6 +510,7 @@ export default function ChatThread(){
                 // CRITICAL: Include encryption fields from server!
                 is_encrypted: m.is_encrypted,
                 encrypted_body: m.encrypted_body,
+                encrypted_body_for_sender: m.encrypted_body_for_sender,
                 decryption_error: m.decryption_error
               })
             })
@@ -592,23 +606,33 @@ export default function ChatThread(){
         formattedMessage = `[REPLY:${replyTo.sender}:${replyTo.text.slice(0,90)}]\n${messageText}`
       }
       
-      // Try to encrypt message FIRST (before creating optimistic message)
+      // Try to encrypt message TWICE (for recipient AND sender)
       let isEncrypted = false
-      let encryptedBody = ''
+      let encryptedBodyForRecipient = ''
+      let encryptedBodyForSender = ''
       
       if (username) {
         try {
           console.log('🔐 Attempting to encrypt message...')
           
-          // Race encryption against 3 second timeout
-          const encryptPromise = encryptionService.encryptMessage(username, formattedMessage)
-          const timeoutPromise = new Promise<never>((_, reject) => 
-            setTimeout(() => reject(new Error('Encryption timeout')), 3000)
+          // Encrypt for recipient with 3 second timeout
+          const encryptForRecipientPromise = encryptionService.encryptMessage(username, formattedMessage)
+          const timeoutPromise1 = new Promise<never>((_, reject) => 
+            setTimeout(() => reject(new Error('Encryption timeout (recipient)')), 3000)
           )
+          encryptedBodyForRecipient = await Promise.race([encryptForRecipientPromise, timeoutPromise1])
+          console.log('🔐 ✅ Message encrypted for recipient!')
           
-          encryptedBody = await Promise.race([encryptPromise, timeoutPromise])
+          // Encrypt for sender (yourself) with 3 second timeout
+          const encryptForSenderPromise = encryptionService.encryptMessageForSender(formattedMessage)
+          const timeoutPromise2 = new Promise<never>((_, reject) => 
+            setTimeout(() => reject(new Error('Encryption timeout (sender)')), 3000)
+          )
+          encryptedBodyForSender = await Promise.race([encryptForSenderPromise, timeoutPromise2])
+          console.log('🔐 ✅ Message encrypted for sender!')
+          
           isEncrypted = true
-          console.log('🔐 ✅ Message encrypted!')
+          console.log('🔐 ✅ TRUE E2E encryption complete!')
         } catch (error) {
           const errorMsg = error instanceof Error ? error.message : 'Unknown error'
           console.warn('🔐 ⚠️ Encryption failed, sending unencrypted:', errorMsg)
@@ -625,7 +649,8 @@ export default function ChatThread(){
         replySnippet,
         isOptimistic: true,
         is_encrypted: isEncrypted,
-        encrypted_body: isEncrypted ? encryptedBody : undefined
+        encrypted_body: isEncrypted ? encryptedBodyForRecipient : undefined,
+        encrypted_body_for_sender: isEncrypted ? encryptedBodyForSender : undefined
       }
       
       // Clear input immediately for better UX
@@ -657,11 +682,11 @@ export default function ChatThread(){
       const fd = new URLSearchParams({ recipient_id: String(otherUserId) })
       
       if (isEncrypted) {
-        fd.append('message', '') // Empty for recipient
-        fd.append('plaintext_for_sender', formattedMessage) // Store so sender can see their own message
+        fd.append('message', '') // NO plaintext stored!
         fd.append('is_encrypted', '1')
-        fd.append('encrypted_body', encryptedBody)
-        console.log('📤 Sending ENCRYPTED message')
+        fd.append('encrypted_body', encryptedBodyForRecipient) // Encrypted for recipient
+        fd.append('encrypted_body_for_sender', encryptedBodyForSender) // Encrypted for sender
+        console.log('📤 Sending TRUE E2E ENCRYPTED message (no plaintext stored!)')
       } else {
         fd.append('message', formattedMessage)
         console.log('📤 Sending UNENCRYPTED message')
@@ -705,7 +730,8 @@ export default function ChatThread(){
                 clientKey: tempId, // Keep stable key for React
                 // Keep encryption flags from optimistic message
                 is_encrypted: m.is_encrypted,
-                encrypted_body: m.encrypted_body
+                encrypted_body: m.encrypted_body,
+                encrypted_body_for_sender: m.encrypted_body_for_sender
               }
             }
             return m

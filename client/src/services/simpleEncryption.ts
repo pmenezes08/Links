@@ -293,7 +293,7 @@ class SimpleEncryptionService {
   }
 
   /**
-   * Encrypt a text message with timeout protection
+   * Encrypt a text message for recipient
    */
   async encryptMessage(recipientUsername: string, message: string): Promise<string> {
     console.log('🔐 Starting encryption for recipient:', recipientUsername)
@@ -313,6 +313,31 @@ class SimpleEncryptionService {
     )
 
     console.log('🔐 Message encrypted successfully!')
+    
+    // Convert to base64
+    return this.arrayBufferToBase64(encrypted)
+  }
+
+  /**
+   * Encrypt a text message for sender (yourself)
+   * Uses your own public key so you can decrypt it later with your private key
+   */
+  async encryptMessageForSender(message: string): Promise<string> {
+    if (!this.keyPair) throw new Error('Keys not loaded')
+    
+    console.log('🔐 Encrypting message for sender (yourself)...')
+    
+    // Convert message to ArrayBuffer
+    const messageBuffer = new TextEncoder().encode(message)
+    
+    // Encrypt with YOUR OWN public key
+    const encrypted = await window.crypto.subtle.encrypt(
+      { name: 'RSA-OAEP' },
+      this.keyPair.publicKey,
+      messageBuffer
+    )
+
+    console.log('🔐 Message encrypted for sender!')
     
     // Convert to base64
     return this.arrayBufferToBase64(encrypted)
