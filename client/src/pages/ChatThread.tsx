@@ -203,10 +203,46 @@ export default function ChatThread(){
     return nodes
   }
 
-  // Decrypt message if it's encrypted (DISABLED - was causing infinite loop)
+  // Track messages that failed decryption (don't retry infinitely)
+  const failedDecryption = useRef<Set<number | string>>(new Set())
+
+  // Decrypt message if it's encrypted
   async function decryptMessageIfNeeded(message: any): Promise<any> {
-    // Skip decryption entirely to stop infinite loop
-    return message
+    if (!message.is_encrypted || !message.encrypted_body) {
+      return message
+    }
+    
+    // If we already tried and failed, don't retry (prevent infinite loop)
+    if (failedDecryption.current.has(message.id)) {
+      return {
+        ...message,
+        text: '[🔒 Encrypted - decryption failed]',
+        decryption_error: true,
+      }
+    }
+    
+    try {
+      console.log('🔐 Decrypting message:', message.id)
+      const decryptedText = await encryptionService.decryptMessage(message.encrypted_body)
+      console.log('🔐 ✅ Message', message.id, 'decrypted successfully!')
+      
+      return {
+        ...message,
+        text: decryptedText,
+        decryption_error: false,
+      }
+    } catch (error) {
+      console.error('🔐 ❌ Failed to decrypt message:', message.id, error)
+      
+      // Mark this message as failed so we don't retry
+      failedDecryption.current.add(message.id)
+      
+      return {
+        ...message,
+        text: '[🔒 Encrypted - decryption failed]',
+        decryption_error: true,
+      }
+    }
   }
 
   // Encryption is initialized globally in App.tsx - no need for per-chat init

@@ -63,8 +63,15 @@ function AppRoutes(){
         if (j?.success && j.profile){
           setUserMeta({ username: j.profile.username, displayName: j.profile.display_name || j.profile.username, avatarUrl: j.profile.profile_picture || null })
           
-          // Encryption disabled - was causing infinite decryption error loop
-          // Will re-enable after proper fix
+          // Initialize E2E encryption for this user
+          try {
+            console.log('🔐 Initializing encryption for:', j.profile.username)
+            await encryptionService.init(j.profile.username)
+            console.log('🔐 ✅ Encryption ready globally!')
+          } catch (encError) {
+            console.error('🔐 ❌ Encryption init failed:', encError)
+            // Continue without encryption - not a blocker
+          }
           
           // If already authenticated and at root, send to dashboard
           if (location.pathname === '/'){
