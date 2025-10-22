@@ -46,46 +46,20 @@ export default function EncryptionSettings() {
     setResetting(true)
 
     try {
-      console.log('🔐 Closing database connection...')
+      console.log('🔐 Setting reset flag...')
       
-      // CRITICAL: Close the database connection first
+      // Set a flag that will trigger deletion on next page load
+      localStorage.setItem('encryption_reset_requested', 'true')
+      localStorage.setItem('encryption_keys_generated_at', Date.now().toString())
+      
+      console.log('🔐 Closing database and reloading...')
+      
+      // Close database connection
       encryptionService.closeDatabase()
       
-      // Wait a moment for the close to complete
-      await new Promise(resolve => setTimeout(resolve, 100))
-      
-      console.log('🔐 Deleting encryption database...')
-      
-      // Delete the encryption database
-      await new Promise<void>((resolve, reject) => {
-        const request = indexedDB.deleteDatabase('chat-encryption')
-        
-        request.onsuccess = () => {
-          console.log('🔐 ✅ Database deleted successfully')
-          resolve()
-        }
-        
-        request.onerror = () => {
-          console.error('🔐 ❌ Database deletion error:', request.error)
-          reject(request.error)
-        }
-        
-        request.onblocked = () => {
-          console.error('🔐 ❌ Database deletion blocked')
-          alert('Please close all other tabs with this app open, then try again.')
-          reject(new Error('Database deletion blocked'))
-        }
-      })
-
-      console.log('🔐 Storing new timestamp...')
-      
-      // Store timestamp
-      localStorage.setItem('encryption_keys_generated_at', Date.now().toString())
-
-      console.log('🔐 Reloading page to generate fresh keys...')
-      
-      // Reload page to reinitialize encryption
+      // Reload immediately - the App.tsx will handle deletion
       window.location.reload()
+      
     } catch (error) {
       console.error('🔐 ❌ Error resetting keys:', error)
       alert('Failed to reset encryption keys. Please try again.')

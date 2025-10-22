@@ -203,8 +203,8 @@ export default function ChatThread(){
     return nodes
   }
 
-  // Track messages that failed decryption (don't retry infinitely)
-  const failedDecryption = useRef<Set<number | string>>(new Set())
+  // Track messages that have been processed (don't decrypt multiple times)
+  const decryptionCache = useRef<Map<number | string, { text: string; error: boolean }>>(new Map())
 
   // Decrypt message if it's encrypted
   async function decryptMessageIfNeeded(message: any): Promise<any> {
@@ -216,8 +216,6 @@ export default function ChatThread(){
     // You encrypted them with the recipient's public key, so only THEY can decrypt
     // For sent messages, the server should include plaintext in 'message' field
     if (message.sent) {
-      console.log('🔐 Skipping decryption for sent message:', message.id, '(you encrypted it for recipient)')
-      
       // If we have plaintext, use it; otherwise show encrypted indicator
       if (message.text && message.text.trim()) {
         return {
@@ -228,18 +226,19 @@ export default function ChatThread(){
         return {
           ...message,
           text: '[🔒 Encrypted message you sent]',
-          decryption_error: false, // Not really an error, just info
+          decryption_error: false,
         }
       }
     }
     
     // Only decrypt RECEIVED messages (from others)
-    // If we already tried and failed, don't retry (prevent infinite loop)
-    if (failedDecryption.current.has(message.id)) {
+    // Check cache first - don't decrypt the same message multiple times!
+    const cached = decryptionCache.current.get(message.id)
+    if (cached) {
       return {
         ...message,
-        text: '[🔒 Encrypted - decryption failed]',
-        decryption_error: true,
+        text: cached.text,
+        decryption_error: cached.error,
       }
     }
     
@@ -247,6 +246,9 @@ export default function ChatThread(){
       console.log('🔐 Decrypting received message:', message.id)
       const decryptedText = await encryptionService.decryptMessage(message.encrypted_body)
       console.log('🔐 ✅ Message', message.id, 'decrypted successfully!')
+      
+      // Cache the decrypted text
+      decryptionCache.current.set(message.id, { text: decryptedText, error: false })
       
       return {
         ...message,
@@ -256,8 +258,8 @@ export default function ChatThread(){
     } catch (error) {
       console.error('🔐 ❌ Failed to decrypt message:', message.id, error)
       
-      // Mark this message as failed so we don't retry
-      failedDecryption.current.add(message.id)
+      // Cache the failure
+      decryptionCache.current.set(message.id, { text: '[🔒 Encrypted - decryption failed]', error: true })
       
       return {
         ...message,

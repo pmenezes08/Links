@@ -64,6 +64,35 @@ function AppRoutes(){
         if (j?.success && j.profile){
           setUserMeta({ username: j.profile.username, displayName: j.profile.display_name || j.profile.username, avatarUrl: j.profile.profile_picture || null })
           
+          // Check if user requested encryption reset
+          const resetRequested = localStorage.getItem('encryption_reset_requested')
+          if (resetRequested === 'true') {
+            console.log('🔐 Reset requested - deleting old encryption database...')
+            localStorage.removeItem('encryption_reset_requested')
+            
+            try {
+              // Delete the database
+              await new Promise<void>((resolve) => {
+                const request = indexedDB.deleteDatabase('chat-encryption')
+                request.onsuccess = () => {
+                  console.log('🔐 ✅ Old encryption database deleted')
+                  resolve()
+                }
+                request.onerror = () => {
+                  console.log('🔐 ⚠️ Database deletion error (may not exist)')
+                  resolve() // Continue anyway
+                }
+                request.onblocked = () => {
+                  console.log('🔐 ⚠️ Database deletion blocked, will retry on next load')
+                  resolve() // Continue anyway
+                }
+              })
+            } catch (e) {
+              console.log('🔐 ⚠️ Delete error:', e)
+              // Continue anyway
+            }
+          }
+          
           // Initialize E2E encryption for this user
           try {
             console.log('🔐 Initializing encryption for:', j.profile.username)
