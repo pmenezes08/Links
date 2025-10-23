@@ -11392,6 +11392,14 @@ def vote_poll():
             
             conn.commit()
             
+            # EVENT-DRIVEN NOTIFICATION CHECK
+            # Check this poll for notifications immediately after vote
+            # This provides instant notifications without waiting for cron
+            try:
+                check_single_poll_notifications(poll_id, conn)
+            except Exception as notif_err:
+                logger.warning(f"Event-driven notification check failed for poll {poll_id}: {notif_err}")
+            
             # Get updated poll results with user vote info
             c.execute("""
                 SELECT po.id, po.option_text, po.votes, 
@@ -11646,12 +11654,238 @@ def remove_poll_option():
         logger.error(f"Error removing poll option: {str(e)}")
         return jsonify({'success': False, 'error': 'Error removing option'})
 
+def check_single_poll_notifications(poll_id, conn=None):
+    """
+    Check a single poll and send notifications if needed.
+    This is called event-driven when users vote.
+    Returns number of notifications sent.
+    """
+    should_close_conn = False
+    if conn is None:
+        conn = get_db_connection()
+        should_close_conn = True
+    
+    try:
+        c = conn.cursor()
+        now = datetime.now()
+        
+        # Get poll details
+        c.execute("""
+            SELECT p.id, p.question, p.created_at, p.expires_at, p.post_id,
+                   ps.community_id
+            FROM polls p
+            JOIN posts ps ON p.post_id = ps.id
+            WHERE p.id = ?
+              AND p.is_active = 1 
+              AND p.expires_at IS NOT NULL 
+              AND p.expires_at != ''
+              AND p.expires_at > ?
+        """, (poll_id, now.strftime('%Y-%m-%d %H:%M:%S')))
+        
+        poll_row = c.fetchone()
+        if not poll_row:
+            return 0
+        
+        question = poll_row['question'] if hasattr(poll_row, 'keys') else poll_row[1]
+        created_at_str = poll_row['created_at'] if hasattr(poll_row, 'keys') else poll_row[2]
+        expires_at_str = poll_row['expires_at'] if hasattr(poll_row, 'keys') else poll_row[3]
+        post_id = poll_row['post_id'] if hasattr(poll_row, 'keys') else poll_row[4]
+        community_id = poll_row['community_id'] if hasattr(poll_row, 'keys') else poll_row[5]
+        
+        try:
+            created_at = datetime.strptime(created_at_str, '%Y-%m-%d %H:%M:%S')
+            expires_at = datetime.strptime(expires_at_str, '%Y-%m-%d %H:%M:%S')
+        except Exception:
+            return 0
+        
+        # Calculate time progress
+        total_duration = (expires_at - created_at).total_seconds()
+        elapsed = (now - created_at).total_seconds()
+        
+        if total_duration <= 0:
+            return 0
+        
+        progress = elapsed / total_duration
+        
+        # Get community members
+        c.execute("""
+            SELECT DISTINCT u.username
+            FROM user_communities uc
+            JOIN users u ON uc.user_id = u.id
+            WHERE uc.community_id = ?
+        """, (community_id,))
+        members = [r['username'] if hasattr(r, 'keys') else r[0] for r in c.fetchall()]
+        
+        # Get voters
+        c.execute("""
+            SELECT DISTINCT username
+            FROM poll_votes
+            WHERE poll_id = ?
+        """, (poll_id,))
+        voters = set([r['username'] if hasattr(r, 'keys') else r[0] for r in c.fetchall()])
+        non_voters = [m for m in members if m not in voters]
+        
+        # Count total votes
+        c.execute("SELECT COUNT(DISTINCT username) as vote_count FROM poll_votes WHERE poll_id = ?", (poll_id,))
+        vote_count_row = c.fetchone()
+        vote_count = vote_count_row['vote_count'] if hasattr(vote_count_row, 'keys') else vote_count_row[0]
+        
+        # Calculate time remaining
+        time_remaining = expires_at - now
+        days_remaining = max(0, time_remaining.days)
+        hours_remaining = max(0, int(time_remaining.total_seconds() / 3600))
+        
+        notifications_sent = 0
+        
+        # WIDENED DETECTION WINDOWS (15% instead of 5% for better coverage)
+        # 25% notification - non-voters only
+        if 0.20 <= progress < 0.35:
+            for username_to_notify in non_voters:
+                c.execute("SELECT id FROM poll_notification_log WHERE poll_id=? AND username=? AND notification_type='25'", 
+                         (poll_id, username_to_notify))
+                if not c.fetchone():
+                    community_name = ""
+                    try:
+                        c.execute("SELECT name FROM communities WHERE id = ?", (community_id,))
+                        comm_row = c.fetchone()
+                        if comm_row:
+                            community_name = comm_row['name'] if hasattr(comm_row, 'keys') else comm_row[0]
+                    except Exception:
+                        pass
+                    
+                    message = f"📊 {vote_count} {community_name} member{'s' if vote_count != 1 else ''} {'have' if vote_count != 1 else 'has'} voted, go vote on the poll!"
+                    
+                    try:
+                        c.execute("SELECT id FROM users WHERE username = ?", (username_to_notify,))
+                        user_row = c.fetchone()
+                        if user_row:
+                            user_id = user_row['id'] if hasattr(user_row, 'keys') else user_row[0]
+                            create_notification(user_id, None, 'poll_reminder', post_id, community_id, message)
+                            send_push_to_user(username_to_notify, {
+                                'title': 'Poll Update',
+                                'body': message,
+                                'url': f'/post/{post_id}',
+                                'tag': f'poll-25-{poll_id}'
+                            })
+                    except Exception:
+                        pass
+                    
+                    c.execute("INSERT INTO poll_notification_log (poll_id, username, notification_type) VALUES (?, ?, '25')", 
+                             (poll_id, username_to_notify))
+                    notifications_sent += 1
+        
+        # 50% notification - non-voters only
+        elif 0.45 <= progress < 0.60:
+            for username_to_notify in non_voters:
+                c.execute("SELECT id FROM poll_notification_log WHERE poll_id=? AND username=? AND notification_type='50'", 
+                         (poll_id, username_to_notify))
+                if not c.fetchone():
+                    community_name = ""
+                    try:
+                        c.execute("SELECT name FROM communities WHERE id = ?", (community_id,))
+                        comm_row = c.fetchone()
+                        if comm_row:
+                            community_name = comm_row['name'] if hasattr(comm_row, 'keys') else comm_row[0]
+                    except Exception:
+                        pass
+                    
+                    message = f"📊 {vote_count} {community_name} member{'s' if vote_count != 1 else ''} {'have' if vote_count != 1 else 'has'} voted, go vote on the poll!"
+                    
+                    try:
+                        c.execute("SELECT id FROM users WHERE username = ?", (username_to_notify,))
+                        user_row = c.fetchone()
+                        if user_row:
+                            user_id = user_row['id'] if hasattr(user_row, 'keys') else user_row[0]
+                            create_notification(user_id, None, 'poll_reminder', post_id, community_id, message)
+                            send_push_to_user(username_to_notify, {
+                                'title': 'Poll Update',
+                                'body': message,
+                                'url': f'/post/{post_id}',
+                                'tag': f'poll-50-{poll_id}'
+                            })
+                    except Exception:
+                        pass
+                    
+                    c.execute("INSERT INTO poll_notification_log (poll_id, username, notification_type) VALUES (?, ?, '50')", 
+                             (poll_id, username_to_notify))
+                    notifications_sent += 1
+        
+        # 80% notification - different messages for voters vs non-voters
+        elif 0.75 <= progress < 0.90:
+            # Non-voters
+            for username_to_notify in non_voters:
+                c.execute("SELECT id FROM poll_notification_log WHERE poll_id=? AND username=? AND notification_type='80_nonvoter'", 
+                         (poll_id, username_to_notify))
+                if not c.fetchone():
+                    if days_remaining > 1:
+                        message = f"⏰ The poll is closing in {days_remaining} days, go vote!"
+                    elif hours_remaining > 1:
+                        message = f"⏰ The poll is closing in {hours_remaining} hours, go vote!"
+                    else:
+                        message = "⏰ The poll is closing soon, go vote!"
+                    
+                    try:
+                        c.execute("SELECT id FROM users WHERE username = ?", (username_to_notify,))
+                        user_row = c.fetchone()
+                        if user_row:
+                            user_id = user_row['id'] if hasattr(user_row, 'keys') else user_row[0]
+                            create_notification(user_id, None, 'poll_reminder', post_id, community_id, message)
+                            send_push_to_user(username_to_notify, {
+                                'title': 'Poll Closing Soon!',
+                                'body': message,
+                                'url': f'/post/{post_id}',
+                                'tag': f'poll-80-{poll_id}'
+                            })
+                    except Exception:
+                        pass
+                    
+                    c.execute("INSERT INTO poll_notification_log (poll_id, username, notification_type) VALUES (?, ?, '80_nonvoter')", 
+                             (poll_id, username_to_notify))
+                    notifications_sent += 1
+            
+            # Voters
+            for username_to_notify in list(voters):
+                c.execute("SELECT id FROM poll_notification_log WHERE poll_id=? AND username=? AND notification_type='80_voter'", 
+                         (poll_id, username_to_notify))
+                if not c.fetchone():
+                    message = "📋 Review the poll results before it closes"
+                    
+                    try:
+                        c.execute("SELECT id FROM users WHERE username = ?", (username_to_notify,))
+                        user_row = c.fetchone()
+                        if user_row:
+                            user_id = user_row['id'] if hasattr(user_row, 'keys') else user_row[0]
+                            create_notification(user_id, None, 'poll_reminder', post_id, community_id, message)
+                            send_push_to_user(username_to_notify, {
+                                'title': 'Poll Closing Soon',
+                                'body': message,
+                                'url': f'/post/{post_id}',
+                                'tag': f'poll-80-voter-{poll_id}'
+                            })
+                    except Exception:
+                        pass
+                    
+                    c.execute("INSERT INTO poll_notification_log (poll_id, username, notification_type) VALUES (?, ?, '80_voter')", 
+                             (poll_id, username_to_notify))
+                    notifications_sent += 1
+        
+        if should_close_conn:
+            conn.commit()
+        
+        return notifications_sent
+    
+    finally:
+        if should_close_conn:
+            conn.close()
+
+
 @app.route('/api/poll_notification_check', methods=['POST'])
 def api_poll_notification_check():
     """
-    Background job to check poll deadlines and send notifications.
-    Should be called by a cron job every hour.
-    Sends notifications at 25%, 50%, and 80% of poll lifetime.
+    OPTIMIZED background job to check poll deadlines and send notifications.
+    Should be called by a cron job every 6 HOURS (not hourly).
+    Only checks polls within 24 hours of deadline for efficiency.
+    Most notifications are sent via event-driven checks when users vote.
     """
     try:
         now = datetime.now()
@@ -11671,193 +11905,18 @@ def api_poll_notification_check():
                   AND p.expires_at > ?
             """, (now.strftime('%Y-%m-%d %H:%M:%S'),))
             
-            active_polls = c.fetchall()
+            near_deadline_polls = c.fetchall()
             notifications_sent = 0
             
-            for poll_row in active_polls:
+            logger.info(f"Cron checking {len(near_deadline_polls)} polls within 24 hours of deadline")
+            
+            # Use the helper function to check each poll
+            for poll_row in near_deadline_polls:
                 poll_id = poll_row['id'] if hasattr(poll_row, 'keys') else poll_row[0]
-                question = poll_row['question'] if hasattr(poll_row, 'keys') else poll_row[1]
-                created_at_str = poll_row['created_at'] if hasattr(poll_row, 'keys') else poll_row[2]
-                expires_at_str = poll_row['expires_at'] if hasattr(poll_row, 'keys') else poll_row[3]
-                post_id = poll_row['post_id'] if hasattr(poll_row, 'keys') else poll_row[4]
-                community_id = poll_row['community_id'] if hasattr(poll_row, 'keys') else poll_row[5]
-                
                 try:
-                    created_at = datetime.strptime(created_at_str, '%Y-%m-%d %H:%M:%S')
-                    expires_at = datetime.strptime(expires_at_str, '%Y-%m-%d %H:%M:%S')
-                except Exception:
-                    continue
-                
-                # Calculate time progress
-                total_duration = (expires_at - created_at).total_seconds()
-                elapsed = (now - created_at).total_seconds()
-                
-                if total_duration <= 0:
-                    continue
-                
-                progress = elapsed / total_duration
-                
-                # Get community members
-                c.execute("""
-                    SELECT DISTINCT u.username
-                    FROM user_communities uc
-                    JOIN users u ON uc.user_id = u.id
-                    WHERE uc.community_id = ?
-                """, (community_id,))
-                members = [r['username'] if hasattr(r, 'keys') else r[0] for r in c.fetchall()]
-                
-                # Get voters
-                c.execute("""
-                    SELECT DISTINCT username
-                    FROM poll_votes
-                    WHERE poll_id = ?
-                """, (poll_id,))
-                voters = set([r['username'] if hasattr(r, 'keys') else r[0] for r in c.fetchall()])
-                non_voters = [m for m in members if m not in voters]
-                
-                # Count total votes
-                c.execute("SELECT COUNT(DISTINCT username) as vote_count FROM poll_votes WHERE poll_id = ?", (poll_id,))
-                vote_count_row = c.fetchone()
-                vote_count = vote_count_row['vote_count'] if hasattr(vote_count_row, 'keys') else vote_count_row[0]
-                
-                # Calculate time remaining
-                time_remaining = expires_at - now
-                days_remaining = max(0, time_remaining.days)
-                hours_remaining = max(0, int(time_remaining.total_seconds() / 3600))
-                
-                # 25% notification - non-voters only
-                if 0.25 <= progress < 0.30:
-                    for username in non_voters:
-                        # Check if already sent
-                        c.execute("SELECT id FROM poll_notification_log WHERE poll_id=? AND username=? AND notification_type='25'", 
-                                 (poll_id, username))
-                        if not c.fetchone():
-                            # Send notification
-                            community_name = ""
-                            try:
-                                c.execute("SELECT name FROM communities WHERE id = ?", (community_id,))
-                                comm_row = c.fetchone()
-                                if comm_row:
-                                    community_name = comm_row['name'] if hasattr(comm_row, 'keys') else comm_row[0]
-                            except Exception:
-                                pass
-                            
-                            message = f"📊 {vote_count} {community_name} member{'s' if vote_count != 1 else ''} {'have' if vote_count != 1 else 'has'} voted, go vote on the poll!"
-                            
-                            try:
-                                c.execute("SELECT id FROM users WHERE username = ?", (username,))
-                                user_row = c.fetchone()
-                                if user_row:
-                                    user_id = user_row['id'] if hasattr(user_row, 'keys') else user_row[0]
-                                    create_notification(user_id, None, 'poll_reminder', post_id, community_id, message)
-                                    send_push_to_user(username, {
-                                        'title': 'Poll Update',
-                                        'body': message,
-                                        'url': f'/post/{post_id}',
-                                        'tag': f'poll-25-{poll_id}'
-                                    })
-                            except Exception:
-                                pass
-                            
-                            # Mark as sent
-                            c.execute("INSERT INTO poll_notification_log (poll_id, username, notification_type) VALUES (?, ?, '25')", 
-                                     (poll_id, username))
-                            notifications_sent += 1
-                
-                # 50% notification - non-voters only
-                elif 0.50 <= progress < 0.55:
-                    for username in non_voters:
-                        c.execute("SELECT id FROM poll_notification_log WHERE poll_id=? AND username=? AND notification_type='50'", 
-                                 (poll_id, username))
-                        if not c.fetchone():
-                            community_name = ""
-                            try:
-                                c.execute("SELECT name FROM communities WHERE id = ?", (community_id,))
-                                comm_row = c.fetchone()
-                                if comm_row:
-                                    community_name = comm_row['name'] if hasattr(comm_row, 'keys') else comm_row[0]
-                            except Exception:
-                                pass
-                            
-                            message = f"📊 {vote_count} {community_name} member{'s' if vote_count != 1 else ''} {'have' if vote_count != 1 else 'has'} voted, go vote on the poll!"
-                            
-                            try:
-                                c.execute("SELECT id FROM users WHERE username = ?", (username,))
-                                user_row = c.fetchone()
-                                if user_row:
-                                    user_id = user_row['id'] if hasattr(user_row, 'keys') else user_row[0]
-                                    create_notification(user_id, None, 'poll_reminder', post_id, community_id, message)
-                                    send_push_to_user(username, {
-                                        'title': 'Poll Update',
-                                        'body': message,
-                                        'url': f'/post/{post_id}',
-                                        'tag': f'poll-50-{poll_id}'
-                                    })
-                            except Exception:
-                                pass
-                            
-                            c.execute("INSERT INTO poll_notification_log (poll_id, username, notification_type) VALUES (?, ?, '50')", 
-                                     (poll_id, username))
-                            notifications_sent += 1
-                
-                # 80% notification - different messages for voters vs non-voters
-                elif 0.80 <= progress < 0.85:
-                    # Non-voters
-                    for username in non_voters:
-                        c.execute("SELECT id FROM poll_notification_log WHERE poll_id=? AND username=? AND notification_type='80_nonvoter'", 
-                                 (poll_id, username))
-                        if not c.fetchone():
-                            if days_remaining > 1:
-                                message = f"⏰ The poll is closing in {days_remaining} days, go vote!"
-                            elif hours_remaining > 1:
-                                message = f"⏰ The poll is closing in {hours_remaining} hours, go vote!"
-                            else:
-                                message = "⏰ The poll is closing soon, go vote!"
-                            
-                            try:
-                                c.execute("SELECT id FROM users WHERE username = ?", (username,))
-                                user_row = c.fetchone()
-                                if user_row:
-                                    user_id = user_row['id'] if hasattr(user_row, 'keys') else user_row[0]
-                                    create_notification(user_id, None, 'poll_reminder', post_id, community_id, message)
-                                    send_push_to_user(username, {
-                                        'title': 'Poll Closing Soon!',
-                                        'body': message,
-                                        'url': f'/post/{post_id}',
-                                        'tag': f'poll-80-{poll_id}'
-                                    })
-                            except Exception:
-                                pass
-                            
-                            c.execute("INSERT INTO poll_notification_log (poll_id, username, notification_type) VALUES (?, ?, '80_nonvoter')", 
-                                     (poll_id, username))
-                            notifications_sent += 1
-                    
-                    # Voters
-                    for username in list(voters):
-                        c.execute("SELECT id FROM poll_notification_log WHERE poll_id=? AND username=? AND notification_type='80_voter'", 
-                                 (poll_id, username))
-                        if not c.fetchone():
-                            message = "📋 Review the poll results before it closes"
-                            
-                            try:
-                                c.execute("SELECT id FROM users WHERE username = ?", (username,))
-                                user_row = c.fetchone()
-                                if user_row:
-                                    user_id = user_row['id'] if hasattr(user_row, 'keys') else user_row[0]
-                                    create_notification(user_id, None, 'poll_reminder', post_id, community_id, message)
-                                    send_push_to_user(username, {
-                                        'title': 'Poll Closing Soon',
-                                        'body': message,
-                                        'url': f'/post/{post_id}',
-                                        'tag': f'poll-80-voter-{poll_id}'
-                                    })
-                            except Exception:
-                                pass
-                            
-                            c.execute("INSERT INTO poll_notification_log (poll_id, username, notification_type) VALUES (?, ?, '80_voter')", 
-                                     (poll_id, username))
-                            notifications_sent += 1
+                    notifications_sent += check_single_poll_notifications(poll_id, conn)
+                except Exception as e:
+                    logger.error(f"Error checking poll {poll_id}: {e}")
             
             conn.commit()
             
