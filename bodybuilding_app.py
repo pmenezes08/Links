@@ -11955,9 +11955,12 @@ def api_poll_notification_check():
             for poll_row in near_deadline_polls:
                 poll_id = poll_row['id'] if hasattr(poll_row, 'keys') else poll_row[0]
                 try:
+                    logger.info(f"Checking notifications for poll {poll_id}")
                     notifications_sent += check_single_poll_notifications(poll_id, conn)
                 except Exception as e:
                     logger.error(f"Error checking poll {poll_id}: {e}")
+                    import traceback
+                    logger.error(traceback.format_exc())
             
             conn.commit()
             
