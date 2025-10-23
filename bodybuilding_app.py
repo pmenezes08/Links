@@ -11935,6 +11935,7 @@ def api_poll_notification_check():
                       AND CAST(p.expires_at AS DATETIME) < DATE_ADD(NOW(), INTERVAL 24 HOUR)
                 """)
             else:
+                logger.info("Using SQLite query for poll notification check")
                 c.execute("""
                     SELECT p.id
                     FROM polls p
