@@ -192,7 +192,9 @@ def _block_unverified_users():
         if path in ('/health', '/vite.svg', '/favicon.svg', '/manifest.webmanifest') or path.startswith('/icons/'):
             return None
         # API behavior: return JSON instead of HTML redirects to avoid client parse errors
-        if path.startswith('/api/'):
+        # Exception for public cron endpoints (no auth required)
+        public_api_endpoints = ['/api/poll_notification_check']
+        if path.startswith('/api/') and path not in public_api_endpoints:
             username = session.get('username')
             if not username:
                 return jsonify({'success': False, 'error': 'unauthenticated'}), 401
