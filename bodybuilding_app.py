@@ -11906,17 +11906,30 @@ def api_poll_notification_check():
         with get_db_connection() as conn:
             c = conn.cursor()
             
-            # Get all active polls with close dates
-            c.execute("""
-                SELECT p.id, p.question, p.created_at, p.expires_at, p.post_id,
-                       ps.community_id
-                FROM polls p
-                JOIN posts ps ON p.post_id = ps.id
-                WHERE p.is_active = 1 
-                  AND p.expires_at IS NOT NULL 
-                  AND p.expires_at != ''
-                  AND p.expires_at > ?
-            """, (now.strftime('%Y-%m-%d %H:%M:%S'),))
+            # OPTIMIZED: Only check polls within 24 hours of deadline
+            # Filter out empty/invalid expires_at BEFORE datetime comparison
+            if USE_MYSQL:
+                c.execute("""
+                    SELECT p.id
+                    FROM polls p
+                    WHERE p.is_active = 1 
+                      AND p.expires_at IS NOT NULL 
+                      AND p.expires_at != ''
+                      AND LENGTH(p.expires_at) > 0
+                      AND CAST(p.expires_at AS DATETIME) > NOW()
+                      AND CAST(p.expires_at AS DATETIME) < DATE_ADD(NOW(), INTERVAL 24 HOUR)
+                """)
+            else:
+                c.execute("""
+                    SELECT p.id
+                    FROM polls p
+                    WHERE p.is_active = 1 
+                      AND p.expires_at IS NOT NULL 
+                      AND p.expires_at != ''
+                      AND length(p.expires_at) > 0
+                      AND datetime(p.expires_at) > datetime('now')
+                      AND datetime(p.expires_at) < datetime('now', '+24 hours')
+                """)
             
             near_deadline_polls = c.fetchall()
             notifications_sent = 0
