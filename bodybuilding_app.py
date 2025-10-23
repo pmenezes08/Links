@@ -11886,7 +11886,18 @@ def api_poll_notification_check():
     Should be called by a cron job every 6 HOURS (not hourly).
     Only checks polls within 24 hours of deadline for efficiency.
     Most notifications are sent via event-driven checks when users vote.
+    
+    PUBLIC ENDPOINT - No authentication required (for cron jobs)
+    Optional API key for added security.
     """
+    # Optional API key check (for security)
+    # You can set POLL_CRON_API_KEY in your .env file
+    api_key = request.headers.get('X-API-Key') or request.form.get('api_key')
+    expected_key = os.getenv('POLL_CRON_API_KEY')
+    
+    if expected_key and api_key != expected_key:
+        logger.warning(f"Poll notification check called with invalid API key: {api_key}")
+        return jsonify({'success': False, 'error': 'Invalid API key'}), 401
     try:
         now = datetime.now()
         
