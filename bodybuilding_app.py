@@ -11917,6 +11917,7 @@ def api_poll_notification_check():
         return jsonify({'success': False, 'error': 'Invalid API key'}), 401
     try:
         now = datetime.now()
+        logger.info(f"🔍 Poll notification check starting - USE_MYSQL={USE_MYSQL}")
         
         with get_db_connection() as conn:
             c = conn.cursor()
@@ -11924,6 +11925,7 @@ def api_poll_notification_check():
             # OPTIMIZED: Only check polls within 24 hours of deadline
             # Filter out empty/invalid expires_at BEFORE datetime comparison
             if USE_MYSQL:
+                logger.info("🔍 Using MySQL query")
                 c.execute("""
                     SELECT p.id
                     FROM polls p
