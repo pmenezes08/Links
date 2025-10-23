@@ -11671,18 +11671,33 @@ def check_single_poll_notifications(poll_id, conn=None):
         c = conn.cursor()
         now = datetime.now()
         
-        # Get poll details
-        c.execute("""
-            SELECT p.id, p.question, p.created_at, p.expires_at, p.post_id,
-                   ps.community_id
-            FROM polls p
-            JOIN posts ps ON p.post_id = ps.id
-            WHERE p.id = ?
-              AND p.is_active = 1 
-              AND p.expires_at IS NOT NULL 
-              AND p.expires_at != ''
-              AND p.expires_at > ?
-        """, (poll_id, now.strftime('%Y-%m-%d %H:%M:%S')))
+        # Get poll details - filter out empty/invalid expires_at
+        if USE_MYSQL:
+            c.execute("""
+                SELECT p.id, p.question, p.created_at, p.expires_at, p.post_id,
+                       ps.community_id
+                FROM polls p
+                JOIN posts ps ON p.post_id = ps.id
+                WHERE p.id = %s
+                  AND p.is_active = 1 
+                  AND p.expires_at IS NOT NULL 
+                  AND p.expires_at != ''
+                  AND LENGTH(p.expires_at) > 0
+                  AND CAST(p.expires_at AS DATETIME) > NOW()
+            """, (poll_id,))
+        else:
+            c.execute("""
+                SELECT p.id, p.question, p.created_at, p.expires_at, p.post_id,
+                       ps.community_id
+                FROM polls p
+                JOIN posts ps ON p.post_id = ps.id
+                WHERE p.id = ?
+                  AND p.is_active = 1 
+                  AND p.expires_at IS NOT NULL 
+                  AND p.expires_at != ''
+                  AND length(p.expires_at) > 0
+                  AND datetime(p.expires_at) > datetime('now')
+            """, (poll_id,))
         
         poll_row = c.fetchone()
         if not poll_row:
