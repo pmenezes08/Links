@@ -11952,7 +11952,9 @@ def api_poll_notification_check():
                       AND datetime(p.expires_at) < datetime('now', '+24 hours')
                 """)
             
+            logger.info("🔍 Query executed, fetching results...")
             near_deadline_polls = c.fetchall()
+            logger.info(f"🔍 Fetchall succeeded, got {len(near_deadline_polls)} polls")
             notifications_sent = 0
             
             logger.info(f"Cron checking {len(near_deadline_polls)} polls within 24 hours of deadline")
