@@ -11671,8 +11671,11 @@ def check_single_poll_notifications(poll_id, conn=None):
         c = conn.cursor()
         now = datetime.now()
         
+        logger.info(f"🔍 Helper called for poll {poll_id}, USE_MYSQL={USE_MYSQL}")
+        
         # Get poll details - filter out empty/invalid expires_at
         if USE_MYSQL:
+            logger.info(f"🔍 Helper using MySQL query")
             c.execute("""
                 SELECT p.id, p.question, p.created_at, p.expires_at, p.post_id,
                        ps.community_id
