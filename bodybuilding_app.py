@@ -12279,6 +12279,62 @@ def api_poll_notification_check():
         logger.error(f"Poll notification check error: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
+
+@app.route('/api/event_notification_check', methods=['POST'])
+def api_event_notification_check():
+    """
+    Cron job endpoint - checks upcoming events and sends reminders.
+    Should be called hourly via cron.
+    
+    Sends notifications for:
+    - 1 week before (if user selected)
+    - 1 day before (if user selected)
+    - 1 hour before (if user selected)
+    - 80% of time between creation and event (always)
+    
+    PUBLIC ENDPOINT - No authentication required (for cron jobs)
+    """
+    try:
+        now = datetime.utcnow()
+        logger.info(f"🔍 Event notification check starting - USE_MYSQL={USE_MYSQL}")
+        
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Get all upcoming events (not in the past)
+            # We'll filter by time windows in Python for robustness
+            c.execute("""
+                SELECT id, title, date, start_time
+                FROM calendar_events
+                WHERE date >= DATE(NOW())
+                ORDER BY date ASC, start_time ASC
+            """)
+            
+            all_events = c.fetchall()
+            logger.info(f"🔍 Found {len(all_events)} upcoming events to check")
+            
+            notifications_sent = 0
+            
+            for event_row in all_events:
+                event_id = event_row['id'] if hasattr(event_row, 'keys') else event_row[0]
+                try:
+                    sent = check_single_event_notifications(event_id, conn)
+                    notifications_sent += sent
+                except Exception as e:
+                    logger.error(f"Error checking event {event_id}: {e}")
+                    continue
+            
+            conn.commit()
+            logger.info(f"✅ Event notification check complete: {notifications_sent} notifications sent")
+            return jsonify({'success': True, 'notifications_sent': notifications_sent})
+            
+    except Exception as e:
+        logger.error(f"Event notification check error: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @app.route('/get_historical_polls')
 @login_required
 def get_historical_polls():
