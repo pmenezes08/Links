@@ -11073,6 +11073,8 @@ def create_poll():
                     logger.info(f"✅ Created {len(member_usernames)} poll notifications for post {post_id}")
                 except Exception as e:
                     logger.error(f"❌ Error creating poll notifications: {str(e)}")
+                    import traceback
+                    logger.error(traceback.format_exc())
             
             return jsonify({'success': True, 'message': 'Poll created successfully!', 'post_id': post_id})
             
