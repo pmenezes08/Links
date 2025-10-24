@@ -733,20 +733,29 @@ function ParentTimeline({ parentId }:{ parentId:number }){
                   <div className="space-y-2" onClick={(e)=> e.stopPropagation()}>
                     <div className="flex items-center gap-2 mb-1">
                       <i className="fa-solid fa-chart-bar text-[#4db6ac]" />
-                      <div className="font-medium text-sm">
+                      <div className="font-medium text-sm flex-1">
                         {p.poll.question}
+                        {p.poll.expires_at ? (
+                          <span className="ml-2 text-[11px] text-[#9fb0b5]">• closes {(() => { try { const d = new Date(p.poll.expires_at as any); if (!isNaN(d.getTime())) return d.toLocaleDateString(); } catch(e) {} return String(p.poll.expires_at) })()}</span>
+                        ) : null}
                       </div>
                     </div>
                     <div className="space-y-2">
                       {p.poll.options?.map((option:any) => {
                         const percentage = p.poll?.total_votes ? Math.round((option.votes / p.poll.total_votes) * 100) : 0
                         const isUserVote = option.user_voted || false
+                        // Check both is_active flag AND expires_at timestamp
+                        const isClosed = p.poll!.is_active === 0
+                        const isExpiredByTime = (() => { try { const raw = (p.poll as any)?.expires_at; if (!raw) return false; const d = new Date(raw); return !isNaN(d.getTime()) && Date.now() >= d.getTime(); } catch { return false } })()
+                        const isExpired = isClosed || isExpiredByTime
                         return (
                           <button
                             key={option.id}
                             type="button"
-                            className={`w-full text-left px-3 py-2 rounded-lg border relative overflow-hidden ${isUserVote ? 'border-[#4db6ac] bg-[#4db6ac]/10' : 'border-white/10 hover:bg-white/5'}`}
+                            disabled={isExpired}
+                            className={`w-full text-left px-3 py-2 rounded-lg border relative overflow-hidden ${isExpired ? 'opacity-60 cursor-not-allowed' : (isUserVote ? 'border-[#4db6ac] bg-[#4db6ac]/10' : 'border-white/10 hover:bg-white/5')}`}
                             onClick={async (e)=> { 
+                              if (isExpired) return; 
                               e.preventDefault(); e.stopPropagation();
                               try{
                                 // Optimistic update
