@@ -11030,12 +11030,20 @@ def create_poll():
             member_ids = []
             if community_id:
                 try:
-                    c.execute("""
-                        SELECT DISTINCT u.id
-                        FROM user_communities uc
-                        JOIN users u ON uc.user_id = u.id
-                        WHERE uc.community_id = ? AND u.username != ?
-                    """, (community_id, username))
+                    if USE_MYSQL:
+                        c.execute("""
+                            SELECT DISTINCT u.id
+                            FROM user_communities uc
+                            JOIN users u ON uc.user_id = u.id
+                            WHERE uc.community_id = %s AND u.username != %s
+                        """, (community_id, username))
+                    else:
+                        c.execute("""
+                            SELECT DISTINCT u.id
+                            FROM user_communities uc
+                            JOIN users u ON uc.user_id = u.id
+                            WHERE uc.community_id = ? AND u.username != ?
+                        """, (community_id, username))
                     member_ids = [row[0] for row in c.fetchall()]
                     logger.info(f"Found {len(member_ids)} members to notify for poll in community {community_id}")
                 except Exception as e:
