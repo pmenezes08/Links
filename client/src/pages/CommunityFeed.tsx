@@ -961,7 +961,10 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
               {post.poll.options?.map(option => {
                 const percentage = post.poll?.total_votes ? Math.round((option.votes / post.poll.total_votes) * 100) : 0
                 const isUserVote = option.user_voted || false
-                const isExpired = (() => { try { const raw = (post.poll as any)?.expires_at; if (!raw) return false; const d = new Date(raw); return !isNaN(d.getTime()) && Date.now() >= d.getTime(); } catch { return false } })()
+                // Check both is_active flag AND expires_at timestamp
+                const isClosed = post.poll!.is_active === 0
+                const isExpiredByTime = (() => { try { const raw = (post.poll as any)?.expires_at; if (!raw) return false; const d = new Date(raw); return !isNaN(d.getTime()) && Date.now() >= d.getTime(); } catch { return false } })()
+                const isExpired = isClosed || isExpiredByTime
                 return (
                   <button
                     key={option.id}
