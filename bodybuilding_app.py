@@ -11158,7 +11158,7 @@ def close_poll():
                         
                         members = c.fetchall()
                         for member_row in members:
-                            member_id = member_row['id'] if hasattr(member_row, 'keys') else member_row[0]
+                            # Extract username (no need for member_id since we pass username to create_notification)
                             member_username = member_row['username'] if hasattr(member_row, 'keys') else member_row[1]
                             
                             # Check if not already notified
