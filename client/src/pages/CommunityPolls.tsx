@@ -141,7 +141,18 @@ export default function CommunityPolls(){
       options.filter(x=> x.trim()).forEach(o => fd.append('options[]', o.trim()))
       if (community_id) fd.append('community_id', String(community_id))
       fd.append('single_vote', String(singleVote))
-      if (expiresAt) fd.append('expires_at', expiresAt)
+      if (expiresAt) {
+        // Convert local time to UTC before sending to server
+        try {
+          const localDate = new Date(expiresAt)
+          const utcString = localDate.toISOString().slice(0, 16).replace('T', 'T') // "YYYY-MM-DDTHH:MM"
+          console.log(`📅 Converting poll deadline: Local=${expiresAt} → UTC=${utcString}`)
+          fd.append('expires_at', utcString)
+        } catch (e) {
+          console.error('Failed to convert expires_at to UTC:', e)
+          fd.append('expires_at', expiresAt) // Fallback to original
+        }
+      }
       const r = await fetch('/create_poll', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
       const j = await r.json().catch(()=>null)
       if (j?.success){
