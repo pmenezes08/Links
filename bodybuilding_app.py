@@ -11801,17 +11801,14 @@ def check_single_poll_notifications(poll_id, conn=None):
                     message = f"📊 {vote_count} {community_name} member{'s' if vote_count != 1 else ''} {'have' if vote_count != 1 else 'has'} voted, go vote on the poll!"
                     
                     try:
-                        c.execute("SELECT id FROM users WHERE username = ?", (username_to_notify,))
-                        user_row = c.fetchone()
-                        if user_row:
-                            user_id = user_row['id'] if hasattr(user_row, 'keys') else user_row[0]
-                            create_notification(user_id, None, 'poll_reminder', post_id, community_id, message)
-                            send_push_to_user(username_to_notify, {
-                                'title': 'Poll Update',
-                                'body': message,
-                                'url': f'/post/{post_id}',
-                                'tag': f'poll-25-{poll_id}'
-                            })
+                        # Pass username (not user_id) to match production DB foreign key constraint
+                        create_notification(username_to_notify, None, 'poll_reminder', post_id, community_id, message)
+                        send_push_to_user(username_to_notify, {
+                            'title': 'Poll Update',
+                            'body': message,
+                            'url': f'/post/{post_id}',
+                            'tag': f'poll-25-{poll_id}'
+                        })
                     except Exception:
                         pass
                     
@@ -11838,17 +11835,14 @@ def check_single_poll_notifications(poll_id, conn=None):
                     message = f"📊 {vote_count} {community_name} member{'s' if vote_count != 1 else ''} {'have' if vote_count != 1 else 'has'} voted, go vote on the poll!"
                     
                     try:
-                        c.execute("SELECT id FROM users WHERE username = ?", (username_to_notify,))
-                        user_row = c.fetchone()
-                        if user_row:
-                            user_id = user_row['id'] if hasattr(user_row, 'keys') else user_row[0]
-                            create_notification(user_id, None, 'poll_reminder', post_id, community_id, message)
-                            send_push_to_user(username_to_notify, {
-                                'title': 'Poll Update',
-                                'body': message,
-                                'url': f'/post/{post_id}',
-                                'tag': f'poll-50-{poll_id}'
-                            })
+                        # Pass username (not user_id) to match production DB foreign key constraint
+                        create_notification(username_to_notify, None, 'poll_reminder', post_id, community_id, message)
+                        send_push_to_user(username_to_notify, {
+                            'title': 'Poll Update',
+                            'body': message,
+                            'url': f'/post/{post_id}',
+                            'tag': f'poll-50-{poll_id}'
+                        })
                     except Exception:
                         pass
                     
@@ -11872,17 +11866,14 @@ def check_single_poll_notifications(poll_id, conn=None):
                         message = "⏰ The poll is closing soon, go vote!"
                     
                     try:
-                        c.execute("SELECT id FROM users WHERE username = ?", (username_to_notify,))
-                        user_row = c.fetchone()
-                        if user_row:
-                            user_id = user_row['id'] if hasattr(user_row, 'keys') else user_row[0]
-                            create_notification(user_id, None, 'poll_reminder', post_id, community_id, message)
-                            send_push_to_user(username_to_notify, {
-                                'title': 'Poll Closing Soon!',
-                                'body': message,
-                                'url': f'/post/{post_id}',
-                                'tag': f'poll-80-{poll_id}'
-                            })
+                        # Pass username (not user_id) to match production DB foreign key constraint
+                        create_notification(username_to_notify, None, 'poll_reminder', post_id, community_id, message)
+                        send_push_to_user(username_to_notify, {
+                            'title': 'Poll Closing Soon!',
+                            'body': message,
+                            'url': f'/post/{post_id}',
+                            'tag': f'poll-80-{poll_id}'
+                        })
                     except Exception:
                         pass
                     
@@ -11898,17 +11889,14 @@ def check_single_poll_notifications(poll_id, conn=None):
                     message = "📋 Review the poll results before it closes"
                     
                     try:
-                        c.execute("SELECT id FROM users WHERE username = ?", (username_to_notify,))
-                        user_row = c.fetchone()
-                        if user_row:
-                            user_id = user_row['id'] if hasattr(user_row, 'keys') else user_row[0]
-                            create_notification(user_id, None, 'poll_reminder', post_id, community_id, message)
-                            send_push_to_user(username_to_notify, {
-                                'title': 'Poll Closing Soon',
-                                'body': message,
-                                'url': f'/post/{post_id}',
-                                'tag': f'poll-80-voter-{poll_id}'
-                            })
+                        # Pass username (not user_id) to match production DB foreign key constraint
+                        create_notification(username_to_notify, None, 'poll_reminder', post_id, community_id, message)
+                        send_push_to_user(username_to_notify, {
+                            'title': 'Poll Closing Soon',
+                            'body': message,
+                            'url': f'/post/{post_id}',
+                            'tag': f'poll-80-voter-{poll_id}'
+                        })
                     except Exception:
                         pass
                     
