@@ -11168,7 +11168,8 @@ def close_poll():
                                 message = "🔒 Poll results are in! Check them out"
                                 
                                 try:
-                                    create_notification(member_id, None, 'poll_closed', poll_data['post_id'], community_id, message)
+                                    # Pass username (not user_id) to match production DB foreign key constraint
+                                    create_notification(member_username, None, 'poll_closed', poll_data['post_id'], community_id, message)
                                     send_push_to_user(member_username, {
                                         'title': 'Poll Closed',
                                         'body': message,
