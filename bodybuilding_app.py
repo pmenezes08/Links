@@ -11626,7 +11626,11 @@ def delete_poll():
                 return jsonify({'success': False, 'error': 'Not authorized'})
             # Delete poll (cascade removes options and votes)
             c.execute("DELETE FROM polls WHERE id=?", (poll_id,))
+            # Also delete the associated post to completely remove the poll
+            # Polls should be independent - deleting a poll removes everything
+            c.execute("DELETE FROM posts WHERE id=?", (pr['post_id'],))
             conn.commit()
+            logger.info(f"Deleted poll {poll_id} and associated post {pr['post_id']}")
             return jsonify({'success': True})
     except Exception as e:
         logger.error(f"Error deleting poll: {e}")
