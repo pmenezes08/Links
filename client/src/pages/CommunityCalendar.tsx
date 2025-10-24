@@ -118,7 +118,7 @@ export default function CommunityCalendar(){
 
   async function createEvent(formData: FormData){
     const params = new URLSearchParams()
-    ;['title','date','end_date','start_time','end_time','timezone','description'].forEach(k => {
+    ;['title','date','end_date','start_time','end_time','timezone','description','notification_preferences'].forEach(k => {
       const v = (formData.get(k) as string) || ''
       if (v) params.append(k, v)
     })
@@ -249,6 +249,16 @@ export default function CommunityCalendar(){
               </label>
               <label className="col-span-2 text-xs text-[#9fb0b5]">Description
                 <input name="description" placeholder="Description" className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none" />
+              </label>
+              <label className="col-span-2 text-xs text-[#9fb0b5]">📬 Send reminders
+                <select name="notification_preferences" className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none">
+                  <option value="none">No reminders</option>
+                  <option value="1_week">1 week before</option>
+                  <option value="1_day">1 day before</option>
+                  <option value="1_hour">1 hour before</option>
+                  <option value="all" selected>All reminders (1 week + 1 day + 1 hour)</option>
+                </select>
+                <div className="text-[10px] text-[#9fb0b5] mt-1">⚡ Reminders sent automatically based on event start time</div>
               </label>
             </div>
 

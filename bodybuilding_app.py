@@ -2255,7 +2255,8 @@ def init_db():
                 'time': 'TEXT',
                 'created_at': 'DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP',
                 'community_id': 'INTEGER',
-                'timezone': 'VARCHAR(100)'
+                'timezone': 'VARCHAR(100)',
+                'notification_preferences': "VARCHAR(50) DEFAULT 'all'"
             }
             
             for col_name, col_def in required_columns.items():
@@ -2303,6 +2304,18 @@ def init_db():
             c.execute("CREATE INDEX IF NOT EXISTS idx_invitations_event ON event_invitations(event_id)")
             c.execute("CREATE INDEX IF NOT EXISTS idx_invitations_username ON event_invitations(invited_username)")
             c.execute("CREATE INDEX IF NOT EXISTS idx_invitations_viewed ON event_invitations(viewed)")
+            
+            # Create event notification log table
+            logger.info("Creating event_notification_log table...")
+            c.execute('''CREATE TABLE IF NOT EXISTS event_notification_log (
+                         id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                         event_id INTEGER NOT NULL,
+                         username VARCHAR(191) NOT NULL,
+                         notification_type VARCHAR(50) NOT NULL,
+                         sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                         UNIQUE KEY unique_event_notif (event_id, username, notification_type),
+                         FOREIGN KEY (event_id) REFERENCES calendar_events(id) ON DELETE CASCADE
+                     )''')
             
             conn.commit()
             logger.info("Database initialization completed successfully")
@@ -11952,6 +11965,223 @@ def check_single_poll_notifications(poll_id, conn=None):
             conn.close()
 
 
+def check_single_event_notifications(event_id, conn=None):
+    """
+    Check a single event and send reminders based on notification_preferences.
+    Sends: 1 week before, 1 day before, 1 hour before, and 80% notifications.
+    Returns number of notifications sent.
+    """
+    should_close_conn = False
+    if conn is None:
+        conn = get_db_connection()
+        should_close_conn = True
+    
+    try:
+        c = conn.cursor()
+        now = datetime.utcnow()
+        ph = '%s' if USE_MYSQL else '?'
+        
+        logger.info(f"🔍 Checking event {event_id} for notifications")
+        
+        # Get event details
+        c.execute(f"""
+            SELECT ce.id, ce.title, ce.date, ce.start_time, ce.end_time, ce.created_at,
+                   ce.community_id, ce.notification_preferences, ce.username as created_by
+            FROM calendar_events ce
+            WHERE ce.id = {ph}
+        """, (event_id,))
+        
+        event_row = c.fetchone()
+        if not event_row:
+            return 0
+        
+        title = event_row['title'] if hasattr(event_row, 'keys') else event_row[1]
+        date_str = event_row['date'] if hasattr(event_row, 'keys') else event_row[2]
+        start_time_str = event_row['start_time'] if hasattr(event_row, 'keys') else event_row[3]
+        created_at_raw = event_row['created_at'] if hasattr(event_row, 'keys') else event_row[5]
+        community_id = event_row['community_id'] if hasattr(event_row, 'keys') else event_row[6]
+        notification_prefs = event_row['notification_preferences'] if hasattr(event_row, 'keys') else event_row[7]
+        
+        # Parse event start datetime
+        try:
+            if isinstance(start_time_str, datetime):
+                event_start = start_time_str
+            elif start_time_str:
+                event_start = datetime.strptime(start_time_str, '%Y-%m-%d %H:%M:%S')
+            else:
+                # No time specified, use date at midnight
+                event_start = datetime.strptime(date_str, '%Y-%m-%d')
+        except Exception as e:
+            logger.debug(f"Event {event_id} has invalid date/time: {e}")
+            return 0
+        
+        # Skip if event is in the past
+        if event_start <= now:
+            logger.debug(f"Event {event_id} is in the past")
+            return 0
+        
+        # Parse created_at
+        try:
+            if isinstance(created_at_raw, datetime):
+                created_at = created_at_raw
+            else:
+                created_at = datetime.strptime(created_at_raw, '%Y-%m-%d %H:%M:%S')
+        except Exception:
+            created_at = now  # Fallback
+        
+        # Get event participants (invited users)
+        c.execute(f"""
+            SELECT DISTINCT invited_username
+            FROM event_invitations
+            WHERE event_id = {ph}
+        """, (event_id,))
+        participants = [r['invited_username'] if hasattr(r, 'keys') else r[0] for r in c.fetchall()]
+        
+        if not participants:
+            return 0
+        
+        # Get community name
+        community_name = ""
+        if community_id:
+            try:
+                c.execute(f"SELECT name FROM communities WHERE id = {ph}", (community_id,))
+                comm_row = c.fetchone()
+                if comm_row:
+                    community_name = comm_row['name'] if hasattr(comm_row, 'keys') else comm_row[0]
+            except Exception:
+                pass
+        
+        time_until_event = (event_start - now).total_seconds()
+        hours_until = time_until_event / 3600
+        days_until = time_until_event / 86400
+        
+        notifications_sent = 0
+        
+        # Parse notification preferences
+        prefs = notification_prefs or 'all'
+        send_1week = prefs in ('1_week', 'all')
+        send_1day = prefs in ('1_day', 'all')
+        send_1hour = prefs in ('1_hour', 'all')
+        send_80percent = True  # Always send 80% notification
+        
+        logger.info(f"⏰ Event {event_id}: {hours_until:.1f}h until event (prefs={prefs})")
+        
+        # 1 WEEK BEFORE (7 days = 168 hours, window: 167-169 hours)
+        if send_1week and 167 <= hours_until <= 169:
+            for username_to_notify in participants:
+                c.execute(f"SELECT id FROM event_notification_log WHERE event_id={ph} AND username={ph} AND notification_type='1_week'", 
+                         (event_id, username_to_notify))
+                if not c.fetchone():
+                    message = f"📅 Event in {community_name}: '{title}' in 1 week" if community_name else f"📅 Event '{title}' in 1 week"
+                    
+                    try:
+                        create_notification(username_to_notify, None, 'event_reminder', None, community_id, message)
+                        send_push_to_user(username_to_notify, {
+                            'title': f'{community_name} Event Reminder' if community_name else 'Event Reminder',
+                            'body': message,
+                            'url': f'/community/{community_id}/calendar' if community_id else '/calendar',
+                            'tag': f'event-1week-{event_id}'
+                        })
+                    except Exception:
+                        pass
+                    
+                    c.execute(f"INSERT INTO event_notification_log (event_id, username, notification_type) VALUES ({ph}, {ph}, '1_week')", 
+                             (event_id, username_to_notify))
+                    notifications_sent += 1
+        
+        # 1 DAY BEFORE (24 hours, window: 23-25 hours)
+        elif send_1day and 23 <= hours_until <= 25:
+            for username_to_notify in participants:
+                c.execute(f"SELECT id FROM event_notification_log WHERE event_id={ph} AND username={ph} AND notification_type='1_day'", 
+                         (event_id, username_to_notify))
+                if not c.fetchone():
+                    message = f"📅 Event in {community_name}: '{title}' tomorrow" if community_name else f"📅 Event '{title}' tomorrow"
+                    
+                    try:
+                        create_notification(username_to_notify, None, 'event_reminder', None, community_id, message)
+                        send_push_to_user(username_to_notify, {
+                            'title': f'{community_name} Event Tomorrow' if community_name else 'Event Tomorrow',
+                            'body': message,
+                            'url': f'/community/{community_id}/calendar' if community_id else '/calendar',
+                            'tag': f'event-1day-{event_id}'
+                        })
+                    except Exception:
+                        pass
+                    
+                    c.execute(f"INSERT INTO event_notification_log (event_id, username, notification_type) VALUES ({ph}, {ph}, '1_day')", 
+                             (event_id, username_to_notify))
+                    notifications_sent += 1
+        
+        # 1 HOUR BEFORE (window: 0.9-1.1 hours)
+        elif send_1hour and 0.9 <= hours_until <= 1.1:
+            for username_to_notify in participants:
+                c.execute(f"SELECT id FROM event_notification_log WHERE event_id={ph} AND username={ph} AND notification_type='1_hour'", 
+                         (event_id, username_to_notify))
+                if not c.fetchone():
+                    message = f"⏰ Event in {community_name}: '{title}' in 1 hour!" if community_name else f"⏰ Event '{title}' in 1 hour!"
+                    
+                    try:
+                        create_notification(username_to_notify, None, 'event_reminder', None, community_id, message)
+                        send_push_to_user(username_to_notify, {
+                            'title': f'{community_name} Event Soon!' if community_name else 'Event Soon!',
+                            'body': message,
+                            'url': f'/community/{community_id}/calendar' if community_id else '/calendar',
+                            'tag': f'event-1hour-{event_id}'
+                        })
+                    except Exception:
+                        pass
+                    
+                    c.execute(f"INSERT INTO event_notification_log (event_id, username, notification_type) VALUES ({ph}, {ph}, '1_hour')", 
+                             (event_id, username_to_notify))
+                    notifications_sent += 1
+        
+        # 80% NOTIFICATION (always sent regardless of preferences)
+        if send_80percent:
+            # Calculate 80% of time from creation to event
+            total_duration = (event_start - created_at).total_seconds()
+            elapsed = (now - created_at).total_seconds()
+            
+            if total_duration > 0:
+                progress = elapsed / total_duration
+                
+                # 80% window (75%-90%)
+                if 0.75 <= progress < 0.90:
+                    for username_to_notify in participants:
+                        c.execute(f"SELECT id FROM event_notification_log WHERE event_id={ph} AND username={ph} AND notification_type='80_percent'", 
+                                 (event_id, username_to_notify))
+                        if not c.fetchone():
+                            if days_until > 1:
+                                message = f"📆 Event in {community_name}: '{title}' in {int(days_until)} days" if community_name else f"📆 Event '{title}' in {int(days_until)} days"
+                            elif hours_until > 1:
+                                message = f"📆 Event in {community_name}: '{title}' in {int(hours_until)} hours" if community_name else f"📆 Event '{title}' in {int(hours_until)} hours"
+                            else:
+                                message = f"📆 Event in {community_name}: '{title}' starting soon!" if community_name else f"📆 Event '{title}' starting soon!"
+                            
+                            try:
+                                create_notification(username_to_notify, None, 'event_reminder', None, community_id, message)
+                                send_push_to_user(username_to_notify, {
+                                    'title': f'{community_name} Event Soon' if community_name else 'Event Soon',
+                                    'body': message,
+                                    'url': f'/community/{community_id}/calendar' if community_id else '/calendar',
+                                    'tag': f'event-80-{event_id}'
+                                })
+                            except Exception:
+                                pass
+                            
+                            c.execute(f"INSERT INTO event_notification_log (event_id, username, notification_type) VALUES ({ph}, {ph}, '80_percent')", 
+                                     (event_id, username_to_notify))
+                            notifications_sent += 1
+        
+        if should_close_conn:
+            conn.commit()
+        
+        return notifications_sent
+    
+    finally:
+        if should_close_conn:
+            conn.close()
+
+
 @app.route('/api/poll_notification_check', methods=['POST'])
 def api_poll_notification_check():
     """
@@ -14100,6 +14330,7 @@ def add_calendar_event():
         end_date = end_date if end_date else None
         description = description if description else None
         timezone = timezone if timezone else None
+        notification_preferences = request.form.get('notification_preferences', 'all').strip()
         
         # Convert time (HH:MM) to datetime (YYYY-MM-DD HH:MM:00) for DATETIME columns
         start_time_original = start_time
@@ -14126,17 +14357,18 @@ def add_calendar_event():
             
             # Insert the event (keeping 'time' field for backward compatibility)
             ph = get_sql_placeholder()
-            logger.info(f"Inserting event into DB: start_time='{start_time}', end_time='{end_time}', end_date={end_date}, timezone={timezone}")
+            logger.info(f"Inserting event into DB: start_time='{start_time}', end_time='{end_time}', end_date={end_date}, timezone={timezone}, notifications={notification_preferences}")
             c.execute(f"""
-                INSERT INTO calendar_events (username, title, date, end_date, time, start_time, end_time, description, created_at, community_id, timezone)
-                VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, NOW(), {ph}, {ph})
+                INSERT INTO calendar_events (username, title, date, end_date, time, start_time, end_time, description, created_at, community_id, timezone, notification_preferences)
+                VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, NOW(), {ph}, {ph}, {ph})
             """, (username, title, date, end_date, 
                   start_time_original,  # Keep time field as HH:MM for backward compatibility
                   start_time,           # start_time as DATETIME
                   end_time,             # end_time as DATETIME
                   description,
                   community_id,
-                  timezone))
+                  timezone,
+                  notification_preferences))
             
             event_id = c.lastrowid
             
