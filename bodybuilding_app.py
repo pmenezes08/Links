@@ -2314,7 +2314,8 @@ def init_db():
                          notification_type VARCHAR(50) NOT NULL,
                          sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                          UNIQUE KEY unique_event_notif (event_id, username, notification_type),
-                         FOREIGN KEY (event_id) REFERENCES calendar_events(id) ON DELETE CASCADE
+                         FOREIGN KEY (event_id) REFERENCES calendar_events(id) ON DELETE CASCADE,
+                         KEY idx_username (username)
                      )''')
             
             conn.commit()

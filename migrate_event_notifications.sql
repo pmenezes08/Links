@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS event_notification_log (
     sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY unique_event_notif (event_id, username, notification_type),
     FOREIGN KEY (event_id) REFERENCES calendar_events(id) ON DELETE CASCADE,
-    FOREIGN KEY (username) REFERENCES users(username)
+    KEY idx_username (username)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- 3. Verify the changes
