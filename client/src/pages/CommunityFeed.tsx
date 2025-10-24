@@ -912,13 +912,42 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                 ) : null}
               </div>
               {(post.username === currentUser || isAdmin || currentUser === 'admin') && (
-                <button 
-                  className="ml-auto px-2 py-1 rounded-full text-[#6c757d] hover:text-[#4db6ac]" 
-                  title="Edit poll"
-                  onClick={(e)=> { e.preventDefault(); e.stopPropagation(); if (navigate && communityId) navigate(`/community/${communityId}/polls_react?edit=${post.poll?.id}`) }}
-                >
-                  <i className="fa-regular fa-pen-to-square" />
-                </button>
+                <>
+                  <button 
+                    className="ml-auto px-2 py-1 rounded-full text-[#6c757d] hover:text-[#4db6ac]" 
+                    title="Edit poll"
+                    onClick={(e)=> { e.preventDefault(); e.stopPropagation(); if (navigate && communityId) navigate(`/community/${communityId}/polls_react?edit=${post.poll?.id}`) }}
+                  >
+                    <i className="fa-regular fa-pen-to-square" />
+                  </button>
+                  <button 
+                    className="ml-1 px-2 py-1 rounded-full text-red-400 hover:text-red-300" 
+                    title="Delete poll"
+                    onClick={async (e)=> { 
+                      e.preventDefault()
+                      e.stopPropagation()
+                      if (!confirm('Delete this poll? This cannot be undone.')) return
+                      try {
+                        const r = await fetch('/delete_poll', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          credentials: 'include',
+                          body: JSON.stringify({ poll_id: post.poll?.id })
+                        })
+                        const j = await r.json()
+                        if (j?.success) {
+                          window.location.reload()
+                        } else {
+                          alert(j?.error || 'Failed to delete poll')
+                        }
+                      } catch (err) {
+                        alert('Error deleting poll')
+                      }
+                    }}
+                  >
+                    <i className="fa-regular fa-trash-can" />
+                  </button>
+                </>
               )}
               <button 
                 className="ml-1 px-2 py-1 rounded-full text-[#6c757d] hover:text-[#4db6ac]" 
