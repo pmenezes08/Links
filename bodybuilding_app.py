@@ -193,7 +193,7 @@ def _block_unverified_users():
             return None
         # API behavior: return JSON instead of HTML redirects to avoid client parse errors
         # Exception for public cron endpoints (no auth required)
-        public_api_endpoints = ['/api/poll_notification_check']
+        public_api_endpoints = ['/api/poll_notification_check', '/api/event_notification_check']
         if path.startswith('/api/') and path not in public_api_endpoints:
             username = session.get('username')
             if not username:
