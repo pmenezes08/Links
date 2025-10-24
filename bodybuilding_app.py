@@ -11807,8 +11807,8 @@ def check_single_poll_notifications(poll_id, conn=None):
                     notifications_sent += 1
         
         # 50% notification - non-voters only
-        logger.info(f"🎯 Poll {poll_id}: Checking 50% window (0.45-0.60), progress={progress:.3f}")
         elif 0.45 <= progress < 0.60:
+            logger.info(f"🎯 Poll {poll_id}: IN 50% window! Sending to {len(non_voters)} non-voters")
             for username_to_notify in non_voters:
                 c.execute("SELECT id FROM poll_notification_log WHERE poll_id=? AND username=? AND notification_type='50'", 
                          (poll_id, username_to_notify))
@@ -11844,8 +11844,8 @@ def check_single_poll_notifications(poll_id, conn=None):
                     notifications_sent += 1
         
         # 80% notification - different messages for voters vs non-voters
-        logger.info(f"🎯 Poll {poll_id}: Checking 80% window (0.75-0.90), progress={progress:.3f}")
         elif 0.75 <= progress < 0.90:
+            logger.info(f"🎯 Poll {poll_id}: IN 80% window! Sending to {len(non_voters)} non-voters, {len(voters)} voters")
             # Non-voters
             for username_to_notify in non_voters:
                 c.execute("SELECT id FROM poll_notification_log WHERE poll_id=? AND username=? AND notification_type='80_nonvoter'", 
