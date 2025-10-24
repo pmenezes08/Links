@@ -118,10 +118,62 @@ export default function CommunityCalendar(){
 
   async function createEvent(formData: FormData){
     const params = new URLSearchParams()
-    ;['title','date','end_date','start_time','end_time','timezone','description','notification_preferences'].forEach(k => {
-      const v = (formData.get(k) as string) || ''
-      if (v) params.append(k, v)
-    })
+    
+    // Get form values
+    const title = (formData.get('title') as string) || ''
+    const date = (formData.get('date') as string) || ''
+    const end_date = (formData.get('end_date') as string) || ''
+    const start_time = (formData.get('start_time') as string) || ''
+    const end_time = (formData.get('end_time') as string) || ''
+    const timezone = (formData.get('timezone') as string) || ''
+    const description = (formData.get('description') as string) || ''
+    const notification_preferences = (formData.get('notification_preferences') as string) || 'all'
+    
+    // Basic fields
+    if (title) params.append('title', title)
+    if (description) params.append('description', description)
+    if (timezone) params.append('timezone', timezone)
+    params.append('notification_preferences', notification_preferences)
+    
+    // Convert dates/times from local to UTC (like polls do)
+    if (date && start_time) {
+      try {
+        // Combine date + start_time into local datetime, then convert to UTC
+        const localDateTime = new Date(`${date}T${start_time}`)
+        const utcDate = localDateTime.toISOString().slice(0, 10) // YYYY-MM-DD
+        const utcTime = localDateTime.toISOString().slice(11, 16) // HH:MM
+        console.log(`📅 Converting event start: Local=${date} ${start_time} → UTC=${utcDate} ${utcTime}`)
+        params.append('date', utcDate)
+        params.append('start_time', utcTime)
+      } catch (e) {
+        console.error('Failed to convert start time to UTC:', e)
+        params.append('date', date)
+        params.append('start_time', start_time)
+      }
+    } else {
+      if (date) params.append('date', date)
+      if (start_time) params.append('start_time', start_time)
+    }
+    
+    // Convert end date/time
+    if (end_date && end_time) {
+      try {
+        const localEndDateTime = new Date(`${end_date}T${end_time}`)
+        const utcEndDate = localEndDateTime.toISOString().slice(0, 10)
+        const utcEndTime = localEndDateTime.toISOString().slice(11, 16)
+        console.log(`📅 Converting event end: Local=${end_date} ${end_time} → UTC=${utcEndDate} ${utcEndTime}`)
+        params.append('end_date', utcEndDate)
+        params.append('end_time', utcEndTime)
+      } catch (e) {
+        console.error('Failed to convert end time to UTC:', e)
+        if (end_date) params.append('end_date', end_date)
+        if (end_time) params.append('end_time', end_time)
+      }
+    } else {
+      if (end_date) params.append('end_date', end_date)
+      if (end_time) params.append('end_time', end_time)
+    }
+    
     if (community_id) params.append('community_id', String(community_id))
     params.append('invite_all', inviteAll ? 'true' : 'false')
     if (!inviteAll){
@@ -172,10 +224,58 @@ export default function CommunityCalendar(){
     if (!editingEvent) return
     const params = new URLSearchParams()
     params.append('event_id', String(editingEvent.id))
-    ;['title','date','end_date','start_time','end_time','timezone','description'].forEach(k => {
-      const v = (formData.get(k) as string) || ''
-      if (v) params.append(k, v)
-    })
+    
+    // Get form values
+    const title = (formData.get('title') as string) || ''
+    const date = (formData.get('date') as string) || ''
+    const end_date = (formData.get('end_date') as string) || ''
+    const start_time = (formData.get('start_time') as string) || ''
+    const end_time = (formData.get('end_time') as string) || ''
+    const timezone = (formData.get('timezone') as string) || ''
+    const description = (formData.get('description') as string) || ''
+    
+    // Basic fields
+    if (title) params.append('title', title)
+    if (description) params.append('description', description)
+    if (timezone) params.append('timezone', timezone)
+    
+    // Convert dates/times from local to UTC
+    if (date && start_time) {
+      try {
+        const localDateTime = new Date(`${date}T${start_time}`)
+        const utcDate = localDateTime.toISOString().slice(0, 10)
+        const utcTime = localDateTime.toISOString().slice(11, 16)
+        console.log(`📅 Converting edited start: Local=${date} ${start_time} → UTC=${utcDate} ${utcTime}`)
+        params.append('date', utcDate)
+        params.append('start_time', utcTime)
+      } catch (e) {
+        console.error('Failed to convert start time to UTC:', e)
+        params.append('date', date)
+        params.append('start_time', start_time)
+      }
+    } else {
+      if (date) params.append('date', date)
+      if (start_time) params.append('start_time', start_time)
+    }
+    
+    if (end_date && end_time) {
+      try {
+        const localEndDateTime = new Date(`${end_date}T${end_time}`)
+        const utcEndDate = localEndDateTime.toISOString().slice(0, 10)
+        const utcEndTime = localEndDateTime.toISOString().slice(11, 16)
+        console.log(`📅 Converting edited end: Local=${end_date} ${end_time} → UTC=${utcEndDate} ${utcEndTime}`)
+        params.append('end_date', utcEndDate)
+        params.append('end_time', utcEndTime)
+      } catch (e) {
+        console.error('Failed to convert end time to UTC:', e)
+        if (end_date) params.append('end_date', end_date)
+        if (end_time) params.append('end_time', end_time)
+      }
+    } else {
+      if (end_date) params.append('end_date', end_date)
+      if (end_time) params.append('end_time', end_time)
+    }
+    
     const r = await fetch('/edit_calendar_event', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: params })
     const j = await r.json().catch(()=>null)
     if (j?.success){

@@ -14414,10 +14414,11 @@ def add_calendar_event():
             
             # Insert the event (keeping 'time' field for backward compatibility)
             ph = get_sql_placeholder()
-            logger.info(f"Inserting event into DB: start_time='{start_time}', end_time='{end_time}', end_date={end_date}, timezone={timezone}, notifications={notification_preferences}")
+            created_at_utc = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+            logger.info(f"📅 Creating event (UTC): created_at={created_at_utc}, start_time='{start_time}', end_time='{end_time}', end_date={end_date}, timezone={timezone}, notifications={notification_preferences}")
             c.execute(f"""
                 INSERT INTO calendar_events (username, title, date, end_date, time, start_time, end_time, description, created_at, community_id, timezone, notification_preferences)
-                VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, NOW(), {ph}, {ph}, {ph})
+                VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
             """, (username, title, date, end_date, 
                   start_time_original,  # Keep time field as HH:MM for backward compatibility
                   start_time,           # start_time as DATETIME
