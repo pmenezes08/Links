@@ -11047,7 +11047,9 @@ def create_poll():
                             JOIN users u ON uc.user_id = u.id
                             WHERE uc.community_id = ? AND u.username != ?
                         """, (community_id, username))
-                    member_usernames = [row[0] for row in c.fetchall()]
+                    # Handle both dict rows (MySQL) and tuple rows (SQLite)
+                    rows = c.fetchall()
+                    member_usernames = [row['username'] if hasattr(row, 'keys') else row[0] for row in rows]
                     logger.info(f"✅ Found {len(member_usernames)} members to notify for poll in community {community_id}")
                 except Exception as e:
                     logger.error(f"❌ Error fetching community members for poll notifications: {type(e).__name__}: {str(e)}")
