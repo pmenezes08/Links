@@ -10979,9 +10979,16 @@ def create_poll():
                 dt = datetime.strptime(expires_at_raw, '%Y-%m-%dT%H:%M')
             else:
                 dt = datetime.strptime(expires_at_raw, '%Y-%m-%d')
+            
+            # Validate: expiry date must be in the future
+            now = datetime.utcnow()
+            if dt <= now:
+                return jsonify({'success': False, 'error': 'Poll expiry date must be in the future'})
+            
             expires_at_sql = dt.strftime('%Y-%m-%d %H:%M:%S')
             logger.info(f"📅 Poll deadline: {expires_at_sql} (treating as UTC)")
-        except Exception:
+        except Exception as e:
+            logger.error(f"Error parsing poll expiry date: {e}")
             expires_at_sql = None
     
     try:
