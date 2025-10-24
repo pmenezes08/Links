@@ -90,7 +90,8 @@ export default function Notifications(){
     
     // For poll notifications, navigate to polls page
     let url = n.link
-    if (!url && n.type === 'poll' && n.community_id) {
+    const isPollNotification = n.type === 'poll' || n.type === 'poll_reminder' || n.type === 'poll_closed'
+    if (!url && isPollNotification && n.community_id) {
       url = `/community/${n.community_id}/polls_react`
     } else if (!url) {
       url = n.post_id ? `/post/${n.post_id}` : (n.community_id ? `/community_feed_react/${n.community_id}` : '/notifications')
