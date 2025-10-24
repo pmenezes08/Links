@@ -9703,7 +9703,7 @@ def notify_post_reply_recipients(*, post_id: int, from_user: str, community_id: 
                     send_push_to_user(target, {
                         'title': f'New reply from {from_user}',
                         'body': 'Tap to view the conversation',
-                        'url': f'/post/{post_id}',
+                        'url': f'/community/{community_id}/polls_react',
                         'tag': f'post-reply-{post_id}-{target}'
                     })
                 except Exception as pe:
@@ -11187,7 +11187,7 @@ def close_poll():
                                     send_push_to_user(member_username, {
                                         'title': f'{comm_name} Poll Closed' if comm_name else 'Poll Closed',
                                         'body': message,
-                                        'url': f'/post/{poll_data["post_id"]}',
+                                        'url': f'/community/{community_id}/polls_react',
                                         'tag': f'poll-closed-{poll_id}'
                                     })
                                     
@@ -11857,7 +11857,7 @@ def check_single_poll_notifications(poll_id, conn=None):
                         send_push_to_user(username_to_notify, {
                             'title': 'Poll Update',
                             'body': message,
-                            'url': f'/post/{post_id}',
+                            'url': f'/community/{community_id}/polls_react',
                             'tag': f'poll-50-{poll_id}'
                         })
                     except Exception:
@@ -11888,7 +11888,7 @@ def check_single_poll_notifications(poll_id, conn=None):
                         send_push_to_user(username_to_notify, {
                             'title': 'Poll Closing Soon!',
                             'body': message,
-                            'url': f'/post/{post_id}',
+                            'url': f'/community/{community_id}/polls_react',
                             'tag': f'poll-80-{poll_id}'
                         })
                     except Exception:
@@ -11921,7 +11921,7 @@ def check_single_poll_notifications(poll_id, conn=None):
                         send_push_to_user(username_to_notify, {
                             'title': f'{community_name} Poll Closing' if community_name else 'Poll Closing Soon',
                             'body': message,
-                            'url': f'/post/{post_id}',
+                            'url': f'/community/{community_id}/polls_react',
                             'tag': f'poll-80-voter-{poll_id}'
                         })
                     except Exception:
