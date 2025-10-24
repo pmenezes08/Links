@@ -10968,17 +10968,19 @@ def create_poll():
     if len(options) > 6:
         return jsonify({'success': False, 'error': 'Maximum 6 options allowed!'})
     
-    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    timestamp = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
     expires_at_raw = request.form.get('expires_at', '').strip()
     expires_at_sql = None
     if expires_at_raw:
         try:
             # Accept both 'YYYY-MM-DDTHH:MM' and 'YYYY-MM-DD'
+            # Frontend should send UTC time (or we convert from local)
             if 'T' in expires_at_raw:
                 dt = datetime.strptime(expires_at_raw, '%Y-%m-%dT%H:%M')
             else:
                 dt = datetime.strptime(expires_at_raw, '%Y-%m-%d')
             expires_at_sql = dt.strftime('%Y-%m-%d %H:%M:%S')
+            logger.info(f"📅 Poll deadline: {expires_at_sql} (treating as UTC)")
         except Exception:
             expires_at_sql = None
     
@@ -11680,7 +11682,7 @@ def check_single_poll_notifications(poll_id, conn=None):
     
     try:
         c = conn.cursor()
-        now = datetime.now()
+        now = datetime.utcnow()  # Use UTC for consistent timezone handling
         
         logger.info(f"🔍 Helper called for poll {poll_id}, USE_MYSQL={USE_MYSQL}")
         
@@ -11944,7 +11946,7 @@ def api_poll_notification_check():
         logger.warning(f"Poll notification check called with invalid API key: {api_key}")
         return jsonify({'success': False, 'error': 'Invalid API key'}), 401
     try:
-        now = datetime.now()
+        now = datetime.utcnow()  # Use UTC for consistent timezone handling
         logger.info(f"🔍 Poll notification check starting - USE_MYSQL={USE_MYSQL}")
         
         with get_db_connection() as conn:
