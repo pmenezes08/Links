@@ -11703,14 +11703,28 @@ def check_single_poll_notifications(poll_id, conn=None):
         post_id = poll_row['post_id'] if hasattr(poll_row, 'keys') else poll_row[4]
         community_id = poll_row['community_id'] if hasattr(poll_row, 'keys') else poll_row[5]
         
-        # Validate expires_at in Python
-        if not expires_at_str or expires_at_str.strip() == '' or len(expires_at_str) < 10:
-            logger.debug(f"Poll {poll_id} has no valid expires_at")
+        # Validate and parse expires_at - handle both string and datetime object
+        if not expires_at_str:
+            logger.debug(f"Poll {poll_id} has no expires_at")
             return 0
         
+        # MySQL returns datetime object, SQLite returns string
+        if isinstance(expires_at_str, str):
+            if expires_at_str.strip() == '' or len(expires_at_str) < 10:
+                logger.debug(f"Poll {poll_id} has invalid expires_at string")
+                return 0
+        
         try:
-            created_at = datetime.strptime(created_at_str, '%Y-%m-%d %H:%M:%S')
-            expires_at = datetime.strptime(expires_at_str, '%Y-%m-%d %H:%M:%S')
+            # Parse dates (handle both datetime objects and strings)
+            if isinstance(created_at_str, datetime):
+                created_at = created_at_str
+            else:
+                created_at = datetime.strptime(created_at_str, '%Y-%m-%d %H:%M:%S')
+            
+            if isinstance(expires_at_str, datetime):
+                expires_at = expires_at_str
+            else:
+                expires_at = datetime.strptime(expires_at_str, '%Y-%m-%d %H:%M:%S')
         except Exception as date_err:
             logger.debug(f"Poll {poll_id} has invalid date format: {date_err}")
             return 0
@@ -11940,23 +11954,31 @@ def api_poll_notification_check():
             near_deadline_polls = []
             for poll in all_polls:
                 poll_id = poll['id'] if hasattr(poll, 'keys') else poll[0]
-                expires_at_str = poll['expires_at'] if hasattr(poll, 'keys') else poll[1]
-                created_at_str = poll['created_at'] if hasattr(poll, 'keys') else poll[2]
+                expires_at_raw = poll['expires_at'] if hasattr(poll, 'keys') else poll[1]
+                created_at_raw = poll['created_at'] if hasattr(poll, 'keys') else poll[2]
                 
-                # Skip if no valid expires_at
-                if not expires_at_str or expires_at_str.strip() == '' or len(expires_at_str) < 10:
+                # Skip if no expires_at
+                if not expires_at_raw:
                     continue
                 
+                # Handle both string and datetime object (MySQL returns datetime, SQLite returns string)
+                if isinstance(expires_at_raw, str):
+                    if expires_at_raw.strip() == '' or len(expires_at_raw) < 10:
+                        continue
+                
                 try:
-                    # Parse dates
-                    expires_at = datetime.strptime(expires_at_str, '%Y-%m-%d %H:%M:%S')
+                    # Parse or use datetime object directly
+                    if isinstance(expires_at_raw, datetime):
+                        expires_at = expires_at_raw
+                    else:
+                        expires_at = datetime.strptime(expires_at_raw, '%Y-%m-%d %H:%M:%S')
                     
                     # Only process polls within 24 hours of deadline
                     time_until_deadline = (expires_at - now).total_seconds() / 3600  # hours
                     if 0 < time_until_deadline < 24:
                         near_deadline_polls.append(poll)
                 except Exception as parse_err:
-                    logger.debug(f"Skipping poll {poll_id} - invalid date: {expires_at_str}")
+                    logger.debug(f"Skipping poll {poll_id} - invalid date: {parse_err}")
                     continue
             
             logger.info(f"🔍 {len(near_deadline_polls)} polls within 24h of deadline")
