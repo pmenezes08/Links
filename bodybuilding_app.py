@@ -11169,13 +11169,23 @@ def close_poll():
                             c.execute("SELECT id FROM poll_notification_log WHERE poll_id=? AND username=? AND notification_type='closed'", 
                                      (poll_id, member_username))
                             if not c.fetchone():
-                                message = "🔒 Poll results are in! Check them out"
+                                # Get community name for notification
+                                comm_name = ""
+                                try:
+                                    c.execute("SELECT name FROM communities WHERE id = ?", (community_id,))
+                                    comm_row = c.fetchone()
+                                    if comm_row:
+                                        comm_name = comm_row['name'] if hasattr(comm_row, 'keys') else comm_row[0]
+                                except Exception:
+                                    pass
+                                
+                                message = f"🔒 Poll in {comm_name} closed. Check results!" if comm_name else "🔒 Poll closed. Check results!"
                                 
                                 try:
                                     # Pass username (not user_id) to match production DB foreign key constraint
                                     create_notification(member_username, None, 'poll_closed', poll_data['post_id'], community_id, message)
                                     send_push_to_user(member_username, {
-                                        'title': 'Poll Closed',
+                                        'title': f'{comm_name} Poll Closed' if comm_name else 'Poll Closed',
                                         'body': message,
                                         'url': f'/post/{poll_data["post_id"]}',
                                         'tag': f'poll-closed-{poll_id}'
@@ -11804,13 +11814,14 @@ def check_single_poll_notifications(poll_id, conn=None):
                     except Exception:
                         pass
                     
-                    message = f"📊 {vote_count} {community_name} member{'s' if vote_count != 1 else ''} {'have' if vote_count != 1 else 'has'} voted, go vote on the poll!"
+                    # Shorter message to avoid truncation
+                    message = f"📊 {vote_count} voted in {community_name}. Vote now!" if community_name else f"📊 {vote_count} voted. Vote now!"
                     
                     try:
                         # Pass username (not user_id) to match production DB foreign key constraint
                         create_notification(username_to_notify, None, 'poll_reminder', post_id, community_id, message)
                         send_push_to_user(username_to_notify, {
-                            'title': 'Poll Update',
+                            'title': f'{community_name} Poll' if community_name else 'Poll Update',
                             'body': message,
                             'url': f'/post/{post_id}',
                             'tag': f'poll-25-{poll_id}'
@@ -11892,13 +11903,23 @@ def check_single_poll_notifications(poll_id, conn=None):
                 c.execute(f"SELECT id FROM poll_notification_log WHERE poll_id={ph} AND username={ph} AND notification_type='80_voter'", 
                          (poll_id, username_to_notify))
                 if not c.fetchone():
-                    message = "📋 Review the poll results before it closes"
+                    # Get community name for notification
+                    community_name = ""
+                    try:
+                        c.execute(f"SELECT name FROM communities WHERE id = {ph}", (community_id,))
+                        comm_row = c.fetchone()
+                        if comm_row:
+                            community_name = comm_row['name'] if hasattr(comm_row, 'keys') else comm_row[0]
+                    except Exception:
+                        pass
+                    
+                    message = f"📋 Poll in {community_name} closing. Review results!" if community_name else "📋 Poll closing. Review results!"
                     
                     try:
                         # Pass username (not user_id) to match production DB foreign key constraint
                         create_notification(username_to_notify, None, 'poll_reminder', post_id, community_id, message)
                         send_push_to_user(username_to_notify, {
-                            'title': 'Poll Closing Soon',
+                            'title': f'{community_name} Poll Closing' if community_name else 'Poll Closing Soon',
                             'body': message,
                             'url': f'/post/{post_id}',
                             'tag': f'poll-80-voter-{poll_id}'
