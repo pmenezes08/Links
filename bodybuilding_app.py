@@ -11029,26 +11029,26 @@ def create_poll():
                           (poll_id, option_text))
             
             # Get community members before committing
-            member_ids = []
+            member_usernames = []
             if community_id:
                 try:
                     logger.info(f"🔍 Fetching members for community {community_id}, USE_MYSQL={USE_MYSQL}")
                     if USE_MYSQL:
                         c.execute("""
-                            SELECT DISTINCT u.id
+                            SELECT DISTINCT u.username
                             FROM user_communities uc
                             JOIN users u ON uc.user_id = u.id
                             WHERE uc.community_id = %s AND u.username != %s
                         """, (community_id, username))
                     else:
                         c.execute("""
-                            SELECT DISTINCT u.id
+                            SELECT DISTINCT u.username
                             FROM user_communities uc
                             JOIN users u ON uc.user_id = u.id
                             WHERE uc.community_id = ? AND u.username != ?
                         """, (community_id, username))
-                    member_ids = [row[0] for row in c.fetchall()]
-                    logger.info(f"✅ Found {len(member_ids)} members to notify for poll in community {community_id}")
+                    member_usernames = [row[0] for row in c.fetchall()]
+                    logger.info(f"✅ Found {len(member_usernames)} members to notify for poll in community {community_id}")
                 except Exception as e:
                     logger.error(f"❌ Error fetching community members for poll notifications: {type(e).__name__}: {str(e)}")
                     import traceback
@@ -11057,11 +11057,11 @@ def create_poll():
             conn.commit()
             
             # Notify all community members about the new poll (after commit)
-            if member_ids:
+            if member_usernames:
                 try:
-                    for member_id in member_ids:
+                    for member_username in member_usernames:
                         create_notification(
-                            user_id=member_id,
+                            user_id=member_username,
                             from_user=username,
                             notification_type='poll',
                             post_id=post_id,
