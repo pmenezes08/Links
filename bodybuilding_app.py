@@ -11673,34 +11673,24 @@ def check_single_poll_notifications(poll_id, conn=None):
         
         logger.info(f"🔍 Helper called for poll {poll_id}, USE_MYSQL={USE_MYSQL}")
         
-        # Get poll details - filter out empty/invalid expires_at
+        # Get poll details - NO datetime filtering in SQL
         if USE_MYSQL:
-            logger.info(f"🔍 Helper using MySQL query")
+            logger.info(f"🔍 Helper using MySQL query (no datetime filters)")
             c.execute("""
                 SELECT p.id, p.question, p.created_at, p.expires_at, p.post_id,
                        ps.community_id
                 FROM polls p
                 JOIN posts ps ON p.post_id = ps.id
-                WHERE p.id = %s
-                  AND p.is_active = 1 
-                  AND p.expires_at IS NOT NULL 
-                  AND p.expires_at != ''
-                  AND LENGTH(p.expires_at) >= 10
-                  AND STR_TO_DATE(p.expires_at, '%%Y-%%m-%%d %%H:%%i:%%s') IS NOT NULL
-                  AND STR_TO_DATE(p.expires_at, '%%Y-%%m-%%d %%H:%%i:%%s') > NOW()
+                WHERE p.id = %s AND p.is_active = 1
             """, (poll_id,))
         else:
+            logger.info(f"🔍 Helper using SQLite query (no datetime filters)")
             c.execute("""
                 SELECT p.id, p.question, p.created_at, p.expires_at, p.post_id,
                        ps.community_id
                 FROM polls p
                 JOIN posts ps ON p.post_id = ps.id
-                WHERE p.id = ?
-                  AND p.is_active = 1 
-                  AND p.expires_at IS NOT NULL 
-                  AND p.expires_at != ''
-                  AND length(p.expires_at) > 0
-                  AND datetime(p.expires_at) > datetime('now')
+                WHERE p.id = ? AND p.is_active = 1
             """, (poll_id,))
         
         poll_row = c.fetchone()
@@ -11713,10 +11703,16 @@ def check_single_poll_notifications(poll_id, conn=None):
         post_id = poll_row['post_id'] if hasattr(poll_row, 'keys') else poll_row[4]
         community_id = poll_row['community_id'] if hasattr(poll_row, 'keys') else poll_row[5]
         
+        # Validate expires_at in Python
+        if not expires_at_str or expires_at_str.strip() == '' or len(expires_at_str) < 10:
+            logger.debug(f"Poll {poll_id} has no valid expires_at")
+            return 0
+        
         try:
             created_at = datetime.strptime(created_at_str, '%Y-%m-%d %H:%M:%S')
             expires_at = datetime.strptime(expires_at_str, '%Y-%m-%d %H:%M:%S')
-        except Exception:
+        except Exception as date_err:
+            logger.debug(f"Poll {poll_id} has invalid date format: {date_err}")
             return 0
         
         # Calculate time progress
