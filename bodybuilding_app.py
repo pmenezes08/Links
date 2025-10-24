@@ -11685,8 +11685,9 @@ def check_single_poll_notifications(poll_id, conn=None):
                   AND p.is_active = 1 
                   AND p.expires_at IS NOT NULL 
                   AND p.expires_at != ''
-                  AND LENGTH(p.expires_at) > 0
-                  AND CAST(p.expires_at AS DATETIME) > NOW()
+                  AND LENGTH(p.expires_at) >= 10
+                  AND STR_TO_DATE(p.expires_at, '%%Y-%%m-%%d %%H:%%i:%%s') IS NOT NULL
+                  AND STR_TO_DATE(p.expires_at, '%%Y-%%m-%%d %%H:%%i:%%s') > NOW()
             """, (poll_id,))
         else:
             c.execute("""
@@ -11935,9 +11936,10 @@ def api_poll_notification_check():
                     WHERE p.is_active = 1 
                       AND p.expires_at IS NOT NULL 
                       AND p.expires_at != ''
-                      AND LENGTH(p.expires_at) > 0
-                      AND CAST(p.expires_at AS DATETIME) > NOW()
-                      AND CAST(p.expires_at AS DATETIME) < DATE_ADD(NOW(), INTERVAL 24 HOUR)
+                      AND LENGTH(p.expires_at) >= 10
+                      AND STR_TO_DATE(p.expires_at, '%Y-%m-%d %H:%i:%s') IS NOT NULL
+                      AND STR_TO_DATE(p.expires_at, '%Y-%m-%d %H:%i:%s') > NOW()
+                      AND STR_TO_DATE(p.expires_at, '%Y-%m-%d %H:%i:%s') < DATE_ADD(NOW(), INTERVAL 24 HOUR)
                 """)
             else:
                 logger.info("Using SQLite query for poll notification check")
