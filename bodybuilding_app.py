@@ -11926,37 +11926,44 @@ def api_poll_notification_check():
         with get_db_connection() as conn:
             c = conn.cursor()
             
-            # OPTIMIZED: Only check polls within 24 hours of deadline
-            # Filter out empty/invalid expires_at BEFORE datetime comparison
-            if USE_MYSQL:
-                logger.info("🔍 Using MySQL query")
-                c.execute("""
-                    SELECT p.id
-                    FROM polls p
-                    WHERE p.is_active = 1 
-                      AND p.expires_at IS NOT NULL 
-                      AND p.expires_at != ''
-                      AND LENGTH(p.expires_at) >= 10
-                      AND STR_TO_DATE(p.expires_at, '%Y-%m-%d %H:%i:%s') IS NOT NULL
-                      AND STR_TO_DATE(p.expires_at, '%Y-%m-%d %H:%i:%s') > NOW()
-                      AND STR_TO_DATE(p.expires_at, '%Y-%m-%d %H:%i:%s') < DATE_ADD(NOW(), INTERVAL 24 HOUR)
-                """)
-            else:
-                logger.info("Using SQLite query for poll notification check")
-                c.execute("""
-                    SELECT p.id
-                    FROM polls p
-                    WHERE p.is_active = 1 
-                      AND p.expires_at IS NOT NULL 
-                      AND p.expires_at != ''
-                      AND length(p.expires_at) > 0
-                      AND datetime(p.expires_at) > datetime('now')
-                      AND datetime(p.expires_at) < datetime('now', '+24 hours')
-                """)
+            # SAFE APPROACH: Fetch all active polls, filter in Python
+            # MySQL's query optimizer is unpredictable with CAST/STR_TO_DATE on empty strings
+            # Safer to filter datetime values in Python where we have full control
+            logger.info("🔍 Fetching all active polls (will filter in Python)")
+            c.execute("""
+                SELECT p.id, p.expires_at, p.created_at
+                FROM polls p
+                WHERE p.is_active = 1
+            """)
             
             logger.info("🔍 Query executed, fetching results...")
-            near_deadline_polls = c.fetchall()
-            logger.info(f"🔍 Fetchall succeeded, got {len(near_deadline_polls)} polls")
+            all_polls = c.fetchall()
+            logger.info(f"🔍 Got {len(all_polls)} active polls, filtering in Python...")
+            
+            # Filter in Python for safety
+            near_deadline_polls = []
+            for poll in all_polls:
+                poll_id = poll['id'] if hasattr(poll, 'keys') else poll[0]
+                expires_at_str = poll['expires_at'] if hasattr(poll, 'keys') else poll[1]
+                created_at_str = poll['created_at'] if hasattr(poll, 'keys') else poll[2]
+                
+                # Skip if no valid expires_at
+                if not expires_at_str or expires_at_str.strip() == '' or len(expires_at_str) < 10:
+                    continue
+                
+                try:
+                    # Parse dates
+                    expires_at = datetime.strptime(expires_at_str, '%Y-%m-%d %H:%M:%S')
+                    
+                    # Only process polls within 24 hours of deadline
+                    time_until_deadline = (expires_at - now).total_seconds() / 3600  # hours
+                    if 0 < time_until_deadline < 24:
+                        near_deadline_polls.append(poll)
+                except Exception as parse_err:
+                    logger.debug(f"Skipping poll {poll_id} - invalid date: {expires_at_str}")
+                    continue
+            
+            logger.info(f"🔍 {len(near_deadline_polls)} polls within 24h of deadline")
             notifications_sent = 0
             
             logger.info(f"Cron checking {len(near_deadline_polls)} polls within 24 hours of deadline")
