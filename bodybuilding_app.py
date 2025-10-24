@@ -11823,7 +11823,7 @@ def check_single_poll_notifications(poll_id, conn=None):
                         send_push_to_user(username_to_notify, {
                             'title': f'{community_name} Poll' if community_name else 'Poll Update',
                             'body': message,
-                            'url': f'/post/{post_id}',
+                            'url': f'/community/{community_id}/polls_react',
                             'tag': f'poll-25-{poll_id}'
                         })
                     except Exception:
