@@ -11030,6 +11030,7 @@ def create_poll():
             member_ids = []
             if community_id:
                 try:
+                    logger.info(f"🔍 Fetching members for community {community_id}, USE_MYSQL={USE_MYSQL}")
                     if USE_MYSQL:
                         c.execute("""
                             SELECT DISTINCT u.id
@@ -11045,9 +11046,11 @@ def create_poll():
                             WHERE uc.community_id = ? AND u.username != ?
                         """, (community_id, username))
                     member_ids = [row[0] for row in c.fetchall()]
-                    logger.info(f"Found {len(member_ids)} members to notify for poll in community {community_id}")
+                    logger.info(f"✅ Found {len(member_ids)} members to notify for poll in community {community_id}")
                 except Exception as e:
-                    logger.error(f"Error fetching community members for poll notifications: {str(e)}")
+                    logger.error(f"❌ Error fetching community members for poll notifications: {type(e).__name__}: {str(e)}")
+                    import traceback
+                    logger.error(traceback.format_exc())
             
             conn.commit()
             
