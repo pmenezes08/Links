@@ -11548,14 +11548,14 @@ def get_active_polls():
         with get_db_connection() as conn:
             c = conn.cursor()
             
-            # Get active polls (not expired) for the specific community
+            # Get ALL polls (both active and archived) for the specific community
             if community_id:
                 c.execute("""
                     SELECT p.*, po.timestamp as created_at, po.username
                     FROM polls p 
                     JOIN posts po ON p.post_id = po.id 
-                    WHERE p.is_active = 1 AND (p.expires_at IS NULL OR p.expires_at >= NOW()) AND po.community_id = ?
-                    ORDER BY po.timestamp DESC
+                    WHERE po.community_id = ?
+                    ORDER BY p.is_active DESC, po.timestamp DESC
                 """, (community_id,))
             else:
                 # Fallback to all polls if no community_id provided

@@ -4,15 +4,16 @@ import { useHeader } from '../contexts/HeaderContext'
 import Avatar from '../components/Avatar'
 
 type PollOption = { id: number; option_text: string; votes: number; voters?: { username: string; profile_picture?: string; voted_at: string }[] }
-type ActivePoll = { id:number; question:string; options: PollOption[]; single_vote?: boolean; total_votes?: number; user_vote?: number|null }
+type ActivePoll = { id:number; question:string; options: PollOption[]; single_vote?: boolean; total_votes?: number; user_vote?: number|null; is_active: number; expires_at?: string; created_by?: string }
 
 export default function CommunityPolls(){
   const { community_id } = useParams()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const { setTitle } = useHeader()
-  const [activeTab, setActiveTab] = useState<'active'|'create'>('active')
+  const [activeTab, setActiveTab] = useState<'active'|'archive'|'create'>('active')
   const [polls, setPolls] = useState<ActivePoll[]>([])
+  const [archivedPolls, setArchivedPolls] = useState<ActivePoll[]>([])
   const [loading, setLoading] = useState(true)
   const [successMsg, setSuccessMsg] = useState<string| null>(null)
   const [question, setQuestion] = useState('')
@@ -36,7 +37,20 @@ export default function CommunityPolls(){
       const r = await fetch(`/get_active_polls?community_id=${community_id}`, { credentials:'include' })
       const j = await r.json()
       if (j?.success){
-        setPolls((j.polls || []).map((p:any) => ({ id:p.id, question:p.question, options:p.options||[], single_vote:p.single_vote, total_votes:p.total_votes, user_vote:p.user_vote })))
+        const allPolls = (j.polls || []).map((p:any) => ({ 
+          id:p.id, 
+          question:p.question, 
+          options:p.options||[], 
+          single_vote:p.single_vote, 
+          total_votes:p.total_votes, 
+          user_vote:p.user_vote,
+          is_active: p.is_active,
+          expires_at: p.expires_at,
+          created_by: p.created_by
+        }))
+        // Split into active and archived
+        setPolls(allPolls.filter((p:ActivePoll) => p.is_active === 1))
+        setArchivedPolls(allPolls.filter((p:ActivePoll) => p.is_active === 0))
       }
     }finally{ setLoading(false) }
   }
@@ -257,12 +271,16 @@ export default function CommunityPolls(){
           </button>
           <div className="flex-1 h-full flex">
             <button type="button" className={`flex-1 text-center text-sm font-medium ${activeTab==='active' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`} onClick={()=> setActiveTab('active')}>
-              <div className="pt-2">Active Polls</div>
-              <div className={`h-0.5 rounded-full w-16 mx-auto mt-1 ${activeTab==='active' ? 'bg-[#4db6ac]' : 'bg-transparent'}`} />
+              <div className="pt-2">Active</div>
+              <div className={`h-0.5 rounded-full w-12 mx-auto mt-1 ${activeTab==='active' ? 'bg-[#4db6ac]' : 'bg-transparent'}`} />
+            </button>
+            <button type="button" className={`flex-1 text-center text-sm font-medium ${activeTab==='archive' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`} onClick={()=> setActiveTab('archive')}>
+              <div className="pt-2">Archive</div>
+              <div className={`h-0.5 rounded-full w-12 mx-auto mt-1 ${activeTab==='archive' ? 'bg-[#4db6ac]' : 'bg-transparent'}`} />
             </button>
             <button type="button" className={`flex-1 text-center text-sm font-medium ${activeTab==='create' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`} onClick={()=> setActiveTab('create')}>
-              <div className="pt-2">Create Poll</div>
-              <div className={`h-0.5 rounded-full w-16 mx-auto mt-1 ${activeTab==='create' ? 'bg-[#4db6ac]' : 'bg-transparent'}`} />
+              <div className="pt-2">Create</div>
+              <div className={`h-0.5 rounded-full w-12 mx-auto mt-1 ${activeTab==='create' ? 'bg-[#4db6ac]' : 'bg-transparent'}`} />
             </button>
           </div>
         </div>
@@ -311,6 +329,41 @@ export default function CommunityPolls(){
               <button className="px-3 py-1.5 rounded-md bg-[#4db6ac] text-black text-sm hover:brightness-110">{editingPollId ? 'Update' : 'Create'}</button>
             </div>
           </form>
+        ) : activeTab === 'archive' ? (
+          <div className="space-y-3">
+            {loading ? (
+              <div className="text-[#9fb0b5]">Loading…</div>
+            ) : archivedPolls.length === 0 ? (
+              <div className="text-[#9fb0b5]">No archived polls.</div>
+            ) : (
+              archivedPolls.map(p => (
+                <div key={p.id} className="rounded-2xl border border-white/10 bg-white/[0.035] opacity-75 overflow-hidden">
+                  <div className="px-3 py-2 flex items-center gap-2 border-b border-white/10">
+                    <div className="font-medium flex-1">{p.question}</div>
+                    <span className="text-xs text-[#9fb0b5]">🔒 Closed</span>
+                    <button title="View voters" className="px-2 py-1 rounded-md border border-[#4db6ac] text-[#4db6ac] hover:bg-[#4db6ac]/10 text-sm" onClick={()=> loadVoters(p.id)}>
+                      <i className="fa-solid fa-users mr-1" />
+                      Voters
+                    </button>
+                  </div>
+                  <div className="px-3 py-2 space-y-2">
+                    {p.options?.map((o, i) => {
+                      const pct = p.total_votes ? Math.round((o.votes / p.total_votes) * 100) : 0
+                      return (
+                        <div key={i} className="w-full text-left px-3 py-2 rounded border border-white/10 relative overflow-hidden">
+                          <div className="absolute inset-0 bg-[#4db6ac]/20" style={{ width: `${pct}%` }} />
+                          <div className="relative flex items-center justify-between">
+                            <span>{o.option_text}</span>
+                            <span className="text-xs text-[#9fb0b5]">{o.votes} {pct > 0 ? `(${pct}%)` : ''}</span>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
         ) : (
           <div className="space-y-3">
             {loading ? (
