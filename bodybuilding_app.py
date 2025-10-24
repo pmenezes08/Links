@@ -11753,25 +11753,26 @@ def check_single_poll_notifications(poll_id, conn=None):
         progress = elapsed / total_duration
         
         # Get community members
-        c.execute("""
+        ph = '%s' if USE_MYSQL else '?'
+        c.execute(f"""
             SELECT DISTINCT u.username
             FROM user_communities uc
             JOIN users u ON uc.user_id = u.id
-            WHERE uc.community_id = ?
+            WHERE uc.community_id = {ph}
         """, (community_id,))
         members = [r['username'] if hasattr(r, 'keys') else r[0] for r in c.fetchall()]
         
         # Get voters
-        c.execute("""
+        c.execute(f"""
             SELECT DISTINCT username
             FROM poll_votes
-            WHERE poll_id = ?
+            WHERE poll_id = {ph}
         """, (poll_id,))
         voters = set([r['username'] if hasattr(r, 'keys') else r[0] for r in c.fetchall()])
         non_voters = [m for m in members if m not in voters]
         
         # Count total votes
-        c.execute("SELECT COUNT(DISTINCT username) as vote_count FROM poll_votes WHERE poll_id = ?", (poll_id,))
+        c.execute(f"SELECT COUNT(DISTINCT username) as vote_count FROM poll_votes WHERE poll_id = {ph}", (poll_id,))
         vote_count_row = c.fetchone()
         vote_count = vote_count_row['vote_count'] if hasattr(vote_count_row, 'keys') else vote_count_row[0]
         
@@ -11787,12 +11788,12 @@ def check_single_poll_notifications(poll_id, conn=None):
         logger.info(f"🎯 Poll {poll_id}: Checking 25% window (0.20-0.35), progress={progress:.3f}")
         if 0.20 <= progress < 0.35:
             for username_to_notify in non_voters:
-                c.execute("SELECT id FROM poll_notification_log WHERE poll_id=? AND username=? AND notification_type='25'", 
+                c.execute(f"SELECT id FROM poll_notification_log WHERE poll_id={ph} AND username={ph} AND notification_type='25'", 
                          (poll_id, username_to_notify))
                 if not c.fetchone():
                     community_name = ""
                     try:
-                        c.execute("SELECT name FROM communities WHERE id = ?", (community_id,))
+                        c.execute(f"SELECT name FROM communities WHERE id = {ph}", (community_id,))
                         comm_row = c.fetchone()
                         if comm_row:
                             community_name = comm_row['name'] if hasattr(comm_row, 'keys') else comm_row[0]
@@ -11813,7 +11814,7 @@ def check_single_poll_notifications(poll_id, conn=None):
                     except Exception:
                         pass
                     
-                    c.execute("INSERT INTO poll_notification_log (poll_id, username, notification_type) VALUES (?, ?, '25')", 
+                    c.execute(f"INSERT INTO poll_notification_log (poll_id, username, notification_type) VALUES ({ph}, {ph}, '25')", 
                              (poll_id, username_to_notify))
                     notifications_sent += 1
         
@@ -11856,7 +11857,7 @@ def check_single_poll_notifications(poll_id, conn=None):
             logger.info(f"🎯 Poll {poll_id}: IN 80% window! Sending to {len(non_voters)} non-voters, {len(voters)} voters")
             # Non-voters
             for username_to_notify in non_voters:
-                c.execute("SELECT id FROM poll_notification_log WHERE poll_id=? AND username=? AND notification_type='80_nonvoter'", 
+                c.execute(f"SELECT id FROM poll_notification_log WHERE poll_id={ph} AND username={ph} AND notification_type='80_nonvoter'", 
                          (poll_id, username_to_notify))
                 if not c.fetchone():
                     if days_remaining > 1:
@@ -11878,13 +11879,13 @@ def check_single_poll_notifications(poll_id, conn=None):
                     except Exception:
                         pass
                     
-                    c.execute("INSERT INTO poll_notification_log (poll_id, username, notification_type) VALUES (?, ?, '80_nonvoter')", 
+                    c.execute(f"INSERT INTO poll_notification_log (poll_id, username, notification_type) VALUES ({ph}, {ph}, '80_nonvoter')", 
                              (poll_id, username_to_notify))
                     notifications_sent += 1
             
             # Voters
             for username_to_notify in list(voters):
-                c.execute("SELECT id FROM poll_notification_log WHERE poll_id=? AND username=? AND notification_type='80_voter'", 
+                c.execute(f"SELECT id FROM poll_notification_log WHERE poll_id={ph} AND username={ph} AND notification_type='80_voter'", 
                          (poll_id, username_to_notify))
                 if not c.fetchone():
                     message = "📋 Review the poll results before it closes"
@@ -11901,7 +11902,7 @@ def check_single_poll_notifications(poll_id, conn=None):
                     except Exception:
                         pass
                     
-                    c.execute("INSERT INTO poll_notification_log (poll_id, username, notification_type) VALUES (?, ?, '80_voter')", 
+                    c.execute(f"INSERT INTO poll_notification_log (poll_id, username, notification_type) VALUES ({ph}, {ph}, '80_voter')", 
                              (poll_id, username_to_notify))
                     notifications_sent += 1
         
