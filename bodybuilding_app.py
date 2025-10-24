@@ -11770,6 +11770,7 @@ def check_single_poll_notifications(poll_id, conn=None):
         
         # WIDENED DETECTION WINDOWS (15% instead of 5% for better coverage)
         # 25% notification - non-voters only
+        logger.info(f"🎯 Poll {poll_id}: Checking 25% window (0.20-0.35), progress={progress:.3f}")
         if 0.20 <= progress < 0.35:
             for username_to_notify in non_voters:
                 c.execute("SELECT id FROM poll_notification_log WHERE poll_id=? AND username=? AND notification_type='25'", 
