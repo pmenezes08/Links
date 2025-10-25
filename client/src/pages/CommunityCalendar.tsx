@@ -103,13 +103,15 @@ export default function CommunityCalendar(){
             let timeSource = ''
             
             if (event.end_time) {
-              // Use end_time if available (append Z to parse as UTC)
-              const timeStr = event.end_time + (event.end_time.includes('Z') ? '' : 'Z')
+              // Use end_time if available (convert space to T, append Z for UTC)
+              let timeStr = String(event.end_time).replace(' ', 'T')
+              if (!timeStr.includes('Z')) timeStr += 'Z'
               eventDateTime = new Date(timeStr)
               timeSource = `end_time: ${event.end_time} → ${timeStr}`
             } else if (event.start_time) {
-              // Use start_time if available (append Z to parse as UTC)
-              const timeStr = event.start_time + (event.start_time.includes('Z') ? '' : 'Z')
+              // Use start_time if available (convert space to T, append Z for UTC)
+              let timeStr = String(event.start_time).replace(' ', 'T')
+              if (!timeStr.includes('Z')) timeStr += 'Z'
               eventDateTime = new Date(timeStr)
               timeSource = `start_time: ${event.start_time} → ${timeStr}`
             } else if (event.end_date) {
