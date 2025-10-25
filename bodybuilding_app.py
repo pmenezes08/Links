@@ -12041,17 +12041,6 @@ def check_single_event_notifications(event_id, conn=None):
         if not participants:
             return 0
         
-        # Get community name
-        community_name = ""
-        if community_id:
-            try:
-                c.execute(f"SELECT name FROM communities WHERE id = {ph}", (community_id,))
-                comm_row = c.fetchone()
-                if comm_row:
-                    community_name = comm_row['name'] if hasattr(comm_row, 'keys') else comm_row[0]
-            except Exception:
-                pass
-        
         time_until_event = (event_start - now).total_seconds()
         hours_until = time_until_event / 3600
         days_until = time_until_event / 86400
@@ -12073,12 +12062,12 @@ def check_single_event_notifications(event_id, conn=None):
                 c.execute(f"SELECT id FROM event_notification_log WHERE event_id={ph} AND username={ph} AND notification_type='1_week'", 
                          (event_id, username_to_notify))
                 if not c.fetchone():
-                    message = f"📅 Event in {community_name}: '{title}' in 1 week" if community_name else f"📅 Event '{title}' in 1 week"
+                    message = f"📅 Event: '{title}' in 1 week"
                     
                     try:
                         create_notification(username_to_notify, None, 'event_reminder', None, community_id, message)
                         send_push_to_user(username_to_notify, {
-                            'title': f'{community_name} Event Reminder' if community_name else 'Event Reminder',
+                            'title': f'Event Reminder: {title}',
                             'body': message,
                             'url': f'/community/{community_id}/calendar' if community_id else '/calendar',
                             'tag': f'event-1week-{event_id}'
@@ -12096,12 +12085,12 @@ def check_single_event_notifications(event_id, conn=None):
                 c.execute(f"SELECT id FROM event_notification_log WHERE event_id={ph} AND username={ph} AND notification_type='1_day'", 
                          (event_id, username_to_notify))
                 if not c.fetchone():
-                    message = f"📅 Event in {community_name}: '{title}' tomorrow" if community_name else f"📅 Event '{title}' tomorrow"
+                    message = f"📅 Event: '{title}' tomorrow"
                     
                     try:
                         create_notification(username_to_notify, None, 'event_reminder', None, community_id, message)
                         send_push_to_user(username_to_notify, {
-                            'title': f'{community_name} Event Tomorrow' if community_name else 'Event Tomorrow',
+                            'title': f'Event Tomorrow: {title}',
                             'body': message,
                             'url': f'/community/{community_id}/calendar' if community_id else '/calendar',
                             'tag': f'event-1day-{event_id}'
@@ -12119,12 +12108,12 @@ def check_single_event_notifications(event_id, conn=None):
                 c.execute(f"SELECT id FROM event_notification_log WHERE event_id={ph} AND username={ph} AND notification_type='1_hour'", 
                          (event_id, username_to_notify))
                 if not c.fetchone():
-                    message = f"⏰ Event in {community_name}: '{title}' in 1 hour!" if community_name else f"⏰ Event '{title}' in 1 hour!"
+                    message = f"⏰ Event: '{title}' in 1 hour!"
                     
                     try:
                         create_notification(username_to_notify, None, 'event_reminder', None, community_id, message)
                         send_push_to_user(username_to_notify, {
-                            'title': f'{community_name} Event Soon!' if community_name else 'Event Soon!',
+                            'title': f'Event Soon: {title}',
                             'body': message,
                             'url': f'/community/{community_id}/calendar' if community_id else '/calendar',
                             'tag': f'event-1hour-{event_id}'
@@ -12152,16 +12141,16 @@ def check_single_event_notifications(event_id, conn=None):
                                  (event_id, username_to_notify))
                         if not c.fetchone():
                             if days_until > 1:
-                                message = f"📆 Event in {community_name}: '{title}' in {int(days_until)} days" if community_name else f"📆 Event '{title}' in {int(days_until)} days"
+                                message = f"📆 Event: '{title}' in {int(days_until)} days"
                             elif hours_until > 1:
-                                message = f"📆 Event in {community_name}: '{title}' in {int(hours_until)} hours" if community_name else f"📆 Event '{title}' in {int(hours_until)} hours"
+                                message = f"📆 Event: '{title}' in {int(hours_until)} hours"
                             else:
-                                message = f"📆 Event in {community_name}: '{title}' starting soon!" if community_name else f"📆 Event '{title}' starting soon!"
+                                message = f"📆 Event: '{title}' starting soon!"
                             
                             try:
                                 create_notification(username_to_notify, None, 'event_reminder', None, community_id, message)
                                 send_push_to_user(username_to_notify, {
-                                    'title': f'{community_name} Event Soon' if community_name else 'Event Soon',
+                                    'title': f'Event: {title}',
                                     'body': message,
                                     'url': f'/community/{community_id}/calendar' if community_id else '/calendar',
                                     'tag': f'event-80-{event_id}'
