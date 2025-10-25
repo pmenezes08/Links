@@ -27,11 +27,12 @@ export default function CommunityCalendar(){
   const navigate = useNavigate()
   const { setTitle } = useHeader()
   const [events, setEvents] = useState<EventItem[]>([])
+  const [archivedEvents, setArchivedEvents] = useState<EventItem[]>([])
   const [loading, setLoading] = useState(true)
   const [members, setMembers] = useState<Array<{ username:string; profile_picture?:string|null }>>([])
   const [inviteAll, setInviteAll] = useState(false)
   const [selected, setSelected] = useState<Record<string, boolean>>({})
-  const [activeTab, setActiveTab] = useState<'calendar'|'create'>('calendar')
+  const [activeTab, setActiveTab] = useState<'calendar'|'archive'|'create'>('calendar')
   const [inviteOpen, setInviteOpen] = useState(false)
   const [successMsg, setSuccessMsg] = useState<string| null>(null)
   const [modalEvent, setModalEvent] = useState<EventItem| null>(null)
@@ -85,7 +86,45 @@ export default function CommunityCalendar(){
       const j = await r.json()
       if (j?.success && Array.isArray(j.events)){
         const filtered = (j.events as any[]).filter(e => `${e.community_id||''}` === `${community_id}`)
-        setEvents(filtered as any)
+        
+        // Split events into upcoming and archived (past events)
+        const now = new Date()
+        const upcoming: EventItem[] = []
+        const archived: EventItem[] = []
+        
+        filtered.forEach((event: any) => {
+          try {
+            // Determine event end datetime
+            let eventDateTime: Date
+            
+            if (event.end_time) {
+              // Use end_time if available
+              eventDateTime = new Date(event.end_time)
+            } else if (event.start_time) {
+              // Use start_time if available
+              eventDateTime = new Date(event.start_time)
+            } else if (event.end_date) {
+              // Use end_date at end of day
+              eventDateTime = new Date(event.end_date + 'T23:59:59')
+            } else {
+              // Use start date at end of day
+              eventDateTime = new Date(event.date + 'T23:59:59')
+            }
+            
+            // Event is archived if it's in the past
+            if (eventDateTime < now) {
+              archived.push(event)
+            } else {
+              upcoming.push(event)
+            }
+          } catch (e) {
+            // If parsing fails, treat as upcoming
+            upcoming.push(event)
+          }
+        })
+        
+        setEvents(upcoming as any)
+        setArchivedEvents(archived as any)
       }
     }catch{}
   }
@@ -115,6 +154,16 @@ export default function CommunityCalendar(){
     })
     return Array.from(map.entries()).sort(([a],[b]) => a.localeCompare(b))
   }, [events])
+
+  const groupedArchived = useMemo(() => {
+    const map = new Map<string, EventItem[]>()
+    archivedEvents.forEach(ev => {
+      const key = ev.date
+      if (!map.has(key)) map.set(key, [])
+      map.get(key)!.push(ev)
+    })
+    return Array.from(map.entries()).sort(([a],[b]) => b.localeCompare(a)) // Reverse order for archive
+  }, [archivedEvents])
 
   async function createEvent(formData: FormData){
     const params = new URLSearchParams()
@@ -395,6 +444,55 @@ export default function CommunityCalendar(){
               <button className="px-3 py-1.5 rounded-md bg-[#4db6ac] text-black text-sm hover:brightness-110">Add</button>
             </div>
           </form>
+        ) : activeTab === 'archive' ? (
+          <div className="space-y-3">
+            {loading ? (
+              <div className="text-[#9fb0b5]">Loading archived events…</div>
+            ) : groupedArchived.length === 0 ? (
+              <div className="text-[#9fb0b5]">No archived events yet.</div>
+            ) : (
+              groupedArchived.map(([date, items]) => (
+                <div key={date} className="rounded-2xl border border-white/10 bg-white/[0.035] overflow-hidden opacity-75">
+                  <div className="px-3 py-2 bg-[#6c757d] text-xs text-black font-medium flex items-center gap-2">
+                    <span>🔒 Past Event</span>
+                    <span>•</span>
+                    <span>
+                      {(() => {
+                        const firstWithEndDate = items.find(ev => ev.end_date && ev.end_date !== date && ev.end_date !== '0000-00-00')
+                        return firstWithEndDate ? `${date} → ${firstWithEndDate.end_date}` : date
+                      })()}
+                    </span>
+                  </div>
+                  <div className="divide-y divide-white/10">
+                    {items.map(ev => (
+                      <div key={ev.id} className="px-3 py-2 cursor-pointer hover:bg-white/5" onClick={()=> navigate(`/event/${ev.id}`)}>
+                        <div className="flex items-center gap-2">
+                          <div className="font-medium flex-1">{ev.title}</div>
+                          <div className="text-xs text-[#9fb0b5]">
+                            {(() => {
+                              const times = [ev.start_time, ev.end_time]
+                                .filter(t => t && t !== '0000-00-00 00:00:00' && t !== '00:00:00' && t !== '00:00')
+                              const timeStr = times.length > 0 ? times.join(' - ') : ''
+                              return timeStr && ev.timezone ? `${timeStr} ${ev.timezone}` : timeStr
+                            })()}
+                          </div>
+                        </div>
+                        {ev.description ? (<div className="text-sm text-[#cfd8dc] mt-1">{ev.description}</div>) : null}
+                        <div className="text-xs text-[#9fb0b5] mt-2 flex items-center gap-2 flex-wrap">
+                          <span className="px-2 py-1 rounded-full border border-white/10">Going {ev.rsvp_counts?.going||0}</span>
+                          <span className="px-2 py-1 rounded-full border border-white/10">Maybe {ev.rsvp_counts?.maybe||0}</span>
+                          <span className="px-2 py-1 rounded-full border border-white/10">Not going {ev.rsvp_counts?.not_going||0}</span>
+                          {typeof ev.rsvp_counts?.no_response === 'number' && ev.rsvp_counts.no_response > 0 && (
+                            <span className="px-2 py-1 rounded-full border border-white/10">No response {ev.rsvp_counts.no_response}</span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
         ) : (
           <div className="space-y-3">
             {loading ? (
