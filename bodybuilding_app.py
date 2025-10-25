@@ -14424,6 +14424,7 @@ def add_calendar_event():
                   start_time,           # start_time as DATETIME
                   end_time,             # end_time as DATETIME
                   description,
+                  created_at_utc,       # created_at in UTC
                   community_id,
                   timezone,
                   notification_preferences))
