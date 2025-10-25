@@ -92,27 +92,46 @@ export default function CommunityCalendar(){
         const upcoming: EventItem[] = []
         const archived: EventItem[] = []
         
+        console.log('🔍 Archive filtering debug:')
+        console.log('Now (local):', now)
+        console.log('Now (UTC):', now.toISOString())
+        
         filtered.forEach((event: any) => {
           try {
             // Determine event end datetime
             let eventDateTime: Date
+            let timeSource = ''
             
             if (event.end_time) {
               // Use end_time if available (append Z to parse as UTC)
-              eventDateTime = new Date(event.end_time + (event.end_time.includes('Z') ? '' : 'Z'))
+              const timeStr = event.end_time + (event.end_time.includes('Z') ? '' : 'Z')
+              eventDateTime = new Date(timeStr)
+              timeSource = `end_time: ${event.end_time} → ${timeStr}`
             } else if (event.start_time) {
               // Use start_time if available (append Z to parse as UTC)
-              eventDateTime = new Date(event.start_time + (event.start_time.includes('Z') ? '' : 'Z'))
+              const timeStr = event.start_time + (event.start_time.includes('Z') ? '' : 'Z')
+              eventDateTime = new Date(timeStr)
+              timeSource = `start_time: ${event.start_time} → ${timeStr}`
             } else if (event.end_date) {
               // Use end_date at end of day (UTC)
               eventDateTime = new Date(event.end_date + 'T23:59:59Z')
+              timeSource = `end_date: ${event.end_date}`
             } else {
               // Use start date at end of day (UTC)
               eventDateTime = new Date(event.date + 'T23:59:59Z')
+              timeSource = `date: ${event.date}`
             }
             
+            const isPast = eventDateTime < now
+            console.log(`📅 Event "${event.title}":`, {
+              source: timeSource,
+              parsed: eventDateTime.toISOString(),
+              isPast,
+              decision: isPast ? 'ARCHIVE' : 'ACTIVE'
+            })
+            
             // Event is archived if it's in the past
-            if (eventDateTime < now) {
+            if (isPast) {
               archived.push(event)
             } else {
               upcoming.push(event)
@@ -123,6 +142,8 @@ export default function CommunityCalendar(){
             upcoming.push(event)
           }
         })
+        
+        console.log(`✅ Split complete: ${upcoming.length} active, ${archived.length} archived`)
         
         setEvents(upcoming as any)
         setArchivedEvents(archived as any)
