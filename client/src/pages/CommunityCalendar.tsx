@@ -125,7 +125,6 @@ export default function CommunityCalendar(){
               }
               
               eventDateTime = new Date(timeStr)
-              timeSource = `end_time: ${event.end_time} → ${timeStr}`
             } else if (event.start_time && event.start_time !== '0000-00-00 00:00:00' && event.start_time !== 'None') {
               // start_time might be full datetime (YYYY-MM-DD HH:MM:SS) or just time (HH:MM)
               let timeStr = String(event.start_time)
