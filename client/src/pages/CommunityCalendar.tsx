@@ -106,22 +106,39 @@ export default function CommunityCalendar(){
             console.log(`🔍 RAW event data for "${event.title}":`, {
               start_time: event.start_time,
               end_time: event.end_time,
-              start_time_type: typeof event.start_time,
-              end_time_type: typeof event.end_time,
               date: event.date,
               end_date: event.end_date
             })
             
             if (event.end_time && event.end_time !== '0000-00-00 00:00:00' && event.end_time !== 'None') {
-              // Use end_time if available (convert space to T, append Z for UTC)
-              let timeStr = String(event.end_time).replace(' ', 'T')
-              if (!timeStr.includes('Z')) timeStr += 'Z'
+              // end_time might be full datetime (YYYY-MM-DD HH:MM:SS) or just time (HH:MM)
+              let timeStr = String(event.end_time)
+              
+              // Check if it's a full datetime or just time
+              if (timeStr.includes(' ')) {
+                // Full datetime like "2025-10-25 10:06:00"
+                timeStr = timeStr.replace(' ', 'T') + 'Z'
+              } else if (timeStr.match(/^\d{2}:\d{2}/)) {
+                // Just time like "10:06" - combine with end_date or date
+                const dateToUse = event.end_date || event.date
+                timeStr = `${dateToUse}T${timeStr}:00Z`
+              }
+              
               eventDateTime = new Date(timeStr)
               timeSource = `end_time: ${event.end_time} → ${timeStr}`
             } else if (event.start_time && event.start_time !== '0000-00-00 00:00:00' && event.start_time !== 'None') {
-              // Use start_time if available (convert space to T, append Z for UTC)
-              let timeStr = String(event.start_time).replace(' ', 'T')
-              if (!timeStr.includes('Z')) timeStr += 'Z'
+              // start_time might be full datetime (YYYY-MM-DD HH:MM:SS) or just time (HH:MM)
+              let timeStr = String(event.start_time)
+              
+              // Check if it's a full datetime or just time
+              if (timeStr.includes(' ')) {
+                // Full datetime like "2025-10-25 10:02:00"
+                timeStr = timeStr.replace(' ', 'T') + 'Z'
+              } else if (timeStr.match(/^\d{2}:\d{2}/)) {
+                // Just time like "10:02" - combine with date
+                timeStr = `${event.date}T${timeStr}:00Z`
+              }
+              
               eventDateTime = new Date(timeStr)
               timeSource = `start_time: ${event.start_time} → ${timeStr}`
             } else if (event.end_date && event.end_date !== '0000-00-00') {
