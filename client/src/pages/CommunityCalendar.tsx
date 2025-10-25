@@ -98,17 +98,17 @@ export default function CommunityCalendar(){
             let eventDateTime: Date
             
             if (event.end_time) {
-              // Use end_time if available
-              eventDateTime = new Date(event.end_time)
+              // Use end_time if available (append Z to parse as UTC)
+              eventDateTime = new Date(event.end_time + (event.end_time.includes('Z') ? '' : 'Z'))
             } else if (event.start_time) {
-              // Use start_time if available
-              eventDateTime = new Date(event.start_time)
+              // Use start_time if available (append Z to parse as UTC)
+              eventDateTime = new Date(event.start_time + (event.start_time.includes('Z') ? '' : 'Z'))
             } else if (event.end_date) {
-              // Use end_date at end of day
-              eventDateTime = new Date(event.end_date + 'T23:59:59')
+              // Use end_date at end of day (UTC)
+              eventDateTime = new Date(event.end_date + 'T23:59:59Z')
             } else {
-              // Use start date at end of day
-              eventDateTime = new Date(event.date + 'T23:59:59')
+              // Use start date at end of day (UTC)
+              eventDateTime = new Date(event.date + 'T23:59:59Z')
             }
             
             // Event is archived if it's in the past
@@ -119,6 +119,7 @@ export default function CommunityCalendar(){
             }
           } catch (e) {
             // If parsing fails, treat as upcoming
+            console.error('Failed to parse event datetime:', e, event)
             upcoming.push(event)
           }
         })
