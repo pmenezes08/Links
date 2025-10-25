@@ -102,19 +102,29 @@ export default function CommunityCalendar(){
             let eventDateTime: Date
             let timeSource = ''
             
-            if (event.end_time) {
+            // Log raw event data for debugging
+            console.log(`🔍 RAW event data for "${event.title}":`, {
+              start_time: event.start_time,
+              end_time: event.end_time,
+              start_time_type: typeof event.start_time,
+              end_time_type: typeof event.end_time,
+              date: event.date,
+              end_date: event.end_date
+            })
+            
+            if (event.end_time && event.end_time !== '0000-00-00 00:00:00' && event.end_time !== 'None') {
               // Use end_time if available (convert space to T, append Z for UTC)
               let timeStr = String(event.end_time).replace(' ', 'T')
               if (!timeStr.includes('Z')) timeStr += 'Z'
               eventDateTime = new Date(timeStr)
               timeSource = `end_time: ${event.end_time} → ${timeStr}`
-            } else if (event.start_time) {
+            } else if (event.start_time && event.start_time !== '0000-00-00 00:00:00' && event.start_time !== 'None') {
               // Use start_time if available (convert space to T, append Z for UTC)
               let timeStr = String(event.start_time).replace(' ', 'T')
               if (!timeStr.includes('Z')) timeStr += 'Z'
               eventDateTime = new Date(timeStr)
               timeSource = `start_time: ${event.start_time} → ${timeStr}`
-            } else if (event.end_date) {
+            } else if (event.end_date && event.end_date !== '0000-00-00') {
               // Use end_date at end of day (UTC)
               eventDateTime = new Date(event.end_date + 'T23:59:59Z')
               timeSource = `end_date: ${event.end_date}`
