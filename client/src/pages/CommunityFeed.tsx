@@ -793,6 +793,9 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
   const [linkDisplayName, setLinkDisplayName] = useState('')
   const [replyText, setReplyText] = useState('')
   const [sendingReply, setSendingReply] = useState(false)
+  const [activeChildReplyFor, setActiveChildReplyFor] = useState<number|null>(null)
+  const [childReplyText, setChildReplyText] = useState('')
+  const [sendingChildReply, setSendingChildReply] = useState(false)
 
   // Detect links when editing
   useEffect(() => {
@@ -1103,6 +1106,12 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                   <div className="flex items-center gap-2">
                     <span className="font-medium">{r.username}</span>
                     <span className="text-[11px] text-[#9fb0b5]">{formatSmartTime(r.timestamp)}</span>
+                    <button
+                      className="ml-auto px-2 py-0.5 rounded-full text-[11px] text-[#9fb0b5] hover:text-[#4db6ac]"
+                      onClick={(e)=> { e.stopPropagation(); setActiveChildReplyFor(id => id === r.id ? null : r.id); setChildReplyText('') }}
+                    >
+                      Reply
+                    </button>
                   </div>
                   <div className="text-[#dfe6e9] whitespace-pre-wrap break-words">{r.content}</div>
                   {r.image_path ? (
@@ -1110,6 +1119,50 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                       <ImageLoader src={(r.image_path.startsWith('http') || r.image_path.startsWith('/')) ? r.image_path : `/uploads/${r.image_path}`} alt="Reply image" className="max-h-[200px] rounded border border-white/10" />
                     </div>
                   ) : null}
+
+                  {activeChildReplyFor === r.id && (
+                    <div className="mt-2 relative rounded-lg border border-white/5 bg-white/[0.03] focus-within:border-[#4db6ac]/40 transition-colors">
+                      <MentionTextarea
+                        value={childReplyText}
+                        onChange={setChildReplyText}
+                        communityId={communityId as any}
+                        postId={post.id}
+                        replyId={r.id as any}
+                        placeholder={`Reply to @${r.username}`}
+                        className="w-full resize-none px-3 py-1.5 pr-9 rounded-lg bg-transparent border-0 outline-none text-[14px] placeholder-white/40"
+                        rows={1}
+                      />
+                      <button
+                        className="absolute right-1.5 top-1/2 -translate-y-1/2 p-2 rounded-full text-[#4db6ac] hover:text-white transition disabled:opacity-40"
+                        disabled={sendingChildReply || !childReplyText.trim()}
+                        onClick={async ()=>{
+                          if (!childReplyText.trim() || sendingChildReply) return
+                          try{
+                            setSendingChildReply(true)
+                            const fd = new FormData()
+                            fd.append('post_id', String(post.id))
+                            fd.append('content', childReplyText.trim())
+                            fd.append('parent_reply_id', String(r.id))
+                            fd.append('dedupe_token', `${Date.now()}_${Math.random().toString(36).slice(2)}`)
+                            const resp = await fetch('/post_reply', { method:'POST', credentials:'include', body: fd })
+                            const j = await resp.json().catch(()=>null)
+                            if (j?.success && j.reply){
+                              onAddReply && onAddReply(post.id, j.reply as any)
+                              setChildReplyText('')
+                              setActiveChildReplyFor(null)
+                            } else {
+                              alert(j?.error || 'Failed to reply')
+                            }
+                          } finally {
+                            setSendingChildReply(false)
+                          }
+                        }}
+                        aria-label="Send reply"
+                      >
+                        {sendingChildReply ? <i className="fa-solid fa-spinner fa-spin" /> : <i className="fa-solid fa-paper-plane" />}
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             ))
