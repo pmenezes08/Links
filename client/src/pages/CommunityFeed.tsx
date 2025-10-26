@@ -1119,21 +1119,21 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
           )}
         </div>
       )}
-      {/* Inline quick reply composer */}
+      {/* Inline quick reply composer - sleek, full-width, low-distraction */}
       {!post.poll && (
         <div className="px-3 pb-3" onClick={(e)=> e.stopPropagation()}>
-          <div className="flex items-end gap-2">
+          <div className="relative group rounded-xl border border-white/5 bg-white/[0.03] focus-within:border-[#4db6ac]/40 transition-colors">
             <MentionTextarea
               value={replyText}
               onChange={setReplyText}
               communityId={communityId as any}
               postId={post.id}
-              placeholder={`Reply to @${post.username}`}
-              className="flex-1 resize-none max-h-36 min-h-[34px] px-3 py-1.5 rounded-2xl bg-black border border-white/10 text-[14px] focus:outline-none focus:ring-1 focus:ring-[#4db6ac]"
-              rows={2}
+              placeholder="Write a reply…"
+              className="w-full resize-none px-3 py-1.5 pr-10 rounded-xl bg-transparent border-0 outline-none text-[14px] placeholder-white/40"
+              rows={1}
             />
             <button
-              className="px-3 py-1.5 rounded-full bg-[#4db6ac] text-black text-sm hover:brightness-110 disabled:opacity-50"
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 p-2 rounded-full text-[#4db6ac] hover:text-white transition disabled:opacity-40"
               disabled={sendingReply || !replyText.trim()}
               onClick={async ()=>{
                 if (!replyText.trim() || sendingReply) return
