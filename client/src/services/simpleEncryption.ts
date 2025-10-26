@@ -207,9 +207,13 @@ class SimpleEncryptionService {
    * ALWAYS fetches fresh from server to avoid stale cache issues
    */
   async getPublicKey(username: string, forceRefresh: boolean = false): Promise<CryptoKey> {
-    // ALWAYS fetch fresh from server (no caching)
-    // This prevents stale key issues when users reset encryption keys
-    // Small performance cost but ensures 100% reliability
+    // Respect optional forceRefresh by clearing cache first
+    if (forceRefresh) {
+      try { await this.clearCachedPublicKey(username) } catch {}
+      console.debug('🔐 forceRefresh requested for', username)
+    }
+
+    // ALWAYS fetch fresh from server (no caching) for correctness
     console.log('🔐 Fetching fresh public key for', username, 'from server...')
 
     // Fetch from server with timeout
@@ -253,6 +257,13 @@ class SimpleEncryptionService {
       return publicKey
     } catch (error) {
       clearTimeout(timeoutId)
+      // Fallback to cached key if network fails
+      try {
+        console.warn('🔐 Fetch failed, attempting cached public key for', username)
+        const cached = await this.getCachedPublicKey(username)
+        if (cached) return cached
+      } catch {}
+
       if (error instanceof Error && error.name === 'AbortError') {
         throw new Error(`Timeout fetching public key for ${username}`)
       }
