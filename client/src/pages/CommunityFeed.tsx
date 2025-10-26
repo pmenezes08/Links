@@ -11,7 +11,7 @@ import { renderTextWithLinks, detectLinks, replaceLinkInText, type DetectedLink 
 
 type PollOption = { id: number; text: string; votes: number; user_voted?: boolean }
 type Poll = { id: number; question: string; is_active: number; options: PollOption[]; user_vote: number|null; total_votes: number; single_vote?: boolean; expires_at?: string | null }
-type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null, profile_picture?: string|null, image_path?: string|null }
+type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null, profile_picture?: string|null, image_path?: string|null, parent_reply_id?: number | null }
 type Post = { id: number; username: string; content: string; image_path?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; poll?: Poll|null; replies: Reply[], profile_picture?: string|null, is_starred?: boolean, is_community_starred?: boolean }
 
 // old formatTimestamp removed; using formatSmartTime
@@ -1113,6 +1113,11 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                       Reply
                     </button>
                   </div>
+                  {r.parent_reply_id ? (
+                    <div className="mb-1 text-[11px] text-white/60">
+                      <span className="opacity-70">Replying to</span> <span className="opacity-90">a comment</span>
+                    </div>
+                  ) : null}
                   <div className="text-[#dfe6e9] whitespace-pre-wrap break-words">{r.content}</div>
                   {r.image_path ? (
                     <div className="mt-1">
