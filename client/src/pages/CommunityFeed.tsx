@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import Avatar from '../components/Avatar'
+import MentionTextarea from '../components/MentionTextarea'
 import { formatSmartTime } from '../utils/time'
 import ImageLoader from '../components/ImageLoader'
 import { useHeader } from '../contexts/HeaderContext'
@@ -10,7 +11,7 @@ import { renderTextWithLinks, detectLinks, replaceLinkInText, type DetectedLink 
 
 type PollOption = { id: number; text: string; votes: number; user_voted?: boolean }
 type Poll = { id: number; question: string; is_active: number; options: PollOption[]; user_vote: number|null; total_votes: number; single_vote?: boolean; expires_at?: string | null }
-type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null, profile_picture?: string|null }
+type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null, profile_picture?: string|null, image_path?: string|null }
 type Post = { id: number; username: string; content: string; image_path?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; poll?: Poll|null; replies: Reply[], profile_picture?: string|null, is_starred?: boolean, is_community_starred?: boolean }
 
 // old formatTimestamp removed; using formatSmartTime
@@ -43,6 +44,10 @@ export default function CommunityFeed() {
   const [viewingVotersPollId, setViewingVotersPollId] = useState<number|null>(null)
   const [votersLoading, setVotersLoading] = useState(false)
   const [votersData, setVotersData] = useState<Array<{ id:number; option_text:string; voters:Array<{ username:string; profile_picture?:string|null; voted_at?:string }> }>>([])
+  // Reaction details modal state
+  const [reactorsPostId, setReactorsPostId] = useState<number|null>(null)
+  const [reactorsLoading, setReactorsLoading] = useState(false)
+  const [reactorGroups, setReactorGroups] = useState<Array<{ reaction_type:string; users: Array<{ username:string; profile_picture?:string|null }> }>>([])
   
   // Check if we should highlight from onboarding
   const [highlightStep, setHighlightStep] = useState<'reaction' | 'post' | null>(null)
@@ -245,6 +250,34 @@ export default function CommunityFeed() {
       const j = await r.json().catch(()=>null)
       if (j?.success){ setVotersData(j.options || []) } else { setVotersData([]) }
     } finally { setVotersLoading(false) }
+  }
+
+  function onAddReply(postId: number, reply: Reply){
+    setData((prev:any) => {
+      if (!prev) return prev
+      const posts = Array.isArray(prev.posts) ? prev.posts : []
+      const updated = posts.map((p:any) => {
+        if (p.id !== postId) return p
+        const existing = Array.isArray(p.replies) ? p.replies : []
+        // Prepend newest reply (API returns newest first elsewhere)
+        return { ...p, replies: [reply, ...existing] }
+      })
+      return { ...prev, posts: updated }
+    })
+  }
+
+  async function openReactors(postId: number){
+    try{
+      setReactorsPostId(postId)
+      setReactorsLoading(true)
+      setReactorGroups([])
+      const r = await fetch(`/get_post_reactors/${postId}`, { credentials:'include' })
+      const j = await r.json().catch(()=>null)
+      if (j?.success){ setReactorGroups(j.groups || []) }
+      else { setReactorGroups([]) }
+    } finally {
+      setReactorsLoading(false)
+    }
   }
 
   async function handleToggleReaction(postId: number, reaction: string){
@@ -462,6 +495,8 @@ export default function CommunityFeed() {
                 navigate={navigate}
                 onPollClick={() => navigate(`/community/${community_id}/polls_react`)}
                 onOpenVoters={openVoters}
+                onAddReply={onAddReply}
+                onOpenReactions={() => openReactors(p.id)}
               />
               {/* Dark overlay for all posts except first one during reaction highlight */}
               {highlightStep === 'reaction' && idx !== 0 && (
@@ -707,6 +742,39 @@ export default function CommunityFeed() {
           </div>
         </div>
       )}
+
+      {/* Reaction details modal */}
+      {reactorsPostId && (
+        <div className="fixed inset-0 z-[95] bg-black/70 backdrop-blur flex items-center justify-center" onClick={(e)=> e.currentTarget===e.target && setReactorsPostId(null)}>
+          <div className="w-[92%] max-w-[560px] rounded-2xl border border-white/10 bg-black p-3">
+            <div className="flex items-center justify-between mb-2">
+              <div className="font-semibold">Reactions</div>
+              <button className="px-2 py-1 rounded-full border border-white/10" onClick={()=> setReactorsPostId(null)}>✕</button>
+            </div>
+            {reactorsLoading ? (
+              <div className="text-[#9fb0b5] text-sm">Loading…</div>
+            ) : (
+              <div className="space-y-3 max-h-[420px] overflow-y-auto">
+                {reactorGroups.length === 0 ? (
+                  <div className="text-sm text-[#9fb0b5]">No reactions yet.</div>
+                ) : reactorGroups.map(group => (
+                  <div key={group.reaction_type} className="rounded-lg border border-white/10 p-2">
+                    <div className="text-xs text-white/80 mb-1 capitalize">{group.reaction_type.replace('-', ' ')}</div>
+                    <div className="flex flex-col gap-1">
+                      {(group.users||[]).map(u => (
+                        <div key={`${group.reaction_type}-${u.username}`} className="flex items-center gap-2 text-xs text-[#9fb0b5]">
+                          <Avatar username={u.username} url={u.profile_picture || undefined} size={18} />
+                          <div className="flex-1 truncate">@{u.username}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -715,7 +783,7 @@ export default function CommunityFeed() {
 
 // Ad components removed
 
-function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onToggleReaction, onPollVote, onPollClick, onOpenVoters, communityId, navigate }: { post: Post & { display_timestamp?: string }, idx: number, currentUser: string, isAdmin: boolean, highlightStep: 'reaction' | 'post' | null, onOpen: ()=>void, onToggleReaction: (postId:number, reaction:string)=>void, onPollVote?: (postId:number, pollId:number, optionId:number)=>void, onPollClick?: ()=>void, onOpenVoters?: (pollId:number)=>void, communityId?: string, navigate?: any }) {
+function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onToggleReaction, onPollVote, onPollClick, onOpenVoters, communityId, navigate, onAddReply, onOpenReactions }: { post: Post & { display_timestamp?: string }, idx: number, currentUser: string, isAdmin: boolean, highlightStep: 'reaction' | 'post' | null, onOpen: ()=>void, onToggleReaction: (postId:number, reaction:string)=>void, onPollVote?: (postId:number, pollId:number, optionId:number)=>void, onPollClick?: ()=>void, onOpenVoters?: (pollId:number)=>void, communityId?: string, navigate?: any, onAddReply?: (postId:number, reply: Reply)=>void, onOpenReactions?: ()=>void }) {
   const cardRef = useRef<HTMLDivElement|null>(null)
   const [isEditing, setIsEditing] = useState(false)
   const [editText, setEditText] = useState(post.content)
@@ -723,6 +791,8 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
   const [detectedLinks, setDetectedLinks] = useState<DetectedLink[]>([])
   const [renamingLink, setRenamingLink] = useState<DetectedLink | null>(null)
   const [linkDisplayName, setLinkDisplayName] = useState('')
+  const [replyText, setReplyText] = useState('')
+  const [sendingReply, setSendingReply] = useState(false)
 
   // Detect links when editing
   useEffect(() => {
@@ -1010,6 +1080,9 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
             </div>
             <ReactionFA icon="fa-regular fa-thumbs-up" count={post.reactions?.['thumbs-up']||0} active={post.user_reaction==='thumbs-up'} onClick={()=> onToggleReaction(post.id, 'thumbs-up')} />
             <ReactionFA icon="fa-regular fa-thumbs-down" count={post.reactions?.['thumbs-down']||0} active={post.user_reaction==='thumbs-down'} onClick={()=> onToggleReaction(post.id, 'thumbs-down')} />
+            <button className="px-2 py-1 rounded-full text-[#9fb0b5] hover:text-white" title="View reactions" onClick={(e)=> { e.stopPropagation(); onOpenReactions && onOpenReactions() }}>
+              <i className="fa-solid fa-users" />
+            </button>
             <button className="ml-auto px-2.5 py-1 rounded-full text-[#cfd8dc]"
               onClick={(e)=> { e.stopPropagation(); onOpen() }}>
               <i className="fa-regular fa-comment" />
@@ -1018,6 +1091,77 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
           </div>
         )}
       </div>
+      {/* Inline recent replies (last 1–2) */}
+      {!post.poll && Array.isArray(post.replies) && post.replies.length > 0 && (
+        <div className="px-3 pb-2 space-y-2" onClick={(e)=> e.stopPropagation()}>
+          {(() => {
+            const recent = post.replies.slice(0, 2)
+            return recent.map(r => (
+              <div key={r.id} className="flex items-start gap-2 text-sm">
+                <Avatar username={r.username} url={r.profile_picture || undefined} size={22} />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium">{r.username}</span>
+                    <span className="text-[11px] text-[#9fb0b5]">{formatSmartTime(r.timestamp)}</span>
+                  </div>
+                  <div className="text-[#dfe6e9] whitespace-pre-wrap break-words">{r.content}</div>
+                  {r.image_path ? (
+                    <div className="mt-1">
+                      <ImageLoader src={(r.image_path.startsWith('http') || r.image_path.startsWith('/')) ? r.image_path : `/uploads/${r.image_path}`} alt="Reply image" className="max-h-[200px] rounded border border-white/10" />
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            ))
+          })()}
+          {post.replies.length > 2 && (
+            <button className="text-xs text-[#4db6ac] hover:underline" onClick={()=> onOpen()}>View all replies →</button>
+          )}
+        </div>
+      )}
+      {/* Inline quick reply composer */}
+      {!post.poll && (
+        <div className="px-3 pb-3" onClick={(e)=> e.stopPropagation()}>
+          <div className="flex items-end gap-2">
+            <MentionTextarea
+              value={replyText}
+              onChange={setReplyText}
+              communityId={communityId as any}
+              postId={post.id}
+              placeholder={`Reply to @${post.username}`}
+              className="flex-1 resize-none max-h-36 min-h-[34px] px-3 py-1.5 rounded-2xl bg-black border border-white/10 text-[14px] focus:outline-none focus:ring-1 focus:ring-[#4db6ac]"
+              rows={2}
+            />
+            <button
+              className="px-3 py-1.5 rounded-full bg-[#4db6ac] text-black text-sm hover:brightness-110 disabled:opacity-50"
+              disabled={sendingReply || !replyText.trim()}
+              onClick={async ()=>{
+                if (!replyText.trim() || sendingReply) return
+                try{
+                  setSendingReply(true)
+                  const fd = new FormData()
+                  fd.append('post_id', String(post.id))
+                  fd.append('content', replyText.trim())
+                  fd.append('dedupe_token', `${Date.now()}_${Math.random().toString(36).slice(2)}`)
+                  const r = await fetch('/post_reply', { method:'POST', credentials:'include', body: fd })
+                  const j = await r.json().catch(()=>null)
+                  if (j?.success && j.reply){
+                    onAddReply && onAddReply(post.id, j.reply as any)
+                    setReplyText('')
+                  } else {
+                    alert(j?.error || 'Failed to reply')
+                  }
+                } finally {
+                  setSendingReply(false)
+                }
+              }}
+              aria-label="Send reply"
+            >
+              {sendingReply ? <i className="fa-solid fa-spinner fa-spin" /> : <i className="fa-solid fa-paper-plane" />}
+            </button>
+          </div>
+        </div>
+      )}
       
       {/* Rename link modal */}
       {renamingLink && (
