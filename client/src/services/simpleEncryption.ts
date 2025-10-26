@@ -185,14 +185,38 @@ class SimpleEncryptionService {
   }
 
   /**
-   * Get public key for another user with timeout
+   * Clear cached public key for a user (forces refresh from server)
    */
-  async getPublicKey(username: string): Promise<CryptoKey> {
-    // Check cache first
-    const cached = await this.getCachedPublicKey(username)
-    if (cached) {
-      console.log('🔐 Using cached public key for', username)
-      return cached
+  async clearCachedPublicKey(username: string): Promise<void> {
+    if (!this.db) return
+
+    return new Promise((resolve) => {
+      const transaction = this.db!.transaction(['publicKeys'], 'readwrite')
+      const store = transaction.objectStore('publicKeys')
+      store.delete(username)
+      transaction.oncomplete = () => {
+        console.log('🔐 Cleared cached public key for', username)
+        resolve()
+      }
+      transaction.onerror = () => resolve()
+    })
+  }
+
+  /**
+   * Get public key for another user with timeout
+   * Set forceRefresh=true to ignore cache and fetch fresh from server
+   */
+  async getPublicKey(username: string, forceRefresh: boolean = false): Promise<CryptoKey> {
+    // Check cache first (unless force refresh)
+    if (!forceRefresh) {
+      const cached = await this.getCachedPublicKey(username)
+      if (cached) {
+        console.log('🔐 Using cached public key for', username)
+        return cached
+      }
+    } else {
+      console.log('🔐 Force refreshing public key for', username)
+      await this.clearCachedPublicKey(username)
     }
 
     console.log('🔐 Fetching public key for', username, 'from server...')
@@ -395,3 +419,12 @@ class SimpleEncryptionService {
 }
 
 export const encryptionService = new SimpleEncryptionService()
+
+// Expose helper function globally for debugging
+;(window as any).clearCachedKey = async (username: string) => {
+  await encryptionService.clearCachedPublicKey(username)
+  console.log(`✅ Cleared cached public key for ${username}. Next message will fetch fresh key from server.`)
+}
+
+console.log('💡 TIP: If encryption fails, run: clearCachedKey("username")')
+
