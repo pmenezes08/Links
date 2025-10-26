@@ -11558,6 +11558,73 @@ def get_poll_voters(poll_id):
         logger.error(f"Error getting poll voters: {str(e)}")
         return jsonify({'success': False, 'error': 'Error getting poll voters'})
 
+
+@app.route('/get_post_reactors/<int:post_id>')
+@login_required
+def get_post_reactors(post_id: int):
+    """Return users who reacted to a post, grouped by reaction type.
+    Response:
+      { success: true, groups: [{ reaction_type, users: [{ username, profile_picture }] }] }
+    """
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            # Validate post exists
+            c.execute("SELECT id FROM posts WHERE id = ?", (post_id,))
+            if not c.fetchone():
+                return jsonify({'success': False, 'error': 'Post not found'}), 404
+
+            c.execute(
+                """
+                SELECT r.reaction_type, r.username, up.profile_picture
+                FROM reactions r
+                LEFT JOIN user_profiles up ON up.username = r.username
+                WHERE r.post_id = ?
+                ORDER BY r.reaction_type, r.id DESC
+                """,
+                (post_id,)
+            )
+            rows = c.fetchall() or []
+
+            by_type = {}
+            for row in rows:
+                if hasattr(row, 'keys'):
+                    rt = row['reaction_type']
+                    uname = row['username']
+                    pic = row.get('profile_picture') if 'profile_picture' in row.keys() else None
+                else:
+                    rt = row[0]
+                    uname = row[1]
+                    pic = row[2] if len(row) > 2 else None
+                by_type.setdefault(rt, []).append({'username': uname, 'profile_picture': pic})
+
+            groups = [{'reaction_type': k, 'users': v} for k, v in by_type.items()]
+            # Preferred ordering
+            order = {'heart': 0, 'thumbs-up': 1, 'thumbs-down': 2}
+            groups.sort(key=lambda g: order.get(g['reaction_type'], 99))
+
+            # Normalize image paths
+            for g in groups:
+                for u in g['users']:
+                    pp = u.get('profile_picture')
+                    if not pp:
+                        continue
+                    try:
+                        s = str(pp).strip()
+                        if s.startswith('http://') or s.startswith('https://') or s.startswith('/uploads') or s.startswith('/static'):
+                            u['profile_picture'] = s
+                        elif s.startswith('uploads/'):
+                            u['profile_picture'] = '/' + s
+                        else:
+                            u['profile_picture'] = f"/uploads/{s}"
+                    except Exception:
+                        pass
+
+            return jsonify({'success': True, 'groups': groups})
+    except Exception as e:
+        logger.error(f"get_post_reactors error: {e}")
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
 @app.route('/get_active_polls')
 @login_required
 def get_active_polls():
