@@ -300,7 +300,12 @@ class SimpleEncryptionService {
     
     const publicKey = await this.getPublicKey(recipientUsername)
     
-    console.log('🔐 Got public key, encrypting message...')
+    console.log('🔐 🔍 ENCRYPTION DEBUG:', {
+      sender: this.currentUser,
+      recipient: recipientUsername,
+      messageLength: message.length,
+      hasPublicKey: !!publicKey
+    })
     
     // Convert message to ArrayBuffer
     const messageBuffer = new TextEncoder().encode(message)
@@ -312,7 +317,7 @@ class SimpleEncryptionService {
       messageBuffer
     )
 
-    console.log('🔐 Message encrypted successfully!')
+    console.log('🔐 ✅ Message encrypted successfully for', recipientUsername, 'encrypted size:', encrypted.byteLength)
     
     // Convert to base64
     return this.arrayBufferToBase64(encrypted)
