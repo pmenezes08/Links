@@ -204,22 +204,13 @@ class SimpleEncryptionService {
 
   /**
    * Get public key for another user with timeout
-   * Set forceRefresh=true to ignore cache and fetch fresh from server
+   * ALWAYS fetches fresh from server to avoid stale cache issues
    */
   async getPublicKey(username: string, forceRefresh: boolean = false): Promise<CryptoKey> {
-    // Check cache first (unless force refresh)
-    if (!forceRefresh) {
-      const cached = await this.getCachedPublicKey(username)
-      if (cached) {
-        console.log('🔐 Using cached public key for', username)
-        return cached
-      }
-    } else {
-      console.log('🔐 Force refreshing public key for', username)
-      await this.clearCachedPublicKey(username)
-    }
-
-    console.log('🔐 Fetching public key for', username, 'from server...')
+    // ALWAYS fetch fresh from server (no caching)
+    // This prevents stale key issues when users reset encryption keys
+    // Small performance cost but ensures 100% reliability
+    console.log('🔐 Fetching fresh public key for', username, 'from server...')
 
     // Fetch from server with timeout
     const controller = new AbortController()
