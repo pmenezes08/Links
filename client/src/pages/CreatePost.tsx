@@ -53,7 +53,19 @@ export default function CreatePost(){
   }
 
   async function submit(){
-    if (!content && !file && !preview?.blob) return
+    // If user is still recording, stop and wait briefly for preview to finalize
+    if (recording) {
+      try { stop() } catch {}
+      // Wait up to ~2s for preview to become available
+      for (let i = 0; i < 12 && !preview?.blob; i++) {
+        // eslint-disable-next-line no-await-in-loop
+        await new Promise(res => setTimeout(res, 170))
+      }
+    }
+    if (!content && !file && !preview?.blob) {
+      alert('Add text, an image, or finish recording audio before posting')
+      return
+    }
     if (submitting) return
     setSubmitting(true)
     
@@ -72,7 +84,9 @@ export default function CreatePost(){
         await r.json().catch(()=>null)
       } else {
         if (communityId) fd.append('community_id', communityId)
-        await fetch('/post_status', { method: 'POST', credentials: 'include', body: fd })
+        const r = await fetch('/post_status', { method: 'POST', credentials: 'include', body: fd })
+        // Try reading JSON when available, otherwise ignore redirects
+        await r.json().catch(()=>null)
       }
       
       // Show praise for first post
@@ -213,7 +227,7 @@ export default function CreatePost(){
             </button>
           )}
           <div className="flex-1" />
-          <button className={`px-4 py-2 rounded-full ${submitting ? 'bg-white/20 text-white/60 cursor-not-allowed' : 'bg-[#4db6ac] text-black hover:brightness-110'}`} onClick={submit} disabled={submitting}>
+          <button className={`px-4 py-2 rounded-full ${submitting ? 'bg-white/20 text-white/60 cursor-not-allowed' : 'bg-[#4db6ac] text-black hover:brightness-110'}`} onClick={submit} disabled={submitting || (!content && !file && !preview)}>
             {submitting ? 'Posting…' : 'Post'}
           </button>
         </div>
