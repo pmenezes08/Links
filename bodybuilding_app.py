@@ -104,7 +104,9 @@ def nl2br_filter(text):
 # csrf.exempt(app)  # Disable CSRF protection globally
 
 # File upload configuration
-UPLOAD_FOLDER = 'static/uploads'
+# Always use an absolute path based on this file's directory to avoid CWD issues under WSGI
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+UPLOAD_FOLDER = os.path.join(BASE_DIR, 'static', 'uploads')
 # Allow common image and audio types
 ALLOWED_EXTENSIONS = {
     'png', 'jpg', 'jpeg', 'gif', 'webp',
@@ -6416,8 +6418,11 @@ def apple_touch_icon_route():
     """Serve iOS touch icon with minimal caching."""
     try:
         preferred = os.path.join('static', 'icons', 'apple-touch-icon-180.png')
-        fallback = os.path.join('static', 'logo.png')
-        path = preferred if os.path.exists(preferred) else fallback
+        fallback = os.path.join('static', 'icons', 'icon-192.png')
+        # Use absolute BASE_DIR to be safe under WSGI
+        abs_preferred = os.path.join(BASE_DIR, preferred)
+        abs_fallback = os.path.join(BASE_DIR, fallback)
+        path = abs_preferred if os.path.exists(abs_preferred) else abs_fallback
         from flask import send_file
         resp = send_file(path, mimetype='image/png')
         try:
@@ -17217,6 +17222,8 @@ def serve_uploads(filename):
         static_root = os.path.join(base_dir, 'static')
         static_uploads = os.path.join(static_root, 'uploads')
         legacy_root = os.path.join(base_dir, 'uploads')
+        # Prefer the configured absolute uploads path
+        configured_uploads = app.config.get('UPLOAD_FOLDER', static_uploads)
 
         normalized = filename
         if normalized.startswith('uploads/'):
@@ -17224,17 +17231,20 @@ def serve_uploads(filename):
         basename = os.path.basename(normalized)
 
         candidates = [
-            os.path.join(static_uploads, filename),          # static/uploads/<original>
-            os.path.join(static_uploads, normalized),        # static/uploads/<stripped>
-            os.path.join(static_uploads, basename),          # static/uploads/<basename>
-            os.path.join(static_root, filename),             # static/<original>
-            os.path.join(static_root, normalized),           # static/<stripped>
-            os.path.join(static_root, basename),             # static/<basename>
-            os.path.join(static_root, 'message_photos', basename),  # static/message_photos/<basename>
-            os.path.join(static_uploads, 'message_photos', basename), # static/uploads/message_photos/<basename>
-            os.path.join(legacy_root, filename),             # uploads/<original>
-            os.path.join(legacy_root, normalized),           # uploads/<stripped>
-            os.path.join(legacy_root, basename),             # uploads/<basename>
+            os.path.join(configured_uploads, filename),          # configured uploads/<original>
+            os.path.join(configured_uploads, normalized),        # configured uploads/<stripped>
+            os.path.join(configured_uploads, basename),          # configured uploads/<basename>
+            os.path.join(static_uploads, filename),              # static/uploads/<original>
+            os.path.join(static_uploads, normalized),            # static/uploads/<stripped>
+            os.path.join(static_uploads, basename),              # static/uploads/<basename>
+            os.path.join(static_root, filename),                 # static/<original>
+            os.path.join(static_root, normalized),               # static/<stripped>
+            os.path.join(static_root, basename),                 # static/<basename>
+            os.path.join(static_root, 'message_photos', basename),      # static/message_photos/<basename>
+            os.path.join(static_uploads, 'message_photos', basename),   # static/uploads/message_photos/<basename>
+            os.path.join(legacy_root, filename),                 # uploads/<original>
+            os.path.join(legacy_root, normalized),               # uploads/<stripped>
+            os.path.join(legacy_root, basename),                 # uploads/<basename>
         ]
 
         tried = []
