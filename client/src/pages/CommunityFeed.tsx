@@ -922,11 +922,6 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
               return (
                 <>
                   {displayContent && <div className="px-3 whitespace-pre-wrap text-[14px] leading-relaxed tracking-[0]">{renderTextWithLinks(displayContent)}</div>}
-                  {(!displayContent && post.audio_path) && (
-                    <div className="px-3">
-                      <audio controls className="w-full" src={post.audio_path.startsWith('http') || post.audio_path.startsWith('/uploads') ? post.audio_path : `/${post.audio_path}`} />
-                    </div>
-                  )}
                   {videoEmbed && <VideoEmbed embed={videoEmbed} />}
                 </>
               )
@@ -978,9 +973,9 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
             className="block mx-auto max-w-full max-h-[360px] rounded border border-white/10 px-3"
           />
         ) : null}
-        {!post.image_path && post.audio_path ? (
+        {post.audio_path ? (
           <div className="px-3">
-            <audio controls className="w-full" src={post.audio_path.startsWith('http') || post.audio_path.startsWith('/uploads') ? post.audio_path : `/${post.audio_path}`} />
+            <audio controls className="w-full" src={(() => { const p = post.audio_path || ''; if (!p) return ''; if (p.startsWith('http')) return p; if (p.startsWith('/uploads')) return p; return p.startsWith('uploads') ? `/${p}` : `/uploads/${p}` })()} />
           </div>
         ) : null}
         {/* Poll display */}

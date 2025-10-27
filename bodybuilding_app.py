@@ -2647,9 +2647,11 @@ def save_uploaded_file(file, subfolder=None):
             return_path = f"uploads/{unique_filename}"
         
         file.save(filepath)
-        # Optimize image on arrival to reduce size for subsequent loads (prod+dev)
+        # Optimize only if this is an image
         try:
-            optimize_image(filepath, max_width=1280, quality=80)
+            ext = (os.path.splitext(filename)[1] or '').lower().lstrip('.')
+            if ext in {'png', 'jpg', 'jpeg', 'gif', 'webp'}:
+                optimize_image(filepath, max_width=1280, quality=80)
         except Exception:
             # Never fail the request due to optimization issues
             pass
