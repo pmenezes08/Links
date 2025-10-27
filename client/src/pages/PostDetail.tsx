@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, memo } from 'react'
 import type React from 'react'
 import MentionTextarea from '../components/MentionTextarea'
+import { useAudioRecorder } from '../components/useAudioRecorder'
 import { useNavigate, useParams } from 'react-router-dom'
 import Avatar from '../components/Avatar'
 import ImageLoader from '../components/ImageLoader'
@@ -105,6 +106,7 @@ export default function PostDetail(){
   const [currentUser, setCurrentUser] = useState<string | null>(null)
   const [previewSrc, setPreviewSrc] = useState<string | null>(null)
   const [submittingReply, setSubmittingReply] = useState(false)
+  const { recording, recordMs, preview: replyPreview, start: startRec, stop: stopRec, clearPreview: clearReplyPreview } = useAudioRecorder()
   const replyTokenRef = useRef<string>(`${Date.now()}_${Math.random().toString(36).slice(2)}`)
   const [inlineSending, setInlineSending] = useState<Record<number, boolean>>({})
   
@@ -354,7 +356,7 @@ export default function PostDetail(){
   }
 
   async function submitReply(parentReplyId?: number){
-    if (!post || (!content && !file)) return
+    if (!post || (!content && !file && !replyPreview?.blob)) return
     if (submittingReply) return
     setSubmittingReply(true)
     const fd = new FormData()
@@ -362,6 +364,7 @@ export default function PostDetail(){
     fd.append('content', content)
     if (parentReplyId) fd.append('parent_reply_id', String(parentReplyId))
     if (uploadFile) fd.append('image', uploadFile)
+    if (replyPreview?.blob) fd.append('audio', replyPreview.blob, (replyPreview.blob.type.includes('mp4') ? 'audio.mp4' : 'audio.webm'))
     fd.append('dedupe_token', replyTokenRef.current)
     const r = await fetch('/post_reply', { method:'POST', credentials:'include', body: fd })
     const j = await r.json().catch(()=>null)
@@ -695,6 +698,11 @@ function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDel
                   className="block mx-auto max-w-full max-h-[300px] rounded border border-white/10 cursor-zoom-in"
                 />
               </div>
+            </div>
+          ) : null}
+          {(reply as any)?.audio_path ? (
+            <div className="mt-2">
+              <audio controls className="w-full" src={normalizePath((reply as any).audio_path as string)} />
             </div>
           ) : null}
           <div className="mt-1 flex items-center gap-2 text-[11px]">

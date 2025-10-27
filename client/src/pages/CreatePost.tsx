@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import MentionTextarea from '../components/MentionTextarea'
+import { useAudioRecorder } from '../components/useAudioRecorder'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { detectLinks, replaceLinkInText, type DetectedLink } from '../utils/linkUtils.tsx'
 
@@ -11,10 +12,7 @@ export default function CreatePost(){
   const [content, setContent] = useState('')
   const [file, setFile] = useState<File|null>(null)
   const [submitting, setSubmitting] = useState(false)
-  const [recording, setRecording] = useState(false)
-  const [audioBlob, setAudioBlob] = useState<Blob|null>(null)
-  const mediaRecorderRef = useRef<MediaRecorder|null>(null)
-  const chunksRef = useRef<BlobPart[]>([])
+  const { recording, recordMs, preview, start, stop, clearPreview } = useAudioRecorder()
   const [showPraise, setShowPraise] = useState(false)
   const [detectedLinks, setDetectedLinks] = useState<DetectedLink[]>([])
   const [renamingLink, setRenamingLink] = useState<DetectedLink | null>(null)
@@ -55,7 +53,7 @@ export default function CreatePost(){
   }
 
   async function submit(){
-    if (!content && !file && !audioBlob) return
+    if (!content && !file && !preview?.blob) return
     if (submitting) return
     setSubmitting(true)
     
@@ -66,7 +64,7 @@ export default function CreatePost(){
       const fd = new FormData()
       fd.append('content', content)
       if (file) fd.append('image', file)
-      if (audioBlob) fd.append('audio', audioBlob, 'audio.webm')
+      if (preview?.blob) fd.append('audio', preview.blob, (preview.blob.type.includes('mp4') ? 'audio.mp4' : 'audio.webm'))
       fd.append('dedupe_token', tokenRef.current)
       if (groupId){
         fd.append('group_id', groupId)
@@ -152,9 +150,9 @@ export default function CreatePost(){
             <img src={URL.createObjectURL(file)} alt="preview" className="w-full h-auto" />
           </div>
         ) : null}
-        {audioBlob ? (
+        {preview ? (
           <div className="mt-3 rounded-xl border border-white/10 p-3 bg-white/[0.03]">
-            <audio controls src={URL.createObjectURL(audioBlob)} className="w-full" />
+            <audio controls src={preview.url} className="w-full" />
           </div>
         ) : null}
       </div>
@@ -206,36 +204,14 @@ export default function CreatePost(){
             <i className="fa-regular fa-image" style={{ color: '#4db6ac' }} />
             <input type="file" accept="image/*" onChange={(e)=> setFile(e.target.files?.[0]||null)} style={{ display: 'none' }} />
           </label>
-          <button
-            className={`px-3 py-2 rounded-full ${recording ? 'text-red-400' : 'text-[#4db6ac]'} hover:bg-white/5`}
-            aria-label="Record audio"
-            onClick={async ()=>{
-              try{
-                if (!recording){
-                  const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-                  const mr = new MediaRecorder(stream)
-                  mediaRecorderRef.current = mr
-                  chunksRef.current = []
-                  mr.ondataavailable = (e)=> { if (e.data && e.data.size > 0) chunksRef.current.push(e.data) }
-                  mr.onstop = ()=> {
-                    const blob = new Blob(chunksRef.current, { type: 'audio/webm' })
-                    setAudioBlob(blob)
-                    chunksRef.current = []
-                    try{ stream.getTracks().forEach(t=> t.stop()) }catch{}
-                  }
-                  mr.start()
-                  setRecording(true)
-                } else {
-                  mediaRecorderRef.current?.stop()
-                  setRecording(false)
-                }
-              }catch{
-                alert('Microphone permission denied')
-              }
-            }}
-          >
+          <button className={`px-3 py-2 rounded-full ${recording ? 'text-red-400' : 'text-[#4db6ac]'} hover:bg-white/5`} aria-label="Record audio" onClick={()=> recording ? stop() : start()}>
             <i className="fa-solid fa-microphone" />
           </button>
+          {preview && (
+            <button className="px-3 py-2 rounded-full text-white/70 hover:bg-white/5" onClick={clearPreview} aria-label="Discard audio">
+              <i className="fa-solid fa-trash" />
+            </button>
+          )}
           <div className="flex-1" />
           <button className={`px-4 py-2 rounded-full ${submitting ? 'bg-white/20 text-white/60 cursor-not-allowed' : 'bg-[#4db6ac] text-black hover:brightness-110'}`} onClick={submit} disabled={submitting}>
             {submitting ? 'Posting…' : 'Post'}
