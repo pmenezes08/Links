@@ -110,7 +110,7 @@ UPLOAD_FOLDER = os.path.join(BASE_DIR, 'static', 'uploads')
 # Allow common image and audio types
 ALLOWED_EXTENSIONS = {
     'png', 'jpg', 'jpeg', 'gif', 'webp',
-    'm4a', 'mp3', 'ogg', 'wav', 'webm', 'opus'
+    'm4a', 'mp3', 'ogg', 'wav', 'webm', 'opus', 'mp4'
 }
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
@@ -10606,10 +10606,11 @@ def post_status():
     # Handle file upload (image or audio)
     image_path = None
     audio_path = None
-    if 'image' in request.files:
-        file = request.files['image']
-        if file.filename != '':
-            image_path = save_uploaded_file(file)
+    # Robustly detect both files regardless of field name casing
+    files = request.files
+    if 'image' in files and files['image'].filename:
+        file = files['image']
+        image_path = save_uploaded_file(file)
             if not image_path:
                 if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
                     return jsonify({'success': False, 'error': 'Invalid image type'}), 400
@@ -10619,10 +10620,9 @@ def post_status():
                         return redirect(url_for('community_feed', community_id=community_id) + msg)
                     else:
                         return redirect(url_for('feed') + msg)
-    if 'audio' in request.files:
-        afile = request.files['audio']
-        if afile.filename != '':
-            audio_path = save_uploaded_file(afile, subfolder='audio')
+    if 'audio' in files and files['audio'].filename:
+        afile = files['audio']
+        audio_path = save_uploaded_file(afile, subfolder='audio')
             if not audio_path:
                 if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
                     return jsonify({'success': False, 'error': 'Invalid audio type'}), 400

@@ -157,9 +157,28 @@ export function useAudioRecorder() {
     setPreview(null)
   }, [preview])
 
+  const ensurePreview = useCallback(async (timeoutMs: number = 5000): Promise<RecordingPreview | null> => {
+    try {
+      if (recording) {
+        try { stop() } catch {}
+      }
+      const startAt = Date.now()
+      return await new Promise<RecordingPreview | null>((resolve) => {
+        const check = () => {
+          if (preview) return resolve(preview)
+          if (Date.now() - startAt >= timeoutMs) return resolve(null)
+          setTimeout(check, 120)
+        }
+        check()
+      })
+    } catch {
+      return null
+    }
+  }, [recording, stop, preview])
+
   useEffect(() => () => { // cleanup on unmount
     try { clearTimers(); stopStream() } catch {}
   }, [])
 
-  return { recording, recordMs, preview, start, stop, clearPreview }
+  return { recording, recordMs, preview, start, stop, clearPreview, ensurePreview }
 }

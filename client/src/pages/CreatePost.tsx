@@ -12,7 +12,7 @@ export default function CreatePost(){
   const [content, setContent] = useState('')
   const [file, setFile] = useState<File|null>(null)
   const [submitting, setSubmitting] = useState(false)
-  const { recording, preview, start, stop, clearPreview } = useAudioRecorder()
+  const { recording, preview, start, stop, clearPreview, ensurePreview } = useAudioRecorder()
   const [showPraise, setShowPraise] = useState(false)
   const [detectedLinks, setDetectedLinks] = useState<DetectedLink[]>([])
   const [renamingLink, setRenamingLink] = useState<DetectedLink | null>(null)
@@ -54,14 +54,7 @@ export default function CreatePost(){
 
   async function submit(){
     // If user is still recording, stop and wait briefly for preview to finalize
-    if (recording) {
-      try { stop() } catch {}
-      // Wait up to ~2s for preview to become available
-      for (let i = 0; i < 12 && !preview?.blob; i++) {
-        // eslint-disable-next-line no-await-in-loop
-        await new Promise(res => setTimeout(res, 170))
-      }
-    }
+    if (recording) await ensurePreview(5000)
     if (!content && !file && !preview?.blob) {
       alert('Add text, an image, or finish recording audio before posting')
       return
