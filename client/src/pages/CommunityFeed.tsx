@@ -1124,11 +1124,23 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                       Reply
                     </button>
                   </div>
-                  {r.parent_reply_id ? (
-                    <div className="mb-1 text-[11px] text-white/60">
-                      <span className="opacity-70">Replying to</span> <span className="opacity-90">a comment</span>
-                    </div>
-                  ) : null}
+                  {r.parent_reply_id ? (() => {
+                    try {
+                      const parent = (post.replies || []).find((p:any) => p.id === r.parent_reply_id)
+                      const handle = parent?.username ? `@${parent.username}` : 'a comment'
+                      return (
+                        <div className="mb-1 text-[11px] text-white/60">
+                          <span className="opacity-70">Replying to</span> <span className="opacity-90">{handle}</span>
+                        </div>
+                      )
+                    } catch {
+                      return (
+                        <div className="mb-1 text-[11px] text-white/60">
+                          <span className="opacity-70">Replying to</span> <span className="opacity-90">a comment</span>
+                        </div>
+                      )
+                    }
+                  })() : null}
                   <div className="text-[#dfe6e9] whitespace-pre-wrap break-words">{r.content}</div>
                   {r.image_path ? (
                     <div className="mt-1">
