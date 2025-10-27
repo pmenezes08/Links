@@ -1098,8 +1098,19 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
       {!post.poll && Array.isArray(post.replies) && post.replies.length > 0 && (
         <div className="px-3 pb-2 space-y-2" onClick={(e)=> e.stopPropagation()}>
           {(() => {
-            const recent = post.replies.slice(0, 2)
-            return recent.map(r => (
+            const ordered = (() => {
+              const pair = post.replies.slice(0, 2)
+              if (pair.length === 2){
+                const [a, b] = pair
+                if (a && b){
+                  // If one is the parent of the other, ensure parent appears first
+                  if ((a as any).parent_reply_id === b.id) return [b, a]
+                  if ((b as any).parent_reply_id === a.id) return [a, b]
+                }
+              }
+              return pair
+            })()
+            return ordered.map(r => (
               <div key={r.id} className="flex items-start gap-2 text-sm">
                 <Avatar username={r.username} url={r.profile_picture || undefined} size={22} />
                 <div className="flex-1 min-w-0">
