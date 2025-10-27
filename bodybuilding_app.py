@@ -512,6 +512,9 @@ def get_db_connection():
                 charset='utf8mb4',
                 autocommit=True,
                 cursorclass=DictCursor,
+                connect_timeout=int(os.environ.get('MYSQL_CONNECT_TIMEOUT', '5')),
+                read_timeout=int(os.environ.get('MYSQL_READ_TIMEOUT', '15')),
+                write_timeout=int(os.environ.get('MYSQL_WRITE_TIMEOUT', '15')),
             )
             # Wrap cursor to adapt SQLite-style SQL to MySQL at runtime
             try:
@@ -2444,7 +2447,14 @@ if not USE_MYSQL:
     ensure_indexes()
 
 # Always ensure missing tables are added for both SQLite and MySQL
-add_missing_tables()
+# Guard this at import-time so a transient MySQL outage doesn't crash WSGI startup
+try:
+    add_missing_tables()
+except Exception as e:
+    logger.error(
+        f"Startup DB bootstrap skipped due to error: {e}. "
+        "Verify DB_BACKEND and MYSQL_* env vars on the server, or run setup_mysql_env.py."
+    )
 
 def ensure_admin_member_of_all():
     try:
