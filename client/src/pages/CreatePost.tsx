@@ -11,6 +11,10 @@ export default function CreatePost(){
   const [content, setContent] = useState('')
   const [file, setFile] = useState<File|null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [recording, setRecording] = useState(false)
+  const [audioBlob, setAudioBlob] = useState<Blob|null>(null)
+  const mediaRecorderRef = useRef<MediaRecorder|null>(null)
+  const chunksRef = useRef<BlobPart[]>([])
   const [showPraise, setShowPraise] = useState(false)
   const [detectedLinks, setDetectedLinks] = useState<DetectedLink[]>([])
   const [renamingLink, setRenamingLink] = useState<DetectedLink | null>(null)
@@ -51,7 +55,7 @@ export default function CreatePost(){
   }
 
   async function submit(){
-    if (!content && !file) return
+    if (!content && !file && !audioBlob) return
     if (submitting) return
     setSubmitting(true)
     
@@ -62,6 +66,7 @@ export default function CreatePost(){
       const fd = new FormData()
       fd.append('content', content)
       if (file) fd.append('image', file)
+      if (audioBlob) fd.append('audio', audioBlob, 'audio.webm')
       fd.append('dedupe_token', tokenRef.current)
       if (groupId){
         fd.append('group_id', groupId)
@@ -147,6 +152,11 @@ export default function CreatePost(){
             <img src={URL.createObjectURL(file)} alt="preview" className="w-full h-auto" />
           </div>
         ) : null}
+        {audioBlob ? (
+          <div className="mt-3 rounded-xl border border-white/10 p-3 bg-white/[0.03]">
+            <audio controls src={URL.createObjectURL(audioBlob)} className="w-full" />
+          </div>
+        ) : null}
       </div>
       
       {/* Rename link modal */}
@@ -191,11 +201,42 @@ export default function CreatePost(){
         </div>
       )}
       <div className="fixed left-0 right-0 bottom-0 h-16 border-t border-white/10 bg-black/85 backdrop-blur z-40">
-        <div className="max-w-2xl mx-auto h-full px-4 flex items-center justify-between">
+        <div className="max-w-2xl mx-auto h-full px-4 flex items-center justify-between gap-3">
           <label className="px-3 py-2 rounded-full hover:bg-white/5 cursor-pointer" aria-label="Add image">
             <i className="fa-regular fa-image" style={{ color: '#4db6ac' }} />
             <input type="file" accept="image/*" onChange={(e)=> setFile(e.target.files?.[0]||null)} style={{ display: 'none' }} />
           </label>
+          <button
+            className={`px-3 py-2 rounded-full ${recording ? 'text-red-400' : 'text-[#4db6ac]'} hover:bg-white/5`}
+            aria-label="Record audio"
+            onClick={async ()=>{
+              try{
+                if (!recording){
+                  const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+                  const mr = new MediaRecorder(stream)
+                  mediaRecorderRef.current = mr
+                  chunksRef.current = []
+                  mr.ondataavailable = (e)=> { if (e.data && e.data.size > 0) chunksRef.current.push(e.data) }
+                  mr.onstop = ()=> {
+                    const blob = new Blob(chunksRef.current, { type: 'audio/webm' })
+                    setAudioBlob(blob)
+                    chunksRef.current = []
+                    try{ stream.getTracks().forEach(t=> t.stop()) }catch{}
+                  }
+                  mr.start()
+                  setRecording(true)
+                } else {
+                  mediaRecorderRef.current?.stop()
+                  setRecording(false)
+                }
+              }catch{
+                alert('Microphone permission denied')
+              }
+            }}
+          >
+            <i className="fa-solid fa-microphone" />
+          </button>
+          <div className="flex-1" />
           <button className={`px-4 py-2 rounded-full ${submitting ? 'bg-white/20 text-white/60 cursor-not-allowed' : 'bg-[#4db6ac] text-black hover:brightness-110'}`} onClick={submit} disabled={submitting}>
             {submitting ? 'Posting…' : 'Post'}
           </button>
