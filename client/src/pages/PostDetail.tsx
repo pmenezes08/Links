@@ -106,7 +106,7 @@ export default function PostDetail(){
   const [currentUser, setCurrentUser] = useState<string | null>(null)
   const [previewSrc, setPreviewSrc] = useState<string | null>(null)
   const [submittingReply, setSubmittingReply] = useState(false)
-  const { recording, recordMs, preview: replyPreview, start: startRec, stop: stopRec, clearPreview: clearReplyPreview } = useAudioRecorder()
+  const { recording, preview: replyPreview, start: startRec, stop: stopRec, clearPreview: clearReplyPreview } = useAudioRecorder()
   const replyTokenRef = useRef<string>(`${Date.now()}_${Math.random().toString(36).slice(2)}`)
   const [inlineSending, setInlineSending] = useState<Record<number, boolean>>({})
   
@@ -399,7 +399,16 @@ export default function PostDetail(){
     fd.append('post_id', String(post.id))
     fd.append('content', text || '')
     fd.append('parent_reply_id', String(parentId))
-    if (file) fd.append('image', file)
+    if (file) {
+      // Detect whether the file is an audio blob or an image; append to the correct form field
+      if (typeof (file as any).type === 'string' && (file as any).type.startsWith('audio/')) {
+        fd.append('audio', file)
+      } else if (typeof (file as any).type === 'string' && (file as any).type.startsWith('image/')) {
+        fd.append('image', file)
+      } else {
+        fd.append('image', file)
+      }
+    }
     fd.append('dedupe_token', `${Date.now()}_${Math.random().toString(36).slice(2)}`)
     const r = await fetch('/post_reply', { method:'POST', credentials:'include', body: fd })
     const j = await r.json().catch(()=>null)
@@ -563,8 +572,30 @@ export default function PostDetail(){
                 </div>
               </div>
             )}
+            {replyPreview && (
+              <div className="flex items-center gap-2 mr-auto">
+                <div className="w-40">
+                  <audio controls className="w-full" src={replyPreview.url} />
+                </div>
+                <button 
+                  onClick={() => { clearReplyPreview() }}
+                  className="ml-1 text-red-400 hover:text-red-300"
+                  aria-label="Remove audio"
+                >
+                  <i className="fa-solid fa-times" />
+                </button>
+              </div>
+            )}
             <button type="button" className="w-10 h-10 rounded-full hover:bg-white/10 grid place-items-center" aria-label="Add image" onClick={()=> fileInputRef.current?.click()}>
               <i className="fa-regular fa-image text-xl" style={{ color: file ? '#7fe7df' : '#4db6ac' }} />
+            </button>
+            <button
+              type="button"
+              className={`w-10 h-10 rounded-full grid place-items-center ${recording ? 'text-red-400' : 'text-[#4db6ac]'} hover:bg-white/10`}
+              aria-label="Record audio"
+              onClick={()=> recording ? stopRec() : startRec()}
+            >
+              <i className="fa-solid fa-microphone text-xl" />
             </button>
             <input
               ref={fileInputRef}
@@ -585,11 +616,20 @@ export default function PostDetail(){
                   setContent(content.replace(urlText, replacement))
                 }}>Link name</button>
               ) : null}
+            {/* Mic button for main reply composer */}
+            <button
+              type="button"
+              className={`w-10 h-10 rounded-full grid place-items-center ${recording ? 'text-red-400' : 'text-[#4db6ac]'} hover:bg-white/10`}
+              aria-label="Record audio"
+              onClick={()=> recording ? stopRec() : startRec()}
+            >
+              <i className="fa-solid fa-microphone text-xl" />
+            </button>
             <button
               className="px-2.5 py-1.5 rounded-full bg-[#4db6ac] text-white border border-[#4db6ac] hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed"
               onClick={()=> submitReply()}
               aria-label="Send reply"
-              disabled={(!content && !file) || submittingReply}
+              disabled={(!content && !file && !replyPreview) || submittingReply}
             >
               {submittingReply ? <i className="fa-solid fa-spinner fa-spin" /> : <i className="fa-solid fa-paper-plane" />}
             </button>
@@ -623,6 +663,7 @@ function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDel
   const [text, setText] = useState('')
   const [img, setImg] = useState<File|null>(null)
   const inlineFileRef = useRef<HTMLInputElement|null>(null)
+  const { recording: rec, preview: inlinePreview, start: startInlineRec, stop: stopInlineRec, clearPreview: clearInlinePreview } = useAudioRecorder()
   const [isEditing, setIsEditing] = useState(false)
   const [editText, setEditText] = useState(reply.content)
   const hasChildren = reply.children && reply.children.length > 0
@@ -733,9 +774,32 @@ function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDel
                   onChange={(e)=> setImg((e.target as HTMLInputElement).files?.[0]||null)}
                   className="hidden"
                 />
-                <button className="px-2.5 py-1.5 rounded-full bg-[#4db6ac] text-white border border-[#4db6ac] hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed" onClick={()=> { if (!text && !img) return; onInlineReply(reply.id, text, img || undefined); setText(''); setImg(null); if (inlineFileRef.current) inlineFileRef.current.value=''; setShowComposer(false) }} aria-label="Send reply" disabled={!text && !img || !!inlineSendingFlag}>
+                {/* Inline mic button using shared hook via parent handlers: pass audio as file */}
+                {/* We'll allow only image OR audio at a time in inline composer */}
+                <button
+                  type="button"
+                  className={`w-10 h-10 rounded-full grid place-items-center ${rec ? 'text-red-400' : 'text-[#4db6ac]'} hover:bg-white/10`}
+                  aria-label="Record audio"
+                  onClick={()=> rec ? stopInlineRec() : startInlineRec()}
+                >
+                  <i className="fa-solid fa-microphone text-xl" />
+                </button>
+                <button className="px-2.5 py-1.5 rounded-full bg-[#4db6ac] text-white border border-[#4db6ac] hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed" onClick={()=> { if (!text && !img && !inlinePreview) return; const f = inlinePreview ? new File([inlinePreview.blob], inlinePreview.blob.type.includes('mp4') ? 'audio.mp4' : 'audio.webm', { type: inlinePreview.blob.type }) : (img || undefined); onInlineReply(reply.id, text, f as any); setText(''); setImg(null); if (inlineFileRef.current) inlineFileRef.current.value=''; clearInlinePreview(); setShowComposer(false) }} aria-label="Send reply" disabled={!text && !img && !inlinePreview || !!inlineSendingFlag}>
                   {inlineSendingFlag ? <i className="fa-solid fa-spinner fa-spin" /> : <i className="fa-solid fa-paper-plane" />}
                 </button>
+              {inlinePreview && (
+                <div className="text-xs text-[#7fe7df] flex items-center gap-1 px-3">
+                  <i className="fa-solid fa-microphone" />
+                  <span className="max-w-[160px] truncate">audio</span>
+                  <button 
+                    onClick={() => { clearInlinePreview() }}
+                    className="ml-1 text-red-400 hover:text-red-300"
+                    aria-label="Remove audio"
+                  >
+                    <i className="fa-solid fa-times" />
+                  </button>
+                </div>
+              )}
               </div>
               {img && (
                 <div className="text-xs text-[#7fe7df] flex items-center gap-1 px-3">

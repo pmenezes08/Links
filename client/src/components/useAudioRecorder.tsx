@@ -123,7 +123,11 @@ export function useAudioRecorder() {
       startedAtRef.current = Date.now()
       if (recordTimerRef.current) clearInterval(recordTimerRef.current)
       recordTimerRef.current = setInterval(() => setRecordMs(Date.now() - startedAtRef.current), 200)
-      if (isMobile) mr.start() else mr.start(1000)
+      if (isMobile) {
+        mr.start()
+      } else {
+        mr.start(1000)
+      }
     } catch (e:any) {
       alert('Could not access microphone: ' + (e?.message || 'Unknown error'))
       resetState()

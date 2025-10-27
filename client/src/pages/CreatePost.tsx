@@ -12,7 +12,7 @@ export default function CreatePost(){
   const [content, setContent] = useState('')
   const [file, setFile] = useState<File|null>(null)
   const [submitting, setSubmitting] = useState(false)
-  const { recording, recordMs, preview, start, stop, clearPreview } = useAudioRecorder()
+  const { recording, preview, start, stop, clearPreview } = useAudioRecorder()
   const [showPraise, setShowPraise] = useState(false)
   const [detectedLinks, setDetectedLinks] = useState<DetectedLink[]>([])
   const [renamingLink, setRenamingLink] = useState<DetectedLink | null>(null)
