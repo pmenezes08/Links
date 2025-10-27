@@ -27,11 +27,12 @@ export default function CommunityCalendar(){
   const navigate = useNavigate()
   const { setTitle } = useHeader()
   const [events, setEvents] = useState<EventItem[]>([])
+  const [archivedEvents, setArchivedEvents] = useState<EventItem[]>([])
   const [loading, setLoading] = useState(true)
   const [members, setMembers] = useState<Array<{ username:string; profile_picture?:string|null }>>([])
   const [inviteAll, setInviteAll] = useState(false)
   const [selected, setSelected] = useState<Record<string, boolean>>({})
-  const [activeTab, setActiveTab] = useState<'calendar'|'create'>('calendar')
+  const [activeTab, setActiveTab] = useState<'calendar'|'archive'|'create'>('calendar')
   const [inviteOpen, setInviteOpen] = useState(false)
   const [successMsg, setSuccessMsg] = useState<string| null>(null)
   const [modalEvent, setModalEvent] = useState<EventItem| null>(null)
@@ -85,7 +86,95 @@ export default function CommunityCalendar(){
       const j = await r.json()
       if (j?.success && Array.isArray(j.events)){
         const filtered = (j.events as any[]).filter(e => `${e.community_id||''}` === `${community_id}`)
-        setEvents(filtered as any)
+        
+        // Split events into upcoming and archived (past events)
+        const now = new Date()
+        const upcoming: EventItem[] = []
+        const archived: EventItem[] = []
+        
+        console.log('🔍 Archive filtering debug:')
+        console.log('Now (local):', now)
+        console.log('Now (UTC):', now.toISOString())
+        
+        filtered.forEach((event: any) => {
+          try {
+            // Determine event end datetime
+            let eventDateTime: Date
+            let timeSource = ''
+            
+            // Log raw event data for debugging
+            console.log(`🔍 RAW event data for "${event.title}":`, {
+              start_time: event.start_time,
+              end_time: event.end_time,
+              date: event.date,
+              end_date: event.end_date
+            })
+            
+            if (event.end_time && event.end_time !== '0000-00-00 00:00:00' && event.end_time !== 'None') {
+              // end_time might be full datetime (YYYY-MM-DD HH:MM:SS) or just time (HH:MM)
+              let timeStr = String(event.end_time)
+              
+              // Check if it's a full datetime or just time
+              if (timeStr.includes(' ')) {
+                // Full datetime like "2025-10-25 10:06:00"
+                timeStr = timeStr.replace(' ', 'T') + 'Z'
+              } else if (timeStr.match(/^\d{2}:\d{2}/)) {
+                // Just time like "10:06" - combine with end_date or date
+                const dateToUse = event.end_date || event.date
+                timeStr = `${dateToUse}T${timeStr}:00Z`
+              }
+              
+              eventDateTime = new Date(timeStr)
+            } else if (event.start_time && event.start_time !== '0000-00-00 00:00:00' && event.start_time !== 'None') {
+              // start_time might be full datetime (YYYY-MM-DD HH:MM:SS) or just time (HH:MM)
+              let timeStr = String(event.start_time)
+              
+              // Check if it's a full datetime or just time
+              if (timeStr.includes(' ')) {
+                // Full datetime like "2025-10-25 10:02:00"
+                timeStr = timeStr.replace(' ', 'T') + 'Z'
+              } else if (timeStr.match(/^\d{2}:\d{2}/)) {
+                // Just time like "10:02" - combine with date
+                timeStr = `${event.date}T${timeStr}:00Z`
+              }
+              
+              eventDateTime = new Date(timeStr)
+              timeSource = `start_time: ${event.start_time} → ${timeStr}`
+            } else if (event.end_date && event.end_date !== '0000-00-00') {
+              // Use end_date at end of day (UTC)
+              eventDateTime = new Date(event.end_date + 'T23:59:59Z')
+              timeSource = `end_date: ${event.end_date}`
+            } else {
+              // Use start date at end of day (UTC)
+              eventDateTime = new Date(event.date + 'T23:59:59Z')
+              timeSource = `date: ${event.date}`
+            }
+            
+            const isPast = eventDateTime < now
+            console.log(`📅 Event "${event.title}":`, {
+              source: timeSource,
+              parsed: eventDateTime.toISOString(),
+              isPast,
+              decision: isPast ? 'ARCHIVE' : 'ACTIVE'
+            })
+            
+            // Event is archived if it's in the past
+            if (isPast) {
+              archived.push(event)
+            } else {
+              upcoming.push(event)
+            }
+          } catch (e) {
+            // If parsing fails, treat as upcoming
+            console.error('Failed to parse event datetime:', e, event)
+            upcoming.push(event)
+          }
+        })
+        
+        console.log(`✅ Split complete: ${upcoming.length} active, ${archived.length} archived`)
+        
+        setEvents(upcoming as any)
+        setArchivedEvents(archived as any)
       }
     }catch{}
   }
@@ -116,12 +205,74 @@ export default function CommunityCalendar(){
     return Array.from(map.entries()).sort(([a],[b]) => a.localeCompare(b))
   }, [events])
 
+  const groupedArchived = useMemo(() => {
+    const map = new Map<string, EventItem[]>()
+    archivedEvents.forEach(ev => {
+      const key = ev.date
+      if (!map.has(key)) map.set(key, [])
+      map.get(key)!.push(ev)
+    })
+    return Array.from(map.entries()).sort(([a],[b]) => b.localeCompare(a)) // Reverse order for archive
+  }, [archivedEvents])
+
   async function createEvent(formData: FormData){
     const params = new URLSearchParams()
-    ;['title','date','end_date','start_time','end_time','timezone','description'].forEach(k => {
-      const v = (formData.get(k) as string) || ''
-      if (v) params.append(k, v)
-    })
+    
+    // Get form values
+    const title = (formData.get('title') as string) || ''
+    const date = (formData.get('date') as string) || ''
+    const end_date = (formData.get('end_date') as string) || ''
+    const start_time = (formData.get('start_time') as string) || ''
+    const end_time = (formData.get('end_time') as string) || ''
+    const timezone = (formData.get('timezone') as string) || ''
+    const description = (formData.get('description') as string) || ''
+    const notification_preferences = (formData.get('notification_preferences') as string) || 'all'
+    
+    // Basic fields
+    if (title) params.append('title', title)
+    if (description) params.append('description', description)
+    if (timezone) params.append('timezone', timezone)
+    params.append('notification_preferences', notification_preferences)
+    
+    // Convert dates/times from local to UTC (like polls do)
+    if (date && start_time) {
+      try {
+        // Combine date + start_time into local datetime, then convert to UTC
+        const localDateTime = new Date(`${date}T${start_time}`)
+        const utcDate = localDateTime.toISOString().slice(0, 10) // YYYY-MM-DD
+        const utcTime = localDateTime.toISOString().slice(11, 16) // HH:MM
+        console.log(`📅 Converting event start: Local=${date} ${start_time} → UTC=${utcDate} ${utcTime}`)
+        params.append('date', utcDate)
+        params.append('start_time', utcTime)
+      } catch (e) {
+        console.error('Failed to convert start time to UTC:', e)
+        params.append('date', date)
+        params.append('start_time', start_time)
+      }
+    } else {
+      if (date) params.append('date', date)
+      if (start_time) params.append('start_time', start_time)
+    }
+    
+    // Convert end date/time
+    if (end_date && end_time) {
+      try {
+        const localEndDateTime = new Date(`${end_date}T${end_time}`)
+        const utcEndDate = localEndDateTime.toISOString().slice(0, 10)
+        const utcEndTime = localEndDateTime.toISOString().slice(11, 16)
+        console.log(`📅 Converting event end: Local=${end_date} ${end_time} → UTC=${utcEndDate} ${utcEndTime}`)
+        params.append('end_date', utcEndDate)
+        params.append('end_time', utcEndTime)
+      } catch (e) {
+        console.error('Failed to convert end time to UTC:', e)
+        if (end_date) params.append('end_date', end_date)
+        if (end_time) params.append('end_time', end_time)
+      }
+    } else {
+      if (end_date) params.append('end_date', end_date)
+      if (end_time) params.append('end_time', end_time)
+    }
+    
     if (community_id) params.append('community_id', String(community_id))
     params.append('invite_all', inviteAll ? 'true' : 'false')
     if (!inviteAll){
@@ -172,10 +323,58 @@ export default function CommunityCalendar(){
     if (!editingEvent) return
     const params = new URLSearchParams()
     params.append('event_id', String(editingEvent.id))
-    ;['title','date','end_date','start_time','end_time','timezone','description'].forEach(k => {
-      const v = (formData.get(k) as string) || ''
-      if (v) params.append(k, v)
-    })
+    
+    // Get form values
+    const title = (formData.get('title') as string) || ''
+    const date = (formData.get('date') as string) || ''
+    const end_date = (formData.get('end_date') as string) || ''
+    const start_time = (formData.get('start_time') as string) || ''
+    const end_time = (formData.get('end_time') as string) || ''
+    const timezone = (formData.get('timezone') as string) || ''
+    const description = (formData.get('description') as string) || ''
+    
+    // Basic fields
+    if (title) params.append('title', title)
+    if (description) params.append('description', description)
+    if (timezone) params.append('timezone', timezone)
+    
+    // Convert dates/times from local to UTC
+    if (date && start_time) {
+      try {
+        const localDateTime = new Date(`${date}T${start_time}`)
+        const utcDate = localDateTime.toISOString().slice(0, 10)
+        const utcTime = localDateTime.toISOString().slice(11, 16)
+        console.log(`📅 Converting edited start: Local=${date} ${start_time} → UTC=${utcDate} ${utcTime}`)
+        params.append('date', utcDate)
+        params.append('start_time', utcTime)
+      } catch (e) {
+        console.error('Failed to convert start time to UTC:', e)
+        params.append('date', date)
+        params.append('start_time', start_time)
+      }
+    } else {
+      if (date) params.append('date', date)
+      if (start_time) params.append('start_time', start_time)
+    }
+    
+    if (end_date && end_time) {
+      try {
+        const localEndDateTime = new Date(`${end_date}T${end_time}`)
+        const utcEndDate = localEndDateTime.toISOString().slice(0, 10)
+        const utcEndTime = localEndDateTime.toISOString().slice(11, 16)
+        console.log(`📅 Converting edited end: Local=${end_date} ${end_time} → UTC=${utcEndDate} ${utcEndTime}`)
+        params.append('end_date', utcEndDate)
+        params.append('end_time', utcEndTime)
+      } catch (e) {
+        console.error('Failed to convert end time to UTC:', e)
+        if (end_date) params.append('end_date', end_date)
+        if (end_time) params.append('end_time', end_time)
+      }
+    } else {
+      if (end_date) params.append('end_date', end_date)
+      if (end_time) params.append('end_time', end_time)
+    }
+    
     const r = await fetch('/edit_calendar_event', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: params })
     const j = await r.json().catch(()=>null)
     if (j?.success){
@@ -199,6 +398,10 @@ export default function CommunityCalendar(){
             <button type="button" className={`flex-1 text-center text-sm font-medium ${activeTab==='calendar' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`} onClick={()=> setActiveTab('calendar')}>
               <div className="pt-2">Calendar</div>
               <div className={`h-0.5 rounded-full w-16 mx-auto mt-1 ${activeTab==='calendar' ? 'bg-[#4db6ac]' : 'bg-transparent'}`} />
+            </button>
+            <button type="button" className={`flex-1 text-center text-sm font-medium ${activeTab==='archive' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`} onClick={()=> setActiveTab('archive')}>
+              <div className="pt-2">Archive</div>
+              <div className={`h-0.5 rounded-full w-16 mx-auto mt-1 ${activeTab==='archive' ? 'bg-[#4db6ac]' : 'bg-transparent'}`} />
             </button>
             <button type="button" className={`flex-1 text-center text-sm font-medium ${activeTab==='create' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`} onClick={()=> setActiveTab('create')}>
               <div className="pt-2">Create Event</div>
@@ -250,6 +453,16 @@ export default function CommunityCalendar(){
               <label className="col-span-2 text-xs text-[#9fb0b5]">Description
                 <input name="description" placeholder="Description" className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none" />
               </label>
+              <label className="col-span-2 text-xs text-[#9fb0b5]">📬 Send reminders
+                <select name="notification_preferences" className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none">
+                  <option value="none">No reminders</option>
+                  <option value="1_week">1 week before</option>
+                  <option value="1_day">1 day before</option>
+                  <option value="1_hour">1 hour before</option>
+                  <option value="all" selected>All reminders (1 week + 1 day + 1 hour)</option>
+                </select>
+                <div className="text-[10px] text-[#9fb0b5] mt-1">⚡ Reminders sent automatically based on event start time</div>
+              </label>
             </div>
 
             <div className="flex items-center gap-2">
@@ -285,6 +498,55 @@ export default function CommunityCalendar(){
               <button className="px-3 py-1.5 rounded-md bg-[#4db6ac] text-black text-sm hover:brightness-110">Add</button>
             </div>
           </form>
+        ) : activeTab === 'archive' ? (
+          <div className="space-y-3">
+            {loading ? (
+              <div className="text-[#9fb0b5]">Loading archived events…</div>
+            ) : groupedArchived.length === 0 ? (
+              <div className="text-[#9fb0b5]">No archived events yet.</div>
+            ) : (
+              groupedArchived.map(([date, items]) => (
+                <div key={date} className="rounded-2xl border border-white/10 bg-white/[0.035] overflow-hidden opacity-75">
+                  <div className="px-3 py-2 bg-[#6c757d] text-xs text-black font-medium flex items-center gap-2">
+                    <span>🔒 Past Event</span>
+                    <span>•</span>
+                    <span>
+                      {(() => {
+                        const firstWithEndDate = items.find(ev => ev.end_date && ev.end_date !== date && ev.end_date !== '0000-00-00')
+                        return firstWithEndDate ? `${date} → ${firstWithEndDate.end_date}` : date
+                      })()}
+                    </span>
+                  </div>
+                  <div className="divide-y divide-white/10">
+                    {items.map(ev => (
+                      <div key={ev.id} className="px-3 py-2 cursor-pointer hover:bg-white/5" onClick={()=> navigate(`/event/${ev.id}`)}>
+                        <div className="flex items-center gap-2">
+                          <div className="font-medium flex-1">{ev.title}</div>
+                          <div className="text-xs text-[#9fb0b5]">
+                            {(() => {
+                              const times = [ev.start_time, ev.end_time]
+                                .filter(t => t && t !== '0000-00-00 00:00:00' && t !== '00:00:00' && t !== '00:00')
+                              const timeStr = times.length > 0 ? times.join(' - ') : ''
+                              return timeStr && ev.timezone ? `${timeStr} ${ev.timezone}` : timeStr
+                            })()}
+                          </div>
+                        </div>
+                        {ev.description ? (<div className="text-sm text-[#cfd8dc] mt-1">{ev.description}</div>) : null}
+                        <div className="text-xs text-[#9fb0b5] mt-2 flex items-center gap-2 flex-wrap">
+                          <span className="px-2 py-1 rounded-full border border-white/10">Going {ev.rsvp_counts?.going||0}</span>
+                          <span className="px-2 py-1 rounded-full border border-white/10">Maybe {ev.rsvp_counts?.maybe||0}</span>
+                          <span className="px-2 py-1 rounded-full border border-white/10">Not going {ev.rsvp_counts?.not_going||0}</span>
+                          {typeof ev.rsvp_counts?.no_response === 'number' && ev.rsvp_counts.no_response > 0 && (
+                            <span className="px-2 py-1 rounded-full border border-white/10">No response {ev.rsvp_counts.no_response}</span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
         ) : (
           <div className="space-y-3">
             {loading ? (

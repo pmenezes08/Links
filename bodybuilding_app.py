@@ -22,6 +22,7 @@ from hashlib import sha256
 from redis_cache import cache, cache_result, invalidate_user_cache, invalidate_community_cache, invalidate_message_cache
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from urllib.parse import urlencode
+from encryption_endpoints import register_encryption_endpoints
 try:
     from PIL import Image
     PIL_AVAILABLE = True
@@ -191,7 +192,9 @@ def _block_unverified_users():
         if path in ('/health', '/vite.svg', '/favicon.svg', '/manifest.webmanifest') or path.startswith('/icons/'):
             return None
         # API behavior: return JSON instead of HTML redirects to avoid client parse errors
-        if path.startswith('/api/'):
+        # Exception for public cron endpoints (no auth required)
+        public_api_endpoints = ['/api/poll_notification_check', '/api/event_notification_check']
+        if path.startswith('/api/') and path not in public_api_endpoints:
             username = session.get('username')
             if not username:
                 return jsonify({'success': False, 'error': 'unauthenticated'}), 401
@@ -886,6 +889,26 @@ def add_missing_tables():
                         logger.info(f"Added {col_name} column to messages table")
                 except Exception as ae:
                     logger.warning(f"Could not ensure {col_name} column on messages: {ae}")
+            
+            # Ensure messages table has E2E encryption columns
+            for col_name, col_type in [
+                ('is_encrypted', 'INTEGER DEFAULT 0'),
+                ('encrypted_body', 'TEXT'),
+                ('encrypted_body_for_sender', 'TEXT'),
+            ]:
+                try:
+                    exists = False
+                    try:
+                        c.execute(f"SHOW COLUMNS FROM messages LIKE '{col_name}'")
+                        exists = c.fetchone() is not None
+                    except Exception:
+                        exists = False
+                    if not exists:
+                        c.execute(f"ALTER TABLE messages ADD COLUMN {col_name} {col_type}")
+                        conn.commit()
+                        logger.info(f"Added {col_name} column to messages table for E2E encryption")
+                except Exception as ae:
+                    logger.warning(f"Could not ensure {col_name} column on messages: {ae}")
 
             # Typing status table for realtime UX
             c.execute('''CREATE TABLE IF NOT EXISTS typing_status (
@@ -895,6 +918,38 @@ def add_missing_tables():
                              is_typing INTEGER DEFAULT 0,
                              updated_at TEXT NOT NULL,
                              UNIQUE(user, peer))''')
+            
+            # E2E Encryption tables
+            logger.info("Creating encryption_keys table...")
+            c.execute('''CREATE TABLE IF NOT EXISTS encryption_keys (
+                             id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                             username VARCHAR(191) UNIQUE NOT NULL,
+                             identity_key TEXT NOT NULL,
+                             signed_prekey_id INTEGER NOT NULL,
+                             signed_prekey_public TEXT NOT NULL,
+                             signed_prekey_signature TEXT NOT NULL,
+                             registration_id INTEGER NOT NULL,
+                             created_at TEXT NOT NULL,
+                             updated_at TEXT NOT NULL)''')
+            
+            logger.info("Creating encryption_prekeys table...")
+            c.execute('''CREATE TABLE IF NOT EXISTS encryption_prekeys (
+                             id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                             username VARCHAR(191) NOT NULL,
+                             key_id INTEGER NOT NULL,
+                             public_key TEXT NOT NULL,
+                             used INTEGER DEFAULT 0,
+                             created_at TEXT NOT NULL,
+                             UNIQUE(username, key_id))''')
+            
+            logger.info("Creating encryption_backups table...")
+            c.execute('''CREATE TABLE IF NOT EXISTS encryption_backups (
+                             id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                             username VARCHAR(191) UNIQUE NOT NULL,
+                             encrypted_backup TEXT NOT NULL,
+                             salt TEXT NOT NULL,
+                             created_at TEXT NOT NULL,
+                             updated_at TEXT NOT NULL)''')
 
             # Ensure helpful indexes
             try:
@@ -1098,6 +1153,34 @@ def add_missing_tables():
                         exists2 = False
                     if not exists2:
                         c.execute("ALTER TABLE product_polls ADD COLUMN allow_multiple INTEGER NOT NULL DEFAULT 0")
+                
+                    # Ensure poll_notification_log table exists (track sent notifications)
+                    try:
+                        if USE_MYSQL:
+                            c.execute("SHOW TABLES LIKE 'poll_notification_log'")
+                            if not c.fetchone():
+                                c.execute('''CREATE TABLE IF NOT EXISTS poll_notification_log (
+                                    id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                                    poll_id INTEGER NOT NULL,
+                                    username VARCHAR(191) NOT NULL,
+                                    notification_type VARCHAR(50) NOT NULL,
+                                    sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                                    UNIQUE KEY unique_poll_notif (poll_id, username, notification_type),
+                                    FOREIGN KEY (poll_id) REFERENCES polls(id) ON DELETE CASCADE
+                                )''')
+                        else:
+                            c.execute('''CREATE TABLE IF NOT EXISTS poll_notification_log (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                poll_id INTEGER NOT NULL,
+                                username TEXT NOT NULL,
+                                notification_type TEXT NOT NULL,
+                                sent_at TEXT DEFAULT (datetime('now')),
+                                UNIQUE(poll_id, username, notification_type),
+                                FOREIGN KEY (poll_id) REFERENCES polls(id) ON DELETE CASCADE
+                            )''')
+                    except Exception as pnl_err:
+                        logger.warning(f"Could not create poll_notification_log table: {pnl_err}")
+                
                 conn.commit()
             except Exception as e:
                 logger.warning(f"Could not ensure product dev tables: {e}")
@@ -2172,7 +2255,8 @@ def init_db():
                 'time': 'TEXT',
                 'created_at': 'DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP',
                 'community_id': 'INTEGER',
-                'timezone': 'VARCHAR(100)'
+                'timezone': 'VARCHAR(100)',
+                'notification_preferences': "VARCHAR(50) DEFAULT 'all'"
             }
             
             for col_name, col_def in required_columns.items():
@@ -2220,6 +2304,19 @@ def init_db():
             c.execute("CREATE INDEX IF NOT EXISTS idx_invitations_event ON event_invitations(event_id)")
             c.execute("CREATE INDEX IF NOT EXISTS idx_invitations_username ON event_invitations(invited_username)")
             c.execute("CREATE INDEX IF NOT EXISTS idx_invitations_viewed ON event_invitations(viewed)")
+            
+            # Create event notification log table
+            logger.info("Creating event_notification_log table...")
+            c.execute('''CREATE TABLE IF NOT EXISTS event_notification_log (
+                         id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                         event_id INTEGER NOT NULL,
+                         username VARCHAR(191) NOT NULL,
+                         notification_type VARCHAR(50) NOT NULL,
+                         sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                         UNIQUE KEY unique_event_notif (event_id, username, notification_type),
+                         FOREIGN KEY (event_id) REFERENCES calendar_events(id) ON DELETE CASCADE,
+                         KEY idx_username (username)
+                     )''')
             
             conn.commit()
             logger.info("Database initialization completed successfully")
@@ -3433,6 +3530,39 @@ def api_community_group_feed(parent_id: int):
                         replies_count_val = rr['cnt'] if hasattr(rr, 'keys') else (rr[0] if rr else 0)
                     except Exception:
                         replies_count_val = 0
+                    
+                    # Poll (if active)
+                    poll_obj = None
+                    try:
+                        c.execute("SELECT * FROM polls WHERE post_id = ? AND is_active = 1", (pid,))
+                        poll_raw = c.fetchone()
+                        if poll_raw:
+                            poll = dict(poll_raw)
+                            c.execute("SELECT * FROM poll_options WHERE poll_id = ? ORDER BY id", (poll['id'],))
+                            options = [dict(o) for o in c.fetchall()]
+                            
+                            # Calculate vote counts for each option
+                            for opt in options:
+                                c.execute("SELECT COUNT(*) as count FROM poll_votes WHERE poll_id = ? AND option_id = ?", (poll['id'], opt['id']))
+                                vote_count = c.fetchone()
+                                opt['votes'] = vote_count['count'] if vote_count else 0
+                                # Rename option_text to text for frontend compatibility
+                                opt['text'] = opt.get('option_text', '')
+                                # Check if current user voted on this specific option
+                                c.execute("SELECT COUNT(*) as count FROM poll_votes WHERE poll_id = ? AND option_id = ? AND username = ?", (poll['id'], opt['id'], username))
+                                user_vote_check = c.fetchone()
+                                opt['user_voted'] = (user_vote_check['count'] if user_vote_check else 0) > 0
+                            
+                            poll['options'] = options
+                            # Current user's vote (for single vote polls - keeps first one found)
+                            c.execute("SELECT option_id FROM poll_votes WHERE poll_id = ? AND username = ?", (poll['id'], username))
+                            uv = c.fetchone()
+                            poll['user_vote'] = uv['option_id'] if uv else None
+                            poll['total_votes'] = sum(opt.get('votes', 0) for opt in options)
+                            poll_obj = poll
+                    except Exception:
+                        pass
+                    
                     post_obj = {
                         'id': pid,
                         'username': uname,
@@ -3444,7 +3574,8 @@ def api_community_group_feed(parent_id: int):
                         'profile_picture': get_profile_picture(uname),
                         'reactions': reaction_counts,
                         'user_reaction': user_reaction_val,
-                        'replies_count': replies_count_val
+                        'replies_count': replies_count_val,
+                        'poll': poll_obj
                     }
                     # Include posts missing a parsable datetime as a fallback
                     if (dt is None) or (dt >= cutoff):
@@ -3481,6 +3612,39 @@ def api_community_group_feed(parent_id: int):
                         replies_count_val = rr['cnt'] if hasattr(rr, 'keys') else (rr[0] if rr else 0)
                     except Exception:
                         replies_count_val = 0
+                    
+                    # Poll (if active)
+                    poll_obj = None
+                    try:
+                        c.execute("SELECT * FROM polls WHERE post_id = ? AND is_active = 1", (pid,))
+                        poll_raw = c.fetchone()
+                        if poll_raw:
+                            poll = dict(poll_raw)
+                            c.execute("SELECT * FROM poll_options WHERE poll_id = ? ORDER BY id", (poll['id'],))
+                            options = [dict(o) for o in c.fetchall()]
+                            
+                            # Calculate vote counts for each option
+                            for opt in options:
+                                c.execute("SELECT COUNT(*) as count FROM poll_votes WHERE poll_id = ? AND option_id = ?", (poll['id'], opt['id']))
+                                vote_count = c.fetchone()
+                                opt['votes'] = vote_count['count'] if vote_count else 0
+                                # Rename option_text to text for frontend compatibility
+                                opt['text'] = opt.get('option_text', '')
+                                # Check if current user voted on this specific option
+                                c.execute("SELECT COUNT(*) as count FROM poll_votes WHERE poll_id = ? AND option_id = ? AND username = ?", (poll['id'], opt['id'], username))
+                                user_vote_check = c.fetchone()
+                                opt['user_voted'] = (user_vote_check['count'] if user_vote_check else 0) > 0
+                            
+                            poll['options'] = options
+                            # Current user's vote (for single vote polls - keeps first one found)
+                            c.execute("SELECT option_id FROM poll_votes WHERE poll_id = ? AND username = ?", (poll['id'], username))
+                            uv = c.fetchone()
+                            poll['user_vote'] = uv['option_id'] if uv else None
+                            poll['total_votes'] = sum(opt.get('votes', 0) for opt in options)
+                            poll_obj = poll
+                    except Exception:
+                        pass
+                    
                     post_obj = {
                         'id': pid,
                         'username': uname,
@@ -3492,7 +3656,8 @@ def api_community_group_feed(parent_id: int):
                         'profile_picture': get_profile_picture(uname),
                         'reactions': reaction_counts,
                         'user_reaction': user_reaction_val,
-                        'replies_count': replies_count_val
+                        'replies_count': replies_count_val,
+                        'poll': poll_obj
                     }
                     # Include posts missing a parsable datetime as a fallback
                     if (dt is None) or (dt >= cutoff):
@@ -4391,11 +4556,256 @@ def admin_dashboard_api():
             c.execute("SELECT COUNT(*) as count FROM posts")
             total_posts = get_scalar_result(c.fetchone(), column_name='count')
             
+            # Activity windows
+            from datetime import datetime, timedelta
+            # Use server-local midnight for "today" to better match stored timestamps
+            today = datetime.now().date()
+            start_of_day = datetime(today.year, today.month, today.day)
+            start_of_30 = start_of_day - timedelta(days=30)
+
+            # DAU/MAU (unique usernames with any activity: post, reaction, vote, or reading timeline)
+            # Reading timeline proxy: community_feed/api hits tracked in community_visit_history
+            def get_unique_between(table, field, ts_field, start_ts):
+                try:
+                    q = f"SELECT DISTINCT {field}, {ts_field} FROM {table} WHERE {ts_field} IS NOT NULL"
+                    c.execute(q)
+                    rows = c.fetchall() or []
+                    vals = set()
+                    for r in rows:
+                        try:
+                            username_val = r[field] if hasattr(r, 'keys') else r[0]
+                            ts_val = r[ts_field] if hasattr(r, 'keys') else (r[1] if len(r) > 1 else None)
+                            if not ts_val:
+                                continue
+                            s = str(ts_val)
+                            dtv = None
+                            # Fast path ISO-like
+                            try:
+                                dtv = datetime.strptime(s[:19].replace('T',' '), '%Y-%m-%d %H:%M:%S')
+                            except Exception:
+                                for fmt in ('%Y-%m-%d %H:%M', '%Y-%m-%d', '%m.%d.%y %H:%M'):
+                                    try:
+                                        dtv = datetime.strptime(s, fmt)
+                                        break
+                                    except Exception:
+                                        continue
+                            if dtv and dtv >= start_ts:
+                                vals.add(username_val)
+                        except Exception:
+                            pass
+                    return vals
+                except Exception:
+                    return set()
+
+            dau_sets = []
+            mau_sets = []
+            for tbl, user_field, ts_field in (
+                ('posts','username','timestamp'),
+                ('reactions','username','created_at'),
+                ('poll_votes','username','voted_at'),
+                ('community_visit_history','username','visit_time'),
+                ('messages','sender','timestamp'),
+            ):
+                dau_sets.append(get_unique_between(tbl, user_field, ts_field, start_of_day))
+                mau_sets.append(get_unique_between(tbl, user_field, ts_field, start_of_30))
+
+            dau = len(set().union(*dau_sets))
+            mau = len(set().union(*mau_sets))
+            dau_pct = round((dau / total_users) * 100, 2) if total_users else 0.0
+            mau_pct = round((mau / total_users) * 100, 2) if total_users else 0.0
+
+            # Average DAU over the past 30 days (including today):
+            # For each day window [day_start, day_end), union distinct users across activity tables, then average the counts
+            def get_unique_between_window(table, field, ts_field, start_ts, end_ts):
+                try:
+                    q = f"SELECT DISTINCT {field}, {ts_field} FROM {table} WHERE {ts_field} IS NOT NULL"
+                    c.execute(q)
+                    rows = c.fetchall() or []
+                    vals = set()
+                    for r in rows:
+                        try:
+                            username_val = r[field] if hasattr(r, 'keys') else r[0]
+                            ts_val = r[ts_field] if hasattr(r, 'keys') else (r[1] if len(r) > 1 else None)
+                            if not ts_val:
+                                continue
+                            s = str(ts_val)
+                            dtv = None
+                            try:
+                                dtv = datetime.strptime(s[:19].replace('T',' '), '%Y-%m-%d %H:%M:%S')
+                            except Exception:
+                                for fmt in ('%Y-%m-%d %H:%M', '%Y-%m-%d', '%m.%d.%y %H:%M'):
+                                    try:
+                                        dtv = datetime.strptime(s, fmt)
+                                        break
+                                    except Exception:
+                                        continue
+                            if dtv and (dtv >= start_ts) and (dtv < end_ts):
+                                vals.add(username_val)
+                        except Exception:
+                            pass
+                    return vals
+                except Exception:
+                    return set()
+
+            daily_counts = []
+            for i in range(0, 30):
+                day_start = start_of_day - timedelta(days=i)
+                day_end = day_start + timedelta(days=1)
+                day_sets = []
+                for tbl, user_field, ts_field in (
+                    ('posts','username','timestamp'),
+                    ('reactions','username','created_at'),
+                    ('poll_votes','username','voted_at'),
+                    ('community_visit_history','username','visit_time'),
+                    ('messages','sender','timestamp'),
+                ):
+                    day_sets.append(get_unique_between_window(tbl, user_field, ts_field, day_start, day_end))
+                daily_counts.append(len(set().union(*day_sets)))
+            avg_dau_30 = round(sum(daily_counts) / len(daily_counts), 2) if daily_counts else 0.0
+
+            # Helper: get activity users for a window [start, end)
+            def get_activity_users(start_ts, end_ts):
+                users_union = set()
+                for tbl, user_field, ts_field in (
+                    ('posts','username','timestamp'),
+                    ('reactions','username','created_at'),
+                    ('poll_votes','username','voted_at'),
+                    ('community_visit_history','username','visit_time'),
+                    ('messages','sender','timestamp'),
+                ):
+                    users_union |= get_unique_between_window(tbl, user_field, ts_field, start_ts, end_ts)
+                return users_union
+
+            # Monthly returning users (current month vs previous month)
+            from calendar import monthrange
+            cur_month_start = start_of_day.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            # Prev month start
+            if cur_month_start.month == 1:
+                prev_month_start = cur_month_start.replace(year=cur_month_start.year-1, month=12)
+            else:
+                prev_month_start = cur_month_start.replace(month=cur_month_start.month-1)
+            # Month ends
+            days_in_prev_month = monthrange(prev_month_start.year, prev_month_start.month)[1]
+            prev_month_end = prev_month_start.replace(day=days_in_prev_month, hour=23, minute=59, second=59)
+            days_in_cur_month = monthrange(cur_month_start.year, cur_month_start.month)[1]
+            cur_month_end = cur_month_start.replace(day=days_in_cur_month, hour=23, minute=59, second=59)
+
+            users_prev_month = get_activity_users(prev_month_start, prev_month_end)
+            users_cur_month = get_activity_users(cur_month_start, cur_month_end)
+            mau_month = len(users_cur_month)
+            mru = len(users_prev_month & users_cur_month)
+            mru_repeat_rate = round((mru / mau_month) * 100, 2) if mau_month else 0.0
+
+            # Weekly returning users (current week vs previous week), week starts Monday
+            weekday = start_of_day.weekday()  # Mon=0
+            start_of_week = start_of_day.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=weekday)
+            prev_week_start = start_of_week - timedelta(days=7)
+            prev_week_end = start_of_week - timedelta(seconds=1)
+            cur_week_end = start_of_week + timedelta(days=7) - timedelta(seconds=1)
+            users_prev_week = get_activity_users(prev_week_start, prev_week_end)
+            users_cur_week = get_activity_users(start_of_week, cur_week_end)
+            wau = len(users_cur_week)
+            wru = len(users_prev_week & users_cur_week)
+            wru_repeat_rate = round((wru / wau) * 100, 2) if wau else 0.0
+
+            # Cohort retention (last 6 calendar months)
+            cohorts = []
+            # Build list of month starts (oldest to newest)
+            month_starts = []
+            ms = cur_month_start
+            for _ in range(6):
+                month_starts.append(ms)
+                # go back one month
+                if ms.month == 1:
+                    ms = ms.replace(year=ms.year-1, month=12)
+                else:
+                    ms = ms.replace(month=ms.month-1)
+            month_starts = list(reversed(month_starts))
+
+            # Preload user signups
+            c.execute("SELECT username, created_at FROM users")
+            all_users = c.fetchall() or []
+            def in_month(dt, y, m):
+                return (dt.year == y and dt.month == m)
+            # Pre-calc month windows
+            month_windows = []
+            for ms in month_starts:
+                y = ms.year; m = ms.month
+                days_in_month = monthrange(y, m)[1]
+                start = ms
+                end = ms.replace(day=days_in_month, hour=23, minute=59, second=59)
+                month_windows.append((y, m, start, end))
+
+            # Build cohorts
+            for i, (y, m, start, end) in enumerate(month_windows):
+                cohort_users = set()
+                for u in all_users:
+                    uname = u['username'] if hasattr(u,'keys') else u[0]
+                    created = u['created_at'] if hasattr(u,'keys') else (u[1] if len(u)>1 else None)
+                    if not created: continue
+                    try:
+                        s = str(created)
+                        dtc = _dt.strptime(s[:19].replace('T',' '), '%Y-%m-%d %H:%M:%S')
+                    except Exception:
+                        try:
+                            dtc = _dt.strptime(str(created), '%Y-%m-%d')
+                        except Exception:
+                            continue
+                    if in_month(dtc, y, m):
+                        cohort_users.add(uname)
+                cohort_size = len(cohort_users)
+                # Compute retention for subsequent months up to the latest window
+                retention = []
+                if cohort_size:
+                    for j in range(i, len(month_windows)):
+                        ys, ms_, ws, we = month_windows[j]
+                        active = get_activity_users(ws, we)
+                        retained = len(active & cohort_users)
+                        retention.append(round((retained / cohort_size) * 100, 2))
+                cohorts.append({
+                    'month': f"{y:04d}-{m:02d}",
+                    'size': cohort_size,
+                    'retention': retention,
+                })
+
+            # Leaderboards
+            def scalar_list(query, params=()):
+                c.execute(query, params)
+                rows = c.fetchall() or []
+                out = []
+                for r in rows:
+                    if hasattr(r, 'keys'):
+                        out.append({'username': r['username'], 'count': r['cnt']})
+                    else:
+                        out.append({'username': r[0], 'count': r[1]})
+                return out
+
+            top_posters = scalar_list("SELECT username, COUNT(*) as cnt FROM posts WHERE LOWER(username) <> 'admin' GROUP BY username ORDER BY cnt DESC LIMIT 10")
+            top_reactors = scalar_list("SELECT username, COUNT(*) as cnt FROM reactions WHERE LOWER(username) <> 'admin' GROUP BY username ORDER BY cnt DESC LIMIT 10")
+            top_voters = scalar_list("SELECT username, COUNT(*) as cnt FROM poll_votes WHERE LOWER(username) <> 'admin' GROUP BY username ORDER BY cnt DESC LIMIT 10")
+
             stats = {
                 'total_users': total_users,
                 'premium_users': premium_users,
                 'total_communities': total_communities,
-                'total_posts': total_posts
+                'total_posts': total_posts,
+                'dau': dau,
+                'mau': mau,
+                'dau_pct': dau_pct,
+                'mau_pct': mau_pct,
+                'avg_dau_30': avg_dau_30,
+                'mau_month': mau_month,
+                'mru': mru,
+                'mru_repeat_rate_pct': mru_repeat_rate,
+                'wau': wau,
+                'wru': wru,
+                'wru_repeat_rate_pct': wru_repeat_rate,
+                'cohorts': cohorts,
+                'leaderboards': {
+                    'top_posters': top_posters,
+                    'top_reactors': top_reactors,
+                    'top_voters': top_voters,
+                }
             }
             
             # Get users list
@@ -6880,13 +7290,24 @@ def get_messages():
     if not other_user_id:
         return jsonify({'success': False, 'error': 'Other user ID required'})
     
-    # Skip cache for now - it's causing issues with message synchronization
-    # TODO: Fix cache key consistency between get_messages and invalidate_message_cache
-    # cache_key = f"messages:{username}:{other_user_id}"
-    # cached_messages = cache.get(cache_key)
-    # if cached_messages:
-    #     logger.debug(f"🚀 Cache hit: messages for {username} ↔ {other_user_id}")
-    #     return jsonify({'success': True, 'messages': cached_messages})
+    # Short-lived cache to reduce DB latency (viewer-specific; invalidated on write)
+    cache_key = None
+    try:
+        # Resolve other username for stable key
+        with get_db_connection() as _conn:
+            _c = _conn.cursor()
+            _c.execute("SELECT username FROM users WHERE id = ?", (other_user_id,))
+            _row = _c.fetchone()
+            if _row:
+                other_username_for_key = _row['username'] if hasattr(_row, 'keys') else _row[0]
+                from redis_cache import messages_view_cache_key
+                cache_key = messages_view_cache_key(username, other_username_for_key)
+    except Exception:
+        cache_key = None
+    if cache_key:
+        cached_messages = cache.get(cache_key)
+        if cached_messages:
+            return jsonify({'success': True, 'messages': cached_messages})
     
     try:
         with get_db_connection() as conn:
@@ -6908,18 +7329,51 @@ def get_messages():
             
             other_username = other_user['username'] if hasattr(other_user, 'keys') else other_user[0]
             
-            # Get messages between users
-            c.execute("""
-                SELECT id, sender, receiver, message, image_path, audio_path, audio_duration_seconds, audio_mime, timestamp
-                FROM messages
-                WHERE (sender = ? AND receiver = ?) 
-                   OR (sender = ? AND receiver = ?)
-                ORDER BY timestamp ASC
-            """, (username, other_username, other_username, username))
+            # Get messages between users (compat: edited_at and encryption fields may not exist yet)
+            with_edited = True
+            with_encryption = True
+            try:
+                c.execute(
+                    """
+                    SELECT id, sender, receiver, message, image_path, audio_path, audio_duration_seconds, audio_mime, 
+                           is_encrypted, encrypted_body, encrypted_body_for_sender, timestamp, edited_at
+                    FROM messages
+                    WHERE (sender = ? AND receiver = ?)
+                       OR (sender = ? AND receiver = ?)
+                    ORDER BY timestamp ASC
+                    """,
+                    (username, other_username, other_username, username),
+                )
+            except Exception:
+                # Fallback without encryption fields
+                with_encryption = False
+                try:
+                    c.execute(
+                        """
+                        SELECT id, sender, receiver, message, image_path, audio_path, audio_duration_seconds, audio_mime, timestamp, edited_at
+                        FROM messages
+                        WHERE (sender = ? AND receiver = ?)
+                           OR (sender = ? AND receiver = ?)
+                        ORDER BY timestamp ASC
+                        """,
+                        (username, other_username, other_username, username),
+                    )
+                except Exception:
+                    with_edited = False
+                    c.execute(
+                        """
+                        SELECT id, sender, receiver, message, image_path, audio_path, audio_duration_seconds, audio_mime, timestamp
+                        FROM messages
+                        WHERE (sender = ? AND receiver = ?)
+                           OR (sender = ? AND receiver = ?)
+                        ORDER BY timestamp ASC
+                        """,
+                        (username, other_username, other_username, username),
+                    )
             
             messages = []
             for msg in c.fetchall():
-                messages.append({
+                msg_dict = {
                     'id': msg['id'],
                     'text': msg['message'],
                     'image_path': msg.get('image_path') if hasattr(msg, 'get') else msg[4],
@@ -6927,17 +7381,29 @@ def get_messages():
                     'audio_duration_seconds': msg.get('audio_duration_seconds') if hasattr(msg, 'get') else msg[6] if len(msg) > 6 else None,
                     'audio_mime': msg.get('audio_mime') if hasattr(msg, 'get') else msg[7] if len(msg) > 7 else None,
                     'sent': msg['sender'] == username,
-                    'time': msg['timestamp']
-                })
+                    'time': msg['timestamp'],
+                    'edited_at': (msg.get('edited_at') if (with_edited and hasattr(msg,'get')) else ((msg[9] if (with_edited and len(msg) > 9) else None)))
+                }
+                
+                # Add encryption fields if available
+                if with_encryption:
+                    msg_dict['is_encrypted'] = msg.get('is_encrypted') if hasattr(msg, 'get') else msg[8] if len(msg) > 8 else 0
+                    msg_dict['encrypted_body'] = msg.get('encrypted_body') if hasattr(msg, 'get') else msg[9] if len(msg) > 9 else None
+                    msg_dict['encrypted_body_for_sender'] = msg.get('encrypted_body_for_sender') if hasattr(msg, 'get') else msg[10] if len(msg) > 10 else None
+                
+                messages.append(msg_dict)
             
             # Mark messages from other user as read
             c.execute("UPDATE messages SET is_read=1 WHERE sender=? AND receiver=? AND is_read=0", (other_username, username))
             conn.commit()
             
-            # Skip caching for now - disabled due to cache key inconsistency
-            # from redis_cache import MESSAGE_CACHE_TTL
-            # cache.set(cache_key, messages, MESSAGE_CACHE_TTL)  # Optimized TTL
-            # logger.debug(f"💾 Cached messages for {username} ↔ {other_user_id}")
+            # Write-through cache for fast subsequent polls
+            try:
+                from redis_cache import MESSAGE_CACHE_TTL
+                if cache_key:
+                    cache.set(cache_key, messages, MESSAGE_CACHE_TTL)
+            except Exception:
+                pass
             
             return jsonify({'success': True, 'messages': messages})
             
@@ -6947,13 +7413,23 @@ def get_messages():
 @app.route('/send_message', methods=['POST'])
 @login_required
 def send_message():
-    """Send a message to another user"""
+    """Send a message to another user (supports E2E encryption)"""
     username = session.get('username')
     recipient_id = request.form.get('recipient_id')
-    message = request.form.get('message')
+    message = request.form.get('message', '')
     
-    if not recipient_id or not message:
-        return jsonify({'success': False, 'error': 'Recipient and message required'})
+    # Encryption fields
+    is_encrypted = request.form.get('is_encrypted', '0') == '1'
+    encrypted_body = request.form.get('encrypted_body', '')  # Encrypted for recipient
+    encrypted_body_for_sender = request.form.get('encrypted_body_for_sender', '')  # Encrypted for sender
+    
+    if not recipient_id:
+        return jsonify({'success': False, 'error': 'Recipient required'})
+    
+    # For encrypted messages, we don't store plaintext at all
+    # For unencrypted messages, we need the message
+    if not is_encrypted and not message:
+        return jsonify({'success': False, 'error': 'Message required'})
     
     try:
         with get_db_connection() as conn:
@@ -6968,24 +7444,57 @@ def send_message():
             recipient_username = recipient['username'] if hasattr(recipient, 'keys') else recipient[0]
             
             # Check for duplicate message in last 5 seconds to prevent double-sends
-            c.execute("""
-                SELECT id FROM messages 
-                WHERE sender = ? AND receiver = ? AND message = ?
-                AND timestamp > DATE_SUB(NOW(), INTERVAL 5 SECOND)
-                LIMIT 1
-            """, (username, recipient_username, message))
+            if USE_MYSQL:
+                c.execute("""
+                    SELECT id FROM messages 
+                    WHERE sender = %s AND receiver = %s AND message = %s
+                    AND timestamp > DATE_SUB(NOW(), INTERVAL 5 SECOND)
+                    LIMIT 1
+                """, (username, recipient_username, message))
+            else:
+                c.execute("""
+                    SELECT id FROM messages 
+                    WHERE sender = ? AND receiver = ? AND message = ?
+                    AND datetime(timestamp) > datetime('now','-5 seconds')
+                    LIMIT 1
+                """, (username, recipient_username, message))
             
             if c.fetchone():
                 # Duplicate message detected, return success but don't insert
                 return jsonify({'success': True, 'message': 'Message already sent'})
             
-            # Insert message
-            c.execute("""
-                INSERT INTO messages (sender, receiver, message, timestamp)
-                VALUES (?, ?, ?, NOW())
-            """, (username, recipient_username, message))
+            # Insert message with optional encryption support
+            if USE_MYSQL:
+                c.execute("""
+                    INSERT INTO messages (sender, receiver, message, is_encrypted, encrypted_body, encrypted_body_for_sender, timestamp)
+                    VALUES (%s, %s, %s, %s, %s, %s, NOW())
+                """, (username, recipient_username, message if not is_encrypted else '', 1 if is_encrypted else 0, 
+                     encrypted_body if is_encrypted else None, encrypted_body_for_sender if is_encrypted else None))
+            else:
+                # SQLite: store as text 'YYYY-MM-DD HH:MM:SS'
+                _ts = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                c.execute("""
+                    INSERT INTO messages (sender, receiver, message, is_encrypted, encrypted_body, encrypted_body_for_sender, timestamp)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (username, recipient_username, message if not is_encrypted else '', 1 if is_encrypted else 0, 
+                     encrypted_body if is_encrypted else None, encrypted_body_for_sender if is_encrypted else None, _ts))
             
             conn.commit()
+            # Fetch inserted id and timestamp for immediate client update
+            try:
+                inserted_id = getattr(c, 'lastrowid', None)
+                inserted_time = None
+                if inserted_id:
+                    if USE_MYSQL:
+                        c.execute("SELECT timestamp FROM messages WHERE id = %s", (inserted_id,))
+                    else:
+                        c.execute("SELECT timestamp FROM messages WHERE id = ?", (inserted_id,))
+                    row = c.fetchone()
+                    if row is not None:
+                        inserted_time = row['timestamp'] if hasattr(row, 'keys') else row[0]
+            except Exception as _fe:
+                inserted_id = None
+                inserted_time = None
             
             # Invalidate message caches for faster updates
             invalidate_message_cache(username, recipient_username)
@@ -7038,11 +7547,82 @@ def send_message():
             except Exception as _e:
                 logger.warning(f"push send_message warn: {_e}")
 
-            return jsonify({'success': True, 'message': 'Message sent successfully'})
+            return jsonify({'success': True, 'message': 'Message sent successfully', 'message_id': inserted_id, 'time': inserted_time})
             
     except Exception as e:
         logger.error(f"Error sending message: {str(e)}")
         return jsonify({'success': False, 'error': 'Failed to send message'})
+
+@app.route('/api/chat/edit_message', methods=['POST'])
+@login_required
+def edit_message_api():
+    """Edit an existing message's text. Only the sender can edit. Records edited_at."""
+    username = session.get('username')
+    if request.is_json:
+        data = request.get_json(silent=True) or {}
+        message_id = data.get('message_id')
+        new_text = (data.get('text') or '').strip()
+    else:
+        message_id = request.form.get('message_id')
+        new_text = (request.form.get('text') or '').strip()
+    if not message_id or new_text is None:
+        return jsonify({'success': False, 'error': 'message_id and text required'}), 400
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            # Ensure edited_at column exists (best-effort)
+            try:
+                if USE_MYSQL:
+                    c.execute("SHOW COLUMNS FROM messages LIKE 'edited_at'")
+                    if not c.fetchone():
+                        c.execute("ALTER TABLE messages ADD COLUMN edited_at DATETIME NULL")
+                else:
+                    # SQLite: check pragma
+                    c.execute("PRAGMA table_info(messages)")
+                    cols = [row[1] for row in c.fetchall()]
+                    if 'edited_at' not in cols:
+                        c.execute("ALTER TABLE messages ADD COLUMN edited_at TEXT")
+            except Exception:
+                pass
+            # Enforce sender and 5-minute edit window
+            c.execute("SELECT sender, timestamp FROM messages WHERE id = ?", (message_id,))
+            row = c.fetchone()
+            if not row:
+                return jsonify({'success': False, 'error': 'Not found'}), 404
+            sender = row['sender'] if hasattr(row, 'keys') else row[0]
+            sent_ts_val = row['timestamp'] if hasattr(row, 'keys') else row[1]
+            if str(sender) != str(username):
+                return jsonify({'success': False, 'error': 'Not permitted'}), 403
+            # Parse timestamp
+            from datetime import datetime as _dt
+            sent_dt = None
+            s = str(sent_ts_val or '')
+            try:
+                sent_dt = _dt.strptime(s[:19].replace('T',' '), '%Y-%m-%d %H:%M:%S')
+            except Exception:
+                for fmt in ('%Y-%m-%d %H:%M', '%Y-%m-%d'):
+                    try:
+                        sent_dt = _dt.strptime(s, fmt)
+                        break
+                    except Exception:
+                        continue
+            if not sent_dt:
+                # If unknown, deny edit to be safe
+                return jsonify({'success': False, 'error': 'Invalid timestamp'}), 400
+            if (_dt.now() - sent_dt).total_seconds() > 5*60:
+                return jsonify({'success': False, 'error': 'Edit window expired'}), 400
+            # Update only if sender is current user
+            c.execute(
+                "UPDATE messages SET message = ?, edited_at = ? WHERE id = ? AND sender = ?",
+                (new_text, datetime.now().strftime('%Y-%m-%d %H:%M:%S'), message_id, username)
+            )
+            if c.rowcount == 0:
+                return jsonify({'success': False, 'error': 'Not found or not permitted'}), 403
+            conn.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"edit_message_api error: {e}")
+        return jsonify({'success': False, 'error': 'Failed to edit message'}), 500
 
 @app.route('/send_photo_message', methods=['POST'])
 @login_required
@@ -9137,7 +9717,7 @@ def notify_post_reply_recipients(*, post_id: int, from_user: str, community_id: 
                     send_push_to_user(target, {
                         'title': f'New reply from {from_user}',
                         'body': 'Tap to view the conversation',
-                        'url': f'/post/{post_id}',
+                        'url': f'/community/{community_id}/polls_react',
                         'tag': f'post-reply-{post_id}-{target}'
                     })
                 except Exception as pe:
@@ -10402,18 +10982,27 @@ def create_poll():
     if len(options) > 6:
         return jsonify({'success': False, 'error': 'Maximum 6 options allowed!'})
     
-    timestamp = datetime.now().strftime('%d-%m-%Y %H:%M:%S')
+    timestamp = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
     expires_at_raw = request.form.get('expires_at', '').strip()
     expires_at_sql = None
     if expires_at_raw:
         try:
             # Accept both 'YYYY-MM-DDTHH:MM' and 'YYYY-MM-DD'
+            # Frontend should send UTC time (or we convert from local)
             if 'T' in expires_at_raw:
                 dt = datetime.strptime(expires_at_raw, '%Y-%m-%dT%H:%M')
             else:
                 dt = datetime.strptime(expires_at_raw, '%Y-%m-%d')
+            
+            # Validate: expiry date must be in the future
+            now = datetime.utcnow()
+            if dt <= now:
+                return jsonify({'success': False, 'error': 'Poll expiry date must be in the future'})
+            
             expires_at_sql = dt.strftime('%Y-%m-%d %H:%M:%S')
-        except Exception:
+            logger.info(f"📅 Poll deadline: {expires_at_sql} (treating as UTC)")
+        except Exception as e:
+            logger.error(f"Error parsing poll expiry date: {e}")
             expires_at_sql = None
     
     try:
@@ -10460,7 +11049,54 @@ def create_poll():
                 c.execute("INSERT INTO poll_options (poll_id, option_text) VALUES (?, ?)",
                           (poll_id, option_text))
             
+            # Get community members before committing
+            member_usernames = []
+            if community_id:
+                try:
+                    logger.info(f"🔍 Fetching members for community {community_id}, USE_MYSQL={USE_MYSQL}")
+                    if USE_MYSQL:
+                        c.execute("""
+                            SELECT DISTINCT u.username
+                            FROM user_communities uc
+                            JOIN users u ON uc.user_id = u.id
+                            WHERE uc.community_id = %s AND u.username != %s
+                        """, (community_id, username))
+                    else:
+                        c.execute("""
+                            SELECT DISTINCT u.username
+                            FROM user_communities uc
+                            JOIN users u ON uc.user_id = u.id
+                            WHERE uc.community_id = ? AND u.username != ?
+                        """, (community_id, username))
+                    # Handle both dict rows (MySQL) and tuple rows (SQLite)
+                    rows = c.fetchall()
+                    member_usernames = [row['username'] if hasattr(row, 'keys') else row[0] for row in rows]
+                    logger.info(f"✅ Found {len(member_usernames)} members to notify for poll in community {community_id}")
+                except Exception as e:
+                    logger.error(f"❌ Error fetching community members for poll notifications: {type(e).__name__}: {str(e)}")
+                    import traceback
+                    logger.error(traceback.format_exc())
+            
             conn.commit()
+            
+            # Notify all community members about the new poll (after commit)
+            if member_usernames:
+                try:
+                    for member_username in member_usernames:
+                        create_notification(
+                            user_id=member_username,
+                            from_user=username,
+                            notification_type='poll',
+                            post_id=post_id,
+                            community_id=community_id,
+                            message=f'New poll: {question}'
+                        )
+                    logger.info(f"✅ Created {len(member_usernames)} poll notifications for post {post_id}")
+                except Exception as e:
+                    logger.error(f"❌ Error creating poll notifications: {str(e)}")
+                    import traceback
+                    logger.error(traceback.format_exc())
+            
             return jsonify({'success': True, 'message': 'Poll created successfully!', 'post_id': post_id})
             
     except Exception as e:
@@ -10524,11 +11160,189 @@ def close_poll():
             c.execute("UPDATE polls SET is_active = 0 WHERE id = ?", (poll_id,))
             conn.commit()
             
+            # Send "poll closed" notifications to all community members
+            try:
+                c.execute("SELECT community_id FROM posts WHERE id = ?", (poll_data['post_id'],))
+                post_row = c.fetchone()
+                if post_row:
+                    community_id = post_row['community_id'] if hasattr(post_row, 'keys') else post_row[0]
+                    
+                    if community_id:
+                        # Get poll question
+                        c.execute("SELECT question FROM polls WHERE id = ?", (poll_id,))
+                        poll_question_row = c.fetchone()
+                        poll_question = poll_question_row['question'] if hasattr(poll_question_row, 'keys') else poll_question_row[0] if poll_question_row else "a poll"
+                        
+                        # Get all community members
+                        c.execute("""
+                            SELECT DISTINCT u.id, u.username
+                            FROM user_communities uc
+                            JOIN users u ON uc.user_id = u.id
+                            WHERE uc.community_id = ?
+                        """, (community_id,))
+                        
+                        members = c.fetchall()
+                        for member_row in members:
+                            # Extract username (no need for member_id since we pass username to create_notification)
+                            member_username = member_row['username'] if hasattr(member_row, 'keys') else member_row[1]
+                            
+                            # Check if not already notified
+                            c.execute("SELECT id FROM poll_notification_log WHERE poll_id=? AND username=? AND notification_type='closed'", 
+                                     (poll_id, member_username))
+                            if not c.fetchone():
+                                # Get community name for notification
+                                comm_name = ""
+                                try:
+                                    c.execute("SELECT name FROM communities WHERE id = ?", (community_id,))
+                                    comm_row = c.fetchone()
+                                    if comm_row:
+                                        comm_name = comm_row['name'] if hasattr(comm_row, 'keys') else comm_row[0]
+                                except Exception:
+                                    pass
+                                
+                                message = f"🔒 Poll in {comm_name} closed. Check results!" if comm_name else "🔒 Poll closed. Check results!"
+                                
+                                try:
+                                    # Pass username (not user_id) to match production DB foreign key constraint
+                                    create_notification(member_username, None, 'poll_closed', poll_data['post_id'], community_id, message)
+                                    send_push_to_user(member_username, {
+                                        'title': f'{comm_name} Poll Closed' if comm_name else 'Poll Closed',
+                                        'body': message,
+                                        'url': f'/community/{community_id}/polls_react',
+                                        'tag': f'poll-closed-{poll_id}'
+                                    })
+                                    
+                                    # Log notification
+                                    c.execute("INSERT INTO poll_notification_log (poll_id, username, notification_type) VALUES (?, ?, 'closed')", 
+                                             (poll_id, member_username))
+                                except Exception as ne:
+                                    logger.warning(f"Error sending poll closed notification to {member_username}: {ne}")
+                        
+                        conn.commit()
+            except Exception as close_notify_err:
+                logger.error(f"Error sending poll closed notifications: {close_notify_err}")
+            
             return jsonify({'success': True, 'message': 'Poll closed successfully'})
             
     except Exception as e:
         logger.error(f"Error closing poll: {str(e)}")
         return jsonify({'success': False, 'error': 'Error closing poll'})
+
+@app.route('/edit_poll', methods=['POST'])
+@login_required
+def edit_poll():
+    """Edit an existing poll - question and options"""
+    username = session['username']
+    
+    if request.is_json:
+        data = request.get_json()
+        poll_id = data.get('poll_id')
+        question = data.get('question', '').strip()
+        options = data.get('options', [])
+        expires_at_raw = (data.get('expires_at') or '').strip() if isinstance(data.get('expires_at'), str) else ''
+    else:
+        poll_id = request.form.get('poll_id', type=int)
+        question = request.form.get('question', '').strip()
+        options = request.form.getlist('options[]')
+        expires_at_raw = request.form.get('expires_at', '').strip()
+    
+    if not poll_id or not question:
+        return jsonify({'success': False, 'error': 'Poll ID and question are required'})
+    
+    # Remove empty options
+    options = [opt.strip() for opt in options if opt.strip()]
+    if len(options) < 2:
+        return jsonify({'success': False, 'error': 'At least 2 non-empty options are required'})
+    
+    if len(options) > 6:
+        return jsonify({'success': False, 'error': 'Maximum 6 options allowed'})
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Check if poll exists and user has permission to edit it
+            c.execute("SELECT created_by, post_id FROM polls WHERE id = ? AND is_active = 1", (poll_id,))
+            poll_data = c.fetchone()
+            
+            if not poll_data:
+                return jsonify({'success': False, 'error': 'Poll not found or already closed'})
+            
+            # Only poll creator, community admin/owner, or global admin can edit
+            allowed = False
+            if poll_data['created_by'] == username or username == 'admin':
+                allowed = True
+            else:
+                # Determine community of the poll via post
+                c.execute("SELECT community_id FROM posts WHERE id = ?", (poll_data['post_id'],))
+                pr = c.fetchone()
+                community_id = pr['community_id'] if pr else None
+                if community_id:
+                    # Check if user is community admin or owner
+                    c.execute("SELECT creator_username FROM communities WHERE id = ?", (community_id,))
+                    cr = c.fetchone()
+                    if cr and cr['creator_username'] == username:
+                        allowed = True
+                    else:
+                        c.execute("""
+                            SELECT 1 FROM community_admins
+                            WHERE community_id = ? AND username = ?
+                        """, (community_id, username))
+                        if c.fetchone():
+                            allowed = True
+            
+            if not allowed:
+                return jsonify({'success': False, 'error': 'You do not have permission to edit this poll'})
+            
+            # Parse optional deadline
+            expires_at_sql = None
+            if expires_at_raw:
+                try:
+                    if 'T' in expires_at_raw:
+                        dt = datetime.strptime(expires_at_raw, '%Y-%m-%dT%H:%M')
+                    else:
+                        dt = datetime.strptime(expires_at_raw, '%Y-%m-%d')
+                    expires_at_sql = dt.strftime('%Y-%m-%d %H:%M:%S')
+                except Exception:
+                    expires_at_sql = None
+
+            # Update poll question and optional expires_at (if column exists)
+            try:
+                c.execute("UPDATE polls SET question = ?, expires_at = ? WHERE id = ?", (question, expires_at_sql, poll_id))
+            except Exception:
+                # Fallback for schemas without expires_at column
+                c.execute("UPDATE polls SET question = ? WHERE id = ?", (question, poll_id))
+            
+            # Get existing options
+            c.execute("SELECT id, option_text FROM poll_options WHERE poll_id = ? ORDER BY id", (poll_id,))
+            existing_options = c.fetchall()
+            
+            # Update existing options and add new ones
+            for idx, option_text in enumerate(options):
+                if idx < len(existing_options):
+                    # Update existing option
+                    c.execute("UPDATE poll_options SET option_text = ? WHERE id = ?", 
+                             (option_text, existing_options[idx]['id']))
+                else:
+                    # Add new option
+                    c.execute("INSERT INTO poll_options (poll_id, option_text, votes) VALUES (?, ?, 0)",
+                             (poll_id, option_text))
+            
+            # Remove extra options if new list is shorter
+            if len(options) < len(existing_options):
+                for idx in range(len(options), len(existing_options)):
+                    option_id = existing_options[idx]['id']
+                    # Delete votes for this option first
+                    c.execute("DELETE FROM poll_votes WHERE option_id = ?", (option_id,))
+                    # Delete the option
+                    c.execute("DELETE FROM poll_options WHERE id = ?", (option_id,))
+            
+            conn.commit()
+            return jsonify({'success': True, 'message': 'Poll updated successfully'})
+            
+    except Exception as e:
+        logger.error(f"Error editing poll: {str(e)}")
+        return jsonify({'success': False, 'error': 'Error editing poll'})
 
 @app.route('/vote_poll', methods=['POST'])
 @login_required
@@ -10574,34 +11388,51 @@ def vote_poll():
             if not poll_data:
                 return jsonify({'success': False, 'error': 'Poll not found or inactive'})
             
+            # Block voting if poll is past its deadline (expires_at <= now)
+            try:
+                expires_at_val = poll_data.get('expires_at') if hasattr(poll_data, 'keys') else None
+            except Exception:
+                expires_at_val = None
+            if expires_at_val:
+                try:
+                    exp = None
+                    try:
+                        exp = datetime.strptime(str(expires_at_val)[:19].replace('T',' '), '%Y-%m-%d %H:%M:%S')
+                    except Exception:
+                        for fmt in ('%Y-%m-%d %H:%M', '%Y-%m-%d'):
+                            try:
+                                exp = datetime.strptime(str(expires_at_val).replace('T',' '), fmt)
+                                break
+                            except Exception:
+                                continue
+                    if exp and datetime.now() >= exp:
+                        return jsonify({'success': False, 'error': 'Poll has expired'}), 400
+                except Exception:
+                    pass
+            
             # Check if user already voted on this specific option
             c.execute("SELECT id FROM poll_votes WHERE poll_id = ? AND username = ? AND option_id = ?", (poll_id, username, option_id))
             existing_vote_on_option = c.fetchone()
             
-            # Check if user already voted on this poll
+            # Check if user already voted on this poll (for single vote mode)
             c.execute("SELECT id, option_id FROM poll_votes WHERE poll_id = ? AND username = ?", (poll_id, username))
             existing_vote = c.fetchone()
             
-            if toggle_vote and existing_vote_on_option:
-                # Remove vote from this option
-                logger.info(f"Removing vote: poll_id={poll_id}, username={username}, option_id={option_id}")
+            if existing_vote_on_option:
+                # User already voted on this specific option - toggle it off (remove)
+                logger.info(f"Toggling vote off: poll_id={poll_id}, username={username}, option_id={option_id}")
                 c.execute("DELETE FROM poll_votes WHERE poll_id = ? AND username = ? AND option_id = ?", (poll_id, username, option_id))
                 message = "Vote removed!"
             elif existing_vote and poll_data['single_vote']:
-                # Update existing vote (single vote mode)
+                # Single vote mode: user voted on a different option - update to new option
                 c.execute("UPDATE poll_votes SET option_id = ?, voted_at = ? WHERE poll_id = ? AND username = ?",
-                          (option_id, datetime.now().strftime('%m.%d.%y %H:%M'), poll_id, username))
+                          (option_id, datetime.now().strftime('%Y-%m-%d %H:%M:%S'), poll_id, username))
                 message = "Vote updated!"
-            elif not existing_vote:
-                # Create new vote
-                c.execute("INSERT INTO poll_votes (poll_id, option_id, username, voted_at) VALUES (?, ?, ?, ?)",
-                          (poll_id, option_id, username, datetime.now().strftime('%m.%d.%y %H:%M')))
-                message = "Vote recorded successfully!"
             else:
-                # Multiple vote mode - add another vote
+                # User hasn't voted on this option yet - add vote
                 c.execute("INSERT INTO poll_votes (poll_id, option_id, username, voted_at) VALUES (?, ?, ?, ?)",
-                          (poll_id, option_id, username, datetime.now().strftime('%m.%d.%y %H:%M')))
-                message = "Vote added!"
+                          (poll_id, option_id, username, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+                message = "Vote recorded successfully!"
             
             # Update vote count for the selected option
             c.execute("UPDATE poll_options SET votes = (SELECT COUNT(*) FROM poll_votes WHERE option_id = ?) WHERE id = ?", (option_id, option_id))
@@ -10611,6 +11442,14 @@ def vote_poll():
                 c.execute("UPDATE poll_options SET votes = (SELECT COUNT(*) FROM poll_votes WHERE option_id = ?) WHERE id = ?", (existing_vote['option_id'], existing_vote['option_id']))
             
             conn.commit()
+            
+            # EVENT-DRIVEN NOTIFICATION CHECK
+            # Check this poll for notifications immediately after vote
+            # This provides instant notifications without waiting for cron
+            try:
+                check_single_poll_notifications(poll_id, conn)
+            except Exception as notif_err:
+                logger.warning(f"Event-driven notification check failed for poll {poll_id}: {notif_err}")
             
             # Get updated poll results with user vote info
             c.execute("""
@@ -10665,6 +11504,127 @@ def get_poll_results(poll_id):
     except Exception as e:
         logger.error(f"Error getting poll results: {str(e)}")
         return jsonify({'success': False, 'error': 'Error retrieving poll results'})
+
+@app.route('/get_poll_voters/<int:poll_id>')
+@login_required
+def get_poll_voters(poll_id):
+    """Get list of voters for each option in a poll"""
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Verify poll exists
+            c.execute("SELECT id FROM polls WHERE id = ?", (poll_id,))
+            if not c.fetchone():
+                return jsonify({'success': False, 'error': 'Poll not found'})
+            
+            # Get all poll options
+            c.execute("SELECT id, option_text FROM poll_options WHERE poll_id = ? ORDER BY id", (poll_id,))
+            options = [dict(row) for row in c.fetchall()]
+            
+            # For each option, get the list of voters
+            for option in options:
+                c.execute("""
+                    SELECT pv.username, up.profile_picture, pv.voted_at
+                    FROM poll_votes pv
+                    LEFT JOIN user_profiles up ON pv.username = up.username
+                    WHERE pv.poll_id = ? AND pv.option_id = ?
+                    ORDER BY pv.voted_at DESC
+                """, (poll_id, option['id']))
+                voters = []
+                for row in c.fetchall():
+                    voter_data = dict(row)
+                    # Normalize profile picture path
+                    pp = voter_data.get('profile_picture')
+                    if pp:
+                        pp_str = str(pp).strip()
+                        if pp_str.startswith('http://') or pp_str.startswith('https://'):
+                            voter_data['profile_picture'] = pp_str
+                        elif pp_str.startswith('/uploads') or pp_str.startswith('/static'):
+                            voter_data['profile_picture'] = pp_str
+                        elif pp_str.startswith('uploads/'):
+                            voter_data['profile_picture'] = '/' + pp_str
+                        else:
+                            voter_data['profile_picture'] = f"/uploads/{pp_str}"
+                    voters.append(voter_data)
+                option['voters'] = voters
+            
+            return jsonify({
+                'success': True,
+                'options': options
+            })
+            
+    except Exception as e:
+        logger.error(f"Error getting poll voters: {str(e)}")
+        return jsonify({'success': False, 'error': 'Error getting poll voters'})
+
+
+@app.route('/get_post_reactors/<int:post_id>')
+@login_required
+def get_post_reactors(post_id: int):
+    """Return users who reacted to a post, grouped by reaction type.
+    Response:
+      { success: true, groups: [{ reaction_type, users: [{ username, profile_picture }] }] }
+    """
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            # Validate post exists
+            c.execute("SELECT id FROM posts WHERE id = ?", (post_id,))
+            if not c.fetchone():
+                return jsonify({'success': False, 'error': 'Post not found'}), 404
+
+            c.execute(
+                """
+                SELECT r.reaction_type, r.username, up.profile_picture
+                FROM reactions r
+                LEFT JOIN user_profiles up ON up.username = r.username
+                WHERE r.post_id = ?
+                ORDER BY r.reaction_type, r.id DESC
+                """,
+                (post_id,)
+            )
+            rows = c.fetchall() or []
+
+            by_type = {}
+            for row in rows:
+                if hasattr(row, 'keys'):
+                    rt = row['reaction_type']
+                    uname = row['username']
+                    pic = row.get('profile_picture') if 'profile_picture' in row.keys() else None
+                else:
+                    rt = row[0]
+                    uname = row[1]
+                    pic = row[2] if len(row) > 2 else None
+                by_type.setdefault(rt, []).append({'username': uname, 'profile_picture': pic})
+
+            groups = [{'reaction_type': k, 'users': v} for k, v in by_type.items()]
+            # Preferred ordering
+            order = {'heart': 0, 'thumbs-up': 1, 'thumbs-down': 2}
+            groups.sort(key=lambda g: order.get(g['reaction_type'], 99))
+
+            # Normalize image paths
+            for g in groups:
+                for u in g['users']:
+                    pp = u.get('profile_picture')
+                    if not pp:
+                        continue
+                    try:
+                        s = str(pp).strip()
+                        if s.startswith('http://') or s.startswith('https://') or s.startswith('/uploads') or s.startswith('/static'):
+                            u['profile_picture'] = s
+                        elif s.startswith('uploads/'):
+                            u['profile_picture'] = '/' + s
+                        else:
+                            u['profile_picture'] = f"/uploads/{s}"
+                    except Exception:
+                        pass
+
+            return jsonify({'success': True, 'groups': groups})
+    except Exception as e:
+        logger.error(f"get_post_reactors error: {e}")
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
 @app.route('/get_active_polls')
 @login_required
 def get_active_polls():
@@ -10676,14 +11636,14 @@ def get_active_polls():
         with get_db_connection() as conn:
             c = conn.cursor()
             
-            # Get active polls (not expired) for the specific community
+            # Get ALL polls (both active and archived) for the specific community
             if community_id:
                 c.execute("""
                     SELECT p.*, po.timestamp as created_at, po.username
                     FROM polls p 
                     JOIN posts po ON p.post_id = po.id 
-                    WHERE p.is_active = 1 AND (p.expires_at IS NULL OR p.expires_at >= NOW()) AND po.community_id = ?
-                    ORDER BY po.timestamp DESC
+                    WHERE po.community_id = ?
+                    ORDER BY p.is_active DESC, po.timestamp DESC
                 """, (community_id,))
             else:
                 # Fallback to all polls if no community_id provided
@@ -10754,7 +11714,11 @@ def delete_poll():
                 return jsonify({'success': False, 'error': 'Not authorized'})
             # Delete poll (cascade removes options and votes)
             c.execute("DELETE FROM polls WHERE id=?", (poll_id,))
+            # Also delete the associated post to completely remove the poll
+            # Polls should be independent - deleting a poll removes everything
+            c.execute("DELETE FROM posts WHERE id=?", (pr['post_id'],))
             conn.commit()
+            logger.info(f"Deleted poll {poll_id} and associated post {pr['post_id']}")
             return jsonify({'success': True})
     except Exception as e:
         logger.error(f"Error deleting poll: {e}")
@@ -10811,6 +11775,632 @@ def remove_poll_option():
     except Exception as e:
         logger.error(f"Error removing poll option: {str(e)}")
         return jsonify({'success': False, 'error': 'Error removing option'})
+
+def check_single_poll_notifications(poll_id, conn=None):
+    """
+    Check a single poll and send notifications if needed.
+    This is called event-driven when users vote.
+    Returns number of notifications sent.
+    """
+    should_close_conn = False
+    if conn is None:
+        conn = get_db_connection()
+        should_close_conn = True
+    
+    try:
+        c = conn.cursor()
+        now = datetime.utcnow()  # Use UTC for consistent timezone handling
+        
+        logger.info(f"🔍 Helper called for poll {poll_id}, USE_MYSQL={USE_MYSQL}")
+        
+        # Get poll details - NO datetime filtering in SQL
+        if USE_MYSQL:
+            logger.info(f"🔍 Helper using MySQL query (no datetime filters)")
+            c.execute("""
+                SELECT p.id, p.question, p.created_at, p.expires_at, p.post_id,
+                       ps.community_id
+                FROM polls p
+                JOIN posts ps ON p.post_id = ps.id
+                WHERE p.id = %s AND p.is_active = 1
+            """, (poll_id,))
+        else:
+            logger.info(f"🔍 Helper using SQLite query (no datetime filters)")
+            c.execute("""
+                SELECT p.id, p.question, p.created_at, p.expires_at, p.post_id,
+                       ps.community_id
+                FROM polls p
+                JOIN posts ps ON p.post_id = ps.id
+                WHERE p.id = ? AND p.is_active = 1
+            """, (poll_id,))
+        
+        poll_row = c.fetchone()
+        if not poll_row:
+            return 0
+        
+        question = poll_row['question'] if hasattr(poll_row, 'keys') else poll_row[1]
+        created_at_str = poll_row['created_at'] if hasattr(poll_row, 'keys') else poll_row[2]
+        expires_at_str = poll_row['expires_at'] if hasattr(poll_row, 'keys') else poll_row[3]
+        post_id = poll_row['post_id'] if hasattr(poll_row, 'keys') else poll_row[4]
+        community_id = poll_row['community_id'] if hasattr(poll_row, 'keys') else poll_row[5]
+        
+        # Validate and parse expires_at - handle both string and datetime object
+        if not expires_at_str:
+            logger.debug(f"Poll {poll_id} has no expires_at")
+            return 0
+        
+        # MySQL returns datetime object, SQLite returns string
+        if isinstance(expires_at_str, str):
+            if expires_at_str.strip() == '' or len(expires_at_str) < 10:
+                logger.debug(f"Poll {poll_id} has invalid expires_at string")
+                return 0
+        
+        try:
+            # Parse dates (handle both datetime objects and strings)
+            if isinstance(created_at_str, datetime):
+                created_at = created_at_str
+            else:
+                created_at = datetime.strptime(created_at_str, '%Y-%m-%d %H:%M:%S')
+            
+            if isinstance(expires_at_str, datetime):
+                expires_at = expires_at_str
+            else:
+                expires_at = datetime.strptime(expires_at_str, '%Y-%m-%d %H:%M:%S')
+        except Exception as date_err:
+            logger.debug(f"Poll {poll_id} has invalid date format: {date_err}")
+            return 0
+        
+        # Calculate time progress
+        total_duration = (expires_at - created_at).total_seconds()
+        elapsed = (now - created_at).total_seconds()
+        
+        if total_duration <= 0:
+            return 0
+        
+        progress = elapsed / total_duration
+        
+        # Get community members
+        ph = '%s' if USE_MYSQL else '?'
+        c.execute(f"""
+            SELECT DISTINCT u.username
+            FROM user_communities uc
+            JOIN users u ON uc.user_id = u.id
+            WHERE uc.community_id = {ph}
+        """, (community_id,))
+        members = [r['username'] if hasattr(r, 'keys') else r[0] for r in c.fetchall()]
+        
+        # Get voters
+        c.execute(f"""
+            SELECT DISTINCT username
+            FROM poll_votes
+            WHERE poll_id = {ph}
+        """, (poll_id,))
+        voters = set([r['username'] if hasattr(r, 'keys') else r[0] for r in c.fetchall()])
+        non_voters = [m for m in members if m not in voters]
+        
+        # Count total votes
+        c.execute(f"SELECT COUNT(DISTINCT username) as vote_count FROM poll_votes WHERE poll_id = {ph}", (poll_id,))
+        vote_count_row = c.fetchone()
+        vote_count = vote_count_row['vote_count'] if hasattr(vote_count_row, 'keys') else vote_count_row[0]
+        
+        # Calculate time remaining
+        time_remaining = expires_at - now
+        days_remaining = max(0, time_remaining.days)
+        hours_remaining = max(0, int(time_remaining.total_seconds() / 3600))
+        
+        notifications_sent = 0
+        
+        # WIDENED DETECTION WINDOWS (15% instead of 5% for better coverage)
+        # 25% notification - non-voters only
+        logger.info(f"🎯 Poll {poll_id}: Checking 25% window (0.20-0.35), progress={progress:.3f}")
+        if 0.20 <= progress < 0.35:
+            for username_to_notify in non_voters:
+                c.execute(f"SELECT id FROM poll_notification_log WHERE poll_id={ph} AND username={ph} AND notification_type='25'", 
+                         (poll_id, username_to_notify))
+                if not c.fetchone():
+                    community_name = ""
+                    try:
+                        c.execute(f"SELECT name FROM communities WHERE id = {ph}", (community_id,))
+                        comm_row = c.fetchone()
+                        if comm_row:
+                            community_name = comm_row['name'] if hasattr(comm_row, 'keys') else comm_row[0]
+                    except Exception:
+                        pass
+                    
+                    # Shorter message to avoid truncation
+                    message = f"📊 {vote_count} voted in {community_name}. Vote now!" if community_name else f"📊 {vote_count} voted. Vote now!"
+                    
+                    try:
+                        # Pass username (not user_id) to match production DB foreign key constraint
+                        create_notification(username_to_notify, None, 'poll_reminder', post_id, community_id, message)
+                        send_push_to_user(username_to_notify, {
+                            'title': f'{community_name} Poll' if community_name else 'Poll Update',
+                            'body': message,
+                            'url': f'/community/{community_id}/polls_react',
+                            'tag': f'poll-25-{poll_id}'
+                        })
+                    except Exception:
+                        pass
+                    
+                    c.execute(f"INSERT INTO poll_notification_log (poll_id, username, notification_type) VALUES ({ph}, {ph}, '25')", 
+                             (poll_id, username_to_notify))
+                    notifications_sent += 1
+        
+        # 50% notification - non-voters only
+        elif 0.45 <= progress < 0.60:
+            logger.info(f"🎯 Poll {poll_id}: IN 50% window! Sending to {len(non_voters)} non-voters")
+            for username_to_notify in non_voters:
+                c.execute("SELECT id FROM poll_notification_log WHERE poll_id=? AND username=? AND notification_type='50'", 
+                         (poll_id, username_to_notify))
+                if not c.fetchone():
+                    community_name = ""
+                    try:
+                        c.execute("SELECT name FROM communities WHERE id = ?", (community_id,))
+                        comm_row = c.fetchone()
+                        if comm_row:
+                            community_name = comm_row['name'] if hasattr(comm_row, 'keys') else comm_row[0]
+                    except Exception:
+                        pass
+                    
+                    message = f"📊 {vote_count} {community_name} member{'s' if vote_count != 1 else ''} {'have' if vote_count != 1 else 'has'} voted, go vote on the poll!"
+                    
+                    try:
+                        # Pass username (not user_id) to match production DB foreign key constraint
+                        create_notification(username_to_notify, None, 'poll_reminder', post_id, community_id, message)
+                        send_push_to_user(username_to_notify, {
+                            'title': 'Poll Update',
+                            'body': message,
+                            'url': f'/community/{community_id}/polls_react',
+                            'tag': f'poll-50-{poll_id}'
+                        })
+                    except Exception:
+                        pass
+                    
+                    c.execute("INSERT INTO poll_notification_log (poll_id, username, notification_type) VALUES (?, ?, '50')", 
+                             (poll_id, username_to_notify))
+                    notifications_sent += 1
+        
+        # 80% notification - different messages for voters vs non-voters
+        elif 0.75 <= progress < 0.90:
+            logger.info(f"🎯 Poll {poll_id}: IN 80% window! Sending to {len(non_voters)} non-voters, {len(voters)} voters")
+            # Non-voters
+            for username_to_notify in non_voters:
+                c.execute(f"SELECT id FROM poll_notification_log WHERE poll_id={ph} AND username={ph} AND notification_type='80_nonvoter'", 
+                         (poll_id, username_to_notify))
+                if not c.fetchone():
+                    if days_remaining > 1:
+                        message = f"⏰ The poll is closing in {days_remaining} days, go vote!"
+                    elif hours_remaining > 1:
+                        message = f"⏰ The poll is closing in {hours_remaining} hours, go vote!"
+                    else:
+                        message = "⏰ The poll is closing soon, go vote!"
+                    
+                    try:
+                        # Pass username (not user_id) to match production DB foreign key constraint
+                        create_notification(username_to_notify, None, 'poll_reminder', post_id, community_id, message)
+                        send_push_to_user(username_to_notify, {
+                            'title': 'Poll Closing Soon!',
+                            'body': message,
+                            'url': f'/community/{community_id}/polls_react',
+                            'tag': f'poll-80-{poll_id}'
+                        })
+                    except Exception:
+                        pass
+                    
+                    c.execute(f"INSERT INTO poll_notification_log (poll_id, username, notification_type) VALUES ({ph}, {ph}, '80_nonvoter')", 
+                             (poll_id, username_to_notify))
+                    notifications_sent += 1
+            
+            # Voters
+            for username_to_notify in list(voters):
+                c.execute(f"SELECT id FROM poll_notification_log WHERE poll_id={ph} AND username={ph} AND notification_type='80_voter'", 
+                         (poll_id, username_to_notify))
+                if not c.fetchone():
+                    # Get community name for notification
+                    community_name = ""
+                    try:
+                        c.execute(f"SELECT name FROM communities WHERE id = {ph}", (community_id,))
+                        comm_row = c.fetchone()
+                        if comm_row:
+                            community_name = comm_row['name'] if hasattr(comm_row, 'keys') else comm_row[0]
+                    except Exception:
+                        pass
+                    
+                    message = f"📋 Poll in {community_name} closing. Review results!" if community_name else "📋 Poll closing. Review results!"
+                    
+                    try:
+                        # Pass username (not user_id) to match production DB foreign key constraint
+                        create_notification(username_to_notify, None, 'poll_reminder', post_id, community_id, message)
+                        send_push_to_user(username_to_notify, {
+                            'title': f'{community_name} Poll Closing' if community_name else 'Poll Closing Soon',
+                            'body': message,
+                            'url': f'/community/{community_id}/polls_react',
+                            'tag': f'poll-80-voter-{poll_id}'
+                        })
+                    except Exception:
+                        pass
+                    
+                    c.execute(f"INSERT INTO poll_notification_log (poll_id, username, notification_type) VALUES ({ph}, {ph}, '80_voter')", 
+                             (poll_id, username_to_notify))
+                    notifications_sent += 1
+        
+        if should_close_conn:
+            conn.commit()
+        
+        return notifications_sent
+    
+    finally:
+        if should_close_conn:
+            conn.close()
+
+
+def check_single_event_notifications(event_id, conn=None):
+    """
+    Check a single event and send reminders based on notification_preferences.
+    Sends: 1 week before, 1 day before, 1 hour before, and 80% notifications.
+    Returns number of notifications sent.
+    """
+    should_close_conn = False
+    if conn is None:
+        conn = get_db_connection()
+        should_close_conn = True
+    
+    try:
+        c = conn.cursor()
+        now = datetime.utcnow()
+        ph = '%s' if USE_MYSQL else '?'
+        
+        logger.info(f"🔍 Checking event {event_id} for notifications")
+        
+        # Get event details
+        c.execute(f"""
+            SELECT ce.id, ce.title, ce.date, ce.start_time, ce.end_time, ce.created_at,
+                   ce.community_id, ce.notification_preferences, ce.username as created_by
+            FROM calendar_events ce
+            WHERE ce.id = {ph}
+        """, (event_id,))
+        
+        event_row = c.fetchone()
+        if not event_row:
+            return 0
+        
+        title = event_row['title'] if hasattr(event_row, 'keys') else event_row[1]
+        date_str = event_row['date'] if hasattr(event_row, 'keys') else event_row[2]
+        start_time_str = event_row['start_time'] if hasattr(event_row, 'keys') else event_row[3]
+        created_at_raw = event_row['created_at'] if hasattr(event_row, 'keys') else event_row[5]
+        community_id = event_row['community_id'] if hasattr(event_row, 'keys') else event_row[6]
+        notification_prefs = event_row['notification_preferences'] if hasattr(event_row, 'keys') else event_row[7]
+        
+        # Parse event start datetime
+        try:
+            if isinstance(start_time_str, datetime):
+                event_start = start_time_str
+            elif start_time_str:
+                event_start = datetime.strptime(start_time_str, '%Y-%m-%d %H:%M:%S')
+            else:
+                # No time specified, use date at midnight
+                event_start = datetime.strptime(date_str, '%Y-%m-%d')
+        except Exception as e:
+            logger.debug(f"Event {event_id} has invalid date/time: {e}")
+            return 0
+        
+        # Skip if event is in the past
+        if event_start <= now:
+            logger.debug(f"Event {event_id} is in the past")
+            return 0
+        
+        # Parse created_at
+        try:
+            if isinstance(created_at_raw, datetime):
+                created_at = created_at_raw
+            else:
+                created_at = datetime.strptime(created_at_raw, '%Y-%m-%d %H:%M:%S')
+        except Exception:
+            created_at = now  # Fallback
+        
+        # Get event participants (invited users)
+        c.execute(f"""
+            SELECT DISTINCT invited_username
+            FROM event_invitations
+            WHERE event_id = {ph}
+        """, (event_id,))
+        participants = [r['invited_username'] if hasattr(r, 'keys') else r[0] for r in c.fetchall()]
+        
+        if not participants:
+            return 0
+        
+        # Get community name
+        community_name = ""
+        if community_id:
+            try:
+                c.execute(f"SELECT name FROM communities WHERE id = {ph}", (community_id,))
+                comm_row = c.fetchone()
+                if comm_row:
+                    community_name = comm_row['name'] if hasattr(comm_row, 'keys') else comm_row[0]
+            except Exception:
+                pass
+        
+        time_until_event = (event_start - now).total_seconds()
+        hours_until = time_until_event / 3600
+        days_until = time_until_event / 86400
+        
+        notifications_sent = 0
+        
+        # Parse notification preferences
+        prefs = notification_prefs or 'all'
+        send_1week = prefs in ('1_week', 'all')
+        send_1day = prefs in ('1_day', 'all')
+        send_1hour = prefs in ('1_hour', 'all')
+        send_80percent = True  # Always send 80% notification
+        
+        logger.info(f"⏰ Event {event_id}: {hours_until:.1f}h until event (prefs={prefs})")
+        
+        # 1 WEEK BEFORE (7 days = 168 hours, window: 167-169 hours)
+        if send_1week and 167 <= hours_until <= 169:
+            for username_to_notify in participants:
+                c.execute(f"SELECT id FROM event_notification_log WHERE event_id={ph} AND username={ph} AND notification_type='1_week'", 
+                         (event_id, username_to_notify))
+                if not c.fetchone():
+                    message = f"📅 Event in {community_name}: '{title}' in 1 week" if community_name else f"📅 Event '{title}' in 1 week"
+                    
+                    try:
+                        create_notification(username_to_notify, None, 'event_reminder', None, community_id, message)
+                        send_push_to_user(username_to_notify, {
+                            'title': f'{community_name} Event Reminder' if community_name else 'Event Reminder',
+                            'body': message,
+                            'url': f'/community/{community_id}/calendar' if community_id else '/calendar',
+                            'tag': f'event-1week-{event_id}'
+                        })
+                    except Exception:
+                        pass
+                    
+                    c.execute(f"INSERT INTO event_notification_log (event_id, username, notification_type) VALUES ({ph}, {ph}, '1_week')", 
+                             (event_id, username_to_notify))
+                    notifications_sent += 1
+        
+        # 1 DAY BEFORE (24 hours, window: 23-25 hours)
+        elif send_1day and 23 <= hours_until <= 25:
+            for username_to_notify in participants:
+                c.execute(f"SELECT id FROM event_notification_log WHERE event_id={ph} AND username={ph} AND notification_type='1_day'", 
+                         (event_id, username_to_notify))
+                if not c.fetchone():
+                    message = f"📅 Event in {community_name}: '{title}' tomorrow" if community_name else f"📅 Event '{title}' tomorrow"
+                    
+                    try:
+                        create_notification(username_to_notify, None, 'event_reminder', None, community_id, message)
+                        send_push_to_user(username_to_notify, {
+                            'title': f'{community_name} Event Tomorrow' if community_name else 'Event Tomorrow',
+                            'body': message,
+                            'url': f'/community/{community_id}/calendar' if community_id else '/calendar',
+                            'tag': f'event-1day-{event_id}'
+                        })
+                    except Exception:
+                        pass
+                    
+                    c.execute(f"INSERT INTO event_notification_log (event_id, username, notification_type) VALUES ({ph}, {ph}, '1_day')", 
+                             (event_id, username_to_notify))
+                    notifications_sent += 1
+        
+        # 1 HOUR BEFORE (window: 0.9-1.1 hours)
+        elif send_1hour and 0.9 <= hours_until <= 1.1:
+            for username_to_notify in participants:
+                c.execute(f"SELECT id FROM event_notification_log WHERE event_id={ph} AND username={ph} AND notification_type='1_hour'", 
+                         (event_id, username_to_notify))
+                if not c.fetchone():
+                    message = f"⏰ Event in {community_name}: '{title}' in 1 hour!" if community_name else f"⏰ Event '{title}' in 1 hour!"
+                    
+                    try:
+                        create_notification(username_to_notify, None, 'event_reminder', None, community_id, message)
+                        send_push_to_user(username_to_notify, {
+                            'title': f'{community_name} Event Soon!' if community_name else 'Event Soon!',
+                            'body': message,
+                            'url': f'/community/{community_id}/calendar' if community_id else '/calendar',
+                            'tag': f'event-1hour-{event_id}'
+                        })
+                    except Exception:
+                        pass
+                    
+                    c.execute(f"INSERT INTO event_notification_log (event_id, username, notification_type) VALUES ({ph}, {ph}, '1_hour')", 
+                             (event_id, username_to_notify))
+                    notifications_sent += 1
+        
+        # 80% NOTIFICATION (always sent regardless of preferences)
+        if send_80percent:
+            # Calculate 80% of time from creation to event
+            total_duration = (event_start - created_at).total_seconds()
+            elapsed = (now - created_at).total_seconds()
+            
+            if total_duration > 0:
+                progress = elapsed / total_duration
+                
+                # 80% window (75%-90%)
+                if 0.75 <= progress < 0.90:
+                    for username_to_notify in participants:
+                        c.execute(f"SELECT id FROM event_notification_log WHERE event_id={ph} AND username={ph} AND notification_type='80_percent'", 
+                                 (event_id, username_to_notify))
+                        if not c.fetchone():
+                            if days_until > 1:
+                                message = f"📆 Event in {community_name}: '{title}' in {int(days_until)} days" if community_name else f"📆 Event '{title}' in {int(days_until)} days"
+                            elif hours_until > 1:
+                                message = f"📆 Event in {community_name}: '{title}' in {int(hours_until)} hours" if community_name else f"📆 Event '{title}' in {int(hours_until)} hours"
+                            else:
+                                message = f"📆 Event in {community_name}: '{title}' starting soon!" if community_name else f"📆 Event '{title}' starting soon!"
+                            
+                            try:
+                                create_notification(username_to_notify, None, 'event_reminder', None, community_id, message)
+                                send_push_to_user(username_to_notify, {
+                                    'title': f'{community_name} Event Soon' if community_name else 'Event Soon',
+                                    'body': message,
+                                    'url': f'/community/{community_id}/calendar' if community_id else '/calendar',
+                                    'tag': f'event-80-{event_id}'
+                                })
+                            except Exception:
+                                pass
+                            
+                            c.execute(f"INSERT INTO event_notification_log (event_id, username, notification_type) VALUES ({ph}, {ph}, '80_percent')", 
+                                     (event_id, username_to_notify))
+                            notifications_sent += 1
+        
+        if should_close_conn:
+            conn.commit()
+        
+        return notifications_sent
+    
+    finally:
+        if should_close_conn:
+            conn.close()
+
+
+@app.route('/api/poll_notification_check', methods=['POST'])
+def api_poll_notification_check():
+    """
+    OPTIMIZED background job to check poll deadlines and send notifications.
+    Should be called by a cron job every 6 HOURS (not hourly).
+    Only checks polls within 24 hours of deadline for efficiency.
+    Most notifications are sent via event-driven checks when users vote.
+    
+    PUBLIC ENDPOINT - No authentication required (for cron jobs)
+    Optional API key for added security.
+    """
+    # Optional API key check (for security)
+    # You can set POLL_CRON_API_KEY in your .env file
+    api_key = request.headers.get('X-API-Key') or request.form.get('api_key')
+    expected_key = os.getenv('POLL_CRON_API_KEY')
+    
+    if expected_key and api_key != expected_key:
+        logger.warning(f"Poll notification check called with invalid API key: {api_key}")
+        return jsonify({'success': False, 'error': 'Invalid API key'}), 401
+    try:
+        now = datetime.utcnow()  # Use UTC for consistent timezone handling
+        logger.info(f"🔍 Poll notification check starting - USE_MYSQL={USE_MYSQL}")
+        
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # SAFE APPROACH: Fetch all active polls, filter in Python
+            # MySQL's query optimizer is unpredictable with CAST/STR_TO_DATE on empty strings
+            # Safer to filter datetime values in Python where we have full control
+            logger.info("🔍 Fetching all active polls (will filter in Python)")
+            c.execute("""
+                SELECT p.id, p.expires_at, p.created_at
+                FROM polls p
+                WHERE p.is_active = 1
+            """)
+            
+            logger.info("🔍 Query executed, fetching results...")
+            all_polls = c.fetchall()
+            logger.info(f"🔍 Got {len(all_polls)} active polls, filtering in Python...")
+            
+            # Filter in Python for safety
+            near_deadline_polls = []
+            for poll in all_polls:
+                poll_id = poll['id'] if hasattr(poll, 'keys') else poll[0]
+                expires_at_raw = poll['expires_at'] if hasattr(poll, 'keys') else poll[1]
+                created_at_raw = poll['created_at'] if hasattr(poll, 'keys') else poll[2]
+                
+                # Skip if no expires_at
+                if not expires_at_raw:
+                    continue
+                
+                # Handle both string and datetime object (MySQL returns datetime, SQLite returns string)
+                if isinstance(expires_at_raw, str):
+                    if expires_at_raw.strip() == '' or len(expires_at_raw) < 10:
+                        continue
+                
+                try:
+                    # Parse or use datetime object directly
+                    if isinstance(expires_at_raw, datetime):
+                        expires_at = expires_at_raw
+                    else:
+                        expires_at = datetime.strptime(expires_at_raw, '%Y-%m-%d %H:%M:%S')
+                    
+                    # Only process polls within 24 hours of deadline
+                    time_until_deadline = (expires_at - now).total_seconds() / 3600  # hours
+                    if 0 < time_until_deadline < 24:
+                        near_deadline_polls.append(poll)
+                except Exception as parse_err:
+                    logger.debug(f"Skipping poll {poll_id} - invalid date: {parse_err}")
+                    continue
+            
+            logger.info(f"🔍 {len(near_deadline_polls)} polls within 24h of deadline")
+            notifications_sent = 0
+            
+            logger.info(f"Cron checking {len(near_deadline_polls)} polls within 24 hours of deadline")
+            
+            # Use the helper function to check each poll
+            for poll_row in near_deadline_polls:
+                poll_id = poll_row['id'] if hasattr(poll_row, 'keys') else poll_row[0]
+                try:
+                    logger.info(f"Checking notifications for poll {poll_id}")
+                    notifications_sent += check_single_poll_notifications(poll_id, conn)
+                except Exception as e:
+                    logger.error(f"Error checking poll {poll_id}: {e}")
+                    import traceback
+                    logger.error(traceback.format_exc())
+            
+            conn.commit()
+            
+            logger.info(f"Poll notification check complete: {notifications_sent} notifications sent")
+            return jsonify({'success': True, 'notifications_sent': notifications_sent})
+            
+    except Exception as e:
+        logger.error(f"Poll notification check error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/event_notification_check', methods=['POST'])
+def api_event_notification_check():
+    """
+    Cron job endpoint - checks upcoming events and sends reminders.
+    Should be called hourly via cron.
+    
+    Sends notifications for:
+    - 1 week before (if user selected)
+    - 1 day before (if user selected)
+    - 1 hour before (if user selected)
+    - 80% of time between creation and event (always)
+    
+    PUBLIC ENDPOINT - No authentication required (for cron jobs)
+    """
+    try:
+        now = datetime.utcnow()
+        logger.info(f"🔍 Event notification check starting - USE_MYSQL={USE_MYSQL}")
+        
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Get all upcoming events (not in the past)
+            # We'll filter by time windows in Python for robustness
+            c.execute("""
+                SELECT id, title, date, start_time
+                FROM calendar_events
+                WHERE date >= DATE(NOW())
+                ORDER BY date ASC, start_time ASC
+            """)
+            
+            all_events = c.fetchall()
+            logger.info(f"🔍 Found {len(all_events)} upcoming events to check")
+            
+            notifications_sent = 0
+            
+            for event_row in all_events:
+                event_id = event_row['id'] if hasattr(event_row, 'keys') else event_row[0]
+                try:
+                    sent = check_single_event_notifications(event_id, conn)
+                    notifications_sent += sent
+                except Exception as e:
+                    logger.error(f"Error checking event {event_id}: {e}")
+                    continue
+            
+            conn.commit()
+            logger.info(f"✅ Event notification check complete: {notifications_sent} notifications sent")
+            return jsonify({'success': True, 'notifications_sent': notifications_sent})
+            
+    except Exception as e:
+        logger.error(f"Event notification check error: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 
 @app.route('/get_historical_polls')
 @login_required
@@ -12864,6 +14454,7 @@ def add_calendar_event():
         end_date = end_date if end_date else None
         description = description if description else None
         timezone = timezone if timezone else None
+        notification_preferences = request.form.get('notification_preferences', 'all').strip()
         
         # Convert time (HH:MM) to datetime (YYYY-MM-DD HH:MM:00) for DATETIME columns
         start_time_original = start_time
@@ -12890,17 +14481,20 @@ def add_calendar_event():
             
             # Insert the event (keeping 'time' field for backward compatibility)
             ph = get_sql_placeholder()
-            logger.info(f"Inserting event into DB: start_time='{start_time}', end_time='{end_time}', end_date={end_date}, timezone={timezone}")
+            created_at_utc = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+            logger.info(f"📅 Creating event (UTC): created_at={created_at_utc}, start_time='{start_time}', end_time='{end_time}', end_date={end_date}, timezone={timezone}, notifications={notification_preferences}")
             c.execute(f"""
-                INSERT INTO calendar_events (username, title, date, end_date, time, start_time, end_time, description, created_at, community_id, timezone)
-                VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, NOW(), {ph}, {ph})
+                INSERT INTO calendar_events (username, title, date, end_date, time, start_time, end_time, description, created_at, community_id, timezone, notification_preferences)
+                VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
             """, (username, title, date, end_date, 
                   start_time_original,  # Keep time field as HH:MM for backward compatibility
                   start_time,           # start_time as DATETIME
                   end_time,             # end_time as DATETIME
                   description,
+                  created_at_utc,       # created_at in UTC
                   community_id,
-                  timezone))
+                  timezone,
+                  notification_preferences))
             
             event_id = c.lastrowid
             
@@ -14481,7 +16075,7 @@ def edit_community():
 @app.route('/update_community', methods=['POST'])
 @login_required
 def update_community():
-    """Update community details (name, description, type, background, template, colors, parent, notifications)"""
+    """Update community details (name, description, type, background, template, colors, parent, notifications, limits)"""
     username = session.get('username')
     community_id = request.form.get('community_id', type=int)
     name = request.form.get('name', '').strip()
@@ -14495,6 +16089,7 @@ def update_community():
     parent_community_id = request.form.get('parent_community_id', None)
     notify_raw = (request.form.get('notify_on_new_member') or '').strip().lower()
     notify_on_new_member = 1 if notify_raw in ('true','1','on','yes') else 0
+    max_members = request.form.get('max_members', type=int)
     
     if not community_id or not name:
         return jsonify({'success': False, 'error': 'Community ID and name are required'}), 400
@@ -14502,18 +16097,25 @@ def update_community():
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
-            # Ensure notify_on_new_member column exists (production safety)
+            # Ensure notify_on_new_member and max_members columns exist (production safety)
             try:
                 if 'USE_MYSQL' in globals() and USE_MYSQL:
                     c.execute("SHOW COLUMNS FROM communities LIKE 'notify_on_new_member'")
                     if not c.fetchone():
                         c.execute("ALTER TABLE communities ADD COLUMN notify_on_new_member TINYINT(1) DEFAULT 0")
                         conn.commit()
+                    c.execute("SHOW COLUMNS FROM communities LIKE 'max_members'")
+                    if not c.fetchone():
+                        c.execute("ALTER TABLE communities ADD COLUMN max_members INT NULL")
+                        conn.commit()
                 else:
                     c.execute("PRAGMA table_info(communities)")
                     cols = [row[1] if isinstance(row, (list, tuple)) else row['name'] for row in c.fetchall()]
                     if 'notify_on_new_member' not in cols:
                         c.execute("ALTER TABLE communities ADD COLUMN notify_on_new_member INTEGER DEFAULT 0")
+                        conn.commit()
+                    if 'max_members' not in cols:
+                        c.execute("ALTER TABLE communities ADD COLUMN max_members INTEGER NULL")
                         conn.commit()
             except Exception as mig_e:
                 logger.warning(f"notify_on_new_member migration check failed: {mig_e}")
@@ -14564,7 +16166,7 @@ def update_community():
                     UPDATE communities 
                     SET name = {ph}, description = {ph}, type = {ph}, background_path = {ph}, template = {ph},
                         background_color = {ph}, card_color = {ph}, accent_color = {ph}, text_color = {ph},
-                        parent_community_id = {ph}, notify_on_new_member = {ph}
+                        parent_community_id = {ph}, notify_on_new_member = {ph}, max_members = {ph}
                     WHERE id = {ph}
                     """,
                     (
@@ -14572,6 +16174,7 @@ def update_community():
                         background_color, card_color, accent_color, text_color,
                         (parent_community_id if parent_community_id and parent_community_id != 'none' else None),
                         notify_on_new_member,
+                        (max_members if (isinstance(max_members, int) and max_members > 0) else None),
                         community_id,
                     ),
                 )
@@ -14581,7 +16184,7 @@ def update_community():
                     UPDATE communities 
                     SET name = {ph}, description = {ph}, type = {ph}, template = {ph},
                         background_color = {ph}, card_color = {ph}, accent_color = {ph}, text_color = {ph},
-                        parent_community_id = {ph}, notify_on_new_member = {ph}
+                        parent_community_id = {ph}, notify_on_new_member = {ph}, max_members = {ph}
                     WHERE id = {ph}
                     """,
                     (
@@ -14589,6 +16192,7 @@ def update_community():
                         background_color, card_color, accent_color, text_color,
                         (parent_community_id if parent_community_id and parent_community_id != 'none' else None),
                         notify_on_new_member,
+                        (max_members if (isinstance(max_members, int) and max_members > 0) else None),
                         community_id,
                     ),
                 )
@@ -15153,6 +16757,26 @@ def join_community():
             community_type_result = c.fetchone()
             community_type = community_type_result['type'] if community_type_result else 'public'
             
+            # Check member limit (if any)
+            try:
+                c.execute("SELECT max_members FROM communities WHERE id = ?", (community_id,))
+                row_lim = c.fetchone()
+                max_members = None
+                if row_lim is not None:
+                    max_members = (row_lim['max_members'] if hasattr(row_lim,'keys') else row_lim[0]) or None
+                if max_members:
+                    # Count current members
+                    c.execute("""
+                        SELECT COUNT(*) FROM user_communities uc
+                        WHERE uc.community_id = ?
+                    """, (community_id,))
+                    cnt_row = c.fetchone()
+                    current_cnt = (cnt_row[0] if isinstance(cnt_row, (list, tuple)) else cnt_row['COUNT(*)'] if hasattr(cnt_row,'keys') and 'COUNT(*)' in cnt_row.keys() else list(cnt_row.values())[0]) if cnt_row is not None else 0
+                    if current_cnt >= int(max_members):
+                        return jsonify({'success': False, 'error': 'This community has reached its member limit'}), 403
+            except Exception as e:
+                logger.warning(f"member limit check failed for community {community_id}: {e}")
+
             # Check if user is already a member
             c.execute(f"""
                 SELECT id FROM user_communities 
@@ -15435,27 +17059,8 @@ def community_feed(community_id):
                     post['poll'] = None
 
                 # Fetch replies for each post
-                c.execute("SELECT * FROM replies WHERE post_id = ? ORDER BY timestamp DESC", (post['id'],))
-                replies_raw = c.fetchall()
-                post['replies'] = [dict(row) for row in replies_raw]
-                
-                # Add reaction counts for each reply
-                for reply in post['replies']:
-                    reply['reactions'] = {}
-                    reply['user_reaction'] = None
-                    
-                    c.execute("""
-                        SELECT reaction_type, COUNT(*) as count
-                        FROM reply_reactions
-                        WHERE reply_id = ?
-                        GROUP BY reaction_type
-                    """, (reply['id'],))
-                    rr = c.fetchall()
-                    reply['reactions'] = {r['reaction_type']: r['count'] for r in rr}
-                    
-                    c.execute("SELECT reaction_type FROM reply_reactions WHERE reply_id = ? AND username = ?", (reply['id'], username))
-                    ur = c.fetchone()
-                    reply['user_reaction'] = ur['reaction_type'] if ur else None
+                # Do not include replies payload in feed list for performance; fetch on-demand on post detail
+                post['replies'] = []
             
             # Get unread notification count (safely handle if table doesn't exist)
             unread_notifications = 0
@@ -15647,12 +17252,24 @@ def api_community_feed(community_id):
             except Exception as me:
                 logger.warning(f"membership check failed on api_community_feed: {me}")
 
+            # Track visit as an activity (counts towards DAU/MAU)
+            try:
+                c.execute(
+                    "INSERT INTO community_visit_history (username, community_id, visit_time) VALUES (?, ?, ?)",
+                    (username, community_id, datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+                )
+                conn.commit()
+            except Exception:
+                pass
+
             # Posts
+            # Limit initial posts returned to reduce payload; clients can paginate if needed
             c.execute(
                 """
                 SELECT * FROM posts 
                 WHERE community_id = ? 
                 ORDER BY id DESC
+                LIMIT 200
                 """,
                 (community_id,)
             )
@@ -15725,14 +17342,38 @@ def api_community_feed(community_id):
                 poll_raw = c.fetchone()
                 if poll_raw:
                     poll = dict(poll_raw)
+                    # Fetch options once; rely on denormalized votes column to avoid per-option COUNT queries
                     c.execute("SELECT * FROM poll_options WHERE poll_id = ? ORDER BY id", (poll['id'],))
                     options = [dict(o) for o in c.fetchall()]
+                    # Compute which options the current user voted on (for multi-select highlight)
+                    try:
+                        c.execute("SELECT option_id FROM poll_votes WHERE poll_id = ? AND username = ?", (poll['id'], username))
+                        user_vote_rows = c.fetchall()
+                        user_voted_ids = set([r['option_id'] if hasattr(r, 'keys') else r[0] for r in user_vote_rows])
+                    except Exception:
+                        user_voted_ids = set()
+                    # Normalize option fields
+                    for opt in options:
+                        # Frontend expects 'text'
+                        if 'text' not in opt:
+                            opt['text'] = opt.get('option_text', '')
+                        # Add per-option user_voted for styling
+                        try:
+                            oid = opt['id'] if hasattr(opt, 'keys') else opt[0]
+                            opt['user_voted'] = (oid in user_voted_ids)
+                        except Exception:
+                            opt['user_voted'] = False
+                        # Ensure 'votes' exists (fallback to 0)
+                        if 'votes' not in opt:
+                            opt['votes'] = 0
                     poll['options'] = options
-                    # Current user's vote
-                    c.execute("SELECT option_id FROM poll_votes WHERE poll_id = ? AND username = ?", (poll['id'], username))
-                    uv = c.fetchone()
-                    poll['user_vote'] = uv['option_id'] if uv else None
-                    poll['total_votes'] = sum(opt.get('votes', 0) for opt in options)
+                    # For single-vote polls, set a convenience user_vote (first if any)
+                    try:
+                        poll['user_vote'] = next(iter(user_voted_ids)) if user_voted_ids else None
+                    except Exception:
+                        poll['user_vote'] = None
+                    # Total votes from options without additional queries
+                    poll['total_votes'] = sum(int(opt.get('votes', 0) or 0) for opt in options)
                     post['poll'] = poll
                 else:
                     post['poll'] = None
@@ -16571,7 +18212,17 @@ def api_home_timeline():
                     poll = dict(poll_raw)
                     c.execute("SELECT * FROM poll_options WHERE poll_id = ? ORDER BY id", (poll['id'],))
                     options = [dict(o) for o in c.fetchall()]
+                    
+                    # Calculate vote counts for each option
+                    for opt in options:
+                        c.execute("SELECT COUNT(*) as count FROM poll_votes WHERE poll_id = ? AND option_id = ?", (poll['id'], opt['id']))
+                        vote_count = c.fetchone()
+                        opt['votes'] = vote_count['count'] if vote_count else 0
+                        # Rename option_text to text for frontend compatibility
+                        opt['text'] = opt.get('option_text', '')
+                    
                     poll['options'] = options
+                    # Current user's vote
                     c.execute("SELECT option_id FROM poll_votes WHERE poll_id = ? AND username = ?", (poll['id'], username))
                     uv = c.fetchone()
                     poll['user_vote'] = uv['option_id'] if uv else None
@@ -22432,6 +24083,12 @@ def get_active_chat_counts():
     except Exception as e:
         logger.error(f"Error in get_active_chat_counts: {e}")
         return jsonify({ 'success': False, 'error': 'server error' }), 500
+
+# Register encryption endpoints for E2E encryption
+try:
+    register_encryption_endpoints(app, get_db_connection, logger)
+except Exception as e:
+    logger.error(f"Failed to register encryption endpoints: {e}")
 
 if __name__ == '__main__':
     app.run(debug=False, host='0.0.0.0', port=8080)

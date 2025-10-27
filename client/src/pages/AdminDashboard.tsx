@@ -7,6 +7,23 @@ interface Stats {
   premium_users: number
   total_communities: number
   total_posts: number
+  dau?: number
+  mau?: number
+  dau_pct?: number
+  mau_pct?: number
+  avg_dau_30?: number
+  mau_month?: number
+  mru?: number
+  mru_repeat_rate_pct?: number
+  wau?: number
+  wru?: number
+  wru_repeat_rate_pct?: number
+  cohorts?: { month: string; size: number; retention: number[] }[]
+  leaderboards?: {
+    top_posters: { username: string; count: number }[]
+    top_reactors: { username: string; count: number }[]
+    top_voters: { username: string; count: number }[]
+  }
 }
 
 interface User {
@@ -45,7 +62,7 @@ export default function AdminDashboard() {
     }
     return flat
   })()
-  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'communities'>('overview')
+  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'communities' | 'metrics'>('overview')
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
   const [filterType, setFilterType] = useState<'all' | 'premium' | 'free'>('all')
@@ -312,6 +329,15 @@ export default function AdminDashboard() {
             <div className="pt-2">Communities</div>
             <div className={`h-0.5 ${activeTab === 'communities' ? 'bg-[#4db6ac]' : 'bg-transparent'} rounded-full w-16 mx-auto mt-1`} />
           </button>
+          <button 
+            onClick={() => setActiveTab('metrics')}
+            className={`flex-1 text-center text-sm font-medium ${
+              activeTab === 'metrics' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'
+            }`}
+          >
+            <div className="pt-2">Key Metrics</div>
+            <div className={`h-0.5 ${activeTab === 'metrics' ? 'bg-[#4db6ac]' : 'bg-transparent'} rounded-full w-16 mx-auto mt-1`} />
+          </button>
         </div>
       </div>
 
@@ -355,7 +381,7 @@ export default function AdminDashboard() {
                 </div>
 
                 <div className="flex-1">
-                  <div className="grid grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 gap-3">
                     <div className="bg-white/5 rounded-lg p-3 border border-white/10">
                       <div className="text-sm font-medium mb-1">Logo Status</div>
                       <div className="text-xs">
@@ -364,14 +390,6 @@ export default function AdminDashboard() {
                         {logoStatus === 'success' && !currentLogo && <span className="text-yellow-400">Not Set</span>}
                         {logoStatus === 'error' && <span className="text-red-400">Error</span>}
                       </div>
-                    </div>
-                    <div className="bg-white/5 rounded-lg p-3 border border-white/10">
-                      <div className="text-sm font-medium mb-1">Supported Formats</div>
-                      <div className="text-xs text-white/60">PNG, JPG, SVG, WEBP</div>
-                    </div>
-                    <div className="bg-white/5 rounded-lg p-3 border border-white/10">
-                      <div className="text-sm font-medium mb-1">Size Limit</div>
-                      <div className="text-xs text-white/60">Max 200×100px</div>
                     </div>
                   </div>
                   <div className="mt-3">
@@ -396,6 +414,8 @@ export default function AdminDashboard() {
               </div>
             </div>
 
+            {/* Key Metrics removed from overview; available in Metrics tab */}
+
             {/* Stats Grid */}
             <div className="grid grid-cols-2 gap-3">
               <div className="bg-white/5 backdrop-blur rounded-xl p-4 border border-white/10">
@@ -416,55 +436,9 @@ export default function AdminDashboard() {
               </div>
             </div>
 
-            {/* Parent Communities Cards */}
-            <div>
-              <h3 className="text-sm font-semibold mb-3 text-white/80">Parent Communities</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {communities.filter(c => !c.parent_community_id || c.parent_community_id === null).map(community => (
-                  <div key={community.id} className="bg-white/5 backdrop-blur rounded-xl p-4 border border-white/10">
-                    <div className="flex justify-between items-start mb-2">
-                      <div>
-                        <h4 className="font-semibold text-sm">{community.name}</h4>
-                        <p className="text-xs text-white/60">{community.type}</p>
-                      </div>
-                      <span className="text-xs bg-[#4db6ac]/20 text-[#4db6ac] px-2 py-1 rounded">
-                        {community.member_count} members
-                      </span>
-                    </div>
-                    
-                    {/* Show child communities if any */}
-                    {community.children && community.children.length > 0 && (
-                      <div className="mt-3 pt-3 border-t border-white/10">
-                        <p className="text-xs text-white/60 mb-2">Sub-communities:</p>
-                        <div className="space-y-1">
-                          {community.children.map(child => (
-                            <div key={child.id} className="flex justify-between items-center text-xs">
-                              <span className="text-white/80">• {child.name}</span>
-                              <span className="text-white/50">{child.member_count} members</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    
-                    <div className="flex gap-2 mt-3">
-                      <button
-                        onClick={() => navigate(`/community_feed_react/${community.id}`)}
-                        className="flex-1 py-1 text-xs bg-white/5 border border-white/10 rounded-lg hover:bg-white/10"
-                      >
-                        View
-                      </button>
-                      <button
-                        onClick={() => setActiveTab('communities')}
-                        className="flex-1 py-1 text-xs bg-white/5 border border-white/10 rounded-lg hover:bg-white/10"
-                      >
-                        Manage
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+            {/* Leaderboards removed from overview; available in Metrics tab */}
+
+            {/* Parent Communities section removed per request */}
 
             {/* Quick Actions */}
             <div className="bg-white/5 backdrop-blur rounded-xl p-4 border border-white/10">
@@ -487,6 +461,116 @@ export default function AdminDashboard() {
           </div>
         )}
 
+        {/* Metrics Tab */}
+        {activeTab === 'metrics' && stats && (
+          <div className="space-y-4">
+            <div className="bg-white/5 backdrop-blur rounded-xl p-6 border border-white/10">
+              <h3 className="text-lg font-semibold mb-3 text-[#4db6ac]">Key Metrics</h3>
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                <div className="bg-white/5 rounded-lg p-3 border border-white/10">
+                  <div className="text-xs text-white/60">DAU</div>
+                  <div className="text-xl font-bold">{stats.dau ?? '—'}</div>
+                  <div className="text-xs text-white/60">{stats.dau_pct != null ? `${stats.dau_pct}% of users` : ''}</div>
+                </div>
+                <div className="bg-white/5 rounded-lg p-3 border border-white/10">
+                  <div className="text-xs text-white/60">MAU</div>
+                  <div className="text-xl font-bold">{stats.mau ?? '—'}</div>
+                  <div className="text-xs text-white/60">{stats.mau_pct != null ? `${stats.mau_pct}% of users` : ''}</div>
+                </div>
+                <div className="bg-white/5 rounded-lg p-3 border border-white/10">
+                  <div className="text-xs text-white/60">Total Users</div>
+                  <div className="text-xl font-bold">{stats.total_users}</div>
+                </div>
+                <div className="bg-white/5 rounded-lg p-3 border border-white/10">
+                  <div className="text-xs text-white/60">Total Communities</div>
+                  <div className="text-xl font-bold">{stats.total_communities}</div>
+                </div>
+                <div className="bg-white/5 rounded-lg p-3 border border-white/10">
+                  <div className="text-xs text-white/60">Avg DAU (30d)</div>
+                  <div className="text-xl font-bold">{stats.avg_dau_30 ?? '—'}</div>
+                  <div className="text-xs text-white/60">daily avg</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Returning Users */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="bg-white/5 rounded-lg p-4 border border-white/10">
+                <div className="text-sm font-semibold mb-1">Monthly Returning Users</div>
+                <div className="text-xs text-white/60 mb-2">Previous month ∩ current month</div>
+                <div className="flex items-end gap-4">
+                  <div>
+                    <div className="text-[11px] text-white/60">MRU</div>
+                    <div className="text-xl font-bold">{stats.mru ?? '—'}</div>
+                  </div>
+                  <div>
+                    <div className="text-[11px] text-white/60">MAU (month)</div>
+                    <div className="text-xl font-bold">{stats.mau_month ?? '—'}</div>
+                  </div>
+                  <div>
+                    <div className="text-[11px] text-white/60">Repeat rate</div>
+                    <div className="text-xl font-bold">{stats.mru_repeat_rate_pct != null ? `${stats.mru_repeat_rate_pct}%` : '—'}</div>
+                  </div>
+                </div>
+              </div>
+              <div className="bg-white/5 rounded-lg p-4 border border-white/10">
+                <div className="text-sm font-semibold mb-1">Weekly Returning Users</div>
+                <div className="text-xs text-white/60 mb-2">Previous week ∩ current week</div>
+                <div className="flex items-end gap-4">
+                  <div>
+                    <div className="text-[11px] text-white/60">WRU</div>
+                    <div className="text-xl font-bold">{stats.wru ?? '—'}</div>
+                  </div>
+                  <div>
+                    <div className="text-[11px] text-white/60">WAU</div>
+                    <div className="text-xl font-bold">{stats.wau ?? '—'}</div>
+                  </div>
+                  <div>
+                    <div className="text-[11px] text-white/60">Repeat rate</div>
+                    <div className="text-xl font-bold">{stats.wru_repeat_rate_pct != null ? `${stats.wru_repeat_rate_pct}%` : '—'}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Cohort Retention removed per request */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="bg-white/5 rounded-lg p-4 border border-white/10">
+                <div className="text-sm font-semibold mb-2">Top Posters</div>
+                <div className="space-y-1 text-sm">
+                  {stats.leaderboards?.top_posters?.length ? stats.leaderboards.top_posters.map((u, i) => (
+                    <div key={u.username} className="flex items-center justify-between">
+                      <span className="text-white/80">{i+1}. {u.username}</span>
+                      <span className="text-white/60">{u.count}</span>
+                    </div>
+                  )) : <div className="text-white/60">No data</div>}
+                </div>
+              </div>
+              <div className="bg-white/5 rounded-lg p-4 border border-white/10">
+                <div className="text-sm font-semibold mb-2">Top Reactors</div>
+                <div className="space-y-1 text-sm">
+                  {stats.leaderboards?.top_reactors?.length ? stats.leaderboards.top_reactors.map((u, i) => (
+                    <div key={u.username} className="flex items-center justify-between">
+                      <span className="text-white/80">{i+1}. {u.username}</span>
+                      <span className="text-white/60">{u.count}</span>
+                    </div>
+                  )) : <div className="text-white/60">No data</div>}
+                </div>
+              </div>
+              <div className="bg-white/5 rounded-lg p-4 border border-white/10">
+                <div className="text-sm font-semibold mb-2">Top Voters</div>
+                <div className="space-y-1 text-sm">
+                  {stats.leaderboards?.top_voters?.length ? stats.leaderboards.top_voters.map((u, i) => (
+                    <div key={u.username} className="flex items-center justify-between">
+                      <span className="text-white/80">{i+1}. {u.username}</span>
+                      <span className="text-white/60">{u.count}</span>
+                    </div>
+                  )) : <div className="text-white/60">No data</div>}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
         {/* Users Tab */}
         {activeTab === 'users' && (
           <div className="space-y-3">

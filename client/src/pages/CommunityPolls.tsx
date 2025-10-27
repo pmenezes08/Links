@@ -1,28 +1,35 @@
 import { useEffect, useRef, useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
+import Avatar from '../components/Avatar'
 
-type PollOption = { id: number; option_text: string; votes: number }
-type ActivePoll = { id:number; question:string; options: PollOption[]; single_vote?: boolean; total_votes?: number; user_vote?: number|null }
+type PollOption = { id: number; option_text: string; votes: number; voters?: { username: string; profile_picture?: string; voted_at: string }[] }
+type ActivePoll = { id:number; question:string; options: PollOption[]; single_vote?: boolean; total_votes?: number; user_vote?: number|null; is_active: number; expires_at?: string; created_by?: string }
 
 export default function CommunityPolls(){
   const { community_id } = useParams()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const { setTitle } = useHeader()
-  const [activeTab, setActiveTab] = useState<'active'|'create'>('active')
+  const [activeTab, setActiveTab] = useState<'active'|'archive'|'create'>('active')
   const [polls, setPolls] = useState<ActivePoll[]>([])
+  const [archivedPolls, setArchivedPolls] = useState<ActivePoll[]>([])
   const [loading, setLoading] = useState(true)
   const [successMsg, setSuccessMsg] = useState<string| null>(null)
   const [question, setQuestion] = useState('')
   const [options, setOptions] = useState<string[]>(['',''])
   const [singleVote, setSingleVote] = useState(true)
   const [expiresAt, setExpiresAt] = useState('')
+  const [editingPollId, setEditingPollId] = useState<number|null>(null)
   const formRef = useRef<HTMLFormElement|null>(null)
   const scrollRef = useRef<HTMLDivElement|null>(null)
   const [moreOpen, setMoreOpen] = useState(false)
   const [hasUnseenAnnouncements, setHasUnseenAnnouncements] = useState(false)
+  const [viewingVoters, setViewingVoters] = useState<number|null>(null)
+  const [votersData, setVotersData] = useState<any>(null)
+  const [loadingVoters, setLoadingVoters] = useState(false)
 
-  useEffect(() => { setTitle('Polls') }, [setTitle])
+  useEffect(() => { setTitle(editingPollId ? 'Edit Poll' : 'Polls') }, [setTitle, editingPollId])
 
   async function load(){
     setLoading(true)
@@ -30,11 +37,56 @@ export default function CommunityPolls(){
       const r = await fetch(`/get_active_polls?community_id=${community_id}`, { credentials:'include' })
       const j = await r.json()
       if (j?.success){
-        setPolls((j.polls || []).map((p:any) => ({ id:p.id, question:p.question, options:p.options||[], single_vote:p.single_vote, total_votes:p.total_votes, user_vote:p.user_vote })))
+        const allPolls = (j.polls || []).map((p:any) => ({ 
+          id:p.id, 
+          question:p.question, 
+          options:p.options||[], 
+          single_vote:p.single_vote, 
+          total_votes:p.total_votes, 
+          user_vote:p.user_vote,
+          is_active: p.is_active,
+          expires_at: p.expires_at,
+          created_by: p.created_by
+        }))
+        // Split into active and archived
+        setPolls(allPolls.filter((p:ActivePoll) => p.is_active === 1))
+        setArchivedPolls(allPolls.filter((p:ActivePoll) => p.is_active === 0))
       }
     }finally{ setLoading(false) }
   }
   useEffect(()=>{ load() }, [community_id])
+
+  // Check for edit query parameter and load poll data
+  useEffect(() => {
+    const editParam = searchParams.get('edit')
+    if (editParam) {
+      const pollId = parseInt(editParam)
+      setEditingPollId(pollId)
+      setActiveTab('create')
+      // Load poll data
+      const poll = polls.find(p => p.id === pollId)
+      if (poll) {
+        setQuestion(poll.question)
+        setOptions(poll.options.map(o => o.option_text))
+        setSingleVote(poll.single_vote ?? true)
+        // Prefill expiry if present
+        try {
+          const raw = (poll as any).expires_at as string | undefined
+          if (raw) {
+            const d = new Date(raw)
+            if (!isNaN(d.getTime())) {
+              const tz = new Date(d.getTime() - d.getTimezoneOffset() * 60000)
+              setExpiresAt(tz.toISOString().slice(0,16))
+            } else {
+              setExpiresAt('')
+            }
+          } else {
+            setExpiresAt('')
+          }
+        } catch { setExpiresAt('') }
+      }
+    }
+  }, [searchParams, polls])
 
   useEffect(() => {
     let mounted = true
@@ -72,49 +124,106 @@ export default function CommunityPolls(){
   }
 
   async function createPoll(){
-    const fd = new URLSearchParams()
-    fd.append('question', question.trim())
-    options.filter(x=> x.trim()).forEach(o => fd.append('options[]', o.trim()))
-    if (community_id) fd.append('community_id', String(community_id))
-    fd.append('single_vote', String(singleVote))
-    if (expiresAt) fd.append('expires_at', expiresAt)
-    const r = await fetch('/create_poll', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
-    const j = await r.json().catch(()=>null)
-    if (j?.success){
-      setSuccessMsg('Poll created')
-      setQuestion('')
-      setOptions(['',''])
-      setSingleVote(true)
-      setExpiresAt('')
-      setActiveTab('active')
-      setTimeout(()=> setSuccessMsg(null), 2000)
-      load()
+    if (editingPollId) {
+      // Edit existing poll
+      const payload = {
+        poll_id: editingPollId,
+        question: question.trim(),
+        options: options.filter(x=> x.trim()).map(o => o.trim()),
+        expires_at: expiresAt
+      }
+      const r = await fetch('/edit_poll', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(payload) })
+      const j = await r.json().catch(()=>null)
+      if (j?.success){
+        setSuccessMsg('Poll updated')
+        setQuestion('')
+        setOptions(['',''])
+        setSingleVote(true)
+        setExpiresAt('')
+        setEditingPollId(null)
+        setActiveTab('active')
+        setTimeout(()=> setSuccessMsg(null), 2000)
+        navigate(`/community/${community_id}/polls_react`)
+        load()
+      } else {
+        alert(j?.error || 'Failed to update poll')
+      }
     } else {
-      alert(j?.error || 'Failed to create poll')
+      // Create new poll
+      const fd = new URLSearchParams()
+      fd.append('question', question.trim())
+      options.filter(x=> x.trim()).forEach(o => fd.append('options[]', o.trim()))
+      if (community_id) fd.append('community_id', String(community_id))
+      fd.append('single_vote', String(singleVote))
+      if (expiresAt) {
+        // Convert local time to UTC before sending to server
+        try {
+          const localDate = new Date(expiresAt)
+          const utcString = localDate.toISOString().slice(0, 16).replace('T', 'T') // "YYYY-MM-DDTHH:MM"
+          console.log(`📅 Converting poll deadline: Local=${expiresAt} → UTC=${utcString}`)
+          fd.append('expires_at', utcString)
+        } catch (e) {
+          console.error('Failed to convert expires_at to UTC:', e)
+          fd.append('expires_at', expiresAt) // Fallback to original
+        }
+      }
+      const r = await fetch('/create_poll', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
+      const j = await r.json().catch(()=>null)
+      if (j?.success){
+        setSuccessMsg('Poll created')
+        setQuestion('')
+        setOptions(['',''])
+        setSingleVote(true)
+        setExpiresAt('')
+        setActiveTab('active')
+        setTimeout(()=> setSuccessMsg(null), 2000)
+        load()
+      } else {
+        alert(j?.error || 'Failed to create poll')
+      }
     }
   }
 
-  function optimisticVote(pollId:number, optionId:number, toggle:boolean){
+  function optimisticVote(pollId:number, optionId:number){
     setPolls(prev => prev.map(p => {
       if (p.id !== pollId) return p
       const next = { ...p, options: p.options.map(o => ({ ...o })) }
+      
+      // Check if user already voted on this specific option
+      const hasVotedOnThisOption = p.user_vote === optionId
+      
       if (p.single_vote){
+        // Single vote mode
         const prevOptId = p.user_vote || null
         if (prevOptId && prevOptId !== optionId){
+          // Moving vote from one option to another
           const prevOpt = next.options.find(o => o.id === prevOptId)
           if (prevOpt && prevOpt.votes > 0) prevOpt.votes -= 1
         }
         const cur = next.options.find(o => o.id === optionId)
-        if (cur) cur.votes += 1
-        next.user_vote = optionId
+        if (cur) {
+          if (hasVotedOnThisOption) {
+            // Toggle off
+            if (cur.votes > 0) cur.votes -= 1
+            next.user_vote = null
+          } else {
+            // Vote on this option
+            cur.votes += 1
+            next.user_vote = optionId
+          }
+        }
       } else {
-        // Multiple vote mode: toggle off if same option clicked and toggle is true
+        // Multiple vote mode: always toggle
         const cur = next.options.find(o => o.id === optionId)
         if (cur){
-          if (toggle){
+          if (hasVotedOnThisOption){
+            // Toggle off
             if (cur.votes > 0) cur.votes -= 1
+            next.user_vote = null
           } else {
+            // Toggle on
             cur.votes += 1
+            next.user_vote = optionId
           }
         }
       }
@@ -123,13 +232,14 @@ export default function CommunityPolls(){
   }
 
   async function vote(pollId:number, optionId:number){
-    const poll = polls.find(p => p.id === pollId)
-    const isToggle = poll && !poll.single_vote && !!poll.options.find(o => o.id===optionId) // allow toggle for multi-vote
-    optimisticVote(pollId, optionId, !!isToggle)
-    const res = await fetch('/vote_poll', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ poll_id: pollId, option_id: optionId, toggle_vote: !poll?.single_vote && poll?.options?.some(o=> o.id===optionId) ? true : false }) })
+    optimisticVote(pollId, optionId)
+    const res = await fetch('/vote_poll', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ poll_id: pollId, option_id: optionId }) })
     const j = await res.json().catch(()=>null)
     if (!j?.success){
       // Reload to reconcile on error
+      load()
+    } else {
+      // Reload to get correct user_voted state from server
       load()
     }
   }
@@ -138,6 +248,18 @@ export default function CommunityPolls(){
     const r = await fetch('/close_poll', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: new URLSearchParams({ poll_id: String(pollId) }) })
     const j = await r.json().catch(()=>null)
     if (j?.success) load()
+  }
+
+  async function loadVoters(pollId:number){
+    setViewingVoters(pollId)
+    setLoadingVoters(true)
+    try{
+      const r = await fetch(`/get_poll_voters/${pollId}`, { credentials:'include' })
+      const j = await r.json()
+      if (j?.success){
+        setVotersData(j.options || [])
+      }
+    }finally{ setLoadingVoters(false) }
   }
 
   return (
@@ -149,12 +271,16 @@ export default function CommunityPolls(){
           </button>
           <div className="flex-1 h-full flex">
             <button type="button" className={`flex-1 text-center text-sm font-medium ${activeTab==='active' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`} onClick={()=> setActiveTab('active')}>
-              <div className="pt-2">Active Polls</div>
-              <div className={`h-0.5 rounded-full w-16 mx-auto mt-1 ${activeTab==='active' ? 'bg-[#4db6ac]' : 'bg-transparent'}`} />
+              <div className="pt-2">Active</div>
+              <div className={`h-0.5 rounded-full w-12 mx-auto mt-1 ${activeTab==='active' ? 'bg-[#4db6ac]' : 'bg-transparent'}`} />
+            </button>
+            <button type="button" className={`flex-1 text-center text-sm font-medium ${activeTab==='archive' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`} onClick={()=> setActiveTab('archive')}>
+              <div className="pt-2">Archive</div>
+              <div className={`h-0.5 rounded-full w-12 mx-auto mt-1 ${activeTab==='archive' ? 'bg-[#4db6ac]' : 'bg-transparent'}`} />
             </button>
             <button type="button" className={`flex-1 text-center text-sm font-medium ${activeTab==='create' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`} onClick={()=> setActiveTab('create')}>
-              <div className="pt-2">Create Poll</div>
-              <div className={`h-0.5 rounded-full w-16 mx-auto mt-1 ${activeTab==='create' ? 'bg-[#4db6ac]' : 'bg-transparent'}`} />
+              <div className="pt-2">Create</div>
+              <div className={`h-0.5 rounded-full w-12 mx-auto mt-1 ${activeTab==='create' ? 'bg-[#4db6ac]' : 'bg-transparent'}`} />
             </button>
           </div>
         </div>
@@ -167,7 +293,7 @@ export default function CommunityPolls(){
 
         {activeTab === 'create' ? (
           <form ref={formRef} className="rounded-2xl border border-white/10 p-3 bg-white/[0.035] space-y-3" onSubmit={(e)=> { e.preventDefault(); createPoll() }}>
-            <div className="text-sm font-medium">Create Poll</div>
+            <div className="text-sm font-medium">{editingPollId ? 'Edit Poll' : 'Create Poll'}</div>
             <label className="text-xs text-[#9fb0b5]">Question
               <input value={question} onChange={e=> setQuestion(e.target.value)} className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none" placeholder="What should we do?" />
             </label>
@@ -180,18 +306,64 @@ export default function CommunityPolls(){
                 <button type="button" className="px-2 py-1 rounded-md border border-white/10 text-xs hover:bg-white/5" onClick={()=> setOptions(prev => prev.length>2? prev.slice(0,-1): prev)}>Remove option</button>
               </div>
             </div>
-            <div className="flex items-center gap-3">
-              <button type="button" className={`px-2 py-1 rounded-md border text-sm whitespace-nowrap hover:bg:white/5 ${singleVote ? 'border-teal-500 text-teal-300 bg-teal-700/15' : 'border-white/10'}`} onClick={()=> setSingleVote(v=>!v)}>
-                Single vote only
-              </button>
-              <label className="text-sm text-[#9fb0b5] whitespace-nowrap">Expiry date
-                <input type="datetime-local" value={expiresAt} onChange={e=> setExpiresAt(e.target.value)} className="mt-1 w-60 rounded-md bg-black border border-white/10 px-3 py-2 text-sm focus:border-teal-400/70 outline-none" />
-              </label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-start">
+              <div>
+                <button type="button" className={`px-2 py-1 rounded-md border text-sm whitespace-nowrap hover:bg:white/5 ${singleVote ? 'border-teal-500 text-teal-300 bg-teal-700/15' : 'border-white/10'}`} onClick={()=> setSingleVote(v=>!v)}>
+                  Single vote only
+                </button>
+              </div>
+              <div className="flex flex-col min-w-0">
+                <label className="text-sm text-[#9fb0b5]">Expiry date (optional)</label>
+                <div className="mt-1 flex items-center gap-2 min-w-0">
+                  <input type="datetime-local" value={expiresAt} onChange={e=> setExpiresAt(e.target.value)} className="flex-1 min-w-0 rounded-md bg-black border border-white/10 px-3 py-2 text-sm focus:border-teal-400/70 outline-none" />
+                  {expiresAt ? (
+                    <button type="button" className="px-2 py-1 rounded-md border border-white/10 text-xs text-[#9fb0b5] hover:bg-white/5" onClick={()=> setExpiresAt('')}>Clear</button>
+                  ) : null}
+                </div>
+              </div>
             </div>
-            <div className="flex justify-end">
-              <button className="px-3 py-1.5 rounded-md bg-[#4db6ac] text-black text-sm hover:brightness-110">Create</button>
+            <div className="flex justify-end gap-2">
+              {editingPollId && (
+                <button type="button" className="px-3 py-1.5 rounded-md border border-white/10 text-sm hover:bg-white/5" onClick={()=> { setEditingPollId(null); setQuestion(''); setOptions(['','']); setSingleVote(true); setExpiresAt(''); navigate(`/community/${community_id}/polls_react`) }}>Cancel</button>
+              )}
+              <button className="px-3 py-1.5 rounded-md bg-[#4db6ac] text-black text-sm hover:brightness-110">{editingPollId ? 'Update' : 'Create'}</button>
             </div>
           </form>
+        ) : activeTab === 'archive' ? (
+          <div className="space-y-3">
+            {loading ? (
+              <div className="text-[#9fb0b5]">Loading…</div>
+            ) : archivedPolls.length === 0 ? (
+              <div className="text-[#9fb0b5]">No archived polls.</div>
+            ) : (
+              archivedPolls.map(p => (
+                <div key={p.id} className="rounded-2xl border border-white/10 bg-white/[0.035] opacity-75 overflow-hidden">
+                  <div className="px-3 py-2 flex items-center gap-2 border-b border-white/10">
+                    <div className="font-medium flex-1">{p.question}</div>
+                    <span className="text-xs text-[#9fb0b5]">🔒 Closed</span>
+                    <button title="View voters" className="px-2 py-1 rounded-md border border-[#4db6ac] text-[#4db6ac] hover:bg-[#4db6ac]/10 text-sm" onClick={()=> loadVoters(p.id)}>
+                      <i className="fa-solid fa-users mr-1" />
+                      Voters
+                    </button>
+                  </div>
+                  <div className="px-3 py-2 space-y-2">
+                    {p.options?.map((o, i) => {
+                      const pct = p.total_votes ? Math.round((o.votes / p.total_votes) * 100) : 0
+                      return (
+                        <div key={i} className="w-full text-left px-3 py-2 rounded border border-white/10 relative overflow-hidden">
+                          <div className="absolute inset-0 bg-[#4db6ac]/20" style={{ width: `${pct}%` }} />
+                          <div className="relative flex items-center justify-between">
+                            <span>{o.option_text}</span>
+                            <span className="text-xs text-[#9fb0b5]">{o.votes} {pct > 0 ? `(${pct}%)` : ''}</span>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
         ) : (
           <div className="space-y-3">
             {loading ? (
@@ -203,6 +375,10 @@ export default function CommunityPolls(){
                 <div key={p.id} className="rounded-2xl border border-white/10 bg-white/[0.035] overflow-hidden">
                   <div className="px-3 py-2 flex items-center gap-2 border-b border-white/10">
                     <div className="font-medium flex-1">{p.question}</div>
+                    <button title="View voters" className="px-2 py-1 rounded-md border border-[#4db6ac] text-[#4db6ac] hover:bg-[#4db6ac]/10 text-sm" onClick={()=> loadVoters(p.id)}>
+                      <i className="fa-solid fa-users mr-1" />
+                      Voters
+                    </button>
                     <button title="Close poll" className="px-2 py-1 rounded-md border border-red-400 text-red-300 hover:bg-red-500/10" onClick={()=> closePoll(p.id)}>
                       <i className="fa-regular fa-trash-can" />
                     </button>
@@ -221,6 +397,47 @@ export default function CommunityPolls(){
           </div>
         )}
       </div>
+
+      {/* Voters Modal */}
+      {viewingVoters && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={()=> { setViewingVoters(null); setVotersData(null) }}>
+          <div className="bg-black border border-white/10 rounded-2xl max-w-2xl w-full max-h-[80vh] overflow-hidden" onClick={(e)=> e.stopPropagation()}>
+            <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
+              <div className="font-medium">Poll Voters</div>
+              <button className="p-2 hover:bg-white/5 rounded-full" onClick={()=> { setViewingVoters(null); setVotersData(null) }}>
+                <i className="fa-solid fa-xmark" />
+              </button>
+            </div>
+            <div className="overflow-y-auto max-h-[calc(80vh-60px)] p-4">
+              {loadingVoters ? (
+                <div className="text-[#9fb0b5]">Loading voters...</div>
+              ) : votersData ? (
+                <div className="space-y-4">
+                  {votersData.map((opt: any) => (
+                    <div key={opt.id} className="border border-white/10 rounded-lg p-3">
+                      <div className="font-medium text-sm mb-2 text-[#4db6ac]">{opt.option_text}</div>
+                      {opt.voters && opt.voters.length > 0 ? (
+                        <div className="space-y-2">
+                          {opt.voters.map((voter: any, idx: number) => (
+                            <div key={idx} className="flex items-center gap-2 text-sm">
+                              <Avatar username={voter.username} url={voter.profile_picture} size={24} />
+                              <span>{voter.username}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-xs text-[#9fb0b5]">No votes yet</div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-[#9fb0b5]">No data</div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Bottom navigation bar - floating (same as community) */}
       <div className="fixed bottom-4 left-1/2 transform -translate-x-1/2 z-40 w-[94%] max-w-[1200px] rounded-2xl border border-white/10 bg-black/80 backdrop-blur shadow-lg">

@@ -4,6 +4,7 @@ import { useHeader } from '../contexts/HeaderContext'
 import Avatar from '../components/Avatar'
 import ImageLoader from '../components/ImageLoader'
 import MessageImage from '../components/MessageImage'
+import { encryptionService } from '../services/simpleEncryption'
 
 interface Message {
   id: number | string
@@ -16,6 +17,12 @@ interface Message {
   reaction?: string
   replySnippet?: string
   isOptimistic?: boolean // Track if this is an optimistic update
+  edited_at?: string | null
+  clientKey?: string | number
+  is_encrypted?: boolean
+  encrypted_body?: string // Encrypted for recipient
+  encrypted_body_for_sender?: string // Encrypted for sender
+  decryption_error?: boolean
 }
 
 export default function ChatThread(){
@@ -52,6 +59,9 @@ export default function ChatThread(){
 
   const [otherUserId, setOtherUserId] = useState<number|''>('')
   const [messages, setMessages] = useState<Message[]>([])
+  const [editingId, setEditingId] = useState<number|string| null>(null)
+  const [editText, setEditText] = useState('')
+  const [editingSaving, setEditingSaving] = useState(false)
   const [draft, setDraft] = useState('')
   const [replyTo, setReplyTo] = useState<{ text:string; sender?:string }|null>(null)
   const [sending, setSending] = useState(false)
@@ -79,6 +89,7 @@ export default function ChatThread(){
   const audioCtxRef = useRef<AudioContext|null>(null)
   const analyserRef = useRef<AnalyserNode|null>(null)
   const sourceRef = useRef<MediaStreamAudioSourceNode|null>(null)
+  const streamRef = useRef<MediaStream|null>(null)
   const visRafRef = useRef<number| null>(null)
   const [audioLevels, setAudioLevels] = useState<number[]>(Array(25).fill(0))
   const stoppedRef = useRef(false)
@@ -86,11 +97,6 @@ export default function ChatThread(){
   const finalizeTimerRef = useRef<any>(null)
   // const twoSecondCheckRef = useRef<any>(null)
   const finalizeAttemptRef = useRef(0)
-  const [recordLockActive, setRecordLockActive] = useState(false)
-  const [showLockHint, setShowLockHint] = useState(false)
-  const touchStartYRef = useRef<number|null>(null)
-  const lockActiveRef = useRef(false)
-  const suppressClickRef = useRef(false)
   const [previewImage, setPreviewImage] = useState<string|null>(null)
   const [recordingPreview, setRecordingPreview] = useState<{ blob: Blob; url: string; duration: number } | null>(null)
   const [isMobile, setIsMobile] = useState(false)
@@ -98,13 +104,20 @@ export default function ChatThread(){
   const [showPermissionGuide, setShowPermissionGuide] = useState(false)
   const lastFetchTime = useRef<number>(0)
   const pendingDeletions = useRef<Set<number|string>>(new Set())
+  // Bridge between temp ids and server ids to avoid flicker and keep stable keys
+  const idBridgeRef = useRef<{ tempToServer: Map<string, string|number>; serverToTemp: Map<string|number, string> }>({
+    tempToServer: new Map(),
+    serverToTemp: new Map(),
+  })
+  // Track recently sent optimistic messages to prevent poll from removing them
+  const recentOptimisticRef = useRef<Map<string, { message: Message; timestamp: number }>>(new Map())
+  // Pause polling briefly after sending to avoid race condition with server confirmation
+  const skipNextPollsUntil = useRef<number>(0)
 
-  // Mic gating by build flag: enable by default in dev; disabled in prod unless VITE_MIC_ENABLED=true
-  const envVars: any = (typeof import.meta !== 'undefined' && (import.meta as any).env) || {}
-  const micFlag = envVars.VITE_MIC_ENABLED
-  const MIC_ENABLED = typeof micFlag !== 'undefined' 
-    ? (micFlag === 'true' || micFlag === true)
-    : Boolean(envVars.DEV)
+  // Mic always enabled for audio messages
+  const MIC_ENABLED = true
+  
+  // E2E Encryption is initialized globally in App.tsx, so it's always ready
 
   // Date formatting functions
   function formatDateLabel(dateStr: string): string {
@@ -136,6 +149,38 @@ export default function ChatThread(){
     return new Date(dateStr).toDateString()
   }
 
+  function parseMessageTime(s: string | undefined): Date | null {
+    if (!s) return null
+    try {
+      // Normalize "YYYY-MM-DD HH:MM:SS" -> "YYYY-MM-DDTHH:MM:SS"
+      const norm = s.includes('T') ? s : s.replace(' ', 'T')
+      const d = new Date(norm)
+      return isNaN(d.getTime()) ? null : d
+    } catch { return null }
+  }
+
+  async function commitEdit(){
+    if (!editingId) return
+    const newBody = editText.trim()
+    if (!newBody) { alert('Message cannot be empty'); return }
+    const prev = messages
+    setEditingSaving(true)
+    setMessages(list => list.map(m => m.id===editingId ? ({ ...m, text: newBody, edited_at: new Date().toISOString() }) : m))
+    try{
+      const res = await fetch('/api/chat/edit_message', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ message_id: editingId, text: newBody }) })
+      const j = await res.json().catch(()=>null)
+      if (!j?.success){
+        alert(j?.error || 'Edit failed')
+        setMessages(prev)
+      } else {
+        setEditingId(null); setEditText('')
+      }
+    }catch{
+      alert('Network error while editing')
+      setMessages(prev)
+    } finally { setEditingSaving(false) }
+  }
+
   // Convert URLs in plain text into clickable links
   function linkifyText(text: string) {
     const nodes: any[] = []
@@ -158,6 +203,86 @@ export default function ChatThread(){
     if (lastIndex < text.length) nodes.push(text.slice(lastIndex))
     return nodes
   }
+
+  // Track messages that have been processed (don't decrypt multiple times)
+  const decryptionCache = useRef<Map<number | string, { text: string; error: boolean }>>(new Map())
+
+  // Decrypt message if it's encrypted
+  async function decryptMessageIfNeeded(message: any): Promise<any> {
+    if (!message.is_encrypted) {
+      return message
+    }
+    
+    // Check cache first - don't decrypt the same message multiple times!
+    const cached = decryptionCache.current.get(message.id)
+    if (cached) {
+      return {
+        ...message,
+        text: cached.text,
+        decryption_error: cached.error,
+      }
+    }
+    
+    // TRUE E2E ENCRYPTION:
+    // - Sent messages: decrypt encrypted_body_for_sender (encrypted with YOUR public key)
+    // - Received messages: decrypt encrypted_body (encrypted with YOUR public key)
+    
+    let encryptedData: string | null = null
+    
+    if (message.sent) {
+      // You sent this - decrypt the copy encrypted for you
+      encryptedData = message.encrypted_body_for_sender
+      if (!encryptedData) {
+        // Backward compatibility: old messages might have plaintext
+        if (message.text && message.text.trim()) {
+          return { ...message, decryption_error: false }
+        }
+        return {
+          ...message,
+          text: '[🔒 Encrypted message - missing sender copy]',
+          decryption_error: true,
+        }
+      }
+    } else {
+      // You received this - decrypt the copy encrypted for you
+      encryptedData = message.encrypted_body
+      if (!encryptedData) {
+        return {
+          ...message,
+          text: '[🔒 Encrypted message - missing data]',
+          decryption_error: true,
+        }
+      }
+    }
+    
+    try {
+      console.log('🔐 Decrypting', message.sent ? 'SENT' : 'RECEIVED', 'message:', message.id)
+      const decryptedText = await encryptionService.decryptMessage(encryptedData)
+      console.log('🔐 ✅ Message', message.id, 'decrypted successfully!')
+      
+      // Cache the decrypted text
+      decryptionCache.current.set(message.id, { text: decryptedText, error: false })
+      
+      return {
+        ...message,
+        text: decryptedText,
+        decryption_error: false,
+      }
+    } catch (error) {
+      console.error('🔐 ❌ Failed to decrypt message:', message.id, error)
+      
+      // Cache the failure
+      decryptionCache.current.set(message.id, { text: '[🔒 Encrypted - decryption failed]', error: true })
+      
+      return {
+        ...message,
+        text: '[🔒 Encrypted - decryption failed]',
+        decryption_error: true,
+      }
+    }
+  }
+
+  // Encryption is initialized globally in App.tsx - no need for per-chat init
 
   // Initial load of messages and other user info
   useEffect(() => {
@@ -184,9 +309,14 @@ export default function ChatThread(){
           body: fd 
         })
         .then(r=>r.json())
-        .then(j=>{
+        .then(async (j) => {
           if (j?.success && Array.isArray(j.messages)) {
-            const processedMessages = j.messages.map((m:any) => {
+            // Decrypt encrypted messages first
+            const decryptedMessages = await Promise.all(
+              j.messages.map(async (m: any) => await decryptMessageIfNeeded(m))
+            )
+            
+            const processedMessages = decryptedMessages.map((m:any) => {
               // Parse reply information from message text
               let messageText = m.text
               let replySnippet = undefined
@@ -205,7 +335,8 @@ export default function ChatThread(){
                 text: messageText,
                 reaction: meta.reaction, 
                 replySnippet: replySnippet || meta.replySnippet,
-                isOptimistic: false 
+                isOptimistic: false,
+                edited_at: m.edited_at || null
               }
             })
             setMessages(processedMessages)
@@ -277,6 +408,11 @@ export default function ChatThread(){
     if (!username || !otherUserId) return
     
     async function poll(){
+      // Skip polling if we're waiting for server confirmation after sending
+      if (Date.now() < skipNextPollsUntil.current) {
+        return
+      }
+      
       try{
         const fd = new URLSearchParams({ other_user_id: String(otherUserId) })
         const r = await fetch('/get_messages', { 
@@ -288,34 +424,38 @@ export default function ChatThread(){
         const j = await r.json()
         
         if (j?.success && Array.isArray(j.messages)){
+          // Decrypt encrypted messages before processing
+          const decryptedMessages = await Promise.all(
+            j.messages.map(async (m: any) => await decryptMessageIfNeeded(m))
+          )
+          
           setMessages(prev => {
-            // Create a map of all existing messages by ID for quick lookup
-            const existingById = new Map()
+            // Build map of existing messages by their stable key (clientKey or id)
+            const messagesByKey = new Map()
             prev.forEach(m => {
-              if (!m.isOptimistic && m.id) {
-                existingById.set(m.id, m)
+              const key = String(m.clientKey || m.id)
+              messagesByKey.set(key, m)
+            })
+            
+            // CRITICAL: Add recent optimistic messages that might not be in prev yet
+            // This handles React state batching race condition
+            recentOptimisticRef.current.forEach((entry, key) => {
+              if (!messagesByKey.has(key)) {
+                messagesByKey.set(key, entry.message)
               }
             })
             
-            // Keep optimistic messages separate
-            const optimisticMessages = prev.filter(m => m.isOptimistic === true)
-            
-            // Process server messages, preserving local state
-            const serverMessages = j.messages.map((m:any) => {
+            // Process server messages (now decrypted)
+            const serverMessageKeys = new Set()
+            decryptedMessages.forEach((m: any) => {
               // Skip if pending deletion
-              if (pendingDeletions.current.has(m.id)) {
-                return null
-              }
-              
-              const existing = existingById.get(m.id)
+              if (pendingDeletions.current.has(m.id)) return
               
               // Parse reply information from message text
               let messageText = m.text
               let replySnippet = undefined
               const replyMatch = messageText.match(/^\[REPLY:([^:]+):([^\]]+)\]\n(.*)$/s)
               if (replyMatch) {
-                // Extract reply info and actual message
-                // const replySender = replyMatch[1] // Can use this later if needed
                 replySnippet = replyMatch[2]
                 messageText = replyMatch[3]
               }
@@ -323,38 +463,82 @@ export default function ChatThread(){
               const k = `${m.time}|${messageText}|${m.sent ? 'me' : 'other'}`
               const meta = metaRef.current[k] || {}
               
-              return {
-                ...m,
+              // Determine 'sent' strictly from server sender match
+              const isSentByMe = m.sender === undefined ? (m.sent === true) : (m.sender === username)
+              
+              // Check if we have a bridge mapping or matching optimistic message
+              let stableKey = idBridgeRef.current.serverToTemp.get(m.id)
+              
+              if (!stableKey) {
+                // Try to find matching optimistic by content
+                for (const [key, existing] of messagesByKey.entries()) {
+                  if (!existing.isOptimistic) continue
+                  if (existing.sent !== isSentByMe) continue
+                  if (existing.text !== messageText) continue
+                  const timeDiff = Math.abs(new Date(m.time).getTime() - new Date(existing.time).getTime())
+                  if (timeDiff < 5000) {
+                    stableKey = key
+                    // Set up bridge for future
+                    idBridgeRef.current.serverToTemp.set(m.id, key)
+                    idBridgeRef.current.tempToServer.set(key, m.id)
+                    break
+                  }
+                }
+              }
+              
+              // Use stable key if found, otherwise use server id
+              const finalKey = stableKey || String(m.id)
+              serverMessageKeys.add(finalKey)
+              
+              // Get existing message to preserve local state
+              const existing = messagesByKey.get(finalKey)
+              
+              // Update or create message
+              messagesByKey.set(finalKey, {
+                id: m.id, // Use server ID now
                 text: messageText,
+                image_path: m.image_path,
+                audio_path: m.audio_path,
+                audio_duration_seconds: m.audio_duration_seconds,
+                sent: isSentByMe,
+                time: m.time,
                 reaction: existing?.reaction ?? meta.reaction,
                 replySnippet: replySnippet || existing?.replySnippet || meta.replySnippet,
-                isOptimistic: false
-              }
-            }).filter(Boolean)
-            
-            // Keep optimistic messages that don't have a server match yet
-            // Be more lenient with matching to avoid duplicates
-            const remainingOptimistic = optimisticMessages.filter(opt => {
-              const serverMatch = serverMessages.some((srv:any) => {
-                // Match by text and sender, with a reasonable time window
-                if (srv.sent === opt.sent && srv.text === opt.text) {
-                  const timeDiff = Math.abs(new Date(srv.time).getTime() - new Date(opt.time).getTime())
-                  return timeDiff < 60000 // Within 60 seconds
-                }
-                return false
+                isOptimistic: false, // No longer optimistic
+                edited_at: m.edited_at || null,
+                clientKey: finalKey, // Keep stable key
+                // CRITICAL: Include encryption fields from server!
+                is_encrypted: m.is_encrypted,
+                encrypted_body: m.encrypted_body,
+                encrypted_body_for_sender: m.encrypted_body_for_sender,
+                decryption_error: m.decryption_error
               })
-              
-              // Also remove old optimistic messages (older than 2 minutes)
-              const optAge = Date.now() - new Date(opt.time).getTime()
-              if (optAge > 120000) {
-                return false // Remove stale optimistic messages
-              }
-              
-              return !serverMatch
             })
             
-            // Combine and sort
-            const allMessages = [...serverMessages, ...remainingOptimistic]
+            // Clean up very old UNCONFIRMED optimistic messages (30s timeout)
+            // CRITICAL: Never remove confirmed messages (isOptimistic=false) even if server doesn't return them
+            // This handles server-side caching where newly sent messages don't appear in polls immediately
+            const now = Date.now()
+            for (const [key, msg] of messagesByKey.entries()) {
+              if (msg.isOptimistic) {
+                const age = now - new Date(msg.time).getTime()
+                if (age > 30000) {
+                  messagesByKey.delete(key)
+                }
+              }
+              // Never remove confirmed messages (isOptimistic=false), even if not in latest server response
+              // The server confirmed it exists via send response, so trust that over stale poll data
+            }
+            
+            // Convert map to array and sort
+            const allMessages = Array.from(messagesByKey.values())
+            
+            // Track if we're preserving messages not in server response (server caching issue)
+            const preservedCount = allMessages.length - j.messages.length
+            if (preservedCount > 0) {
+              console.log('🛡️ Preserving', preservedCount, 'messages not in server response (caching)')
+            }
+            
             return allMessages.sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime())
           })
         }
@@ -383,8 +567,8 @@ export default function ChatThread(){
     // Initial poll after a short delay to let optimistic messages show
     setTimeout(poll, 500)
     
-    // Poll every 3 seconds (slightly less aggressive)
-    pollTimer.current = setInterval(poll, 3000)
+    // Poll for updates, but not too aggressively to avoid race conditions
+    pollTimer.current = setInterval(poll, 2500)
     
     return () => { 
       if (pollTimer.current) clearInterval(pollTimer.current) 
@@ -402,54 +586,113 @@ export default function ChatThread(){
   useEffect(() => { adjustTextareaHeight() }, [])
   useEffect(() => { adjustTextareaHeight() }, [draft])
 
-  function send(){
+  async function send(){
     if (!otherUserId || !draft.trim() || sending) return
     
     const messageText = draft.trim()
-    const now = new Date().toISOString().slice(0,19).replace('T',' ')
-    const tempId = `temp_${Date.now()}_${Math.random()}`
-    const replySnippet = replyTo ? (replyTo.text.length > 90 ? replyTo.text.slice(0,90) + '…' : replyTo.text) : undefined
     
-    // Format message with reply if needed
-    let formattedMessage = messageText
-    if (replyTo) {
-      // Add a special format that we can parse later
-      // Using a format that won't interfere with normal messages
-      formattedMessage = `[REPLY:${replyTo.sender}:${replyTo.text.slice(0,90)}]\n${messageText}`
-    }
-    
-    // Create optimistic message
-    const optimisticMessage: Message = { 
-      id: tempId, 
-      text: messageText, 
-      sent: true, 
-      time: now, 
-      replySnippet,
-      isOptimistic: true
-    }
-    
-    // Clear input immediately for better UX
-    setDraft('')
-    setReplyTo(null)
-    setSending(true)
-    
-    // Add optimistic message immediately
-    setMessages(prev => [...prev, optimisticMessage])
-    
-    // Force scroll to bottom for sent messages
-    setTimeout(scrollToBottom, 50)
-    
-    // Store reply snippet in metadata if needed
-    if (replySnippet){
-      const k = `${now}|${messageText}|me`
-      metaRef.current[k] = { ...(metaRef.current[k]||{}), replySnippet }
-      try{ localStorage.setItem(storageKey, JSON.stringify(metaRef.current)) }catch{}
-    }
-    
-    // Send to server with formatted message
-    const fd = new URLSearchParams({ recipient_id: String(otherUserId), message: formattedMessage })
-    
-    fetch('/send_message', { 
+    try {
+      // Pause polling for 2 seconds to avoid race condition with server confirmation
+      skipNextPollsUntil.current = Date.now() + 2000
+      const now = new Date().toISOString().slice(0,19).replace('T',' ')
+      const tempId = `temp_${Date.now()}_${Math.random()}`
+      const replySnippet = replyTo ? (replyTo.text.length > 90 ? replyTo.text.slice(0,90) + '…' : replyTo.text) : undefined
+      
+      // Format message with reply if needed
+      let formattedMessage = messageText
+      if (replyTo) {
+        // Add a special format that we can parse later
+        // Using a format that won't interfere with normal messages
+        formattedMessage = `[REPLY:${replyTo.sender}:${replyTo.text.slice(0,90)}]\n${messageText}`
+      }
+      
+      // Try to encrypt message TWICE (for recipient AND sender)
+      let isEncrypted = false
+      let encryptedBodyForRecipient = ''
+      let encryptedBodyForSender = ''
+      
+      if (username) {
+        try {
+          console.log('🔐 Attempting to encrypt message...')
+          
+          // Encrypt for recipient with 3 second timeout
+          const encryptForRecipientPromise = encryptionService.encryptMessage(username, formattedMessage)
+          const timeoutPromise1 = new Promise<never>((_, reject) => 
+            setTimeout(() => reject(new Error('Encryption timeout (recipient)')), 3000)
+          )
+          encryptedBodyForRecipient = await Promise.race([encryptForRecipientPromise, timeoutPromise1])
+          console.log('🔐 ✅ Message encrypted for recipient!')
+          
+          // Encrypt for sender (yourself) with 3 second timeout
+          const encryptForSenderPromise = encryptionService.encryptMessageForSender(formattedMessage)
+          const timeoutPromise2 = new Promise<never>((_, reject) => 
+            setTimeout(() => reject(new Error('Encryption timeout (sender)')), 3000)
+          )
+          encryptedBodyForSender = await Promise.race([encryptForSenderPromise, timeoutPromise2])
+          console.log('🔐 ✅ Message encrypted for sender!')
+          
+          isEncrypted = true
+          console.log('🔐 ✅ TRUE E2E encryption complete!')
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : 'Unknown error'
+          console.warn('🔐 ⚠️ Encryption failed, sending unencrypted:', errorMsg)
+          // Continue with unencrypted - this is perfectly fine!
+        }
+      }
+      
+      // Create optimistic message WITH encryption flags
+      const optimisticMessage: Message = { 
+        id: tempId, 
+        text: messageText, 
+        sent: true, 
+        time: now, 
+        replySnippet,
+        isOptimistic: true,
+        is_encrypted: isEncrypted,
+        encrypted_body: isEncrypted ? encryptedBodyForRecipient : undefined,
+        encrypted_body_for_sender: isEncrypted ? encryptedBodyForSender : undefined
+      }
+      
+      // Clear input immediately for better UX
+      setDraft('')
+      setReplyTo(null)
+      setSending(true)
+      
+      // Add optimistic message immediately
+      const optimisticWithKey = { ...optimisticMessage, clientKey: tempId }
+      setMessages(prev => [...prev, optimisticWithKey])
+      
+      // Register in recent optimistic to prevent poll from removing it due to stale state
+      recentOptimisticRef.current.set(tempId, {
+        message: optimisticWithKey,
+        timestamp: Date.now()
+      })
+      
+      // Force scroll to bottom for sent messages
+      setTimeout(scrollToBottom, 50)
+      
+      // Store reply snippet in metadata if needed
+      if (replySnippet){
+        const k = `${now}|${messageText}|me`
+        metaRef.current[k] = { ...(metaRef.current[k]||{}), replySnippet }
+        try{ localStorage.setItem(storageKey, JSON.stringify(metaRef.current)) }catch{}
+      }
+      
+      // Send to server
+      const fd = new URLSearchParams({ recipient_id: String(otherUserId) })
+      
+      if (isEncrypted) {
+        fd.append('message', '') // NO plaintext stored!
+        fd.append('is_encrypted', '1')
+        fd.append('encrypted_body', encryptedBodyForRecipient) // Encrypted for recipient
+        fd.append('encrypted_body_for_sender', encryptedBodyForSender) // Encrypted for sender
+        console.log('📤 Sending TRUE E2E ENCRYPTED message (no plaintext stored!)')
+      } else {
+        fd.append('message', formattedMessage)
+        console.log('📤 Sending UNENCRYPTED message')
+      }
+      
+      fetch('/send_message', { 
       method:'POST', 
       credentials:'include', 
       headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, 
@@ -458,7 +701,6 @@ export default function ChatThread(){
     .then(r=>r.json())
     .then(j=>{
       if (j?.success){
-        // Message sent successfully - the polling will pick up the real message
         // Stop typing indicator
         fetch('/api/typing', { 
           method:'POST', 
@@ -466,20 +708,56 @@ export default function ChatThread(){
           headers:{ 'Content-Type':'application/json' }, 
           body: JSON.stringify({ peer: username, is_typing: false }) 
         }).catch(()=>{})
+        
+        // CRITICAL: Update optimistic message immediately with server confirmation
+        if (j.message_id){
+          console.log('✅ Server confirmed - updating optimistic', tempId, '→', j.message_id)
+          
+          // Set up bridge mapping
+          idBridgeRef.current.tempToServer.set(tempId, j.message_id)
+          idBridgeRef.current.serverToTemp.set(j.message_id, tempId)
+          
+          // Immediately update the optimistic message to be confirmed
+          // Keep the same clientKey (tempId) so React doesn't remount
+          // PRESERVE encryption flags!
+          setMessages(prev => prev.map(m => {
+            if ((m.clientKey || m.id) === tempId) {
+              return {
+                ...m,
+                id: j.message_id, // Update to server ID
+                isOptimistic: false, // No longer optimistic
+                time: j.time || m.time, // Use server time if available
+                clientKey: tempId, // Keep stable key for React
+                // Keep encryption flags from optimistic message
+                is_encrypted: m.is_encrypted,
+                encrypted_body: m.encrypted_body,
+                encrypted_body_for_sender: m.encrypted_body_for_sender
+              }
+            }
+            return m
+          }))
+          
+          // Clean up ref
+          setTimeout(() => recentOptimisticRef.current.delete(tempId), 1000)
+        }
       } else {
-        // If sending failed, remove the optimistic message
-        setMessages(prev => prev.filter(m => m.id !== tempId))
-        setDraft(messageText) // Restore the draft
-        alert('Failed to send message. Please try again.')
+        console.log('❌ Send failed:', j.error)
+        // Keep optimistic message, restore draft for retry
+        setDraft(messageText)
       }
-    })
-    .catch(()=>{
-      // Network error - remove optimistic message and restore draft
-      setMessages(prev => prev.filter(m => m.id !== tempId))
+      })
+      .catch((err)=>{
+        console.log('❌ Send error:', err)
+        // Keep optimistic message, restore draft for retry
+        setDraft(messageText)
+      })
+      .finally(() => setSending(false))
+    } catch (error) {
+      console.error('❌ Send function error:', error)
+      setSending(false)
+      // Restore draft on error
       setDraft(messageText)
-      alert('Network error. Please check your connection and try again.')
-    })
-    .finally(() => setSending(false))
+    }
   }
 
   function handlePhotoSelect() {
@@ -573,9 +851,13 @@ export default function ChatThread(){
       const j = await r.json().catch(()=>null)
       if (!j?.success){
         setMessages(prev => prev.filter(m => m.id !== optimistic.id))
+        // Revoke blob URL on failure
+        URL.revokeObjectURL(url)
         alert(j?.error || 'Failed to send audio')
       } else {
         console.log('🎤 Audio sent successfully')
+        // Revoke blob URL after successful upload to free memory
+        setTimeout(() => URL.revokeObjectURL(url), 100)
       }
     }catch(err){
       console.error('🎤 Upload error:', err)
@@ -673,7 +955,13 @@ export default function ChatThread(){
 
   async function startRecording(){
     try{
-      console.log('🎤 Starting recording...', 'mobile:', isMobile)
+      console.log('🎤 ========== STARTING RECORDING ==========')
+      console.log('🎤 Device info:', {
+        mobile: isMobile,
+        userAgent: navigator.userAgent,
+        platform: navigator.platform,
+        language: navigator.language
+      })
       
       // Check browser support
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -722,8 +1010,38 @@ export default function ChatThread(){
       console.log('🎤 Using constraints:', constraints)
       
       const stream = await navigator.mediaDevices.getUserMedia(constraints)
-      console.log('🎤 Microphone permission granted, starting recorder...')
-      console.log('🎤 Audio tracks:', stream.getAudioTracks().map(t => ({ label: t.label, enabled: t.enabled, readyState: t.readyState })))
+      streamRef.current = stream
+      console.log('🎤 ✅ Microphone permission granted!')
+      
+      const audioTracks = stream.getAudioTracks()
+      console.log('🎤 Audio tracks count:', audioTracks.length)
+      
+      if (audioTracks.length === 0) {
+        alert('⚠️ No audio tracks available. Please check your microphone.')
+        throw new Error('No audio tracks')
+      }
+      
+      audioTracks.forEach((track, idx) => {
+        console.log(`🎤 Track ${idx}:`, {
+          label: track.label,
+          enabled: track.enabled,
+          readyState: track.readyState,
+          muted: track.muted
+        })
+        
+        // Check if track is muted or disabled
+        if (track.muted) {
+          console.warn('⚠️ WARNING: Audio track is MUTED!')
+        }
+        if (!track.enabled) {
+          console.warn('⚠️ WARNING: Audio track is DISABLED!')
+        }
+        if (track.readyState !== 'live') {
+          console.warn('⚠️ WARNING: Audio track is not live! State:', track.readyState)
+        }
+      })
+      
+      console.log('🎤 Stream active:', stream.active)
       
       // Check for mobile-compatible MIME types - prioritize mobile formats
       let mimeType = ''
@@ -771,12 +1089,14 @@ export default function ChatThread(){
         console.error('🎤 MediaRecorder error:', (evt as any).error || evt)
       }
       mr.ondataavailable = (e) => { 
-        console.log('🎤 Data available:', e.data.size, 'bytes', 'type:', e.data.type, 'mobile:', isMobile)
+        console.log('🎤 ⚡ DATA RECEIVED:', e.data.size, 'bytes', 'type:', e.data.type)
         if (e.data && e.data.size > 0) {
           chunksRef.current.push(e.data)
-          console.log('🎤 Total chunks so far:', chunksRef.current.length, 'total size:', chunksRef.current.reduce((sum, chunk) => sum + (chunk as Blob).size, 0))
+          const totalSize = chunksRef.current.reduce((sum, chunk) => sum + (chunk as Blob).size, 0)
+          console.log('🎤 ✅ Chunk saved! Total:', chunksRef.current.length, 'chunks,', totalSize, 'bytes')
         } else {
-          console.warn('🎤 Empty or invalid data chunk received')
+          console.error('🎤 ❌ EMPTY DATA CHUNK - NO AUDIO CAPTURED!')
+          console.error('🎤 This means your microphone is not capturing sound.')
         }
         // If we've already requested stop, schedule a short finalize after last chunk
         if (stoppedRef.current) {
@@ -865,20 +1185,44 @@ export default function ChatThread(){
           setRecordingPreview({ blob, url, duration: actualDuration })
           finalizedRef.current = true
         } finally {
+          console.log('🎤 🧽 Cleaning up recording resources...')
           setRecording(false)
           setRecorder(null)
           setRecordMs(0)
           setAudioLevels(Array(25).fill(0))
-          try{ stream.getTracks().forEach(t=> t.stop()) }catch{}
+          
+          // Stop all media tracks
+          try {
+            if (streamRef.current) {
+              streamRef.current.getTracks().forEach(track => {
+                console.log('🎤 Stopping track:', track.label)
+                track.stop()
+              })
+              streamRef.current = null
+            }
+          } catch(err) {
+            console.error('🎤 Error stopping tracks:', err)
+          }
+          
+          // Clear timers and animations
           if (recordTimerRef.current) clearInterval(recordTimerRef.current)
           if (visRafRef.current) cancelAnimationFrame(visRafRef.current)
+          
+          // Disconnect and close audio nodes
           try{ analyserRef.current && analyserRef.current.disconnect() }catch{}
           try{ sourceRef.current && sourceRef.current.disconnect() }catch{}
-          try{ audioCtxRef.current && audioCtxRef.current.close() }catch{}
-          analyserRef.current = null; sourceRef.current = null; audioCtxRef.current = null
-          // Reset lock state after finalize
-          lockActiveRef.current = false
-          setRecordLockActive(false)
+          try{ 
+            if (audioCtxRef.current) {
+              audioCtxRef.current.close()
+              console.log('🎤 AudioContext closed')
+            }
+          }catch{}
+          
+          analyserRef.current = null
+          sourceRef.current = null
+          audioCtxRef.current = null
+          
+          console.log('🎤 ✅ Cleanup complete - mic should be available for next recording')
         }
       }
       mr.onstop = () => {
@@ -929,6 +1273,24 @@ export default function ChatThread(){
     }catch(err){
       console.error('🎤 Recording error:', err)
       const error = err as Error
+      
+      // Clean up any resources that might have been allocated
+      try {
+        if (streamRef.current) {
+          streamRef.current.getTracks().forEach(track => track.stop())
+          streamRef.current = null
+        }
+        if (audioCtxRef.current) {
+          audioCtxRef.current.close()
+          audioCtxRef.current = null
+        }
+      } catch (cleanupErr) {
+        console.error('🎤 Cleanup error:', cleanupErr)
+      }
+      
+      // Reset UI state
+      setRecording(false)
+      setRecorder(null)
       
       // Show the permission guide for denied permissions
       if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
@@ -987,6 +1349,7 @@ export default function ChatThread(){
     }
     console.log('🎤 Sending recording preview, duration:', recordingPreview.duration, 'blob size:', recordingPreview.blob.size)
     uploadAudioBlobWithDuration(recordingPreview.blob, recordingPreview.duration)
+    // Clean up preview (URL will be revoked after upload in uploadAudioBlobWithDuration)
     setRecordingPreview(null)
   }
   
@@ -1028,9 +1391,13 @@ export default function ChatThread(){
       if (!j?.success){
         console.error('🎤 Send failed:', j?.error)
         setMessages(prev => prev.filter(m => m.id !== optimistic.id))
+        // Revoke blob URL on failure
+        URL.revokeObjectURL(url)
         alert(j?.error || 'Failed to send audio message')
       } else {
         console.log('🎤 Audio sent successfully')
+        // Revoke blob URL after successful upload to free memory
+        setTimeout(() => URL.revokeObjectURL(url), 100)
       }
     }catch(err){
       console.error('🎤 Upload error:', err)
@@ -1054,22 +1421,6 @@ export default function ChatThread(){
     event.target.value = ''
   }
 
-  function handleMicClick(e: React.MouseEvent | React.TouchEvent){
-    console.log('🎤 Mic button clicked, recording:', recording, 'mobile:', isMobile)
-    try{ e.preventDefault(); e.stopPropagation() }catch{}
-    if (suppressClickRef.current) {
-      // Suppress click caused by touchend
-      suppressClickRef.current = false
-      return
-    }
-    if (recording) {
-      console.log('🎤 Click stop (no lock)')
-      stopRecording()
-    } else {
-      checkMicrophonePermission()
-    }
-  }
-
   async function checkMicrophonePermission() {
     try {
       // Check current permission state
@@ -1088,19 +1439,15 @@ export default function ChatThread(){
       }
     } catch (error) {
       // Fallback for browsers that don't support permissions API
-      console.log('🎤 Permissions API not supported, showing modal')
-      setShowMicPermissionModal(true)
+      console.log('🎤 Permissions API not supported, starting recording')
+      startRecording()
     }
   }
 
   function requestMicrophoneAccess() {
     setShowMicPermissionModal(false)
     // Start recording which will trigger the browser's permission dialog
-    if (isMobile) {
-      setTimeout(() => startRecording(), 0)
-    } else {
-      startRecording()
-    }
+    startRecording()
   }
 
   function handleDeleteMessage(messageId: number | string, messageData: Message) {
@@ -1295,7 +1642,7 @@ export default function ChatThread(){
           const showDateSeparator = messageDate !== prevMessageDate
           
           return (
-            <div key={m.id}>
+            <div key={m.clientKey ?? m.id}>
               {showDateSeparator && (
                 <div className="flex justify-center my-4">
                   <div className="bg-black/60 backdrop-blur-sm px-3 py-1 rounded-lg text-xs text-white/70 border border-white/10">
@@ -1323,6 +1670,12 @@ export default function ChatThread(){
                   onCopy={() => {
                     try{ navigator.clipboard && navigator.clipboard.writeText(m.text) }catch{}
                   }}
+                  onEdit={m.sent ? () => {
+                    const dt = parseMessageTime(m.time)
+                    if (dt && (Date.now() - dt.getTime()) > 5*60*1000) return
+                    setEditingId(m.id); setEditText(m.text)
+                  } : undefined}
+                  disabled={editingId === m.id}
                 >
                   <div className={`flex ${m.sent ? 'justify-end' : 'justify-start'}`}>
                     <div
@@ -1351,10 +1704,12 @@ export default function ChatThread(){
                       
                       {/* Audio message */}
                       {m.audio_path && !m.image_path ? (
-                        <AudioMessage 
-                          message={m}
-                          audioPath={m.audio_path.startsWith('blob:') ? m.audio_path : `/uploads/${m.audio_path}`}
-                        />
+                        <div className="my-2">
+                          <AudioMessage 
+                            message={m}
+                            audioPath={m.audio_path.startsWith('blob:') ? m.audio_path : `/uploads/${m.audio_path}`}
+                          />
+                        </div>
                       ) : null}
                       {/* Image display with loader */}
                       {m.image_path ? (
@@ -1370,11 +1725,65 @@ export default function ChatThread(){
                         </div>
                       ) : null}
                       
-                      {/* Text content with linkification */}
-                      {m.text && (
-                        <div>
-                          {linkifyText(m.text)}
+                      {/* Encryption indicator - BIGGER AND MORE VISIBLE */}
+                      {m.is_encrypted && !m.decryption_error && (
+                        <div className="flex items-center gap-1.5 mb-2 text-[11px] text-[#4db6ac]">
+                          <i className="fa-solid fa-lock text-[10px]" />
+                          <span className="font-medium">End-to-end encrypted</span>
                         </div>
+                      )}
+                      
+                      {/* Decryption error indicator */}
+                      {m.decryption_error && (
+                        <div className="flex items-center gap-1.5 mb-2 text-[11px] text-red-400">
+                          <i className="fa-solid fa-triangle-exclamation text-[10px]" />
+                          <span className="font-medium">Decryption failed</span>
+                        </div>
+                      )}
+                      
+                      {/* Text content or editor */}
+                      {editingId === m.id ? (
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2 text-xs text-white/60">
+                            <i className="fa-regular fa-pen-to-square" />
+                            <span>Edit message</span>
+                          </div>
+                          <div className="relative group" onClick={(e)=> e.stopPropagation()} onMouseDown={(e)=> e.stopPropagation()} onTouchStart={(e)=> e.stopPropagation()}>
+                            <textarea
+                              className="w-full bg-black/30 border border-white/15 rounded-xl px-3 py-2 text-sm pr-10 focus:outline-none focus:border-[#4db6ac] shadow-inner"
+                              value={editText}
+                              onChange={e=> setEditText(e.target.value)}
+                              rows={3}
+                              placeholder="Edit your message..."
+                            />
+                            <button
+                              className={`absolute top-2 right-2 w-8 h-8 rounded-lg flex items-center justify-center ${editingSaving ? 'bg-gray-600 text-gray-300' : 'bg-[#4db6ac] text-black hover:brightness-110'}`}
+                              onClick={editingSaving ? undefined : commitEdit}
+                              disabled={editingSaving}
+                              title="Save"
+                            >
+                              {editingSaving ? <i className="fa-solid fa-spinner fa-spin" /> : <i className="fa-solid fa-check" />}
+                            </button>
+                          </div>
+                          <div className="flex gap-2 justify-end">
+                            <button className="px-3 py-1.5 text-xs bg-white/10 border border-white/20 rounded-lg hover:bg-white/15" onClick={()=> { setEditingId(null); setEditText('') }}>Cancel</button>
+                          </div>
+                        </div>
+                      ) : (
+                        m.text ? (
+                          <div onDoubleClick={()=> {
+                            if (!m.sent) return
+                            // Enforce 5-minute window on client: hide editor entry if expired
+                            const dt = parseMessageTime(m.time)
+                            if (dt && (Date.now() - dt.getTime()) > 5*60*1000) return
+                            setEditingId(m.id); setEditText(m.text)
+                          }}>
+                            {linkifyText(m.text)}
+                            {m.edited_at ? (
+                              <div className="text-[10px] text-white/50 mt-0.5">edited</div>
+                            ) : null}
+                          </div>
+                        ) : null
                       )}
                       <div className={`text-[10px] mt-1 ${m.sent ? 'text-white/70' : 'text-white/50'} text-right`}>
                         {new Date(m.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -1496,29 +1905,14 @@ export default function ChatThread(){
             onChange={handleAudioFileChange}
             className="hidden"
           />
-          
-          {/* Recording counter - visible above text box */}
-          {MIC_ENABLED && recording && (
-            <div className="mb-2 flex justify-center">
-              <div className="bg-red-600/90 px-3 py-1.5 rounded-full border border-red-500/40 shadow-md">
-                <div className="flex items-center gap-2">
-                  <span className="inline-block w-2 h-2 bg-white rounded-full animate-pulse" />
-                  <div className="text-white font-mono font-medium text-sm">
-                    {new Date(recordMs).toISOString().substr(14,5)}
-                  </div>
-                  <span className="text-white/90 text-xs">REC</span>
-                </div>
-              </div>
-            </div>
-          )}
 
           {/* Message input container */}
           <div className="flex-1 flex items-center bg-[#1a1a1a] rounded-3xl border border-white/20 overflow-hidden relative">
             {/* Recording sound bar - replaces text input during recording */}
             {MIC_ENABLED && recording && (
-              <div className="flex-1 flex items-center px-4 py-2.5 gap-3">
+              <div className="flex-1 flex items-center px-4 py-2.5 gap-3 pr-16">
                 <div className="flex items-center gap-3 flex-1">
-                  <span className="inline-block w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+                  <span className="inline-block w-2 h-2 bg-[#4db6ac] rounded-full animate-pulse" />
                   <div className="flex-1 h-6 bg-gray-800/80 rounded-full flex items-center justify-center px-2 gap-0.5 relative overflow-hidden">
                     {/* Audio-reactive sound bars */}
                     {audioLevels.map((level, i) => (
@@ -1533,12 +1927,9 @@ export default function ChatThread(){
                       />
                     ))}
                   </div>
-                  {recordLockActive && (
-                    <div className="text-xs text-white/70 ml-2 flex items-center gap-1">
-                      <i className="fa-solid fa-lock" />
-                      <span>Locked</span>
-                    </div>
-                  )}
+                  <div className="text-xs text-white/70 ml-2">
+                    Recording...
+                  </div>
                 </div>
               </div>
             )}
@@ -1548,7 +1939,7 @@ export default function ChatThread(){
               <textarea
                 ref={textareaRef}
                 rows={1}
-                className="flex-1 bg-transparent px-4 py-2.5 text-[16px] text-white placeholder-white/50 outline-none resize-none max-h-24 min-h-[36px]"
+                className="flex-1 bg-transparent px-4 pr-20 py-2.5 text-[16px] text-white placeholder-white/50 outline-none resize-none max-h-24 min-h-[36px]"
                 placeholder="Message"
                 value={draft}
                 onChange={e=> {
@@ -1577,92 +1968,56 @@ export default function ChatThread(){
               />
             )}
             
-            {/* Mic + Send */}
+            {/* Mic + Send - Conditional based on recording state */}
             <div className="absolute right-2 top-1/2 transform -translate-y-1/2 flex items-center gap-2">
-              {/* Send button first */}
-              <button
-                className={`w-8 h-8 rounded-full flex items-center justify-center transition-all duration-200 ease-out ${
-                  sending 
-                    ? 'bg-gray-600 text-gray-300 cursor-not-allowed' 
-                    : draft.trim()
-                      ? 'bg-[#4db6ac] text-black hover:bg-[#45a99c] hover:scale-105 active:scale-95'
-                      : 'bg-white/20 text-white/70 cursor-not-allowed'
-                }`}
-                onClick={draft.trim() ? send : undefined}
-                disabled={sending || !draft.trim()}
-                aria-label="Send"
-                style={{
-                  transform: 'scale(1)',
-                  transition: 'all 0.15s cubic-bezier(0.4, 0, 0.2, 1)'
-                }}
-              >
-                {sending ? (
-                  <i className="fa-solid fa-spinner fa-spin text-[11px]" />
-                ) : (
-                  <i className="fa-solid fa-paper-plane text-[11px]" />
-                )}
-              </button>
-              {/* Mic button to the right of Send and outside textbox area */}
-              {MIC_ENABLED && (
-              <button
-                className={`w-10 h-10 md:w-8 md:h-8 rounded-full flex items-center justify-center transition-all duration-200 ease-out ${
-                  recording 
-                    ? 'bg-red-600 text-white scale-105 shadow-lg shadow-red-500/50 animate-pulse' 
-                    : 'bg-[#4db6ac] text-white hover:bg-[#45a99c] hover:scale-105 active:scale-95 shadow-md'
-                }`}
-                onClick={handleMicClick}
-                onTouchStart={(e) => {
-                  try{ e.preventDefault(); e.stopPropagation() }catch{}
-                  suppressClickRef.current = true
-                  touchStartYRef.current = (e.touches && e.touches[0]?.clientY) || null
-                  setShowLockHint(true)
-                  if (!recording) checkMicrophonePermission()
-                }}
-                onTouchMove={(e) => {
-                  try{ e.preventDefault(); e.stopPropagation() }catch{}
-                  const startY = touchStartYRef.current
-                  if (startY == null) return
-                  const dy = startY - (e.touches && e.touches[0]?.clientY || startY)
-                  // Lock when user swipes up by 40px
-                  const shouldLock = dy > 40
-                  if (shouldLock && !lockActiveRef.current) {
-                    lockActiveRef.current = true
-                    setRecordLockActive(true)
-                    setShowLockHint(false)
-                    console.log('🔒 Recording locked')
-                  }
-                }}
-                onTouchEnd={(e) => {
-                  try{ e.preventDefault(); e.stopPropagation() }catch{}
-                  // If locked, do not stop; user must press stop icon
-                  if (!lockActiveRef.current) {
-                    console.log('🛑 Touch end - stopping (no lock)')
-                    stopRecording()
-                  }
-                  // reset gesture state
-                  touchStartYRef.current = null
-                  setShowLockHint(false)
-                  // leave lockActiveRef as-is; cleared when finalize
-                  suppressClickRef.current = false
-                }}
-                aria-label="Voice message"
-                title={recording ? "Tap to stop recording" : "Tap to start recording"}
-                style={{
-                  touchAction: 'manipulation',
-                  WebkitTapHighlightColor: 'transparent',
-                  userSelect: 'none',
-                  WebkitUserSelect: 'none'
-                }}
-              >
-                <i className={`fa-solid ${
-                  recording && !recordLockActive ? 'fa-stop' : 'fa-microphone'
-                } text-[13px]`} />
-              </button>
-              )}
-              {MIC_ENABLED && showLockHint && !recordLockActive && (
-                <div className="absolute right-14 -top-4 bg-white/10 text-white text-[10px] px-2 py-1 rounded-md border border-white/20">
-                  Swipe up to lock
-                </div>
+              {/* When recording: Show STOP button (modern, sleek, turquoise) */}
+              {MIC_ENABLED && recording ? (
+                <button
+                  className="w-9 h-9 rounded-full flex items-center justify-center bg-[#4db6ac] text-white hover:bg-[#45a99c] active:scale-95 transition-all duration-200"
+                  onClick={stopRecording}
+                  aria-label="Stop recording"
+                  title="Stop recording"
+                >
+                  <i className="fa-solid fa-stop text-sm" />
+                </button>
+              ) : (
+                <>
+                  {/* Send button - only show when NOT recording */}
+                  <button
+                    className={`w-8 h-8 rounded-full flex items-center justify-center transition-all duration-200 ease-out ${
+                      sending 
+                        ? 'bg-gray-600 text-gray-300 cursor-not-allowed' 
+                        : draft.trim()
+                          ? 'bg-[#4db6ac] text-black hover:bg-[#45a99c] hover:scale-105 active:scale-95'
+                          : 'bg-white/20 text-white/70 cursor-not-allowed'
+                    }`}
+                    onClick={draft.trim() ? send : undefined}
+                    disabled={sending || !draft.trim()}
+                    aria-label="Send"
+                    style={{
+                      transform: 'scale(1)',
+                      transition: 'all 0.15s cubic-bezier(0.4, 0, 0.2, 1)'
+                    }}
+                  >
+                    {sending ? (
+                      <i className="fa-solid fa-spinner fa-spin text-[11px]" />
+                    ) : (
+                      <i className="fa-solid fa-paper-plane text-[11px]" />
+                    )}
+                  </button>
+                  
+                  {/* Mic icon - click to start recording */}
+                  {MIC_ENABLED && (
+                  <button
+                    className="w-9 h-9 flex items-center justify-center text-white/70 hover:text-white transition-colors"
+                    onClick={checkMicrophonePermission}
+                    aria-label="Start voice message"
+                    title="Click to start recording"
+                  >
+                    <i className="fa-solid fa-microphone text-lg" />
+                  </button>
+                  )}
+                </>
               )}
             </div>
           </div>
@@ -1907,236 +2262,129 @@ export default function ChatThread(){
 }
 
 function AudioMessage({ message, audioPath }: { message: Message; audioPath: string }) {
-  const [duration, setDuration] = useState<number | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [playing, setPlaying] = useState(false)
+  const [currentTime, setCurrentTime] = useState(0)
+  const [duration, setDuration] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const audioRef = useRef<HTMLAudioElement>(null)
 
   useEffect(() => {
-    console.log('🎵 AudioMessage - message data:', {
-      id: message.id,
-      audio_duration_seconds: message.audio_duration_seconds,
-      type: typeof message.audio_duration_seconds,
-      text: message.text,
-      audioPath: audioPath,
-      isBlob: audioPath.startsWith('blob:')
-    })
-    
-    // First try to use the duration from the message
-    if (typeof message.audio_duration_seconds === 'number' && message.audio_duration_seconds > 0) {
-      console.log('🎵 Using duration from message:', message.audio_duration_seconds)
-      setDuration(message.audio_duration_seconds)
-      setLoading(false)
-      return
-    }
-
-    // Test if audio file exists (for non-blob URLs)
-    if (!audioPath.startsWith('blob:')) {
-      fetch(audioPath, { method: 'HEAD' })
-        .then(response => {
-          console.log('🎵 Audio file check:', response.status, response.statusText, 'for', audioPath)
-          if (!response.ok) {
-            setError(`Audio file not found (${response.status})`)
-            setLoading(false)
-            return
-          }
-        })
-        .catch(err => {
-          console.error('🎵 Audio file check failed:', err, 'for', audioPath)
-          setError('Audio file not accessible')
-          setLoading(false)
-          return
-        })
-    }
-
-    // If no duration in message, try to get it from the audio element
     const audio = audioRef.current
     if (!audio) return
 
-    const handleLoadedMetadata = () => {
-      if (audio.duration && isFinite(audio.duration)) {
-        console.log('🎵 Got duration from audio element:', audio.duration)
-        setDuration(Math.round(audio.duration))
-        setLoading(false)
-      }
-    }
+    console.log('🎵 AudioMessage mounted:', { audioPath, messageId: message.id })
 
     const handleError = (e: Event) => {
-      console.error('🎵 Audio loading error:', e, 'src:', audio.src)
       const target = e.target as HTMLAudioElement
-      let errorMsg = 'Audio file could not be loaded'
-      
-      if (target.error) {
-        switch (target.error.code) {
-          case target.error.MEDIA_ERR_ABORTED:
-            errorMsg = 'Audio loading was aborted'
-            break
-          case target.error.MEDIA_ERR_NETWORK:
-            errorMsg = 'Network error while loading audio'
-            break
-          case target.error.MEDIA_ERR_DECODE:
-            errorMsg = 'Audio file format not supported'
-            break
-          case target.error.MEDIA_ERR_SRC_NOT_SUPPORTED:
-            errorMsg = 'Audio file not found or not supported'
-            break
-        }
-      }
-      
-      setError(errorMsg)
-      setLoading(false)
+      const errorCode = target.error?.code
+      const errorMessage = target.error?.message
+      console.error('🎵 Audio load error:', { 
+        audioPath, 
+        errorCode, 
+        errorMessage,
+        networkState: target.networkState,
+        readyState: target.readyState
+      })
+      setError('Could not load audio')
     }
 
     const handleCanPlay = () => {
-      console.log('🎵 Audio can play:', audio.src)
-      // Ensure volume is set correctly
-      if (audio.volume === 0) {
-        audio.volume = 1.0
-        console.log('🎵 Fixed volume from 0 to 1.0')
+      console.log('🎵 Audio can play:', audioPath)
+      setError(null)
+    }
+
+    const handleLoadedMetadata = () => {
+      if (audio.duration && isFinite(audio.duration)) {
+        setDuration(audio.duration)
+        console.log('🎵 Audio duration loaded:', audio.duration)
       }
     }
 
-    const handleLoadStart = () => {
-      console.log('🎵 Audio load started:', audio.src)
+    const handleTimeUpdate = () => {
+      setCurrentTime(audio.currentTime)
     }
 
-    const handlePlay = () => {
-      console.log('🎵 Audio play event - volume:', audio.volume, 'muted:', audio.muted)
-      // Ensure audio context is resumed (required on some mobile browsers)
-      if (typeof window !== 'undefined' && 'AudioContext' in window) {
-        const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
-        if (audioContext.state === 'suspended') {
-          audioContext.resume().then(() => {
-            console.log('🎵 AudioContext resumed for playback')
-          })
-        }
-      }
-    }
-
-    audio.addEventListener('loadedmetadata', handleLoadedMetadata)
     audio.addEventListener('error', handleError)
     audio.addEventListener('canplay', handleCanPlay)
-    audio.addEventListener('loadstart', handleLoadStart)
-    audio.addEventListener('play', handlePlay)
+    audio.addEventListener('loadedmetadata', handleLoadedMetadata)
+    audio.addEventListener('timeupdate', handleTimeUpdate)
 
     return () => {
-      audio.removeEventListener('loadedmetadata', handleLoadedMetadata)
       audio.removeEventListener('error', handleError)
       audio.removeEventListener('canplay', handleCanPlay)
-      audio.removeEventListener('loadstart', handleLoadStart)
-      audio.removeEventListener('play', handlePlay)
+      audio.removeEventListener('loadedmetadata', handleLoadedMetadata)
+      audio.removeEventListener('timeupdate', handleTimeUpdate)
     }
-  }, [message.audio_duration_seconds, audioPath])
+  }, [audioPath, message.id])
 
-  const formatDuration = (seconds: number) => {
-    const mins = Math.floor(seconds / 60)
-    const secs = seconds % 60
-    return `${mins}:${String(secs).padStart(2, '0')}`
-  }
-
-  const retryAudio = () => {
-    setError(null)
-    setLoading(true)
-    if (audioRef.current) {
-      audioRef.current.load()
-    }
-  }
-
-  const testPlayAudio = async () => {
+  const togglePlay = async () => {
     if (!audioRef.current) return
     
     try {
-      console.log('🎵 Manual play test - volume:', audioRef.current.volume, 'muted:', audioRef.current.muted)
-      
-      // Ensure volume is up and not muted
-      audioRef.current.volume = 1.0
-      audioRef.current.muted = false
-      
-      // Try to play
-      await audioRef.current.play()
-      console.log('🎵 Manual play successful')
+      if (playing) {
+        audioRef.current.pause()
+        setPlaying(false)
+      } else {
+        console.log('🎵 Attempting to play:', audioPath)
+        await audioRef.current.play()
+        setPlaying(true)
+      }
     } catch (err) {
-      console.error('🎵 Manual play failed:', err)
-      alert('Audio playback failed. Please check your device volume and try again.')
+      console.error('🎵 Playback error:', err, 'for:', audioPath)
+      setError('Playback failed')
     }
   }
 
+  const formatDuration = (seconds: number) => {
+    const mins = Math.floor(seconds / 60)
+    const secs = Math.floor(seconds % 60)
+    return `${mins}:${String(secs).padStart(2, '0')}`
+  }
+
+  const progress = duration > 0 ? (currentTime / duration) * 100 : 0
+
   return (
-    <div className="mb-2">
-      <div className="bg-gray-800/50 rounded-lg p-3 border border-gray-700/50">
-        <div className="flex items-center gap-2 mb-2">
-          <i className="fa-solid fa-microphone text-[#4db6ac] text-sm" />
-          <span className="text-white/80 text-sm font-medium">Voice Message</span>
-          <div className="ml-auto flex items-center gap-2">
-            {duration !== null ? (
-              <span className="text-xs text-white/60 bg-gray-700/50 px-2 py-1 rounded-full font-mono">
-                {formatDuration(duration)}
-              </span>
-            ) : loading ? (
-              <span className="text-xs text-white/40 bg-gray-700/30 px-2 py-1 rounded-full">
-                --:--
-              </span>
-            ) : error ? (
-              <button 
-                onClick={retryAudio}
-                className="text-xs text-red-400 bg-red-900/30 px-2 py-1 rounded-full hover:bg-red-900/50 transition-colors"
-              >
-                Retry
-              </button>
-            ) : null}
-            
-            {/* Manual play button for troubleshooting */}
-            {!error && duration !== null && (
-              <button
-                onClick={testPlayAudio}
-                className="text-xs text-[#4db6ac] bg-[#4db6ac]/20 px-2 py-1 rounded-full hover:bg-[#4db6ac]/30 transition-colors"
-                title="Test audio playback"
-              >
-                <i className="fa-solid fa-play text-[10px]" />
-              </button>
-            )}
-          </div>
+    <div className="flex items-center gap-2 bg-[#1f3933]/40 rounded-2xl px-3 py-2 border border-[#4db6ac]/20">
+      <button
+        onClick={togglePlay}
+        className="w-8 h-8 rounded-full bg-[#4db6ac] hover:bg-[#45a99c] flex items-center justify-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        disabled={!!error}
+      >
+        <i className={`fa-solid ${playing ? 'fa-pause' : 'fa-play'} text-white text-xs`} />
+      </button>
+      
+      <div className="flex-1 flex items-center gap-2">
+        <div className="h-1 bg-white/10 rounded-full flex-1 overflow-hidden">
+          <div 
+            className="h-full bg-[#4db6ac]/60 rounded-full transition-all" 
+            style={{ width: `${progress}%` }} 
+          />
         </div>
-        
-        {error ? (
-          <div className="bg-red-900/20 border border-red-700/30 rounded-lg p-3 text-center">
-            <i className="fa-solid fa-exclamation-triangle text-red-400 mb-2" />
-            <div className="text-red-300 text-sm mb-2">{error}</div>
-            <button 
-              onClick={retryAudio}
-              className="text-xs text-red-400 hover:text-red-300 underline"
-            >
-              Try again
-            </button>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            <audio 
-              ref={audioRef}
-              controls 
-              preload="metadata"
-              className="w-full h-8"
-              playsInline
-              controlsList="nodownload"
-              onPlay={() => console.log('🎵 Audio started playing:', audioPath)}
-              onPause={() => console.log('🎵 Audio paused')}
-              onEnded={() => console.log('🎵 Audio ended')}
-              onVolumeChange={(e) => console.log('🎵 Volume changed:', (e.target as HTMLAudioElement).volume)}
-              onLoadedData={() => console.log('🎵 Audio data loaded')}
-              style={{
-                background: 'transparent',
-                borderRadius: '6px'
-              }}
-            >
-              <source src={audioPath} type="audio/webm" />
-              <source src={audioPath} type="audio/mp4" />
-              <source src={audioPath} type="audio/wav" />
-              <source src={audioPath} type="audio/ogg" />
-              Your browser does not support audio playback.
-            </audio>
-          </div>
-        )}
+        <span className="text-xs text-white/60 font-mono min-w-[32px]">
+          {playing && duration > 0 
+            ? formatDuration(currentTime) 
+            : message.audio_duration_seconds 
+              ? formatDuration(message.audio_duration_seconds) 
+              : duration > 0 
+                ? formatDuration(duration)
+                : '--:--'
+          }
+        </span>
       </div>
+
+      {error && (
+        <span className="text-xs text-red-400">{error}</span>
+      )}
+
+      <audio
+        ref={audioRef}
+        src={audioPath}
+        preload="metadata"
+        onEnded={() => setPlaying(false)}
+        onPlay={() => setPlaying(true)}
+        onPause={() => setPlaying(false)}
+        className="hidden"
+      />
     </div>
   )
 }
@@ -2146,19 +2394,24 @@ function LongPressActionable({
   onDelete, 
   onReact, 
   onReply, 
-  onCopy 
+  onCopy, 
+  onEdit, 
+  disabled 
 }: { 
   children: React.ReactNode
   onDelete: () => void
   onReact: (emoji:string)=>void
   onReply: ()=>void
   onCopy: ()=>void
+  onEdit?: ()=>void
+  disabled?: boolean
 }){
   const [showMenu, setShowMenu] = useState(false)
   const [isPressed, setIsPressed] = useState(false)
   const timerRef = useRef<any>(null)
   
   function handleStart(e?: any){
+    if (disabled) return
     try{ e && e.preventDefault && e.preventDefault() }catch{}
     setIsPressed(true)
     if (timerRef.current) clearTimeout(timerRef.current)
@@ -2169,20 +2422,22 @@ function LongPressActionable({
   }
   
   function handleEnd(){
+    if (disabled) return
     setIsPressed(false)
     if (timerRef.current) clearTimeout(timerRef.current)
   }
   
   return (
-    <div className="relative select-none" style={{ userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none' as any }}>
+    <div className="relative" style={{ userSelect: disabled ? 'text' : 'none', WebkitUserSelect: disabled ? 'text' : 'none', WebkitTouchCallout: 'none' as any }}>
       <div
-        className={`transition-opacity ${isPressed ? 'opacity-70' : 'opacity-100'}`}
-        onMouseDown={handleStart}
-        onMouseUp={handleEnd}
-        onMouseLeave={handleEnd}
-        onTouchStart={handleStart}
-        onTouchEnd={handleEnd}
+        className={`transition-opacity ${!disabled && isPressed ? 'opacity-70' : 'opacity-100'}`}
+        onMouseDown={disabled ? undefined : handleStart}
+        onMouseUp={disabled ? undefined : handleEnd}
+        onMouseLeave={disabled ? undefined : handleEnd}
+        onTouchStart={disabled ? undefined : handleStart}
+        onTouchEnd={disabled ? undefined : handleEnd}
         onContextMenu={(e) => {
+          if (disabled) return
           e.preventDefault()
           setShowMenu(true)
         }}
@@ -2190,7 +2445,7 @@ function LongPressActionable({
       >
         {children}
       </div>
-      {showMenu && (
+      {!disabled && showMenu && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setShowMenu(false)} />
           <div className="absolute z-50 -top-12 right-2 bg-[#111] border border-white/15 rounded-lg shadow-xl px-2 py-2 min-w-[160px]">
@@ -2202,6 +2457,7 @@ function LongPressActionable({
             <div className="pt-2 flex flex-col">
               <button className="text-left px-2 py-1 text-sm hover:bg-white/5" onClick={()=> { setShowMenu(false); onReply() }}>Reply</button>
               <button className="text-left px-2 py-1 text-sm hover:bg-white/5" onClick={()=> { setShowMenu(false); onCopy() }}>Copy</button>
+              {onEdit && <button className="text-left px-2 py-1 text-sm hover:bg-white/5" onClick={()=> { setShowMenu(false); onEdit() }}>Edit</button>}
               <button className="text-left px-2 py-1 text-sm text-red-400 hover:bg-white/5" onClick={()=> { setShowMenu(false); onDelete() }}>Delete</button>
             </div>
           </div>

@@ -34,7 +34,7 @@ REDIS_DB = int(os.environ.get('REDIS_DB', 0))
 DEFAULT_CACHE_TTL = int(os.environ.get('CACHE_TTL_DEFAULT', '300'))  # 5 minutes
 USER_CACHE_TTL = int(os.environ.get('CACHE_TTL_PROFILES', '900'))    # 15 minutes
 COMMUNITY_CACHE_TTL = int(os.environ.get('CACHE_TTL_COMMUNITIES', '300')) # 5 minutes
-MESSAGE_CACHE_TTL = int(os.environ.get('CACHE_TTL_MESSAGES', '60'))  # 1 minute
+MESSAGE_CACHE_TTL = int(os.environ.get('CACHE_TTL_MESSAGES', '5'))  # 5 seconds to reduce stale windows
 CHAT_THREADS_TTL = int(os.environ.get('CACHE_TTL_CHAT_THREADS', '120')) # 2 minutes
 IMAGE_CACHE_TTL = int(os.environ.get('CACHE_TTL_IMAGES', '7200'))    # 2 hours
 
@@ -291,6 +291,10 @@ def messages_cache_key(user1, user2):
     users = sorted([user1, user2])
     return f"messages:{users[0]}:{users[1]}"
 
+def messages_view_cache_key(viewer, peer):
+    """Viewer-specific cache key to avoid mixing 'sent' perspective across users"""
+    return f"messages_view:{viewer}:{peer}"
+
 def community_feed_cache_key(community_id, page=1):
     return f"community_feed:{community_id}:page:{page}"
 
@@ -341,7 +345,12 @@ def invalidate_community_cache(community_id):
 
 def invalidate_message_cache(username1, username2):
     """Invalidate message cache between two users"""
+    # Symmetric thread cache
     cache.delete(messages_cache_key(username1, username2))
+    # Viewer-specific message lists (avoid stale 'sent' perspective)
+    cache.delete(messages_view_cache_key(username1, username2))
+    cache.delete(messages_view_cache_key(username2, username1))
+    # Thread lists
     cache.delete(chat_threads_cache_key(username1))
     cache.delete(chat_threads_cache_key(username2))
     logger.debug(f"🗑️ Invalidated message cache: {username1} ↔ {username2}")

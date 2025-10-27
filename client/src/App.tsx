@@ -7,6 +7,7 @@ import PremiumDashboard from './pages/PremiumDashboard'
 import HeaderBar from './components/HeaderBar'
 import { HeaderContext } from './contexts/HeaderContext'
 import PushInit from './components/PushInit'
+import { encryptionService } from './services/simpleEncryption'
 import CrossfitExact from './pages/CrossfitExact'
 import CommunityFeed from './pages/CommunityFeed'
 import CommunityCalendar from './pages/CommunityCalendar'
@@ -40,6 +41,7 @@ import OnboardingWelcome from './pages/OnboardingWelcome'
 import VerifyOverlay from './components/VerifyOverlay'
 import EventDetail from './pages/EventDetail'
 import GroupFeed from './pages/GroupFeed'
+import EncryptionSettings from './pages/EncryptionSettings'
 
 const queryClient = new QueryClient()
 
@@ -61,6 +63,53 @@ function AppRoutes(){
         const j = await r.json().catch(()=>null)
         if (j?.success && j.profile){
           setUserMeta({ username: j.profile.username, displayName: j.profile.display_name || j.profile.username, avatarUrl: j.profile.profile_picture || null })
+          
+          // Check if user requested encryption reset
+          const resetRequested = localStorage.getItem('encryption_reset_requested')
+          if (resetRequested === 'true') {
+            console.log('🔐 Reset requested - deleting old encryption database...')
+            localStorage.removeItem('encryption_reset_requested')
+            
+            try {
+              // Delete the database
+              await new Promise<void>((resolve) => {
+                const request = indexedDB.deleteDatabase('chat-encryption')
+                request.onsuccess = () => {
+                  console.log('🔐 ✅ Old encryption database deleted')
+                  resolve()
+                }
+                request.onerror = () => {
+                  console.log('🔐 ⚠️ Database deletion error (may not exist)')
+                  resolve() // Continue anyway
+                }
+                request.onblocked = () => {
+                  console.log('🔐 ⚠️ Database deletion blocked, will retry on next load')
+                  resolve() // Continue anyway
+                }
+              })
+            } catch (e) {
+              console.log('🔐 ⚠️ Delete error:', e)
+              // Continue anyway
+            }
+          }
+          
+          // Initialize E2E encryption for this user
+          try {
+            console.log('🔐 Initializing encryption for:', j.profile.username)
+            await encryptionService.init(j.profile.username)
+            
+            // Store timestamp of key generation
+            const existingTimestamp = localStorage.getItem('encryption_keys_generated_at')
+            if (!existingTimestamp) {
+              localStorage.setItem('encryption_keys_generated_at', Date.now().toString())
+            }
+            
+            console.log('🔐 ✅ Encryption ready globally!')
+          } catch (encError) {
+            console.error('🔐 ❌ Encryption init failed:', encError)
+            // Continue without encryption - not a blocker
+          }
+          
           // If already authenticated and at root, send to dashboard
           if (location.pathname === '/'){
             navigate('/premium_dashboard', { replace: true })
@@ -162,6 +211,7 @@ function AppRoutes(){
           <Route path="/compose" element={<CreatePost />} />
           <Route path="/product_development" element={<ProductDevelopment />} />
           <Route path="/group_feed_react/:group_id" element={<GroupFeed />} />
+          <Route path="/encryption_settings" element={<EncryptionSettings />} />
           <Route path="*" element={<PremiumDashboard />} />
           </Routes>
         </ErrorBoundary>

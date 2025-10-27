@@ -690,7 +690,7 @@ function ParentTimeline({ parentId }:{ parentId:number }){
         <div className="space-y-3">
           {posts.map((p:any) => (
             <div key={p.id} className="rounded-2xl border border-white/10 bg-black shadow-sm shadow-black/20 cursor-pointer"
-              onClick={() => navigate(`/post/${p.id}`)}
+              onClick={() => { if (!p.poll) navigate(`/post/${p.id}`) }}
             >
               <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2" onClick={(e)=> e.stopPropagation()}>
                 <Avatar username={p.username || ''} url={p.profile_picture || undefined} size={28} />
@@ -728,70 +728,161 @@ function ParentTimeline({ parentId }:{ parentId:number }){
                     className="block mx-auto max-w-full max-h-[360px] rounded border border-white/10"
                   />
                 ) : null}
-                <div className="flex items-center gap-2 text-xs" onClick={(e)=> e.stopPropagation()}>
-                  <button className="px-2 py-1 rounded transition-colors" onClick={async()=>{
-                    // Optimistic toggle
-                    const prev = p.user_reaction
-                    const next = prev === 'heart' ? null : 'heart'
-                    const counts = { ...(p.reactions||{}) }
-                    if (prev) counts[prev] = Math.max(0, (counts[prev]||0)-1)
-                    if (next) counts[next] = (counts[next]||0)+1
-                    setPosts(list => list.map(it => it.id===p.id ? ({ ...it, user_reaction: next, reactions: counts }) : it))
-                    try{
-                      const fd = new URLSearchParams({ post_id: String(p.id), reaction: 'heart' })
-                      const r = await fetch('/add_reaction', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
-                      const j = await r.json().catch(()=>null)
-                      if (j?.success){
-                        setPosts(list => list.map(it => it.id===p.id ? ({ ...it, reactions: { ...(it.reactions||{}), ...j.counts }, user_reaction: j.user_reaction }) : it))
-                      }
-                    }catch{}
-                  }}>
-                    <i className={`fa-regular fa-heart ${p.user_reaction==='heart' ? '' : ''}`} style={{ color: p.user_reaction==='heart' ? '#4db6ac' : '#6c757d', WebkitTextStroke: p.user_reaction==='heart' ? '1px #4db6ac' : undefined }} />
-                    <span className="ml-1" style={{ color: p.user_reaction==='heart' ? '#cfe9e7' : '#9fb0b5' }}>{(p.reactions?.['heart'])||0}</span>
-                  </button>
-                  <button className="px-2 py-1 rounded transition-colors" onClick={async()=>{
-                    const prev = p.user_reaction
-                    const next = prev === 'thumbs-up' ? null : 'thumbs-up'
-                    const counts = { ...(p.reactions||{}) }
-                    if (prev) counts[prev] = Math.max(0, (counts[prev]||0)-1)
-                    if (next) counts[next] = (counts[next]||0)+1
-                    setPosts(list => list.map(it => it.id===p.id ? ({ ...it, user_reaction: next, reactions: counts }) : it))
-                    try{
-                      const fd = new URLSearchParams({ post_id: String(p.id), reaction: 'thumbs-up' })
-                      const r = await fetch('/add_reaction', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
-                      const j = await r.json().catch(()=>null)
-                      if (j?.success){
-                        setPosts(list => list.map(it => it.id===p.id ? ({ ...it, reactions: { ...(it.reactions||{}), ...j.counts }, user_reaction: j.user_reaction }) : it))
-                      }
-                    }catch{}
-                  }}>
-                    <i className="fa-regular fa-thumbs-up" style={{ color: p.user_reaction==='thumbs-up' ? '#4db6ac' : '#6c757d', WebkitTextStroke: p.user_reaction==='thumbs-up' ? '1px #4db6ac' : undefined }} />
-                    <span className="ml-1" style={{ color: p.user_reaction==='thumbs-up' ? '#cfe9e7' : '#9fb0b5' }}>{(p.reactions?.['thumbs-up'])||0}</span>
-                  </button>
-                  <button className="px-2 py-1 rounded transition-colors" onClick={async()=>{
-                    const prev = p.user_reaction
-                    const next = prev === 'thumbs-down' ? null : 'thumbs-down'
-                    const counts = { ...(p.reactions||{}) }
-                    if (prev) counts[prev] = Math.max(0, (counts[prev]||0)-1)
-                    if (next) counts[next] = (counts[next]||0)+1
-                    setPosts(list => list.map(it => it.id===p.id ? ({ ...it, user_reaction: next, reactions: counts }) : it))
-                    try{
-                      const fd = new URLSearchParams({ post_id: String(p.id), reaction: 'thumbs-down' })
-                      const r = await fetch('/add_reaction', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
-                      const j = await r.json().catch(()=>null)
-                      if (j?.success){
-                        setPosts(list => list.map(it => it.id===p.id ? ({ ...it, reactions: { ...(it.reactions||{}), ...j.counts }, user_reaction: j.user_reaction }) : it))
-                      }
-                    }catch{}
-                  }}>
-                    <i className="fa-regular fa-thumbs-down" style={{ color: p.user_reaction==='thumbs-down' ? '#4db6ac' : '#6c757d', WebkitTextStroke: p.user_reaction==='thumbs-down' ? '1px #4db6ac' : undefined }} />
-                    <span className="ml-1" style={{ color: p.user_reaction==='thumbs-down' ? '#cfe9e7' : '#9fb0b5' }}>{(p.reactions?.['thumbs-down'])||0}</span>
-                  </button>
-                  <button className="ml-auto px-2.5 py-1 rounded-full text-[#cfd8dc]" onClick={()=> navigate(`/post/${p.id}`)}>
-                    <i className="fa-regular fa-comment" />
-                    <span className="ml-1">{p.replies_count||0}</span>
-                  </button>
-                </div>
+                {/* Inline Poll (interactive) if present */}
+                {p.poll && (
+                  <div className="space-y-2" onClick={(e)=> e.stopPropagation()}>
+                    <div className="flex items-center gap-2 mb-1">
+                      <i className="fa-solid fa-chart-bar text-[#4db6ac]" />
+                      <div className="font-medium text-sm flex-1">
+                        {p.poll.question}
+                        {p.poll.expires_at ? (
+                          <span className="ml-2 text-[11px] text-[#9fb0b5]">• closes {(() => { try { const d = new Date(p.poll.expires_at as any); if (!isNaN(d.getTime())) return d.toLocaleDateString(); } catch(e) {} return String(p.poll.expires_at) })()}</span>
+                        ) : null}
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      {p.poll.options?.map((option:any) => {
+                        const percentage = p.poll?.total_votes ? Math.round((option.votes / p.poll.total_votes) * 100) : 0
+                        const isUserVote = option.user_voted || false
+                        // Check both is_active flag AND expires_at timestamp
+                        const isClosed = p.poll!.is_active === 0
+                        const isExpiredByTime = (() => { try { const raw = (p.poll as any)?.expires_at; if (!raw) return false; const d = new Date(raw); return !isNaN(d.getTime()) && Date.now() >= d.getTime(); } catch { return false } })()
+                        const isExpired = isClosed || isExpiredByTime
+                        return (
+                          <button
+                            key={option.id}
+                            type="button"
+                            disabled={isExpired}
+                            className={`w-full text-left px-3 py-2 rounded-lg border relative overflow-hidden ${isExpired ? 'opacity-60 cursor-not-allowed' : (isUserVote ? 'border-[#4db6ac] bg-[#4db6ac]/10' : 'border-white/10 hover:bg-white/5')}`}
+                            onClick={async (e)=> { 
+                              if (isExpired) return; 
+                              e.preventDefault(); e.stopPropagation();
+                              try{
+                                // Optimistic update
+                                setPosts(list => list.map(it => {
+                                  if (it.id !== p.id || !it.poll) return it
+                                  const poll = it.poll
+                                  const clicked = poll.options.find((o:any)=> o.id===option.id)
+                                  const hasVoted = clicked?.user_voted || false
+                                  const sv = (poll as any)?.single_vote
+                                  const isSingle = (sv === true || sv === 1 || sv === '1' || sv === 'true')
+                                  const nextOpts = poll.options.map((o:any)=> {
+                                    if (o.id === option.id){ return { ...o, votes: hasVoted ? Math.max(0, o.votes-1) : o.votes+1, user_voted: !hasVoted } }
+                                    if (isSingle && o.user_voted){ return { ...o, votes: Math.max(0, o.votes-1), user_voted: false } }
+                                    return o
+                                  })
+                                  const newUserVote = isSingle ? (hasVoted ? null : option.id) : poll.user_vote
+                                  const totalVotes = nextOpts.reduce((a:number,b:any)=> a + (b.votes||0), 0)
+                                  return { ...it, poll: { ...poll, options: nextOpts, user_vote: newUserVote, total_votes: totalVotes } }
+                                }))
+                                // Server
+                                const res = await fetch('/vote_poll', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ poll_id: p.poll!.id, option_id: option.id }) })
+                                const j = await res.json().catch(()=>null)
+                                if (j?.success && Array.isArray(j.poll_results)){
+                                  setPosts(list => list.map(it => {
+                                    if (it.id !== p.id || !it.poll) return it
+                                    const rows = j.poll_results as Array<any>
+                                    const newOpts = it.poll.options.map((o:any)=> {
+                                      const row = rows.find(r => r.id === o.id)
+                                      return row ? { ...o, votes: row.votes, user_voted: !!row.user_voted } : o
+                                    })
+                                    const newUserVote = typeof rows[0]?.user_vote !== 'undefined' ? (rows[0].user_vote || null) : it.poll.user_vote
+                                    const totalVotes = rows[0]?.total_votes ?? newOpts.reduce((a:number, b:any) => a + (b.votes||0), 0)
+                                    return { ...it, poll: { ...it.poll, options: newOpts, user_vote: newUserVote, total_votes: totalVotes } }
+                                  }))
+                                }
+                              }catch{}
+                            }}
+                          >
+                            <div className="absolute inset-0 bg-[#4db6ac]/20" style={{ width: `${percentage}%`, transition: 'width 0.3s ease' }} />
+                            <div className="relative flex items-center justify-between">
+                              <span className="text-sm">{option.text || option.option_text}</span>
+                              <span className="text-xs text-[#9fb0b5] font-medium">{option.votes} {percentage > 0 ? `(${percentage}%)` : ''}</span>
+                            </div>
+                          </button>
+                        )
+                      })}
+                    </div>
+                    <div className="flex items-center justify-between text-xs text-[#9fb0b5] pt-1">
+                      {(() => { const sv = (p.poll as any)?.single_vote; const isSingle = !(sv === false || sv === 0 || sv === '0' || sv === 'false'); return isSingle })() && (
+                        <span>{p.poll.total_votes || 0} {p.poll.total_votes === 1 ? 'vote' : 'votes'}</span>
+                      )}
+                      <button 
+                        type="button"
+                        onClick={()=> navigate(`/community/${p.community_id}/polls_react`)}
+                        className="text-[#4db6ac] hover:underline"
+                      >
+                        View all polls →
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {!p.poll && (
+                  <div className="flex items-center gap-2 text-xs" onClick={(e)=> e.stopPropagation()}>
+                    <button className="px-2 py-1 rounded transition-colors" onClick={async()=>{
+                      // Optimistic toggle
+                      const prev = p.user_reaction
+                      const next = prev === 'heart' ? null : 'heart'
+                      const counts = { ...(p.reactions||{}) }
+                      if (prev) counts[prev] = Math.max(0, (counts[prev]||0)-1)
+                      if (next) counts[next] = (counts[next]||0)+1
+                      setPosts(list => list.map(it => it.id===p.id ? ({ ...it, user_reaction: next, reactions: counts }) : it))
+                      try{
+                        const fd = new URLSearchParams({ post_id: String(p.id), reaction: 'heart' })
+                        const r = await fetch('/add_reaction', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
+                        const j = await r.json().catch(()=>null)
+                        if (j?.success){
+                          setPosts(list => list.map(it => it.id===p.id ? ({ ...it, reactions: { ...(it.reactions||{}), ...j.counts }, user_reaction: j.user_reaction }) : it))
+                        }
+                      }catch{}
+                    }}>
+                      <i className={`fa-regular fa-heart ${p.user_reaction==='heart' ? '' : ''}`} style={{ color: p.user_reaction==='heart' ? '#4db6ac' : '#6c757d', WebkitTextStroke: p.user_reaction==='heart' ? '1px #4db6ac' : undefined }} />
+                      <span className="ml-1" style={{ color: p.user_reaction==='heart' ? '#cfe9e7' : '#9fb0b5' }}>{(p.reactions?.['heart'])||0}</span>
+                    </button>
+                    <button className="px-2 py-1 rounded transition-colors" onClick={async()=>{
+                      const prev = p.user_reaction
+                      const next = prev === 'thumbs-up' ? null : 'thumbs-up'
+                      const counts = { ...(p.reactions||{}) }
+                      if (prev) counts[prev] = Math.max(0, (counts[prev]||0)-1)
+                      if (next) counts[next] = (counts[next]||0)+1
+                      setPosts(list => list.map(it => it.id===p.id ? ({ ...it, user_reaction: next, reactions: counts }) : it))
+                      try{
+                        const fd = new URLSearchParams({ post_id: String(p.id), reaction: 'thumbs-up' })
+                        const r = await fetch('/add_reaction', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
+                        const j = await r.json().catch(()=>null)
+                        if (j?.success){
+                          setPosts(list => list.map(it => it.id===p.id ? ({ ...it, reactions: { ...(it.reactions||{}), ...j.counts }, user_reaction: j.user_reaction }) : it))
+                        }
+                      }catch{}
+                    }}>
+                      <i className="fa-regular fa-thumbs-up" style={{ color: p.user_reaction==='thumbs-up' ? '#4db6ac' : '#6c757d', WebkitTextStroke: p.user_reaction==='thumbs-up' ? '1px #4db6ac' : undefined }} />
+                      <span className="ml-1" style={{ color: p.user_reaction==='thumbs-up' ? '#cfe9e7' : '#9fb0b5' }}>{(p.reactions?.['thumbs-up'])||0}</span>
+                    </button>
+                    <button className="px-2 py-1 rounded transition-colors" onClick={async()=>{
+                      const prev = p.user_reaction
+                      const next = prev === 'thumbs-down' ? null : 'thumbs-down'
+                      const counts = { ...(p.reactions||{}) }
+                      if (prev) counts[prev] = Math.max(0, (counts[prev]||0)-1)
+                      if (next) counts[next] = (counts[next]||0)+1
+                      setPosts(list => list.map(it => it.id===p.id ? ({ ...it, user_reaction: next, reactions: counts }) : it))
+                      try{
+                        const fd = new URLSearchParams({ post_id: String(p.id), reaction: 'thumbs-down' })
+                        const r = await fetch('/add_reaction', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
+                        const j = await r.json().catch(()=>null)
+                        if (j?.success){
+                          setPosts(list => list.map(it => it.id===p.id ? ({ ...it, reactions: { ...(it.reactions||{}), ...j.counts }, user_reaction: j.user_reaction }) : it))
+                        }
+                      }catch{}
+                    }}>
+                      <i className="fa-regular fa-thumbs-down" style={{ color: p.user_reaction==='thumbs-down' ? '#4db6ac' : '#6c757d', WebkitTextStroke: p.user_reaction==='thumbs-down' ? '1px #4db6ac' : undefined }} />
+                      <span className="ml-1" style={{ color: p.user_reaction==='thumbs-down' ? '#cfe9e7' : '#9fb0b5' }}>{(p.reactions?.['thumbs-down'])||0}</span>
+                    </button>
+                    <button className="ml-auto px-2.5 py-1 rounded-full text-[#cfd8dc]" onClick={()=> navigate(`/post/${p.id}`)}>
+                      <i className="fa-regular fa-comment" />
+                      <span className="ml-1">{p.replies_count||0}</span>
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           ))}
