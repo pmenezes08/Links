@@ -10611,27 +10611,27 @@ def post_status():
     if 'image' in files and files['image'].filename:
         file = files['image']
         image_path = save_uploaded_file(file)
-            if not image_path:
-                if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-                    return jsonify({'success': False, 'error': 'Invalid image type'}), 400
+        if not image_path:
+            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                return jsonify({'success': False, 'error': 'Invalid image type'}), 400
+            else:
+                msg = '?error=Invalid image type'
+                if community_id:
+                    return redirect(url_for('community_feed', community_id=community_id) + msg)
                 else:
-                    msg = '?error=Invalid image type'
-                    if community_id:
-                        return redirect(url_for('community_feed', community_id=community_id) + msg)
-                    else:
-                        return redirect(url_for('feed') + msg)
+                    return redirect(url_for('feed') + msg)
     if 'audio' in files and files['audio'].filename:
         afile = files['audio']
         audio_path = save_uploaded_file(afile, subfolder='audio')
-            if not audio_path:
-                if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-                    return jsonify({'success': False, 'error': 'Invalid audio type'}), 400
+        if not audio_path:
+            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                return jsonify({'success': False, 'error': 'Invalid audio type'}), 400
+            else:
+                msg = '?error=Invalid audio type'
+                if community_id:
+                    return redirect(url_for('community_feed', community_id=community_id) + msg)
                 else:
-                    msg = '?error=Invalid audio type'
-                    if community_id:
-                        return redirect(url_for('community_feed', community_id=community_id) + msg)
-                    else:
-                        return redirect(url_for('feed') + msg)
+                    return redirect(url_for('feed') + msg)
     
     if not content and not image_path and not audio_path:
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
