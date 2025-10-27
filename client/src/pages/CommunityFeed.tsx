@@ -11,8 +11,8 @@ import { renderTextWithLinks, detectLinks, replaceLinkInText, type DetectedLink 
 
 type PollOption = { id: number; text: string; votes: number; user_voted?: boolean }
 type Poll = { id: number; question: string; is_active: number; options: PollOption[]; user_vote: number|null; total_votes: number; single_vote?: boolean; expires_at?: string | null }
-type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null, profile_picture?: string|null, image_path?: string|null, parent_reply_id?: number | null }
-type Post = { id: number; username: string; content: string; image_path?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; poll?: Poll|null; replies: Reply[], profile_picture?: string|null, is_starred?: boolean, is_community_starred?: boolean }
+type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null, profile_picture?: string|null, image_path?: string|null, audio_path?: string|null, parent_reply_id?: number | null }
+type Post = { id: number; username: string; content: string; image_path?: string|null; audio_path?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; poll?: Poll|null; replies: Reply[], profile_picture?: string|null, is_starred?: boolean, is_community_starred?: boolean }
 
 // old formatTimestamp removed; using formatSmartTime
 
@@ -922,6 +922,11 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
               return (
                 <>
                   {displayContent && <div className="px-3 whitespace-pre-wrap text-[14px] leading-relaxed tracking-[0]">{renderTextWithLinks(displayContent)}</div>}
+                  {(!displayContent && post.audio_path) && (
+                    <div className="px-3">
+                      <audio controls className="w-full" src={post.audio_path.startsWith('http') || post.audio_path.startsWith('/uploads') ? post.audio_path : `/${post.audio_path}`} />
+                    </div>
+                  )}
                   {videoEmbed && <VideoEmbed embed={videoEmbed} />}
                 </>
               )
@@ -972,6 +977,11 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
             alt="Post image"
             className="block mx-auto max-w-full max-h-[360px] rounded border border-white/10 px-3"
           />
+        ) : null}
+        {!post.image_path && post.audio_path ? (
+          <div className="px-3">
+            <audio controls className="w-full" src={post.audio_path.startsWith('http') || post.audio_path.startsWith('/uploads') ? post.audio_path : `/${post.audio_path}`} />
+          </div>
         ) : null}
         {/* Poll display */}
         {post.poll && (
