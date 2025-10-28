@@ -17,6 +17,15 @@ export default function PushInit(){
       try{
         const reg = await navigator.serviceWorker.register('/sw.js')
         await navigator.serviceWorker.ready
+        try{
+          navigator.serviceWorker.addEventListener('message', (e: any) => {
+            if (e?.data?.type === 'SW_ACTIVATED' && !sessionStorage.getItem('swReloaded')){
+              sessionStorage.setItem('swReloaded', '1')
+              // Light reload to pick up new index.html/assets
+              location.reload()
+            }
+          })
+        }catch{}
 
         async function subscribeAndRegister(){
           try{
