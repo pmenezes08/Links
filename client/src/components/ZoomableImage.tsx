@@ -30,6 +30,33 @@ export default function ZoomableImage({ src, alt = 'image', className = '', maxS
   const pinchStartDistance = useRef<number | null>(null)
   const pinchStartScale = useRef<number>(1)
 
+  // Loading and source candidates (fallbacks)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(false)
+  const candidates: string[] = (() => {
+    const p = (src || '').trim()
+    const out: string[] = []
+    if (!p) return out
+    if (p.startsWith('http')) return [p]
+    if (p.startsWith('/uploads')) out.push(p)
+    if (p.startsWith('uploads/')) out.push('/' + p)
+    if (p.startsWith('/static')) out.push(p)
+    if (p.startsWith('static/')) out.push('/' + p)
+    if (!p.startsWith('/uploads') && !p.startsWith('uploads/') && !p.startsWith('/static') && !p.startsWith('static/')){
+      const nameOnly = p.split('/').slice(-1)[0]
+      out.push(`/uploads/${nameOnly}`)
+      out.push(`/static/${nameOnly}`)
+      out.push(`/static/uploads/${nameOnly}`)
+    }
+    return Array.from(new Set(out))
+  })()
+  const [index, setIndex] = useState(0)
+  const currentSrc = candidates[index] || ''
+
+  // Base scale (fit-to-contain); use ref to avoid jitter in handlers
+  const [minScale, setMinScale] = useState(1)
+  const baseScaleRef = useRef(1)
+
   // Helpers
   function clamp(val: number, min: number, max: number) { return Math.max(min, Math.min(max, val)) }
 
@@ -41,12 +68,12 @@ export default function ZoomableImage({ src, alt = 'image', className = '', maxS
   }
 
   const getBounds = useCallback((nextScale: number) => {
-    // Limit panning based on scaled content size; approximate bounds by container size
+    // Compute bounds relative to fit scale so panning is proportional
     const { width, height } = getContainerSize()
     if (width === 0 || height === 0) return { maxX: 0, maxY: 0 }
-    // When scaled, we allow translating up to half of the overflow in each direction
-    const overflowX = (nextScale - 1) * (width / 2)
-    const overflowY = (nextScale - 1) * (height / 2)
+    const ratio = Math.max(1, nextScale / (baseScaleRef.current || 1))
+    const overflowX = (ratio - 1) * (width / 2)
+    const overflowY = (ratio - 1) * (height / 2)
     return { maxX: overflowX, maxY: overflowY }
   }, [])
 
@@ -62,7 +89,7 @@ export default function ZoomableImage({ src, alt = 'image', className = '', maxS
     e.stopPropagation()
     const delta = -e.deltaY
     const zoomIntensity = 0.0015
-    const nextScale = clamp(scale * (1 + delta * zoomIntensity), 1, maxScale)
+    const nextScale = clamp(scale * (1 + delta * zoomIntensity), minScale, maxScale)
 
     if (nextScale === scale) return
 
@@ -84,12 +111,8 @@ export default function ZoomableImage({ src, alt = 'image', className = '', maxS
   const handleDoubleClick = (e: React.MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
-    if (scale > 1) {
-      reset()
-      return
-    }
-    // Zoom in to 2x and center around click
-    const targetScale = clamp(2, 1, maxScale)
+    const alreadyZoomed = scale > minScale + 0.001
+    const targetScale = alreadyZoomed ? minScale : clamp(minScale * 2, minScale, maxScale)
     if (!containerRef.current) {
       setScale(targetScale)
       return
@@ -173,7 +196,7 @@ export default function ZoomableImage({ src, alt = 'image', className = '', maxS
   useEffect(() => {
     const onKey = (ev: KeyboardEvent) => {
       if (ev.key === 'Escape') {
-        if (scale > 1) {
+        if (scale > minScale) {
           reset()
         } else if (onRequestClose) {
           onRequestClose()
@@ -182,13 +205,23 @@ export default function ZoomableImage({ src, alt = 'image', className = '', maxS
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [scale, reset, onRequestClose])
+  }, [scale, minScale, reset, onRequestClose])
 
   // Keep translate within bounds when scale changes by external layout
   useEffect(() => {
     const onResize = () => {
-      const { maxX, maxY } = getBounds(scale)
-      setTranslate(prev => ({ x: clamp(prev.x, -maxX, maxX), y: clamp(prev.y, -maxY, maxY) }))
+      // Recompute fit scale when container changes size
+      const el = containerRef.current
+      const img = imageRef.current
+      if (el && img && img.naturalWidth && img.naturalHeight) {
+        const rect = el.getBoundingClientRect()
+        const s = Math.min(rect.width / img.naturalWidth, rect.height / img.naturalHeight)
+        baseScaleRef.current = s
+        setMinScale(s)
+        setScale((cur) => Math.max(s, cur))
+        const { maxX, maxY } = getBounds(Math.max(s, scale))
+        setTranslate(prev => ({ x: clamp(prev.x, -maxX, maxX), y: clamp(prev.y, -maxY, maxY) }))
+      }
     }
     window.addEventListener('resize', onResize)
     return () => window.removeEventListener('resize', onResize)
@@ -197,8 +230,8 @@ export default function ZoomableImage({ src, alt = 'image', className = '', maxS
   const computedStyle: React.CSSProperties = {
     transform: `translate3d(${translate.x}px, ${translate.y}px, 0) scale(${scale})`,
     transition: isPanning || activePointers.current.size > 0 ? 'none' : 'transform 0.12s ease-out',
-    touchAction: scale > 1 ? 'none' as any : 'pan-y',
-    cursor: scale > 1 ? 'grab' : 'zoom-in',
+    touchAction: scale > minScale ? 'none' as any : 'pan-y',
+    cursor: scale > minScale ? 'grab' : 'zoom-in',
   }
 
   return (
@@ -217,22 +250,47 @@ export default function ZoomableImage({ src, alt = 'image', className = '', maxS
     >
       <img
         ref={imageRef}
-        src={src}
+        src={currentSrc}
         alt={alt}
         className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 max-w-none"
         style={computedStyle}
         draggable={false}
+        onLoad={(e) => {
+          setLoading(false)
+          setError(false)
+          try {
+            const img = e.currentTarget
+            const el = containerRef.current
+            if (el && img.naturalWidth && img.naturalHeight) {
+              const rect = el.getBoundingClientRect()
+              const s = Math.min(rect.width / img.naturalWidth, rect.height / img.naturalHeight)
+              baseScaleRef.current = s
+              setMinScale(s)
+              setScale(s)
+              setTranslate({ x: 0, y: 0 })
+            }
+          } catch {}
+        }}
+        onError={() => {
+          if (index < candidates.length - 1) {
+            setIndex(index + 1)
+            setLoading(true)
+          } else {
+            setError(true)
+            setLoading(false)
+          }
+        }}
       />
 
       {/* Hint label when not zoomed */}
-      {scale === 1 && (
+      {scale <= minScale + 0.0001 && !loading && !error && (
         <div className="absolute bottom-3 left-1/2 -translate-x-1/2 text-[11px] px-2 py-1 rounded-full bg-black/50 border border-white/10 text-white/80">
           Double-tap or pinch to zoom • drag to pan
         </div>
       )}
 
       {/* Mobile-friendly reset control when zoomed */}
-      {scale > 1 && (
+      {scale > minScale && (
         <button
           type="button"
           className="absolute top-2 right-2 z-10 px-2 py-1 rounded-md bg-black/60 border border-white/15 text-white/90 text-xs hover:bg-black/70 active:scale-95"
@@ -241,6 +299,20 @@ export default function ZoomableImage({ src, alt = 'image', className = '', maxS
         >
           Reset
         </button>
+      )}
+
+      {/* Loading overlay */}
+      {loading && (
+        <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+          <div className="w-7 h-7 border-2 border-white/30 border-t-white/70 rounded-full animate-spin" />
+        </div>
+      )}
+
+      {/* Error placeholder */}
+      {error && (
+        <div className="absolute inset-0 flex items-center justify-center text-white/60 text-xs bg-black/20">
+          Image unavailable
+        </div>
       )}
     </div>
   )
