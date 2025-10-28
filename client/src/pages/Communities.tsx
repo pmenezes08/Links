@@ -728,6 +728,11 @@ function ParentTimeline({ parentId }:{ parentId:number }){
                     className="block mx-auto max-w-full max-h-[360px] rounded border border-white/10"
                   />
                 ) : null}
+                {p.audio_path ? (
+                  <div>
+                    <audio controls className="w-full" src={(() => { const a = String(p.audio_path || '').trim(); if (!a) return ''; if (a.startsWith('http')) return a; if (a.startsWith('/uploads')) return a; return a.startsWith('uploads') || a.startsWith('static') ? `/${a}` : `/uploads/${a}` })()} />
+                  </div>
+                ) : null}
                 {/* Inline Poll (interactive) if present */}
                 {p.poll && (
                   <div className="space-y-2" onClick={(e)=> e.stopPropagation()}>
