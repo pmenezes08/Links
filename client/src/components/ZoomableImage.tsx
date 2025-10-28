@@ -72,10 +72,12 @@ export default function ZoomableImage({ src, alt = 'image', className = '', maxS
   }
 
   const getBounds = useCallback((nextScale: number) => {
-    // Compute bounds relative to fit scale so panning is proportional
+    // Compute bounds relative to minScale so panning is proportional
     const { width, height } = getContainerSize()
     if (width === 0 || height === 0) return { maxX: 0, maxY: 0 }
-    const ratio = Math.max(1, nextScale / (baseScaleRef.current || 1))
+    const base = baseScaleRef.current || 1
+    const ms = Math.min(1, base)
+    const ratio = Math.max(1, nextScale / ms)
     const overflowX = (ratio - 1) * (width / 2)
     const overflowY = (ratio - 1) * (height / 2)
     return { maxX: overflowX, maxY: overflowY }
@@ -116,7 +118,7 @@ export default function ZoomableImage({ src, alt = 'image', className = '', maxS
     e.preventDefault()
     e.stopPropagation()
     const alreadyZoomed = scale > minScale + 0.001
-    const targetScale = alreadyZoomed ? minScale : clamp(minScale * 2, minScale, maxScale)
+    const targetScale = alreadyZoomed ? minScale : clamp(minScale * 1.6, minScale, maxScale)
     if (!containerRef.current) {
       setScale(targetScale)
       return
@@ -145,7 +147,7 @@ export default function ZoomableImage({ src, alt = 'image', className = '', maxS
       const dy = pts[1].y - pts[0].y
       pinchStartDistance.current = Math.hypot(dx, dy)
       pinchStartScale.current = scale
-    } else if (scale > 1) {
+    } else if (scale > minScale + 0.001) {
       // Begin pan
       setIsPanning(true)
       panStartRef.current = { x: e.clientX, y: e.clientY }
@@ -234,7 +236,7 @@ export default function ZoomableImage({ src, alt = 'image', className = '', maxS
   const computedStyle: React.CSSProperties = {
     transform: `translate3d(${translate.x}px, ${translate.y}px, 0) scale(${scale})`,
     transition: isPanning || activePointers.current.size > 0 ? 'none' : 'transform 0.12s ease-out',
-    touchAction: scale > minScale ? 'none' as any : 'pan-y',
+    touchAction: scale > minScale ? 'none' as any : 'manipulation',
     cursor: scale > minScale ? 'grab' : 'zoom-in',
   }
 
@@ -267,8 +269,9 @@ export default function ZoomableImage({ src, alt = 'image', className = '', maxS
             const el = containerRef.current
             if (el && img.naturalWidth && img.naturalHeight) {
               const rect = el.getBoundingClientRect()
-              const s = Math.min(rect.width / img.naturalWidth, rect.height / img.naturalHeight)
-              baseScaleRef.current = s
+              const fit = Math.min(rect.width / img.naturalWidth, rect.height / img.naturalHeight)
+              const s = Math.min(1, fit) // never upscale on initial fit
+              baseScaleRef.current = fit
               setMinScale(s)
               setScale(s)
               setTranslate({ x: 0, y: 0 })
