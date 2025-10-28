@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useAudioRecorder } from '../components/useAudioRecorder'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
 import Avatar from '../components/Avatar'
@@ -80,25 +81,8 @@ export default function ChatThread(){
   const fileInputRef = useRef<HTMLInputElement|null>(null)
   const cameraInputRef = useRef<HTMLInputElement|null>(null)
   const audioInputRef = useRef<HTMLInputElement|null>(null)
-  const [recording, setRecording] = useState(false)
-  const [recorder, setRecorder] = useState<MediaRecorder|null>(null)
-  const chunksRef = useRef<BlobPart[]>([])
-  const recordStartRef = useRef<number>(0)
-  const [recordMs, setRecordMs] = useState(0)
-  const recordTimerRef = useRef<any>(null)
-  const audioCtxRef = useRef<AudioContext|null>(null)
-  const analyserRef = useRef<AnalyserNode|null>(null)
-  const sourceRef = useRef<MediaStreamAudioSourceNode|null>(null)
-  const streamRef = useRef<MediaStream|null>(null)
-  const visRafRef = useRef<number| null>(null)
-  const [audioLevels, setAudioLevels] = useState<number[]>(Array(25).fill(0))
-  const stoppedRef = useRef(false)
-  const finalizedRef = useRef(false)
-  const finalizeTimerRef = useRef<any>(null)
-  // const twoSecondCheckRef = useRef<any>(null)
-  const finalizeAttemptRef = useRef(0)
+  const { recording, recordMs, preview: recordingPreview, start: startRecording, stop: stopRecording, clearPreview: cancelRecordingPreview, level } = useAudioRecorder() as any
   const [previewImage, setPreviewImage] = useState<string|null>(null)
-  const [recordingPreview, setRecordingPreview] = useState<{ blob: Blob; url: string; duration: number } | null>(null)
   const [isMobile, setIsMobile] = useState(false)
   const [showMicPermissionModal, setShowMicPermissionModal] = useState(false)
   const [showPermissionGuide, setShowPermissionGuide] = useState(false)
@@ -1970,7 +1954,7 @@ export default function ChatThread(){
             
             {/* Mic + Send - Conditional based on recording state */}
             <div className="absolute right-2 top-1/2 transform -translate-y-1/2 flex items-center gap-2">
-              {/* When recording: Show STOP button (modern, sleek, turquoise) */}
+              {/* When recording: Show STOP + visualizer (consistent with posts) */}
               {MIC_ENABLED && recording ? (
                 <button
                   className="w-9 h-9 rounded-full flex items-center justify-center bg-[#4db6ac] text-white hover:bg-[#45a99c] active:scale-95 transition-all duration-200"
@@ -2018,6 +2002,17 @@ export default function ChatThread(){
                   </button>
                   )}
                 </>
+              )}
+              {MIC_ENABLED && recording && (
+                <div className="hidden sm:flex items-center gap-2 ml-2">
+                  <div className="text-xs text-white/70 whitespace-nowrap">{Math.min(60, Math.round((recordMs||0)/1000))}s</div>
+                  <div className="h-2 w-24 bg-white/10 rounded overflow-hidden">
+                    <div className="h-full bg-[#4db6ac] transition-all" style={{ width: `${Math.min(100, ((recordMs||0)/600) )}%` }} />
+                  </div>
+                  <div className="h-6 w-16 bg-white/10 rounded items-center hidden md:flex">
+                    <div className="h-2 bg-[#7fe7df] rounded transition-all" style={{ width: `${Math.max(6, Math.min(96, (level||0)*100))}%`, marginLeft: '2%' }} />
+                  </div>
+                </div>
               )}
             </div>
           </div>
