@@ -1197,12 +1197,10 @@ export default function ChatThread(){
                       
                       {/* Audio message */}
                       {m.audio_path && !m.image_path ? (
-                        <div className="my-2">
-                          <AudioMessage 
-                            message={m}
-                            audioPath={m.audio_path.startsWith('blob:') ? m.audio_path : `/uploads/${m.audio_path}`}
-                          />
-                        </div>
+                        <AudioMessage 
+                          message={m}
+                          audioPath={m.audio_path.startsWith('blob:') ? m.audio_path : `/uploads/${m.audio_path}`}
+                        />
                       ) : null}
                       {/* Image display with loader */}
                       {m.image_path ? (
@@ -1814,7 +1812,7 @@ function AudioMessage({ message, audioPath }: { message: Message; audioPath: str
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0
 
   return (
-    <div className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2">
+    <div className="px-2 py-1">
       <div className="flex items-center gap-3">
         <button
           onClick={togglePlay}
@@ -1825,7 +1823,7 @@ function AudioMessage({ message, audioPath }: { message: Message; audioPath: str
         </button>
         <div className="flex-1">
           <div className="h-1 bg-white/10 rounded-full overflow-hidden">
-            <div className="h-full bg-[#4db6ac]/70 transition-all" style={{ width: `${progress}%` }} />
+            <div className="h-full bg-white/50 transition-all" style={{ width: `${progress}%` }} />
           </div>
           <div className="mt-1 flex items-center justify-between text-[11px] text-white/60">
             <span>{playing && duration > 0 ? formatDuration(currentTime) : duration > 0 ? formatDuration(duration) : (message.audio_duration_seconds ? formatDuration(message.audio_duration_seconds) : '--:--')}</span>
