@@ -491,7 +491,7 @@ export default function PostDetail(){
                 </>
               )
             })()}
-            {post.image_path ? (
+          {post.image_path ? (
               <div onClick={()=> setPreviewSrc(normalizePath(post.image_path as string))}>
                 <ImageLoader
                   src={normalizePath(post.image_path as string)}
@@ -500,6 +500,11 @@ export default function PostDetail(){
                 />
               </div>
             ) : null}
+          {(post as any)?.audio_path ? (
+            <div className="px-3">
+              <audio controls className="w-full" src={normalizePath((post as any).audio_path as string)} />
+            </div>
+          ) : null}
             <div className="flex items-center gap-2 text-xs">
               <Reaction icon="fa-regular fa-heart" count={post.reactions?.['heart']||0} active={post.user_reaction==='heart'} onClick={()=> toggleReaction('heart')} />
               <Reaction icon="fa-regular fa-thumbs-up" count={post.reactions?.['thumbs-up']||0} active={post.user_reaction==='thumbs-up'} onClick={()=> toggleReaction('thumbs-up')} />
