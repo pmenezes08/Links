@@ -297,7 +297,7 @@ def verify_pending_signup_token(token: str):
 
 def _send_email_via_resend(to_email: str, subject: str, html: str, text: str = None):
     if not RESEND_API_KEY:
-        logger.warning('RESEND_API_KEY not set; skipping email send')
+        logger.error('RESEND_API_KEY not set; skipping email send')
         return False
     try:
         payload = {
@@ -308,14 +308,20 @@ def _send_email_via_resend(to_email: str, subject: str, html: str, text: str = N
         }
         if text:
             payload['text'] = text
-        # Use requests to call Resend API
-        r = requests.post('https://api.resend.com/emails', headers={
-            'Authorization': f'Bearer {RESEND_API_KEY}',
-            'Content-Type': 'application/json'
-        }, data=json.dumps(payload), timeout=10)
+        # Use requests to call Resend API (JSON body)
+        r = requests.post(
+            'https://api.resend.com/emails',
+            headers={'Authorization': f'Bearer {RESEND_API_KEY}'},
+            json=payload,
+            timeout=15,
+        )
         if r.status_code in (200, 201):
+            logger.info('Resend email queued successfully')
             return True
-        logger.error(f'Resend send failed: {r.status_code} {r.text}')
+        try:
+            logger.error(f'Resend send failed: {r.status_code} {r.text}')
+        except Exception:
+            logger.error(f'Resend send failed with status {r.status_code}')
         return False
     except Exception as e:
         logger.error(f'Resend send exception: {e}')
