@@ -22,7 +22,7 @@ export default function MessageImage({ src, alt, onClick, className = '' }: Mess
 
   return (
     <div 
-      className={`relative bg-white/5 rounded-md overflow-hidden ${className}`}
+      className={`relative bg-black rounded-md overflow-hidden ${className}`}
       style={{ minHeight: '120px' }}
       onClick={onClick}
     >
@@ -72,7 +72,7 @@ export default function MessageImage({ src, alt, onClick, className = '' }: Mess
       <img
         src={src}
         alt={alt}
-        className={`w-full h-full object-cover transition-all duration-500 ${
+        className={`w-full h-full object-contain transition-all duration-500 ${
           loading ? 'opacity-0 scale-105' : 'opacity-100 scale-100'
         }`}
         onLoad={handleLoad}

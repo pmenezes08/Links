@@ -43,6 +43,10 @@ export default function ZoomableImage({ src, alt = 'image', className = '', maxS
     if (p.startsWith('/static')) out.push(p)
     if (p.startsWith('static/')) out.push('/' + p)
     if (!p.startsWith('/uploads') && !p.startsWith('uploads/') && !p.startsWith('/static') && !p.startsWith('static/')){
+      // Include path-preserving fallbacks first
+      out.push(`/uploads/${p}`)
+      out.push(`/static/${p}`)
+      // Also include name-only fallbacks as last resorts
       const nameOnly = p.split('/').slice(-1)[0]
       out.push(`/uploads/${nameOnly}`)
       out.push(`/static/${nameOnly}`)
