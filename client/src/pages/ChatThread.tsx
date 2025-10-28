@@ -43,20 +43,7 @@ export default function ChatThread(){
     checkMobile()
   }, [])
 
-  // Add wave animation styles
-  useEffect(() => {
-    const style = document.createElement('style')
-    style.textContent = `
-      @keyframes wave {
-        0% { transform: translateX(-100%); }
-        100% { transform: translateX(100%); }
-      }
-    `
-    document.head.appendChild(style)
-    return () => {
-      document.head.removeChild(style)
-    }
-  }, [])
+  // (wave animation CSS no longer required for unified recorder)
 
   const [otherUserId, setOtherUserId] = useState<number|''>('')
   const [messages, setMessages] = useState<Message[]>([])
@@ -81,7 +68,7 @@ export default function ChatThread(){
   const fileInputRef = useRef<HTMLInputElement|null>(null)
   const cameraInputRef = useRef<HTMLInputElement|null>(null)
   const audioInputRef = useRef<HTMLInputElement|null>(null)
-  const { recording, recordMs, preview: recordingPreview, start: startRecording, stop: stopRecording, clearPreview: cancelRecordingPreview, level } = useAudioRecorder() as any
+  const { recording, recordMs, preview: recordingPreview, start: startVoiceRecording, stop: stopVoiceRecording, clearPreview: cancelRecordingPreview, level } = useAudioRecorder() as any
   const [previewImage, setPreviewImage] = useState<string|null>(null)
   const [isMobile, setIsMobile] = useState(false)
   const [showMicPermissionModal, setShowMicPermissionModal] = useState(false)
