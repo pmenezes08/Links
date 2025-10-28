@@ -434,7 +434,7 @@ export default function Signup(){
                 We sent a verification link to <span className="text-white font-medium">{pendingEmail || formData.email || 'your email'}</span>.
                 Please click the link to verify your account.
               </div>
-              <div className="mt-3 flex items-center gap-2 flex-wrap">
+              <div className="mt-4 grid grid-cols-2 gap-2">
                 <button className="px-3 py-2 rounded-md border border-white/10" onClick={async ()=>{
                   try{
                     const r = await fetch('/resend_verification_pending', { method:'POST', credentials:'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: pendingEmail || formData.email }) })
@@ -443,13 +443,9 @@ export default function Signup(){
                     else alert('Email was resent, please check your inbox')
                   }catch{ alert('Network error') }
                 }}>Resend verification</button>
-                <button className="px-3 py-2 rounded-md border border-white/10" onClick={()=> {
-                  setShowVerify(false)
-                }}>Edit email</button>
-                <button className="px-3 py-2 rounded-md border border-white/10" onClick={()=> {
-                  setShowVerify(false); navigate('/')
-                }}>Go to start</button>
-                <button className="ml-auto px-3 py-2 rounded-md bg-[#4db6ac] text-black" onClick={async ()=>{
+                <button className="px-3 py-2 rounded-md border border-white/10" onClick={()=> { setShowVerify(false) }}>Edit email</button>
+                <button className="px-3 py-2 rounded-md border border-white/10" onClick={()=> { setShowVerify(false); navigate('/') }}>Go to start</button>
+                <button className="col-span-2 px-3 py-2 rounded-md bg-[#4db6ac] text-black" onClick={async ()=>{
                   try{
                     const r = await fetch('/api/email_verified_status', { method:'POST', credentials:'include', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ email: pendingEmail || formData.email }) })
                     const j = await r.json().catch(()=>null)
@@ -460,7 +456,7 @@ export default function Signup(){
                       alert('Email has not been verified yet, please check your inbox')
                     }
                   }catch{ alert('Network error, please try again.') }
-                }}>I've verified</button>
+                }}>Verified</button>
               </div>
             </div>
           </div>

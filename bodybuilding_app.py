@@ -5978,14 +5978,18 @@ def resend_verification_pending():
                 </div>
             """
             ok = _send_email_via_resend(email, subject, html)
-            if ok:
+            # Always respond success for UX; log failures but don't block
+            try:
+                c.execute("UPDATE pending_signups SET verification_sent_at=? WHERE id=?", (datetime.now().isoformat(), pend_id))
+                conn.commit()
+            except Exception:
+                pass
+            if not ok:
                 try:
-                    c.execute("UPDATE pending_signups SET verification_sent_at=? WHERE id=?", (datetime.now().isoformat(), pend_id))
-                    conn.commit()
+                    logger.warning("Resend via Resend API failed; returning success to client for UX")
                 except Exception:
                     pass
-                return jsonify({'success': True})
-            return jsonify({'success': False, 'error': 'Failed to send email'}), 500
+            return jsonify({'success': True})
     except Exception as e:
         logger.error(f"resend_verification_pending error: {e}")
         return jsonify({'success': False, 'error': 'Server error'}), 500
