@@ -10,7 +10,7 @@ import { renderTextWithLinks } from '../utils/linkUtils.tsx'
 
 type PollOption = { id: number; text: string; votes: number; user_voted?: boolean }
 type Poll = { id: number; question: string; is_active: number; options: PollOption[]; user_vote: number|null; total_votes: number; single_vote?: boolean; expires_at?: string }
-type Post = { id:number; username:string; content:string; image_path?:string|null; timestamp:string; display_timestamp?:string; community_id?:number|null; community_name?:string; reactions:Record<string,number>; user_reaction:string|null; poll?:Poll|null; replies_count?:number; profile_picture?:string|null }
+type Post = { id:number; username:string; content:string; image_path?:string|null; audio_path?: string | null; timestamp:string; display_timestamp?:string; community_id?:number|null; community_name?:string; reactions:Record<string,number>; user_reaction:string|null; poll?:Poll|null; replies_count?:number; profile_picture?:string|null }
 
 export default function HomeTimeline(){
   const navigate = useNavigate()
@@ -182,6 +182,11 @@ export default function HomeTimeline(){
                       alt="Post image"
                       className="w-full h-auto"
                     />
+                  ) : null}
+                  {p.audio_path ? (
+                    <div className="px-3">
+                      <audio controls className="w-full" src={(() => { const a = p.audio_path || ''; if (!a) return ''; if (a.startsWith('http')) return a; if (a.startsWith('/uploads')) return a; return a.startsWith('uploads') ? `/${a}` : `/uploads/${a}` })()} />
+                    </div>
                   ) : null}
                   {/* Poll display */}
                   {p.poll && (
