@@ -577,10 +577,10 @@ export default function PostDetail(){
                 <audio controls className="w-full" src={replyPreview.url} />
                 <button 
                   onClick={() => { clearReplyPreview() }}
-                  className="ml-1 text-red-400 hover:text-red-300"
+                  className="ml-1 text-[#9fb0b5] hover:text-white"
                   aria-label="Remove audio"
                 >
-                  <i className="fa-solid fa-times" />
+                  <i className="fa-regular fa-trash-can" />
                 </button>
               </div>
             )}
