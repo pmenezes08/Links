@@ -1670,10 +1670,10 @@ export default function ChatThread(){
               <audio controls src={recordingPreview.url} className="w-full" />
             </div>
             <div className="flex items-center justify-end gap-2">
-              <button onClick={cancelRecordingPreview} className="px-3 py-2 rounded-lg border border-white/10 text-white/70 hover:bg-white/5">
+              <button onClick={cancelRecordingPreview} className="px-2.5 py-1.5 rounded-lg border border-white/10 text-white/70 hover:bg-white/5 text-sm">
                 <i className="fa-regular fa-trash-can mr-2" />Discard
               </button>
-              <button onClick={sendRecordingPreview} className="px-4 py-2 rounded-lg bg-[#4db6ac] text-black hover:brightness-110">
+              <button onClick={sendRecordingPreview} className="px-3.5 py-1.5 rounded-lg bg-[#4db6ac] text-black hover:brightness-110 text-sm">
                 <i className="fa-solid fa-paper-plane mr-2" />Send
               </button>
             </div>
