@@ -165,17 +165,26 @@ export default function ZoomableImage({ src, alt = 'image', className = '', maxS
     activePointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
 
     if (activePointers.current.size === 2) {
-      // Pinch zoom
+      // Pinch zoom (anchor at pinch center)
       const pts = Array.from(activePointers.current.values())
       const dx = pts[1].x - pts[0].x
       const dy = pts[1].y - pts[0].y
       const dist = Math.hypot(dx, dy)
       if (pinchStartDistance.current) {
         const factor = dist / pinchStartDistance.current
-        const nextScale = clamp(pinchStartScale.current * factor, 1, maxScale)
-        const { maxX, maxY } = getBounds(nextScale)
+        const nextScale = clamp(pinchStartScale.current * factor, minScale, maxScale)
+
+        const rect = containerRef.current?.getBoundingClientRect()
+        if (rect) {
+          const cx = (pts[0].x + pts[1].x) / 2 - rect.left - rect.width / 2
+          const cy = (pts[0].y + pts[1].y) / 2 - rect.top - rect.height / 2
+          const scaleRatio = nextScale / scale
+          const nextX = cx - (cx - translate.x) * scaleRatio
+          const nextY = cy - (cy - translate.y) * scaleRatio
+          const { maxX, maxY } = getBounds(nextScale)
+          setTranslate({ x: clamp(nextX, -maxX, maxX), y: clamp(nextY, -maxY, maxY) })
+        }
         setScale(nextScale)
-        setTranslate(prev => ({ x: clamp(prev.x, -maxX, maxX), y: clamp(prev.y, -maxY, maxY) }))
       }
       return
     }
