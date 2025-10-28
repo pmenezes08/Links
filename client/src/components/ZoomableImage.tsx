@@ -59,6 +59,7 @@ export default function ZoomableImage({ src, alt = 'image', className = '', maxS
   const handleWheel = (e: React.WheelEvent) => {
     if (!containerRef.current) return
     e.preventDefault()
+    e.stopPropagation()
     const delta = -e.deltaY
     const zoomIntensity = 0.0015
     const nextScale = clamp(scale * (1 + delta * zoomIntensity), 1, maxScale)
@@ -82,6 +83,7 @@ export default function ZoomableImage({ src, alt = 'image', className = '', maxS
   // Double click/tap to toggle
   const handleDoubleClick = (e: React.MouseEvent) => {
     e.preventDefault()
+    e.stopPropagation()
     if (scale > 1) {
       reset()
       return
@@ -105,6 +107,7 @@ export default function ZoomableImage({ src, alt = 'image', className = '', maxS
 
   // Pointer handlers for pan + pinch
   const onPointerDown = (e: React.PointerEvent) => {
+    e.stopPropagation()
     ;(e.target as HTMLElement).setPointerCapture?.(e.pointerId)
     activePointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
 
@@ -124,6 +127,7 @@ export default function ZoomableImage({ src, alt = 'image', className = '', maxS
   }
 
   const onPointerMove = (e: React.PointerEvent) => {
+    e.stopPropagation()
     if (!activePointers.current.has(e.pointerId)) return
     activePointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
 
@@ -153,6 +157,7 @@ export default function ZoomableImage({ src, alt = 'image', className = '', maxS
   }
 
   const onPointerUpOrCancel = (e: React.PointerEvent) => {
+    e.stopPropagation()
     ;(e.target as HTMLElement).releasePointerCapture?.(e.pointerId)
     activePointers.current.delete(e.pointerId)
     if (activePointers.current.size < 2) {
@@ -202,6 +207,7 @@ export default function ZoomableImage({ src, alt = 'image', className = '', maxS
       className={`relative w-full h-full overflow-hidden select-none ${className || ''}`}
       onWheel={handleWheel}
       onDoubleClick={handleDoubleClick}
+      onClick={(e)=> e.stopPropagation()}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUpOrCancel}
@@ -221,8 +227,20 @@ export default function ZoomableImage({ src, alt = 'image', className = '', maxS
       {/* Hint label when not zoomed */}
       {scale === 1 && (
         <div className="absolute bottom-3 left-1/2 -translate-x-1/2 text-[11px] px-2 py-1 rounded-full bg-black/50 border border-white/10 text-white/80">
-          Double-tap or scroll to zoom
+          Double-tap or pinch to zoom • drag to pan
         </div>
+      )}
+
+      {/* Mobile-friendly reset control when zoomed */}
+      {scale > 1 && (
+        <button
+          type="button"
+          className="absolute top-2 right-2 z-10 px-2 py-1 rounded-md bg-black/60 border border-white/15 text-white/90 text-xs hover:bg-black/70 active:scale-95"
+          onClick={(e)=> { e.stopPropagation(); reset() }}
+          aria-label="Reset zoom"
+        >
+          Reset
+        </button>
       )}
     </div>
   )
