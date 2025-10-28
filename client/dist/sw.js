@@ -1,5 +1,5 @@
 // Version tracking for updates
-const SW_VERSION = '1.0.0'
+const SW_VERSION = '1.0.1'
 
 self.addEventListener('install', (event) => {
   console.log(`[SW] Installing version ${SW_VERSION}`)
