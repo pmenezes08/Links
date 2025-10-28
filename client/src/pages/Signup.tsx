@@ -16,6 +16,7 @@ export default function Signup(){
   const [error, setError] = useState<string>('')
   const [debugInfo, setDebugInfo] = useState<string[]>([])
   const [showVerify, setShowVerify] = useState(false)
+  const [pendingEmail, setPendingEmail] = useState('')
   const [showInstallPrompt, setShowInstallPrompt] = useState(false)
   const [isIOS, setIsIOS] = useState(false)
   const [checkingInstall, setCheckingInstall] = useState(true)
@@ -147,6 +148,7 @@ export default function Signup(){
           if (j?.success) {
             const dest = j.redirect || '/premium_dashboard'
             if (j.needs_email_verification) {
+              setPendingEmail(formData.email)
               setShowVerify(true)
             } else {
               navigate(dest)
@@ -429,13 +431,13 @@ export default function Signup(){
             <div className="w-[90%] max-w-md rounded-xl border border-white/10 bg-[#0b0b0b] p-4">
               <div className="text-lg font-semibold mb-1">Verify your email</div>
               <div className="text-sm text-white/80">
-                We sent a verification link to <span className="text-white font-medium">{formData.email || 'your email'}</span>.
+                We sent a verification link to <span className="text-white font-medium">{pendingEmail || formData.email || 'your email'}</span>.
                 Please click the link to verify your account.
               </div>
               <div className="mt-3 flex items-center gap-2 flex-wrap">
                 <button className="px-3 py-2 rounded-md border border-white/10" onClick={async ()=>{
                   try{
-                    const r = await fetch('/resend_verification', { method:'POST', credentials:'include' })
+                    const r = await fetch('/resend_verification_pending', { method:'POST', credentials:'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: pendingEmail || formData.email }) })
                     const j = await r.json().catch(()=>null)
                     if (!j?.success) alert(j?.error || 'Failed to resend')
                     else alert('Verification email sent')
@@ -449,12 +451,8 @@ export default function Signup(){
                 }}>Go to start</button>
                 <button className="ml-auto px-3 py-2 rounded-md bg-[#4db6ac] text-black" onClick={async ()=>{
                   try{
-                    const r = await fetch('/api/profile_me', { credentials:'include' })
-                    if (r.status === 403){ alert('Still unverified. Please click the link in your email.'); return }
-                    const j = await r.json().catch(()=>null)
-                    const verified = !!(j?.profile?.email_verified)
-                    if (verified){ navigate('/premium_dashboard', { replace: true }) }
-                    else { alert('Still unverified. Please check your email and try again.') }
+                    alert('Once verified, please sign in. Returning to login…')
+                    navigate('/login', { replace: true })
                   }catch{ alert('Network error, please try again.') }
                 }}>I've verified</button>
               </div>

@@ -180,6 +180,7 @@ EMAIL_FROM = os.getenv('EMAIL_FROM', 'C-Point <no-reply@c-point.co>')
 VERIFICATION_TOKEN_SECRET = os.getenv('VERIFICATION_TOKEN_SECRET', app.secret_key or 'change-me')
 VERIFICATION_TOKEN_SALT = 'email-verify'
 VERIFICATION_TOKEN_MAX_AGE = int(os.getenv('VERIFICATION_TOKEN_MAX_AGE', '86400'))  # 24h default
+PENDING_SIGNUP_TOKEN_SALT = 'pending-signup'
 
 def _get_serializer():
     return URLSafeTimedSerializer(VERIFICATION_TOKEN_SECRET)
@@ -192,7 +193,7 @@ def _block_unverified_users():
         path = request.path or ''
         if path.startswith('/static') or path.startswith('/assets'):
             return None
-        if path in ('/', '/welcome', '/login', '/login_password', '/signup', '/signup_react', '/verify_email', '/resend_verification', '/logout', '/verify_required', '/onboarding'):
+        if path in ('/', '/welcome', '/login', '/login_password', '/signup', '/signup_react', '/verify_email', '/resend_verification', '/logout', '/verify_required', '/onboarding', '/resend_verification_pending'):
             return None
         # Health and misc
         if path in ('/health', '/vite.svg', '/favicon.svg', '/manifest.webmanifest') or path.startswith('/icons/'):
@@ -227,7 +228,7 @@ def _block_unverified_users():
             verified = bool((row['email_verified'] if hasattr(row, 'keys') else row[0]) if row is not None else False)
         if not verified:
             # Allow only verification related pages
-            if path.startswith('/verify_email') or path == '/resend_verification':
+            if path.startswith('/verify_email') or path == '/resend_verification' or path == '/resend_verification_pending':
                 return None
             # Redirect to verification required page (React onboarding-friendly)
             return redirect(url_for('verify_required'))
@@ -276,6 +277,22 @@ def verify_email_token(token: str):
     except SignatureExpired:
         return None
     except BadSignature:
+        return None
+
+def generate_pending_signup_token(pending_id: int, email: str) -> str:
+    s = _get_serializer()
+    return s.dumps({'pending_id': pending_id, 'email': email}, salt=PENDING_SIGNUP_TOKEN_SALT)
+
+def verify_pending_signup_token(token: str):
+    s = _get_serializer()
+    try:
+        data = s.loads(token, salt=PENDING_SIGNUP_TOKEN_SALT, max_age=VERIFICATION_TOKEN_MAX_AGE)
+        pid = data.get('pending_id')
+        email = data.get('email')
+        if pid is None or not email:
+            return None
+        return {'pending_id': int(pid), 'email': email}
+    except Exception:
         return None
 
 def _send_email_via_resend(to_email: str, subject: str, html: str, text: str = None):
@@ -327,6 +344,35 @@ def ensure_password_reset_table(c):
                         )''')
     except Exception as e:
         logger.error(f"Failed ensuring password_reset_tokens table: {e}")
+
+def ensure_pending_signups_table(c):
+    try:
+        if USE_MYSQL:
+            c.execute('''CREATE TABLE IF NOT EXISTS pending_signups (
+                          id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                          username VARCHAR(191),
+                          email VARCHAR(191) NOT NULL UNIQUE,
+                          password TEXT NOT NULL,
+                          first_name TEXT,
+                          last_name TEXT,
+                          mobile TEXT,
+                          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                          verification_sent_at TEXT
+                        )''')
+        else:
+            c.execute('''CREATE TABLE IF NOT EXISTS pending_signups (
+                          id INTEGER PRIMARY KEY AUTOINCREMENT,
+                          username TEXT,
+                          email TEXT NOT NULL UNIQUE,
+                          password TEXT NOT NULL,
+                          first_name TEXT,
+                          last_name TEXT,
+                          mobile TEXT,
+                          created_at TEXT DEFAULT (datetime('now')),
+                          verification_sent_at TEXT
+                        )''')
+    except Exception as e:
+        logger.warning(f"Could not ensure pending_signups table: {e}")
 
 # Optional: enforce canonical host (e.g., www.c-point.co) to prevent cookie splits
 CANONICAL_HOST = os.getenv('CANONICAL_HOST')  # e.g., 'www.c-point.co'
@@ -741,6 +787,13 @@ def add_missing_tables():
                 conn.commit()
             except Exception as e:
                 logger.warning(f"Could not ensure active_chat_status table: {e}")
+
+            # Ensure pending_signups exists for email-first flow
+            try:
+                ensure_pending_signups_table(c)
+                conn.commit()
+            except Exception as e:
+                logger.warning(f"Could not ensure pending_signups table: {e}")
 
             # Idempotency tokens for post creation (prevent duplicate posts)
             try:
@@ -3006,84 +3059,69 @@ def signup():
                     suffix += 1
                     username = f"{base_username}{suffix}"
             
-            # Hash the password
+            # Hash the password (store in pending)
             hashed_password = generate_password_hash(password)
-            
-            # Insert new user
-            c.execute("""
-                INSERT INTO users (username, email, password, first_name, last_name, age, gender, primary_goal, subscription, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'free', ?)
-            """, (username, email, hashed_password, first_name, last_name, None, '', '', datetime.now().strftime('%m.%d.%y %H:%M')))
-            
-            # Store mobile if provided
-            if mobile:
-                c.execute("UPDATE users SET mobile = ? WHERE username = ?", (mobile, username))
-            
-            conn.commit()
-            
-            # Initialize email verification flags
+
+            # Ensure pending table exists
             try:
-                c.execute("UPDATE users SET email_verified=0, email_verification_sent_at=? WHERE username=?", (datetime.now().isoformat(), username))
+                ensure_pending_signups_table(c)
             except Exception:
                 pass
 
-            
+            # Replace any prior pending signups for this email
+            try:
+                c.execute("DELETE FROM pending_signups WHERE email = ?", (email,))
+            except Exception:
+                pass
 
-            # Log the user in automatically and persist session
-            session.permanent = True
-            session['username'] = username
-            session['user_id'] = c.lastrowid
-            # Show community join prompt on first dashboard visit after signup
-            session['show_join_community_prompt'] = True
-            
-            # Smart response: mobile -> JSON success, desktop -> HTML redirect
+            # Insert pending signup
+            c.execute(
+                """
+                INSERT INTO pending_signups (username, email, password, first_name, last_name, mobile, verification_sent_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (username, email, hashed_password, first_name, last_name, mobile, datetime.now().isoformat())
+            )
+            conn.commit()
+
+            # Send verification email with pending token
+            try:
+                pending_id = c.lastrowid if hasattr(c, 'lastrowid') else None
+                if not pending_id:
+                    try:
+                        c.execute("SELECT id FROM pending_signups WHERE email=? ORDER BY id DESC LIMIT 1", (email,))
+                        r = c.fetchone()
+                        pending_id = r['id'] if hasattr(r,'keys') else (r[0] if r else None)
+                    except Exception:
+                        pending_id = None
+                token = generate_pending_signup_token(int(pending_id or 0), email)
+                verify_url = f"{CANONICAL_SCHEME}://{CANONICAL_HOST}/verify_email?token={token}"
+                subject = "Verify your C-Point email"
+                html = f"""
+                    <div style='font-family:Arial,sans-serif;font-size:14px;color:#111'>
+                      <p>Welcome to C-Point!</p>
+                      <p>Please verify your email by clicking the button below:</p>
+                      <p><a href='{verify_url}' style='display:inline-block;background:#111;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none'>Verify Email</a></p>
+                      <p>Or open this link: <a href='{verify_url}'>{verify_url}</a></p>
+                      <p>This link expires in 24 hours.</p>
+                    </div>
+                """
+                _send_email_via_resend(email, subject, html)
+                try:
+                    c.execute("UPDATE pending_signups SET verification_sent_at=? WHERE id=?", (datetime.now().isoformat(), pending_id))
+                    conn.commit()
+                except Exception:
+                    pass
+            except Exception as e:
+                logger.warning(f"Could not send verification email (pending): {e}")
+
+            # Respond without creating user or logging in
             ua = request.headers.get('User-Agent', '')
             is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
             if is_mobile:
-                # Send verification email asynchronously-best effort
-                try:
-                    token = generate_email_token(email)
-                    verify_url = f"{CANONICAL_SCHEME}://{CANONICAL_HOST}/verify_email?token={token}"
-                    subject = "Verify your C-Point email"
-                    html = f"""
-                        <div style='font-family:Arial,sans-serif;font-size:14px;color:#111'>
-                          <p>Welcome to C-Point!</p>
-                          <p>Please verify your email by clicking the button below:</p>
-                          <p><a href='{verify_url}' style='display:inline-block;background:#111;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none'>Verify Email</a></p>
-                          <p>Or open this link: <a href='{verify_url}'>{verify_url}</a></p>
-                          <p>This link expires in 24 hours.</p>
-                        </div>
-                    """
-                    _send_email_via_resend(email, subject, html)
-                    try:
-                        c.execute("UPDATE users SET email_verification_sent_at=? WHERE username=?", (datetime.now().isoformat(), username))
-                        conn.commit()
-                    except Exception:
-                        pass
-                except Exception as e:
-                    logger.warning(f"Could not send verification email: {e}")
-                return jsonify({'success': True, 'username': username, 'needs_email_verification': True, 'redirect': '/premium_dashboard'})
+                return jsonify({'success': True, 'needs_email_verification': True, 'pending': True})
             else:
-                # Desktop: send email then redirect
-                try:
-                    token = generate_email_token(email)
-                    verify_url = f"{CANONICAL_SCHEME}://{CANONICAL_HOST}/verify_email?token={token}"
-                    subject = "Verify your C-Point email"
-                    html = f"""
-                        <div style='font-family:Arial,sans-serif;font-size:14px;color:#111'>
-                          <p>Welcome to C-Point!</p>
-                          <p>Please verify your email: <a href='{verify_url}'>{verify_url}</a></p>
-                        </div>
-                    """
-                    _send_email_via_resend(email, subject, html)
-                    try:
-                        c.execute("UPDATE users SET email_verification_sent_at=? WHERE username=?", (datetime.now().isoformat(), username))
-                        conn.commit()
-                    except Exception:
-                        pass
-                except Exception as e:
-                    logger.warning(f"Could not send verification email: {e}")
-                return redirect(url_for('dashboard'))  # HTML dashboard
+                return render_template('verification_result.html', success=True, message='We sent a verification link to your email. Please verify to complete sign up.')
             
     except Exception as e:
         logger.error(f"Error during user registration: {str(e)}")
@@ -5801,6 +5839,62 @@ def verify_email():
     token = request.args.get('token', '')
     if not token:
         return render_template('verification_result.html', success=False, message='Invalid verification link')
+    # New flow: finalize pending signup if token matches pending
+    pending = verify_pending_signup_token(token)
+    if pending:
+        try:
+            with get_db_connection() as conn:
+                c = conn.cursor()
+                c.execute("SELECT id, username, email, password, first_name, last_name, mobile FROM pending_signups WHERE id=?", (pending['pending_id'],))
+                row = c.fetchone()
+                if not row:
+                    return render_template('verification_result.html', success=False, message='Pending registration not found or expired')
+                def _val(r, key, idx):
+                    return (r[key] if hasattr(r,'keys') else r[idx])
+                pend_email = _val(row, 'email', 2) or ''
+                if pend_email.lower() != str(pending.get('email','')).lower():
+                    return render_template('verification_result.html', success=False, message='Verification link mismatch')
+                # ensure username unique
+                base_username = (_val(row, 'username', 1) or pend_email.split('@')[0] or 'user')
+                import re as _re
+                base_username = _re.sub(r'[^a-z0-9_]', '', base_username.lower()) or 'user'
+                username = base_username
+                try:
+                    suffix = 1
+                    while True:
+                        c.execute("SELECT 1 FROM users WHERE username=?", (username,))
+                        if not c.fetchone():
+                            break
+                        suffix += 1
+                        username = f"{base_username}{suffix}"
+                except Exception:
+                    pass
+                # if email exists, just mark verified, else insert
+                c.execute("SELECT id FROM users WHERE email=?", (pend_email,))
+                exists = c.fetchone()
+                if exists:
+                    c.execute("UPDATE users SET email_verified=1, email_verified_at=COALESCE(email_verified_at, ?) WHERE email=?", (datetime.now().isoformat(), pend_email))
+                else:
+                    first_name = _val(row, 'first_name', 4) or ''
+                    last_name = _val(row, 'last_name', 5) or ''
+                    password_hash = _val(row, 'password', 3)
+                    mobile = _val(row, 'mobile', 6) or ''
+                    c.execute("""
+                        INSERT INTO users (username, email, password, first_name, last_name, age, gender, primary_goal, subscription, created_at, email_verified, email_verified_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'free', ?, 1, ?)
+                    """, (username, pend_email, password_hash, first_name, last_name, None, '', '', datetime.now().strftime('%m.%d.%y %H:%M'), datetime.now().isoformat()))
+                    if mobile:
+                        c.execute("UPDATE users SET mobile=? WHERE username=?", (mobile, username))
+                # cleanup pending
+                try:
+                    c.execute("DELETE FROM pending_signups WHERE id=?", (pending['pending_id'],))
+                except Exception:
+                    pass
+                conn.commit()
+            return render_template('verification_result.html', success=True, message='Your email has been verified! You can now sign in.')
+        except Exception as e:
+            logger.error(f"verify_email finalize error: {e}")
+            return render_template('verification_result.html', success=False, message='Server error while finalizing registration')
     email = verify_email_token(token)
     if not email:
         return render_template('verification_result.html', success=False, message='Verification link is invalid or expired')
@@ -5856,6 +5950,52 @@ def resend_verification():
             return jsonify({'success': False, 'error': 'Failed to send email'}), 500
     except Exception as e:
         logger.error(f"resend_verification error: {e}")
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
+@app.route('/resend_verification_pending', methods=['POST'])
+def resend_verification_pending():
+    """Resend verification for a pending signup. Accepts email in form or JSON body.
+    Does not require login."""
+    try:
+        email = request.form.get('email') or (request.json or {}).get('email') if request.is_json else None
+        if not email:
+            return jsonify({'success': False, 'error': 'email required'}), 400
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ensure_pending_signups_table(c)
+            c.execute("SELECT id, verification_sent_at FROM pending_signups WHERE email=?", (email,))
+            row = c.fetchone()
+            if not row:
+                return jsonify({'success': False, 'error': 'No pending signup for this email'}), 404
+            pend_id = row['id'] if hasattr(row,'keys') else row[0]
+            sent_at = row['verification_sent_at'] if hasattr(row,'keys') else (row[1] if len(row)>1 else None)
+            # Basic rate limit: 10 minutes
+            if sent_at:
+                try:
+                    last = datetime.fromisoformat(str(sent_at))
+                    if datetime.now() - last < timedelta(minutes=10):
+                        return jsonify({'success': False, 'error': 'Please wait before resending'}), 429
+                except Exception:
+                    pass
+            token = generate_pending_signup_token(int(pend_id), email)
+            verify_url = f"{CANONICAL_SCHEME}://{CANONICAL_HOST}/verify_email?token={token}"
+            subject = "Verify your C-Point email"
+            html = f"""
+                <div style='font-family:Arial,sans-serif;font-size:14px;color:#111'>
+                  <p>Verify your email: <a href='{verify_url}'>{verify_url}</a></p>
+                </div>
+            """
+            ok = _send_email_via_resend(email, subject, html)
+            if ok:
+                try:
+                    c.execute("UPDATE pending_signups SET verification_sent_at=? WHERE id=?", (datetime.now().isoformat(), pend_id))
+                    conn.commit()
+                except Exception:
+                    pass
+                return jsonify({'success': True})
+            return jsonify({'success': False, 'error': 'Failed to send email'}), 500
+    except Exception as e:
+        logger.error(f"resend_verification_pending error: {e}")
         return jsonify({'success': False, 'error': 'Server error'}), 500
 
 @app.route('/account_settings')
