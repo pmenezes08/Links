@@ -1108,7 +1108,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
       </div>
       {/* Inline recent replies (last 1–2) */}
       {!post.poll && Array.isArray(post.replies) && post.replies.length > 0 && (
-        <div className="px-3 pb-2 space-y-2" onClick={(e)=> e.stopPropagation()}>
+        <div className="px-3 pb-2 pt-2 mt-2 border-t border-white/10 space-y-2" onClick={(e)=> e.stopPropagation()}>
           {(() => {
             const ordered = (() => {
               const pair = post.replies.slice(0, 2)
@@ -1153,10 +1153,24 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                       )
                     }
                   })() : null}
-                  <div className="text-[#dfe6e9] whitespace-pre-wrap break-words">{r.content}</div>
+                  {r.content ? (
+                    <div className="text-[#dfe6e9] whitespace-pre-wrap break-words">{r.content}</div>
+                  ) : null}
                   {r.image_path ? (
                     <div className="mt-1">
                       <ImageLoader src={(r.image_path.startsWith('http') || r.image_path.startsWith('/')) ? r.image_path : `/uploads/${r.image_path}`} alt="Reply image" className="max-h-[200px] rounded border border-white/10" />
+                    </div>
+                  ) : null}
+                  {(r as any).audio_path ? (
+                    <div className="mt-1" onClick={(e)=> e.stopPropagation()}>
+                      <audio
+                        controls
+                        className="w-full"
+                        src={(() => { const p = (r as any).audio_path || ''; if (!p) return ''; if (p.startsWith('http') || p.startsWith('/')) return p; return `/uploads/${p}` })()}
+                        onClick={(e)=> e.stopPropagation()}
+                        onPlay={(e)=> e.stopPropagation() as any}
+                        onPause={(e)=> e.stopPropagation() as any}
+                      />
                     </div>
                   ) : null}
 
