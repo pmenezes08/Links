@@ -1814,38 +1814,25 @@ function AudioMessage({ message, audioPath }: { message: Message; audioPath: str
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0
 
   return (
-    <div className="flex items-center gap-2 bg-[#1f3933]/40 rounded-2xl px-3 py-2 border border-[#4db6ac]/20">
-      <button
-        onClick={togglePlay}
-        className="w-8 h-8 rounded-full bg-[#4db6ac] hover:bg-[#45a99c] flex items-center justify-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-        disabled={!!error}
-      >
-        <i className={`fa-solid ${playing ? 'fa-pause' : 'fa-play'} text-white text-xs`} />
-      </button>
-      
-      <div className="flex-1 flex items-center gap-2">
-        <div className="h-1 bg-white/10 rounded-full flex-1 overflow-hidden">
-          <div 
-            className="h-full bg-[#4db6ac]/60 rounded-full transition-all" 
-            style={{ width: `${progress}%` }} 
-          />
+    <div className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2">
+      <div className="flex items-center gap-3">
+        <button
+          onClick={togglePlay}
+          className="w-8 h-8 rounded-full bg-[#4db6ac] hover:bg-[#45a99c] flex items-center justify-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          disabled={!!error}
+        >
+          <i className={`fa-solid ${playing ? 'fa-pause' : 'fa-play'} text-white text-xs`} />
+        </button>
+        <div className="flex-1">
+          <div className="h-1 bg-white/10 rounded-full overflow-hidden">
+            <div className="h-full bg-[#4db6ac]/70 transition-all" style={{ width: `${progress}%` }} />
+          </div>
+          <div className="mt-1 flex items-center justify-between text-[11px] text-white/60">
+            <span>{playing && duration > 0 ? formatDuration(currentTime) : duration > 0 ? formatDuration(duration) : (message.audio_duration_seconds ? formatDuration(message.audio_duration_seconds) : '--:--')}</span>
+            {error ? <span className="text-red-400">{error}</span> : null}
+          </div>
         </div>
-        <span className="text-xs text-white/60 font-mono min-w-[32px]">
-          {playing && duration > 0 
-            ? formatDuration(currentTime) 
-            : message.audio_duration_seconds 
-              ? formatDuration(message.audio_duration_seconds) 
-              : duration > 0 
-                ? formatDuration(duration)
-                : '--:--'
-          }
-        </span>
       </div>
-
-      {error && (
-        <span className="text-xs text-red-400">{error}</span>
-      )}
-
       <audio
         ref={audioRef}
         src={audioPath}
