@@ -514,7 +514,7 @@ export default function CommunityFeed() {
 
       {/* Image preview overlay for feed/replies */}
       {previewImageSrc && (
-        <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-sm flex items-center justify-center" onClick={(e)=> e.currentTarget===e.target && setPreviewImageSrc(null)}>
+        <div className="fixed inset-0 z-[1000] bg-black/90 backdrop-blur-sm flex items-center justify-center" onClick={(e)=> e.currentTarget===e.target && setPreviewImageSrc(null)}>
           <button className="absolute top-3 right-3 w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 text-white flex items-center justify-center" onClick={()=> setPreviewImageSrc(null)} aria-label="Close preview">
             <i className="fa-solid fa-xmark" />
           </button>
