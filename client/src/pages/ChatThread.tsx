@@ -838,490 +838,17 @@ export default function ChatThread(){
     }
   }
 
-  async function startVisualizer(stream: MediaStream){
-    try{
-      console.log('🎤 Starting visualizer...')
-      
-      // Create audio context with mobile compatibility
-      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext
-      if (!AudioContextClass) {
-        console.warn('🎤 AudioContext not supported, skipping visualizer')
-        return
-      }
-      
-      const ctx = new AudioContextClass()
-      console.log('🎤 AudioContext state:', ctx.state)
-      
-      // Resume context if suspended (required on mobile)
-      if (ctx.state === 'suspended') {
-        await ctx.resume()
-        console.log('🎤 AudioContext resumed')
-      }
-      
-      const source = ctx.createMediaStreamSource(stream)
-      const analyser = ctx.createAnalyser()
-      
-      // Mobile-optimized settings - more sensitive for mobile
-      analyser.fftSize = isMobile ? 64 : 256
-      analyser.smoothingTimeConstant = isMobile ? 0.1 : 0.8
-      analyser.minDecibels = isMobile ? -100 : -90
-      analyser.maxDecibels = isMobile ? 0 : -10
-      
-      source.connect(analyser)
-      audioCtxRef.current = ctx
-      analyserRef.current = analyser
-      sourceRef.current = source
-      
-      console.log('🎤 Analyser setup - fftSize:', analyser.fftSize, 'mobile:', isMobile)
-      
-      const bufferLength = analyser.frequencyBinCount
-      const dataArray = new Uint8Array(bufferLength)
-      
-      const updateAudioLevels = () => {
-        if (!analyserRef.current) return
-        
-        analyserRef.current.getByteFrequencyData(dataArray)
-        
-        // Create 25 bars from frequency data
-        const barCount = 25
-        const levels: number[] = []
-        const samplesPerBar = Math.floor(bufferLength / barCount)
-        
-        let maxLevel = 0
-        for (let i = 0; i < barCount; i++) {
-          let sum = 0
-          const start = i * samplesPerBar
-          const end = Math.min(start + samplesPerBar, bufferLength)
-          
-          for (let j = start; j < end; j++) {
-            sum += dataArray[j]
-          }
-          
-          const average = sum / (end - start)
-          // Much higher sensitivity for mobile
-          const sensitivity = isMobile ? 8 : 2
-          const level = Math.min(1, (average / 255) * sensitivity)
-          levels.push(level)
-          maxLevel = Math.max(maxLevel, level)
-        }
-        
-        // Log audio levels periodically for debugging
-        if (Date.now() % 2000 < 100) { // Every ~2 seconds
-          console.log('🎤 Max audio level:', maxLevel.toFixed(3), 'levels sample:', levels.slice(0, 5).map(l => l.toFixed(2)))
-        }
-        
-        setAudioLevels(levels)
-        visRafRef.current = requestAnimationFrame(updateAudioLevels)
-      }
-      
-      updateAudioLevels()
-    }catch(err){
-      console.error('🎤 Visualizer error:', err)
-    }
-  }
+  // startVisualizer removed; shared recorder handles visualizer internally
 
   // resetRecordingState utility not used currently (native fallback disabled)
 
-  // Note: native audio capture fallback currently disabled
-
-  async function startRecording(){
-    try{
-      console.log('🎤 ========== STARTING RECORDING ==========')
-      console.log('🎤 Device info:', {
-        mobile: isMobile,
-        userAgent: navigator.userAgent,
-        platform: navigator.platform,
-        language: navigator.language
-      })
-      
-      // Check browser support
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        alert('Voice messages are not supported in this browser. Please use a modern browser like Chrome, Firefox, or Safari.')
-        return
-      }
-      
-      if (!('MediaRecorder' in window)){
-        alert('Voice recording is not supported in this browser.')
-        return
-      }
-      
-      // For mobile, try to initialize audio context early with user gesture
-      if (isMobile) {
-        try {
-          const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext
-          if (AudioContextClass) {
-            const testCtx = new AudioContextClass()
-            if (testCtx.state === 'suspended') {
-              await testCtx.resume()
-              console.log('🎤 Mobile: Pre-initialized AudioContext')
-            }
-            testCtx.close()
-          }
-        } catch (err) {
-          console.log('🎤 Mobile: Could not pre-initialize AudioContext:', err)
-        }
-      }
-      
-      // Request microphone permission with mobile-optimized constraints
-      console.log('🎤 Requesting microphone permission...')
-      const constraints = {
-        audio: isMobile ? 
-          // Very basic constraints for mobile - just request audio
-          true : 
-          {
-            // Full constraints for desktop
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true,
-            sampleRate: 44100,
-            channelCount: 1
-          }
-      }
-      
-      console.log('🎤 Using constraints:', constraints)
-      
-      const stream = await navigator.mediaDevices.getUserMedia(constraints)
-      streamRef.current = stream
-      console.log('🎤 ✅ Microphone permission granted!')
-      
-      const audioTracks = stream.getAudioTracks()
-      console.log('🎤 Audio tracks count:', audioTracks.length)
-      
-      if (audioTracks.length === 0) {
-        alert('⚠️ No audio tracks available. Please check your microphone.')
-        throw new Error('No audio tracks')
-      }
-      
-      audioTracks.forEach((track, idx) => {
-        console.log(`🎤 Track ${idx}:`, {
-          label: track.label,
-          enabled: track.enabled,
-          readyState: track.readyState,
-          muted: track.muted
-        })
-        
-        // Check if track is muted or disabled
-        if (track.muted) {
-          console.warn('⚠️ WARNING: Audio track is MUTED!')
-        }
-        if (!track.enabled) {
-          console.warn('⚠️ WARNING: Audio track is DISABLED!')
-        }
-        if (track.readyState !== 'live') {
-          console.warn('⚠️ WARNING: Audio track is not live! State:', track.readyState)
-        }
-      })
-      
-      console.log('🎤 Stream active:', stream.active)
-      
-      // Check for mobile-compatible MIME types - prioritize mobile formats
-      let mimeType = ''
-      const supportedTypes = isMobile ? [
-        // Mobile-prioritized formats
-        'audio/mp4',
-        'audio/webm',
-        'audio/wav',
-        'audio/ogg'
-      ] : [
-        // Desktop formats
-        'audio/webm;codecs=opus',
-        'audio/webm',
-        'audio/mp4',
-        'audio/ogg;codecs=opus',
-        'audio/wav'
-      ]
-      
-      for (const type of supportedTypes) {
-        if (MediaRecorder.isTypeSupported(type)) {
-          mimeType = type
-          break
-        }
-      }
-      
-      console.log('🎤 Supported MIME types:', supportedTypes.filter(t => MediaRecorder.isTypeSupported(t)))
-      console.log('🎤 Using MIME type:', mimeType || 'browser default')
-      
-      const options = mimeType ? { mimeType } : {}
-      
-      // Add mobile-specific options
-      if (isMobile && !mimeType) {
-        // Let mobile browser choose the best format
-        console.log('🎤 Mobile device: letting browser choose format')
-      }
-      
-      const mr = new MediaRecorder(stream, options)
-      console.log('🎤 MediaRecorder created with state:', mr.state)
-      chunksRef.current = []
-      stoppedRef.current = false
-      finalizedRef.current = false
-      if (finalizeTimerRef.current) clearTimeout(finalizeTimerRef.current)
-
-      mr.onerror = (evt) => {
-        console.error('🎤 MediaRecorder error:', (evt as any).error || evt)
-      }
-      mr.ondataavailable = (e) => { 
-        console.log('🎤 ⚡ DATA RECEIVED:', e.data.size, 'bytes', 'type:', e.data.type)
-        if (e.data && e.data.size > 0) {
-          chunksRef.current.push(e.data)
-          const totalSize = chunksRef.current.reduce((sum, chunk) => sum + (chunk as Blob).size, 0)
-          console.log('🎤 ✅ Chunk saved! Total:', chunksRef.current.length, 'chunks,', totalSize, 'bytes')
-        } else {
-          console.error('🎤 ❌ EMPTY DATA CHUNK - NO AUDIO CAPTURED!')
-          console.error('🎤 This means your microphone is not capturing sound.')
-        }
-        // If we've already requested stop, schedule a short finalize after last chunk
-        if (stoppedRef.current) {
-          if (finalizeTimerRef.current) clearTimeout(finalizeTimerRef.current)
-          finalizeTimerRef.current = setTimeout(() => {
-            try { (mr.state === 'inactive') && finalizeRecording() } catch { finalizeRecording() }
-          }, 150)
-        }
-      }
-      const finalizeRecording = async () => {
-        if (finalizedRef.current) return
-        console.log('🎤 Recording stopped, processing audio...')
-        console.log('🎤 Chunks collected:', chunksRef.current.length)
-        // If chunks have not arrived yet, retry a couple of times
-        if (chunksRef.current.length === 0 && stoppedRef.current) {
-          if (finalizeAttemptRef.current < 2) {
-            finalizeAttemptRef.current += 1
-            console.log('🎤 No chunks yet, retrying finalize in 400ms (attempt', finalizeAttemptRef.current, ')')
-            if (finalizeTimerRef.current) clearTimeout(finalizeTimerRef.current)
-            finalizeTimerRef.current = setTimeout(finalizeRecording, 400)
-            return
-          }
-        }
-        try{
-          // On some iOS/Safari builds, mimeType may be empty; fall back to common types
-          const preferredType = mr.mimeType || (isMobile ? 'audio/mp4' : 'audio/webm')
-          let blob = new Blob(chunksRef.current, { type: preferredType })
-
-          // iOS Safari sometimes produces empty-type blobs even with data; try rewrap
-          if (blob.size > 0 && (!blob.type || blob.type === '')) {
-            try {
-              blob = new Blob([blob], { type: preferredType })
-            } catch {}
-          }
-          console.log('🎤 Audio blob created, size:', blob.size, 'duration:', Math.round(recordMs/1000))
-          
-          // Check minimum recording duration (especially important for mobile)
-          const timerDuration = Math.round(recordMs/1000)
-          console.log('🎤 Timer duration:', timerDuration, 'seconds, blob size:', blob.size)
-          
-          if (blob.size === 0) {
-            console.error('🎤 Empty blob after stop — treating as failure')
-            // Ensure UI resets so mic button remains responsive
-            setRecording(false)
-            setRecorder(null)
-            setRecordMs(0)
-            setAudioLevels(Array(25).fill(0))
-            return
-          }
-          
-          // For mobile, accept any non-zero blob (some browsers produce small initial chunks)
-          if (!isMobile) {
-            // Desktop: keep normal validation
-            if (timerDuration < 1) {
-              console.warn('🎤 Desktop: Recording too short:', timerDuration, 'seconds')
-              alert('Recording is too short. Please record for at least 1 second.')
-              return
-            }
-          }
-          
-          // Use actual duration or fallback to timer duration
-          let actualDuration = timerDuration
-          
-          // Try to get actual duration from the blob
-          try {
-            const tempUrl = URL.createObjectURL(blob)
-            const tempAudio = new Audio(tempUrl)
-            tempAudio.addEventListener('loadedmetadata', () => {
-              if (tempAudio.duration && isFinite(tempAudio.duration)) {
-                const blobDuration = Math.round(tempAudio.duration)
-                console.log('🎤 Actual blob duration:', blobDuration, 'vs timer:', timerDuration)
-                if (blobDuration > timerDuration) {
-                  actualDuration = blobDuration
-                  console.log('🎤 Using blob duration instead of timer duration')
-                }
-              }
-              URL.revokeObjectURL(tempUrl)
-            })
-          } catch (err) {
-            console.log('🎤 Could not get blob duration, using timer duration')
-          }
-          
-          // Don't auto-send, show preview instead
-          const url = URL.createObjectURL(blob)
-          console.log('🎤 Setting recording preview - final duration:', actualDuration, 'blob size:', blob.size, 'blob type:', blob.type)
-          setRecordingPreview({ blob, url, duration: actualDuration })
-          finalizedRef.current = true
-        } finally {
-          console.log('🎤 🧽 Cleaning up recording resources...')
-          setRecording(false)
-          setRecorder(null)
-          setRecordMs(0)
-          setAudioLevels(Array(25).fill(0))
-          
-          // Stop all media tracks
-          try {
-            if (streamRef.current) {
-              streamRef.current.getTracks().forEach(track => {
-                console.log('🎤 Stopping track:', track.label)
-                track.stop()
-              })
-              streamRef.current = null
-            }
-          } catch(err) {
-            console.error('🎤 Error stopping tracks:', err)
-          }
-          
-          // Clear timers and animations
-          if (recordTimerRef.current) clearInterval(recordTimerRef.current)
-          if (visRafRef.current) cancelAnimationFrame(visRafRef.current)
-          
-          // Disconnect and close audio nodes
-          try{ analyserRef.current && analyserRef.current.disconnect() }catch{}
-          try{ sourceRef.current && sourceRef.current.disconnect() }catch{}
-          try{ 
-            if (audioCtxRef.current) {
-              audioCtxRef.current.close()
-              console.log('🎤 AudioContext closed')
-            }
-          }catch{}
-          
-          analyserRef.current = null
-          sourceRef.current = null
-          audioCtxRef.current = null
-          
-          console.log('🎤 ✅ Cleanup complete - mic should be available for next recording')
-        }
-      }
-      mr.onstop = () => {
-        // Give a tiny delay to allow the final dataavailable to fire
-        stoppedRef.current = true
-        if (finalizeTimerRef.current) clearTimeout(finalizeTimerRef.current)
-        finalizeAttemptRef.current = 0
-        finalizeTimerRef.current = setTimeout(finalizeRecording, 400)
-      }
-      // Start recording with mobile-specific handling
-      try {
-        // Detect iOS device (any browser)
-        const ua = navigator.userAgent
-        const isIOSDevice = /iPad|iPhone|iPod/.test(ua) || ((navigator.platform === 'MacIntel') && (navigator.maxTouchPoints || 0) > 1)
-
-        if (isMobile && isIOSDevice) {
-          // iOS: avoid timeslice to ensure data arrives only on stop
-          mr.start()
-          console.log('🎤 iOS: Starting without timeslice')
-        } else if (isMobile) {
-          // Other mobile browsers: use short timeslice to flush data
-          mr.start(500)
-          console.log('🎤 Mobile: Starting with 500ms intervals')
-        } else {
-          mr.start(1000) // 1s intervals for desktop
-          console.log('🎤 Desktop: Starting with 1s intervals')
-        }
-        
-        setRecorder(mr)
-        setRecording(true)
-        recordStartRef.current = Date.now()
-        setRecordMs(0)
-        if (recordTimerRef.current) clearInterval(recordTimerRef.current)
-        recordTimerRef.current = setInterval(()=> setRecordMs(Date.now() - recordStartRef.current), 200)
-        // Safety auto-stop at 60s
-        setTimeout(()=> { try{ mr.state !== 'inactive' && mr.stop() }catch{} }, 60000)
-        
-        // Start visualizer
-        startVisualizer(stream)
-        console.log('🎤 Recording started successfully, state:', mr.state)
-        
-        // Skip mid-recording fallback checks; many mobile browsers only flush data on stop
-        
-      } catch (startError) {
-        console.error('🎤 Failed to start recording:', startError)
-        throw startError
-      }
-    }catch(err){
-      console.error('🎤 Recording error:', err)
-      const error = err as Error
-      
-      // Clean up any resources that might have been allocated
-      try {
-        if (streamRef.current) {
-          streamRef.current.getTracks().forEach(track => track.stop())
-          streamRef.current = null
-        }
-        if (audioCtxRef.current) {
-          audioCtxRef.current.close()
-          audioCtxRef.current = null
-        }
-      } catch (cleanupErr) {
-        console.error('🎤 Cleanup error:', cleanupErr)
-      }
-      
-      // Reset UI state
-      setRecording(false)
-      setRecorder(null)
-      
-      // Show the permission guide for denied permissions
-      if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
-        console.log('🎤 Permission denied, showing guide')
-        setShowPermissionGuide(true)
-      } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
-        alert('No microphone found. Please check your device settings and ensure microphone access is enabled.')
-      } else if (error.name === 'NotSupportedError') {
-        alert('Voice recording is not supported on this device or browser. Please try using a different browser.')
-      } else if (error.name === 'AbortError') {
-        console.log('🎤 Access aborted, showing guide')
-        setShowPermissionGuide(true)
-      } else {
-        alert('Could not access microphone: ' + error.message + '. This may be due to browser security restrictions on mobile devices.')
-      }
-    }
-  }
-
-  function stopRecording(){ 
-    console.log('🎤 Stopping recording and sending...', 'mobile:', isMobile, 'chunks so far:', chunksRef.current.length)
-    
-    try{ 
-      if (recorder && recorder.state !== 'inactive') {
-        // For mobile, request data before stopping to ensure we get everything
-        if (isMobile) {
-          console.log('🎤 Mobile: Requesting final data before stop')
-          stoppedRef.current = true
-          recorder.requestData()
-          // Small delay to allow data collection
-          setTimeout(() => {
-            if (recorder.state !== 'inactive') {
-              recorder.stop()
-            }
-          }, 120)
-        } else {
-          recorder.stop()
-        }
-      }
-    }catch(e){ 
-      console.error('🎤 Error stopping recorder:', e)
-    } 
-    // Always schedule a UI reset safeguard in case onstop doesn't arrive on mobile
-    setTimeout(() => {
-      try {
-        setRecording(false)
-        setRecorder(null)
-      } catch {}
-    }, 800)
-  }
+  // Note: native audio capture fallback removed; using shared recorder
   
   
   function sendRecordingPreview(){
-    if (!recordingPreview) {
-      console.log('🎤 No recording preview to send')
-      return
-    }
-    console.log('🎤 Sending recording preview, duration:', recordingPreview.duration, 'blob size:', recordingPreview.blob.size)
-    uploadAudioBlobWithDuration(recordingPreview.blob, recordingPreview.duration)
-    // Clean up preview (URL will be revoked after upload in uploadAudioBlobWithDuration)
-    setRecordingPreview(null)
+    if (!recordingPreview) return
+    uploadAudioBlobWithDuration(recordingPreview.blob, (recordingPreview as any).duration || Math.round((recordMs||0)/1000))
+    cancelRecordingPreview()
   }
   
   async function uploadAudioBlobWithDuration(blob: Blob, durationSeconds: number){
@@ -1378,12 +905,7 @@ export default function ChatThread(){
     }
   }
   
-  function cancelRecordingPreview(){
-    if (recordingPreview) {
-      URL.revokeObjectURL(recordingPreview.url)
-      setRecordingPreview(null)
-    }
-  }
+  // cancelRecordingPreview comes from shared hook
 
   function handleAudioFileChange(event: React.ChangeEvent<HTMLInputElement>){
     const file = event.target.files?.[0]
@@ -1400,7 +922,7 @@ export default function ChatThread(){
       
       if (permissionStatus.state === 'granted') {
         // Permission already granted, start recording directly
-        startRecording()
+        startVoiceRecording()
       } else if (permissionStatus.state === 'denied') {
         // Permission denied, show help modal
         setShowMicPermissionModal(true)
@@ -1411,14 +933,14 @@ export default function ChatThread(){
     } catch (error) {
       // Fallback for browsers that don't support permissions API
       console.log('🎤 Permissions API not supported, starting recording')
-      startRecording()
+      startVoiceRecording()
     }
   }
 
   function requestMicrophoneAccess() {
     setShowMicPermissionModal(false)
     // Start recording which will trigger the browser's permission dialog
-    startRecording()
+    startVoiceRecording()
   }
 
   function handleDeleteMessage(messageId: number | string, messageData: Message) {
@@ -1884,19 +1406,9 @@ export default function ChatThread(){
               <div className="flex-1 flex items-center px-4 py-2.5 gap-3 pr-16">
                 <div className="flex items-center gap-3 flex-1">
                   <span className="inline-block w-2 h-2 bg-[#4db6ac] rounded-full animate-pulse" />
-                  <div className="flex-1 h-6 bg-gray-800/80 rounded-full flex items-center justify-center px-2 gap-0.5 relative overflow-hidden">
-                    {/* Audio-reactive sound bars */}
-                    {audioLevels.map((level, i) => (
-                      <div 
-                        key={i}
-                        className="w-0.5 bg-gray-400 rounded-full transition-all duration-100"
-                        style={{
-                          height: `${4 + level * 16}px`,
-                          opacity: 0.3 + level * 0.7,
-                          backgroundColor: level > 0.1 ? '#9ca3af' : '#6b7280'
-                        }}
-                      />
-                    ))}
+                  {/* Unified level bar (simple) */}
+                  <div className="flex-1 h-2 bg-white/10 rounded overflow-hidden">
+                    <div className="h-full bg-[#7fe7df] transition-all" style={{ width: `${Math.max(6, Math.min(96, (level||0)*100))}%` }} />
                   </div>
                   <div className="text-xs text-white/70 ml-2">
                     Recording...
@@ -1945,7 +1457,7 @@ export default function ChatThread(){
               {MIC_ENABLED && recording ? (
                 <button
                   className="w-9 h-9 rounded-full flex items-center justify-center bg-[#4db6ac] text-white hover:bg-[#45a99c] active:scale-95 transition-all duration-200"
-                  onClick={stopRecording}
+                  onClick={stopVoiceRecording}
                   aria-label="Stop recording"
                   title="Stop recording"
                 >
