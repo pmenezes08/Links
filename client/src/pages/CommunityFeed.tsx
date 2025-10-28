@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import Avatar from '../components/Avatar'
 import MentionTextarea from '../components/MentionTextarea'
 import { formatSmartTime } from '../utils/time'
+import ImageLoader from '../components/ImageLoader'
 import ZoomableImage from '../components/ZoomableImage'
 import { useHeader } from '../contexts/HeaderContext'
 import VideoEmbed from '../components/VideoEmbed'
@@ -40,6 +41,7 @@ export default function CommunityFeed() {
   const scrollRef = useRef<HTMLDivElement|null>(null)
   const [refreshHint, setRefreshHint] = useState(false)
   const [pullPx, setPullPx] = useState(0)
+  const [previewImageSrc, setPreviewImageSrc] = useState<string|null>(null)
   // Voters modal state
   const [viewingVotersPollId, setViewingVotersPollId] = useState<number|null>(null)
   const [votersLoading, setVotersLoading] = useState(false)
@@ -497,6 +499,7 @@ export default function CommunityFeed() {
                 onOpenVoters={openVoters}
                 onAddReply={onAddReply}
                 onOpenReactions={() => openReactors(p.id)}
+                onPreviewImage={(src)=> setPreviewImageSrc(src)}
               />
               {/* Dark overlay for all posts except first one during reaction highlight */}
               {highlightStep === 'reaction' && idx !== 0 && (
@@ -508,6 +511,18 @@ export default function CommunityFeed() {
       </div>
 
       {/* Members modal removed: dedicated page now */}
+
+      {/* Image preview overlay for feed/replies */}
+      {previewImageSrc && (
+        <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-sm flex items-center justify-center" onClick={(e)=> e.currentTarget===e.target && setPreviewImageSrc(null)}>
+          <button className="absolute top-3 right-3 w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 text-white flex items-center justify-center" onClick={()=> setPreviewImageSrc(null)} aria-label="Close preview">
+            <i className="fa-solid fa-xmark" />
+          </button>
+          <div className="w-[94vw] h-[86vh] max-w-4xl">
+            <ZoomableImage src={previewImageSrc} alt="preview" className="w-full h-full" onRequestClose={()=> setPreviewImageSrc(null)} />
+          </div>
+        </div>
+      )}
 
       {/* Announcements modal */}
       {showAnnouncements && (
@@ -783,7 +798,7 @@ export default function CommunityFeed() {
 
 // Ad components removed
 
-function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onToggleReaction, onPollVote, onPollClick, onOpenVoters, communityId, navigate, onAddReply, onOpenReactions }: { post: Post & { display_timestamp?: string }, idx: number, currentUser: string, isAdmin: boolean, highlightStep: 'reaction' | 'post' | null, onOpen: ()=>void, onToggleReaction: (postId:number, reaction:string)=>void, onPollVote?: (postId:number, pollId:number, optionId:number)=>void, onPollClick?: ()=>void, onOpenVoters?: (pollId:number)=>void, communityId?: string, navigate?: any, onAddReply?: (postId:number, reply: Reply)=>void, onOpenReactions?: ()=>void }) {
+function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onToggleReaction, onPollVote, onPollClick, onOpenVoters, communityId, navigate, onAddReply, onOpenReactions, onPreviewImage }: { post: Post & { display_timestamp?: string }, idx: number, currentUser: string, isAdmin: boolean, highlightStep: 'reaction' | 'post' | null, onOpen: ()=>void, onToggleReaction: (postId:number, reaction:string)=>void, onPollVote?: (postId:number, pollId:number, optionId:number)=>void, onPollClick?: ()=>void, onOpenVoters?: (pollId:number)=>void, communityId?: string, navigate?: any, onAddReply?: (postId:number, reply: Reply)=>void, onOpenReactions?: ()=>void, onPreviewImage?: (src:string)=>void }) {
   const cardRef = useRef<HTMLDivElement|null>(null)
   const [isEditing, setIsEditing] = useState(false)
   const [editText, setEditText] = useState(post.content)
@@ -962,19 +977,23 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
         )}
         {post.image_path ? (
           <div className="px-3">
-            <div className="w-full max-h-[420px] rounded border border-white/10 overflow-hidden bg-black">
-              <ZoomableImage
-                src={(() => {
-                  const p = post.image_path
-                  if (!p) return ''
-                  if (p.startsWith('http')) return p
-                  if (p.startsWith('/uploads') || p.startsWith('/static')) return p
-                  return p.startsWith('uploads') ? `/${p}` : `/uploads/${p}`
-                })()}
-                alt="Post image"
-                className="h-[360px] md:h-[420px]"
-              />
-            </div>
+            {(() => {
+              const computed = (() => {
+                const p = post.image_path as string
+                if (!p) return ''
+                if (p.startsWith('http')) return p
+                if (p.startsWith('/uploads') || p.startsWith('/static')) return p
+                return p.startsWith('uploads') ? `/${p}` : `/uploads/${p}`
+              })()
+              return (
+                <ImageLoader
+                  src={computed}
+                  alt="Post image"
+                  className="block mx-auto max-w-full max-h-[360px] rounded border border-white/10 cursor-zoom-in"
+                  onClick={() => onPreviewImage && onPreviewImage(computed)}
+                />
+              )
+            })()}
           </div>
         ) : null}
         {post.audio_path ? (
@@ -1162,13 +1181,17 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                   ) : null}
                   {r.image_path ? (
                     <div className="mt-1">
-                      <div className="w-full max-h-[260px] rounded border border-white/10 overflow-hidden">
-                        <ZoomableImage 
-                          src={(r.image_path.startsWith('http') || r.image_path.startsWith('/')) ? r.image_path : `/uploads/${r.image_path}`} 
-                          alt="Reply image" 
-                          className="h-[220px] md:h-[260px]"
-                        />
-                      </div>
+                      {(() => {
+                        const replySrc = (r.image_path && (r.image_path.startsWith('http') || r.image_path.startsWith('/')) ? r.image_path : `/uploads/${r.image_path}`) as string
+                        return (
+                          <ImageLoader 
+                            src={replySrc}
+                            alt="Reply image" 
+                            className="max-h-[200px] rounded border border-white/10 cursor-zoom-in"
+                            onClick={() => onPreviewImage && onPreviewImage(replySrc)}
+                          />
+                        )
+                      })()}
                     </div>
                   ) : null}
                   {(r as any).audio_path ? (
