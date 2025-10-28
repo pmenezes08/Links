@@ -618,12 +618,12 @@ export default function PostDetail(){
               ) : null}
             {/* Recording visualizer and timer */}
             {recording && (
-              <div className="hidden sm:flex items-center gap-3 mr-auto">
-                <div className="text-xs text-[#9fb0b5]">{Math.min(60, Math.round((recordMs||0)/1000))}s</div>
-                <div className="h-2 w-32 bg-white/5 rounded overflow-hidden">
+              <div className="flex items-center gap-2 mr-auto flex-1 min-w-0">
+                <div className="text-xs text-[#9fb0b5] whitespace-nowrap">{Math.min(60, Math.round((recordMs||0)/1000))}s</div>
+                <div className="h-2 w-full bg-white/5 rounded overflow-hidden">
                   <div className="h-full bg-[#4db6ac] transition-all" style={{ width: `${Math.min(100, ((recordMs||0)/600) )}%` }} />
                 </div>
-                <div className="h-6 w-24 bg-white/5 rounded flex items-center">
+                <div className="h-6 w-20 bg-white/5 rounded hidden xs:flex items-center">
                   <div className="h-2 bg-[#7fe7df] rounded transition-all" style={{ width: `${Math.max(6, Math.min(96, level*100))}%`, marginLeft: '2%' }} />
                 </div>
               </div>
