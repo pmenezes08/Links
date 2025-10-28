@@ -142,6 +142,10 @@ export default function ZoomableImage({ src, alt = 'image', className = '', maxS
   // Pointer handlers for pan + pinch
   const onPointerDown = (e: React.PointerEvent) => {
     e.stopPropagation()
+    // Prevent default to stop browser zoom/scroll interference
+    if (e.pointerType === 'touch') {
+      e.preventDefault()
+    }
     ;(e.target as HTMLElement).setPointerCapture?.(e.pointerId)
     activePointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
 
@@ -163,6 +167,12 @@ export default function ZoomableImage({ src, alt = 'image', className = '', maxS
   const onPointerMove = (e: React.PointerEvent) => {
     e.stopPropagation()
     if (!activePointers.current.has(e.pointerId)) return
+    
+    // Prevent default for touch to avoid browser interference
+    if (e.pointerType === 'touch' && activePointers.current.size >= 2) {
+      e.preventDefault()
+    }
+    
     activePointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
 
     if (activePointers.current.size === 2) {
