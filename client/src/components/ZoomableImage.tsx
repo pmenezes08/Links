@@ -282,7 +282,6 @@ export default function ZoomableImage({ src, alt = 'image', className = '', maxS
   const computedStyle: React.CSSProperties = {
     transform: `translate3d(${translate.x}px, ${translate.y}px, 0) scale(${scale})`,
     transition: isPanning || activePointers.current.size > 0 ? 'none' : 'transform 0.12s ease-out',
-    touchAction: 'none' as any,
     cursor: scale > minScale ? 'grab' : 'zoom-in',
   }
 
@@ -290,6 +289,7 @@ export default function ZoomableImage({ src, alt = 'image', className = '', maxS
     <div
       ref={containerRef}
       className={`relative w-full h-full overflow-hidden select-none ${className || ''}`}
+      style={{ touchAction: 'none' }}
       onWheel={handleWheel}
       onDoubleClick={handleDoubleClick}
       onClick={(e)=> e.stopPropagation()}
@@ -297,9 +297,6 @@ export default function ZoomableImage({ src, alt = 'image', className = '', maxS
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUpOrCancel}
       onPointerCancel={onPointerUpOrCancel}
-      onTouchStart={(e) => { if (e.touches.length===2){ e.preventDefault(); const a=e.touches[0], b=e.touches[1]; pinchStartDistance.current = Math.hypot(b.clientX-a.clientX, b.clientY-a.clientY); pinchStartScale.current = scale } }}
-      onTouchMove={(e) => { if (e.touches.length===2 && pinchStartDistance.current){ e.preventDefault(); const a=e.touches[0], b=e.touches[1]; const dist=Math.hypot(b.clientX - a.clientX, b.clientY - a.clientY); const factor=dist/(pinchStartDistance.current||1); const nextScale=clamp(pinchStartScale.current*factor, minScale, maxScale); const rect=containerRef.current?.getBoundingClientRect(); if(rect){ const cx=((a.clientX+b.clientX)/2 - rect.left - rect.width/2); const cy=((a.clientY+b.clientY)/2 - rect.top - rect.height/2); const scaleRatio=nextScale/scale; const nextX=cx - (cx - translate.x)*scaleRatio; const nextY=cy - (cy - translate.y)*scaleRatio; const {maxX,maxY}=getBounds(nextScale); setTranslate({ x: clamp(nextX, -maxX, maxX), y: clamp(nextY, -maxY, maxY) }) } setScale(nextScale) } }}
-      onTouchEnd={(e)=> { if (e.touches.length<2) { pinchStartDistance.current=null } }}
       role="img"
       aria-label={alt}
     >
