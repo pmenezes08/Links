@@ -974,8 +974,15 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
           />
         ) : null}
         {post.audio_path ? (
-          <div className="px-3">
-            <audio controls className="w-full" src={(() => { const p = post.audio_path || ''; if (!p) return ''; if (p.startsWith('http')) return p; if (p.startsWith('/uploads')) return p; return p.startsWith('uploads') ? `/${p}` : `/uploads/${p}` })()} />
+          <div className="px-3" onClick={(e)=> { e.stopPropagation(); }}>
+            <audio 
+              controls 
+              className="w-full" 
+              src={(() => { const p = post.audio_path || ''; if (!p) return ''; if (p.startsWith('http')) return p; if (p.startsWith('/uploads')) return p; return p.startsWith('uploads') ? `/${p}` : `/uploads/${p}` })()}
+              onClick={(e)=> e.stopPropagation()}
+              onPlay={(e)=> e.stopPropagation() as any}
+              onPause={(e)=> e.stopPropagation() as any}
+            />
           </div>
         ) : null}
         {/* Poll display */}
