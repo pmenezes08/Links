@@ -1659,46 +1659,22 @@ export default function ChatThread(){
 
       {/* Voice message preview modal */}
       {recordingPreview && (
-        <div className="fixed inset-0 bg-black/90 z-[9999] flex items-center justify-center p-4">
-          <div className="bg-[#1a1a1a] rounded-2xl border border-white/20 p-6 max-w-sm w-full mx-4">
-            {/* Header */}
-            <div className="text-center mb-6">
-              <div className="w-16 h-16 bg-[#4db6ac]/20 rounded-full flex items-center justify-center mx-auto mb-3">
-                <i className="fa-solid fa-microphone text-[#4db6ac] text-2xl" />
-              </div>
-              <h3 className="text-white text-lg font-medium">Voice Message</h3>
-              <p className="text-white/60 text-sm">Duration: {recordingPreview.duration}s</p>
+        <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur flex items-center justify-center" onClick={(e)=> e.currentTarget===e.target && cancelRecordingPreview()}>
+          <div className="w-[92%] max-w-[480px] rounded-2xl border border-white/10 bg-[#0b0b0b] p-4 shadow-[0_0_40px_rgba(77,182,172,0.12)]">
+            <div className="flex items-center justify-between mb-3">
+              <div className="font-semibold text-white">Preview voice message</div>
+              <button className="px-2 py-1 rounded-full border border-white/10 text-white/70 hover:text-white" onClick={cancelRecordingPreview} aria-label="Close">✕</button>
             </div>
-
-            {/* Audio player */}
-            <div className="mb-6">
-              <audio 
-                controls 
-                src={recordingPreview.url}
-                className="w-full"
-                style={{
-                  background: '#2a2a2a',
-                  borderRadius: '8px',
-                  outline: 'none'
-                }}
-              />
+            <div className="mb-3 text-sm text-white/70">Duration: {Math.min(60, (recordingPreview as any).duration || Math.round((recordMs||0)/1000))}s</div>
+            <div className="mb-4">
+              <audio controls src={recordingPreview.url} className="w-full" />
             </div>
-
-            {/* Action buttons */}
-            <div className="flex gap-3">
-              <button
-                onClick={cancelRecordingPreview}
-                className="flex-1 px-4 py-3 bg-red-600/20 text-red-400 border border-red-600/30 rounded-xl hover:bg-red-600/30 transition-colors font-medium"
-              >
-                <i className="fa-solid fa-trash mr-2" />
-                Delete
+            <div className="flex items-center justify-end gap-2">
+              <button onClick={cancelRecordingPreview} className="px-3 py-2 rounded-lg border border-white/10 text-white/70 hover:bg-white/5">
+                <i className="fa-regular fa-trash-can mr-2" />Discard
               </button>
-              <button
-                onClick={sendRecordingPreview}
-                className="flex-1 px-4 py-3 bg-[#4db6ac] text-black rounded-xl hover:bg-[#45a99c] transition-colors font-medium"
-              >
-                <i className="fa-solid fa-paper-plane mr-2" />
-                Send
+              <button onClick={sendRecordingPreview} className="px-4 py-2 rounded-lg bg-[#4db6ac] text-black hover:brightness-110">
+                <i className="fa-solid fa-paper-plane mr-2" />Send
               </button>
             </div>
           </div>
