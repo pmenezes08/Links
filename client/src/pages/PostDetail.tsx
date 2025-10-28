@@ -106,7 +106,7 @@ export default function PostDetail(){
   const [currentUser, setCurrentUser] = useState<string | null>(null)
   const [previewSrc, setPreviewSrc] = useState<string | null>(null)
   const [submittingReply, setSubmittingReply] = useState(false)
-  const { recording, preview: replyPreview, start: startRec, stop: stopRec, clearPreview: clearReplyPreview } = useAudioRecorder()
+  const { recording, recordMs, preview: replyPreview, start: startRec, stop: stopRec, clearPreview: clearReplyPreview, level } = useAudioRecorder() as any
   const replyTokenRef = useRef<string>(`${Date.now()}_${Math.random().toString(36).slice(2)}`)
   const [inlineSending, setInlineSending] = useState<Record<number, boolean>>({})
   
@@ -616,15 +616,18 @@ export default function PostDetail(){
                   setContent(content.replace(urlText, replacement))
                 }}>Link name</button>
               ) : null}
-            {/* Mic button for main reply composer */}
-            <button
-              type="button"
-              className={`w-10 h-10 rounded-full grid place-items-center ${recording ? 'text-red-400' : 'text-[#4db6ac]'} hover:bg-white/10`}
-              aria-label="Record audio"
-              onClick={()=> recording ? stopRec() : startRec()}
-            >
-              <i className="fa-solid fa-microphone text-xl" />
-            </button>
+            {/* Recording visualizer and timer */}
+            {recording && (
+              <div className="hidden sm:flex items-center gap-3 mr-auto">
+                <div className="text-xs text-[#9fb0b5]">{Math.min(60, Math.round((recordMs||0)/1000))}s</div>
+                <div className="h-2 w-32 bg-white/5 rounded overflow-hidden">
+                  <div className="h-full bg-[#4db6ac] transition-all" style={{ width: `${Math.min(100, ((recordMs||0)/600) )}%` }} />
+                </div>
+                <div className="h-6 w-24 bg-white/5 rounded flex items-center">
+                  <div className="h-2 bg-[#7fe7df] rounded transition-all" style={{ width: `${Math.max(6, Math.min(96, level*100))}%`, marginLeft: '2%' }} />
+                </div>
+              </div>
+            )}
             <button
               className="px-2.5 py-1.5 rounded-full bg-[#4db6ac] text-white border border-[#4db6ac] hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed"
               onClick={()=> submitReply()}

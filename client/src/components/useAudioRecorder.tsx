@@ -14,6 +14,14 @@ export function useAudioRecorder() {
   const finalizeTimerRef = useRef<any>(null)
   const stoppedRef = useRef(false)
   const finalizeAttemptRef = useRef(0)
+  const stopTimeoutRef = useRef<any>(null)
+
+  // Simple live level meter using WebAudio analyser
+  const audioCtxRef = useRef<AudioContext|null>(null)
+  const analyserRef = useRef<AnalyserNode|null>(null)
+  const sourceRef = useRef<MediaStreamAudioSourceNode|null>(null)
+  const visRafRef = useRef<number| null>(null)
+  const [level, setLevel] = useState(0) // 0..1
 
   const isMobile = (() => {
     try {
@@ -34,6 +42,7 @@ export function useAudioRecorder() {
   const clearTimers = () => {
     if (recordTimerRef.current) clearInterval(recordTimerRef.current)
     if (finalizeTimerRef.current) clearTimeout(finalizeTimerRef.current)
+    if (stopTimeoutRef.current) clearTimeout(stopTimeoutRef.current)
   }
 
   const resetState = () => {
@@ -44,6 +53,16 @@ export function useAudioRecorder() {
     stoppedRef.current = false
     finalizeAttemptRef.current = 0
     clearTimers()
+    setLevel(0)
+    try {
+      if (visRafRef.current) cancelAnimationFrame(visRafRef.current)
+      if (analyserRef.current) analyserRef.current.disconnect()
+      if (sourceRef.current) sourceRef.current.disconnect()
+      if (audioCtxRef.current) audioCtxRef.current.close()
+    } catch {}
+    analyserRef.current = null
+    sourceRef.current = null
+    audioCtxRef.current = null
   }
 
   const finalize = useCallback(() => {
@@ -104,6 +123,36 @@ export function useAudioRecorder() {
       chunksRef.current = []
       stoppedRef.current = false
       finalizeAttemptRef.current = 0
+      // Visualizer setup
+      try {
+        const AudioContextClass: any = (window as any).AudioContext || (window as any).webkitAudioContext
+        if (AudioContextClass) {
+          const ctx = new AudioContextClass()
+          const src = ctx.createMediaStreamSource(stream)
+          const analyser = ctx.createAnalyser()
+          analyser.fftSize = 256
+          analyser.minDecibels = -80
+          analyser.maxDecibels = -10
+          analyser.smoothingTimeConstant = 0.85
+          src.connect(analyser)
+          audioCtxRef.current = ctx
+          sourceRef.current = src
+          analyserRef.current = analyser
+          const dataArray = new Uint8Array(analyser.frequencyBinCount)
+          const tick = () => {
+            try {
+              analyser.getByteFrequencyData(dataArray)
+              let sum = 0
+              for (let i = 0; i < dataArray.length; i++) sum += dataArray[i]
+              const avg = sum / dataArray.length // 0..255
+              const lvl = Math.min(1, Math.max(0, avg / 255))
+              setLevel(lvl)
+            } catch {}
+            visRafRef.current = requestAnimationFrame(tick)
+          }
+          visRafRef.current = requestAnimationFrame(tick)
+        }
+      } catch {}
       mr.ondataavailable = (e: BlobEvent) => {
         if (e.data && e.data.size > 0) {
           chunksRef.current.push(e.data)
@@ -128,6 +177,11 @@ export function useAudioRecorder() {
       } else {
         mr.start(1000)
       }
+      // Auto-cap recording at 60s
+      if (stopTimeoutRef.current) clearTimeout(stopTimeoutRef.current)
+      stopTimeoutRef.current = setTimeout(() => {
+        try { if (recorderRef.current && recorderRef.current.state !== 'inactive') recorderRef.current.stop() } catch {}
+      }, 60000)
     } catch (e:any) {
       alert('Could not access microphone: ' + (e?.message || 'Unknown error'))
       resetState()
@@ -178,7 +232,13 @@ export function useAudioRecorder() {
 
   useEffect(() => () => { // cleanup on unmount
     try { clearTimers(); stopStream() } catch {}
+    try {
+      if (visRafRef.current) cancelAnimationFrame(visRafRef.current)
+      if (analyserRef.current) analyserRef.current.disconnect()
+      if (sourceRef.current) sourceRef.current.disconnect()
+      if (audioCtxRef.current) audioCtxRef.current.close()
+    } catch {}
   }, [])
 
-  return { recording, recordMs, preview, start, stop, clearPreview, ensurePreview }
+  return { recording, recordMs, preview, start, stop, clearPreview, ensurePreview, level }
 }

@@ -12,7 +12,7 @@ export default function CreatePost(){
   const [content, setContent] = useState('')
   const [file, setFile] = useState<File|null>(null)
   const [submitting, setSubmitting] = useState(false)
-  const { recording, preview, start, stop, clearPreview, ensurePreview } = useAudioRecorder()
+  const { recording, preview, start, stop, clearPreview, ensurePreview, level, recordMs } = useAudioRecorder() as any
   const [showPraise, setShowPraise] = useState(false)
   const [detectedLinks, setDetectedLinks] = useState<DetectedLink[]>([])
   const [renamingLink, setRenamingLink] = useState<DetectedLink | null>(null)
@@ -162,6 +162,17 @@ export default function CreatePost(){
             <audio controls src={preview.url} className="w-full" />
           </div>
         ) : null}
+        {recording && (
+          <div className="mt-3 px-3">
+            <div className="text-xs text-[#9fb0b5] mb-1">Recording… {Math.min(60, Math.round((recordMs||0)/1000))}s</div>
+            <div className="h-2 w-full bg-white/5 rounded overflow-hidden">
+              <div className="h-full bg-[#4db6ac] transition-all" style={{ width: `${Math.min(100, ((recordMs||0)/600) )}%`, opacity: 0.9 }} />
+            </div>
+            <div className="mt-2 h-8 w-full bg-white/5 rounded flex items-center">
+              <div className="h-2 bg-[#7fe7df] rounded transition-all" style={{ width: `${Math.max(6, Math.min(96, level*100))}%`, marginLeft: '2%' }} />
+            </div>
+          </div>
+        )}
       </div>
       
       {/* Rename link modal */}
