@@ -428,8 +428,11 @@ export default function Signup(){
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" aria-modal="true" role="dialog">
             <div className="w-[90%] max-w-md rounded-xl border border-white/10 bg-[#0b0b0b] p-4">
               <div className="text-lg font-semibold mb-1">Verify your email</div>
-              <div className="text-sm text-white/80">We sent a verification link to your email. Please click the link to verify your account.</div>
-              <div className="mt-3 flex items-center gap-2">
+              <div className="text-sm text-white/80">
+                We sent a verification link to <span className="text-white font-medium">{formData.email || 'your email'}</span>.
+                Please click the link to verify your account.
+              </div>
+              <div className="mt-3 flex items-center gap-2 flex-wrap">
                 <button className="px-3 py-2 rounded-md border border-white/10" onClick={async ()=>{
                   try{
                     const r = await fetch('/resend_verification', { method:'POST', credentials:'include' })
@@ -438,7 +441,13 @@ export default function Signup(){
                     else alert('Verification email sent')
                   }catch{ alert('Network error') }
                 }}>Resend verification</button>
-                <button className="px-3 py-2 rounded-md bg-[#4db6ac] text-black" onClick={async ()=>{
+                <button className="px-3 py-2 rounded-md border border-white/10" onClick={()=> {
+                  setShowVerify(false)
+                }}>Edit email</button>
+                <button className="px-3 py-2 rounded-md border border-white/10" onClick={()=> {
+                  setShowVerify(false); navigate('/')
+                }}>Go to start</button>
+                <button className="ml-auto px-3 py-2 rounded-md bg-[#4db6ac] text-black" onClick={async ()=>{
                   try{
                     const r = await fetch('/api/profile_me', { credentials:'include' })
                     if (r.status === 403){ alert('Still unverified. Please click the link in your email.'); return }
