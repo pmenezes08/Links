@@ -573,10 +573,8 @@ export default function PostDetail(){
               </div>
             )}
             {replyPreview && (
-              <div className="flex items-center gap-2 mr-auto">
-                <div className="w-40">
-                  <audio controls className="w-full" src={replyPreview.url} />
-                </div>
+              <div className="flex items-center gap-2 mr-auto flex-1 min-w-0">
+                <audio controls className="w-full" src={replyPreview.url} />
                 <button 
                   onClick={() => { clearReplyPreview() }}
                   className="ml-1 text-red-400 hover:text-red-300"
