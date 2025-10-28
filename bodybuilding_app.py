@@ -199,8 +199,8 @@ def _block_unverified_users():
         if path in ('/health', '/vite.svg', '/favicon.svg', '/manifest.webmanifest') or path.startswith('/icons/'):
             return None
         # API behavior: return JSON instead of HTML redirects to avoid client parse errors
-        # Exception for public cron endpoints (no auth required)
-        public_api_endpoints = ['/api/poll_notification_check', '/api/event_notification_check']
+        # Exception for public endpoints (no auth required)
+        public_api_endpoints = ['/api/poll_notification_check', '/api/event_notification_check', '/api/email_verified_status']
         if path.startswith('/api/') and path not in public_api_endpoints:
             username = session.get('username')
             if not username:
@@ -5997,6 +5997,38 @@ def resend_verification_pending():
     except Exception as e:
         logger.error(f"resend_verification_pending error: {e}")
         return jsonify({'success': False, 'error': 'Server error'}), 500
+
+@app.route('/api/email_verified_status', methods=['POST'])
+def api_email_verified_status():
+    """Public endpoint to check if an email has been verified.
+    Returns { success: true, verified: boolean } and never reveals more.
+    """
+    try:
+        email = None
+        try:
+            if request.is_json:
+                data = request.get_json(silent=True) or {}
+                email = (data.get('email') or '').strip()
+        except Exception:
+            email = None
+        if not email:
+            email = (request.form.get('email') or '').strip()
+        if not email:
+            return jsonify({'success': False, 'error': 'email required'}), 400
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            try:
+                c.execute("SELECT email_verified FROM users WHERE email=?", (email,))
+                row = c.fetchone()
+                if row is None:
+                    return jsonify({'success': True, 'verified': False})
+                verified = bool(row['email_verified'] if hasattr(row, 'keys') else row[0])
+                return jsonify({'success': True, 'verified': bool(verified)})
+            except Exception:
+                # On any error, do not leak state
+                return jsonify({'success': True, 'verified': False})
+    except Exception:
+        return jsonify({'success': True, 'verified': False})
 
 @app.route('/account_settings')
 @login_required

@@ -451,8 +451,14 @@ export default function Signup(){
                 }}>Go to start</button>
                 <button className="ml-auto px-3 py-2 rounded-md bg-[#4db6ac] text-black" onClick={async ()=>{
                   try{
-                    alert('Once verified, please sign in. Returning to login…')
-                    navigate('/login', { replace: true })
+                    const r = await fetch('/api/email_verified_status', { method:'POST', credentials:'include', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ email: pendingEmail || formData.email }) })
+                    const j = await r.json().catch(()=>null)
+                    if (j?.success && j?.verified){
+                      alert('Email verified! Please sign in now.')
+                      navigate('/login', { replace: true })
+                    } else {
+                      alert('Email has not been verified yet, please check your inbox')
+                    }
                   }catch{ alert('Network error, please try again.') }
                 }}>I've verified</button>
               </div>
