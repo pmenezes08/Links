@@ -184,8 +184,15 @@ export default function HomeTimeline(){
                     />
                   ) : null}
                   {p.audio_path ? (
-                    <div className="px-3">
-                      <audio controls className="w-full" src={(() => { const a = p.audio_path || ''; if (!a) return ''; if (a.startsWith('http')) return a; if (a.startsWith('/uploads')) return a; return a.startsWith('uploads') ? `/${a}` : `/uploads/${a}` })()} />
+                    <div className="px-3" onClick={(e)=> e.stopPropagation()}>
+                      <audio 
+                        controls 
+                        className="w-full" 
+                        src={(() => { const a = p.audio_path || ''; if (!a) return ''; if (a.startsWith('http')) return a; if (a.startsWith('/uploads')) return a; return a.startsWith('uploads') ? `/${a}` : `/uploads/${a}` })()}
+                        onClick={(e)=> e.stopPropagation()}
+                        onPlay={(e)=> e.stopPropagation() as any}
+                        onPause={(e)=> e.stopPropagation() as any}
+                      />
                     </div>
                   ) : null}
                   {/* Poll display */}

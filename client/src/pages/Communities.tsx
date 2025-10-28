@@ -729,8 +729,15 @@ function ParentTimeline({ parentId }:{ parentId:number }){
                   />
                 ) : null}
                 {p.audio_path ? (
-                  <div>
-                    <audio controls className="w-full" src={(() => { const a = String(p.audio_path || '').trim(); if (!a) return ''; if (a.startsWith('http')) return a; if (a.startsWith('/uploads')) return a; return a.startsWith('uploads') || a.startsWith('static') ? `/${a}` : `/uploads/${a}` })()} />
+                  <div onClick={(e)=> e.stopPropagation()}>
+                    <audio 
+                      controls 
+                      className="w-full" 
+                      src={(() => { const a = String(p.audio_path || '').trim(); if (!a) return ''; if (a.startsWith('http')) return a; if (a.startsWith('/uploads')) return a; return a.startsWith('uploads') || a.startsWith('static') ? `/${a}` : `/uploads/${a}` })()} 
+                      onClick={(e)=> e.stopPropagation()}
+                      onPlay={(e)=> e.stopPropagation() as any}
+                      onPause={(e)=> e.stopPropagation() as any}
+                    />
                   </div>
                 ) : null}
                 {/* Inline Poll (interactive) if present */}
