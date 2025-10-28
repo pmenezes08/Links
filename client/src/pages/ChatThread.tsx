@@ -5,6 +5,7 @@ import { useHeader } from '../contexts/HeaderContext'
 import Avatar from '../components/Avatar'
 import ImageLoader from '../components/ImageLoader'
 import MessageImage from '../components/MessageImage'
+import ZoomableImage from '../components/ZoomableImage'
 import { encryptionService } from '../services/simpleEncryption'
 
 interface Message {
@@ -1700,17 +1701,19 @@ export default function ChatThread(){
             <div className="w-10"></div> {/* Spacer for centering */}
           </div>
 
-          {/* Image container */}
+          {/* Image container with zoom */}
           <div 
-            className="flex-1 flex items-center justify-center p-4"
+            className="flex-1 flex items-center justify-center p-2 md:p-4"
             onClick={(e) => e.stopPropagation()}
           >
-            <ImageLoader
-              src={previewImage}
-              alt="Photo preview"
-              className="max-w-full max-h-full object-contain"
-              style={{ maxHeight: 'calc(100vh - 8rem)' }}
-            />
+            <div className="w-full h-full" style={{ maxHeight: 'calc(100vh - 8rem)' }}>
+              <ZoomableImage
+                src={previewImage}
+                alt="Photo preview"
+                className="w-full h-full"
+                onRequestClose={() => setPreviewImage(null)}
+              />
+            </div>
           </div>
 
           {/* Bottom back button */}

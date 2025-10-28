@@ -5,6 +5,7 @@ import { useAudioRecorder } from '../components/useAudioRecorder'
 import { useNavigate, useParams } from 'react-router-dom'
 import Avatar from '../components/Avatar'
 import ImageLoader from '../components/ImageLoader'
+import ZoomableImage from '../components/ZoomableImage'
 import { formatSmartTime } from '../utils/time'
 import VideoEmbed from '../components/VideoEmbed'
 import { extractVideoEmbed, removeVideoUrlFromText } from '../utils/videoEmbed'
@@ -492,12 +493,14 @@ export default function PostDetail(){
               )
             })()}
           {post.image_path ? (
-              <div onClick={()=> setPreviewSrc(normalizePath(post.image_path as string))}>
-                <ImageLoader
-                  src={normalizePath(post.image_path as string)}
-                  alt="Post image"
-                  className="block mx-auto max-w-full max-h-[360px] rounded border border-white/10 cursor-zoom-in"
-                />
+              <div className="px-0">
+                <div className="w-full max-h-[520px] rounded border border-white/10 overflow-hidden bg-black">
+                  <ZoomableImage
+                    src={normalizePath(post.image_path as string)}
+                    alt="Post image"
+                    className="h-[380px] md:h-[520px]"
+                  />
+                </div>
               </div>
             ) : null}
           {(post as any)?.audio_path ? (
@@ -534,12 +537,14 @@ export default function PostDetail(){
       </div>
 
       {/* Image preview modal */}
-      {previewSrc ? (
-        <div className="fixed inset-0 z-[100] bg-black/85 backdrop-blur flex items-center justify-center" onClick={(e)=> e.currentTarget===e.target && setPreviewSrc(null)}>
+          {previewSrc ? (
+        <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-sm flex items-center justify-center" onClick={(e)=> e.currentTarget===e.target && setPreviewSrc(null)}>
           <button className="absolute top-3 right-3 w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 text-white flex items-center justify-center" onClick={()=> setPreviewSrc(null)} aria-label="Close preview">
             <i className="fa-solid fa-xmark" />
           </button>
-          <img src={previewSrc} alt="preview" className="max-w-[92vw] max-h-[85vh] rounded border border-white/10" />
+          <div className="w-[94vw] h-[86vh] max-w-4xl">
+            <ZoomableImage src={previewSrc} alt="preview" className="w-full h-full" onRequestClose={()=> setPreviewSrc(null)} />
+          </div>
         </div>
       ) : null}
 

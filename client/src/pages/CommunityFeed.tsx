@@ -4,6 +4,7 @@ import Avatar from '../components/Avatar'
 import MentionTextarea from '../components/MentionTextarea'
 import { formatSmartTime } from '../utils/time'
 import ImageLoader from '../components/ImageLoader'
+import ZoomableImage from '../components/ZoomableImage'
 import { useHeader } from '../contexts/HeaderContext'
 import VideoEmbed from '../components/VideoEmbed'
 import { extractVideoEmbed, removeVideoUrlFromText } from '../utils/videoEmbed'
@@ -961,17 +962,21 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
           </div>
         )}
         {post.image_path ? (
-          <ImageLoader
-            src={(() => {
-              const p = post.image_path
-              if (!p) return ''
-              if (p.startsWith('http')) return p
-              if (p.startsWith('/uploads') || p.startsWith('/static')) return p
-              return p.startsWith('uploads') ? `/${p}` : `/uploads/${p}`
-            })()}
-            alt="Post image"
-            className="block mx-auto max-w-full max-h-[360px] rounded border border-white/10 px-3"
-          />
+          <div className="px-3">
+            <div className="w-full max-h-[420px] rounded border border-white/10 overflow-hidden bg-black">
+              <ZoomableImage
+                src={(() => {
+                  const p = post.image_path
+                  if (!p) return ''
+                  if (p.startsWith('http')) return p
+                  if (p.startsWith('/uploads') || p.startsWith('/static')) return p
+                  return p.startsWith('uploads') ? `/${p}` : `/uploads/${p}`
+                })()}
+                alt="Post image"
+                className="h-[360px] md:h-[420px]"
+              />
+            </div>
+          </div>
         ) : null}
         {post.audio_path ? (
           <div className="px-3" onClick={(e)=> { e.stopPropagation(); }}>
@@ -1158,7 +1163,13 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                   ) : null}
                   {r.image_path ? (
                     <div className="mt-1">
-                      <ImageLoader src={(r.image_path.startsWith('http') || r.image_path.startsWith('/')) ? r.image_path : `/uploads/${r.image_path}`} alt="Reply image" className="max-h-[200px] rounded border border-white/10" />
+                      <div className="w-full max-h-[260px] rounded border border-white/10 overflow-hidden">
+                        <ZoomableImage 
+                          src={(r.image_path.startsWith('http') || r.image_path.startsWith('/')) ? r.image_path : `/uploads/${r.image_path}`} 
+                          alt="Reply image" 
+                          className="h-[220px] md:h-[260px]"
+                        />
+                      </div>
                     </div>
                   ) : null}
                   {(r as any).audio_path ? (
