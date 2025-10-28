@@ -440,7 +440,7 @@ export default function Signup(){
                     const r = await fetch('/resend_verification_pending', { method:'POST', credentials:'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: pendingEmail || formData.email }) })
                     const j = await r.json().catch(()=>null)
                     if (!j?.success) alert(j?.error || 'Failed to resend')
-                    else alert('Verification email sent')
+                    else alert('Email was resent, please check your inbox')
                   }catch{ alert('Network error') }
                 }}>Resend verification</button>
                 <button className="px-3 py-2 rounded-md border border-white/10" onClick={()=> {

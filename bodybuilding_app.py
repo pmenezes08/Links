@@ -5968,15 +5968,7 @@ def resend_verification_pending():
             if not row:
                 return jsonify({'success': False, 'error': 'No pending signup for this email'}), 404
             pend_id = row['id'] if hasattr(row,'keys') else row[0]
-            sent_at = row['verification_sent_at'] if hasattr(row,'keys') else (row[1] if len(row)>1 else None)
-            # Basic rate limit: 10 minutes
-            if sent_at:
-                try:
-                    last = datetime.fromisoformat(str(sent_at))
-                    if datetime.now() - last < timedelta(minutes=10):
-                        return jsonify({'success': False, 'error': 'Please wait before resending'}), 429
-                except Exception:
-                    pass
+            # No rate limit: always attempt to resend immediately
             token = generate_pending_signup_token(int(pend_id), email)
             verify_url = f"{CANONICAL_SCHEME}://{CANONICAL_HOST}/verify_email?token={token}"
             subject = "Verify your C-Point email"
