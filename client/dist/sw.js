@@ -17,16 +17,9 @@ self.addEventListener('activate', (event) => {
           return caches.delete(cacheName)
         })
       )
-    }).then(async () => {
+    }).then(() => {
       console.log('[SW] All caches cleared')
-      await self.clients.claim()
-      // Inform open clients to refresh once (lightweight)
-      try{
-        const clientsList = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
-        for (const client of clientsList){
-          try{ client.postMessage({ type: 'SW_ACTIVATED', version: SW_VERSION }) }catch{}
-        }
-      }catch{}
+      return self.clients.claim()
     })
   )
 })
