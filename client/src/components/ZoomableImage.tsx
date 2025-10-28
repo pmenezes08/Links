@@ -88,9 +88,10 @@ export default function ZoomableImage({ src, alt = 'image', className = '', maxS
   }, [])
 
   const reset = useCallback(() => {
-    setScale(1)
+    // Reset to fitted scale (minScale), not 1, to avoid unexpected upscaling
+    setScale((prev) => (minScale > 0 ? minScale : prev))
     setTranslate({ x: 0, y: 0 })
-  }, [])
+  }, [minScale])
 
   // Wheel zoom
   const handleWheel = (e: React.WheelEvent) => {
