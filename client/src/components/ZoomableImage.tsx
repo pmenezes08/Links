@@ -29,6 +29,9 @@ export default function ZoomableImage({ src, alt = 'image', className = '', maxS
   const activePointers = useRef<Map<number, { x: number; y: number }>>(new Map())
   const pinchStartDistance = useRef<number | null>(null)
   const pinchStartScale = useRef<number>(1)
+  // Image natural dimensions
+  const naturalWidthRef = useRef<number>(0)
+  const naturalHeightRef = useRef<number>(0)
 
   // Loading and source candidates (fallbacks)
   const [loading, setLoading] = useState(true)
@@ -72,15 +75,16 @@ export default function ZoomableImage({ src, alt = 'image', className = '', maxS
   }
 
   const getBounds = useCallback((nextScale: number) => {
-    // Compute bounds relative to minScale so panning is proportional
-    const { width, height } = getContainerSize()
-    if (width === 0 || height === 0) return { maxX: 0, maxY: 0 }
-    const base = baseScaleRef.current || 1
-    const ms = Math.min(1, base)
-    const ratio = Math.max(1, nextScale / ms)
-    const overflowX = (ratio - 1) * (width / 2)
-    const overflowY = (ratio - 1) * (height / 2)
-    return { maxX: overflowX, maxY: overflowY }
+    // Compute panning bounds from displayed size vs container
+    const { width: cw, height: ch } = getContainerSize()
+    const nw = naturalWidthRef.current || 0
+    const nh = naturalHeightRef.current || 0
+    if (cw === 0 || ch === 0 || nw === 0 || nh === 0) return { maxX: 0, maxY: 0 }
+    const displayedW = nextScale * nw
+    const displayedH = nextScale * nh
+    const maxX = Math.max(0, (displayedW - cw) / 2)
+    const maxY = Math.max(0, (displayedH - ch) / 2)
+    return { maxX, maxY }
   }, [])
 
   const reset = useCallback(() => {
@@ -185,6 +189,7 @@ export default function ZoomableImage({ src, alt = 'image', className = '', maxS
     setTranslate({ x: clamp(nextX, -maxX, maxX), y: clamp(nextY, -maxY, maxY) })
   }
 
+  const lastTapRef = useRef<{ t: number; x: number; y: number } | null>(null)
   const onPointerUpOrCancel = (e: React.PointerEvent) => {
     e.stopPropagation()
     ;(e.target as HTMLElement).releasePointerCapture?.(e.pointerId)
@@ -196,6 +201,37 @@ export default function ZoomableImage({ src, alt = 'image', className = '', maxS
       setIsPanning(false)
       panStartRef.current = null
     }
+
+    // Double-tap detection for mobile (fallback when onDoubleClick doesn't fire)
+    try {
+      const now = Date.now()
+      const lx = e.clientX
+      const ly = e.clientY
+      const prev = lastTapRef.current
+      lastTapRef.current = { t: now, x: lx, y: ly }
+      if (prev && (now - prev.t) < 280) {
+        const dx = lx - prev.x
+        const dy = ly - prev.y
+        if ((dx*dx + dy*dy) < 1000) {
+          // Treat as double tap
+          const alreadyZoomed = scale > minScale + 0.001
+          const targetScale = alreadyZoomed ? minScale : clamp(minScale * 1.6, minScale, maxScale)
+          const rect = containerRef.current?.getBoundingClientRect()
+          if (rect) {
+            const cx = lx - rect.left - rect.width / 2
+            const cy = ly - rect.top - rect.height / 2
+            const scaleRatio = targetScale / scale
+            const nextX = cx - (cx - translate.x) * scaleRatio
+            const nextY = cy - (cy - translate.y) * scaleRatio
+            const { maxX, maxY } = getBounds(targetScale)
+            setScale(targetScale)
+            setTranslate({ x: clamp(nextX, -maxX, maxX), y: clamp(nextY, -maxY, maxY) })
+          } else {
+            setScale(targetScale)
+          }
+        }
+      }
+    } catch {}
   }
 
   // ESC handler
@@ -236,7 +272,7 @@ export default function ZoomableImage({ src, alt = 'image', className = '', maxS
   const computedStyle: React.CSSProperties = {
     transform: `translate3d(${translate.x}px, ${translate.y}px, 0) scale(${scale})`,
     transition: isPanning || activePointers.current.size > 0 ? 'none' : 'transform 0.12s ease-out',
-    touchAction: scale > minScale ? 'none' as any : 'manipulation',
+    touchAction: 'none' as any,
     cursor: scale > minScale ? 'grab' : 'zoom-in',
   }
 
@@ -268,6 +304,8 @@ export default function ZoomableImage({ src, alt = 'image', className = '', maxS
             const img = e.currentTarget
             const el = containerRef.current
             if (el && img.naturalWidth && img.naturalHeight) {
+              naturalWidthRef.current = img.naturalWidth
+              naturalHeightRef.current = img.naturalHeight
               const rect = el.getBoundingClientRect()
               const fit = Math.min(rect.width / img.naturalWidth, rect.height / img.naturalHeight)
               const s = Math.min(1, fit) // never upscale on initial fit
@@ -308,10 +346,10 @@ export default function ZoomableImage({ src, alt = 'image', className = '', maxS
         </button>
       )}
 
-      {/* Loading overlay */}
+      {/* Small loading spinner (non-blocking) */}
       {loading && (
-        <div className="absolute inset-0 flex items-center justify-center bg-black/20">
-          <div className="w-7 h-7 border-2 border-white/30 border-t-white/70 rounded-full animate-spin" />
+        <div className="absolute bottom-2 right-2">
+          <div className="w-6 h-6 border-2 border-white/30 border-t-white/80 rounded-full animate-spin" />
         </div>
       )}
 
