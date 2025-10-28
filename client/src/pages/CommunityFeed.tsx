@@ -11,8 +11,8 @@ import { renderTextWithLinks, detectLinks, replaceLinkInText, type DetectedLink 
 
 type PollOption = { id: number; text: string; votes: number; user_voted?: boolean }
 type Poll = { id: number; question: string; is_active: number; options: PollOption[]; user_vote: number|null; total_votes: number; single_vote?: boolean; expires_at?: string | null }
-type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null, profile_picture?: string|null, image_path?: string|null, parent_reply_id?: number | null }
-type Post = { id: number; username: string; content: string; image_path?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; poll?: Poll|null; replies: Reply[], profile_picture?: string|null, is_starred?: boolean, is_community_starred?: boolean }
+type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null, profile_picture?: string|null, image_path?: string|null, audio_path?: string|null, parent_reply_id?: number | null }
+type Post = { id: number; username: string; content: string; image_path?: string|null; audio_path?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; poll?: Poll|null; replies: Reply[], profile_picture?: string|null, is_starred?: boolean, is_community_starred?: boolean }
 
 // old formatTimestamp removed; using formatSmartTime
 
@@ -973,6 +973,18 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
             className="block mx-auto max-w-full max-h-[360px] rounded border border-white/10 px-3"
           />
         ) : null}
+        {post.audio_path ? (
+          <div className="px-3" onClick={(e)=> { e.stopPropagation(); }}>
+            <audio 
+              controls 
+              className="w-full" 
+              src={(() => { const p = post.audio_path || ''; if (!p) return ''; if (p.startsWith('http')) return p; if (p.startsWith('/uploads')) return p; return p.startsWith('uploads') ? `/${p}` : `/uploads/${p}` })()}
+              onClick={(e)=> e.stopPropagation()}
+              onPlay={(e)=> e.stopPropagation() as any}
+              onPause={(e)=> e.stopPropagation() as any}
+            />
+          </div>
+        ) : null}
         {/* Poll display */}
         {post.poll && (
           <div className="px-3 space-y-2" onClick={(e)=> e.stopPropagation()}>
@@ -1096,7 +1108,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
       </div>
       {/* Inline recent replies (last 1–2) */}
       {!post.poll && Array.isArray(post.replies) && post.replies.length > 0 && (
-        <div className="px-3 pb-2 space-y-2" onClick={(e)=> e.stopPropagation()}>
+        <div className="px-3 pb-2 pt-2 mt-2 border-t border-white/10 space-y-2" onClick={(e)=> e.stopPropagation()}>
           {(() => {
             const ordered = (() => {
               const pair = post.replies.slice(0, 2)
@@ -1141,10 +1153,24 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                       )
                     }
                   })() : null}
-                  <div className="text-[#dfe6e9] whitespace-pre-wrap break-words">{r.content}</div>
+                  {r.content ? (
+                    <div className="text-[#dfe6e9] whitespace-pre-wrap break-words">{r.content}</div>
+                  ) : null}
                   {r.image_path ? (
                     <div className="mt-1">
                       <ImageLoader src={(r.image_path.startsWith('http') || r.image_path.startsWith('/')) ? r.image_path : `/uploads/${r.image_path}`} alt="Reply image" className="max-h-[200px] rounded border border-white/10" />
+                    </div>
+                  ) : null}
+                  {(r as any).audio_path ? (
+                    <div className="mt-1" onClick={(e)=> e.stopPropagation()}>
+                      <audio
+                        controls
+                        className="w-full"
+                        src={(() => { const p = (r as any).audio_path || ''; if (!p) return ''; if (p.startsWith('http') || p.startsWith('/')) return p; return `/uploads/${p}` })()}
+                        onClick={(e)=> e.stopPropagation()}
+                        onPlay={(e)=> e.stopPropagation() as any}
+                        onPause={(e)=> e.stopPropagation() as any}
+                      />
                     </div>
                   ) : null}
 

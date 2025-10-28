@@ -104,8 +104,14 @@ def nl2br_filter(text):
 # csrf.exempt(app)  # Disable CSRF protection globally
 
 # File upload configuration
-UPLOAD_FOLDER = 'static/uploads'
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
+# Always use an absolute path based on this file's directory to avoid CWD issues under WSGI
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+UPLOAD_FOLDER = os.path.join(BASE_DIR, 'static', 'uploads')
+# Allow common image and audio types
+ALLOWED_EXTENSIONS = {
+    'png', 'jpg', 'jpeg', 'gif', 'webp',
+    'm4a', 'mp3', 'ogg', 'wav', 'webm', 'opus', 'mp4'
+}
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 def optimize_image(file_path, max_width=1920, quality=85):
@@ -508,6 +514,9 @@ def get_db_connection():
                 charset='utf8mb4',
                 autocommit=True,
                 cursorclass=DictCursor,
+                connect_timeout=int(os.environ.get('MYSQL_CONNECT_TIMEOUT', '5')),
+                read_timeout=int(os.environ.get('MYSQL_READ_TIMEOUT', '15')),
+                write_timeout=int(os.environ.get('MYSQL_WRITE_TIMEOUT', '15')),
             )
             # Wrap cursor to adapt SQLite-style SQL to MySQL at runtime
             try:
@@ -2440,7 +2449,14 @@ if not USE_MYSQL:
     ensure_indexes()
 
 # Always ensure missing tables are added for both SQLite and MySQL
-add_missing_tables()
+# Guard this at import-time so a transient MySQL outage doesn't crash WSGI startup
+try:
+    add_missing_tables()
+except Exception as e:
+    logger.error(
+        f"Startup DB bootstrap skipped due to error: {e}. "
+        "Verify DB_BACKEND and MYSQL_* env vars on the server, or run setup_mysql_env.py."
+    )
 
 def ensure_admin_member_of_all():
     try:
@@ -2643,9 +2659,11 @@ def save_uploaded_file(file, subfolder=None):
             return_path = f"uploads/{unique_filename}"
         
         file.save(filepath)
-        # Optimize image on arrival to reduce size for subsequent loads (prod+dev)
+        # Optimize only if this is an image
         try:
-            optimize_image(filepath, max_width=1280, quality=80)
+            ext = (os.path.splitext(filename)[1] or '').lower().lstrip('.')
+            if ext in {'png', 'jpg', 'jpeg', 'gif', 'webp'}:
+                optimize_image(filepath, max_width=1280, quality=80)
         except Exception:
             # Never fail the request due to optimization issues
             pass
@@ -6400,8 +6418,11 @@ def apple_touch_icon_route():
     """Serve iOS touch icon with minimal caching."""
     try:
         preferred = os.path.join('static', 'icons', 'apple-touch-icon-180.png')
-        fallback = os.path.join('static', 'logo.png')
-        path = preferred if os.path.exists(preferred) else fallback
+        fallback = os.path.join('static', 'icons', 'icon-192.png')
+        # Use absolute BASE_DIR to be safe under WSGI
+        abs_preferred = os.path.join(BASE_DIR, preferred)
+        abs_fallback = os.path.join(BASE_DIR, fallback)
+        path = abs_preferred if os.path.exists(abs_preferred) else abs_fallback
         from flask import send_file
         resp = send_file(path, mimetype='image/png')
         try:
@@ -10582,29 +10603,44 @@ def post_status():
     # Debug: Log all form data
     logger.info(f"All form data: {dict(request.form)}")
     
-    # Handle file upload
+    # Handle file upload (image or audio)
     image_path = None
-    if 'image' in request.files:
-        file = request.files['image']
-        if file.filename != '':
-            image_path = save_uploaded_file(file)
-            if not image_path:
-                if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-                    return jsonify({'success': False, 'error': 'Invalid file type. Allowed: png, jpg, jpeg, gif, webp'}), 400
+    audio_path = None
+    # Robustly detect both files regardless of field name casing
+    files = request.files
+    if 'image' in files and files['image'].filename:
+        file = files['image']
+        image_path = save_uploaded_file(file)
+        if not image_path:
+            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                return jsonify({'success': False, 'error': 'Invalid image type'}), 400
+            else:
+                msg = '?error=Invalid image type'
+                if community_id:
+                    return redirect(url_for('community_feed', community_id=community_id) + msg)
                 else:
-                    if community_id:
-                        return redirect(url_for('community_feed', community_id=community_id) + '?error=Invalid file type. Allowed: png, jpg, jpeg, gif, webp')
-                    else:
-                        return redirect(url_for('feed') + '?error=Invalid file type. Allowed: png, jpg, jpeg, gif, webp')
+                    return redirect(url_for('feed') + msg)
+    if 'audio' in files and files['audio'].filename:
+        afile = files['audio']
+        audio_path = save_uploaded_file(afile, subfolder='audio')
+        if not audio_path:
+            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                return jsonify({'success': False, 'error': 'Invalid audio type'}), 400
+            else:
+                msg = '?error=Invalid audio type'
+                if community_id:
+                    return redirect(url_for('community_feed', community_id=community_id) + msg)
+                else:
+                    return redirect(url_for('feed') + msg)
     
-    if not content and not image_path:
+    if not content and not image_path and not audio_path:
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-            return jsonify({'success': False, 'error': 'Content or image is required!'}), 400
+            return jsonify({'success': False, 'error': 'Content, image or audio is required!'}), 400
         else:
             if community_id:
-                return redirect(url_for('community_feed', community_id=community_id) + '?error=Content or image is required!')
+                return redirect(url_for('community_feed', community_id=community_id) + '?error=Content, image or audio is required!')
             else:
-                        return redirect(url_for('feed') + '?error=Content or image is required!')
+                        return redirect(url_for('feed') + '?error=Content, image or audio is required!')
     
     # Store in DB-friendly ISO format to avoid MySQL zero-datetime coercion
     timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -10653,8 +10689,22 @@ def post_status():
             # Debug: Log the exact values being inserted
             logger.info(f"About to insert post with values: username={username}, content={content}, image_path={image_path}, timestamp={timestamp}, community_id={community_id} (type: {type(community_id)})")
             
-            c.execute("INSERT INTO posts (username, content, image_path, timestamp, community_id) VALUES (?, ?, ?, ?, ?)",
-                      (username, content, image_path, timestamp, community_id))
+            # Ensure audio columns exist for posts (migration-light)
+            try:
+                c.execute("ALTER TABLE posts ADD COLUMN audio_path TEXT")
+            except Exception:
+                pass
+            try:
+                c.execute("ALTER TABLE posts ADD COLUMN audio_duration_seconds INTEGER")
+            except Exception:
+                pass
+            try:
+                c.execute("ALTER TABLE posts ADD COLUMN audio_mime TEXT")
+            except Exception:
+                pass
+
+            c.execute("INSERT INTO posts (username, content, image_path, audio_path, timestamp, community_id) VALUES (?, ?, ?, ?, ?, ?)",
+                      (username, content, image_path, audio_path, timestamp, community_id))
             conn.commit()
             post_id = c.lastrowid
             logger.info(f"Post added successfully for {username} with ID: {post_id} in community: {community_id}")
@@ -10837,17 +10887,24 @@ def post_reply():
     if not post_id:
         return jsonify({'success': False, 'error': 'Post ID is required!'}), 400
 
-    # Handle file upload for reply
+    # Handle file upload for reply (image or audio)
     image_path = None
+    audio_path = None
     if 'image' in request.files:
         file = request.files['image']
         if file.filename != '':
             image_path = save_uploaded_file(file)
             if not image_path:
                 return jsonify({'success': False, 'error': 'Invalid file type. Allowed: png, jpg, jpeg, gif, webp'}), 400
+    if 'audio' in request.files:
+        afile = request.files['audio']
+        if afile.filename != '':
+            audio_path = save_uploaded_file(afile, subfolder='audio')
+            if not audio_path:
+                return jsonify({'success': False, 'error': 'Invalid audio type'}), 400
 
-    if not content and not image_path:
-        return jsonify({'success': False, 'error': 'Content or image is required!'}), 400
+    if not content and not image_path and not audio_path:
+        return jsonify({'success': False, 'error': 'Content, image or audio is required!'}), 400
 
     # Idempotency token (optional)
     dedupe_token = (request.form.get('dedupe_token') or '').strip()
@@ -10907,8 +10964,21 @@ def post_reply():
                         return jsonify({'success': True, 'message': 'Duplicate suppressed'}), 200
             except Exception as de:
                 logger.warning(f"reply dedupe check failed: {de}")
-            c.execute("INSERT INTO replies (post_id, username, content, image_path, timestamp, community_id, parent_reply_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                      (post_id, username, content, image_path, timestamp_db, community_id, parent_reply_id))
+            # Ensure audio columns on replies
+            try:
+                c.execute("ALTER TABLE replies ADD COLUMN audio_path TEXT")
+            except Exception:
+                pass
+            try:
+                c.execute("ALTER TABLE replies ADD COLUMN audio_duration_seconds INTEGER")
+            except Exception:
+                pass
+            try:
+                c.execute("ALTER TABLE replies ADD COLUMN audio_mime TEXT")
+            except Exception:
+                pass
+            c.execute("INSERT INTO replies (post_id, username, content, image_path, audio_path, timestamp, community_id, parent_reply_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                      (post_id, username, content, image_path, audio_path, timestamp_db, community_id, parent_reply_id))
             reply_id = c.lastrowid
 
             # Record token
@@ -10948,7 +11018,8 @@ def post_reply():
                 'post_id': post_id,
                 'username': username,
                 'content': content,
-                'image_path': image_path,
+            'image_path': image_path,
+            'audio_path': audio_path,
                 'timestamp': timestamp_db,  # Return precise timestamp for clients
                 'reactions': {},
                 'user_reaction': None,
@@ -17151,6 +17222,8 @@ def serve_uploads(filename):
         static_root = os.path.join(base_dir, 'static')
         static_uploads = os.path.join(static_root, 'uploads')
         legacy_root = os.path.join(base_dir, 'uploads')
+        # Prefer the configured absolute uploads path
+        configured_uploads = app.config.get('UPLOAD_FOLDER', static_uploads)
 
         normalized = filename
         if normalized.startswith('uploads/'):
@@ -17158,17 +17231,20 @@ def serve_uploads(filename):
         basename = os.path.basename(normalized)
 
         candidates = [
-            os.path.join(static_uploads, filename),          # static/uploads/<original>
-            os.path.join(static_uploads, normalized),        # static/uploads/<stripped>
-            os.path.join(static_uploads, basename),          # static/uploads/<basename>
-            os.path.join(static_root, filename),             # static/<original>
-            os.path.join(static_root, normalized),           # static/<stripped>
-            os.path.join(static_root, basename),             # static/<basename>
-            os.path.join(static_root, 'message_photos', basename),  # static/message_photos/<basename>
-            os.path.join(static_uploads, 'message_photos', basename), # static/uploads/message_photos/<basename>
-            os.path.join(legacy_root, filename),             # uploads/<original>
-            os.path.join(legacy_root, normalized),           # uploads/<stripped>
-            os.path.join(legacy_root, basename),             # uploads/<basename>
+            os.path.join(configured_uploads, filename),          # configured uploads/<original>
+            os.path.join(configured_uploads, normalized),        # configured uploads/<stripped>
+            os.path.join(configured_uploads, basename),          # configured uploads/<basename>
+            os.path.join(static_uploads, filename),              # static/uploads/<original>
+            os.path.join(static_uploads, normalized),            # static/uploads/<stripped>
+            os.path.join(static_uploads, basename),              # static/uploads/<basename>
+            os.path.join(static_root, filename),                 # static/<original>
+            os.path.join(static_root, normalized),               # static/<stripped>
+            os.path.join(static_root, basename),                 # static/<basename>
+            os.path.join(static_root, 'message_photos', basename),      # static/message_photos/<basename>
+            os.path.join(static_uploads, 'message_photos', basename),   # static/uploads/message_photos/<basename>
+            os.path.join(legacy_root, filename),                 # uploads/<original>
+            os.path.join(legacy_root, normalized),               # uploads/<stripped>
+            os.path.join(legacy_root, basename),                 # uploads/<basename>
         ]
 
         tried = []

@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import MentionTextarea from '../components/MentionTextarea'
+import { useAudioRecorder } from '../components/useAudioRecorder'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { detectLinks, replaceLinkInText, type DetectedLink } from '../utils/linkUtils.tsx'
 
@@ -11,6 +12,7 @@ export default function CreatePost(){
   const [content, setContent] = useState('')
   const [file, setFile] = useState<File|null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const { recording, preview, start, stop, clearPreview, ensurePreview, level, recordMs } = useAudioRecorder() as any
   const [showPraise, setShowPraise] = useState(false)
   const [detectedLinks, setDetectedLinks] = useState<DetectedLink[]>([])
   const [renamingLink, setRenamingLink] = useState<DetectedLink | null>(null)
@@ -51,7 +53,12 @@ export default function CreatePost(){
   }
 
   async function submit(){
-    if (!content && !file) return
+    // If user is still recording, stop and wait briefly for preview to finalize
+    if (recording) await ensurePreview(5000)
+    if (!content && !file && !preview?.blob) {
+      alert('Add text, an image, or finish recording audio before posting')
+      return
+    }
     if (submitting) return
     setSubmitting(true)
     
@@ -62,6 +69,7 @@ export default function CreatePost(){
       const fd = new FormData()
       fd.append('content', content)
       if (file) fd.append('image', file)
+      if (preview?.blob) fd.append('audio', preview.blob, (preview.blob.type.includes('mp4') ? 'audio.mp4' : 'audio.webm'))
       fd.append('dedupe_token', tokenRef.current)
       if (groupId){
         fd.append('group_id', groupId)
@@ -69,7 +77,9 @@ export default function CreatePost(){
         await r.json().catch(()=>null)
       } else {
         if (communityId) fd.append('community_id', communityId)
-        await fetch('/post_status', { method: 'POST', credentials: 'include', body: fd })
+        const r = await fetch('/post_status', { method: 'POST', credentials: 'include', body: fd })
+        // Try reading JSON when available, otherwise ignore redirects
+        await r.json().catch(()=>null)
       }
       
       // Show praise for first post
@@ -147,6 +157,22 @@ export default function CreatePost(){
             <img src={URL.createObjectURL(file)} alt="preview" className="w-full h-auto" />
           </div>
         ) : null}
+        {preview ? (
+          <div className="mt-3 rounded-xl border border-white/10 p-3 bg-white/[0.03]">
+            <audio controls src={preview.url} className="w-full" />
+          </div>
+        ) : null}
+        {recording && (
+          <div className="mt-3 px-3">
+            <div className="text-xs text-[#9fb0b5] mb-1">Recording… {Math.min(60, Math.round((recordMs||0)/1000))}s</div>
+            <div className="h-2 w-full bg-white/5 rounded overflow-hidden">
+              <div className="h-full bg-[#4db6ac] transition-all" style={{ width: `${Math.min(100, ((recordMs||0)/600) )}%`, opacity: 0.9 }} />
+            </div>
+            <div className="mt-2 h-8 w-full bg-white/5 rounded flex items-center">
+              <div className="h-2 bg-[#7fe7df] rounded transition-all" style={{ width: `${Math.max(6, Math.min(96, level*100))}%`, marginLeft: '2%' }} />
+            </div>
+          </div>
+        )}
       </div>
       
       {/* Rename link modal */}
@@ -191,12 +217,21 @@ export default function CreatePost(){
         </div>
       )}
       <div className="fixed left-0 right-0 bottom-0 h-16 border-t border-white/10 bg-black/85 backdrop-blur z-40">
-        <div className="max-w-2xl mx-auto h-full px-4 flex items-center justify-between">
+        <div className="max-w-2xl mx-auto h-full px-4 flex items-center justify-between gap-3">
           <label className="px-3 py-2 rounded-full hover:bg-white/5 cursor-pointer" aria-label="Add image">
             <i className="fa-regular fa-image" style={{ color: '#4db6ac' }} />
             <input type="file" accept="image/*" onChange={(e)=> setFile(e.target.files?.[0]||null)} style={{ display: 'none' }} />
           </label>
-          <button className={`px-4 py-2 rounded-full ${submitting ? 'bg-white/20 text-white/60 cursor-not-allowed' : 'bg-[#4db6ac] text-black hover:brightness-110'}`} onClick={submit} disabled={submitting}>
+          <button className={`px-3 py-2 rounded-full ${recording ? 'text-red-400' : 'text-[#4db6ac]'} hover:bg-white/5`} aria-label="Record audio" onClick={()=> recording ? stop() : start()}>
+            <i className="fa-solid fa-microphone" />
+          </button>
+          {preview && (
+            <button className="px-3 py-2 rounded-full text-white/70 hover:bg-white/5" onClick={clearPreview} aria-label="Discard audio">
+              <i className="fa-solid fa-trash" />
+            </button>
+          )}
+          <div className="flex-1" />
+          <button className={`px-4 py-2 rounded-full ${submitting ? 'bg-white/20 text-white/60 cursor-not-allowed' : 'bg-[#4db6ac] text-black hover:brightness-110'}`} onClick={submit} disabled={submitting || (!content && !file && !preview)}>
             {submitting ? 'Posting…' : 'Post'}
           </button>
         </div>
