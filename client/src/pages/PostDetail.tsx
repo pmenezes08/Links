@@ -494,13 +494,12 @@ export default function PostDetail(){
             })()}
           {post.image_path ? (
               <div className="px-0">
-                <div className="w-full max-h-[520px] rounded border border-white/10 overflow-hidden bg-black">
-                  <ZoomableImage
-                    src={normalizePath(post.image_path as string)}
-                    alt="Post image"
-                    className="h-[380px] md:h-[520px]"
-                  />
-                </div>
+                <ImageLoader
+                  src={normalizePath(post.image_path as string)}
+                  alt="Post image"
+                  className="block mx-auto max-w-full max-h-[520px] rounded border border-white/10 cursor-zoom-in"
+                  onClick={()=> setPreviewSrc(normalizePath(post.image_path as string))}
+                />
               </div>
             ) : null}
           {(post as any)?.audio_path ? (
