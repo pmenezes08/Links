@@ -295,6 +295,27 @@ def verify_pending_signup_token(token: str):
     except Exception:
         return None
 
+def _build_verify_url(token: str) -> str:
+    try:
+        scheme = (CANONICAL_SCHEME or 'https')
+    except Exception:
+        scheme = 'https'
+    try:
+        host = CANONICAL_HOST or request.headers.get('Host') or ''
+    except Exception:
+        host = ''
+    if not host:
+        # Fallback to url_root parsing
+        try:
+            from urllib.parse import urlparse
+            p = urlparse(request.url_root)
+            host = p.netloc
+            if p.scheme:
+                scheme = p.scheme
+        except Exception:
+            pass
+    return f"{scheme}://{host}/verify_email?token={token}"
+
 def _send_email_via_resend(to_email: str, subject: str, html: str, text: str = None):
     if not RESEND_API_KEY:
         logger.error('RESEND_API_KEY not set; skipping email send')
@@ -3101,7 +3122,7 @@ def signup():
                     except Exception:
                         pending_id = None
                 token = generate_pending_signup_token(int(pending_id or 0), email)
-                verify_url = f"{CANONICAL_SCHEME}://{CANONICAL_HOST}/verify_email?token={token}"
+                verify_url = _build_verify_url(token)
                 subject = "Verify your C-Point email"
                 html = f"""
                     <div style='font-family:Arial,sans-serif;font-size:14px;color:#111'>
@@ -5938,7 +5959,7 @@ def resend_verification():
                 except Exception:
                     pass
             token = generate_email_token(email)
-            verify_url = f"{CANONICAL_SCHEME}://{CANONICAL_HOST}/verify_email?token={token}"
+            verify_url = _build_verify_url(token)
             subject = "Verify your C-Point email"
             html = f"""
                 <div style='font-family:Arial,sans-serif;font-size:14px;color:#111'>
@@ -5976,7 +5997,7 @@ def resend_verification_pending():
             pend_id = row['id'] if hasattr(row,'keys') else row[0]
             # No rate limit: always attempt to resend immediately
             token = generate_pending_signup_token(int(pend_id), email)
-            verify_url = f"{CANONICAL_SCHEME}://{CANONICAL_HOST}/verify_email?token={token}"
+            verify_url = _build_verify_url(token)
             subject = "Verify your C-Point email"
             html = f"""
                 <div style='font-family:Arial,sans-serif;font-size:14px;color:#111'>
@@ -6876,7 +6897,7 @@ def update_email():
             # Send verification email to new address
             try:
                 token = generate_email_token(new_email)
-                verify_url = f"{CANONICAL_SCHEME}://{CANONICAL_HOST}/verify_email?token={token}"
+                verify_url = _build_verify_url(token)
                 subject = "Verify your new C-Point email"
                 html = f"""
                     <div style='font-family:Arial,sans-serif;font-size:14px;color:#111'>
