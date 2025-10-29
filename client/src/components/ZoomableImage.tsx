@@ -291,6 +291,7 @@ export default function ZoomableImage({ src, alt = 'image', className = '', maxS
 
   const computedStyle: React.CSSProperties = {
     transform: `translate3d(${translate.x}px, ${translate.y}px, 0) scale(${scale})`,
+    transformOrigin: 'center center',
     transition: isPanning || activePointers.current.size > 0 ? 'none' : 'transform 0.12s ease-out',
     cursor: scale > minScale ? 'grab' : 'zoom-in',
   }
@@ -346,13 +347,6 @@ export default function ZoomableImage({ src, alt = 'image', className = '', maxS
           }
         }}
       />
-
-      {/* Hint label when not zoomed */}
-      {scale <= minScale + 0.0001 && !loading && !error && (
-        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 text-[11px] px-2 py-1 rounded-full bg-black/50 border border-white/10 text-white/80">
-          Double-tap or pinch to zoom • drag to pan
-        </div>
-      )}
 
       {/* Mobile-friendly reset control when zoomed */}
       {scale > minScale && (
