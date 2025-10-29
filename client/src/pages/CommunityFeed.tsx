@@ -1001,7 +1001,17 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
             <audio 
               controls 
               className="w-full" 
-              src={(() => { const p = post.audio_path || ''; if (!p) return ''; if (p.startsWith('http')) return p; if (p.startsWith('/uploads')) return p; return p.startsWith('uploads') ? `/${p}` : `/uploads/${p}` })()}
+              src={(() => { 
+                const p = post.audio_path || ''; 
+                if (!p) return ''; 
+                let path = '';
+                if (p.startsWith('http')) path = p;
+                else if (p.startsWith('/uploads')) path = p;
+                else path = p.startsWith('uploads') ? `/${p}` : `/uploads/${p}`;
+                // Add cache-busting to prevent Safari caching issues
+                const separator = path.includes('?') ? '&' : '?';
+                return `${path}${separator}_cb=${Date.now()}`;
+              })()}
               onClick={(e)=> e.stopPropagation()}
               onPlay={(e)=> e.stopPropagation() as any}
               onPause={(e)=> e.stopPropagation() as any}
@@ -1199,7 +1209,16 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                       <audio
                         controls
                         className="w-full"
-                        src={(() => { const p = (r as any).audio_path || ''; if (!p) return ''; if (p.startsWith('http') || p.startsWith('/')) return p; return `/uploads/${p}` })()}
+                        src={(() => { 
+                          const p = (r as any).audio_path || ''; 
+                          if (!p) return ''; 
+                          let path = '';
+                          if (p.startsWith('http') || p.startsWith('/')) path = p;
+                          else path = `/uploads/${p}`;
+                          // Add cache-busting to prevent Safari caching issues
+                          const separator = path.includes('?') ? '&' : '?';
+                          return `${path}${separator}_cb=${Date.now()}`;
+                        })()}
                         onClick={(e)=> e.stopPropagation()}
                         onPlay={(e)=> e.stopPropagation() as any}
                         onPause={(e)=> e.stopPropagation() as any}

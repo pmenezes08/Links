@@ -1736,20 +1736,29 @@ function AudioMessage({ message, audioPath }: { message: Message; audioPath: str
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
   const [error, setError] = useState<string | null>(null)
+  const [retryCount, setRetryCount] = useState(0)
   const audioRef = useRef<HTMLAudioElement>(null)
+
+  // Add cache-busting to prevent Safari caching issues
+  const cacheBustedPath = useMemo(() => {
+    if (!audioPath) return ''
+    // Add timestamp only on first load and retries to bust cache
+    const separator = audioPath.includes('?') ? '&' : '?'
+    return `${audioPath}${separator}_cb=${Date.now()}_${retryCount}`
+  }, [audioPath, retryCount])
 
   useEffect(() => {
     const audio = audioRef.current
     if (!audio) return
 
-    console.log('🎵 AudioMessage mounted:', { audioPath, messageId: message.id })
+    console.log('🎵 AudioMessage mounted:', { audioPath: cacheBustedPath, messageId: message.id })
 
     const handleError = (e: Event) => {
       const target = e.target as HTMLAudioElement
       const errorCode = target.error?.code
       const errorMessage = target.error?.message
       console.error('🎵 Audio load error:', { 
-        audioPath, 
+        audioPath: cacheBustedPath, 
         errorCode, 
         errorMessage,
         networkState: target.networkState,
@@ -1759,7 +1768,7 @@ function AudioMessage({ message, audioPath }: { message: Message; audioPath: str
     }
 
     const handleCanPlay = () => {
-      console.log('🎵 Audio can play:', audioPath)
+      console.log('🎵 Audio can play:', cacheBustedPath)
       setError(null)
     }
 
@@ -1785,7 +1794,7 @@ function AudioMessage({ message, audioPath }: { message: Message; audioPath: str
       audio.removeEventListener('loadedmetadata', handleLoadedMetadata)
       audio.removeEventListener('timeupdate', handleTimeUpdate)
     }
-  }, [audioPath, message.id])
+  }, [cacheBustedPath, message.id])
 
   const togglePlay = async () => {
     if (!audioRef.current) return
@@ -1795,14 +1804,24 @@ function AudioMessage({ message, audioPath }: { message: Message; audioPath: str
         audioRef.current.pause()
         setPlaying(false)
       } else {
-        console.log('🎵 Attempting to play:', audioPath)
+        console.log('🎵 Attempting to play:', cacheBustedPath)
+        // Force reload if there was an error
+        if (error) {
+          audioRef.current.load()
+          setError(null)
+        }
         await audioRef.current.play()
         setPlaying(true)
       }
     } catch (err) {
-      console.error('🎵 Playback error:', err, 'for:', audioPath)
+      console.error('🎵 Playback error:', err, 'for:', cacheBustedPath)
       setError('Playback failed')
     }
+  }
+  
+  const handleRetry = () => {
+    setError(null)
+    setRetryCount(prev => prev + 1)
   }
 
   const formatDuration = (seconds: number) => {
@@ -1819,7 +1838,7 @@ function AudioMessage({ message, audioPath }: { message: Message; audioPath: str
         <button
           onClick={togglePlay}
           className="w-8 h-8 rounded-full bg-[#4db6ac] hover:bg-[#45a99c] flex items-center justify-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          disabled={!!error}
+          disabled={false}
         >
           <i className={`fa-solid ${playing ? 'fa-pause' : 'fa-play'} text-white text-xs`} />
         </button>
@@ -1829,13 +1848,20 @@ function AudioMessage({ message, audioPath }: { message: Message; audioPath: str
           </div>
           <div className="mt-1 flex items-center justify-between text-[11px] text-white/60">
             <span>{playing && duration > 0 ? formatDuration(currentTime) : duration > 0 ? formatDuration(duration) : (message.audio_duration_seconds ? formatDuration(message.audio_duration_seconds) : '--:--')}</span>
-            {error ? <span className="text-red-400">{error}</span> : null}
+            {error ? (
+              <button 
+                onClick={handleRetry}
+                className="text-red-400 hover:text-red-300 underline"
+              >
+                Tap to retry
+              </button>
+            ) : null}
           </div>
         </div>
       </div>
       <audio
         ref={audioRef}
-        src={audioPath}
+        src={cacheBustedPath}
         preload="metadata"
         onEnded={() => setPlaying(false)}
         onPlay={() => setPlaying(true)}

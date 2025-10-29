@@ -504,7 +504,11 @@ export default function PostDetail(){
             ) : null}
           {(post as any)?.audio_path ? (
             <div className="px-3">
-              <audio controls className="w-full" src={normalizePath((post as any).audio_path as string)} />
+              <audio controls className="w-full" src={(() => {
+                const path = normalizePath((post as any).audio_path as string);
+                const separator = path.includes('?') ? '&' : '?';
+                return `${path}${separator}_cb=${Date.now()}`;
+              })()} />
             </div>
           ) : null}
             <div className="flex items-center gap-2 text-xs">
@@ -753,7 +757,11 @@ function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDel
           ) : null}
           {(reply as any)?.audio_path ? (
             <div className="mt-2">
-              <audio controls className="w-full" src={normalizePath((reply as any).audio_path as string)} />
+              <audio controls className="w-full" src={(() => {
+                const path = normalizePath((reply as any).audio_path as string);
+                const separator = path.includes('?') ? '&' : '?';
+                return `${path}${separator}_cb=${Date.now()}`;
+              })()} />
             </div>
           ) : null}
           <div className="mt-1 flex items-center gap-2 text-[11px]">
