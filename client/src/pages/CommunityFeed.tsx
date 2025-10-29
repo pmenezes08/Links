@@ -13,7 +13,7 @@ import { renderTextWithLinks, detectLinks, replaceLinkInText, type DetectedLink 
 type PollOption = { id: number; text: string; votes: number; user_voted?: boolean }
 type Poll = { id: number; question: string; is_active: number; options: PollOption[]; user_vote: number|null; total_votes: number; single_vote?: boolean; expires_at?: string | null }
 type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null, profile_picture?: string|null, image_path?: string|null, audio_path?: string|null, parent_reply_id?: number | null }
-type Post = { id: number; username: string; content: string; image_path?: string|null; audio_path?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; poll?: Poll|null; replies: Reply[], profile_picture?: string|null, is_starred?: boolean, is_community_starred?: boolean }
+type Post = { id: number; username: string; content: string; image_path?: string|null; audio_path?: string|null; audio_summary?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; poll?: Poll|null; replies: Reply[], profile_picture?: string|null, is_starred?: boolean, is_community_starred?: boolean }
 
 // old formatTimestamp removed; using formatSmartTime
 
@@ -997,7 +997,16 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
           </div>
         ) : null}
         {post.audio_path ? (
-          <div className="px-3" onClick={(e)=> { e.stopPropagation(); }}>
+          <div className="px-3 space-y-2" onClick={(e)=> { e.stopPropagation(); }}>
+            {post.audio_summary && (
+              <div className="px-3 py-2 rounded-lg bg-[#4db6ac]/10 border border-[#4db6ac]/30">
+                <div className="flex items-center gap-2 mb-1">
+                  <i className="fa-solid fa-sparkles text-[#4db6ac] text-xs" />
+                  <span className="text-xs font-medium text-[#4db6ac]">AI Summary</span>
+                </div>
+                <p className="text-sm text-white/90 leading-relaxed">{post.audio_summary}</p>
+              </div>
+            )}
             <audio 
               controls 
               className="w-full" 

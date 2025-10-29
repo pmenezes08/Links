@@ -11,7 +11,7 @@ import VideoEmbed from '../components/VideoEmbed'
 import { extractVideoEmbed, removeVideoUrlFromText } from '../utils/videoEmbed'
 
 type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null, parent_reply_id?: number|null, children?: Reply[], profile_picture?: string|null, image_path?: string|null }
-type Post = { id: number; username: string; content: string; image_path?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; replies: Reply[] }
+type Post = { id: number; username: string; content: string; image_path?: string|null; audio_summary?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; replies: Reply[] }
 
 // old formatTimestamp removed; using formatSmartTime
 
@@ -503,7 +503,16 @@ export default function PostDetail(){
               </div>
             ) : null}
           {(post as any)?.audio_path ? (
-            <div className="px-3">
+            <div className="px-3 space-y-2">
+              {(post as any)?.audio_summary && (
+                <div className="px-3 py-2 rounded-lg bg-[#4db6ac]/10 border border-[#4db6ac]/30">
+                  <div className="flex items-center gap-2 mb-1">
+                    <i className="fa-solid fa-sparkles text-[#4db6ac] text-xs" />
+                    <span className="text-xs font-medium text-[#4db6ac]">AI Summary</span>
+                  </div>
+                  <p className="text-sm text-white/90 leading-relaxed">{(post as any).audio_summary}</p>
+                </div>
+              )}
               <audio controls className="w-full" src={(() => {
                 const path = normalizePath((post as any).audio_path as string);
                 const separator = path.includes('?') ? '&' : '?';

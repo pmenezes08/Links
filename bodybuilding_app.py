@@ -30,6 +30,13 @@ except ImportError:
     PIL_AVAILABLE = False
     print("Warning: PIL not available, image optimization disabled")
 
+try:
+    from openai import OpenAI
+    OPENAI_AVAILABLE = True
+except ImportError:
+    OPENAI_AVAILABLE = False
+    print("Warning: OpenAI not available, audio transcription disabled")
+
 # Initialize Flask app
 app = Flask(__name__, template_folder='templates')
 
@@ -497,6 +504,7 @@ X_CONSUMER_SECRET = os.getenv('X_CONSUMER_SECRET', 'Wxo9qnpOaDIJ-9Aw_Bl_MDkor4uY
 VAPID_PUBLIC_KEY = os.getenv('VAPID_PUBLIC_KEY', '')
 VAPID_PRIVATE_KEY = os.getenv('VAPID_PRIVATE_KEY', '')
 VAPID_SUBJECT = os.getenv('VAPID_SUBJECT', 'https://www.c-point.co')
+OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '')
 TYPING_TTL_SECONDS = 5
 
 
@@ -2749,6 +2757,106 @@ def save_uploaded_file(file, subfolder=None):
             pass
         return return_path
     return None
+
+def transcribe_audio_file(audio_file_path):
+    """
+    Transcribe an audio file using OpenAI Whisper API
+    Returns the transcribed text or None if transcription fails
+    """
+    if not OPENAI_AVAILABLE or not OPENAI_API_KEY:
+        logger.warning("OpenAI not available or API key not set, skipping transcription")
+        return None
+    
+    try:
+        logger.info(f"Transcribing audio file: {audio_file_path}")
+        client = OpenAI(api_key=OPENAI_API_KEY)
+        
+        # Handle both relative paths (uploads/audio/file.webm) and full paths
+        if not os.path.isabs(audio_file_path):
+            # Remove 'uploads/' prefix if present for consistency
+            rel_path = audio_file_path.replace('uploads/', '', 1)
+            full_path = os.path.join(app.config['UPLOAD_FOLDER'], rel_path)
+        else:
+            full_path = audio_file_path
+        
+        # Open and transcribe the audio file
+        with open(full_path, 'rb') as audio_file:
+            transcription = client.audio.transcriptions.create(
+                model="whisper-1",
+                file=audio_file,
+                response_format="text"
+            )
+        
+        logger.info(f"Transcription successful: {transcription[:100]}...")
+        return transcription
+    except Exception as e:
+        logger.error(f"Error transcribing audio: {str(e)}")
+        return None
+
+def summarize_text(text):
+    """
+    Summarize text using OpenAI GPT
+    Returns a concise summary or None if summarization fails
+    """
+    if not OPENAI_AVAILABLE or not OPENAI_API_KEY:
+        logger.warning("OpenAI not available or API key not set, skipping summarization")
+        return None
+    
+    if not text or len(text.strip()) < 20:
+        logger.info("Text too short to summarize, returning as-is")
+        return text.strip() if text else None
+    
+    try:
+        logger.info(f"Summarizing text of length: {len(text)}")
+        client = OpenAI(api_key=OPENAI_API_KEY)
+        
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",  # Fast and cost-effective
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are a helpful assistant that summarizes audio transcriptions. Provide a concise 1-2 sentence summary of the main points."
+                },
+                {
+                    "role": "user",
+                    "content": f"Summarize this audio transcription:\n\n{text}"
+                }
+            ],
+            max_tokens=150,
+            temperature=0.5
+        )
+        
+        summary = response.choices[0].message.content.strip()
+        logger.info(f"Summary created: {summary}")
+        return summary
+    except Exception as e:
+        logger.error(f"Error summarizing text: {str(e)}")
+        return None
+
+def process_audio_for_summary(audio_file_path):
+    """
+    Complete pipeline: transcribe audio and generate summary
+    Returns summary text or None
+    """
+    if not audio_file_path:
+        return None
+    
+    logger.info(f"Processing audio for AI summary: {audio_file_path}")
+    
+    # Step 1: Transcribe audio
+    transcription = transcribe_audio_file(audio_file_path)
+    if not transcription:
+        logger.warning("Transcription failed, no summary generated")
+        return None
+    
+    # Step 2: Summarize transcription
+    summary = summarize_text(transcription)
+    if not summary:
+        logger.warning("Summarization failed, returning transcription")
+        # Return first 200 chars of transcription as fallback
+        return transcription[:200] + "..." if len(transcription) > 200 else transcription
+    
+    return summary
 
 def generate_join_code():
     """Generate a unique 6-character join code for communities"""
@@ -10899,9 +11007,28 @@ def post_status():
                 c.execute("ALTER TABLE posts ADD COLUMN audio_mime TEXT")
             except Exception:
                 pass
+            try:
+                c.execute("ALTER TABLE posts ADD COLUMN audio_summary TEXT")
+            except Exception:
+                pass
 
-            c.execute("INSERT INTO posts (username, content, image_path, audio_path, timestamp, community_id) VALUES (?, ?, ?, ?, ?, ?)",
-                      (username, content, image_path, audio_path, timestamp, community_id))
+            # Generate AI summary if audio is present
+            audio_summary = None
+            if audio_path:
+                try:
+                    logger.info(f"Generating AI summary for audio post: {audio_path}")
+                    audio_summary = process_audio_for_summary(audio_path)
+                    if audio_summary:
+                        logger.info(f"AI summary generated successfully: {audio_summary[:100]}...")
+                    else:
+                        logger.warning("AI summary generation returned None")
+                except Exception as e:
+                    logger.error(f"Error generating AI summary: {str(e)}")
+                    # Don't fail the post creation if summarization fails
+                    audio_summary = None
+
+            c.execute("INSERT INTO posts (username, content, image_path, audio_path, audio_summary, timestamp, community_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                      (username, content, image_path, audio_path, audio_summary, timestamp, community_id))
             conn.commit()
             post_id = c.lastrowid
             logger.info(f"Post added successfully for {username} with ID: {post_id} in community: {community_id}")
