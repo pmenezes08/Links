@@ -2834,12 +2834,15 @@ You MUST write the summary in the EXACT SAME LANGUAGE as the transcription text 
 - If the transcription is in German → summary MUST be in German
 - If the transcription is in English → summary MUST be in English  
 - If the transcription is in French → summary MUST be in French
-- If the transcription is in Portuguese (Portugal) → summary MUST be in European Portuguese, NOT Brazilian
+- If the transcription is in Portuguese (ANY variant) → summary MUST be in EUROPEAN PORTUGUESE from Portugal, using Portugal vocabulary, grammar, and expressions. NEVER use Brazilian Portuguese.
 - If the transcription is in Spanish → summary MUST be in Spanish
 - If the transcription is in Italian → summary MUST be in Italian
 - If the transcription is in Mandarin → summary MUST be in Mandarin
 
-DO NOT translate. DO NOT use Portuguese by default. MATCH THE INPUT LANGUAGE.
+SPECIAL NOTE FOR PORTUGUESE:
+Always use European Portuguese (Portugal) for any Portuguese text. Use words like "telemóvel" (not "celular"), "autocarro" (not "ônibus"), "comboio" (not "trem"), etc.
+
+DO NOT translate. DO NOT use Portuguese by default for non-Portuguese audio. MATCH THE INPUT LANGUAGE.
 
 Other requirements:
 - Provide a concise 1-2 sentence summary of the main points
