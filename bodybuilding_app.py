@@ -2805,7 +2805,7 @@ def transcribe_audio_file(audio_file_path):
         logger.error(f"Error transcribing audio: {str(e)}")
         return None
 
-def summarize_text(text):
+def summarize_text(text, username=None):
     """
     Summarize text using OpenAI GPT
     Returns a concise summary or None if summarization fails
@@ -2823,19 +2823,26 @@ def summarize_text(text):
         return text.strip() if text else None
     
     try:
-        logger.info(f"Summarizing text of length: {len(text)}")
+        logger.info(f"Summarizing text of length: {len(text)} for user: {username}")
         client = OpenAI(api_key=OPENAI_API_KEY)
+        
+        # Create a personalized prompt with the username
+        system_prompt = "You are a helpful assistant that summarizes audio transcriptions. Provide a concise 1-2 sentence summary of the main points."
+        if username:
+            user_prompt = f"Summarize this audio transcription from {username}. Refer to them by name, not as 'the speaker' or 'the user':\n\n{text}"
+        else:
+            user_prompt = f"Summarize this audio transcription:\n\n{text}"
         
         response = client.chat.completions.create(
             model="gpt-4o-mini",  # Fast and cost-effective
             messages=[
                 {
                     "role": "system",
-                    "content": "You are a helpful assistant that summarizes audio transcriptions. Provide a concise 1-2 sentence summary of the main points."
+                    "content": system_prompt
                 },
                 {
                     "role": "user",
-                    "content": f"Summarize this audio transcription:\n\n{text}"
+                    "content": user_prompt
                 }
             ],
             max_tokens=150,
@@ -2849,7 +2856,7 @@ def summarize_text(text):
         logger.error(f"Error summarizing text: {str(e)}")
         return None
 
-def process_audio_for_summary(audio_file_path):
+def process_audio_for_summary(audio_file_path, username=None):
     """
     Complete pipeline: transcribe audio and generate summary
     Returns summary text or None
@@ -2857,7 +2864,7 @@ def process_audio_for_summary(audio_file_path):
     if not audio_file_path:
         return None
     
-    logger.info(f"Processing audio for AI summary: {audio_file_path}")
+    logger.info(f"Processing audio for AI summary: {audio_file_path} (user: {username})")
     
     # Step 1: Transcribe audio
     transcription = transcribe_audio_file(audio_file_path)
@@ -2865,8 +2872,8 @@ def process_audio_for_summary(audio_file_path):
         logger.warning("Transcription failed, no summary generated")
         return None
     
-    # Step 2: Summarize transcription
-    summary = summarize_text(transcription)
+    # Step 2: Summarize transcription with username
+    summary = summarize_text(transcription, username=username)
     if not summary:
         logger.warning("Summarization failed, returning transcription")
         # Return first 200 chars of transcription as fallback
@@ -11033,7 +11040,7 @@ def post_status():
             if audio_path:
                 try:
                     logger.info(f"Generating AI summary for audio post: {audio_path}")
-                    audio_summary = process_audio_for_summary(audio_path)
+                    audio_summary = process_audio_for_summary(audio_path, username=username)
                     if audio_summary:
                         logger.info(f"AI summary generated successfully: {audio_summary[:100]}...")
                     else:
