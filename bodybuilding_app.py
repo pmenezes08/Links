@@ -2826,10 +2826,16 @@ def summarize_text(text, username=None):
         logger.info(f"Summarizing text of length: {len(text)} for user: {username}")
         client = OpenAI(api_key=OPENAI_API_KEY)
         
-        # Create a personalized prompt with the username
-        system_prompt = "You are a helpful assistant that summarizes audio transcriptions. Provide a concise 1-2 sentence summary of the main points."
+        # Create a personalized prompt with the username and language instructions
+        system_prompt = """You are a helpful assistant that summarizes audio transcriptions. 
+Provide a concise 1-2 sentence summary of the main points.
+IMPORTANT: 
+- Write the summary in the SAME LANGUAGE as the transcription.
+- If the transcription is in Portuguese, use European Portuguese (Portugal) vocabulary and grammar, NOT Brazilian Portuguese.
+- Refer to the person by their name if provided, not as 'the speaker' or 'the user'."""
+        
         if username:
-            user_prompt = f"Summarize this audio transcription from {username}. Refer to them by name, not as 'the speaker' or 'the user':\n\n{text}"
+            user_prompt = f"Summarize this audio transcription from {username}:\n\n{text}"
         else:
             user_prompt = f"Summarize this audio transcription:\n\n{text}"
         
