@@ -15854,9 +15854,9 @@ def update_audio_summary():
             return jsonify({'success': False, 'error': 'Post not found'}), 404
         
         post_owner = row[0] if isinstance(row, tuple) else row['username']
-        is_admin = check_if_admin(username)
         
-        if post_owner != username and not is_admin:
+        # Check if user is admin or post owner
+        if post_owner != username and username != 'admin':
             return jsonify({'success': False, 'error': 'Not authorized to edit this summary'}), 403
         
         # Update the audio summary
