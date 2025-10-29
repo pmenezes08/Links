@@ -506,11 +506,52 @@ export default function PostDetail(){
             <div className="px-3 space-y-2">
               {(post as any)?.audio_summary && (
                 <div className="px-3 py-2 rounded-lg bg-[#4db6ac]/10 border border-[#4db6ac]/30">
-                  <div className="flex items-center gap-2 mb-1">
-                    <i className="fa-solid fa-sparkles text-[#4db6ac] text-xs" />
-                    <span className="text-xs font-medium text-[#4db6ac]">AI Summary</span>
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center gap-2">
+                      <i className="fa-solid fa-sparkles text-[#4db6ac] text-xs" />
+                      <span className="text-xs font-medium text-[#4db6ac]">AI Summary</span>
+                    </div>
+                    {post.username === currentUser && editingSummary?.postId !== post.id && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setEditingSummary({postId: post.id, text: (post as any).audio_summary || ''})
+                        }}
+                        className="text-[#4db6ac] hover:text-[#4db6ac]/80 text-xs"
+                        title="Edit summary"
+                      >
+                        <i className="fa-solid fa-pencil" />
+                      </button>
+                    )}
                   </div>
-                  <p className="text-sm text-white/90 leading-relaxed">{(post as any).audio_summary}</p>
+                  {editingSummary?.postId === post.id ? (
+                    <div className="space-y-2" onClick={(e) => e.stopPropagation()}>
+                      <textarea
+                        value={editingSummary.text}
+                        onChange={(e) => setEditingSummary({postId: post.id, text: e.target.value})}
+                        className="w-full px-2 py-1 text-sm bg-[#1a1d29] text-white rounded border border-[#4db6ac]/30 focus:outline-none focus:border-[#4db6ac] min-h-[60px]"
+                        placeholder="Edit AI summary..."
+                      />
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleSaveSummary(post.id, editingSummary.text)}
+                          disabled={savingSummary || !editingSummary.text.trim()}
+                          className="px-3 py-1 bg-[#4db6ac] text-white text-xs rounded hover:bg-[#4db6ac]/80 disabled:opacity-50"
+                        >
+                          {savingSummary ? 'Saving...' : 'Save'}
+                        </button>
+                        <button
+                          onClick={() => setEditingSummary(null)}
+                          disabled={savingSummary}
+                          className="px-3 py-1 bg-white/10 text-white text-xs rounded hover:bg-white/20"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-white/90 leading-relaxed">{(post as any).audio_summary}</p>
+                  )}
                 </div>
               )}
               <audio controls className="w-full" src={(() => {

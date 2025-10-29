@@ -383,6 +383,38 @@ export default function CommunityFeed() {
 
   const postsOnly = useMemo(() => Array.isArray(data?.posts) ? data.posts : [], [data])
 
+  const [editingSummary, setEditingSummary] = useState<{postId: number, text: string} | null>(null)
+  const [savingSummary, setSavingSummary] = useState(false)
+
+  const handleSaveSummary = async (postId: number, newSummary: string) => {
+    if (!newSummary.trim()) return
+    setSavingSummary(true)
+    try {
+      const response = await fetch('/update_audio_summary', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ post_id: postId, summary: newSummary.trim() })
+      })
+      const respData = await response.json()
+      if (respData.success) {
+        setData((prevData: any) => ({
+          ...prevData,
+          posts: prevData.posts.map((p: any) => 
+            p.id === postId ? {...p, audio_summary: respData.summary} : p
+          )
+        }))
+        setEditingSummary(null)
+      } else {
+        alert(respData.error || 'Failed to update summary')
+      }
+    } catch (error) {
+      console.error('Error updating summary:', error)
+      alert('Failed to update summary')
+    } finally {
+      setSavingSummary(false)
+    }
+  }
+
   if (loading) return <div className="p-4 text-[#9fb0b5]">Loading…</div>
   if (error) return <div className="p-4 text-red-400">{error || 'Failed to load feed.'}</div>
   if (!data) return <div className="p-4 text-[#9fb0b5]">No posts yet.</div>
@@ -495,6 +527,10 @@ export default function CommunityFeed() {
                 onPollVote={handlePollVote}
                 communityId={community_id}
                 navigate={navigate}
+                editingSummary={editingSummary}
+                setEditingSummary={setEditingSummary}
+                savingSummary={savingSummary}
+                handleSaveSummary={handleSaveSummary}
                 onPollClick={() => navigate(`/community/${community_id}/polls_react`)}
                 onOpenVoters={openVoters}
                 onAddReply={onAddReply}
@@ -798,7 +834,7 @@ export default function CommunityFeed() {
 
 // Ad components removed
 
-function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onToggleReaction, onPollVote, onPollClick, onOpenVoters, communityId, navigate, onAddReply, onOpenReactions, onPreviewImage }: { post: Post & { display_timestamp?: string }, idx: number, currentUser: string, isAdmin: boolean, highlightStep: 'reaction' | 'post' | null, onOpen: ()=>void, onToggleReaction: (postId:number, reaction:string)=>void, onPollVote?: (postId:number, pollId:number, optionId:number)=>void, onPollClick?: ()=>void, onOpenVoters?: (pollId:number)=>void, communityId?: string, navigate?: any, onAddReply?: (postId:number, reply: Reply)=>void, onOpenReactions?: ()=>void, onPreviewImage?: (src:string)=>void }) {
+function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onToggleReaction, onPollVote, onPollClick, onOpenVoters, communityId, navigate, onAddReply, onOpenReactions, onPreviewImage, editingSummary, setEditingSummary, savingSummary, handleSaveSummary }: { post: Post & { display_timestamp?: string }, idx: number, currentUser: string, isAdmin: boolean, highlightStep: 'reaction' | 'post' | null, onOpen: ()=>void, onToggleReaction: (postId:number, reaction:string)=>void, onPollVote?: (postId:number, pollId:number, optionId:number)=>void, onPollClick?: ()=>void, onOpenVoters?: (pollId:number)=>void, communityId?: string, navigate?: any, onAddReply?: (postId:number, reply: Reply)=>void, onOpenReactions?: ()=>void, onPreviewImage?: (src:string)=>void, editingSummary?: {postId: number, text: string} | null, setEditingSummary?: (val: {postId: number, text: string} | null) => void, savingSummary?: boolean, handleSaveSummary?: (postId: number, summary: string) => Promise<void> }) {
   const cardRef = useRef<HTMLDivElement|null>(null)
   const [isEditing, setIsEditing] = useState(false)
   const [editText, setEditText] = useState(post.content)
@@ -1000,11 +1036,52 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
           <div className="px-3 space-y-2" onClick={(e)=> { e.stopPropagation(); }}>
             {post.audio_summary && (
               <div className="px-3 py-2 rounded-lg bg-[#4db6ac]/10 border border-[#4db6ac]/30">
-                <div className="flex items-center gap-2 mb-1">
-                  <i className="fa-solid fa-sparkles text-[#4db6ac] text-xs" />
-                  <span className="text-xs font-medium text-[#4db6ac]">AI Summary</span>
+                <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center gap-2">
+                    <i className="fa-solid fa-sparkles text-[#4db6ac] text-xs" />
+                    <span className="text-xs font-medium text-[#4db6ac]">AI Summary</span>
+                  </div>
+                  {post.username === currentUser && editingSummary?.postId !== post.id && setEditingSummary && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setEditingSummary({postId: post.id, text: post.audio_summary || ''})
+                      }}
+                      className="text-[#4db6ac] hover:text-[#4db6ac]/80 text-xs"
+                      title="Edit summary"
+                    >
+                      <i className="fa-solid fa-pencil" />
+                    </button>
+                  )}
                 </div>
-                <p className="text-sm text-white/90 leading-relaxed">{post.audio_summary}</p>
+                {editingSummary?.postId === post.id ? (
+                  <div className="space-y-2" onClick={(e) => e.stopPropagation()}>
+                    <textarea
+                      value={editingSummary.text}
+                      onChange={(e) => setEditingSummary?.({postId: post.id, text: e.target.value})}
+                      className="w-full px-2 py-1 text-sm bg-[#1a1d29] text-white rounded border border-[#4db6ac]/30 focus:outline-none focus:border-[#4db6ac] min-h-[60px]"
+                      placeholder="Edit AI summary..."
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleSaveSummary?.(post.id, editingSummary.text)}
+                        disabled={savingSummary || !editingSummary.text.trim()}
+                        className="px-3 py-1 bg-[#4db6ac] text-white text-xs rounded hover:bg-[#4db6ac]/80 disabled:opacity-50"
+                      >
+                        {savingSummary ? 'Saving...' : 'Save'}
+                      </button>
+                      <button
+                        onClick={() => setEditingSummary?.(null)}
+                        disabled={savingSummary}
+                        className="px-3 py-1 bg-white/10 text-white text-xs rounded hover:bg-white/20"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm text-white/90 leading-relaxed">{post.audio_summary}</p>
+                )}
               </div>
             )}
             <audio 

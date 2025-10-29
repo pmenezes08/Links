@@ -15827,6 +15827,52 @@ def edit_post():
         logger.error(f"Error editing post {post_id} by {username}: {e}")
         return jsonify({'success': False, 'error': 'Server error'}), 500
 
+@app.route('/update_audio_summary', methods=['POST'])
+@login_required
+def update_audio_summary():
+    """Update the AI summary for an audio post (post owner or admin only)."""
+    username = session['username']
+    data = request.get_json()
+    post_id = data.get('post_id')
+    new_summary = (data.get('summary') or '').strip()
+    
+    if not post_id:
+        return jsonify({'success': False, 'error': 'Post ID is required'}), 400
+    
+    if not new_summary:
+        return jsonify({'success': False, 'error': 'Summary cannot be empty'}), 400
+    
+    try:
+        conn = get_db_connection()
+        c = conn.cursor()
+        
+        # Check if user owns the post or is admin
+        c.execute("SELECT username FROM posts WHERE id = ?", (post_id,))
+        row = c.fetchone()
+        
+        if not row:
+            return jsonify({'success': False, 'error': 'Post not found'}), 404
+        
+        post_owner = row[0] if isinstance(row, tuple) else row['username']
+        is_admin = check_if_admin(username)
+        
+        if post_owner != username and not is_admin:
+            return jsonify({'success': False, 'error': 'Not authorized to edit this summary'}), 403
+        
+        # Update the audio summary
+        c.execute("UPDATE posts SET audio_summary = ? WHERE id = ?", (new_summary, post_id))
+        conn.commit()
+        
+        logger.info(f"User {username} updated audio summary for post {post_id}")
+        return jsonify({'success': True, 'summary': new_summary})
+        
+    except Exception as e:
+        logger.error(f"Error updating audio summary: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+    finally:
+        if conn:
+            conn.close()
+
 @app.route('/admin/communities_list')
 @login_required
 def admin_communities_list():
