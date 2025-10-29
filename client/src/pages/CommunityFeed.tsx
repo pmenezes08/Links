@@ -518,7 +518,7 @@ export default function CommunityFeed() {
           <button className="absolute top-3 right-3 w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 text-white flex items-center justify-center" onClick={()=> setPreviewImageSrc(null)} aria-label="Close preview">
             <i className="fa-solid fa-xmark" />
           </button>
-          <div className="w-[94vw] h-[86vh] max-w-4xl">
+          <div className="w-[94vw] h-[86vh] max-w-4xl" style={{ touchAction: 'none' }}>
             <ZoomableImage src={previewImageSrc} alt="preview" className="w-full h-full" onRequestClose={()=> setPreviewImageSrc(null)} />
           </div>
         </div>

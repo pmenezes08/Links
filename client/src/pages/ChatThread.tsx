@@ -1705,7 +1705,7 @@ export default function ChatThread(){
             className="flex-1 flex items-center justify-center p-2 md:p-4"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="w-full h-full" style={{ maxHeight: 'calc(100vh - 8rem)' }}>
+            <div className="w-full h-full" style={{ maxHeight: 'calc(100vh - 8rem)', touchAction: 'none' }}>
               <ZoomableImage
                 src={previewImage}
                 alt="Photo preview"
