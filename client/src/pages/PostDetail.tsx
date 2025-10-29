@@ -9,6 +9,7 @@ import ZoomableImage from '../components/ZoomableImage'
 import { formatSmartTime } from '../utils/time'
 import VideoEmbed from '../components/VideoEmbed'
 import { extractVideoEmbed, removeVideoUrlFromText } from '../utils/videoEmbed'
+import EditableAISummary from '../components/EditableAISummary'
 
 type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null, parent_reply_id?: number|null, children?: Reply[], profile_picture?: string|null, image_path?: string|null }
 type Post = { id: number; username: string; content: string; image_path?: string|null; audio_summary?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; replies: Reply[] }
@@ -107,32 +108,6 @@ export default function PostDetail(){
   const [currentUser, setCurrentUser] = useState<string | null>(null)
   const [previewSrc, setPreviewSrc] = useState<string | null>(null)
   const [submittingReply, setSubmittingReply] = useState(false)
-  const [editingSummary, setEditingSummary] = useState<{postId: number, text: string} | null>(null)
-  const [savingSummary, setSavingSummary] = useState(false)
-
-  const handleSaveSummary = async (postId: number, newSummary: string) => {
-    if (!newSummary.trim()) return
-    setSavingSummary(true)
-    try {
-      const response = await fetch('/update_audio_summary', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ post_id: postId, summary: newSummary.trim() })
-      })
-      const respData = await response.json()
-      if (respData.success) {
-        setPost(prev => prev ? {...prev, audio_summary: respData.summary} as any : null)
-        setEditingSummary(null)
-      } else {
-        alert(respData.error || 'Failed to update summary')
-      }
-    } catch (error) {
-      console.error('Error updating summary:', error)
-      alert('Failed to update summary')
-    } finally {
-      setSavingSummary(false)
-    }
-  }
   const { recording, recordMs, preview: replyPreview, start: startRec, stop: stopRec, clearPreview: clearReplyPreview, level } = useAudioRecorder() as any
   const replyTokenRef = useRef<string>(`${Date.now()}_${Math.random().toString(36).slice(2)}`)
   const [inlineSending, setInlineSending] = useState<Record<number, boolean>>({})
@@ -531,54 +506,14 @@ export default function PostDetail(){
           {(post as any)?.audio_path ? (
             <div className="px-3 space-y-2">
               {(post as any)?.audio_summary && (
-                <div className="px-3 py-2 rounded-lg bg-[#4db6ac]/10 border border-[#4db6ac]/30">
-                  <div className="flex items-center justify-between mb-1">
-                    <div className="flex items-center gap-2">
-                      <i className="fa-solid fa-sparkles text-[#4db6ac] text-xs" />
-                      <span className="text-xs font-medium text-[#4db6ac]">AI Summary</span>
-                    </div>
-                    {post.username === currentUser && editingSummary?.postId !== post.id && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          setEditingSummary({postId: post.id, text: (post as any).audio_summary || ''})
-                        }}
-                        className="text-[#4db6ac] hover:text-[#4db6ac]/80 text-xs"
-                        title="Edit summary"
-                      >
-                        <i className="fa-solid fa-pencil" />
-                      </button>
-                    )}
-                  </div>
-                  {editingSummary?.postId === post.id ? (
-                    <div className="space-y-2" onClick={(e) => e.stopPropagation()}>
-                      <textarea
-                        value={editingSummary.text}
-                        onChange={(e) => setEditingSummary({postId: post.id, text: e.target.value})}
-                        className="w-full px-2 py-1 text-sm bg-[#1a1d29] text-white rounded border border-[#4db6ac]/30 focus:outline-none focus:border-[#4db6ac] min-h-[60px]"
-                        placeholder="Edit AI summary..."
-                      />
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => handleSaveSummary(post.id, editingSummary.text)}
-                          disabled={savingSummary || !editingSummary.text.trim()}
-                          className="px-3 py-1 bg-[#4db6ac] text-white text-xs rounded hover:bg-[#4db6ac]/80 disabled:opacity-50"
-                        >
-                          {savingSummary ? 'Saving...' : 'Save'}
-                        </button>
-                        <button
-                          onClick={() => setEditingSummary(null)}
-                          disabled={savingSummary}
-                          className="px-3 py-1 bg-white/10 text-white text-xs rounded hover:bg-white/20"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <p className="text-sm text-white/90 leading-relaxed">{(post as any).audio_summary}</p>
-                  )}
-                </div>
+                <EditableAISummary
+                  postId={post.id}
+                  initialSummary={(post as any).audio_summary}
+                  isOwner={post.username === currentUser}
+                  onSummaryUpdate={(newSummary) => {
+                    setPost(prev => prev ? {...prev, audio_summary: newSummary} as any : null);
+                  }}
+                />
               )}
               <audio controls className="w-full" src={(() => {
                 const path = normalizePath((post as any).audio_path as string);

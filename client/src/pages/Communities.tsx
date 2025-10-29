@@ -7,6 +7,7 @@ import ImageLoader from '../components/ImageLoader'
 import VideoEmbed from '../components/VideoEmbed'
 import { extractVideoEmbed, removeVideoUrlFromText } from '../utils/videoEmbed'
 import { renderTextWithLinks } from '../utils/linkUtils.tsx'
+import EditableAISummary from '../components/EditableAISummary'
 
 type Community = { 
   id: number; 
@@ -607,35 +608,7 @@ function ParentTimeline({ parentId }:{ parentId:number }){
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string|undefined>()
   const [loadedOnce, setLoadedOnce] = useState(false)
-  const [editingSummary, setEditingSummary] = useState<{postId: number, text: string} | null>(null)
-  const [savingSummary, setSavingSummary] = useState(false)
   const [currentUser, setCurrentUser] = useState('')
-
-  const handleSaveSummary = async (postId: number, newSummary: string) => {
-    if (!newSummary.trim()) return
-    setSavingSummary(true)
-    try {
-      const response = await fetch('/update_audio_summary', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ post_id: postId, summary: newSummary.trim() })
-      })
-      const respData = await response.json()
-      if (respData.success) {
-        setPosts(prevPosts => prevPosts.map(p => 
-          p.id === postId ? {...p, audio_summary: respData.summary} : p
-        ))
-        setEditingSummary(null)
-      } else {
-        alert(respData.error || 'Failed to update summary')
-      }
-    } catch (error) {
-      console.error('Error updating summary:', error)
-      alert('Failed to update summary')
-    } finally {
-      setSavingSummary(false)
-    }
-  }
   // Module-level caches to prevent duplicate network requests across quick remounts
   const cacheRef = (window as any).__parentTlCache || ((window as any).__parentTlCache = new Map<number, { ts:number; posts:any[] }>())
   const inflightRef = (window as any).__parentTlInflight || ((window as any).__parentTlInflight = new Map<number, Promise<any>>())
@@ -761,54 +734,16 @@ function ParentTimeline({ parentId }:{ parentId:number }){
                 {p.audio_path ? (
                   <div className="space-y-2" onClick={(e)=> e.stopPropagation()}>
                     {p.audio_summary && (
-                      <div className="px-3 py-2 rounded-lg bg-[#4db6ac]/10 border border-[#4db6ac]/30">
-                        <div className="flex items-center justify-between mb-1">
-                          <div className="flex items-center gap-2">
-                            <i className="fa-solid fa-sparkles text-[#4db6ac] text-xs" />
-                            <span className="text-xs font-medium text-[#4db6ac]">AI Summary</span>
-                          </div>
-                          {p.username === currentUser && editingSummary?.postId !== p.id && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                setEditingSummary({postId: p.id, text: p.audio_summary || ''})
-                              }}
-                              className="text-[#4db6ac] hover:text-[#4db6ac]/80 text-xs"
-                              title="Edit summary"
-                            >
-                              <i className="fa-solid fa-pencil" />
-                            </button>
-                          )}
-                        </div>
-                        {editingSummary?.postId === p.id && editingSummary ? (
-                          <div className="space-y-2" onClick={(e) => e.stopPropagation()}>
-                            <textarea
-                              value={editingSummary.text}
-                              onChange={(e) => setEditingSummary({postId: p.id, text: e.target.value})}
-                              className="w-full px-2 py-1 text-sm bg-[#1a1d29] text-white rounded border border-[#4db6ac]/30 focus:outline-none focus:border-[#4db6ac] min-h-[60px]"
-                              placeholder="Edit AI summary..."
-                            />
-                            <div className="flex gap-2">
-                              <button
-                                onClick={() => editingSummary && handleSaveSummary(p.id, editingSummary.text)}
-                                disabled={savingSummary || !editingSummary.text.trim()}
-                                className="px-3 py-1 bg-[#4db6ac] text-white text-xs rounded hover:bg-[#4db6ac]/80 disabled:opacity-50"
-                              >
-                                {savingSummary ? 'Saving...' : 'Save'}
-                              </button>
-                              <button
-                                onClick={() => setEditingSummary(null)}
-                                disabled={savingSummary}
-                                className="px-3 py-1 bg-white/10 text-white text-xs rounded hover:bg-white/20"
-                              >
-                                Cancel
-                              </button>
-                            </div>
-                          </div>
-                        ) : (
-                          <p className="text-sm text-white/90 leading-relaxed">{p.audio_summary}</p>
-                        )}
-                      </div>
+                      <EditableAISummary
+                        postId={p.id}
+                        initialSummary={p.audio_summary}
+                        isOwner={p.username === currentUser}
+                        onSummaryUpdate={(newSummary) => {
+                          setPosts(prevPosts => prevPosts.map(post => 
+                            post.id === p.id ? {...post, audio_summary: newSummary} : post
+                          ));
+                        }}
+                      />
                     )}
                     <audio 
                       controls 
