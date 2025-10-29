@@ -36,15 +36,6 @@ export default function ZoomableImage({ src, alt = 'image', className = '', maxS
   // Loading and source candidates (fallbacks)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
-  
-  // Visual debugging state
-  const [debugInfo, setDebugInfo] = useState({
-    pointerCount: 0,
-    isPinching: false,
-    currentScale: 1,
-    lastEvent: ''
-  })
-  
   const candidates: string[] = (() => {
     const p = (src || '').trim()
     const out: string[] = []
@@ -158,14 +149,6 @@ export default function ZoomableImage({ src, alt = 'image', className = '', maxS
     ;(e.target as HTMLElement).setPointerCapture?.(e.pointerId)
     activePointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
 
-    // Update debug info
-    setDebugInfo(prev => ({
-      ...prev,
-      pointerCount: activePointers.current.size,
-      lastEvent: `DOWN ${e.pointerType}`,
-      isPinching: activePointers.current.size === 2
-    }))
-
     if (activePointers.current.size === 2) {
       // Begin pinch
       const pts = Array.from(activePointers.current.values())
@@ -202,13 +185,6 @@ export default function ZoomableImage({ src, alt = 'image', className = '', maxS
         const factor = dist / pinchStartDistance.current
         const nextScale = clamp(pinchStartScale.current * factor, minScale, maxScale)
 
-        // Update debug info
-        setDebugInfo(prev => ({
-          ...prev,
-          currentScale: nextScale,
-          lastEvent: 'PINCH MOVE'
-        }))
-
         const rect = containerRef.current?.getBoundingClientRect()
         if (rect) {
           const cx = (pts[0].x + pts[1].x) / 2 - rect.left - rect.width / 2
@@ -238,14 +214,6 @@ export default function ZoomableImage({ src, alt = 'image', className = '', maxS
     e.stopPropagation()
     ;(e.target as HTMLElement).releasePointerCapture?.(e.pointerId)
     activePointers.current.delete(e.pointerId)
-    
-    // Update debug info
-    setDebugInfo(prev => ({
-      ...prev,
-      pointerCount: activePointers.current.size,
-      isPinching: activePointers.current.size === 2,
-      lastEvent: 'UP'
-    }))
     
     if (activePointers.current.size < 2) {
       pinchStartDistance.current = null
@@ -323,7 +291,8 @@ export default function ZoomableImage({ src, alt = 'image', className = '', maxS
   }, [scale, getBounds])
 
   const computedStyle: React.CSSProperties = {
-    transform: `translate3d(${translate.x}px, ${translate.y}px, 0) scale(${scale})`,
+    // Apply centering AND zoom/pan transform together
+    transform: `translate(-50%, -50%) translate3d(${translate.x}px, ${translate.y}px, 0) scale(${scale})`,
     transformOrigin: 'center center',
     transition: isPanning || activePointers.current.size > 0 ? 'none' : 'transform 0.12s ease-out',
     cursor: scale > minScale ? 'grab' : 'zoom-in',
@@ -348,7 +317,7 @@ export default function ZoomableImage({ src, alt = 'image', className = '', maxS
         ref={imageRef}
         src={currentSrc}
         alt={alt}
-        className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 max-w-none"
+        className="absolute top-1/2 left-1/2 max-w-none"
         style={computedStyle}
         draggable={false}
         onLoad={(e) => {
@@ -380,15 +349,6 @@ export default function ZoomableImage({ src, alt = 'image', className = '', maxS
           }
         }}
       />
-
-      {/* Visual Debug Panel */}
-      <div className="absolute top-2 left-2 z-20 px-3 py-2 rounded-lg bg-red-600 border border-white/20 text-white text-xs font-mono space-y-1">
-        <div className="font-bold text-sm">🔍 DEBUG</div>
-        <div>Pointers: <span className="font-bold text-yellow-300">{debugInfo.pointerCount}</span></div>
-        <div>Pinching: <span className={`font-bold ${debugInfo.isPinching ? 'text-green-300' : 'text-red-300'}`}>{debugInfo.isPinching ? 'YES' : 'NO'}</span></div>
-        <div>Scale: <span className="font-bold text-blue-300">{scale.toFixed(2)}</span></div>
-        <div>Event: <span className="font-bold text-purple-300">{debugInfo.lastEvent}</span></div>
-      </div>
 
       {/* Mobile-friendly reset control when zoomed */}
       {scale > minScale && (
