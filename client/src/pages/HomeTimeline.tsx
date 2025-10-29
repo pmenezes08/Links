@@ -10,7 +10,7 @@ import { renderTextWithLinks } from '../utils/linkUtils.tsx'
 
 type PollOption = { id: number; text: string; votes: number; user_voted?: boolean }
 type Poll = { id: number; question: string; is_active: number; options: PollOption[]; user_vote: number|null; total_votes: number; single_vote?: boolean; expires_at?: string }
-type Post = { id:number; username:string; content:string; image_path?:string|null; audio_path?: string | null; timestamp:string; display_timestamp?:string; community_id?:number|null; community_name?:string; reactions:Record<string,number>; user_reaction:string|null; poll?:Poll|null; replies_count?:number; profile_picture?:string|null }
+type Post = { id:number; username:string; content:string; image_path?:string|null; audio_path?: string | null; audio_summary?: string | null; timestamp:string; display_timestamp?:string; community_id?:number|null; community_name?:string; reactions:Record<string,number>; user_reaction:string|null; poll?:Poll|null; replies_count?:number; profile_picture?:string|null }
 
 export default function HomeTimeline(){
   const navigate = useNavigate()
@@ -18,6 +18,37 @@ export default function HomeTimeline(){
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string|null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
+  const [editingSummary, setEditingSummary] = useState<{postId: number, text: string} | null>(null)
+  const [savingSummary, setSavingSummary] = useState(false)
+
+  const handleSaveSummary = async (postId: number, newSummary: string) => {
+    if (!newSummary.trim()) return
+    setSavingSummary(true)
+    try {
+      const response = await fetch('/update_audio_summary', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ post_id: postId, summary: newSummary.trim() })
+      })
+      const respData = await response.json()
+      if (respData.success) {
+        setData((prevData: any) => ({
+          ...prevData,
+          posts: prevData.posts.map((p: any) => 
+            p.id === postId ? {...p, audio_summary: respData.summary} : p
+          )
+        }))
+        setEditingSummary(null)
+      } else {
+        alert(respData.error || 'Failed to update summary')
+      }
+    } catch (error) {
+      console.error('Error updating summary:', error)
+      alert('Failed to update summary')
+    } finally {
+      setSavingSummary(false)
+    }
+  }
 
   useEffect(() => {
     let link = document.getElementById('legacy-styles') as HTMLLinkElement | null
@@ -184,11 +215,70 @@ export default function HomeTimeline(){
                     />
                   ) : null}
                   {p.audio_path ? (
-                    <div className="px-3" onClick={(e)=> e.stopPropagation()}>
+                    <div className="px-3 space-y-2" onClick={(e)=> e.stopPropagation()}>
+                      {p.audio_summary && (
+                        <div className="px-3 py-2 rounded-lg bg-[#4db6ac]/10 border border-[#4db6ac]/30">
+                          <div className="flex items-center justify-between mb-1">
+                            <div className="flex items-center gap-2">
+                              <i className="fa-solid fa-sparkles text-[#4db6ac] text-xs" />
+                              <span className="text-xs font-medium text-[#4db6ac]">AI Summary</span>
+                            </div>
+                            {p.username === data?.username && editingSummary?.postId !== p.id && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setEditingSummary({postId: p.id, text: p.audio_summary || ''})
+                                }}
+                                className="text-[#4db6ac] hover:text-[#4db6ac]/80 text-xs"
+                                title="Edit summary"
+                              >
+                                <i className="fa-solid fa-pencil" />
+                              </button>
+                            )}
+                          </div>
+                          {editingSummary?.postId === p.id ? (
+                            <div className="space-y-2" onClick={(e) => e.stopPropagation()}>
+                              <textarea
+                                value={editingSummary.text}
+                                onChange={(e) => setEditingSummary({postId: p.id, text: e.target.value})}
+                                className="w-full px-2 py-1 text-sm bg-[#1a1d29] text-white rounded border border-[#4db6ac]/30 focus:outline-none focus:border-[#4db6ac] min-h-[60px]"
+                                placeholder="Edit AI summary..."
+                              />
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => handleSaveSummary(p.id, editingSummary.text)}
+                                  disabled={savingSummary || !editingSummary.text.trim()}
+                                  className="px-3 py-1 bg-[#4db6ac] text-white text-xs rounded hover:bg-[#4db6ac]/80 disabled:opacity-50"
+                                >
+                                  {savingSummary ? 'Saving...' : 'Save'}
+                                </button>
+                                <button
+                                  onClick={() => setEditingSummary(null)}
+                                  disabled={savingSummary}
+                                  className="px-3 py-1 bg-white/10 text-white text-xs rounded hover:bg-white/20"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <p className="text-sm text-white/90 leading-relaxed">{p.audio_summary}</p>
+                          )}
+                        </div>
+                      )}
                       <audio 
                         controls 
                         className="w-full" 
-                        src={(() => { const a = p.audio_path || ''; if (!a) return ''; if (a.startsWith('http')) return a; if (a.startsWith('/uploads')) return a; return a.startsWith('uploads') ? `/${a}` : `/uploads/${a}` })()}
+                        src={(() => { 
+                          const a = p.audio_path || ''; 
+                          if (!a) return ''; 
+                          let path = '';
+                          if (a.startsWith('http')) path = a;
+                          else if (a.startsWith('/uploads')) path = a;
+                          else path = a.startsWith('uploads') ? `/${a}` : `/uploads/${a}`;
+                          const separator = path.includes('?') ? '&' : '?';
+                          return `${path}${separator}_cb=${Date.now()}`;
+                        })()}
                         onClick={(e)=> e.stopPropagation()}
                         onPlay={(e)=> e.stopPropagation() as any}
                         onPause={(e)=> e.stopPropagation() as any}
