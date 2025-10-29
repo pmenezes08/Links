@@ -21,7 +21,8 @@ export default function EditableAISummary({ postId, initialSummary, isOwner, onS
     { code: 'fr', name: 'French', flag: '🇫🇷' },
     { code: 'de', name: 'German', flag: '🇩🇪' },
     { code: 'es', name: 'Spanish', flag: '🇪🇸' },
-    { code: 'it', name: 'Italian', flag: '🇮🇹' }
+    { code: 'it', name: 'Italian', flag: '🇮🇹' },
+    { code: 'zh', name: 'Mandarin', flag: '🇨🇳' }
   ];
   
   const handleTranslate = async (targetLang: string) => {

@@ -15904,7 +15904,8 @@ def translate_summary():
         'fr': 'French',
         'de': 'German',
         'es': 'Spanish',
-        'it': 'Italian'
+        'it': 'Italian',
+        'zh': 'Mandarin Chinese (Simplified)'
     }
     
     target_lang_name = language_map.get(target_language)
