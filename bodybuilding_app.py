@@ -2829,15 +2829,25 @@ def summarize_text(text, username=None):
         # Create a personalized prompt with the username and language instructions
         system_prompt = """You are a helpful assistant that summarizes audio transcriptions. 
 Provide a concise 1-2 sentence summary of the main points.
-IMPORTANT: 
-- Write the summary in the SAME LANGUAGE as the transcription.
-- If the transcription is in Portuguese, use European Portuguese (Portugal) vocabulary and grammar, NOT Brazilian Portuguese.
-- Refer to the person by their name if provided, not as 'the speaker' or 'the user'."""
+
+CRITICAL LANGUAGE RULES:
+1. First, detect the language of the transcription text
+2. Write the summary in EXACTLY THE SAME LANGUAGE as the transcription
+3. Match the exact dialect:
+   - If Portuguese from Portugal → use European Portuguese (Portugal), NOT Brazilian Portuguese
+   - If German → use German
+   - If English → use English
+   - If French → use French
+   - If Spanish → use Spanish
+   - If Italian → use Italian
+4. Refer to the person by their name if provided, not as 'the speaker' or 'the user'
+
+DO NOT change or translate the language. The summary MUST be in the same language as the input text."""
         
         if username:
-            user_prompt = f"Summarize this audio transcription from {username}:\n\n{text}"
+            user_prompt = f"Summarize this audio transcription from {username}. Remember: write the summary in the SAME language as the transcription:\n\n{text}"
         else:
-            user_prompt = f"Summarize this audio transcription:\n\n{text}"
+            user_prompt = f"Summarize this audio transcription. Remember: write the summary in the SAME language as the transcription:\n\n{text}"
         
         response = client.chat.completions.create(
             model="gpt-4o-mini",  # Fast and cost-effective
@@ -15872,6 +15882,81 @@ def update_audio_summary():
     finally:
         if conn:
             conn.close()
+
+@app.route('/translate_summary', methods=['POST'])
+@login_required
+def translate_summary():
+    """Translate an AI summary to a target language."""
+    data = request.get_json()
+    summary = (data.get('summary') or '').strip()
+    target_language = (data.get('target_language') or '').strip()
+    
+    if not summary:
+        return jsonify({'success': False, 'error': 'Summary is required'}), 400
+    
+    if not target_language:
+        return jsonify({'success': False, 'error': 'Target language is required'}), 400
+    
+    # Language mapping
+    language_map = {
+        'pt': 'European Portuguese (Portugal)',
+        'en': 'English',
+        'fr': 'French',
+        'de': 'German',
+        'es': 'Spanish',
+        'it': 'Italian'
+    }
+    
+    target_lang_name = language_map.get(target_language)
+    if not target_lang_name:
+        return jsonify({'success': False, 'error': 'Invalid target language'}), 400
+    
+    if not OPENAI_AVAILABLE:
+        return jsonify({'success': False, 'error': 'Translation service not available'}), 503
+    
+    if not OPENAI_API_KEY:
+        return jsonify({'success': False, 'error': 'Translation service not configured'}), 503
+    
+    try:
+        logger.info(f"Translating summary to {target_lang_name}")
+        client = OpenAI(api_key=OPENAI_API_KEY)
+        
+        system_prompt = f"""You are a professional translator. Translate the given text to {target_lang_name}.
+Rules:
+- Maintain the meaning and tone of the original text
+- Keep the same level of formality
+- If translating to European Portuguese, use Portugal vocabulary and grammar, NOT Brazilian Portuguese
+- Keep proper names unchanged
+- Preserve any technical terms that don't need translation"""
+        
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {
+                    "role": "system",
+                    "content": system_prompt
+                },
+                {
+                    "role": "user",
+                    "content": f"Translate this to {target_lang_name}:\n\n{summary}"
+                }
+            ],
+            max_tokens=200,
+            temperature=0.3
+        )
+        
+        translated = response.choices[0].message.content.strip()
+        logger.info(f"Translation successful: {translated[:50]}...")
+        
+        return jsonify({
+            'success': True,
+            'translated_summary': translated,
+            'target_language': target_language
+        })
+        
+    except Exception as e:
+        logger.error(f"Error translating summary: {str(e)}")
+        return jsonify({'success': False, 'error': 'Translation failed'}), 500
 
 @app.route('/admin/communities_list')
 @login_required
