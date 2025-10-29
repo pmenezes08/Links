@@ -33,9 +33,11 @@ except ImportError:
 try:
     from openai import OpenAI
     OPENAI_AVAILABLE = True
-except ImportError:
+    print("✅ OpenAI package imported successfully")
+except ImportError as e:
     OPENAI_AVAILABLE = False
-    print("Warning: OpenAI not available, audio transcription disabled")
+    print(f"❌ OpenAI not available: {e}")
+    print("   Run: pip install openai")
 
 # Initialize Flask app
 app = Flask(__name__, template_folder='templates')
@@ -505,6 +507,11 @@ VAPID_PUBLIC_KEY = os.getenv('VAPID_PUBLIC_KEY', '')
 VAPID_PRIVATE_KEY = os.getenv('VAPID_PRIVATE_KEY', '')
 VAPID_SUBJECT = os.getenv('VAPID_SUBJECT', 'https://www.c-point.co')
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '')
+print(f"🔑 OpenAI API Key loaded: {len(OPENAI_API_KEY)} characters")
+if OPENAI_API_KEY:
+    print(f"   Key starts with: {OPENAI_API_KEY[:15]}...")
+else:
+    print("   ⚠️ WARNING: OPENAI_API_KEY is empty!")
 TYPING_TTL_SECONDS = 5
 
 
@@ -2763,8 +2770,13 @@ def transcribe_audio_file(audio_file_path):
     Transcribe an audio file using OpenAI Whisper API
     Returns the transcribed text or None if transcription fails
     """
-    if not OPENAI_AVAILABLE or not OPENAI_API_KEY:
-        logger.warning("OpenAI not available or API key not set, skipping transcription")
+    if not OPENAI_AVAILABLE:
+        logger.warning("OpenAI package not available - run: pip install openai")
+        return None
+    
+    if not OPENAI_API_KEY:
+        logger.warning(f"OpenAI API key not set (length: {len(OPENAI_API_KEY)})")
+        logger.warning("Set OPENAI_API_KEY in PythonAnywhere Web tab > Environment variables")
         return None
     
     try:
@@ -2798,8 +2810,12 @@ def summarize_text(text):
     Summarize text using OpenAI GPT
     Returns a concise summary or None if summarization fails
     """
-    if not OPENAI_AVAILABLE or not OPENAI_API_KEY:
-        logger.warning("OpenAI not available or API key not set, skipping summarization")
+    if not OPENAI_AVAILABLE:
+        logger.warning("OpenAI package not available for summarization")
+        return None
+    
+    if not OPENAI_API_KEY:
+        logger.warning("OpenAI API key not set for summarization")
         return None
     
     if not text or len(text.strip()) < 20:
