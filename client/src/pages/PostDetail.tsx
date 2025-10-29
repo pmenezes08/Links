@@ -107,6 +107,32 @@ export default function PostDetail(){
   const [currentUser, setCurrentUser] = useState<string | null>(null)
   const [previewSrc, setPreviewSrc] = useState<string | null>(null)
   const [submittingReply, setSubmittingReply] = useState(false)
+  const [editingSummary, setEditingSummary] = useState<{postId: number, text: string} | null>(null)
+  const [savingSummary, setSavingSummary] = useState(false)
+
+  const handleSaveSummary = async (postId: number, newSummary: string) => {
+    if (!newSummary.trim()) return
+    setSavingSummary(true)
+    try {
+      const response = await fetch('/update_audio_summary', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ post_id: postId, summary: newSummary.trim() })
+      })
+      const respData = await response.json()
+      if (respData.success) {
+        setPost(prev => prev ? {...prev, audio_summary: respData.summary} as any : null)
+        setEditingSummary(null)
+      } else {
+        alert(respData.error || 'Failed to update summary')
+      }
+    } catch (error) {
+      console.error('Error updating summary:', error)
+      alert('Failed to update summary')
+    } finally {
+      setSavingSummary(false)
+    }
+  }
   const { recording, recordMs, preview: replyPreview, start: startRec, stop: stopRec, clearPreview: clearReplyPreview, level } = useAudioRecorder() as any
   const replyTokenRef = useRef<string>(`${Date.now()}_${Math.random().toString(36).slice(2)}`)
   const [inlineSending, setInlineSending] = useState<Record<number, boolean>>({})
