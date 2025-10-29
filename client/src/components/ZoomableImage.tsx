@@ -36,6 +36,15 @@ export default function ZoomableImage({ src, alt = 'image', className = '', maxS
   // Loading and source candidates (fallbacks)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
+  
+  // Visual debugging state
+  const [debugInfo, setDebugInfo] = useState({
+    pointerCount: 0,
+    isPinching: false,
+    currentScale: 1,
+    lastEvent: ''
+  })
+  
   const candidates: string[] = (() => {
     const p = (src || '').trim()
     const out: string[] = []
@@ -141,11 +150,6 @@ export default function ZoomableImage({ src, alt = 'image', className = '', maxS
 
   // Pointer handlers for pan + pinch
   const onPointerDown = (e: React.PointerEvent) => {
-    console.log('🎯 ZoomableImage onPointerDown:', { 
-      pointerType: e.pointerType, 
-      pointerId: e.pointerId,
-      activeCount: activePointers.current.size 
-    })
     e.stopPropagation()
     // Prevent default to stop browser zoom/scroll interference
     if (e.pointerType === 'touch') {
@@ -154,9 +158,16 @@ export default function ZoomableImage({ src, alt = 'image', className = '', maxS
     ;(e.target as HTMLElement).setPointerCapture?.(e.pointerId)
     activePointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
 
+    // Update debug info
+    setDebugInfo(prev => ({
+      ...prev,
+      pointerCount: activePointers.current.size,
+      lastEvent: `DOWN ${e.pointerType}`,
+      isPinching: activePointers.current.size === 2
+    }))
+
     if (activePointers.current.size === 2) {
       // Begin pinch
-      console.log('👆 Starting PINCH gesture')
       const pts = Array.from(activePointers.current.values())
       const dx = pts[1].x - pts[0].x
       const dy = pts[1].y - pts[0].y
@@ -191,6 +202,13 @@ export default function ZoomableImage({ src, alt = 'image', className = '', maxS
         const factor = dist / pinchStartDistance.current
         const nextScale = clamp(pinchStartScale.current * factor, minScale, maxScale)
 
+        // Update debug info
+        setDebugInfo(prev => ({
+          ...prev,
+          currentScale: nextScale,
+          lastEvent: 'PINCH MOVE'
+        }))
+
         const rect = containerRef.current?.getBoundingClientRect()
         if (rect) {
           const cx = (pts[0].x + pts[1].x) / 2 - rect.left - rect.width / 2
@@ -220,6 +238,15 @@ export default function ZoomableImage({ src, alt = 'image', className = '', maxS
     e.stopPropagation()
     ;(e.target as HTMLElement).releasePointerCapture?.(e.pointerId)
     activePointers.current.delete(e.pointerId)
+    
+    // Update debug info
+    setDebugInfo(prev => ({
+      ...prev,
+      pointerCount: activePointers.current.size,
+      isPinching: activePointers.current.size === 2,
+      lastEvent: 'UP'
+    }))
+    
     if (activePointers.current.size < 2) {
       pinchStartDistance.current = null
     }
@@ -353,6 +380,15 @@ export default function ZoomableImage({ src, alt = 'image', className = '', maxS
           }
         }}
       />
+
+      {/* Visual Debug Panel */}
+      <div className="absolute top-2 left-2 z-20 px-3 py-2 rounded-lg bg-red-600 border border-white/20 text-white text-xs font-mono space-y-1">
+        <div className="font-bold text-sm">🔍 DEBUG</div>
+        <div>Pointers: <span className="font-bold text-yellow-300">{debugInfo.pointerCount}</span></div>
+        <div>Pinching: <span className={`font-bold ${debugInfo.isPinching ? 'text-green-300' : 'text-red-300'}`}>{debugInfo.isPinching ? 'YES' : 'NO'}</span></div>
+        <div>Scale: <span className="font-bold text-blue-300">{scale.toFixed(2)}</span></div>
+        <div>Event: <span className="font-bold text-purple-300">{debugInfo.lastEvent}</span></div>
+      </div>
 
       {/* Mobile-friendly reset control when zoomed */}
       {scale > minScale && (
