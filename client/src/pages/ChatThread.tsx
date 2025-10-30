@@ -805,13 +805,10 @@ export default function ChatThread(){
   }
 
   async function handlePaste(event: React.ClipboardEvent<HTMLTextAreaElement>) {
-    console.log('🔍 Paste event detected in textarea')
-
     // Check if this is a mobile device - paste from photos app often doesn't work
     const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
 
     if (isMobile) {
-      console.log('📱 Mobile device detected - paste events may not work from photos app')
       // On mobile, just show a hint and let the user use the paste button instead
       setTimeout(() => {
         alert('💡 Tip: For images from your photos app, use the + button → "Paste Image" instead of pasting directly.')
@@ -822,56 +819,37 @@ export default function ChatThread(){
     // Try the modern Clipboard API first (works better on desktop)
     if (navigator.clipboard && navigator.clipboard.read) {
       try {
-        console.log('📋 Trying modern Clipboard API')
         const clipboardItems = await navigator.clipboard.read()
-        console.log('📋 Found', clipboardItems.length, 'clipboard items')
 
         for (const clipboardItem of clipboardItems) {
-          console.log('📄 Clipboard item types:', clipboardItem.types)
           for (const type of clipboardItem.types) {
             if (type.startsWith('image/')) {
-              console.log('🖼️ Found image in clipboard:', type)
               event.preventDefault()
               const blob = await clipboardItem.getType(type)
               const file = new File([blob], `pasted-image.${type.split('/')[1]}`, { type })
-              console.log('📁 Created file:', file.name, file.size, 'bytes')
               setPastedImage(file)
               setPreviewImage(URL.createObjectURL(file))
               return
             }
           }
         }
-        console.log('❌ No images found in clipboard')
       } catch (error) {
-        console.log('❌ Modern clipboard API failed:', error.message)
         // Fall back to legacy method
       }
-    } else {
-      console.log('❌ Modern Clipboard API not available')
     }
 
     // Fallback to legacy clipboardData method (limited support)
     const items = event.clipboardData?.items
-    if (!items) {
-      console.log('❌ No clipboardData items found')
-      return
-    }
-
-    console.log('📋 Using legacy clipboardData API, found', items.length, 'items')
+    if (!items) return
 
     for (let i = 0; i < items.length; i++) {
       const item = items[i]
-      console.log(`📄 Item ${i}: type=${item.type}, kind=${item.kind}`)
       if (item.type.indexOf('image') !== -1) {
-        console.log('🖼️ Found image in legacy clipboardData')
         event.preventDefault()
         const file = item.getAsFile()
         if (file) {
-          console.log('📁 Created file from clipboard:', file.name, file.size, 'bytes')
           setPastedImage(file)
           setPreviewImage(URL.createObjectURL(file))
-        } else {
-          console.log('❌ getAsFile() returned null')
         }
         break
       }
