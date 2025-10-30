@@ -1856,6 +1856,11 @@ export default function ChatThread(){
 
 function AudioMessage({ message, audioPath }: { message: Message; audioPath: string }) {
   const [debugText, setDebugText] = useState<string>('')
+
+  // Detect Safari browser
+  const isSafari = typeof navigator !== 'undefined' &&
+    /^((?!chrome|android).)*safari/i.test(navigator.userAgent)
+
   const [playing, setPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
@@ -1938,8 +1943,15 @@ function AudioMessage({ message, audioPath }: { message: Message; audioPath: str
           audioRef.current.load()
           setError(null)
         }
-        console.log('🎵 Calling play() on audio element')
-        setDebugText(`Playing: ${message.id}`)
+
+        if (isSafari) {
+          // Safari blocks autoplay completely - just try to play directly
+          console.log('🎵 Safari detected - attempting direct play')
+          setDebugText(`Safari play attempt: ${message.id}`)
+        } else {
+          console.log('🎵 Calling play() on audio element')
+          setDebugText(`Playing: ${message.id}`)
+        }
 
         // Clear any previous error state for fresh attempt
         if (error === 'Tap play to enable audio') {
@@ -1950,19 +1962,22 @@ function AudioMessage({ message, audioPath }: { message: Message; audioPath: str
         await audioRef.current.play()
         console.log('🎵 play() call succeeded')
 
-        // Safari sometimes allows play() but then immediately pauses it
         // Check if we're actually playing after a short delay
         setTimeout(() => {
           if (audioRef.current && !audioRef.current.paused && audioRef.current.currentTime > 0) {
             setDebugText(`Audio working: ${message.id}`)
             setPlaying(true)
           } else {
-            // Safari blocked it - show pulsing button for fresh interaction
-            setDebugText(`Safari blocked - tap red button: ${message.id}`)
+            // Playback was blocked
+            if (isSafari) {
+              setDebugText(`Safari blocked audio: ${message.id}`)
+            } else {
+              setDebugText(`Playback blocked - tap red button: ${message.id}`)
+            }
             setPlaying(false)
             setError('Tap play to enable audio')
           }
-        }, 200)
+        }, isSafari ? 500 : 200) // Longer delay for Safari
 
         // Optimistically set playing state
         setPlaying(true)
@@ -1971,11 +1986,17 @@ function AudioMessage({ message, audioPath }: { message: Message; audioPath: str
       console.error('🎵 Playback error:', err, 'for:', cacheBustedPath)
       setDebugText(`Play failed: ${err instanceof Error ? err.message : 'Unknown'}`)
 
-      // If autoplay failed, try showing a manual play button
+      // If autoplay failed, show appropriate message
       if (err instanceof Error && err.name === 'NotAllowedError') {
-        setDebugText(`Tap play again to start: ${message.id}`)
+        if (isSafari) {
+          setDebugText(`Safari requires user interaction: ${message.id}`)
+          setError('Safari blocks audio - try a different browser')
+        } else {
+          setDebugText(`Tap play again to start: ${message.id}`)
+          setError('Tap play to enable audio')
+        }
       }
-      setError('Playback failed')
+      setPlaying(false)
     }
   }
   
@@ -1999,10 +2020,13 @@ function AudioMessage({ message, audioPath }: { message: Message; audioPath: str
           onClick={togglePlay}
           className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
             error === 'Tap play to enable audio'
-              ? 'bg-red-500 hover:bg-red-600 animate-pulse'
+              ? isSafari
+                ? 'bg-orange-500 hover:bg-orange-600 animate-pulse'
+                : 'bg-red-500 hover:bg-red-600 animate-pulse'
               : 'bg-[#4db6ac] hover:bg-[#45a99c]'
           }`}
           disabled={false}
+          title={isSafari ? 'Safari blocks audio autoplay - tap to play' : 'Play audio'}
         >
           <i className={`fa-solid ${playing ? 'fa-pause' : 'fa-play'} text-white text-xs`} />
         </button>
