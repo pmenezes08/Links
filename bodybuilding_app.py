@@ -17753,8 +17753,10 @@ def serve_uploads(filename):
                         is_audio = any(relname.lower().endswith(ext) for ext in audio_extensions)
 
                         if is_audio:
-                            # Audio files: short cache to allow immediate playback without data clearing
-                            resp.headers['Cache-Control'] = 'public, max-age=300'  # 5 minutes
+                            # Audio files: no caching to ensure immediate playback works
+                            resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+                            resp.headers['Pragma'] = 'no-cache'
+                            resp.headers['Expires'] = '0'
                         else:
                             # Other files (images): longer cache for performance
                             resp.headers['Cache-Control'] = 'public, max-age=86400'  # 24 hours
@@ -18933,11 +18935,16 @@ def static_uploaded_file(filename):
         logger.info(f"Static image request: {filename}")
         response = send_from_directory('static/uploads', filename)
         
-        # Temporarily disable all caching for debugging
-        print(f"📁 Serving static file: {filename}")
-        response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-        response.headers['Pragma'] = 'no-cache'
-        response.headers['Expires'] = '0'
+        # Set cache headers - no caching for audio files
+        audio_extensions = ['.mp3', '.wav', '.ogg', '.m4a', '.webm', '.mp4', '.aac', '.3gp', '.3g2']
+        is_audio = any(filename.lower().endswith(ext) for ext in audio_extensions)
+
+        if is_audio:
+            response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+            response.headers['Pragma'] = 'no-cache'
+            response.headers['Expires'] = '0'
+        else:
+            response.headers['Cache-Control'] = f'public, max-age={IMAGE_CACHE_TTL}'
         
         return response
     except Exception as e:
