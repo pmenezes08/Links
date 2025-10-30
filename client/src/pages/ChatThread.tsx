@@ -75,14 +75,6 @@ export default function ChatThread(){
   const [showPermissionGuide, setShowPermissionGuide] = useState(false)
   const lastFetchTime = useRef<number>(0)
   const [pastedImage, setPastedImage] = useState<File | null>(null)
-  const [audioDebugInfo, setAudioDebugInfo] = useState<string>('Debug system active - try playing a voice note')
-
-  // Function to update audio debug info from child components
-  const updateAudioDebugInfo = (info: string) => {
-    setAudioDebugInfo(info)
-    // Auto-clear after 10 seconds
-    setTimeout(() => setAudioDebugInfo(''), 10000)
-  }
   const pendingDeletions = useRef<Set<number|string>>(new Set())
   // Bridge between temp ids and server ids to avoid flicker and keep stable keys
   const idBridgeRef = useRef<{ tempToServer: Map<string, string|number>; serverToTemp: Map<string|number, string> }>({
@@ -1095,16 +1087,6 @@ export default function ChatThread(){
         paddingTop: '3.5rem'
       }}
     >
-      {/* Debug info for audio testing - ALWAYS VISIBLE */}
-      <div className="fixed top-2 left-2 right-2 z-[10000] bg-red-600 text-white p-2 rounded-lg text-xs font-mono border-2 border-red-400 shadow-2xl">
-        🎵 Audio Debug: {audioDebugInfo}
-        <button
-          className="ml-2 px-2 py-1 bg-red-800 rounded text-xs hover:bg-red-900"
-          onClick={() => setAudioDebugInfo('Debug system active - try playing a voice note')}
-        >
-          Reset
-        </button>
-      </div>
       {/* Chat header (fixed below global header for iOS focus stability) */}
       <div 
         className="h-14 border-b border-white/10 flex items-center gap-3 px-4 flex-shrink-0"
@@ -1277,7 +1259,6 @@ export default function ChatThread(){
                         <AudioMessage
                           message={m}
                           audioPath={m.audio_path.startsWith('blob:') ? m.audio_path : `/uploads/${m.audio_path}`}
-                          onDebugInfo={updateAudioDebugInfo}
                         />
                       ) : null}
                       {/* Image display with loader */}
@@ -1873,7 +1854,8 @@ export default function ChatThread(){
   )
 }
 
-function AudioMessage({ message, audioPath, onDebugInfo }: { message: Message; audioPath: string; onDebugInfo?: (info: string) => void }) {
+function AudioMessage({ message, audioPath }: { message: Message; audioPath: string }) {
+  const [debugText, setDebugText] = useState<string>('')
   const [playing, setPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
@@ -1894,7 +1876,7 @@ function AudioMessage({ message, audioPath, onDebugInfo }: { message: Message; a
     if (!audio) return
 
     console.log('🎵 AudioMessage mounted:', { audioPath: cacheBustedPath, messageId: message.id })
-    onDebugInfo?.(`Audio mounted: ${message.id}`)
+    setDebugText(`Mounted: ${message.id}`)
 
     const handleError = (e: Event) => {
       const target = e.target as HTMLAudioElement
@@ -1907,13 +1889,13 @@ function AudioMessage({ message, audioPath, onDebugInfo }: { message: Message; a
         networkState: target.networkState,
         readyState: target.readyState
       })
-      onDebugInfo?.(`Load error: ${errorCode || 'unknown'} - ${errorMessage || 'unknown'}`)
+      setDebugText(`Load error: ${errorCode || 'unknown'}`)
       setError('Could not load audio')
     }
 
     const handleCanPlay = () => {
       console.log('🎵 Audio can play:', cacheBustedPath)
-      onDebugInfo?.(`Audio loaded successfully: ${message.id}`)
+      setDebugText(`Loaded OK: ${message.id}`)
       setError(null)
     }
 
@@ -1956,13 +1938,15 @@ function AudioMessage({ message, audioPath, onDebugInfo }: { message: Message; a
           setError(null)
         }
         console.log('🎵 Calling play() on audio element')
+        setDebugText(`Playing: ${message.id}`)
         await audioRef.current.play()
         console.log('🎵 play() call succeeded')
+        setDebugText(`Playing OK: ${message.id}`)
         setPlaying(true)
       }
     } catch (err) {
       console.error('🎵 Playback error:', err, 'for:', cacheBustedPath)
-      onDebugInfo?.(`Playback failed: ${err instanceof Error ? err.message : 'Unknown error'}`)
+      setDebugText(`Play failed: ${err instanceof Error ? err.message : 'Unknown'}`)
       setError('Playback failed')
     }
   }
@@ -2016,6 +2000,13 @@ function AudioMessage({ message, audioPath, onDebugInfo }: { message: Message; a
         onPause={() => setPlaying(false)}
         className="hidden"
       />
+
+      {/* Debug info for this specific audio message */}
+      {debugText && (
+        <div className="mt-1 text-xs text-red-400 font-mono bg-red-900/20 px-2 py-1 rounded">
+          🎵 {debugText}
+        </div>
+      )}
     </div>
   )
 }
