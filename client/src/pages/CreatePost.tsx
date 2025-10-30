@@ -222,7 +222,7 @@ export default function CreatePost(){
             <i className="fa-regular fa-image" style={{ color: '#4db6ac' }} />
             <input type="file" accept="image/*" onChange={(e)=> setFile(e.target.files?.[0]||null)} style={{ display: 'none' }} />
           </label>
-          <button className={`px-3 py-2 rounded-full ${recording ? 'text-red-400' : 'text-[#4db6ac]'} hover:bg-white/5`} aria-label={recording ? "Stop recording" : "Record audio"} onClick={()=> recording ? stop() : start()}>
+          <button className={`px-3 py-2 rounded-full text-[#4db6ac] hover:bg-white/5 ${recording ? 'brightness-125' : ''}`} aria-label={recording ? "Stop recording" : "Record audio"} onClick={()=> recording ? stop() : start()}>
             <i className={`fa-solid ${recording ? 'fa-stop' : 'fa-microphone'}`} />
           </button>
           {preview && (

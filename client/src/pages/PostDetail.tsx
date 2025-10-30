@@ -613,7 +613,7 @@ export default function PostDetail(){
             </button>
             <button
               type="button"
-              className={`w-10 h-10 rounded-full grid place-items-center ${recording ? 'text-red-400' : 'text-[#4db6ac]'} hover:bg-white/10`}
+              className={`w-10 h-10 rounded-full grid place-items-center text-[#4db6ac] hover:bg-white/10 ${recording ? 'brightness-125' : ''}`}
               aria-label={recording ? "Stop recording" : "Record audio"}
               onClick={()=> recording ? stopRec() : startRec()}
             >
@@ -807,7 +807,7 @@ function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDel
                 {/* We'll allow only image OR audio at a time in inline composer */}
                 <button
                   type="button"
-                  className={`w-10 h-10 rounded-full grid place-items-center ${rec ? 'text-red-400' : 'text-[#4db6ac]'} hover:bg-white/10`}
+                  className={`w-10 h-10 rounded-full grid place-items-center text-[#4db6ac] hover:bg-white/10 ${rec ? 'brightness-125' : ''}`}
                   aria-label={rec ? "Stop recording" : "Record audio"}
                   onClick={()=> rec ? stopInlineRec() : startInlineRec()}
                 >
