@@ -17748,7 +17748,14 @@ def serve_uploads(filename):
                     relname = os.path.basename(path)
                     resp = send_from_directory(dirpath, relname)
                     try:
-                        resp.headers['Cache-Control'] = 'public, max-age=86400'
+                        # Don't cache audio files - they should be fresh for immediate playback
+                        if any(relname.lower().endswith(ext) for ext in ['.mp3', '.wav', '.ogg', '.m4a', '.webm', '.mp4']):
+                            resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+                            resp.headers['Pragma'] = 'no-cache'
+                            resp.headers['Expires'] = '0'
+                        else:
+                            # Cache other files (images, etc.) for 24 hours
+                            resp.headers['Cache-Control'] = 'public, max-age=86400'
                     except Exception:
                         pass
                     return resp
@@ -18924,10 +18931,14 @@ def static_uploaded_file(filename):
         logger.info(f"Static image request: {filename}")
         response = send_from_directory('static/uploads', filename)
         
-        # Add cache headers for faster photo loading
+        # Add cache headers - don't cache audio files
         from redis_cache import IMAGE_CACHE_TTL
-        response.headers['Cache-Control'] = f'public, max-age={IMAGE_CACHE_TTL}'
-        response.headers['ETag'] = f'"{filename}"'
+        if any(filename.lower().endswith(ext) for ext in ['.mp3, '.wav, '.ogg, '.m4a, '.webm, '.mp4]):
+            response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+            response.headers['Pragma'] = 'no-cache'
+            response.headers['Expires'] = '0'
+        else:
+            response.headers['Cache-Control'] = f'public, max-age={IMAGE_CACHE_TTL}'
         
         return response
     except Exception as e:
