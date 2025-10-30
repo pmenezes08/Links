@@ -1762,7 +1762,7 @@ export default function ChatThread(){
             </div>
             <div className="mb-3 text-sm text-white/70">Duration: {Math.min(60, (recordingPreview as any).duration || Math.round((recordMs||0)/1000))}s</div>
             <div className="mb-4">
-              <audio controls src={recordingPreview.url} className="w-full" />
+              <audio controls src={recordingPreview.url} className="w-full" playsInline webkit-playsinline="true" />
             </div>
             <div className="flex items-center justify-end gap-2">
               <button onClick={cancelRecordingPreview} className="px-2.5 py-1.5 rounded-lg border border-white/10 text-white/70 hover:bg-white/5 text-sm">
@@ -2051,6 +2051,8 @@ function AudioMessage({ message, audioPath }: { message: Message; audioPath: str
         ref={audioRef}
         src={cacheBustedPath}
         preload="metadata"
+        playsInline
+        webkit-playsinline="true"
         onEnded={() => setPlaying(false)}
         onPlay={() => setPlaying(true)}
         onPause={() => setPlaying(false)}

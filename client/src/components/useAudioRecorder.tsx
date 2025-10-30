@@ -108,16 +108,32 @@ export function useAudioRecorder() {
         return
       }
       if (!('MediaRecorder' in window)) {
-        alert('Recording is not supported in this browser')
+        alert('Recording is not supported in this browser. Please update iOS to 14.3 or later.')
         return
       }
+      
+      // Request microphone permission with specific constraints
       const constraints: MediaStreamConstraints = isMobile ? { audio: true } : { audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1, sampleRate: 44100 } }
       const stream = await navigator.mediaDevices.getUserMedia(constraints)
       streamRef.current = stream
+      
+      // Determine best MIME type - prioritize formats that work on iOS
       let mimeType = ''
       const types = isMobile ? ['audio/mp4', 'audio/webm', 'audio/ogg', 'audio/wav'] : ['audio/webm;codecs=opus','audio/webm','audio/ogg;codecs=opus','audio/mp4','audio/wav']
-      for (const t of types) { try { if ((window as any).MediaRecorder.isTypeSupported(t)) { mimeType = t; break } } catch {}
+      for (const t of types) { 
+        try { 
+          if ((window as any).MediaRecorder.isTypeSupported(t)) { 
+            mimeType = t
+            console.log(`🎤 Using MIME type: ${mimeType}`)
+            break 
+          } 
+        } catch {}
       }
+      
+      if (!mimeType) {
+        console.warn('⚠️ No supported MIME type found, using default')
+      }
+      
       const mr = new MediaRecorder(stream, mimeType ? { mimeType } : undefined)
       recorderRef.current = mr
       chunksRef.current = []
@@ -128,6 +144,12 @@ export function useAudioRecorder() {
         const AudioContextClass: any = (window as any).AudioContext || (window as any).webkitAudioContext
         if (AudioContextClass) {
           const ctx = new AudioContextClass()
+          
+          // iOS requires AudioContext to be resumed after user interaction
+          if (ctx.state === 'suspended') {
+            await ctx.resume()
+          }
+          
           const src = ctx.createMediaStreamSource(stream)
           const analyser = ctx.createAnalyser()
           analyser.fftSize = 256

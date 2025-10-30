@@ -515,7 +515,7 @@ export default function PostDetail(){
                   }}
                 />
               )}
-              <audio controls className="w-full" src={(() => {
+              <audio controls className="w-full" playsInline webkit-playsinline="true" src={(() => {
                 const path = normalizePath((post as any).audio_path as string);
                 const separator = path.includes('?') ? '&' : '?';
                 return `${path}${separator}_cb=${Date.now()}`;
@@ -598,7 +598,7 @@ export default function PostDetail(){
             )}
             {replyPreview && (
               <div className="flex items-center gap-2 mr-auto flex-1 min-w-0">
-                <audio controls className="w-full" src={replyPreview.url} />
+                <audio controls className="w-full" playsInline webkit-playsinline="true" src={replyPreview.url} />
                 <button 
                   onClick={() => { clearReplyPreview() }}
                   className="ml-1 text-[#9fb0b5] hover:text-white"
@@ -768,7 +768,7 @@ function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDel
           ) : null}
           {(reply as any)?.audio_path ? (
             <div className="mt-2">
-              <audio controls className="w-full" src={(() => {
+              <audio controls className="w-full" playsInline webkit-playsinline="true" src={(() => {
                 const path = normalizePath((reply as any).audio_path as string);
                 const separator = path.includes('?') ? '&' : '?';
                 return `${path}${separator}_cb=${Date.now()}`;

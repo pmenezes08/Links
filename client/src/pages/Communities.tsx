@@ -747,7 +747,9 @@ function ParentTimeline({ parentId }:{ parentId:number }){
                     )}
                     <audio 
                       controls 
-                      className="w-full" 
+                      className="w-full"
+                      playsInline
+                      webkit-playsinline="true" 
                       src={(() => { 
                         const a = String(p.audio_path || '').trim(); 
                         if (!a) return ''; 

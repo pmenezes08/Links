@@ -1017,7 +1017,9 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
             )}
             <audio 
               controls 
-              className="w-full" 
+              className="w-full"
+              playsInline
+              webkit-playsinline="true" 
               src={(() => { 
                 const p = post.audio_path || ''; 
                 if (!p) return ''; 
@@ -1226,6 +1228,8 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                       <audio
                         controls
                         className="w-full"
+                        playsInline
+                        webkit-playsinline="true"
                         src={(() => { 
                           const p = (r as any).audio_path || ''; 
                           if (!p) return ''; 

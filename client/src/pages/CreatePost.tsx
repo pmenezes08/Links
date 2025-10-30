@@ -159,7 +159,7 @@ export default function CreatePost(){
         ) : null}
         {preview ? (
           <div className="mt-3 rounded-xl border border-white/10 p-3 bg-white/[0.03]">
-            <audio controls src={preview.url} className="w-full" />
+            <audio controls src={preview.url} className="w-full" playsInline webkit-playsinline="true" />
           </div>
         ) : null}
         {recording && (

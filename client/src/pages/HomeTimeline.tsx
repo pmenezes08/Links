@@ -203,7 +203,9 @@ export default function HomeTimeline(){
                       )}
                       <audio 
                         controls 
-                        className="w-full" 
+                        className="w-full"
+                        playsInline
+                        webkit-playsinline="true" 
                         src={(() => { 
                           const a = p.audio_path || ''; 
                           if (!a) return ''; 
