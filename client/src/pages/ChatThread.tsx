@@ -74,6 +74,7 @@ export default function ChatThread(){
   const [showMicPermissionModal, setShowMicPermissionModal] = useState(false)
   const [showPermissionGuide, setShowPermissionGuide] = useState(false)
   const lastFetchTime = useRef<number>(0)
+  const [pastedImage, setPastedImage] = useState<File | null>(null)
   const pendingDeletions = useRef<Set<number|string>>(new Set())
   // Bridge between temp ids and server ids to avoid flicker and keep stable keys
   const idBridgeRef = useRef<{ tempToServer: Map<string, string|number>; serverToTemp: Map<string|number, string> }>({
@@ -744,25 +745,28 @@ export default function ChatThread(){
   function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
     if (!file || !otherUserId) return
-    
+    handleImageFile(file)
+  }
+
+  function handleImageFile(file: File) {
     setSending(true)
-    
+
     // Create FormData for photo upload
     const formData = new FormData()
     formData.append('photo', file)
     formData.append('recipient_id', String(otherUserId))
     formData.append('message', '') // Optional text with photo
-    
-    fetch('/send_photo_message', { 
-      method: 'POST', 
-      credentials: 'include', 
-      body: formData 
+
+    fetch('/send_photo_message', {
+      method: 'POST',
+      credentials: 'include',
+      body: formData
     })
     .then(r => r.json())
     .then(j => {
       if (j?.success) {
         const now = new Date().toISOString().slice(0,19).replace('T',' ')
-        
+
         // Add photo message as optimistic update
         const photoMessage: Message = {
           id: `temp_photo_${Date.now()}`,
@@ -773,16 +777,16 @@ export default function ChatThread(){
           isOptimistic: true
         }
         setMessages(prev => [...prev, photoMessage])
-        
+
         // Force poll to get real message
         lastFetchTime.current = 0
-        
+
         // Stop typing state
-        fetch('/api/typing', { 
-          method:'POST', 
-          credentials:'include', 
-          headers:{ 'Content-Type':'application/json' }, 
-          body: JSON.stringify({ peer: username, is_typing: false }) 
+        fetch('/api/typing', {
+          method:'POST',
+          credentials:'include',
+          headers:{ 'Content-Type':'application/json' },
+          body: JSON.stringify({ peer: username, is_typing: false })
         }).catch(()=>{})
       } else {
         alert('Failed to send photo: ' + (j.error || 'Unknown error'))
@@ -791,10 +795,31 @@ export default function ChatThread(){
     .catch(() => {
       alert('Error sending photo. Please try again.')
     })
-    .finally(() => setSending(false))
-    
-    // Reset input
-    event.target.value = ''
+    .finally(() => {
+      setSending(false)
+      setPastedImage(null)
+      // Clear the input so user can select the same file again
+      if (fileInputRef.current) fileInputRef.current.value = ''
+      if (cameraInputRef.current) cameraInputRef.current.value = ''
+    })
+  }
+
+  async function handlePaste(event: React.ClipboardEvent<HTMLTextAreaElement>) {
+    const items = event.clipboardData?.items
+    if (!items) return
+
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i]
+      if (item.type.indexOf('image') !== -1) {
+        event.preventDefault()
+        const file = item.getAsFile()
+        if (file) {
+          setPastedImage(file)
+          setPreviewImage(URL.createObjectURL(file))
+        }
+        break
+      }
+    }
   }
 
   async function uploadAudioBlob(blob: Blob){
@@ -1423,6 +1448,7 @@ export default function ChatThread(){
                 className="flex-1 bg-transparent px-4 pr-20 py-2.5 text-[16px] text-white placeholder-white/50 outline-none resize-none max-h-24 min-h-[36px]"
                 placeholder="Message"
                 value={draft}
+                onPaste={handlePaste}
                 onChange={e=> {
                   setDraft(e.target.value)
                   fetch('/api/typing', { 
@@ -1724,6 +1750,32 @@ export default function ChatThread(){
               <i className="fa-solid fa-arrow-left text-sm" />
               Back to Chat
             </button>
+            {pastedImage && (
+              <>
+                <button
+                  onClick={() => {
+                    setPreviewImage(null)
+                    setPastedImage(null)
+                  }}
+                  className=\"px-3 py-2 rounded-lg border border-white/10 text-white/70 hover:bg-white/5 text-sm\"
+                >
+                  <i className=\"fa-regular fa-trash-can mr-2\" />
+                  Discard
+                </button>
+                <button
+                  onClick={() => {
+                    if (pastedImage) {
+                      handleImageFile(pastedImage)
+                      setPreviewImage(null)
+                    }
+                  }}
+                  className=\"px-3 py-2 rounded-lg bg-[#4db6ac] text-black hover:brightness-110 text-sm\"
+                >
+                  <i className=\"fa-solid fa-paper-plane mr-2\" />
+                  Send
+                </button>
+              </>
+            )}
           </div>
         </div>
       )}
