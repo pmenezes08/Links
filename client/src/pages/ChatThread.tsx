@@ -75,14 +75,6 @@ export default function ChatThread(){
   const [showPermissionGuide, setShowPermissionGuide] = useState(false)
   const lastFetchTime = useRef<number>(0)
   const [pastedImage, setPastedImage] = useState<File | null>(null)
-  const [audioDebugInfo, setAudioDebugInfo] = useState<string>('')
-
-  // Function to update audio debug info from child components
-  const updateAudioDebugInfo = (info: string) => {
-    setAudioDebugInfo(info)
-    // Auto-clear after 10 seconds
-    setTimeout(() => setAudioDebugInfo(''), 10000)
-  }
   const pendingDeletions = useRef<Set<number|string>>(new Set())
   // Bridge between temp ids and server ids to avoid flicker and keep stable keys
   const idBridgeRef = useRef<{ tempToServer: Map<string, string|number>; serverToTemp: Map<string|number, string> }>({
@@ -1095,18 +1087,6 @@ export default function ChatThread(){
         paddingTop: '3.5rem'
       }}
     >
-      {/* Debug info for audio testing */}
-      {audioDebugInfo && (
-        <div className="fixed top-20 left-4 right-4 z-50 bg-red-900/90 text-white p-3 rounded-lg text-sm font-mono border border-red-500">
-          🎵 Audio Debug: {audioDebugInfo}
-          <button
-            className="ml-2 px-2 py-1 bg-red-700 rounded text-xs"
-            onClick={() => setAudioDebugInfo('')}
-          >
-            ✕
-          </button>
-        </div>
-      )}
       {/* Chat header (fixed below global header for iOS focus stability) */}
       <div 
         className="h-14 border-b border-white/10 flex items-center gap-3 px-4 flex-shrink-0"
@@ -1279,7 +1259,6 @@ export default function ChatThread(){
                         <AudioMessage
                           message={m}
                           audioPath={m.audio_path.startsWith('blob:') ? m.audio_path : `/uploads/${m.audio_path}`}
-                          onDebugInfo={updateAudioDebugInfo}
                         />
                       ) : null}
                       {/* Image display with loader */}
@@ -1875,7 +1854,7 @@ export default function ChatThread(){
   )
 }
 
-function AudioMessage({ message, audioPath, onDebugInfo }: { message: Message; audioPath: string; onDebugInfo?: (info: string) => void }) {
+function AudioMessage({ message, audioPath }: { message: Message; audioPath: string }) {
   const [playing, setPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
@@ -1896,7 +1875,6 @@ function AudioMessage({ message, audioPath, onDebugInfo }: { message: Message; a
     if (!audio) return
 
     console.log('🎵 AudioMessage mounted:', { audioPath: cacheBustedPath, messageId: message.id })
-    onDebugInfo?.(`Audio mounted: ${message.id}`)
 
     const handleError = (e: Event) => {
       const target = e.target as HTMLAudioElement
@@ -1909,13 +1887,11 @@ function AudioMessage({ message, audioPath, onDebugInfo }: { message: Message; a
         networkState: target.networkState,
         readyState: target.readyState
       })
-      onDebugInfo?.(`Load error: ${errorCode || 'unknown'} - ${errorMessage || 'unknown'}`)
       setError('Could not load audio')
     }
 
     const handleCanPlay = () => {
       console.log('🎵 Audio can play:', cacheBustedPath)
-      onDebugInfo?.(`Audio loaded successfully: ${message.id}`)
       setError(null)
     }
 

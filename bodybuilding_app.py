@@ -17748,19 +17748,17 @@ def serve_uploads(filename):
                     relname = os.path.basename(path)
                     resp = send_from_directory(dirpath, relname)
                     try:
-                        # Temporarily disable all caching for debugging
-                        is_audio = any(relname.lower().endswith(ext) for ext in ['.mp3', '.wav', '.ogg', '.m4a', '.webm', '.mp4', '.aac', '.3gp', '.3g2'])
-                        print(f"📁 Serving file: {relname} (audio: {is_audio}) from {dirpath}")
+                        # Set appropriate cache headers based on file type
+                        audio_extensions = ['.mp3', '.wav', '.ogg', '.m4a', '.webm', '.mp4', '.aac', '.3gp', '.3g2']
+                        is_audio = any(relname.lower().endswith(ext) for ext in audio_extensions)
 
-                        # Add debug header to response
-                        resp.headers['X-Debug-File'] = f"{relname} (audio: {is_audio})"
-                        resp.headers['X-Debug-Path'] = dirpath
-
-                        resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-                        resp.headers['Pragma'] = 'no-cache'
-                        resp.headers['Expires'] = '0'
-                    except Exception as e:
-                        print(f"⚠️ Error setting cache headers for {relname}: {e}")
+                        if is_audio:
+                            # Audio files: short cache to allow immediate playback without data clearing
+                            resp.headers['Cache-Control'] = 'public, max-age=300'  # 5 minutes
+                        else:
+                            # Other files (images): longer cache for performance
+                            resp.headers['Cache-Control'] = 'public, max-age=86400'  # 24 hours
+                    except Exception:
                         pass
                     return resp
             except Exception:
