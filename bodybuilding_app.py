@@ -17753,10 +17753,8 @@ def serve_uploads(filename):
                         is_audio = any(relname.lower().endswith(ext) for ext in audio_extensions)
 
                         if is_audio:
-                            # Audio files: no caching to ensure immediate playback works
-                            resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-                            resp.headers['Pragma'] = 'no-cache'
-                            resp.headers['Expires'] = '0'
+                            # Audio files: short cache to prevent Safari caching issues
+                            resp.headers['Cache-Control'] = 'public, max-age=60'  # 1 minute cache
                         else:
                             # Other files (images): longer cache for performance
                             resp.headers['Cache-Control'] = 'public, max-age=86400'  # 24 hours
