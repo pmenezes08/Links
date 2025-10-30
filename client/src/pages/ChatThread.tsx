@@ -1097,7 +1097,7 @@ export default function ChatThread(){
     >
       {/* Debug info for audio testing */}
       {audioDebugInfo && (
-        <div className="fixed top-20 left-4 right-4 z-50 bg-red-900/90 text-white p-3 rounded-lg text-sm font-mono border border-red-500">
+        <div className="fixed top-4 left-4 right-4 z-[9999] bg-red-900/95 text-white p-3 rounded-lg text-sm font-mono border border-red-500 shadow-lg">
           🎵 Audio Debug: {audioDebugInfo}
           <button
             className="ml-2 px-2 py-1 bg-red-700 rounded text-xs"
