@@ -1757,9 +1757,9 @@ export default function ChatThread(){
                     setPreviewImage(null)
                     setPastedImage(null)
                   }}
-                  className=\"px-3 py-2 rounded-lg border border-white/10 text-white/70 hover:bg-white/5 text-sm\"
+                  className="px-3 py-2 rounded-lg border border-white/10 text-white/70 hover:bg-white/5 text-sm"
                 >
-                  <i className=\"fa-regular fa-trash-can mr-2\" />
+                  <i className="fa-regular fa-trash-can mr-2" />
                   Discard
                 </button>
                 <button
@@ -1769,9 +1769,9 @@ export default function ChatThread(){
                       setPreviewImage(null)
                     }
                   }}
-                  className=\"px-3 py-2 rounded-lg bg-[#4db6ac] text-black hover:brightness-110 text-sm\"
+                  className="px-3 py-2 rounded-lg bg-[#4db6ac] text-black hover:brightness-110 text-sm"
                 >
-                  <i className=\"fa-solid fa-paper-plane mr-2\" />
+                  <i className="fa-solid fa-paper-plane mr-2" />
                   Send
                 </button>
               </>
