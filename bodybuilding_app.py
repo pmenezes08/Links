@@ -17748,16 +17748,16 @@ def serve_uploads(filename):
                     relname = os.path.basename(path)
                     resp = send_from_directory(dirpath, relname)
                     try:
-                        # Set appropriate cache headers based on file type
+                        # Revert to original caching but with shorter time for audio
                         audio_extensions = ['.mp3', '.wav', '.ogg', '.m4a', '.webm', '.mp4', '.aac', '.3gp', '.3g2']
                         is_audio = any(relname.lower().endswith(ext) for ext in audio_extensions)
 
                         if is_audio:
-                            # Audio files: short cache to prevent Safari caching issues
-                            resp.headers['Cache-Control'] = 'public, max-age=60'  # 1 minute cache
+                            # Audio files: short cache to help with Safari issues
+                            resp.headers['Cache-Control'] = 'public, max-age=3600'  # 1 hour cache
                         else:
-                            # Other files (images): longer cache for performance
-                            resp.headers['Cache-Control'] = 'public, max-age=86400'  # 24 hours
+                            # Keep original caching for other files
+                            resp.headers['Cache-Control'] = 'public, max-age=86400'
                     except Exception:
                         pass
                     return resp
@@ -18933,14 +18933,12 @@ def static_uploaded_file(filename):
         logger.info(f"Static image request: {filename}")
         response = send_from_directory('static/uploads', filename)
         
-        # Set cache headers - no caching for audio files
+        # Set cache headers - shorter cache for audio files
         audio_extensions = ['.mp3', '.wav', '.ogg', '.m4a', '.webm', '.mp4', '.aac', '.3gp', '.3g2']
         is_audio = any(filename.lower().endswith(ext) for ext in audio_extensions)
 
         if is_audio:
-            response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-            response.headers['Pragma'] = 'no-cache'
-            response.headers['Expires'] = '0'
+            response.headers['Cache-Control'] = 'public, max-age=3600'  # 1 hour for audio
         else:
             response.headers['Cache-Control'] = f'public, max-age={IMAGE_CACHE_TTL}'
         
