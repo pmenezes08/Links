@@ -17748,15 +17748,11 @@ def serve_uploads(filename):
                     relname = os.path.basename(path)
                     resp = send_from_directory(dirpath, relname)
                     try:
-                        # Use short cache time for audio files to allow immediate playback without browser data clearing
-                        audio_extensions = ['.mp3', '.wav', '.ogg', '.m4a', '.webm', '.mp4', '.aac', '.3gp', '.3g2']
-                        is_audio = any(relname.lower().endswith(ext) for ext in audio_extensions)
-                        if is_audio:
-                            print(f"🎵 Serving audio file with short cache: {relname}")
-                            resp.headers['Cache-Control'] = 'public, max-age=300'  # 5 minutes for audio files
-                        else:
-                            print(f"🖼️ Serving non-audio file with long cache: {relname}")
-                            resp.headers['Cache-Control'] = 'public, max-age=86400'  # Cache other files for 24 hours
+                        # Temporarily disable all caching for debugging
+                        print(f"📁 Serving file: {relname}")
+                        resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+                        resp.headers['Pragma'] = 'no-cache'
+                        resp.headers['Expires'] = '0'
                     except Exception as e:
                         print(f"⚠️ Error setting cache headers for {relname}: {e}")
                         pass
@@ -18933,17 +18929,11 @@ def static_uploaded_file(filename):
         logger.info(f"Static image request: {filename}")
         response = send_from_directory('static/uploads', filename)
         
-        # Add cache headers - don't cache audio files
-        from redis_cache import IMAGE_CACHE_TTL
-        audio_extensions = ['.mp3', '.wav', '.ogg', '.m4a', '.webm', '.mp4', '.aac', '.3gp', '.3g2']
-        is_audio = any(filename.lower().endswith(ext) for ext in audio_extensions)
-        if is_audio:
-            print(f"🎵 Static audio file with no cache: {filename}")
-            response.headers['Cache-Control'] = 'no-cache'
-            response.headers['Pragma'] = 'no-cache'
-        else:
-            print(f"🖼️ Static non-audio file with cache: {filename}")
-            response.headers['Cache-Control'] = f'public, max-age={IMAGE_CACHE_TTL}'
+        # Temporarily disable all caching for debugging
+        print(f"📁 Serving static file: {filename}")
+        response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        response.headers['Pragma'] = 'no-cache'
+        response.headers['Expires'] = '0'
         
         return response
     except Exception as e:
