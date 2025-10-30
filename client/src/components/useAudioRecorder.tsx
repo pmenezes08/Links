@@ -113,7 +113,6 @@ export function useAudioRecorder() {
       }
       
       // CRITICAL iOS FIX: Clean up any existing resources before starting
-      console.log('🎤 Starting recording - cleaning up existing resources...')
       stopStream()
       try {
         if (recorderRef.current && recorderRef.current.state !== 'inactive') {
@@ -140,14 +139,9 @@ export function useAudioRecorder() {
         try { 
           if ((window as any).MediaRecorder.isTypeSupported(t)) { 
             mimeType = t
-            console.log(`🎤 Using MIME type: ${mimeType}`)
             break 
           } 
         } catch {}
-      }
-      
-      if (!mimeType) {
-        console.warn('⚠️ No supported MIME type found, using default')
       }
       
       const mr = new MediaRecorder(stream, mimeType ? { mimeType } : undefined)
@@ -228,7 +222,6 @@ export function useAudioRecorder() {
   }, [finalize, isMobile])
 
   const stop = useCallback(() => {
-    console.log('🎤 Stopping recording...')
     try {
       const mr = recorderRef.current
       if (mr && mr.state !== 'inactive') {
@@ -253,20 +246,15 @@ export function useAudioRecorder() {
     setTimeout(() => { 
       setRecording(false)
       recorderRef.current = null
-      console.log('🎤 Recording stopped and cleaned up')
     }, 800)
   }, [isMobile])
 
   const clearPreview = useCallback(() => {
-    console.log('🎤 Clearing preview and revoking blob URL...')
     try { 
       if (preview?.url) {
         URL.revokeObjectURL(preview.url)
-        console.log('🎤 Blob URL revoked successfully')
       }
-    } catch (e) {
-      console.error('🎤 Failed to revoke blob URL:', e)
-    }
+    } catch {}
     setPreview(null)
   }, [preview])
 

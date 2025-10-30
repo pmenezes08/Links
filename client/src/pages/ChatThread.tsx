@@ -861,13 +861,11 @@ export default function ChatThread(){
     
     // Don't send if blob is empty (cancelled recording)
     if (!blob || blob.size === 0) {
-      console.log('🎤 Empty audio blob, not sending')
       return
     }
     
     setSending(true)
     try{
-      console.log('🎤 Uploading audio blob, size:', blob.size)
       const url = URL.createObjectURL(blob)
       const now = new Date().toISOString().slice(0,19).replace('T',' ')
       const optimistic: Message = { id: `temp_audio_${Date.now()}`, text: '🎤 Voice message', audio_path: url, sent: true, time: now, isOptimistic: true }
@@ -885,12 +883,10 @@ export default function ChatThread(){
         URL.revokeObjectURL(url)
         alert(j?.error || 'Failed to send audio')
       } else {
-        console.log('🎤 Audio sent successfully')
         // Revoke blob URL after successful upload to free memory
         setTimeout(() => URL.revokeObjectURL(url), 100)
       }
     }catch(err){
-      console.error('🎤 Upload error:', err)
       alert('Failed to send audio')
     }finally{
       setSending(false)
@@ -910,7 +906,6 @@ export default function ChatThread(){
     // CRITICAL iOS FIX: Add small delay before cleanup to ensure blob is sent
     setTimeout(() => {
       cancelRecordingPreview()
-      console.log('🎤 Recording preview cleaned up after send')
     }, 100)
   }
   
@@ -919,13 +914,11 @@ export default function ChatThread(){
     
     // Don't send if blob is empty (cancelled recording)
     if (!blob || blob.size === 0) {
-      console.log('🎤 Empty audio blob, not sending')
       return
     }
     
     setSending(true)
     try{
-      console.log('🎤 Uploading audio blob, size:', blob.size, 'duration:', durationSeconds)
       const url = URL.createObjectURL(blob)
       const now = new Date().toISOString().slice(0,19).replace('T',' ')
       const optimistic: Message = { id: `temp_audio_${Date.now()}`, text: '🎤 Voice message', audio_path: url, sent: true, time: now, isOptimistic: true }
@@ -945,23 +938,19 @@ export default function ChatThread(){
         filename = 'voice.ogg'
       }
       
-      console.log('🎤 Uploading with filename:', filename, 'blob type:', blob.type)
       fd.append('audio', blob, filename)
       const r = await fetch('/send_audio_message', { method:'POST', credentials:'include', body: fd })
       const j = await r.json().catch(()=>null)
       if (!j?.success){
-        console.error('🎤 Send failed:', j?.error)
         setMessages(prev => prev.filter(m => m.id !== optimistic.id))
         // Revoke blob URL on failure
         URL.revokeObjectURL(url)
         alert(j?.error || 'Failed to send audio message')
       } else {
-        console.log('🎤 Audio sent successfully')
         // Revoke blob URL after successful upload to free memory
         setTimeout(() => URL.revokeObjectURL(url), 100)
       }
     }catch(err){
-      console.error('🎤 Upload error:', err)
       alert('Failed to send voice message: ' + (err as Error).message)
     } finally {
       setSending(false)
@@ -981,7 +970,6 @@ export default function ChatThread(){
     try {
       // Check current permission state
       const permissionStatus = await navigator.permissions.query({ name: 'microphone' as PermissionName })
-      console.log('🎤 Current microphone permission:', permissionStatus.state)
       
       if (permissionStatus.state === 'granted') {
         // Permission already granted, start recording directly
@@ -995,7 +983,6 @@ export default function ChatThread(){
       }
     } catch (error) {
       // Fallback for browsers that don't support permissions API
-      console.log('🎤 Permissions API not supported, starting recording')
       startVoiceRecording()
     }
   }
@@ -1833,10 +1820,7 @@ export default function ChatThread(){
                     if (previewImage && previewImage.startsWith('blob:')) {
                       try {
                         URL.revokeObjectURL(previewImage)
-                        console.log('🎤 Preview image blob URL revoked')
-                      } catch (e) {
-                        console.error('🎤 Failed to revoke preview image URL:', e)
-                      }
+                      } catch {}
                     }
                     setPreviewImage(null)
                     setPastedImage(null)
@@ -1893,8 +1877,6 @@ function AudioMessage({ message, audioPath }: { message: Message; audioPath: str
     const audio = audioRef.current
     if (!audio) return
 
-    console.log('🎵 AudioMessage mounted:', { audioPath: cacheBustedPath, messageId: message.id })
-    
     // CRITICAL iOS FIX: Force load on iOS to prevent stuck state
     try {
       audio.load()
@@ -1919,7 +1901,6 @@ function AudioMessage({ message, audioPath }: { message: Message; audioPath: str
     }
 
     const handleCanPlay = () => {
-      console.log('🎵 Audio can play:', cacheBustedPath)
       setDebugText(`Loaded OK: ${message.id}`)
       setError(null)
     }
@@ -1927,7 +1908,6 @@ function AudioMessage({ message, audioPath }: { message: Message; audioPath: str
     const handleLoadedMetadata = () => {
       if (audio.duration && isFinite(audio.duration)) {
         setDuration(audio.duration)
-        console.log('🎵 Audio duration loaded:', audio.duration)
       }
     }
 
@@ -1957,7 +1937,6 @@ function AudioMessage({ message, audioPath }: { message: Message; audioPath: str
         setPlaying(false)
         setDebugText(`Paused: ${message.id}`)
       } else {
-        console.log('🎵 Attempting to play:', cacheBustedPath)
         // Force reload if there was an error
         if (error) {
           audioRef.current.load()
@@ -1966,10 +1945,8 @@ function AudioMessage({ message, audioPath }: { message: Message; audioPath: str
 
         if (isSafari) {
           // Safari blocks autoplay completely - just try to play directly
-          console.log('🎵 Safari detected - attempting direct play')
           setDebugText(`Safari play attempt: ${message.id}`)
         } else {
-          console.log('🎵 Calling play() on audio element')
           setDebugText(`Playing: ${message.id}`)
         }
 
@@ -1980,7 +1957,6 @@ function AudioMessage({ message, audioPath }: { message: Message; audioPath: str
         }
 
         await audioRef.current.play()
-        console.log('🎵 play() call succeeded')
 
         // Check if we're actually playing after a short delay
         setTimeout(() => {
