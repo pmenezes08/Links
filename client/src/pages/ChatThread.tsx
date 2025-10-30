@@ -75,7 +75,7 @@ export default function ChatThread(){
   const [showPermissionGuide, setShowPermissionGuide] = useState(false)
   const lastFetchTime = useRef<number>(0)
   const [pastedImage, setPastedImage] = useState<File | null>(null)
-  const [audioDebugInfo, setAudioDebugInfo] = useState<string>('')
+  const [audioDebugInfo, setAudioDebugInfo] = useState<string>('Debug system active - try playing a voice note')
 
   // Function to update audio debug info from child components
   const updateAudioDebugInfo = (info: string) => {
@@ -1095,18 +1095,16 @@ export default function ChatThread(){
         paddingTop: '3.5rem'
       }}
     >
-      {/* Debug info for audio testing */}
-      {audioDebugInfo && (
-        <div className="fixed top-4 left-4 right-4 z-[9999] bg-red-900/95 text-white p-3 rounded-lg text-sm font-mono border border-red-500 shadow-lg">
-          🎵 Audio Debug: {audioDebugInfo}
-          <button
-            className="ml-2 px-2 py-1 bg-red-700 rounded text-xs"
-            onClick={() => setAudioDebugInfo('')}
-          >
-            ✕
-          </button>
-        </div>
-      )}
+      {/* Debug info for audio testing - ALWAYS VISIBLE */}
+      <div className="fixed top-2 left-2 right-2 z-[10000] bg-red-600 text-white p-2 rounded-lg text-xs font-mono border-2 border-red-400 shadow-2xl">
+        🎵 Audio Debug: {audioDebugInfo}
+        <button
+          className="ml-2 px-2 py-1 bg-red-800 rounded text-xs hover:bg-red-900"
+          onClick={() => setAudioDebugInfo('Debug system active - try playing a voice note')}
+        >
+          Reset
+        </button>
+      </div>
       {/* Chat header (fixed below global header for iOS focus stability) */}
       <div 
         className="h-14 border-b border-white/10 flex items-center gap-3 px-4 flex-shrink-0"
