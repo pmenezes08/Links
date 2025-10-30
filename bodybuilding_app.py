@@ -17749,7 +17749,13 @@ def serve_uploads(filename):
                     resp = send_from_directory(dirpath, relname)
                     try:
                         # Temporarily disable all caching for debugging
-                        print(f"📁 Serving file: {relname}")
+                        is_audio = any(relname.lower().endswith(ext) for ext in ['.mp3', '.wav', '.ogg', '.m4a', '.webm', '.mp4', '.aac', '.3gp', '.3g2'])
+                        print(f"📁 Serving file: {relname} (audio: {is_audio}) from {dirpath}")
+
+                        # Add debug header to response
+                        resp.headers['X-Debug-File'] = f"{relname} (audio: {is_audio})"
+                        resp.headers['X-Debug-Path'] = dirpath
+
                         resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
                         resp.headers['Pragma'] = 'no-cache'
                         resp.headers['Expires'] = '0'
