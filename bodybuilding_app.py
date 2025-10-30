@@ -17748,11 +17748,9 @@ def serve_uploads(filename):
                     relname = os.path.basename(path)
                     resp = send_from_directory(dirpath, relname)
                     try:
-                        # Don't cache audio files - they should be fresh for immediate playback
+                        # Use short cache time for audio files to allow immediate playback without browser data clearing
                         if any(relname.lower().endswith(ext) for ext in ['.mp3', '.wav', '.ogg', '.m4a', '.webm', '.mp4']):
-                            resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-                            resp.headers['Pragma'] = 'no-cache'
-                            resp.headers['Expires'] = '0'
+                            resp.headers['Cache-Control'] = 'public, max-age=300'  # 5 minutes for audio files
                         else:
                             # Cache other files (images, etc.) for 24 hours
                             resp.headers['Cache-Control'] = 'public, max-age=86400'
@@ -18934,9 +18932,7 @@ def static_uploaded_file(filename):
         # Add cache headers - don't cache audio files
         from redis_cache import IMAGE_CACHE_TTL
         if any(filename.lower().endswith(ext) for ext in ['.mp3, '.wav, '.ogg, '.m4a, '.webm, '.mp4]):
-            response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-            response.headers['Pragma'] = 'no-cache'
-            response.headers['Expires'] = '0'
+            response.headers['Cache-Control'] = 'public, max-age=300'
         else:
             response.headers['Cache-Control'] = f'public, max-age={IMAGE_CACHE_TTL}'
         
