@@ -120,7 +120,7 @@ export default function EditableAISummary({ postId, initialSummary, isOwner, onS
                 {isTranslating ? (
                   <i className="fa-solid fa-spinner fa-spin" />
                 ) : (
-                  <i className="fa-solid fa-language" />
+                  <i className="fa-solid fa-globe" />
                 )}
               </button>
               {showLanguages && (

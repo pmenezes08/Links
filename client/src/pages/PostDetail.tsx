@@ -614,10 +614,10 @@ export default function PostDetail(){
             <button
               type="button"
               className={`w-10 h-10 rounded-full grid place-items-center ${recording ? 'text-red-400' : 'text-[#4db6ac]'} hover:bg-white/10`}
-              aria-label="Record audio"
+              aria-label={recording ? "Stop recording" : "Record audio"}
               onClick={()=> recording ? stopRec() : startRec()}
             >
-              <i className="fa-solid fa-microphone text-xl" />
+              <i className={`fa-solid ${recording ? 'fa-stop' : 'fa-microphone'} text-xl`} />
             </button>
             <input
               ref={fileInputRef}
@@ -808,10 +808,10 @@ function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDel
                 <button
                   type="button"
                   className={`w-10 h-10 rounded-full grid place-items-center ${rec ? 'text-red-400' : 'text-[#4db6ac]'} hover:bg-white/10`}
-                  aria-label="Record audio"
+                  aria-label={rec ? "Stop recording" : "Record audio"}
                   onClick={()=> rec ? stopInlineRec() : startInlineRec()}
                 >
-                  <i className="fa-solid fa-microphone text-xl" />
+                  <i className={`fa-solid ${rec ? 'fa-stop' : 'fa-microphone'} text-xl`} />
                 </button>
                 <button className="px-2.5 py-1.5 rounded-full bg-[#4db6ac] text-white border border-[#4db6ac] hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed" onClick={()=> { if (!text && !img && !inlinePreview) return; const f = inlinePreview ? new File([inlinePreview.blob], inlinePreview.blob.type.includes('mp4') ? 'audio.mp4' : 'audio.webm', { type: inlinePreview.blob.type }) : (img || undefined); onInlineReply(reply.id, text, f as any); setText(''); setImg(null); if (inlineFileRef.current) inlineFileRef.current.value=''; clearInlinePreview(); setShowComposer(false) }} aria-label="Send reply" disabled={!text && !img && !inlinePreview || !!inlineSendingFlag}>
                   {inlineSendingFlag ? <i className="fa-solid fa-spinner fa-spin" /> : <i className="fa-solid fa-paper-plane" />}
