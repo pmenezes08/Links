@@ -112,6 +112,22 @@ export function useAudioRecorder() {
         return
       }
       
+      // CRITICAL iOS FIX: Clean up any existing resources before starting
+      console.log('🎤 Starting recording - cleaning up existing resources...')
+      stopStream()
+      try {
+        if (recorderRef.current && recorderRef.current.state !== 'inactive') {
+          recorderRef.current.stop()
+        }
+      } catch {}
+      try {
+        if (audioCtxRef.current) {
+          await audioCtxRef.current.close()
+          audioCtxRef.current = null
+        }
+      } catch {}
+      clearTimers()
+      
       // Request microphone permission with specific constraints
       const constraints: MediaStreamConstraints = isMobile ? { audio: true } : { audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1, sampleRate: 44100 } }
       const stream = await navigator.mediaDevices.getUserMedia(constraints)
@@ -212,24 +228,45 @@ export function useAudioRecorder() {
   }, [finalize, isMobile])
 
   const stop = useCallback(() => {
+    console.log('🎤 Stopping recording...')
     try {
       const mr = recorderRef.current
       if (mr && mr.state !== 'inactive') {
         stoppedRef.current = true
         if (isMobile) {
           try { mr.requestData() } catch {}
-          setTimeout(() => { try { mr.stop() } catch {} }, 120)
+          setTimeout(() => { 
+            try { 
+              mr.stop() 
+              // CRITICAL iOS FIX: Stop stream immediately after stopping recorder
+              setTimeout(() => stopStream(), 500)
+            } catch {} 
+          }, 120)
         } else {
           mr.stop()
+          // Stop stream for desktop too
+          setTimeout(() => stopStream(), 500)
         }
       }
     } catch {}
     // UI safety reset
-    setTimeout(() => { setRecording(false); recorderRef.current = null }, 800)
+    setTimeout(() => { 
+      setRecording(false)
+      recorderRef.current = null
+      console.log('🎤 Recording stopped and cleaned up')
+    }, 800)
   }, [isMobile])
 
   const clearPreview = useCallback(() => {
-    try { if (preview?.url) URL.revokeObjectURL(preview.url) } catch {}
+    console.log('🎤 Clearing preview and revoking blob URL...')
+    try { 
+      if (preview?.url) {
+        URL.revokeObjectURL(preview.url)
+        console.log('🎤 Blob URL revoked successfully')
+      }
+    } catch (e) {
+      console.error('🎤 Failed to revoke blob URL:', e)
+    }
     setPreview(null)
   }, [preview])
 

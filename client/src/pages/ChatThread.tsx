@@ -907,7 +907,11 @@ export default function ChatThread(){
   function sendRecordingPreview(){
     if (!recordingPreview) return
     uploadAudioBlobWithDuration(recordingPreview.blob, (recordingPreview as any).duration || Math.round((recordMs||0)/1000))
-    cancelRecordingPreview()
+    // CRITICAL iOS FIX: Add small delay before cleanup to ensure blob is sent
+    setTimeout(() => {
+      cancelRecordingPreview()
+      console.log('🎤 Recording preview cleaned up after send')
+    }, 100)
   }
   
   async function uploadAudioBlobWithDuration(blob: Blob, durationSeconds: number){
@@ -1825,6 +1829,15 @@ export default function ChatThread(){
               <>
                 <button
                   onClick={() => {
+                    // CRITICAL iOS FIX: Revoke blob URL before clearing
+                    if (previewImage && previewImage.startsWith('blob:')) {
+                      try {
+                        URL.revokeObjectURL(previewImage)
+                        console.log('🎤 Preview image blob URL revoked')
+                      } catch (e) {
+                        console.error('🎤 Failed to revoke preview image URL:', e)
+                      }
+                    }
                     setPreviewImage(null)
                     setPastedImage(null)
                   }}
@@ -1881,6 +1894,13 @@ function AudioMessage({ message, audioPath }: { message: Message; audioPath: str
     if (!audio) return
 
     console.log('🎵 AudioMessage mounted:', { audioPath: cacheBustedPath, messageId: message.id })
+    
+    // CRITICAL iOS FIX: Force load on iOS to prevent stuck state
+    try {
+      audio.load()
+    } catch (e) {
+      console.error('🎵 Audio load error:', e)
+    }
     setDebugText(`Mounted: ${message.id}`)
 
     const handleError = (e: Event) => {
