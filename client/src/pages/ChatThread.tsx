@@ -1925,11 +1925,12 @@ function AudioMessage({ message, audioPath }: { message: Message; audioPath: str
 
   const togglePlay = async () => {
     if (!audioRef.current) return
-    
+
     try {
       if (playing) {
         audioRef.current.pause()
         setPlaying(false)
+        setDebugText(`Paused: ${message.id}`)
       } else {
         console.log('🎵 Attempting to play:', cacheBustedPath)
         // Force reload if there was an error
@@ -1939,14 +1940,45 @@ function AudioMessage({ message, audioPath }: { message: Message; audioPath: str
         }
         console.log('🎵 Calling play() on audio element')
         setDebugText(`Playing: ${message.id}`)
+
         await audioRef.current.play()
         console.log('🎵 play() call succeeded')
-        setDebugText(`Playing OK: ${message.id}`)
+
+        // Safari sometimes allows play() but then immediately pauses it
+        // Check if we're actually playing after a short delay
+        setTimeout(() => {
+          if (audioRef.current && !audioRef.current.paused && audioRef.current.currentTime > 0) {
+            setDebugText(`Actually playing: ${message.id}`)
+            setPlaying(true)
+          } else {
+            // Safari blocked it - show manual retry option
+            setDebugText(`Safari blocked - tap again: ${message.id}`)
+            setPlaying(false)
+            // Try to play again immediately on next tap
+            setTimeout(() => {
+              if (audioRef.current) {
+                audioRef.current.play().then(() => {
+                  setDebugText(`Manual play worked: ${message.id}`)
+                  setPlaying(true)
+                }).catch(() => {
+                  setDebugText(`Still blocked: ${message.id}`)
+                })
+              }
+            }, 100)
+          }
+        }, 200)
+
+        // Optimistically set playing state
         setPlaying(true)
       }
     } catch (err) {
       console.error('🎵 Playback error:', err, 'for:', cacheBustedPath)
       setDebugText(`Play failed: ${err instanceof Error ? err.message : 'Unknown'}`)
+
+      // If autoplay failed, try showing a manual play button
+      if (err instanceof Error && err.name === 'NotAllowedError') {
+        setDebugText(`Tap play again to start: ${message.id}`)
+      }
       setError('Playback failed')
     }
   }
