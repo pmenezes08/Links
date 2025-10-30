@@ -805,6 +805,29 @@ export default function ChatThread(){
   }
 
   async function handlePaste(event: React.ClipboardEvent<HTMLTextAreaElement>) {
+    // Try the modern Clipboard API first (works better on mobile)
+    if (navigator.clipboard && navigator.clipboard.read) {
+      try {
+        const clipboardItems = await navigator.clipboard.read()
+        for (const clipboardItem of clipboardItems) {
+          for (const type of clipboardItem.types) {
+            if (type.startsWith('image/')) {
+              event.preventDefault()
+              const blob = await clipboardItem.getType(type)
+              const file = new File([blob], `pasted-image.${type.split('/')[1]}`, { type })
+              setPastedImage(file)
+              setPreviewImage(URL.createObjectURL(file))
+              return
+            }
+          }
+        }
+      } catch (error) {
+        // Fall back to legacy method
+        console.log('Modern clipboard API failed, trying legacy method')
+      }
+    }
+
+    // Fallback to legacy clipboardData method (limited mobile support)
     const items = event.clipboardData?.items
     if (!items) return
 
@@ -1390,6 +1413,43 @@ export default function ChatThread(){
                   <div>
                     <div className="text-white font-medium">Camera</div>
                     <div className="text-white/60 text-xs">Take a photo</div>
+                  </div>
+                </button>
+                <button
+                  className="w-full px-4 py-3 flex items-center gap-3 hover:bg-white/5 transition-colors text-left"
+                  onClick={async () => {
+                    setShowAttachMenu(false)
+                    // Try to paste from clipboard manually
+                    if (navigator.clipboard && navigator.clipboard.read) {
+                      try {
+                        const clipboardItems = await navigator.clipboard.read()
+                        for (const clipboardItem of clipboardItems) {
+                          for (const type of clipboardItem.types) {
+                            if (type.startsWith('image/')) {
+                              const blob = await clipboardItem.getType(type)
+                              const file = new File([blob], `pasted-image.${type.split('/')[1]}`, { type })
+                              setPastedImage(file)
+                              setPreviewImage(URL.createObjectURL(file))
+                              return
+                            }
+                          }
+                        }
+                        alert('No image found in clipboard. Copy an image first, then try again.')
+                      } catch (error) {
+                        console.log('Clipboard access failed:', error)
+                        alert('Unable to access clipboard. Try pasting directly in the text box, or use the Photos button above.')
+                      }
+                    } else {
+                      alert('Clipboard access not supported on this device. Try pasting directly in the text box, or use the Photos button above.')
+                    }
+                  }}
+                >
+                  <div className="w-10 h-10 rounded-full bg-[#4db6ac]/20 flex items-center justify-center">
+                    <i className="fa-solid fa-paste text-[#4db6ac]" />
+                  </div>
+                  <div>
+                    <div className="text-white font-medium">Paste Image</div>
+                    <div className="text-white/60 text-xs">From clipboard</div>
                   </div>
                 </button>
                 {/* Voice message moved next to Send button */}
