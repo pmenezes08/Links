@@ -1941,6 +1941,12 @@ function AudioMessage({ message, audioPath }: { message: Message; audioPath: str
         console.log('🎵 Calling play() on audio element')
         setDebugText(`Playing: ${message.id}`)
 
+        // Clear any previous error state for fresh attempt
+        if (error === 'Tap play to enable audio') {
+          setError(null)
+          setDebugText(`Fresh play attempt: ${message.id}`)
+        }
+
         await audioRef.current.play()
         console.log('🎵 play() call succeeded')
 
@@ -1948,23 +1954,13 @@ function AudioMessage({ message, audioPath }: { message: Message; audioPath: str
         // Check if we're actually playing after a short delay
         setTimeout(() => {
           if (audioRef.current && !audioRef.current.paused && audioRef.current.currentTime > 0) {
-            setDebugText(`Actually playing: ${message.id}`)
+            setDebugText(`Audio working: ${message.id}`)
             setPlaying(true)
           } else {
-            // Safari blocked it - show manual retry option
-            setDebugText(`Safari blocked - tap again: ${message.id}`)
+            // Safari blocked it - show pulsing button for fresh interaction
+            setDebugText(`Safari blocked - tap red button: ${message.id}`)
             setPlaying(false)
-            // Try to play again immediately on next tap
-            setTimeout(() => {
-              if (audioRef.current) {
-                audioRef.current.play().then(() => {
-                  setDebugText(`Manual play worked: ${message.id}`)
-                  setPlaying(true)
-                }).catch(() => {
-                  setDebugText(`Still blocked: ${message.id}`)
-                })
-              }
-            }, 100)
+            setError('Tap play to enable audio')
           }
         }, 200)
 
@@ -2001,7 +1997,11 @@ function AudioMessage({ message, audioPath }: { message: Message; audioPath: str
       <div className="flex items-center gap-3">
         <button
           onClick={togglePlay}
-          className="w-8 h-8 rounded-full bg-[#4db6ac] hover:bg-[#45a99c] flex items-center justify-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+            error === 'Tap play to enable audio'
+              ? 'bg-red-500 hover:bg-red-600 animate-pulse'
+              : 'bg-[#4db6ac] hover:bg-[#45a99c]'
+          }`}
           disabled={false}
         >
           <i className={`fa-solid ${playing ? 'fa-pause' : 'fa-play'} text-white text-xs`} />
