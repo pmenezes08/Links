@@ -3,6 +3,9 @@ import MentionTextarea from '../components/MentionTextarea'
 import { useAudioRecorder } from '../components/useAudioRecorder'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { detectLinks, replaceLinkInText, type DetectedLink } from '../utils/linkUtils.tsx'
+import GifPicker from '../components/GifPicker'
+import type { GifSelection } from '../components/GifPicker'
+import { gifSelectionToFile } from '../utils/gif'
 
 export default function CreatePost(){
   const [params] = useSearchParams()
@@ -11,6 +14,9 @@ export default function CreatePost(){
   const groupId = params.get('group_id') || ''
   const [content, setContent] = useState('')
   const [file, setFile] = useState<File|null>(null)
+  const [gifPickerOpen, setGifPickerOpen] = useState(false)
+  const [selectedGif, setSelectedGif] = useState<GifSelection | null>(null)
+  const [gifFile, setGifFile] = useState<File | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const { recording, preview, start, stop, clearPreview, ensurePreview, level, recordMs } = useAudioRecorder() as any
   const [showPraise, setShowPraise] = useState(false)
@@ -18,6 +24,7 @@ export default function CreatePost(){
   const [renamingLink, setRenamingLink] = useState<DetectedLink | null>(null)
   const [linkDisplayName, setLinkDisplayName] = useState('')
   const tokenRef = useRef<string>(`${Date.now()}_${Math.random().toString(36).slice(2)}`)
+  const fileInputRef = useRef<HTMLInputElement|null>(null)
 
   // Detect links when content changes
   useEffect(() => {
@@ -55,7 +62,7 @@ export default function CreatePost(){
   async function submit(){
     // If user is still recording, stop and wait briefly for preview to finalize
     if (recording) await ensurePreview(5000)
-    if (!content && !file && !preview?.blob) {
+    if (!content && !file && !gifFile && !preview?.blob) {
       alert('Add text, an image, or finish recording audio before posting')
       return
     }
@@ -68,7 +75,8 @@ export default function CreatePost(){
     try{
       const fd = new FormData()
       fd.append('content', content)
-      if (file) fd.append('image', file)
+      if (gifFile) fd.append('image', gifFile)
+      else if (file) fd.append('image', file)
       if (preview?.blob) fd.append('audio', preview.blob, (preview.blob.type.includes('mp4') ? 'audio.mp4' : 'audio.webm'))
       fd.append('dedupe_token', tokenRef.current)
       if (groupId){
@@ -96,6 +104,12 @@ export default function CreatePost(){
         else if (communityId) navigate(`/community_feed_react/${communityId}`)
         else navigate(-1)
       }
+      setContent('')
+      setFile(null)
+      setSelectedGif(null)
+      setGifFile(null)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+      clearPreview()
     }catch{
       setSubmitting(false)
       alert('Failed to post. Please try again.')
@@ -155,6 +169,22 @@ export default function CreatePost(){
         {file ? (
           <div className="mt-3 rounded-xl overflow-hidden border border-white/10">
             <img src={URL.createObjectURL(file)} alt="preview" className="w-full h-auto" />
+          </div>
+        ) : null}
+        {selectedGif ? (
+          <div className="mt-3 inline-flex items-center gap-3 rounded-xl border border-white/10 bg-white/5 p-3">
+            <img src={selectedGif.previewUrl} alt="Selected GIF" className="w-16 h-16 rounded object-cover" loading="lazy" />
+            <div className="flex items-center gap-2 text-xs text-[#7fe7df]">
+              <i className="fa-solid fa-images" />
+              <span>GIF attached</span>
+              <button
+                onClick={() => { setSelectedGif(null); setGifFile(null) }}
+                className="ml-1 text-red-400 hover:text-red-300"
+                aria-label="Remove GIF"
+              >
+                <i className="fa-solid fa-times" />
+              </button>
+            </div>
           </div>
         ) : null}
         {preview ? (
@@ -220,8 +250,26 @@ export default function CreatePost(){
         <div className="max-w-2xl mx-auto h-full px-4 flex items-center justify-between gap-3">
           <label className="px-3 py-2 rounded-full hover:bg-white/5 cursor-pointer" aria-label="Add image">
             <i className="fa-regular fa-image" style={{ color: '#4db6ac' }} />
-            <input type="file" accept="image/*" onChange={(e)=> setFile(e.target.files?.[0]||null)} style={{ display: 'none' }} />
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={(e)=> {
+                const next = e.target.files?.[0] || null
+                setFile(next)
+                setSelectedGif(null)
+                setGifFile(null)
+              }}
+              style={{ display: 'none' }}
+            />
           </label>
+          <button
+            className="px-3 py-2 rounded-full text-[#4db6ac] hover:bg-white/5"
+            aria-label="Add GIF"
+            onClick={()=> setGifPickerOpen(true)}
+          >
+            <i className="fa-solid fa-images" />
+          </button>
           <button className={`px-3 py-2 rounded-full text-[#4db6ac] hover:bg-white/5 ${recording ? 'brightness-125' : ''}`} aria-label={recording ? "Stop recording" : "Record audio"} onClick={()=> recording ? stop() : start()}>
             <i className={`fa-solid ${recording ? 'fa-stop' : 'fa-microphone'}`} />
           </button>
@@ -231,11 +279,29 @@ export default function CreatePost(){
             </button>
           )}
           <div className="flex-1" />
-          <button className={`px-4 py-2 rounded-full ${submitting ? 'bg-white/20 text-white/60 cursor-not-allowed' : 'bg-[#4db6ac] text-black hover:brightness-110'}`} onClick={submit} disabled={submitting || (!content && !file && !preview)}>
+          <button className={`px-4 py-2 rounded-full ${submitting ? 'bg-white/20 text-white/60 cursor-not-allowed' : 'bg-[#4db6ac] text-black hover:brightness-110'}`} onClick={submit} disabled={submitting || (!content && !file && !gifFile && !preview)}>
             {submitting ? 'Posting…' : 'Post'}
           </button>
         </div>
       </div>
+      <GifPicker
+        isOpen={gifPickerOpen}
+        onClose={()=> setGifPickerOpen(false)}
+        onSelect={async (gif) => {
+          try {
+            const converted = await gifSelectionToFile(gif, 'post-gif')
+            setSelectedGif(gif)
+            setGifFile(converted)
+            setFile(null)
+            if (fileInputRef.current) fileInputRef.current.value = ''
+          } catch (err) {
+            console.error('Failed to prepare GIF for post', err)
+            alert('Unable to attach GIF. Please try again.')
+          } finally {
+            setGifPickerOpen(false)
+          }
+        }}
+      />
     </div>
   )
 }
