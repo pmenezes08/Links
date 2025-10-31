@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, memo } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, memo } from 'react'
 import GifPicker from '../components/GifPicker'
 import type { GifSelection } from '../components/GifPicker'
 import { gifSelectionToFile } from '../utils/gif'
@@ -13,6 +13,8 @@ import { formatSmartTime } from '../utils/time'
 import VideoEmbed from '../components/VideoEmbed'
 import { extractVideoEmbed, removeVideoUrlFromText } from '../utils/videoEmbed'
 import EditableAISummary from '../components/EditableAISummary'
+import { useImagineJobs, type ImagineJobState, type ImagineStyle } from '../hooks/useImagineJobs'
+import { ImagineStyleModal, ImagineOwnerModal } from '../components/ImagineModal'
 
 type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null, parent_reply_id?: number|null, children?: Reply[], profile_picture?: string|null, image_path?: string|null }
 type Post = { id: number; username: string; content: string; image_path?: string|null; video_path?: string|null; audio_path?: string|null; audio_summary?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; replies: Reply[] }
@@ -116,6 +118,12 @@ export default function PostDetail(){
   const { recording, recordMs, preview: replyPreview, start: startRec, stop: stopRec, clearPreview: clearReplyPreview, level } = useAudioRecorder() as any
   const replyTokenRef = useRef<string>(`${Date.now()}_${Math.random().toString(36).slice(2)}`)
   const [inlineSending, setInlineSending] = useState<Record<number, boolean>>({})
+  const imagine = useImagineJobs()
+  const [imagineRequest, setImagineRequest] = useState<{ targetType: 'post' | 'reply'; targetId: number; nsfwAllowed?: boolean } | null>(null)
+  const [styleModalOpen, setStyleModalOpen] = useState(false)
+  const [styleSubmitting, setStyleSubmitting] = useState(false)
+  const [ownerJobId, setOwnerJobId] = useState<number | null>(null)
+  const [resolvingJobId, setResolvingJobId] = useState<number | null>(null)
   
   const fileInputRef = useRef<HTMLInputElement|null>(null)
   const [refreshHint, setRefreshHint] = useState(false)
@@ -233,7 +241,7 @@ export default function PostDetail(){
     }
   }, [file, replyGif])
 
-  async function refreshPost(){
+  const refreshPost = useCallback(async () => {
     try{
       // Try group first
       let r = await fetch(`/api/group_post?post_id=${post_id}`, { credentials: 'include' })
@@ -244,7 +252,87 @@ export default function PostDetail(){
       }
       if (j?.success) setPost(j.post)
     }catch{}
-  }
+  }, [post_id])
+
+  useEffect(() => {
+    const awaiting = Object.values(imagine.jobs).find(job => job.isOwner && job.status === 'awaiting_owner')
+    setOwnerJobId(awaiting ? awaiting.id : null)
+  }, [imagine.jobs])
+
+  useEffect(() => {
+    Object.values(imagine.jobs).forEach(job => {
+      if (job.status === 'error' && job.error) {
+        alert(job.error)
+        imagine.removeJob(job.id)
+      } else if (!job.isOwner && job.status === 'completed') {
+        imagine.removeJob(job.id)
+        refreshPost()
+      }
+    })
+  }, [imagine.jobs, imagine.removeJob, refreshPost])
+
+  const jobIndex = useMemo(() => {
+    const map = new Map<string, ImagineJobState>()
+    Object.values(imagine.jobs).forEach(job => {
+      map.set(`${job.targetType}:${job.targetId}`, job)
+    })
+    return map
+  }, [imagine.jobs])
+
+  const getImagineJob = useCallback((targetType: 'post' | 'reply', targetId: number) => {
+    return jobIndex.get(`${targetType}:${targetId}`)
+  }, [jobIndex])
+
+  const handleOpenImagine = useCallback((targetType: 'post' | 'reply', targetId: number, nsfwAllowed?: boolean) => {
+    setImagineRequest({ targetType, targetId, nsfwAllowed })
+    setStyleModalOpen(true)
+  }, [])
+
+  const handleStyleSelect = useCallback(async (style: ImagineStyle) => {
+    if (!imagineRequest) return
+    setStyleSubmitting(true)
+    try {
+      await imagine.startImagine({ targetType: imagineRequest.targetType, targetId: imagineRequest.targetId, style })
+      setStyleModalOpen(false)
+      setImagineRequest(null)
+    } catch (err: any) {
+      alert(err?.message || 'Failed to start imagine job')
+    } finally {
+      setStyleSubmitting(false)
+    }
+  }, [imagine, imagineRequest])
+
+  const handleCloseStyleModal = useCallback(() => {
+    if (styleSubmitting) return
+    setStyleModalOpen(false)
+    setImagineRequest(null)
+  }, [styleSubmitting])
+
+  const ownerJob = ownerJobId ? imagine.jobs[ownerJobId] : undefined
+
+  const handleOwnerDecision = useCallback(async (action: 'replace' | 'add_alongside') => {
+    if (!ownerJobId) return
+    setResolvingJobId(ownerJobId)
+    try {
+      await imagine.resolveImagine(ownerJobId, action)
+      imagine.removeJob(ownerJobId)
+      setOwnerJobId(null)
+      refreshPost()
+    } catch (err: any) {
+      alert(err?.message || 'Failed to apply change')
+    } finally {
+      setResolvingJobId(null)
+    }
+  }, [imagine, ownerJobId, refreshPost])
+
+  const nsfwAllowedForModal = useMemo(() => {
+    const val = (post as any)?.allow_nsfw_imagine
+    if (typeof val === 'boolean') return val
+    return true
+  }, [post])
+
+  const postImagineJob = post ? getImagineJob('post', post.id) : undefined
+  const ownerVideoUrl = ownerJob?.resultUrl || (ownerJob?.resultPath ? normalizePath(ownerJob.resultPath) : undefined)
 
   useEffect(() => {
     // Pull-to-refresh on overscroll at top
@@ -290,7 +378,7 @@ export default function PostDetail(){
       window.removeEventListener('touchmove', onTM as any)
       window.removeEventListener('touchend', onTE as any)
     }
-  }, [])
+  }, [refreshPost])
 
   // (inline) top refresh hint UI rendered conditionally in JSX below
 
@@ -566,7 +654,26 @@ export default function PostDetail(){
               <Reaction icon="fa-regular fa-heart" count={post.reactions?.['heart']||0} active={post.user_reaction==='heart'} onClick={()=> toggleReaction('heart')} />
               <Reaction icon="fa-regular fa-thumbs-up" count={post.reactions?.['thumbs-up']||0} active={post.user_reaction==='thumbs-up'} onClick={()=> toggleReaction('thumbs-up')} />
               <Reaction icon="fa-regular fa-thumbs-down" count={post.reactions?.['thumbs-down']||0} active={post.user_reaction==='thumbs-down'} onClick={()=> toggleReaction('thumbs-down')} />
+              {post.image_path ? (
+                <button
+                  className={`ml-auto px-3 py-1 rounded-full text-[#4db6ac] hover:text-white hover:bg-white/10 transition flex items-center gap-1 ${postImagineJob && postImagineJob.status === 'awaiting_owner' ? 'ring-1 ring-[#4db6ac]/60' : ''}`}
+                  onClick={()=> handleOpenImagine('post', post.id, nsfwAllowedForModal)}
+                  disabled={!!postImagineJob && postImagineJob.status !== 'error' && postImagineJob.status !== 'completed'}
+                  title="Animate this photo"
+                >
+                  {postImagineJob && postImagineJob.status !== 'completed' && postImagineJob.status !== 'error'
+                    ? <i className="fa-solid fa-spinner fa-spin text-xs" />
+                    : <i className="fa-solid fa-wand-magic-sparkles text-xs" />}
+                  <span className="uppercase tracking-wide text-[11px]">Imagine</span>
+                </button>
+              ) : null}
             </div>
+            {postImagineJob && postImagineJob.status !== 'completed' && postImagineJob.status !== 'error' ? (
+              <div className="mt-1 text-[11px] text-[#7fe7df] flex items-center gap-1">
+                <i className="fa-solid fa-sparkles" />
+                <span>{postImagineJob.status === 'awaiting_owner' ? 'AI video ready—choose how to use it' : 'AI video is generating…'}</span>
+              </div>
+            ) : null}
           </div>
         </div>
 
@@ -583,12 +690,32 @@ export default function PostDetail(){
               inlineSendingFlag={!!inlineSending[r.id]}
               communityId={(post as any)?.community_id}
               postId={post?.id}
+              onImagine={handleOpenImagine}
+              getImagineJob={getImagineJob}
+              nsfwAllowed={nsfwAllowedForModal}
             />
           ))}
         </div>
         {/* Spacer to prevent fixed composer overlap with first replies */}
         <div style={{ height: 'calc(env(safe-area-inset-bottom, 0px) + 12rem)' }} />
       </div>
+
+      <ImagineStyleModal
+        isOpen={styleModalOpen}
+        onClose={handleCloseStyleModal}
+        onSelect={handleStyleSelect}
+        isSubmitting={styleSubmitting}
+        nsfwAllowed={imagineRequest?.nsfwAllowed ?? nsfwAllowedForModal}
+      />
+      <ImagineOwnerModal
+        isOpen={!!ownerJob}
+        onClose={() => { if (resolvingJobId) return; setOwnerJobId(null) }}
+        videoUrl={ownerVideoUrl}
+        onReplace={() => handleOwnerDecision('replace')}
+        onAddAlongside={() => handleOwnerDecision('add_alongside')}
+        isProcessing={!!resolvingJobId}
+        error={ownerJob?.error || null}
+      />
 
       {/* Image preview modal */}
           {previewSrc ? (
@@ -766,7 +893,18 @@ function Reaction({ icon, count, active, onClick }:{ icon: string, count: number
   )
 }
 
-function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDelete, onPreviewImage, inlineSendingFlag, communityId, postId }:{ reply: Reply, depth?: number, currentUser?: string|null, onToggle: (id:number, reaction:string)=>void, onInlineReply: (id:number, text:string, file?: File)=>void, onDelete: (id:number)=>void, onPreviewImage: (src:string)=>void, inlineSendingFlag: boolean, communityId?: number | string, postId?: number }){
+const ReplyNodeMemo = memo(ReplyNode, (prev, next) => {
+  if (prev.reply !== next.reply) return false
+  if (prev.inlineSendingFlag !== next.inlineSendingFlag) return false
+  if (prev.currentUser !== next.currentUser) return false
+  if (prev.depth !== next.depth) return false
+  if (prev.onImagine !== next.onImagine) return false
+  if (prev.getImagineJob !== next.getImagineJob) return false
+  if (prev.nsfwAllowed !== next.nsfwAllowed) return false
+  return true
+})
+
+function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDelete, onPreviewImage, inlineSendingFlag, communityId, postId, onImagine, getImagineJob, nsfwAllowed }:{ reply: Reply, depth?: number, currentUser?: string|null, onToggle: (id:number, reaction:string)=>void, onInlineReply: (id:number, text:string, file?: File)=>void, onDelete: (id:number)=>void, onPreviewImage: (src:string)=>void, inlineSendingFlag: boolean, communityId?: number | string, postId?: number, onImagine?: (targetType: 'post' | 'reply', targetId: number, nsfwAllowed?: boolean) => void, getImagineJob?: (targetType: 'post' | 'reply', targetId: number) => ImagineJobState | undefined, nsfwAllowed?: boolean }){
   const [showComposer, setShowComposer] = useState(false)
   const [text, setText] = useState('')
   const [img, setImg] = useState<File|null>(null)
@@ -777,6 +915,8 @@ function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDel
   const [showGifPicker, setShowGifPicker] = useState(false)
   const [inlineGif, setInlineGif] = useState<GifSelection | null>(null)
   const [gifFile, setGifFile] = useState<File | null>(null)
+  const imagineJob = getImagineJob?.('reply', reply.id)
+  const allowSpicy = typeof nsfwAllowed === 'boolean' ? nsfwAllowed : true
   const hasChildren = reply.children && reply.children.length > 0
   useEffect(() => {
     if (!showComposer){
@@ -875,8 +1015,29 @@ function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDel
             <Reaction icon="fa-regular fa-heart" count={reply.reactions?.['heart']||0} active={reply.user_reaction==='heart'} onClick={()=> onToggle(reply.id, 'heart')} />
             <Reaction icon="fa-regular fa-thumbs-up" count={reply.reactions?.['thumbs-up']||0} active={reply.user_reaction==='thumbs-up'} onClick={()=> onToggle(reply.id, 'thumbs-up')} />
             <Reaction icon="fa-regular fa-thumbs-down" count={reply.reactions?.['thumbs-down']||0} active={reply.user_reaction==='thumbs-down'} onClick={()=> onToggle(reply.id, 'thumbs-down')} />
-            <button className="ml-2 px-2 py-1 rounded-full text-[#9fb0b5] hover:text-[#4db6ac]" onClick={()=> setShowComposer(v=>!v)}>Reply</button>
+            <div className="ml-auto flex items-center gap-1">
+              {onImagine && reply.image_path ? (
+                <button
+                  className={`px-2 py-0.5 rounded-full text-[#4db6ac] hover:text-white hover:bg-white/10 transition flex items-center gap-1 ${imagineJob && imagineJob.status === 'awaiting_owner' ? 'ring-1 ring-[#4db6ac]/60' : ''}`}
+                  onClick={()=> onImagine('reply', reply.id, allowSpicy)}
+                  disabled={!!imagineJob && imagineJob.status !== 'error' && imagineJob.status !== 'completed'}
+                  title="Animate this photo"
+                >
+                  {imagineJob && imagineJob.status !== 'completed' && imagineJob.status !== 'error'
+                    ? <i className="fa-solid fa-spinner fa-spin text-[10px]" />
+                    : <i className="fa-solid fa-wand-magic-sparkles text-[10px]" />}
+                  <span>Imagine</span>
+                </button>
+              ) : null}
+              <button className="px-2 py-1 rounded-full text-[#9fb0b5] hover:text-[#4db6ac]" onClick={()=> setShowComposer(v=>!v)}>Reply</button>
+            </div>
           </div>
+          {imagineJob && imagineJob.status !== 'completed' && imagineJob.status !== 'error' ? (
+            <div className="mt-1 text-[10px] text-[#7fe7df] flex items-center gap-1">
+              <i className="fa-solid fa-sparkles" />
+              <span>{imagineJob.status === 'awaiting_owner' ? 'AI video ready—open the prompt to finish' : 'Animating…'}</span>
+            </div>
+          ) : null}
           {showComposer ? (
             <div className="mt-2 space-y-2">
               <div className="flex items-start gap-2">
@@ -1017,6 +1178,9 @@ function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDel
               inlineSendingFlag={false}
               communityId={communityId}
               postId={postId}
+              onImagine={onImagine}
+              getImagineJob={getImagineJob}
+              nsfwAllowed={nsfwAllowed}
             />
           ))}
         </div>
@@ -1024,12 +1188,3 @@ function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDel
     </div>
   )
 }
-
-const ReplyNodeMemo = memo(ReplyNode, (prev, next) => {
-  // Only re-render when the actual reply data or sending flag for this reply changes, or identity-critical props change
-  if (prev.reply !== next.reply) return false
-  if (prev.inlineSendingFlag !== next.inlineSendingFlag) return false
-  if (prev.currentUser !== next.currentUser) return false
-  if (prev.depth !== next.depth) return false
-  return true
-})
