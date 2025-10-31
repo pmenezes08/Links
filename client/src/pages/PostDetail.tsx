@@ -852,7 +852,7 @@ function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDel
             </div>
           )}
           {reply.image_path ? (
-            <div className="mt-2">
+            <div className="mt-2 flex justify-center">
               <div onClick={()=> onPreviewImage(normalizePath(reply.image_path as string))}>
                 <ImageLoader
                   src={normalizePath(reply.image_path as string)}

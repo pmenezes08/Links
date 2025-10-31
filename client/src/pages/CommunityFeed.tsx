@@ -1230,14 +1230,14 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                     <div className="text-[#dfe6e9] whitespace-pre-wrap break-words">{r.content}</div>
                   ) : null}
                   {r.image_path ? (
-                    <div className="mt-1">
+                    <div className="mt-1 flex justify-center">
                       {(() => {
                         const replySrc = (r.image_path && (r.image_path.startsWith('http') || r.image_path.startsWith('/')) ? r.image_path : `/uploads/${r.image_path}`) as string
                         return (
                           <ImageLoader 
                             src={replySrc}
                             alt="Reply image" 
-                            className="max-h-[200px] rounded border border-white/10 cursor-zoom-in"
+                            className="block mx-auto max-h-[200px] rounded border border-white/10 cursor-zoom-in"
                             onClick={() => onPreviewImage && onPreviewImage(replySrc)}
                           />
                         )
