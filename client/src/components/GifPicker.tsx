@@ -78,6 +78,9 @@ export default function GifPicker({ isOpen, onClose, onSelect }: GifPickerProps)
     try{
       const res = await fetch(`https://api.giphy.com/v1/gifs/${endpoint}?${params.toString()}`, { signal })
       if (!res.ok){
+        if (res.status === 403){
+          throw new Error('GIPHY API key rejected (HTTP 403)')
+        }
         throw new Error(`GIPHY request failed: ${res.status}`)
       }
       const data = await res.json() as { data?: GiphyItem[] }
@@ -96,7 +99,10 @@ export default function GifPicker({ isOpen, onClose, onSelect }: GifPickerProps)
     }catch (err){
       if ((err as Error).name === 'AbortError') return
       console.error('GIF search error', err)
-      setError('Failed to load GIFs. Please try again.')
+      const message = (err as Error).message.includes('GIPHY API key rejected')
+        ? 'GIF search requires a valid GIPHY API key. Ask an admin to configure VITE_GIPHY_API_KEY.'
+        : 'Failed to load GIFs. Please try again.'
+      setError(message)
     }finally{
       setLoading(false)
     }
