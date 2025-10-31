@@ -10,6 +10,8 @@ import VideoEmbed from '../components/VideoEmbed'
 import { extractVideoEmbed, removeVideoUrlFromText } from '../utils/videoEmbed'
 import { renderTextWithLinks, detectLinks, replaceLinkInText, type DetectedLink } from '../utils/linkUtils.tsx'
 import EditableAISummary from '../components/EditableAISummary'
+import GifPicker from '../components/GifPicker'
+import type { GifSelection } from '../components/GifPicker'
 
 type PollOption = { id: number; text: string; votes: number; user_voted?: boolean }
 type Poll = { id: number; question: string; is_active: number; options: PollOption[]; user_vote: number|null; total_votes: number; single_vote?: boolean; expires_at?: string | null }
@@ -17,6 +19,15 @@ type Reply = { id: number; username: string; content: string; timestamp: string;
 type Post = { id: number; username: string; content: string; image_path?: string|null; audio_path?: string|null; audio_summary?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; poll?: Poll|null; replies: Reply[], profile_picture?: string|null, is_starred?: boolean, is_community_starred?: boolean }
 
 // old formatTimestamp removed; using formatSmartTime
+
+async function convertGifToFile(gif: GifSelection): Promise<File> {
+  const response = await fetch(gif.url)
+  if (!response.ok) throw new Error('Failed to download GIF')
+  const blob = await response.blob()
+  const mime = blob.type || 'image/gif'
+  const extension = mime.split('/').pop() || 'gif'
+  return new File([blob], `cpoint-gif-${Date.now()}.${extension}`, { type: mime })
+}
 
 export default function CommunityFeed() {
   let { community_id } = useParams()
@@ -816,10 +827,13 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
   const [renamingLink, setRenamingLink] = useState<DetectedLink | null>(null)
   const [linkDisplayName, setLinkDisplayName] = useState('')
   const [replyText, setReplyText] = useState('')
+  const [replyGif, setReplyGif] = useState<GifSelection | null>(null)
   const [sendingReply, setSendingReply] = useState(false)
   const [activeChildReplyFor, setActiveChildReplyFor] = useState<number|null>(null)
   const [childReplyText, setChildReplyText] = useState('')
+  const [childReplyGif, setChildReplyGif] = useState<GifSelection | null>(null)
   const [sendingChildReply, setSendingChildReply] = useState(false)
+  const [gifPickerTarget, setGifPickerTarget] = useState<'main' | number | null>(null)
 
   // Detect links when editing
   useEffect(() => {
@@ -857,6 +871,10 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
     setRenamingLink(null)
     setLinkDisplayName('')
   }
+
+  useEffect(() => {
+    setChildReplyGif(null)
+  }, [activeChildReplyFor])
 
   async function toggleStar(e: React.MouseEvent){
     e.stopPropagation()
@@ -1248,7 +1266,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                   ) : null}
 
                   {activeChildReplyFor === r.id && (
-                    <div className="mt-2 relative rounded-lg border border-white/5 bg-white/[0.03] focus-within:border-[#4db6ac]/40 transition-colors">
+                    <div className="mt-2 rounded-lg border border-white/5 bg-white/[0.03] px-2 pt-2 pb-2 space-y-2" onClick={(e)=> e.stopPropagation()}>
                       <MentionTextarea
                         value={childReplyText}
                         onChange={setChildReplyText}
@@ -1256,38 +1274,71 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                         postId={post.id}
                         replyId={r.id as any}
                         placeholder={`Reply to @${r.username}`}
-                        className="w-full resize-none px-3 py-1.5 pr-9 rounded-lg bg-transparent border-0 outline-none text-[14px] placeholder-white/40"
-                        rows={1}
+                        className="w-full resize-none rounded-lg bg-transparent border-0 outline-none text-[14px] placeholder-white/40 px-1"
+                        rows={2}
                       />
-                      <button
-                        className="absolute right-1.5 top-1/2 -translate-y-1/2 p-2 rounded-full text-[#4db6ac] hover:text-white transition disabled:opacity-40"
-                        disabled={sendingChildReply || !childReplyText.trim()}
-                        onClick={async ()=>{
-                          if (!childReplyText.trim() || sendingChildReply) return
-                          try{
-                            setSendingChildReply(true)
-                            const fd = new FormData()
-                            fd.append('post_id', String(post.id))
-                            fd.append('content', childReplyText.trim())
-                            fd.append('parent_reply_id', String(r.id))
-                            fd.append('dedupe_token', `${Date.now()}_${Math.random().toString(36).slice(2)}`)
-                            const resp = await fetch('/post_reply', { method:'POST', credentials:'include', body: fd })
-                            const j = await resp.json().catch(()=>null)
-                            if (j?.success && j.reply){
-                              onAddReply && onAddReply(post.id, j.reply as any)
-                              setChildReplyText('')
-                              setActiveChildReplyFor(null)
-                            } else {
-                              alert(j?.error || 'Failed to reply')
+                      {childReplyGif && (
+                        <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 p-2">
+                          <img src={childReplyGif.previewUrl} alt="Selected GIF" className="h-16 w-16 rounded object-cover" loading="lazy" />
+                          <button
+                            type="button"
+                            className="ml-auto text-white/60 hover:text-white"
+                            onClick={(ev)=> { ev.stopPropagation(); setChildReplyGif(null) }}
+                            aria-label="Remove GIF"
+                          >
+                            <i className="fa-solid fa-xmark" />
+                          </button>
+                        </div>
+                      )}
+                      <div className="flex items-center justify-between gap-2">
+                        <button
+                          type="button"
+                          className="inline-flex items-center gap-2 px-3 py-1.5 text-xs rounded-lg bg-white/5 border border-white/10 text-white/70 hover:text-white transition"
+                          onClick={(ev)=> { ev.stopPropagation(); setGifPickerTarget(r.id) }}
+                        >
+                          <i className="fa-solid fa-images" />
+                          GIF
+                        </button>
+                        <button
+                          type="button"
+                          className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#4db6ac] text-black font-medium hover:brightness-110 disabled:opacity-40"
+                          disabled={sendingChildReply || (!childReplyText.trim() && !childReplyGif)}
+                          onClick={async (ev)=>{
+                            ev.stopPropagation()
+                            if (sendingChildReply || (!childReplyText.trim() && !childReplyGif)) return
+                            try{
+                              setSendingChildReply(true)
+                              const fd = new FormData()
+                              fd.append('post_id', String(post.id))
+                              fd.append('content', childReplyText.trim())
+                              fd.append('parent_reply_id', String(r.id))
+                              fd.append('dedupe_token', `${Date.now()}_${Math.random().toString(36).slice(2)}`)
+                              if (childReplyGif){
+                                const gifFile = await convertGifToFile(childReplyGif)
+                                fd.append('image', gifFile)
+                              }
+                              const resp = await fetch('/post_reply', { method:'POST', credentials:'include', body: fd })
+                              const j = await resp.json().catch(()=>null)
+                              if (j?.success && j.reply){
+                                onAddReply && onAddReply(post.id, j.reply as any)
+                                setChildReplyText('')
+                                setChildReplyGif(null)
+                                setActiveChildReplyFor(null)
+                              } else {
+                                alert(j?.error || 'Failed to reply')
+                              }
+                            }catch (err){
+                              console.error('Failed to send reply with GIF', err)
+                              alert('Failed to send reply. Please try again.')
+                            }finally{
+                              setSendingChildReply(false)
                             }
-                          } finally {
-                            setSendingChildReply(false)
-                          }
-                        }}
-                        aria-label="Send reply"
-                      >
-                        {sendingChildReply ? <i className="fa-solid fa-spinner fa-spin" /> : <i className="fa-solid fa-paper-plane" />}
-                      </button>
+                          }}
+                          aria-label="Send reply"
+                        >
+                          {sendingChildReply ? <i className="fa-solid fa-spinner fa-spin" /> : <><i className="fa-solid fa-paper-plane" /><span className="text-sm">Send</span></>}
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -1302,47 +1353,95 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
       {/* Inline quick reply composer - sleek, full-width, low-distraction */}
       {!post.poll && (
         <div className="px-3 pb-3" onClick={(e)=> e.stopPropagation()}>
-          <div className="relative group rounded-xl border border-white/5 bg-white/[0.03] focus-within:border-[#4db6ac]/40 transition-colors">
+          <div className="rounded-xl border border-white/5 bg-white/[0.03] px-2 pt-2 pb-2 space-y-2">
             <MentionTextarea
               value={replyText}
               onChange={setReplyText}
               communityId={communityId as any}
               postId={post.id}
               placeholder="Write a reply…"
-              className="w-full resize-none px-3 py-1.5 pr-10 rounded-xl bg-transparent border-0 outline-none text-[14px] placeholder-white/40"
-              rows={1}
+              className="w-full resize-none rounded-xl bg-transparent border-0 outline-none text-[14px] placeholder-white/40 px-1"
+              rows={2}
             />
-            <button
-              className="absolute right-1.5 top-1/2 -translate-y-1/2 p-2 rounded-full text-[#4db6ac] hover:text-white transition disabled:opacity-40"
-              disabled={sendingReply || !replyText.trim()}
-              onClick={async ()=>{
-                if (!replyText.trim() || sendingReply) return
-                try{
-                  setSendingReply(true)
-                  const fd = new FormData()
-                  fd.append('post_id', String(post.id))
-                  fd.append('content', replyText.trim())
-                  fd.append('dedupe_token', `${Date.now()}_${Math.random().toString(36).slice(2)}`)
-                  const r = await fetch('/post_reply', { method:'POST', credentials:'include', body: fd })
-                  const j = await r.json().catch(()=>null)
-                  if (j?.success && j.reply){
-                    onAddReply && onAddReply(post.id, j.reply as any)
-                    setReplyText('')
-                  } else {
-                    alert(j?.error || 'Failed to reply')
+            {replyGif && (
+              <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 p-2">
+                <img src={replyGif.previewUrl} alt="Selected GIF" className="h-20 w-20 rounded object-cover" loading="lazy" />
+                <button
+                  type="button"
+                  className="ml-auto text-white/60 hover:text-white"
+                  onClick={()=> setReplyGif(null)}
+                  aria-label="Remove GIF"
+                >
+                  <i className="fa-solid fa-xmark" />
+                </button>
+              </div>
+            )}
+            <div className="flex items-center justify-between gap-2">
+              <button
+                type="button"
+                className="inline-flex items-center gap-2 px-3 py-1.5 text-xs rounded-lg bg-white/5 border border-white/10 text-white/70 hover:text-white transition"
+                onClick={()=> setGifPickerTarget('main')}
+              >
+                <i className="fa-solid fa-images" />
+                GIF
+              </button>
+              <button
+                type="button"
+                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#4db6ac] text-black font-medium hover:brightness-110 disabled:opacity-40"
+                disabled={sendingReply || (!replyText.trim() && !replyGif)}
+                onClick={async ()=>{
+                  if (sendingReply || (!replyText.trim() && !replyGif)) return
+                  try{
+                    setSendingReply(true)
+                    const fd = new FormData()
+                    fd.append('post_id', String(post.id))
+                    fd.append('content', replyText.trim())
+                    fd.append('dedupe_token', `${Date.now()}_${Math.random().toString(36).slice(2)}`)
+                    if (replyGif){
+                      const gifFile = await convertGifToFile(replyGif)
+                      fd.append('image', gifFile)
+                    }
+                    const r = await fetch('/post_reply', { method:'POST', credentials:'include', body: fd })
+                    const j = await r.json().catch(()=>null)
+                    if (j?.success && j.reply){
+                      onAddReply && onAddReply(post.id, j.reply as any)
+                      setReplyText('')
+                      setReplyGif(null)
+                    } else {
+                      alert(j?.error || 'Failed to reply')
+                    }
+                  }catch (err){
+                    console.error('Failed to send reply with GIF', err)
+                    alert('Failed to send reply. Please try again.')
+                  }finally{
+                    setSendingReply(false)
                   }
-                } finally {
-                  setSendingReply(false)
-                }
-              }}
-              aria-label="Send reply"
-            >
-              {sendingReply ? <i className="fa-solid fa-spinner fa-spin" /> : <i className="fa-solid fa-paper-plane" />}
-            </button>
+                }}
+                aria-label="Send reply"
+              >
+                {sendingReply ? <i className="fa-solid fa-spinner fa-spin" /> : <><i className="fa-solid fa-paper-plane" /><span className="text-sm">Reply</span></>}
+              </button>
+            </div>
           </div>
         </div>
       )}
       
+      <GifPicker
+        isOpen={gifPickerTarget !== null}
+        onClose={()=> setGifPickerTarget(null)}
+        onSelect={(gif) => {
+          if (gifPickerTarget === 'main'){
+            setReplyGif(gif)
+          }else if (typeof gifPickerTarget === 'number'){
+            setChildReplyGif(gif)
+            if (gifPickerTarget !== activeChildReplyFor) {
+              setActiveChildReplyFor(gifPickerTarget)
+            }
+          }
+          setGifPickerTarget(null)
+        }}
+      />
+
       {/* Rename link modal */}
       {renamingLink && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/90 backdrop-blur-sm" onClick={(e)=> e.stopPropagation()}>
