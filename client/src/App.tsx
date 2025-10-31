@@ -8,6 +8,7 @@ import HeaderBar from './components/HeaderBar'
 import { HeaderContext } from './contexts/HeaderContext'
 import PushInit from './components/PushInit'
 import PwaInstallPrompt from './components/PwaInstallPrompt'
+import BrandAssetsInit from './components/BrandAssetsInit'
 import { encryptionService } from './services/simpleEncryption'
 import CrossfitExact from './pages/CrossfitExact'
 import CommunityFeed from './pages/CommunityFeed'
@@ -235,6 +236,7 @@ export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
+        <BrandAssetsInit />
         <PushInit />
         <PwaInstallPrompt />
         <AppRoutes />
