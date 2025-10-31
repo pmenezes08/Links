@@ -10,6 +10,7 @@ import re
 import logging
 import requests
 import time
+import base64
 from datetime import datetime, timedelta
 from email.utils import parsedate_to_datetime
 from functools import wraps
@@ -21,7 +22,9 @@ from pywebpush import webpush, WebPushException
 from hashlib import sha256
 from redis_cache import cache, cache_result, invalidate_user_cache, invalidate_community_cache, invalidate_message_cache
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urljoin
+from typing import Optional, Dict, Any
+from concurrent.futures import ThreadPoolExecutor
 from encryption_endpoints import register_encryption_endpoints
 try:
     from PIL import Image
@@ -123,6 +126,26 @@ ALLOWED_EXTENSIONS = {
     'm4a', 'mp3', 'ogg', 'wav', 'opus'
 }
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+
+IMAGINE_OUTPUT_SUBDIR = 'imagine'
+IMAGINE_OUTPUT_DIR = os.path.join(app.config['UPLOAD_FOLDER'], IMAGINE_OUTPUT_SUBDIR)
+os.makedirs(IMAGINE_OUTPUT_DIR, exist_ok=True)
+
+RUNWAY_API_KEY = (os.environ.get('RUNWAY_API_KEY') or '').strip() or None
+RUNWAY_MODEL_ID = os.environ.get('RUNWAY_MODEL_ID', 'gen-2')
+RUNWAY_API_URL = os.environ.get('RUNWAY_API_URL', 'https://api.runwayml.com/v1')
+PUBLIC_BASE_URL = (os.environ.get('PUBLIC_BASE_URL') or '').rstrip('/') or None
+try:
+    imagine_executor = ThreadPoolExecutor(max_workers=int(os.environ.get('IMAGINE_MAX_WORKERS', '2')))
+except Exception:
+    imagine_executor = ThreadPoolExecutor(max_workers=2)
+
+IMAGINE_ALLOWED_STYLES = {'normal', 'fun', 'spicy'}
+IMAGINE_STATUS_PENDING = 'pending'
+IMAGINE_STATUS_PROCESSING = 'processing'
+IMAGINE_STATUS_COMPLETED = 'completed'
+IMAGINE_STATUS_ERROR = 'error'
+IMAGINE_STATUS_AWAITING_OWNER = 'awaiting_owner'
 
 def optimize_image(file_path, max_width=1920, quality=85):
     """Optimize image for web - compress and resize if needed, preserving format when possible."""
@@ -735,6 +758,142 @@ def ensure_database_exists():
     except Exception as e:
         logger.error(f"Error ensuring database exists: {e}")
         raise
+
+
+def ensure_imagine_jobs_table():
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            if USE_MYSQL:
+                c.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS imagine_jobs (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        target_type VARCHAR(16) NOT NULL,
+                        target_id BIGINT NOT NULL,
+                        community_id BIGINT NULL,
+                        status VARCHAR(32) NOT NULL,
+                        style VARCHAR(16) NOT NULL,
+                        runway_job_id VARCHAR(128) NULL,
+                        result_path TEXT,
+                        source_path TEXT,
+                        error TEXT,
+                        created_by VARCHAR(255) NOT NULL,
+                        created_at DATETIME NOT NULL,
+                        updated_at DATETIME NOT NULL,
+                        is_owner TINYINT(1) NOT NULL DEFAULT 0,
+                        auto_reply_id BIGINT NULL,
+                        action VARCHAR(32) NULL
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                    """
+                )
+                c.execute("CREATE INDEX IF NOT EXISTS idx_imagine_jobs_status ON imagine_jobs (status)")
+                c.execute("CREATE INDEX IF NOT EXISTS idx_imagine_jobs_created_by ON imagine_jobs (created_by)")
+                try:
+                    c.execute("ALTER TABLE imagine_jobs ADD COLUMN source_path TEXT")
+                except Exception:
+                    pass
+            else:
+                c.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS imagine_jobs (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        target_type TEXT NOT NULL,
+                        target_id INTEGER NOT NULL,
+                        community_id INTEGER,
+                        status TEXT NOT NULL,
+                        style TEXT NOT NULL,
+                        runway_job_id TEXT,
+                        result_path TEXT,
+                        source_path TEXT,
+                        error TEXT,
+                        created_by TEXT NOT NULL,
+                        created_at TEXT NOT NULL,
+                        updated_at TEXT NOT NULL,
+                        is_owner INTEGER NOT NULL DEFAULT 0,
+                        auto_reply_id INTEGER,
+                        action TEXT
+                    )
+                    """
+                )
+                c.execute("CREATE INDEX IF NOT EXISTS idx_imagine_jobs_status ON imagine_jobs (status)")
+                c.execute("CREATE INDEX IF NOT EXISTS idx_imagine_jobs_created_by ON imagine_jobs (created_by)")
+                try:
+                    c.execute("ALTER TABLE imagine_jobs ADD COLUMN source_path TEXT")
+                except Exception:
+                    pass
+                conn.commit()
+    except Exception as e:
+        logger.error(f"Failed ensuring imagine_jobs table: {e}")
+
+
+def ensure_reply_video_column():
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            try:
+                if USE_MYSQL:
+                    c.execute("ALTER TABLE replies ADD COLUMN video_path TEXT")
+                else:
+                    c.execute("ALTER TABLE replies ADD COLUMN video_path TEXT")
+                    conn.commit()
+            except Exception:
+                pass
+    except Exception as e:
+        logger.warning(f"Failed ensuring replies.video_path column: {e}")
+
+
+ensure_imagine_jobs_table()
+ensure_reply_video_column()
+
+
+def ensure_community_allow_nsfw_imagine_column():
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            column_name = 'allow_nsfw_imagine'
+            if USE_MYSQL:
+                try:
+                    c.execute(f"SHOW COLUMNS FROM communities LIKE '{column_name}'")
+                    exists = c.fetchone() is not None
+                except Exception as e:
+                    logger.warning(f"Failed checking {column_name} column on MySQL: {e}")
+                    exists = False
+                if not exists:
+                    try:
+                        c.execute(f"ALTER TABLE communities ADD COLUMN {column_name} TINYINT(1) DEFAULT 0")
+                    except Exception as alter_err:
+                        logger.warning(f"Failed adding {column_name} column to communities (likely already exists): {alter_err}")
+            else:
+                try:
+                    c.execute("PRAGMA table_info(communities)")
+                    rows = c.fetchall() or []
+                    columns = []
+                    for row in rows:
+                        try:
+                            # sqlite3.Row or tuple fallback
+                            if hasattr(row, 'keys'):
+                                columns.append(row.get('name'))
+                            else:
+                                columns.append(row[1])
+                        except Exception:
+                            continue
+                    exists = column_name in {col for col in columns if col}
+                except Exception as pragma_err:
+                    logger.warning(f"Failed checking {column_name} column on SQLite: {pragma_err}")
+                    exists = False
+                if not exists:
+                    try:
+                        c.execute(f"ALTER TABLE communities ADD COLUMN {column_name} INTEGER DEFAULT 0")
+                        conn.commit()
+                    except Exception as alter_err:
+                        logger.warning(f"Failed adding {column_name} column to communities (likely already exists): {alter_err}")
+    except Exception as e:
+        logger.warning(f"ensure_community_allow_nsfw_imagine_column error: {e}")
+
+
+ensure_community_allow_nsfw_imagine_column()
+
 
 def add_missing_tables():
     """Add any missing tables to existing database."""
@@ -2775,6 +2934,59 @@ def save_uploaded_file(file, subfolder=None):
         return return_path
     return None
 
+
+def normalize_upload_reference(path: Optional[str]) -> Optional[str]:
+    if not path:
+        return None
+    p = str(path).strip()
+    if not p:
+        return None
+    if p.startswith('static/uploads/'):
+        p = p[len('static/'):]  # drop static/
+    if p.startswith('/static/uploads/'):
+        p = p[len('/static/'):]  # leading slash variant
+    if p.startswith('/uploads/'):
+        p = p[1:]
+    if not p.startswith('uploads/'):
+        p = f"uploads/{p.lstrip('/')}"
+    return p
+
+
+def resolve_upload_abspath(path: Optional[str]) -> Optional[str]:
+    rel = normalize_upload_reference(path)
+    if not rel:
+        return None
+    relative_inside_uploads = rel.split('uploads/', 1)[1] if 'uploads/' in rel else rel
+    abs_path = os.path.join(app.config['UPLOAD_FOLDER'], relative_inside_uploads)
+    return abs_path
+
+
+def load_upload_bytes(path: Optional[str]) -> Optional[bytes]:
+    abs_path = resolve_upload_abspath(path)
+    if not abs_path or not os.path.exists(abs_path):
+        return None
+    try:
+        with open(abs_path, 'rb') as fh:
+            return fh.read()
+    except Exception as e:
+        logger.error(f"Failed reading upload file {abs_path}: {e}")
+        return None
+
+
+def get_public_upload_url(path: Optional[str]) -> Optional[str]:
+    rel = normalize_upload_reference(path)
+    if not rel:
+        return None
+    rel_url = f"/{rel}"
+    if PUBLIC_BASE_URL:
+        return urljoin(PUBLIC_BASE_URL + '/', rel)
+    try:
+        base = request.host_url.rstrip('/')
+        return f"{base}{rel_url}"
+    except Exception:
+        return rel_url
+
+
 def transcribe_audio_file(audio_file_path):
     """
     Transcribe an audio file using OpenAI Whisper API
@@ -2910,6 +3122,295 @@ def process_audio_for_summary(audio_file_path, username=None):
         return transcription[:200] + "..." if len(transcription) > 200 else transcription
     
     return summary
+
+
+# --- Imagine (Runway) helpers ---
+
+def imagine_style_prompt(style: str, nsfw_allowed: bool = False) -> str:
+    safe_suffix = " Keep the result tasteful and safe for work." if not nsfw_allowed else ""
+    base_prompts = {
+        'normal': "Create a natural-looking video animation of this scene with gentle camera motion and subtle lighting",
+        'fun': "Create an energetic, colorful animation of this scene with playful motion and vibrant effects",
+        'spicy': "Create a dramatic, cinematic animation of this scene with bold lighting and dynamic motion"
+    }
+    key = style.lower()
+    prompt = base_prompts.get(key, base_prompts['normal'])
+    if key == 'spicy':
+        return prompt + safe_suffix
+    return prompt
+
+
+def runway_headers() -> Dict[str, str]:
+    if not RUNWAY_API_KEY:
+        raise RuntimeError('Runway API key is not configured. Set RUNWAY_API_KEY environment variable.')
+    return {
+        'Authorization': f'Bearer {RUNWAY_API_KEY}',
+        'Content-Type': 'application/json'
+    }
+
+
+def runway_create_image_to_video_job(image_bytes: bytes, style_prompt: str) -> str:
+    image_b64 = base64.b64encode(image_bytes).decode('utf-8')
+    payload = {
+        'model': RUNWAY_MODEL_ID,
+        'input': {
+            'mode': 'image_to_video',
+            'prompt': style_prompt,
+            'image': {
+                'image_base64': image_b64
+            },
+            'output_format': 'mp4'
+        }
+    }
+    url = f"{RUNWAY_API_URL.rstrip('/')}/jobs"
+    response = requests.post(url, headers=runway_headers(), json=payload, timeout=(10, 30))
+    if response.status_code >= 400:
+        raise RuntimeError(f"Runway job creation failed ({response.status_code}): {response.text}")
+    data = response.json()
+    job_id = data.get('id') or data.get('job_id')
+    if not job_id:
+        raise RuntimeError('Runway API response missing job id')
+    return job_id
+
+
+def runway_get_job(runway_job_id: str) -> Dict[str, Any]:
+    url = f"{RUNWAY_API_URL.rstrip('/')}/jobs/{runway_job_id}"
+    response = requests.get(url, headers=runway_headers(), timeout=(10, 20))
+    if response.status_code >= 400:
+        raise RuntimeError(f"Runway job fetch failed ({response.status_code}): {response.text}")
+    return response.json()
+
+
+def runway_extract_asset_url(job_data: Dict[str, Any]) -> Optional[str]:
+    candidates = []
+    for key in ('output', 'outputs', 'assets'):
+        value = job_data.get(key)
+        if isinstance(value, list):
+            candidates.extend(value)
+        elif isinstance(value, dict):
+            candidates.append(value)
+    for item in candidates:
+        if isinstance(item, dict):
+            for url_key in ('url', 'asset_url', 'uri'):
+                url = item.get(url_key)
+                if url:
+                    return url
+    direct_url = job_data.get('result_url') or job_data.get('video_url')
+    return direct_url
+
+
+def runway_download_asset(asset_url: str) -> bytes:
+    response = requests.get(asset_url, timeout=(10, 60))
+    if response.status_code >= 400:
+        raise RuntimeError(f"Failed downloading Runway asset ({response.status_code}): {response.text[:200]}")
+    return response.content
+
+
+def fetch_imagine_job(job_id: int) -> Optional[Dict[str, Any]]:
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            c.execute(f"SELECT * FROM imagine_jobs WHERE id={ph}", (job_id,))
+            row = c.fetchone()
+            if not row:
+                return None
+            if hasattr(row, 'keys'):
+                return dict(row)
+            # SQLite tuple fallback
+            columns = [col[0] for col in c.description]
+            return dict(zip(columns, row))
+    except Exception as e:
+        logger.error(f"Failed fetching imagine job {job_id}: {e}")
+        return None
+
+
+def update_imagine_job(job_id: int, **fields):
+    if not fields:
+        return
+    fields['updated_at'] = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+    assignments = []
+    values = []
+    for key, value in fields.items():
+        assignments.append(f"{key}={get_sql_placeholder()}")
+        values.append(value)
+    values.append(job_id)
+    set_clause = ', '.join(assignments)
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            c.execute(f"UPDATE imagine_jobs SET {set_clause} WHERE id={ph}", tuple(values))
+            if not USE_MYSQL:
+                conn.commit()
+    except Exception as e:
+        logger.error(f"Failed updating imagine job {job_id}: {e}")
+
+
+def is_imagine_spicy_allowed(community_id: Optional[int]) -> bool:
+    if not community_id:
+        return False
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            column = 'allow_nsfw_imagine'
+            ph = get_sql_placeholder()
+            try:
+                c.execute(f"SELECT {column} FROM communities WHERE id={ph}", (community_id,))
+            except Exception:
+                return False
+            row = c.fetchone()
+            if not row:
+                return False
+            value = row[column] if hasattr(row, 'keys') else row[0]
+            return bool(value)
+    except Exception as e:
+        logger.warning(f"Failed checking NSFW imagine setting for community {community_id}: {e}")
+        return False
+
+
+def create_imagine_reply(job_row: Dict[str, Any], video_path: str, style: str) -> Optional[int]:
+    username = job_row.get('created_by')
+    target_type = (job_row.get('target_type') or '').lower()
+    target_id = job_row.get('target_id')
+    community_id = job_row.get('community_id')
+    if not username or target_id is None:
+        return None
+    timestamp_db = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+    content = f"AI Imagine ({style.title()})"
+    post_id = None
+    parent_reply_id = None
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            if target_type == 'reply':
+                ph = get_sql_placeholder()
+                c.execute(f"SELECT post_id, parent_reply_id, community_id FROM replies WHERE id={ph}", (target_id,))
+                src = c.fetchone()
+                if not src:
+                    return None
+                if hasattr(src, 'keys'):
+                    post_id = src.get('post_id')
+                    parent_reply_id = target_id
+                    community_id = community_id or src.get('community_id')
+                else:
+                    post_id = src[0]
+                    parent_reply_id = target_id
+                    community_id = community_id or src[2]
+            else:
+                post_id = target_id
+            if post_id is None:
+                return None
+            if community_id is None:
+                ph = get_sql_placeholder()
+                c.execute(f"SELECT community_id FROM posts WHERE id={ph}", (post_id,))
+                post_row = c.fetchone()
+                if post_row:
+                    community_id = post_row['community_id'] if hasattr(post_row, 'keys') else post_row[0]
+            placeholders = get_sql_placeholder()
+            sql = (
+                "INSERT INTO replies (post_id, username, content, image_path, audio_path, timestamp, community_id, parent_reply_id, video_path) "
+                f"VALUES ({placeholders}, {placeholders}, {placeholders}, {placeholders}, {placeholders}, {placeholders}, {placeholders}, {placeholders}, {placeholders})"
+            )
+            params = (
+                post_id,
+                username,
+                content,
+                None,
+                None,
+                timestamp_db,
+                community_id,
+                parent_reply_id,
+                video_path
+            )
+            c.execute(sql, params)
+            reply_id = c.lastrowid
+            if not USE_MYSQL:
+                conn.commit()
+        try:
+            notify_post_reply_recipients(post_id=post_id, from_user=username, community_id=community_id, parent_reply_id=parent_reply_id)
+        except Exception as notify_err:
+            logger.warning(f"Imagine reply notification error: {notify_err}")
+        return reply_id
+    except Exception as e:
+        logger.error(f"Failed creating imagine reply for job {job_row.get('id')}: {e}")
+        return None
+
+
+def process_imagine_job(job_id: int):
+    logger.info(f"[Imagine] Starting job {job_id}")
+    job = fetch_imagine_job(job_id)
+    if not job:
+        logger.error(f"[Imagine] Job {job_id} not found")
+        return
+    try:
+        update_imagine_job(job_id, status=IMAGINE_STATUS_PROCESSING)
+        source_path = job.get('source_path')
+        image_bytes = load_upload_bytes(source_path)
+        if not image_bytes:
+            update_imagine_job(job_id, status=IMAGINE_STATUS_ERROR, error='Source image missing or unreadable')
+            return
+        style = (job.get('style') or 'normal').lower()
+        allow_nsfw = is_imagine_spicy_allowed(job.get('community_id'))
+        style_prompt = imagine_style_prompt(style, allow_nsfw)
+        runway_job_id = runway_create_image_to_video_job(image_bytes, style_prompt)
+        update_imagine_job(job_id, runway_job_id=runway_job_id)
+        poll_interval = int(os.environ.get('RUNWAY_POLL_INTERVAL', '5'))
+        max_wait = int(os.environ.get('RUNWAY_MAX_WAIT_SECONDS', '240'))
+        start_time = time.time()
+        last_error = None
+        while time.time() - start_time < max_wait:
+            time.sleep(max(poll_interval, 2))
+            try:
+                runway_job = runway_get_job(runway_job_id)
+            except Exception as e:
+                last_error = str(e)
+                continue
+            status = str(runway_job.get('status') or runway_job.get('state') or '').lower()
+            if status in ('succeeded', 'completed', 'complete', 'success'):
+                asset_url = runway_extract_asset_url(runway_job)
+                if not asset_url:
+                    update_imagine_job(job_id, status=IMAGINE_STATUS_ERROR, error='Runway job completed without asset URL')
+                    return
+                video_bytes = runway_download_asset(asset_url)
+                if not video_bytes:
+                    update_imagine_job(job_id, status=IMAGINE_STATUS_ERROR, error='Failed downloading generated video')
+                    return
+                timestamp = datetime.utcnow().strftime('%Y%m%d_%H%M%S')
+                filename = f"job{job_id}_{timestamp}.mp4"
+                abs_path = os.path.join(IMAGINE_OUTPUT_DIR, filename)
+                try:
+                    with open(abs_path, 'wb') as fh:
+                        fh.write(video_bytes)
+                except Exception as write_err:
+                    update_imagine_job(job_id, status=IMAGINE_STATUS_ERROR, error=f'Failed writing video: {write_err}')
+                    return
+                rel_path = f"uploads/{IMAGINE_OUTPUT_SUBDIR}/{filename}"
+                if job.get('is_owner'):
+                    update_imagine_job(job_id, status=IMAGINE_STATUS_AWAITING_OWNER, result_path=rel_path)
+                else:
+                    reply_id = create_imagine_reply(job, rel_path, style)
+                    if reply_id:
+                        update_imagine_job(job_id, status=IMAGINE_STATUS_COMPLETED, result_path=rel_path, auto_reply_id=reply_id, action='auto_reply')
+                    else:
+                        update_imagine_job(job_id, status=IMAGINE_STATUS_ERROR, result_path=rel_path, error='Failed to create reply for generated video')
+                logger.info(f"[Imagine] Job {job_id} completed")
+                return
+            if status in ('failed', 'error', 'cancelled'):
+                error_message = runway_job.get('error') or runway_job.get('message') or json.dumps(runway_job)[:200]
+                update_imagine_job(job_id, status=IMAGINE_STATUS_ERROR, error=error_message)
+                return
+        update_imagine_job(job_id, status=IMAGINE_STATUS_ERROR, error=last_error or 'Timed out waiting for Runway job')
+    except Exception as e:
+        logger.error(f"[Imagine] Unhandled exception for job {job_id}: {e}", exc_info=True)
+        update_imagine_job(job_id, status=IMAGINE_STATUS_ERROR, error=str(e))
+
+
+def schedule_imagine_job(job_id: int):
+    try:
+        imagine_executor.submit(process_imagine_job, job_id)
+    except Exception as e:
+        logger.error(f"Failed to schedule imagine job {job_id}: {e}")
 
 def generate_join_code():
     """Generate a unique 6-character join code for communities"""
@@ -11431,6 +11932,215 @@ def post_reply():
     except Exception as e:
         logger.error(f"Error posting reply for {username}: {str(e)}", exc_info=True)
         return jsonify({'success': False, 'error': f'Unexpected error: {str(e)}'}), 500
+
+
+@app.route('/api/imagine/start', methods=['POST'])
+@login_required
+def api_imagine_start():
+    payload = request.get_json(silent=True) or {}
+    target_type = str(payload.get('target_type') or '').lower()
+    if target_type not in {'post', 'reply'}:
+        return jsonify({'success': False, 'error': 'Invalid target type'}), 400
+    try:
+        target_id = int(payload.get('target_id'))
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'error': 'target_id is required'}), 400
+    style = str(payload.get('style') or 'normal').lower()
+    if style not in IMAGINE_ALLOWED_STYLES:
+        return jsonify({'success': False, 'error': 'Unsupported style'}), 400
+    if not RUNWAY_API_KEY:
+        return jsonify({'success': False, 'error': 'Runway integration not configured'}), 503
+
+    username = session['username']
+    image_path = None
+    owner_username = None
+    community_id = None
+    source_path = None
+
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            post_id = None
+            if target_type == 'post':
+                c.execute(f"SELECT username, image_path, community_id FROM posts WHERE id={ph}", (target_id,))
+            else:
+                c.execute(f"SELECT username, image_path, community_id, post_id FROM replies WHERE id={ph}", (target_id,))
+            row = c.fetchone()
+            if not row:
+                return jsonify({'success': False, 'error': 'Target not found'}), 404
+            if hasattr(row, 'keys'):
+                owner_username = row.get('username')
+                image_path = row.get('image_path')
+                community_id = row.get('community_id')
+                if target_type == 'reply':
+                    post_id = row.get('post_id')
+            else:
+                owner_username = row[0]
+                image_path = row[1]
+                community_id = row[2] if len(row) > 2 else None
+                if target_type == 'reply' and len(row) > 3:
+                    post_id = row[3]
+    except Exception as e:
+        logger.error(f"Imagine start failed fetching target {target_type} {target_id}: {e}")
+        return jsonify({'success': False, 'error': 'Server error fetching target'}), 500
+
+    if not image_path:
+        return jsonify({'success': False, 'error': 'No image available to animate'}), 400
+
+    source_path = normalize_upload_reference(image_path)
+    if not source_path:
+        return jsonify({'success': False, 'error': 'Unable to locate source image'}), 400
+
+    is_owner = owner_username == username
+    allow_spicy = is_imagine_spicy_allowed(community_id)
+    if community_id is None and target_type == 'reply' and post_id is not None:
+        try:
+            with get_db_connection() as conn:
+                c = conn.cursor()
+                ph = get_sql_placeholder()
+                c.execute(f"SELECT community_id FROM posts WHERE id={ph}", (post_id,))
+                post_row = c.fetchone()
+                if post_row:
+                    community_id = post_row['community_id'] if hasattr(post_row, 'keys') else post_row[0]
+        except Exception as e:
+            logger.warning(f"Imagine start fallback community lookup failed: {e}")
+    created_at = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            columns = (
+                'target_type', 'target_id', 'community_id', 'status', 'style',
+                'source_path', 'created_by', 'created_at', 'updated_at', 'is_owner'
+            )
+            placeholders = ', '.join([get_sql_placeholder() for _ in columns])
+            sql = f"INSERT INTO imagine_jobs ({', '.join(columns)}) VALUES ({placeholders})"
+            params = (
+                target_type,
+                target_id,
+                community_id,
+                IMAGINE_STATUS_PENDING,
+                style,
+                source_path,
+                username,
+                created_at,
+                created_at,
+                1 if is_owner else 0
+            )
+            c.execute(sql, params)
+            job_id = c.lastrowid
+            if not USE_MYSQL:
+                conn.commit()
+    except Exception as e:
+        logger.error(f"Imagine start failed inserting job: {e}")
+        return jsonify({'success': False, 'error': 'Failed to queue imagine job'}), 500
+
+    schedule_imagine_job(job_id)
+
+    return jsonify({
+        'success': True,
+        'job_id': job_id,
+        'is_owner': is_owner,
+        'nsfw_allowed': bool(allow_spicy)
+    })
+
+
+@app.route('/api/imagine/status', methods=['GET'])
+@login_required
+def api_imagine_status():
+    try:
+        job_id = int(request.args.get('job_id', ''))
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'error': 'job_id is required'}), 400
+
+    job = fetch_imagine_job(job_id)
+    if not job:
+        return jsonify({'success': False, 'error': 'Job not found'}), 404
+
+    username = session['username']
+    if job.get('created_by') != username and username != 'admin':
+        return jsonify({'success': False, 'error': 'Forbidden'}), 403
+
+    result_path = job.get('result_path')
+    status = job.get('status') or IMAGINE_STATUS_PENDING
+    response = {
+        'success': True,
+        'job_id': job_id,
+        'status': status,
+        'style': job.get('style'),
+        'result_path': result_path,
+        'result_url': get_public_upload_url(result_path),
+        'error': job.get('error'),
+        'requires_owner_action': bool(job.get('is_owner') and status == IMAGINE_STATUS_AWAITING_OWNER),
+        'is_owner': bool(job.get('is_owner')),
+        'auto_reply_id': job.get('auto_reply_id'),
+        'action': job.get('action')
+    }
+    return jsonify(response)
+
+
+@app.route('/api/imagine/resolve', methods=['POST'])
+@login_required
+def api_imagine_resolve():
+    payload = request.get_json(silent=True) or {}
+    try:
+        job_id = int(payload.get('job_id'))
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'error': 'job_id is required'}), 400
+    action = str(payload.get('action') or '').lower()
+    if action not in {'replace', 'add', 'add_alongside'}:
+        return jsonify({'success': False, 'error': 'Invalid action'}), 400
+    normalized_action = 'add_alongside' if action == 'add' else action
+
+    job = fetch_imagine_job(job_id)
+    if not job:
+        return jsonify({'success': False, 'error': 'Job not found'}), 404
+
+    username = session['username']
+    if job.get('created_by') != username and username != 'admin':
+        return jsonify({'success': False, 'error': 'Forbidden'}), 403
+
+    if job.get('status') != IMAGINE_STATUS_AWAITING_OWNER:
+        return jsonify({'success': False, 'error': 'Job is not awaiting owner action'}), 400
+
+    result_path = job.get('result_path')
+    if not result_path:
+        return jsonify({'success': False, 'error': 'Result video unavailable'}), 400
+
+    target_type = (job.get('target_type') or '').lower()
+    target_id = job.get('target_id')
+    if target_id is None:
+        return jsonify({'success': False, 'error': 'Invalid job target'}), 400
+
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            if target_type == 'post':
+                if normalized_action == 'replace':
+                    c.execute(f"UPDATE posts SET image_path=NULL, video_path={ph} WHERE id={ph}", (result_path, target_id))
+                else:
+                    c.execute(f"UPDATE posts SET video_path={ph} WHERE id={ph}", (result_path, target_id))
+            else:
+                try:
+                    c.execute("ALTER TABLE replies ADD COLUMN video_path TEXT")
+                except Exception:
+                    pass
+                if normalized_action == 'replace':
+                    c.execute(f"UPDATE replies SET image_path=NULL, video_path={ph} WHERE id={ph}", (result_path, target_id))
+                else:
+                    c.execute(f"UPDATE replies SET video_path={ph} WHERE id={ph}", (result_path, target_id))
+            if not USE_MYSQL:
+                conn.commit()
+    except Exception as e:
+        logger.error(f"Imagine resolve failed for job {job_id}: {e}")
+        return jsonify({'success': False, 'error': 'Failed applying imagine result'}), 500
+
+    update_imagine_job(job_id, status=IMAGINE_STATUS_COMPLETED, action=normalized_action, result_path=result_path)
+
+    return jsonify({'success': True, 'result_path': result_path, 'result_url': get_public_upload_url(result_path)})
+
 @app.route('/create_poll', methods=['POST'])
 @login_required
 def create_poll():
@@ -16254,6 +16964,17 @@ def get_post():
                 return jsonify({'success': False, 'error': 'Post not found'}), 404
             
             post = dict(post_raw)
+            allow_nsfw_imagine = False
+            community_id = post.get('community_id') if isinstance(post, dict) else None
+            if community_id:
+                try:
+                    c.execute("SELECT allow_nsfw_imagine FROM communities WHERE id = ?", (community_id,))
+                    allow_row = c.fetchone()
+                    if allow_row is not None:
+                        allow_nsfw_imagine = bool(allow_row['allow_nsfw_imagine'] if hasattr(allow_row, 'keys') else allow_row[0])
+                except Exception as allow_err:
+                    logger.warning(f"Failed to fetch allow_nsfw_imagine for community {community_id}: {allow_err}")
+            post['allow_nsfw_imagine'] = allow_nsfw_imagine
             # Attach profile picture for post author
             try:
                 c.execute("SELECT profile_picture FROM user_profiles WHERE username = ?", (post['username'],))
@@ -16700,6 +17421,8 @@ def update_community():
     parent_community_id = request.form.get('parent_community_id', None)
     notify_raw = (request.form.get('notify_on_new_member') or '').strip().lower()
     notify_on_new_member = 1 if notify_raw in ('true','1','on','yes') else 0
+    allow_nsfw_raw = (request.form.get('allow_nsfw_imagine') or '').strip().lower()
+    allow_nsfw_imagine = 1 if allow_nsfw_raw in ('true', '1', 'on', 'yes') else 0
     max_members = request.form.get('max_members', type=int)
     
     if not community_id or not name:
@@ -16719,6 +17442,10 @@ def update_community():
                     if not c.fetchone():
                         c.execute("ALTER TABLE communities ADD COLUMN max_members INT NULL")
                         conn.commit()
+                    c.execute("SHOW COLUMNS FROM communities LIKE 'allow_nsfw_imagine'")
+                    if not c.fetchone():
+                        c.execute("ALTER TABLE communities ADD COLUMN allow_nsfw_imagine TINYINT(1) DEFAULT 0")
+                        conn.commit()
                 else:
                     c.execute("PRAGMA table_info(communities)")
                     cols = [row[1] if isinstance(row, (list, tuple)) else row['name'] for row in c.fetchall()]
@@ -16727,6 +17454,9 @@ def update_community():
                         conn.commit()
                     if 'max_members' not in cols:
                         c.execute("ALTER TABLE communities ADD COLUMN max_members INTEGER NULL")
+                        conn.commit()
+                    if 'allow_nsfw_imagine' not in cols:
+                        c.execute("ALTER TABLE communities ADD COLUMN allow_nsfw_imagine INTEGER DEFAULT 0")
                         conn.commit()
             except Exception as mig_e:
                 logger.warning(f"notify_on_new_member migration check failed: {mig_e}")
@@ -16777,7 +17507,8 @@ def update_community():
                     UPDATE communities 
                     SET name = {ph}, description = {ph}, type = {ph}, background_path = {ph}, template = {ph},
                         background_color = {ph}, card_color = {ph}, accent_color = {ph}, text_color = {ph},
-                        parent_community_id = {ph}, notify_on_new_member = {ph}, max_members = {ph}
+                        parent_community_id = {ph}, notify_on_new_member = {ph}, max_members = {ph},
+                        allow_nsfw_imagine = {ph}
                     WHERE id = {ph}
                     """,
                     (
@@ -16786,6 +17517,7 @@ def update_community():
                         (parent_community_id if parent_community_id and parent_community_id != 'none' else None),
                         notify_on_new_member,
                         (max_members if (isinstance(max_members, int) and max_members > 0) else None),
+                        allow_nsfw_imagine,
                         community_id,
                     ),
                 )
@@ -16795,7 +17527,8 @@ def update_community():
                     UPDATE communities 
                     SET name = {ph}, description = {ph}, type = {ph}, template = {ph},
                         background_color = {ph}, card_color = {ph}, accent_color = {ph}, text_color = {ph},
-                        parent_community_id = {ph}, notify_on_new_member = {ph}, max_members = {ph}
+                        parent_community_id = {ph}, notify_on_new_member = {ph}, max_members = {ph},
+                        allow_nsfw_imagine = {ph}
                     WHERE id = {ph}
                     """,
                     (
@@ -16804,6 +17537,7 @@ def update_community():
                         (parent_community_id if parent_community_id and parent_community_id != 'none' else None),
                         notify_on_new_member,
                         (max_members if (isinstance(max_members, int) and max_members > 0) else None),
+                        allow_nsfw_imagine,
                         community_id,
                     ),
                 )
@@ -17844,6 +18578,7 @@ def api_community_feed(community_id):
             if not community_row:
                 return jsonify({'success': False, 'error': 'Community not found'}), 404
             community = dict(community_row)
+            community['allow_nsfw_imagine'] = bool(community.get('allow_nsfw_imagine')) if community.get('allow_nsfw_imagine') is not None else False
 
             # Parent community (optional)
             parent_community = None
@@ -18687,13 +19422,29 @@ def api_home_timeline():
             community_ids = [row['id'] for row in rows]
             id_to_name = {row['id']: row['name'] for row in rows}
 
+            community_allow_map: Dict[str, bool] = {}
+            if community_ids:
+                try:
+                    placeholders = ', '.join([get_sql_placeholder() for _ in community_ids])
+                    query = f"SELECT id, allow_nsfw_imagine FROM communities WHERE id IN ({placeholders})"
+                    c.execute(query, tuple(community_ids))
+                    fetched = c.fetchall() or []
+                    for row in fetched:
+                        cid = row['id'] if hasattr(row, 'keys') else row[0]
+                        val = row['allow_nsfw_imagine'] if hasattr(row, 'keys') else (row[1] if len(row) > 1 else 0)
+                        community_allow_map[str(cid)] = bool(val)
+                except Exception as allow_err:
+                    logger.warning(f"Failed to load allow_nsfw_imagine for communities: {allow_err}")
+
             if not community_ids:
                 return jsonify({
                     'success': True,
                     'username': username,
                     'current_user_profile_picture': current_user_profile_picture,
                     'current_user_display_name': current_user_display_name,
-                    'posts': []
+                    'posts': [],
+                    'settings': {'allow_nsfw_imagine': False},
+                    'community_allow_map': {}
                 })
 
             # Strict: only posts from communities the user directly belongs to
@@ -18882,7 +19633,11 @@ def api_home_timeline():
                 'username': username,
                 'current_user_profile_picture': current_user_profile_picture,
                 'current_user_display_name': current_user_display_name,
-                'posts': posts
+                'posts': posts,
+                'settings': {
+                    'allow_nsfw_imagine': any(community_allow_map.values())
+                },
+                'community_allow_map': community_allow_map
             })
     except Exception as e:
         logger.error(f"Error in api_home_timeline: {e}")
@@ -20469,6 +21224,16 @@ def api_group_post():
                 'can_edit': bool(is_manager or (uname == username)),
                 'can_delete': bool(is_manager or (uname == username)),
             }
+            allow_nsfw_imagine = False
+            if community_id:
+                try:
+                    c.execute("SELECT allow_nsfw_imagine FROM communities WHERE id = ?", (community_id,))
+                    allow_row = c.fetchone()
+                    if allow_row is not None:
+                        allow_nsfw_imagine = bool(allow_row['allow_nsfw_imagine'] if hasattr(allow_row, 'keys') else allow_row[0])
+                except Exception as allow_err:
+                    logger.warning(f"Failed to fetch allow_nsfw_imagine for community {community_id}: {allow_err}")
+            post['allow_nsfw_imagine'] = allow_nsfw_imagine
             return jsonify({'success': True, 'post': post, 'group': { 'id': group_id, 'name': group_name }, 'community_id': community_id})
     except Exception as e:
         logger.error(f"api_group_post error: {e}")
