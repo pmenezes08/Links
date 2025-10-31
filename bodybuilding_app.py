@@ -3296,21 +3296,36 @@ def runway_get_job(runway_job_id: str) -> Dict[str, Any]:
 
 
 def runway_extract_asset_url(job_data: Dict[str, Any]) -> Optional[str]:
-    candidates = []
-    for key in ('output', 'outputs', 'assets'):
-        value = job_data.get(key)
-        if isinstance(value, list):
-            candidates.extend(value)
-        elif isinstance(value, dict):
-            candidates.append(value)
-    for item in candidates:
-        if isinstance(item, dict):
-            for url_key in ('url', 'asset_url', 'uri'):
-                url = item.get(url_key)
-                if url:
-                    return url
+    def extract(value: Any) -> Optional[str]:
+        if isinstance(value, str):
+            return value
+        if isinstance(value, dict):
+            for url_key in ('url', 'asset_url', 'uri', 'href'):
+                url_val = value.get(url_key)
+                if url_val:
+                    return extract(url_val)
+            # Drill into common nested containers
+            for nested_key in ('output', 'outputs', 'assets', 'data', 'videos', 'result'):
+                if nested_key in value:
+                    nested = extract(value[nested_key])
+                    if nested:
+                        return nested
+        if isinstance(value, list) or isinstance(value, tuple):
+            for item in value:
+                nested = extract(item)
+                if nested:
+                    return nested
+        return None
+
+    for key in ('output', 'outputs', 'assets', 'data', 'result'):
+        url = extract(job_data.get(key))
+        if url:
+            return url
+
     direct_url = job_data.get('result_url') or job_data.get('video_url')
-    return direct_url
+    if isinstance(direct_url, str):
+        return direct_url
+    return None
 
 
 def runway_download_asset(asset_url: str) -> bytes:
