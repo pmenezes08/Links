@@ -7,6 +7,7 @@ import PremiumDashboard from './pages/PremiumDashboard'
 import HeaderBar from './components/HeaderBar'
 import { HeaderContext } from './contexts/HeaderContext'
 import PushInit from './components/PushInit'
+import PwaInstallPrompt from './components/PwaInstallPrompt'
 import { encryptionService } from './services/simpleEncryption'
 import CrossfitExact from './pages/CrossfitExact'
 import CommunityFeed from './pages/CommunityFeed'
@@ -235,6 +236,7 @@ export default function App() {
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <PushInit />
+        <PwaInstallPrompt />
         <AppRoutes />
       </BrowserRouter>
     </QueryClientProvider>
