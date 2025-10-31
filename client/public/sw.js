@@ -6,9 +6,10 @@ const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/manifest.webmanifest',
-  '/favicon.svg',
-  '/icons/icon-192.png',
-  '/icons/icon-512.png'
+  '/static/logo.png',
+  '/static/icons/icon-192.png',
+  '/static/icons/icon-512.png',
+  '/apple-touch-icon.png'
 ]
 
 const STATIC_ASSET_PATHS = new Set(STATIC_ASSETS)
@@ -145,6 +146,11 @@ self.addEventListener('fetch', (event) => {
     return
   }
 
+  if (url.origin === self.location.origin && url.pathname.startsWith('/static/icons/')){
+    event.respondWith(staleWhileRevalidate(request, RUNTIME_CACHE))
+    return
+  }
+
   if (url.origin === self.location.origin && request.destination === 'image'){
     event.respondWith(staleWhileRevalidate(request, RUNTIME_CACHE))
     return
@@ -175,8 +181,8 @@ self.addEventListener('push', (event) => {
     const title = data.title || 'Notification'
     const options = {
       body: data.body || '',
-      icon: data.icon || '/icons/icon-192.png',
-      badge: data.badge || '/icons/icon-192.png',
+      icon: data.icon || '/static/icons/icon-192.png',
+      badge: data.badge || '/static/icons/icon-192.png',
       data: { url: targetUrl },
       tag,
       requireInteraction: !!data.requireInteraction
