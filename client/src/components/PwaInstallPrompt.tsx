@@ -176,9 +176,9 @@ export default function PwaInstallPrompt(){
         cursor: 'pointer',
       },
       primaryButton: {
-        background: '#22c55e',
+        background: '#4db6ac',
         border: 'none',
-        color: '#0a0a0a',
+        color: '#041f1a',
         borderRadius: '999px',
         padding: '8px 18px',
         fontSize: '13px',
