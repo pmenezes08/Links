@@ -116,10 +116,11 @@ def nl2br_filter(text):
 # Always use an absolute path based on this file's directory to avoid CWD issues under WSGI
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 UPLOAD_FOLDER = os.path.join(BASE_DIR, 'static', 'uploads')
-# Allow common image and audio types
+# Allow common image, video, and audio types
 ALLOWED_EXTENSIONS = {
     'png', 'jpg', 'jpeg', 'gif', 'webp',
-    'm4a', 'mp3', 'ogg', 'wav', 'webm', 'opus', 'mp4'
+    'mp4', 'webm', 'mov', 'm4v', 'avi',
+    'm4a', 'mp3', 'ogg', 'wav', 'opus'
 }
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
@@ -3814,6 +3815,7 @@ def api_community_group_feed(parent_id: int):
                         'community_name': name_map.get(row.get('community_id')),
                         'created_at': row.get('created_at') or row.get('timestamp'),
                         'image_path': row.get('image_path'),
+                        'video_path': row.get('video_path'),
                         'audio_path': row.get('audio_path'),
                         'audio_summary': row.get('audio_summary'),
                         'profile_picture': get_profile_picture(uname),
@@ -3826,7 +3828,10 @@ def api_community_group_feed(parent_id: int):
                     if (dt is None) or (dt >= cutoff):
                         posts.append(post_obj)
                 else:
-                    pid, uname, content, cid, created_at_val, timestamp_val, image_path = row
+                    pid, uname, content, cid, created_at_val, timestamp_val, image_path, *rest = row
+                    video_path_val = None
+                    if rest:
+                        video_path_val = rest[0]
                     dt = parse_dt(created_at_val, timestamp_val)
                     if sample_logged < 5:
                         logger.info(f"Group feed row id={pid}, raw_created_at={created_at_val}, raw_timestamp={timestamp_val}, parsed={dt}")
@@ -3898,6 +3903,7 @@ def api_community_group_feed(parent_id: int):
                         'community_name': name_map.get(cid),
                         'created_at': created_at_val or timestamp_val,
                         'image_path': image_path,
+                        'video_path': video_path_val,
                         'audio_path': None,
                         'audio_summary': None,
                         'profile_picture': get_profile_picture(uname),
@@ -10962,9 +10968,10 @@ def post_status():
     # Debug: Log all form data
     logger.info(f"All form data: {dict(request.form)}")
     
-    # Handle file upload (image or audio)
+    # Handle file upload (image, video, or audio)
     image_path = None
     audio_path = None
+    video_path = None
     # Robustly detect both files regardless of field name casing
     files = request.files
     if 'image' in files and files['image'].filename:
@@ -10991,15 +10998,27 @@ def post_status():
                     return redirect(url_for('community_feed', community_id=community_id) + msg)
                 else:
                     return redirect(url_for('feed') + msg)
+    if 'video' in files and files['video'].filename:
+        vfile = files['video']
+        video_path = save_uploaded_file(vfile, subfolder='video')
+        if not video_path:
+            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                return jsonify({'success': False, 'error': 'Invalid video type'}), 400
+            else:
+                msg = '?error=Invalid video type'
+                if community_id:
+                    return redirect(url_for('community_feed', community_id=community_id) + msg)
+                else:
+                    return redirect(url_for('feed') + msg)
     
-    if not content and not image_path and not audio_path:
+    if not content and not image_path and not audio_path and not video_path:
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-            return jsonify({'success': False, 'error': 'Content, image or audio is required!'}), 400
+            return jsonify({'success': False, 'error': 'Content, image, video or audio is required!'}), 400
         else:
             if community_id:
-                return redirect(url_for('community_feed', community_id=community_id) + '?error=Content, image or audio is required!')
+                return redirect(url_for('community_feed', community_id=community_id) + '?error=Content, image, video or audio is required!')
             else:
-                        return redirect(url_for('feed') + '?error=Content, image or audio is required!')
+                return redirect(url_for('feed') + '?error=Content, image, video or audio is required!')
     
     # Store in DB-friendly ISO format to avoid MySQL zero-datetime coercion
     timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -11046,7 +11065,7 @@ def post_status():
                         return redirect(url_for('community_feed', community_id=community_id) + '?error=You are not a member of this community')
             
             # Debug: Log the exact values being inserted
-            logger.info(f"About to insert post with values: username={username}, content={content}, image_path={image_path}, timestamp={timestamp}, community_id={community_id} (type: {type(community_id)})")
+            logger.info(f"About to insert post with values: username={username}, content={content}, image_path={image_path}, video_path={video_path}, timestamp={timestamp}, community_id={community_id} (type: {type(community_id)})")
             
             # Ensure audio columns exist for posts (migration-light)
             try:
@@ -11065,6 +11084,10 @@ def post_status():
                 c.execute("ALTER TABLE posts ADD COLUMN audio_summary TEXT")
             except Exception:
                 pass
+            try:
+                c.execute("ALTER TABLE posts ADD COLUMN video_path TEXT")
+            except Exception:
+                pass
 
             # Generate AI summary if audio is present
             audio_summary = None
@@ -11081,8 +11104,8 @@ def post_status():
                     # Don't fail the post creation if summarization fails
                     audio_summary = None
 
-            c.execute("INSERT INTO posts (username, content, image_path, audio_path, audio_summary, timestamp, community_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                      (username, content, image_path, audio_path, audio_summary, timestamp, community_id))
+            c.execute("INSERT INTO posts (username, content, image_path, video_path, audio_path, audio_summary, timestamp, community_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                      (username, content, image_path, video_path, audio_path, audio_summary, timestamp, community_id))
             conn.commit()
             post_id = c.lastrowid
             logger.info(f"Post added successfully for {username} with ID: {post_id} in community: {community_id}")
@@ -11227,6 +11250,7 @@ def post_status():
                     'username': username, 
                     'content': content, 
                     'image_path': image_path,
+                    'video_path': video_path,
                     'timestamp': timestamp,
                     'community_id': community_id
                 }
@@ -15790,7 +15814,7 @@ def delete_post():
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
-            c.execute("SELECT username, image_path FROM posts WHERE id= ?", (post_id,))
+            c.execute("SELECT username, image_path, video_path FROM posts WHERE id= ?", (post_id,))
             post = c.fetchone()
             if not post or (post['username'] != username and username != 'admin'):
                 return jsonify({'success': False, 'error': 'Post not found or unauthorized!'}), 403
@@ -15803,6 +15827,22 @@ def delete_post():
                         os.remove(image_file_path)
                 except Exception as e:
                     logger.warning(f"Could not delete image file {post['image_path']}: {e}")
+            # Delete video file if it exists
+            video_path_val = None
+            try:
+                video_path_val = post['video_path']
+            except Exception:
+                try:
+                    video_path_val = post[2]
+                except Exception:
+                    video_path_val = None
+            if video_path_val:
+                try:
+                    video_file_path = os.path.join('static', video_path_val)
+                    if os.path.exists(video_file_path):
+                        os.remove(video_file_path)
+                except Exception as e:
+                    logger.warning(f"Could not delete video file {video_path_val}: {e}")
             
             c.execute("DELETE FROM replies WHERE post_id= ?", (post_id,))
             c.execute("DELETE FROM posts WHERE id= ?", (post_id,))

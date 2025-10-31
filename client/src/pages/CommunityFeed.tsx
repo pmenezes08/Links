@@ -17,7 +17,14 @@ import { gifSelectionToFile } from '../utils/gif'
 type PollOption = { id: number; text: string; votes: number; user_voted?: boolean }
 type Poll = { id: number; question: string; is_active: number; options: PollOption[]; user_vote: number|null; total_votes: number; single_vote?: boolean; expires_at?: string | null }
 type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null, profile_picture?: string|null, image_path?: string|null, audio_path?: string|null, parent_reply_id?: number | null }
-type Post = { id: number; username: string; content: string; image_path?: string|null; audio_path?: string|null; audio_summary?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; poll?: Poll|null; replies: Reply[], profile_picture?: string|null, is_starred?: boolean, is_community_starred?: boolean }
+type Post = { id: number; username: string; content: string; image_path?: string|null; video_path?: string|null; audio_path?: string|null; audio_summary?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; poll?: Poll|null; replies: Reply[], profile_picture?: string|null, is_starred?: boolean, is_community_starred?: boolean }
+
+function normalizeMediaPath(p?: string | null){
+  if (!p) return ''
+  if (p.startsWith('http')) return p
+  if (p.startsWith('/uploads') || p.startsWith('/static')) return p
+  return p.startsWith('uploads') ? `/${p}` : `/uploads/${p}`
+}
 
 // old formatTimestamp removed; using formatSmartTime
 
@@ -997,13 +1004,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
         {post.image_path ? (
           <div className="px-3">
             {(() => {
-              const computed = (() => {
-                const p = post.image_path as string
-                if (!p) return ''
-                if (p.startsWith('http')) return p
-                if (p.startsWith('/uploads') || p.startsWith('/static')) return p
-                return p.startsWith('uploads') ? `/${p}` : `/uploads/${p}`
-              })()
+              const computed = normalizeMediaPath(post.image_path || '')
               return (
                 <ImageLoader
                   src={computed}
@@ -1013,6 +1014,16 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                 />
               )
             })()}
+          </div>
+        ) : null}
+        {post.video_path ? (
+          <div className="px-3" onClick={(e)=> e.stopPropagation()}>
+            <video
+              className="w-full max-h-[360px] rounded border border-white/10 bg-black"
+              src={normalizeMediaPath(post.video_path)}
+              controls
+              playsInline
+            />
           </div>
         ) : null}
         {post.audio_path ? (

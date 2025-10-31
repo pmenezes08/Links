@@ -15,7 +15,7 @@ import { extractVideoEmbed, removeVideoUrlFromText } from '../utils/videoEmbed'
 import EditableAISummary from '../components/EditableAISummary'
 
 type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null, parent_reply_id?: number|null, children?: Reply[], profile_picture?: string|null, image_path?: string|null }
-type Post = { id: number; username: string; content: string; image_path?: string|null; audio_summary?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; replies: Reply[] }
+type Post = { id: number; username: string; content: string; image_path?: string|null; video_path?: string|null; audio_path?: string|null; audio_summary?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; replies: Reply[] }
 
 // old formatTimestamp removed; using formatSmartTime
 
@@ -533,12 +533,22 @@ export default function PostDetail(){
                 />
               </div>
             ) : null}
-          {(post as any)?.audio_path ? (
+          {post.video_path ? (
+            <div className="px-3">
+              <video
+                className="w-full max-h-[420px] rounded border border-white/10 bg-black"
+                src={normalizePath(post.video_path)}
+                controls
+                playsInline
+              />
+            </div>
+          ) : null}
+          {post.audio_path ? (
             <div className="px-3 space-y-2">
-              {(post as any)?.audio_summary && (
+              {post.audio_summary && (
                 <EditableAISummary
                   postId={post.id}
-                  initialSummary={(post as any).audio_summary}
+                  initialSummary={post.audio_summary}
                   isOwner={post.username === currentUser}
                   onSummaryUpdate={(newSummary) => {
                     setPost(prev => prev ? {...prev, audio_summary: newSummary} as any : null);
@@ -546,7 +556,7 @@ export default function PostDetail(){
                 />
               )}
               <audio controls className="w-full" playsInline webkit-playsinline="true" src={(() => {
-                const path = normalizePath((post as any).audio_path as string);
+                const path = normalizePath(post.audio_path as string);
                 const separator = path.includes('?') ? '&' : '?';
                 return `${path}${separator}_cb=${Date.now()}`;
               })()} />

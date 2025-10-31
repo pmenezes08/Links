@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import MentionTextarea from '../components/MentionTextarea'
 import { useAudioRecorder } from '../components/useAudioRecorder'
 import { useNavigate, useSearchParams } from 'react-router-dom'
@@ -12,11 +12,13 @@ export default function CreatePost(){
   const navigate = useNavigate()
   const communityId = params.get('community_id') || ''
   const groupId = params.get('group_id') || ''
+  const isGroupPost = Boolean(groupId)
   const [content, setContent] = useState('')
   const [file, setFile] = useState<File|null>(null)
   const [gifPickerOpen, setGifPickerOpen] = useState(false)
   const [selectedGif, setSelectedGif] = useState<GifSelection | null>(null)
   const [gifFile, setGifFile] = useState<File | null>(null)
+  const [videoFile, setVideoFile] = useState<File | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const { recording, preview, start, stop, clearPreview, ensurePreview, level, recordMs } = useAudioRecorder() as any
   const [showPraise, setShowPraise] = useState(false)
@@ -25,6 +27,20 @@ export default function CreatePost(){
   const [linkDisplayName, setLinkDisplayName] = useState('')
   const tokenRef = useRef<string>(`${Date.now()}_${Math.random().toString(36).slice(2)}`)
   const fileInputRef = useRef<HTMLInputElement|null>(null)
+  const videoInputRef = useRef<HTMLInputElement|null>(null)
+
+  const videoPreviewUrl = useMemo(() => {
+    if (!videoFile) return null
+    return URL.createObjectURL(videoFile)
+  }, [videoFile])
+
+  const hasVideoAttachment = !isGroupPost && Boolean(videoFile)
+
+  useEffect(() => {
+    return () => {
+      if (videoPreviewUrl) URL.revokeObjectURL(videoPreviewUrl)
+    }
+  }, [videoPreviewUrl])
 
   // Detect links when content changes
   useEffect(() => {
@@ -62,8 +78,9 @@ export default function CreatePost(){
   async function submit(){
     // If user is still recording, stop and wait briefly for preview to finalize
     if (recording) await ensurePreview(5000)
-    if (!content && !file && !gifFile && !preview?.blob) {
-      alert('Add text, an image, or finish recording audio before posting')
+    const activeVideoFile = isGroupPost ? null : videoFile
+    if (!content && !file && !gifFile && !preview?.blob && !activeVideoFile) {
+      alert('Add text, media, or finish recording audio before posting')
       return
     }
     if (submitting) return
@@ -77,6 +94,8 @@ export default function CreatePost(){
       fd.append('content', content)
       if (gifFile) fd.append('image', gifFile)
       else if (file) fd.append('image', file)
+      const activeVideoFile = isGroupPost ? null : videoFile
+      if (activeVideoFile) fd.append('video', activeVideoFile)
       if (preview?.blob) fd.append('audio', preview.blob, (preview.blob.type.includes('mp4') ? 'audio.mp4' : 'audio.webm'))
       fd.append('dedupe_token', tokenRef.current)
       if (groupId){
@@ -108,7 +127,9 @@ export default function CreatePost(){
       setFile(null)
       setSelectedGif(null)
       setGifFile(null)
+      setVideoFile(null)
       if (fileInputRef.current) fileInputRef.current.value = ''
+      if (videoInputRef.current) videoInputRef.current.value = ''
       clearPreview()
     }catch{
       setSubmitting(false)
@@ -169,6 +190,29 @@ export default function CreatePost(){
         {file ? (
           <div className="mt-3 rounded-xl overflow-hidden border border-white/10">
             <img src={URL.createObjectURL(file)} alt="preview" className="w-full h-auto" />
+          </div>
+        ) : null}
+        {hasVideoAttachment && videoPreviewUrl ? (
+          <div className="mt-3 rounded-xl overflow-hidden border border-white/10">
+            <video
+              src={videoPreviewUrl}
+              controls
+              playsInline
+              className="w-full max-h-[360px] bg-black"
+            />
+            <div className="px-3 py-2 flex items-center justify-between bg-white/5 border-t border-white/10 text-xs text-white/70">
+              <span className="flex items-center gap-2 text-[#7fe7df]"><i className="fa-solid fa-video" /> Video attached</span>
+              <button
+                type="button"
+                className="text-red-400 hover:text-red-300"
+                onClick={() => {
+                  setVideoFile(null)
+                  if (videoInputRef.current) videoInputRef.current.value = ''
+                }}
+              >
+                <i className="fa-solid fa-times" />
+              </button>
+            </div>
           </div>
         ) : null}
         {selectedGif ? (
@@ -259,10 +303,31 @@ export default function CreatePost(){
                 setFile(next)
                 setSelectedGif(null)
                 setGifFile(null)
+                setVideoFile(null)
+                if (videoInputRef.current) videoInputRef.current.value = ''
               }}
               style={{ display: 'none' }}
             />
           </label>
+          {!isGroupPost && (
+            <label className="px-3 py-2 rounded-full hover:bg-white/5 cursor-pointer" aria-label="Add video">
+              <i className="fa-solid fa-video" style={{ color: '#4db6ac' }} />
+              <input
+                ref={videoInputRef}
+                type="file"
+                accept="video/mp4,video/webm,video/quicktime"
+                onChange={(e)=> {
+                  const next = e.target.files?.[0] || null
+                  setVideoFile(next)
+                  setFile(null)
+                  if (fileInputRef.current) fileInputRef.current.value = ''
+                  setSelectedGif(null)
+                  setGifFile(null)
+                }}
+                style={{ display: 'none' }}
+              />
+            </label>
+          )}
           <button
             className="px-3 py-2 rounded-full text-[#4db6ac] hover:bg-white/5"
             aria-label="Add GIF"
@@ -279,7 +344,7 @@ export default function CreatePost(){
             </button>
           )}
           <div className="flex-1" />
-          <button className={`px-4 py-2 rounded-full ${submitting ? 'bg-white/20 text-white/60 cursor-not-allowed' : 'bg-[#4db6ac] text-black hover:brightness-110'}`} onClick={submit} disabled={submitting || (!content && !file && !gifFile && !preview)}>
+          <button className={`px-4 py-2 rounded-full ${submitting ? 'bg-white/20 text-white/60 cursor-not-allowed' : 'bg-[#4db6ac] text-black hover:brightness-110'}`} onClick={submit} disabled={submitting || (!content && !file && !gifFile && !preview && !hasVideoAttachment)}>
             {submitting ? 'Posting…' : 'Post'}
           </button>
         </div>
@@ -293,7 +358,9 @@ export default function CreatePost(){
             setSelectedGif(gif)
             setGifFile(converted)
             setFile(null)
+            setVideoFile(null)
             if (fileInputRef.current) fileInputRef.current.value = ''
+            if (videoInputRef.current) videoInputRef.current.value = ''
           } catch (err) {
             console.error('Failed to prepare GIF for post', err)
             alert('Unable to attach GIF. Please try again.')
