@@ -1328,7 +1328,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                           }}
                           aria-label="Send reply"
                         >
-                          {sendingChildReply ? <i className="fa-solid fa-spinner fa-spin" /> : <><i className="fa-solid fa-paper-plane text-[11px]" /><span className="uppercase tracking-wide text-[11px]">Send</span></>}
+                          {sendingChildReply ? <i className="fa-solid fa-spinner fa-spin" /> : <><i className="fa-solid fa-paper-plane text-[11px]" /><span className="uppercase tracking-[0.2em] text-[10px] font-semibold">Send</span></>}
                         </button>
                       </div>
                     </div>
@@ -1411,7 +1411,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                 }}
                 aria-label="Send reply"
               >
-                {sendingReply ? <i className="fa-solid fa-spinner fa-spin" /> : <><i className="fa-solid fa-paper-plane text-[11px]" /><span className="uppercase tracking-wide text-[11px]">Reply</span></>}
+                {sendingReply ? <i className="fa-solid fa-spinner fa-spin" /> : <><i className="fa-solid fa-paper-plane text-[11px]" /><span className="uppercase tracking-[0.2em] text-[10px] font-semibold">Reply</span></>}
               </button>
             </div>
           </div>
