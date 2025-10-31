@@ -183,6 +183,15 @@ except Exception:
 app.config['SESSION_COOKIE_NAME'] = 'cpoint_session'  # Changed to avoid conflicts with old cookies
 app.config['PREFERRED_URL_SCHEME'] = 'https'
 
+
+@app.route('/api/config/giphy_key', methods=['GET'])
+def api_config_giphy_key():
+    """Expose the Giphy API key for the frontend if available."""
+    key = os.environ.get('GIPHY_API_KEY') or os.environ.get('VITE_GIPHY_API_KEY')
+    if key:
+        return jsonify({'success': True, 'key': key})
+    return jsonify({'success': False, 'key': None})
+
 # Email (Resend)
 RESEND_API_KEY = os.getenv('RESEND_API_KEY')
 EMAIL_FROM = os.getenv('EMAIL_FROM', 'C-Point <no-reply@c-point.co>')

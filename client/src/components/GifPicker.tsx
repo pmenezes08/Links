@@ -6,8 +6,6 @@ export type GifSelection = {
   previewUrl: string
 }
 
-const FALLBACK_GIPHY_KEY = 'dc6zaTOxFJmzC'
-
 type GifPickerProps = {
   isOpen: boolean
   onClose: () => void
@@ -33,10 +31,14 @@ export default function GifPicker({ isOpen, onClose, onSelect }: GifPickerProps)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [debouncedQuery, setDebouncedQuery] = useState('')
+  const [keyLoading, setKeyLoading] = useState(false)
 
-  const apiKey = useMemo(() => (
-    (import.meta as any)?.env?.VITE_GIPHY_API_KEY || FALLBACK_GIPHY_KEY
-  ), [])
+  const envKey = useMemo(() => {
+    const raw = (import.meta as any)?.env?.VITE_GIPHY_API_KEY
+    return typeof raw === 'string' && raw.trim().length > 0 ? raw.trim() : null
+  }, [])
+
+  const [apiKey, setApiKey] = useState<string | null>(envKey)
 
   useEffect(() => {
     if (!isOpen) return
@@ -65,6 +67,10 @@ export default function GifPicker({ isOpen, onClose, onSelect }: GifPickerProps)
   }, [query, isOpen])
 
   const loadGifs = useCallback(async (searchTerm: string, signal: AbortSignal) => {
+    if (!apiKey){
+      setError('GIF search requires a valid GIPHY API key. Ask an admin to configure it in the server environment.')
+      return
+    }
     setLoading(true)
     setError(null)
     const endpoint = searchTerm ? 'search' : 'trending'
@@ -115,6 +121,36 @@ export default function GifPicker({ isOpen, onClose, onSelect }: GifPickerProps)
     return () => controller.abort()
   }, [debouncedQuery, isOpen, loadGifs])
 
+  useEffect(() => {
+    if (!isOpen) return
+    if (apiKey) return
+    let cancelled = false
+    setKeyLoading(true)
+    setError(null)
+    fetch('/api/config/giphy_key', { credentials: 'include' })
+      .then(async (res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        return res.json().catch(() => null)
+      })
+      .then((json) => {
+        if (!json || cancelled) return
+        if (json?.success && json.key){
+          setApiKey(String(json.key))
+        }else{
+          setError('GIF search requires a valid GIPHY API key. Ask an admin to configure it in the server environment.')
+        }
+      })
+      .catch((err) => {
+        if (cancelled) return
+        console.error('Failed to load GIPHY API key', err)
+        setError('Unable to load GIF configuration from server. Please try again later.')
+      })
+      .finally(() => {
+        if (!cancelled) setKeyLoading(false)
+      })
+    return () => { cancelled = true }
+  }, [apiKey, isOpen])
+
   if (!isOpen) return null
 
   return (
@@ -142,7 +178,14 @@ export default function GifPicker({ isOpen, onClose, onSelect }: GifPickerProps)
         </div>
 
         <div className="mt-4 max-h-[60vh] overflow-y-auto pr-1">
-          {loading ? (
+          {keyLoading ? (
+            <div className="flex items-center justify-center py-16 text-white/70 text-sm gap-2">
+              <i className="fa-solid fa-spinner fa-spin" />
+              Connecting to GIF library…
+            </div>
+          ) : !apiKey ? (
+            <div className="py-12 text-center text-sm text-red-400">GIF search requires a valid GIPHY API key. Ask an admin to configure it in the server environment.</div>
+          ) : loading ? (
             <div className="flex items-center justify-center py-16 text-white/70 text-sm gap-2">
               <i className="fa-solid fa-spinner fa-spin" />
               Loading GIFs…
