@@ -3145,7 +3145,8 @@ def runway_headers() -> Dict[str, str]:
         raise RuntimeError('Runway API key is not configured. Set RUNWAY_API_KEY environment variable.')
     return {
         'Authorization': f'Bearer {RUNWAY_API_KEY}',
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'X-Runway-Version': os.environ.get('RUNWAY_API_VERSION', '2024-06-01')
     }
 
 
