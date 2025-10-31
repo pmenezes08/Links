@@ -6,6 +6,9 @@ import Avatar from '../components/Avatar'
 import MessageImage from '../components/MessageImage'
 import ZoomableImage from '../components/ZoomableImage'
 import { encryptionService } from '../services/simpleEncryption'
+import GifPicker from '../components/GifPicker'
+import type { GifSelection } from '../components/GifPicker'
+import { gifSelectionToFile } from '../utils/gif'
 
 interface Message {
   id: number | string
@@ -65,6 +68,7 @@ export default function ChatThread(){
   const [showDateFloat, setShowDateFloat] = useState(false)
   const dateFloatTimer = useRef<any>(null)
   const [showAttachMenu, setShowAttachMenu] = useState(false)
+  const [gifPickerOpen, setGifPickerOpen] = useState(false)
   const fileInputRef = useRef<HTMLInputElement|null>(null)
   const cameraInputRef = useRef<HTMLInputElement|null>(null)
   const audioInputRef = useRef<HTMLInputElement|null>(null)
@@ -748,7 +752,18 @@ export default function ChatThread(){
     handleImageFile(file)
   }
 
-  function handleImageFile(file: File) {
+  async function handleGifSelection(gif: GifSelection) {
+    if (!otherUserId) return
+    try {
+      const file = await gifSelectionToFile(gif, 'chat-gif')
+      handleImageFile(file, 'gif')
+    } catch (err) {
+      console.error('Failed to prepare GIF for chat', err)
+      alert('Unable to attach GIF. Please try again.')
+    }
+  }
+
+function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
     setSending(true)
 
     // Create FormData for photo upload
@@ -770,7 +785,7 @@ export default function ChatThread(){
         // Add photo message as optimistic update
         const photoMessage: Message = {
           id: `temp_photo_${Date.now()}`,
-          text: '📷 Photo',
+          text: kind === 'gif' ? '🎞️ GIF' : '📷 Photo',
           image_path: j.image_path,
           sent: true,
           time: now,
@@ -1419,6 +1434,18 @@ export default function ChatThread(){
                 </button>
                 <button
                   className="w-full px-4 py-3 flex items-center gap-3 hover:bg-white/5 transition-colors text-left"
+                  onClick={() => { setShowAttachMenu(false); setGifPickerOpen(true) }}
+                >
+                  <div className="w-10 h-10 rounded-full bg-[#4db6ac]/20 flex items-center justify-center">
+                    <i className="fa-solid fa-images text-[#4db6ac]" />
+                  </div>
+                  <div>
+                    <div className="text-white font-medium">GIF</div>
+                    <div className="text-white/60 text-xs">Powered by GIPHY</div>
+                  </div>
+                </button>
+                <button
+                  className="w-full px-4 py-3 flex items-center gap-3 hover:bg-white/5 transition-colors text-left"
                   onClick={async () => {
                     setShowAttachMenu(false)
                     // Try to paste from clipboard manually
@@ -1847,6 +1874,14 @@ export default function ChatThread(){
           </div>
         </div>
       )}
+      <GifPicker
+        isOpen={gifPickerOpen}
+        onClose={()=> setGifPickerOpen(false)}
+        onSelect={async (gif) => {
+          setGifPickerOpen(false)
+          await handleGifSelection(gif)
+        }}
+      />
     </div>
   )
 }

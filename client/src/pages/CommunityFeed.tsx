@@ -12,6 +12,7 @@ import { renderTextWithLinks, detectLinks, replaceLinkInText, type DetectedLink 
 import EditableAISummary from '../components/EditableAISummary'
 import GifPicker from '../components/GifPicker'
 import type { GifSelection } from '../components/GifPicker'
+import { gifSelectionToFile } from '../utils/gif'
 
 type PollOption = { id: number; text: string; votes: number; user_voted?: boolean }
 type Poll = { id: number; question: string; is_active: number; options: PollOption[]; user_vote: number|null; total_votes: number; single_vote?: boolean; expires_at?: string | null }
@@ -19,15 +20,6 @@ type Reply = { id: number; username: string; content: string; timestamp: string;
 type Post = { id: number; username: string; content: string; image_path?: string|null; audio_path?: string|null; audio_summary?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; poll?: Poll|null; replies: Reply[], profile_picture?: string|null, is_starred?: boolean, is_community_starred?: boolean }
 
 // old formatTimestamp removed; using formatSmartTime
-
-async function convertGifToFile(gif: GifSelection): Promise<File> {
-  const response = await fetch(gif.url)
-  if (!response.ok) throw new Error('Failed to download GIF')
-  const blob = await response.blob()
-  const mime = blob.type || 'image/gif'
-  const extension = mime.split('/').pop() || 'gif'
-  return new File([blob], `cpoint-gif-${Date.now()}.${extension}`, { type: mime })
-}
 
 export default function CommunityFeed() {
   let { community_id } = useParams()
@@ -1293,7 +1285,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                       <div className="flex items-center justify-between gap-2">
                         <button
                           type="button"
-                          className="inline-flex items-center gap-2 px-3 py-1.5 text-xs rounded-lg bg-white/5 border border-white/10 text-white/70 hover:text-white transition"
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] rounded-lg bg-white/5 border border-white/10 text-white/70 hover:text-white uppercase tracking-wide transition"
                           onClick={(ev)=> { ev.stopPropagation(); setGifPickerTarget(r.id) }}
                         >
                           <i className="fa-solid fa-images" />
@@ -1301,7 +1293,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                         </button>
                         <button
                           type="button"
-                          className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#4db6ac] text-black font-medium hover:brightness-110 disabled:opacity-40"
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[#4db6ac] text-black font-semibold hover:brightness-110 disabled:opacity-40 uppercase tracking-wide text-[11px]"
                           disabled={sendingChildReply || (!childReplyText.trim() && !childReplyGif)}
                           onClick={async (ev)=>{
                             ev.stopPropagation()
@@ -1314,7 +1306,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                               fd.append('parent_reply_id', String(r.id))
                               fd.append('dedupe_token', `${Date.now()}_${Math.random().toString(36).slice(2)}`)
                               if (childReplyGif){
-                                const gifFile = await convertGifToFile(childReplyGif)
+                                const gifFile = await gifSelectionToFile(childReplyGif, 'community-reply')
                                 fd.append('image', gifFile)
                               }
                               const resp = await fetch('/post_reply', { method:'POST', credentials:'include', body: fd })
@@ -1336,7 +1328,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                           }}
                           aria-label="Send reply"
                         >
-                          {sendingChildReply ? <i className="fa-solid fa-spinner fa-spin" /> : <><i className="fa-solid fa-paper-plane" /><span className="text-sm">Send</span></>}
+                          {sendingChildReply ? <i className="fa-solid fa-spinner fa-spin" /> : <><i className="fa-solid fa-paper-plane text-[11px]" /><span className="uppercase tracking-wide text-[11px]">Send</span></>}
                         </button>
                       </div>
                     </div>
@@ -1379,7 +1371,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
             <div className="flex items-center justify-between gap-2">
               <button
                 type="button"
-                className="inline-flex items-center gap-2 px-3 py-1.5 text-xs rounded-lg bg-white/5 border border-white/10 text-white/70 hover:text-white transition"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] uppercase tracking-wide rounded-lg bg-white/5 border border-white/10 text-white/70 hover:text-white transition"
                 onClick={()=> setGifPickerTarget('main')}
               >
                 <i className="fa-solid fa-images" />
@@ -1387,7 +1379,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
               </button>
               <button
                 type="button"
-                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#4db6ac] text-black font-medium hover:brightness-110 disabled:opacity-40"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[#4db6ac] text-black font-semibold uppercase tracking-wide text-[11px] hover:brightness-110 disabled:opacity-40"
                 disabled={sendingReply || (!replyText.trim() && !replyGif)}
                 onClick={async ()=>{
                   if (sendingReply || (!replyText.trim() && !replyGif)) return
@@ -1398,7 +1390,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                     fd.append('content', replyText.trim())
                     fd.append('dedupe_token', `${Date.now()}_${Math.random().toString(36).slice(2)}`)
                     if (replyGif){
-                      const gifFile = await convertGifToFile(replyGif)
+                      const gifFile = await gifSelectionToFile(replyGif, 'community-reply')
                       fd.append('image', gifFile)
                     }
                     const r = await fetch('/post_reply', { method:'POST', credentials:'include', body: fd })
@@ -1419,7 +1411,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                 }}
                 aria-label="Send reply"
               >
-                {sendingReply ? <i className="fa-solid fa-spinner fa-spin" /> : <><i className="fa-solid fa-paper-plane" /><span className="text-sm">Reply</span></>}
+                {sendingReply ? <i className="fa-solid fa-spinner fa-spin" /> : <><i className="fa-solid fa-paper-plane text-[11px]" /><span className="uppercase tracking-wide text-[11px]">Reply</span></>}
               </button>
             </div>
           </div>

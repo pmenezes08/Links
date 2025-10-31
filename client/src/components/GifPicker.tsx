@@ -154,48 +154,48 @@ export default function GifPicker({ isOpen, onClose, onSelect }: GifPickerProps)
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 z-[1400] flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={onClose}>
-      <div className="w-[min(620px,92%)] max-h-[85vh] rounded-2xl border border-white/10 bg-[#0b0f10] p-4 shadow-[0_30px_60px_rgba(0,0,0,0.55)]" onClick={(e)=> e.stopPropagation()}>
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-2 flex-1 rounded-lg border border-white/10 bg-white/5 px-3 py-2">
-            <i className="fa-solid fa-magnifying-glass text-white/50" />
+    <div className="fixed inset-0 z-[1400] flex items-center justify-center bg-black/70 backdrop-blur-sm px-3" onClick={onClose}>
+      <div className="w-full max-w-[440px] max-h-[80vh] rounded-2xl border border-white/10 bg-[#0b0f10] p-3 shadow-[0_24px_48px_rgba(0,0,0,0.55)]" onClick={(e)=> e.stopPropagation()}>
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 flex-1 rounded-xl border border-white/10 bg-white/[0.04] px-2.5 py-1.5">
+            <i className="fa-solid fa-magnifying-glass text-white/50 text-xs" />
             <input
               autoFocus
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              className="flex-1 bg-transparent text-sm text-white placeholder-white/40 outline-none"
+              className="flex-1 bg-transparent text-[13px] text-white placeholder-white/40 outline-none"
               placeholder="Search GIFs"
             />
             {query && (
               <button className="text-white/40 hover:text-white transition" onClick={() => setQuery('')} aria-label="Clear search">
-                <i className="fa-solid fa-xmark" />
+                <i className="fa-solid fa-xmark text-sm" />
               </button>
             )}
           </div>
-          <button className="ml-2 text-white/60 hover:text-white" onClick={onClose} aria-label="Close GIF picker">
-            <i className="fa-solid fa-times" />
+          <button className="shrink-0 w-8 h-8 rounded-full text-white/60 hover:text-white hover:bg-white/10 flex items-center justify-center transition" onClick={onClose} aria-label="Close GIF picker">
+            <i className="fa-solid fa-times text-sm" />
           </button>
         </div>
 
-        <div className="mt-4 max-h-[60vh] overflow-y-auto pr-1">
+        <div className="mt-3 max-h-[56vh] overflow-y-auto pr-1">
           {keyLoading ? (
             <div className="flex items-center justify-center py-16 text-white/70 text-sm gap-2">
               <i className="fa-solid fa-spinner fa-spin" />
               Connecting to GIF library…
             </div>
           ) : !apiKey ? (
-            <div className="py-12 text-center text-sm text-red-400">GIF search requires a valid GIPHY API key. Ask an admin to configure it in the server environment.</div>
+            <div className="py-12 text-center text-sm text-red-400 px-4 leading-relaxed">GIF search requires a valid GIPHY API key. Ask an admin to configure it in the server environment.</div>
           ) : loading ? (
             <div className="flex items-center justify-center py-16 text-white/70 text-sm gap-2">
               <i className="fa-solid fa-spinner fa-spin" />
               Loading GIFs…
             </div>
           ) : error ? (
-            <div className="py-12 text-center text-sm text-red-400">{error}</div>
+            <div className="py-12 text-center text-sm text-red-400 px-4 leading-relaxed">{error}</div>
           ) : results.length === 0 ? (
-            <div className="py-12 text-center text-sm text-white/60">No GIFs found. Try a different search.</div>
+            <div className="py-10 text-center text-sm text-white/60">No GIFs found. Try a different search.</div>
           ) : (
-            <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+            <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
               {results.map((gif) => (
                 <button
                   key={gif.id}
@@ -203,14 +203,14 @@ export default function GifPicker({ isOpen, onClose, onSelect }: GifPickerProps)
                   onClick={() => onSelect(gif)}
                 >
                   <img src={gif.previewUrl} alt="GIF preview" className="h-28 w-full object-cover" loading="lazy" />
-                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-xs font-medium text-white">Use GIF</div>
+                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-xs font-medium text-white uppercase tracking-wide">Use GIF</div>
                 </button>
               ))}
             </div>
           )}
         </div>
 
-        <div className="mt-4 text-right text-[10px] tracking-wide text-white/30 uppercase">Powered by GIPHY</div>
+        <div className="mt-3 text-right text-[10px] tracking-wide text-white/30 uppercase">Powered by GIPHY</div>
       </div>
     </div>
   )

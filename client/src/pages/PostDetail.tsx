@@ -1,4 +1,7 @@
 import { useEffect, useRef, useState, memo } from 'react'
+import GifPicker from '../components/GifPicker'
+import type { GifSelection } from '../components/GifPicker'
+import { gifSelectionToFile } from '../utils/gif'
 import type React from 'react'
 import MentionTextarea from '../components/MentionTextarea'
 import { useAudioRecorder } from '../components/useAudioRecorder'
@@ -105,6 +108,8 @@ export default function PostDetail(){
   const [file, setFile] = useState<File|null>(null)
   const [uploadFile, setUploadFile] = useState<File|null>(null)
   const [filePreviewUrl, setFilePreviewUrl] = useState<string | null>(null)
+  const [replyGif, setReplyGif] = useState<GifSelection | null>(null)
+  const [gifPickerOpen, setGifPickerOpen] = useState(false)
   const [currentUser, setCurrentUser] = useState<string | null>(null)
   const [previewSrc, setPreviewSrc] = useState<string | null>(null)
   const [submittingReply, setSubmittingReply] = useState(false)
@@ -156,7 +161,17 @@ export default function PostDetail(){
     let revokedUrl: string | null = null
     let cancelled = false
     async function buildPreview() {
+      if (replyGif) { setFilePreviewUrl(null); setUploadFile(null); return }
       if (!file) { setFilePreviewUrl(null); setUploadFile(null); return }
+      if (typeof file.type === 'string' && file.type === 'image/gif') {
+        try {
+          const url = URL.createObjectURL(file)
+          setFilePreviewUrl(url)
+          revokedUrl = url
+        } catch {}
+        if (!cancelled) setUploadFile(file)
+        return
+      }
       try {
         const isImage = typeof file.type === 'string' && file.type.startsWith('image/')
         // Try off-main-thread decode + resize for very large images
@@ -216,7 +231,7 @@ export default function PostDetail(){
         try { URL.revokeObjectURL(revokedUrl) } catch {}
       }
     }
-  }, [file])
+  }, [file, replyGif])
 
   async function refreshPost(){
     try{
@@ -358,14 +373,29 @@ export default function PostDetail(){
   }
 
   async function submitReply(parentReplyId?: number){
-    if (!post || (!content && !file && !replyPreview?.blob)) return
+    if (!post || (!content && !file && !replyPreview?.blob && !replyGif)) return
     if (submittingReply) return
     setSubmittingReply(true)
     const fd = new FormData()
     fd.append('post_id', String(post.id))
     fd.append('content', content)
     if (parentReplyId) fd.append('parent_reply_id', String(parentReplyId))
-    if (uploadFile) fd.append('image', uploadFile)
+    try {
+      let imageFile: File | null = null
+      if (replyGif){
+        imageFile = await gifSelectionToFile(replyGif, 'post-reply')
+      } else if (uploadFile){
+        imageFile = uploadFile
+      } else if (file){
+        imageFile = file
+      }
+      if (imageFile) fd.append('image', imageFile)
+    } catch (err){
+      console.error('Failed to prepare GIF attachment', err)
+      setSubmittingReply(false)
+      alert('Unable to attach GIF. Please try again.')
+      return
+    }
     if (replyPreview?.blob) fd.append('audio', replyPreview.blob, (replyPreview.blob.type.includes('mp4') ? 'audio.mp4' : 'audio.webm'))
     fd.append('dedupe_token', replyTokenRef.current)
     const r = await fetch('/post_reply', { method:'POST', credentials:'include', body: fd })
@@ -388,7 +418,7 @@ export default function PostDetail(){
         }
         return { ...p, replies: [j.reply, ...p.replies] }
       })
-      setContent(''); setFile(null); setUploadFile(null); if (fileInputRef.current) fileInputRef.current.value = ''
+      setContent(''); setFile(null); setUploadFile(null); setReplyGif(null); setFilePreviewUrl(null); if (fileInputRef.current) fileInputRef.current.value = ''
       replyTokenRef.current = `${Date.now()}_${Math.random().toString(36).slice(2)}`
     }
   }
@@ -596,6 +626,24 @@ export default function PostDetail(){
                 </div>
               </div>
             )}
+            {replyGif && (
+              <div className="flex items-center gap-2 mr-auto">
+                <div className="w-16 h-16 rounded-md overflow-hidden border border-white/10">
+                  <img src={replyGif.previewUrl} alt="Selected GIF" className="w-full h-full object-cover" loading="lazy" />
+                </div>
+                <div className="text-xs text-[#7fe7df] flex items-center gap-1">
+                  <i className="fa-solid fa-images" />
+                  <span>GIF</span>
+                  <button
+                    onClick={() => { setReplyGif(null) }}
+                    className="ml-1 text-red-400 hover:text-red-300"
+                    aria-label="Remove GIF"
+                  >
+                    <i className="fa-solid fa-times" />
+                  </button>
+                </div>
+              </div>
+            )}
             {replyPreview && (
               <div className="flex items-center gap-2 mr-auto flex-1 min-w-0">
                 <audio controls className="w-full" playsInline webkit-playsinline="true" src={replyPreview.url} />
@@ -613,6 +661,14 @@ export default function PostDetail(){
             </button>
             <button
               type="button"
+              className="w-10 h-10 rounded-full grid place-items-center text-[#4db6ac] hover:bg-white/10"
+              aria-label="Add GIF"
+              onClick={()=> { setGifPickerOpen(true) }}
+            >
+              <i className="fa-solid fa-images text-lg" style={{ color: replyGif ? '#7fe7df' : '#4db6ac' }} />
+            </button>
+            <button
+              type="button"
               className={`w-10 h-10 rounded-full grid place-items-center text-[#4db6ac] hover:bg-white/10 ${recording ? 'brightness-125' : ''}`}
               aria-label={recording ? "Stop recording" : "Record audio"}
               onClick={()=> recording ? stopRec() : startRec()}
@@ -623,7 +679,12 @@ export default function PostDetail(){
               ref={fileInputRef}
               type="file"
               accept="image/*"
-              onChange={(e)=> setFile((e.target as HTMLInputElement).files?.[0]||null)}
+              onChange={(e)=> {
+                const next = (e.target as HTMLInputElement).files?.[0] || null
+                setFile(next)
+                setUploadFile(null)
+                setReplyGif(null)
+              }}
               className="hidden"
             />
               {/(https?:\/\/[^\s]+|www\.[^\s]+)/.test(content) ? (
@@ -654,13 +715,25 @@ export default function PostDetail(){
               className="px-2.5 py-1.5 rounded-full bg-[#4db6ac] text-white border border-[#4db6ac] hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed"
               onClick={()=> submitReply()}
               aria-label="Send reply"
-              disabled={(!content && !file && !replyPreview) || submittingReply}
+              disabled={(!content && !file && !replyPreview && !replyGif) || submittingReply}
             >
               {submittingReply ? <i className="fa-solid fa-spinner fa-spin" /> : <i className="fa-solid fa-paper-plane" />}
             </button>
           </div>
         </div>
       </div>
+      <GifPicker
+        isOpen={gifPickerOpen}
+        onClose={()=> setGifPickerOpen(false)}
+        onSelect={(gif) => {
+          setReplyGif(gif)
+          setGifPickerOpen(false)
+          setFile(null)
+          setUploadFile(null)
+          setFilePreviewUrl(null)
+          if (fileInputRef.current) fileInputRef.current.value = ''
+        }}
+      />
     </div>
   )
 }
@@ -691,7 +764,20 @@ function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDel
   const { recording: rec, preview: inlinePreview, start: startInlineRec, stop: stopInlineRec, clearPreview: clearInlinePreview } = useAudioRecorder()
   const [isEditing, setIsEditing] = useState(false)
   const [editText, setEditText] = useState(reply.content)
+  const [showGifPicker, setShowGifPicker] = useState(false)
+  const [inlineGif, setInlineGif] = useState<GifSelection | null>(null)
+  const [gifFile, setGifFile] = useState<File | null>(null)
   const hasChildren = reply.children && reply.children.length > 0
+  useEffect(() => {
+    if (!showComposer){
+      setShowGifPicker(false)
+      setInlineGif(null)
+      setGifFile(null)
+      setImg(null)
+      if (inlineFileRef.current) inlineFileRef.current.value = ''
+      clearInlinePreview()
+    }
+  }, [showComposer, clearInlinePreview])
   return (
     <div className={`relative py-2 ${depth === 0 ? 'border-b border-white/10' : ''}`}>
       <div className="relative flex items-start gap-2 px-3">
@@ -800,9 +886,22 @@ function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDel
                   ref={inlineFileRef}
                   type="file"
                   accept="image/*"
-                  onChange={(e)=> setImg((e.target as HTMLInputElement).files?.[0]||null)}
+                  onChange={(e)=> {
+                    const next = (e.target as HTMLInputElement).files?.[0] || null
+                    setImg(next)
+                    setInlineGif(null)
+                    setGifFile(null)
+                  }}
                   className="hidden"
                 />
+                <button
+                  type="button"
+                  className="w-10 h-10 rounded-full grid place-items-center text-[#4db6ac] hover:bg-white/10"
+                  aria-label="Add GIF"
+                  onClick={()=> { setShowGifPicker(true) }}
+                >
+                  <i className="fa-solid fa-images text-lg" style={{ color: inlineGif ? '#7fe7df' : '#4db6ac' }} />
+                </button>
                 {/* Inline mic button using shared hook via parent handlers: pass audio as file */}
                 {/* We'll allow only image OR audio at a time in inline composer */}
                 <button
@@ -813,7 +912,20 @@ function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDel
                 >
                   <i className={`fa-solid ${rec ? 'fa-stop' : 'fa-microphone'} text-xl`} />
                 </button>
-                <button className="px-2.5 py-1.5 rounded-full bg-[#4db6ac] text-white border border-[#4db6ac] hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed" onClick={()=> { if (!text && !img && !inlinePreview) return; const f = inlinePreview ? new File([inlinePreview.blob], inlinePreview.blob.type.includes('mp4') ? 'audio.mp4' : 'audio.webm', { type: inlinePreview.blob.type }) : (img || undefined); onInlineReply(reply.id, text, f as any); setText(''); setImg(null); if (inlineFileRef.current) inlineFileRef.current.value=''; clearInlinePreview(); setShowComposer(false) }} aria-label="Send reply" disabled={!text && !img && !inlinePreview || !!inlineSendingFlag}>
+                <button className="px-2.5 py-1.5 rounded-full bg-[#4db6ac] text-white border border-[#4db6ac] hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed" onClick={()=> {
+                  if (!text && !img && !inlinePreview && !gifFile) return
+                  const attachment = inlinePreview
+                    ? new File([inlinePreview.blob], inlinePreview.blob.type.includes('mp4') ? 'audio.mp4' : 'audio.webm', { type: inlinePreview.blob.type })
+                    : (img || gifFile || undefined)
+                  onInlineReply(reply.id, text, attachment as any)
+                  setText('')
+                  setImg(null)
+                  setInlineGif(null)
+                  setGifFile(null)
+                  if (inlineFileRef.current) inlineFileRef.current.value=''
+                  clearInlinePreview()
+                  setShowComposer(false)
+                }} aria-label="Send reply" disabled={!text && !img && !inlinePreview && !gifFile || !!inlineSendingFlag}>
                   {inlineSendingFlag ? <i className="fa-solid fa-spinner fa-spin" /> : <i className="fa-solid fa-paper-plane" />}
                 </button>
               {inlinePreview && (
@@ -835,7 +947,7 @@ function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDel
                   <i className="fa-solid fa-image" />
                   <span className="max-w-[160px] truncate">{img.name}</span>
                   <button 
-                    onClick={() => { setImg(null); if (inlineFileRef.current) inlineFileRef.current.value = '' }}
+                    onClick={() => { setImg(null); setInlineGif(null); setGifFile(null); if (inlineFileRef.current) inlineFileRef.current.value = '' }}
                     className="ml-1 text-red-400 hover:text-red-300"
                     aria-label="Remove file"
                   >
@@ -843,6 +955,39 @@ function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDel
                   </button>
                 </div>
               )}
+              {inlineGif && (
+                <div className="text-xs text-[#7fe7df] flex items-center gap-2 px-3">
+                  <div className="w-12 h-12 rounded border border-white/10 overflow-hidden">
+                    <img src={inlineGif.previewUrl} alt="Selected GIF" className="w-full h-full object-cover" loading="lazy" />
+                  </div>
+                  <span>GIF</span>
+                  <button
+                    onClick={() => { setInlineGif(null); setGifFile(null) }}
+                    className="ml-1 text-red-400 hover:text-red-300"
+                    aria-label="Remove GIF"
+                  >
+                    <i className="fa-solid fa-times" />
+                  </button>
+                </div>
+              )}
+              <GifPicker
+                isOpen={showGifPicker}
+                onClose={()=> setShowGifPicker(false)}
+                onSelect={async (gif) => {
+                  try {
+                    const file = await gifSelectionToFile(gif, 'reply-gif')
+                    setInlineGif(gif)
+                    setGifFile(file)
+                    setImg(null)
+                    if (inlineFileRef.current) inlineFileRef.current.value = ''
+                  } catch (err) {
+                    console.error('Failed to prepare GIF for reply', err)
+                    alert('Unable to attach GIF. Please try again.')
+                  } finally {
+                    setShowGifPicker(false)
+                  }
+                }}
+              />
             </div>
           ) : null}
         </div>
