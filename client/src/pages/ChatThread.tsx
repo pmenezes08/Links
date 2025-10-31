@@ -619,7 +619,7 @@ export default function ChatThread(){
       // Create optimistic message WITH encryption flags
       const optimisticMessage: Message = { 
         id: tempId, 
-        text: messageText, 
+        text: formattedMessage, 
         sent: true, 
         time: now, 
         replySnippet,
@@ -782,14 +782,13 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
       if (j?.success) {
         const now = new Date().toISOString().slice(0,19).replace('T',' ')
 
-        // Add photo message as optimistic update
         const photoMessage: Message = {
-          id: `temp_photo_${Date.now()}`,
+          id: j.id || `photo_${Date.now()}`,
           text: kind === 'gif' ? '🎞️ GIF' : '📷 Photo',
           image_path: j.image_path,
           sent: true,
           time: now,
-          isOptimistic: true
+          isOptimistic: false
         }
         setMessages(prev => [...prev, photoMessage])
 
