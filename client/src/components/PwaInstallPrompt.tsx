@@ -199,15 +199,15 @@ export default function PwaInstallPrompt(){
           <h2 style={styles.title}>Install C-Point</h2>
           {isIosMode ? (
             <>
-              <p style={styles.body}>Add C-Point to your Home Screen for full-screen access and offline support:</p>
+              <p style={styles.body}>Install the C-Point app to get notifications, offline access, and the full experience:</p>
               <ol style={{ margin: 0, paddingLeft: '18px', color: 'rgba(255,255,255,0.75)', fontSize: '14px', lineHeight: 1.4 }}>
                 <li>Tap the share icon in Safari.</li>
-                <li>Choose <strong style={{ color: '#ffffff' }}>&ldquo;Add to Home Screen&rdquo;</strong>.</li>
+                <li>Select <strong style={{ color: '#ffffff' }}>&ldquo;Add to Home Screen&rdquo;</strong> to install the C-Point app.</li>
                 <li>Confirm the name and tap Add.</li>
               </ol>
             </>
           ) : (
-            <p style={styles.body}>Add C-Point to your home screen for a full-screen experience, quick access, and offline support.</p>
+            <p style={styles.body}>Install the C-Point app to receive push notifications, unlock the full experience, and stay available offline.</p>
           )}
         </div>
         <div style={styles.actions}>
