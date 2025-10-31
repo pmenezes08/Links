@@ -11,6 +11,8 @@ import logging
 import requests
 import time
 import base64
+from io import BytesIO
+import imghdr
 from datetime import datetime, timedelta
 from email.utils import parsedate_to_datetime
 from functools import wraps
@@ -132,8 +134,8 @@ IMAGINE_OUTPUT_DIR = os.path.join(app.config['UPLOAD_FOLDER'], IMAGINE_OUTPUT_SU
 os.makedirs(IMAGINE_OUTPUT_DIR, exist_ok=True)
 
 RUNWAY_API_KEY = (os.environ.get('RUNWAY_API_KEY') or '').strip() or None
-RUNWAY_MODEL_ID = os.environ.get('RUNWAY_MODEL_ID', 'gen-2')
-RUNWAY_API_URL = os.environ.get('RUNWAY_API_URL', 'https://api.runwayml.com/v1')
+RUNWAY_MODEL_ID = os.environ.get('RUNWAY_MODEL_ID', 'gen4_turbo')
+RUNWAY_API_URL = os.environ.get('RUNWAY_API_URL', 'https://api.dev.runwayml.com')
 PUBLIC_BASE_URL = (os.environ.get('PUBLIC_BASE_URL') or '').rstrip('/') or None
 try:
     imagine_executor = ThreadPoolExecutor(max_workers=int(os.environ.get('IMAGINE_MAX_WORKERS', '2')))
@@ -146,6 +148,34 @@ IMAGINE_STATUS_PROCESSING = 'processing'
 IMAGINE_STATUS_COMPLETED = 'completed'
 IMAGINE_STATUS_ERROR = 'error'
 IMAGINE_STATUS_AWAITING_OWNER = 'awaiting_owner'
+
+RUNWAY_MODEL_RATIO_OPTIONS: Dict[str, Dict[str, Any]] = {
+    'gen4_turbo': {
+        'landscape': ['1280:720', '1104:832', '1584:672'],
+        'portrait': ['720:1280', '832:1104'],
+        'square': ['960:960']
+    },
+    'gen3a_turbo': {
+        'landscape': ['1280:768'],
+        'portrait': ['768:1280'],
+        'square': ['1280:768']
+    },
+    'veo3.1': {
+        'landscape': ['1280:720', '1920:1080'],
+        'portrait': ['720:1280', '1080:1920'],
+        'square': ['1280:720']
+    },
+    'veo3.1_fast': {
+        'landscape': ['1280:720', '1920:1080'],
+        'portrait': ['720:1280', '1080:1920'],
+        'square': ['1280:720']
+    },
+    'veo3': {
+        'landscape': ['1280:720', '1920:1080'],
+        'portrait': ['720:1280', '1080:1920'],
+        'square': ['1280:720']
+    }
+}
 
 def optimize_image(file_path, max_width=1920, quality=85):
     """Optimize image for web - compress and resize if needed, preserving format when possible."""
@@ -3146,25 +3176,105 @@ def runway_headers() -> Dict[str, str]:
     return {
         'Authorization': f'Bearer {RUNWAY_API_KEY}',
         'Content-Type': 'application/json',
-        'X-Runway-Version': os.environ.get('RUNWAY_API_VERSION', '2024-06-01')
+        'X-Runway-Version': os.environ.get('RUNWAY_API_VERSION', '2024-11-06')
     }
 
 
 def runway_create_image_to_video_job(image_bytes: bytes, style_prompt: str) -> str:
-    image_b64 = base64.b64encode(image_bytes).decode('utf-8')
-    payload = {
-        'model': RUNWAY_MODEL_ID,
-        'input': {
-            'mode': 'image_to_video',
-            'prompt': style_prompt,
-            'image': {
-                'image_base64': image_b64
-            },
-            'output_format': 'mp4'
-        }
+    if not image_bytes:
+        raise RuntimeError('Missing image bytes for Runway request')
+
+    width = height = None
+    mime_type = None
+    try:
+        kind = imghdr.what(None, h=image_bytes)
+        if kind:
+            if kind == 'jpeg':
+                mime_type = 'image/jpeg'
+            elif kind == 'png':
+                mime_type = 'image/png'
+            elif kind == 'gif':
+                mime_type = 'image/gif'
+            elif kind == 'webp':
+                mime_type = 'image/webp'
+    except Exception:
+        mime_type = None
+
+    if PIL_AVAILABLE:
+        try:
+            with Image.open(BytesIO(image_bytes)) as img:
+                width, height = img.size
+                if not mime_type and img.format:
+                    mime_type = f"image/{img.format.lower()}"
+        except Exception:
+            width = height = None
+
+    if not mime_type:
+        mime_type = 'image/jpeg'
+
+    orientation = 'landscape'
+    if width and height:
+        if abs(width - height) <= max(width, height) * 0.1:
+            orientation = 'square'
+        elif width > height:
+            orientation = 'landscape'
+        else:
+            orientation = 'portrait'
+
+    model_key = (RUNWAY_MODEL_ID or '').lower()
+    legacy_model_map = {
+        'gen-2': 'gen3a_turbo',
+        'gen2': 'gen3a_turbo'
     }
-    url = f"{RUNWAY_API_URL.rstrip('/')}/jobs"
-    response = requests.post(url, headers=runway_headers(), json=payload, timeout=(10, 30))
+    normalized_model = legacy_model_map.get(model_key, model_key)
+    ratio_options = RUNWAY_MODEL_RATIO_OPTIONS.get(normalized_model)
+    default_ratios = {
+        'landscape': ['1280:720'],
+        'portrait': ['720:1280'],
+        'square': ['960:960']
+    }
+
+    def select_ratio() -> str:
+        if ratio_options and orientation in ratio_options and ratio_options[orientation]:
+            return ratio_options[orientation][0]
+        if ratio_options:
+            for fallback in ('landscape', 'portrait', 'square'):
+                values = ratio_options.get(fallback)
+                if values:
+                    return values[0]
+        fallback_values = default_ratios.get(orientation)
+        if fallback_values:
+            return fallback_values[0]
+        return '1280:720'
+
+    ratio = select_ratio()
+
+    data_uri = f"data:{mime_type};base64,{base64.b64encode(image_bytes).decode('utf-8')}"
+    prompt_text = style_prompt.strip() if style_prompt else 'Animate this scene as a short cinematic video.'
+
+    payload: Dict[str, Any] = {
+        'model': normalized_model or 'gen4_turbo',
+        'promptText': prompt_text,
+        'promptImage': data_uri,
+        'ratio': ratio
+    }
+
+    model_duration_defaults = {
+        'gen4_turbo': 6,
+        'gen3a_turbo': 5,
+        'veo3.1': 6,
+        'veo3.1_fast': 6,
+        'veo3': 8
+    }
+    duration_value = model_duration_defaults.get(normalized_model or 'gen4_turbo')
+    if duration_value is not None:
+        payload['duration'] = duration_value
+
+    base_url = RUNWAY_API_URL.rstrip('/')
+    if base_url.endswith('/v1'):
+        base_url = base_url[:-3]
+    url = f"{base_url}/v1/image_to_video"
+    response = requests.post(url, headers=runway_headers(), json=payload, timeout=(10, 45))
     if response.status_code >= 400:
         raise RuntimeError(f"Runway job creation failed ({response.status_code}): {response.text}")
     data = response.json()
@@ -3175,7 +3285,10 @@ def runway_create_image_to_video_job(image_bytes: bytes, style_prompt: str) -> s
 
 
 def runway_get_job(runway_job_id: str) -> Dict[str, Any]:
-    url = f"{RUNWAY_API_URL.rstrip('/')}/jobs/{runway_job_id}"
+    base_url = RUNWAY_API_URL.rstrip('/')
+    if base_url.endswith('/v1'):
+        base_url = base_url[:-3]
+    url = f"{base_url}/v1/tasks/{runway_job_id}"
     response = requests.get(url, headers=runway_headers(), timeout=(10, 20))
     if response.status_code >= 400:
         raise RuntimeError(f"Runway job fetch failed ({response.status_code}): {response.text}")
