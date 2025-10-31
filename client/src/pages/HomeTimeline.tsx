@@ -11,7 +11,16 @@ import EditableAISummary from '../components/EditableAISummary'
 
 type PollOption = { id: number; text: string; votes: number; user_voted?: boolean }
 type Poll = { id: number; question: string; is_active: number; options: PollOption[]; user_vote: number|null; total_votes: number; single_vote?: boolean; expires_at?: string }
-type Post = { id:number; username:string; content:string; image_path?:string|null; audio_path?: string | null; audio_summary?: string | null; timestamp:string; display_timestamp?:string; community_id?:number|null; community_name?:string; reactions:Record<string,number>; user_reaction:string|null; poll?:Poll|null; replies_count?:number; profile_picture?:string|null }
+type Post = { id:number; username:string; content:string; image_path?:string|null; video_path?: string | null; audio_path?: string | null; audio_summary?: string | null; timestamp:string; display_timestamp?:string; community_id?:number|null; community_name?:string; reactions:Record<string,number>; user_reaction:string|null; poll?:Poll|null; replies_count?:number; profile_picture?:string|null }
+
+function normalizeMediaPath(path?: string | null){
+  const raw = (path || '').trim()
+  if (!raw) return ''
+  if (raw.startsWith('http://') || raw.startsWith('https://')) return raw
+  if (raw.startsWith('/uploads') || raw.startsWith('/static')) return raw
+  if (raw.startsWith('uploads') || raw.startsWith('static')) return `/${raw}`
+  return `/uploads/${raw}`
+}
 
 export default function HomeTimeline(){
   const navigate = useNavigate()
@@ -173,16 +182,20 @@ export default function HomeTimeline(){
                   })()}
                   {p.image_path ? (
                     <ImageLoader
-                      src={(() => {
-                        const ip = p.image_path as string
-                        if (!ip) return ''
-                        if (ip.startsWith('http')) return ip
-                        if (ip.startsWith('/uploads') || ip.startsWith('/static')) return ip
-                        return ip.startsWith('uploads') ? `/${ip}` : `/uploads/${ip}`
-                      })()}
+                      src={normalizeMediaPath(p.image_path)}
                       alt="Post image"
                       className="w-full h-auto"
                     />
+                  ) : null}
+                  {p.video_path ? (
+                    <div className="px-3" onClick={(e)=> e.stopPropagation()}>
+                      <video
+                        className="w-full max-h-[360px] rounded border border-white/10 bg-black"
+                        src={normalizeMediaPath(p.video_path)}
+                        controls
+                        playsInline
+                      />
+                    </div>
                   ) : null}
                   {p.audio_path ? (
                     <div className="px-3 space-y-2" onClick={(e)=> e.stopPropagation()}>

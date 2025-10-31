@@ -19,6 +19,15 @@ type Community = {
   creator_username?: string;
 }
 
+function normalizeMediaPath(path?: string | null){
+  const raw = String(path ?? '').trim()
+  if (!raw) return ''
+  if (raw.startsWith('http://') || raw.startsWith('https://')) return raw
+  if (raw.startsWith('/uploads') || raw.startsWith('/static')) return raw
+  if (raw.startsWith('uploads') || raw.startsWith('static')) return `/${raw}`
+  return `/uploads/${raw}`
+}
+
 export default function Communities(){
   const navigate = useNavigate()
   const location = useLocation()
@@ -720,16 +729,20 @@ function ParentTimeline({ parentId }:{ parentId:number }){
                 })()}
                 {p.image_path ? (
                   <ImageLoader
-                    src={(() => {
-                      const ip = String(p.image_path || '').trim()
-                      if (!ip) return ''
-                      if (ip.startsWith('http')) return ip
-                      if (ip.startsWith('/uploads') || ip.startsWith('/static')) return ip
-                      return ip.startsWith('uploads') || ip.startsWith('static') ? `/${ip}` : `/uploads/${ip}`
-                    })()}
+                    src={normalizeMediaPath(p.image_path)}
                     alt="Post image"
                     className="block mx-auto max-w-full max-h-[360px] rounded border border-white/10"
                   />
+                ) : null}
+                {p.video_path ? (
+                  <div onClick={(e)=> e.stopPropagation()}>
+                    <video
+                      className="w-full max-h-[360px] rounded border border-white/10 bg-black"
+                      src={normalizeMediaPath(p.video_path)}
+                      controls
+                      playsInline
+                    />
+                  </div>
                 ) : null}
                 {p.audio_path ? (
                   <div className="space-y-2" onClick={(e)=> e.stopPropagation()}>

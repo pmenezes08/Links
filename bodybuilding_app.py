@@ -18788,6 +18788,22 @@ def api_home_timeline():
                             post['image_path'] = f"/uploads/{p_str}"
                 except Exception:
                     pass
+
+                # Normalize video paths to absolute URLs the client can consume
+                try:
+                    vp = post.get('video_path')
+                    if vp:
+                        vp_str = str(vp).strip()
+                        if vp_str.startswith('http://') or vp_str.startswith('https://'):
+                            post['video_path'] = vp_str
+                        elif vp_str.startswith('/uploads') or vp_str.startswith('/static'):
+                            post['video_path'] = vp_str
+                        elif vp_str.startswith('uploads/') or vp_str.startswith('static/'):
+                            post['video_path'] = '/' + vp_str
+                        else:
+                            post['video_path'] = f"/uploads/{vp_str}"
+                except Exception:
+                    pass
                 
                 # Convert timestamp to DD-MM-YYYY format for display
                 try:
