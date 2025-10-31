@@ -17,61 +17,14 @@ export default function Signup(){
   const [debugInfo, setDebugInfo] = useState<string[]>([])
   const [showVerify, setShowVerify] = useState(false)
   const [pendingEmail, setPendingEmail] = useState('')
-  const [showInstallPrompt, setShowInstallPrompt] = useState(false)
-  const [isIOS, setIsIOS] = useState(false)
-  const [checkingInstall, setCheckingInstall] = useState(true)
-
-  // Check if app is installed on mount
-  useEffect(() => {
-    async function checkInstallStatus() {
-      try {
-        // Check if running in standalone mode
-        const mql = window.matchMedia && window.matchMedia('(display-mode: standalone)')
-        const standalone = (mql && mql.matches) || (navigator as any).standalone === true
-        
-        if (standalone) {
-          // Already installed, don't show prompt
-          setCheckingInstall(false)
-          return
-        }
-
-        // Check for installed related apps (Android/Chrome)
-        const navAny: any = navigator as any
-        if (typeof navAny.getInstalledRelatedApps === 'function') {
-          const related = await navAny.getInstalledRelatedApps()
-          if (Array.isArray(related) && related.length > 0) {
-            // Already installed, don't show prompt
-            setCheckingInstall(false)
-            return
-          }
-        }
-
-        // Detect iOS
-        const ios = /iphone|ipad|ipod/i.test(navigator.userAgent)
-        setIsIOS(ios)
-
-        // Not installed - show prompt after brief delay
-        setTimeout(() => {
-          setCheckingInstall(false)
-          setShowInstallPrompt(true)
-        }, 500)
-      } catch (err) {
-        console.error('Install check error:', err)
-        setCheckingInstall(false)
-      }
-    }
-
-    checkInstallStatus()
-  }, [])
-
   // Lock body scroll when modals are shown
   useEffect(() => {
     if (typeof document !== 'undefined') {
       try {
-        document.body.style.overflow = (showVerify || showInstallPrompt) ? 'hidden' : ''
+        document.body.style.overflow = showVerify ? 'hidden' : ''
       } catch {}
     }
-  }, [showVerify, showInstallPrompt])
+  }, [showVerify])
 
   function handleInputChange(field: string, value: string) {
     setFormData(prev => ({ ...prev, [field]: value }))
@@ -174,18 +127,6 @@ export default function Signup(){
       setError(`Network error: ${error.message}`)
     })
     .finally(() => setLoading(false))
-  }
-
-  // Show loading spinner while checking install status
-  if (checkingInstall) {
-    return (
-      <div className="min-h-screen bg-black text-white flex items-center justify-center">
-        <div className="text-center">
-          <i className="fa-solid fa-spinner fa-spin text-3xl text-[#4db6ac] mb-3" />
-          <p className="text-white/60 text-sm">Loading...</p>
-        </div>
-      </div>
-    )
   }
 
   return (
@@ -344,86 +285,6 @@ export default function Signup(){
             By creating an account, you agree to our Terms of Service and Privacy Policy
           </p>
         </div>
-
-        {/* Install App Prompt Modal - Shows BEFORE signup */}
-        {showInstallPrompt && (
-          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/95 backdrop-blur-sm" aria-modal="true" role="dialog">
-            <div className="w-[90%] max-w-md rounded-2xl border border-[#4db6ac]/30 bg-[#0b0b0b] p-6 shadow-[0_0_40px_rgba(77,182,172,0.3)]">
-              {/* Icon */}
-              <div className="text-center mb-4">
-                <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-[#4db6ac]/10 border border-[#4db6ac]/30 mb-3">
-                  <i className="fa-solid fa-download text-2xl text-[#4db6ac]" />
-                </div>
-                <h3 className="text-xl font-bold text-white mb-2">Install C.Point First</h3>
-                <p className="text-sm text-white/70 leading-relaxed">
-                  Before creating your account, please install the C.Point app to receive notifications and get the full experience.
-                </p>
-              </div>
-
-              {/* Instructions */}
-              <div className="bg-white/5 border border-white/10 rounded-lg p-4 mb-4">
-                <div className="text-xs font-semibold text-[#4db6ac] mb-2">How to install:</div>
-                <div className="space-y-2 text-xs text-white/80">
-                  {isIOS ? (
-                    <div className="flex items-start gap-2">
-                      <span className="text-[#4db6ac] shrink-0">iOS:</span>
-                      <span>Tap <i className="fa-solid fa-arrow-up-from-bracket mx-1" /> (Share button) → "Add to Home Screen"</span>
-                    </div>
-                  ) : (
-                    <>
-                      <div className="flex items-start gap-2">
-                        <span className="text-[#4db6ac] shrink-0">Android:</span>
-                        <span>Tap menu <i className="fa-solid fa-ellipsis-vertical mx-1" /> → "Install app" or "Add to Home screen"</span>
-                      </div>
-                      <div className="flex items-start gap-2">
-                        <span className="text-[#4db6ac] shrink-0">Desktop:</span>
-                        <span>Click install icon <i className="fa-solid fa-download mx-1" /> in address bar</span>
-                      </div>
-                    </>
-                  )}
-                </div>
-              </div>
-
-              {/* Benefits */}
-              <div className="bg-[#4db6ac]/5 border border-[#4db6ac]/20 rounded-lg p-3 mb-4">
-                <div className="text-xs font-semibold text-[#4db6ac] mb-2">Why install?</div>
-                <ul className="space-y-1 text-xs text-white/70">
-                  <li>• Receive push notifications</li>
-                  <li>• Faster performance</li>
-                  <li>• Quick access from home screen</li>
-                </ul>
-              </div>
-
-              {/* Buttons */}
-              <div className="flex flex-col gap-2">
-                <button 
-                  className="w-full px-4 py-3 rounded-lg bg-[#4db6ac] text-black font-medium hover:bg-[#45a99c] transition-colors"
-                  onClick={() => {
-                    setShowInstallPrompt(false)
-                    // Optionally, show instructions again or a reminder after they close
-                  }}
-                >
-                  Install now
-                </button>
-                <button 
-                  className="w-full px-4 py-3 rounded-lg border border-white/20 text-white/80 text-sm hover:bg-white/5 transition-colors"
-                  onClick={() => {
-                    setShowInstallPrompt(false)
-                  }}
-                >
-                  Skip for now (not recommended)
-                </button>
-              </div>
-
-              {/* Warning */}
-              <div className="mt-3 text-center">
-                <p className="text-xs text-white/50">
-                  ⚠️ Browser users won't receive push notifications
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* Verify Email Modal */}
         {showVerify && (
