@@ -9,6 +9,8 @@ const DISMISS_STORAGE_KEY = 'pwa-install-dismissed-at'
 const INSTALL_COMPLETED_KEY = 'pwa-install-completed'
 const DISMISS_DURATION_MS = 1000 * 60 * 60 * 24 * 7 // 7 days
 
+type PromptMode = 'none' | 'web' | 'ios'
+
 interface NavigatorStandalone extends Navigator {
   standalone?: boolean
 }
@@ -30,29 +32,53 @@ function shouldSuppressPrompt(){
   return Date.now() - dismissedAt < DISMISS_DURATION_MS
 }
 
+function isIosDevice(){
+  if (typeof navigator === 'undefined') return false
+  const ua = navigator.userAgent || ''
+  const platform = navigator.platform || ''
+  const maxTouch = (navigator as Navigator & { maxTouchPoints?: number }).maxTouchPoints || 0
+
+  const directMatch = /iPad|iPhone|iPod/.test(ua)
+  const ipadOs13 = platform === 'MacIntel' && maxTouch > 1
+  return directMatch || ipadOs13
+}
+
 export default function PwaInstallPrompt(){
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null)
   const [visible, setVisible] = useState(false)
+  const [mode, setMode] = useState<PromptMode>('none')
 
   useEffect(() => {
     if (typeof window === 'undefined') return
     if (isStandaloneDisplay()) return
 
+    const maybeShowIosPrompt = () => {
+      if (!isIosDevice()) return
+      if (shouldSuppressPrompt()) return
+      setMode('ios')
+      setVisible(true)
+    }
+
     function handleBeforeInstallPrompt(event: Event){
       event.preventDefault()
       if (shouldSuppressPrompt()) return
       setDeferredPrompt(event as BeforeInstallPromptEvent)
+      setMode('web')
       setVisible(true)
     }
 
     function handleAppInstalled(){
       localStorage.setItem(INSTALL_COMPLETED_KEY, 'true')
       setDeferredPrompt(null)
+      setMode('none')
       setVisible(false)
     }
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt as EventListener)
     window.addEventListener('appinstalled', handleAppInstalled)
+
+    // Safari iOS does not emit beforeinstallprompt; fall back to a manual banner
+    maybeShowIosPrompt()
 
     return () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt as EventListener)
@@ -64,9 +90,16 @@ export default function PwaInstallPrompt(){
     localStorage.setItem(DISMISS_STORAGE_KEY, Date.now().toString())
     setVisible(false)
     setDeferredPrompt(null)
+    setMode('none')
   }, [])
 
   const handleInstall = useCallback(async () => {
+    if (mode === 'ios'){
+      localStorage.setItem(DISMISS_STORAGE_KEY, Date.now().toString())
+      setVisible(false)
+      setMode('none')
+      return
+    }
     if (!deferredPrompt) return
     try{
       await deferredPrompt.prompt()
@@ -82,8 +115,9 @@ export default function PwaInstallPrompt(){
       console.warn('[PWA] Install prompt error', error)
     } finally {
       setDeferredPrompt(null)
+      setMode('none')
     }
-  }, [deferredPrompt])
+  }, [deferredPrompt, mode])
 
   const styles = useMemo(() => {
     return {
@@ -154,18 +188,31 @@ export default function PwaInstallPrompt(){
     }
   }, [visible])
 
-  if (!visible || !deferredPrompt) return null
+  if (!visible || mode === 'none') return null
+
+  const isIosMode = mode === 'ios'
 
   return (
     <div style={styles.wrapper}>
       <div style={styles.container} role="dialog" aria-live="polite" aria-label="Install the C-Point app">
         <div>
           <h2 style={styles.title}>Install C-Point</h2>
-          <p style={styles.body}>Add C-Point to your home screen for a full-screen experience, quick access, and offline support.</p>
+          {isIosMode ? (
+            <>
+              <p style={styles.body}>Add C-Point to your Home Screen for full-screen access and offline support:</p>
+              <ol style={{ margin: 0, paddingLeft: '18px', color: 'rgba(255,255,255,0.75)', fontSize: '14px', lineHeight: 1.4 }}>
+                <li>Tap the share icon in Safari.</li>
+                <li>Choose <strong style={{ color: '#ffffff' }}>&ldquo;Add to Home Screen&rdquo;</strong>.</li>
+                <li>Confirm the name and tap Add.</li>
+              </ol>
+            </>
+          ) : (
+            <p style={styles.body}>Add C-Point to your home screen for a full-screen experience, quick access, and offline support.</p>
+          )}
         </div>
         <div style={styles.actions}>
           <button type="button" style={styles.ghostButton} onClick={dismiss}>Maybe later</button>
-          <button type="button" style={styles.primaryButton} onClick={handleInstall}>Install</button>
+          <button type="button" style={styles.primaryButton} onClick={handleInstall}>{isIosMode ? 'Got it' : 'Install'}</button>
         </div>
       </div>
     </div>
