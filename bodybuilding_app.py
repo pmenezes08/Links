@@ -136,6 +136,8 @@ os.makedirs(IMAGINE_OUTPUT_DIR, exist_ok=True)
 RUNWAY_API_KEY = (os.environ.get('RUNWAY_API_KEY') or '').strip() or None
 RUNWAY_MODEL_ID = os.environ.get('RUNWAY_MODEL_ID', 'gen4_turbo')
 RUNWAY_API_URL = os.environ.get('RUNWAY_API_URL', 'https://api.dev.runwayml.com')
+A2E_API_KEY = (os.environ.get('A2E_API_KEY') or '').strip() or None
+A2E_API_URL = os.environ.get('A2E_API_URL', 'https://api.a2e.ai')
 PUBLIC_BASE_URL = (os.environ.get('PUBLIC_BASE_URL') or '').rstrip('/') or None
 try:
     imagine_executor = ThreadPoolExecutor(max_workers=int(os.environ.get('IMAGINE_MAX_WORKERS', '2')))
@@ -3154,7 +3156,7 @@ def process_audio_for_summary(audio_file_path, username=None):
     return summary
 
 
-# --- Imagine (Runway) helpers ---
+# --- Imagine (Runway & A2E) helpers ---
 
 def imagine_style_prompt(style: str, nsfw_allowed: bool = False) -> str:
     safe_suffix = " Keep the result tasteful and safe for work." if not nsfw_allowed else ""
@@ -3168,7 +3170,8 @@ def imagine_style_prompt(style: str, nsfw_allowed: bool = False) -> str:
     if key == 'spicy':
         if nsfw_allowed:
             # Make spicy style much more sexual/explicit when NSFW is allowed
-            # Use indirect language that passes content moderation but guides toward adult content
+            # Note: When using A2E.ai (uncensored), this prompt will be replaced with an explicit one
+            # This is only used as fallback if A2E is not available
             prompt = "Create a dramatic, intense video animation with bold camera movements, dynamic lighting, fluid motion, rhythmic pacing, expressive gestures, and heightened dramatic tension. Make it visually striking, emotionally charged, and artistically bold with dynamic and engaging movement."
         else:
             prompt = prompt + safe_suffix
@@ -3449,6 +3452,71 @@ def runway_download_asset(asset_url: str) -> bytes:
     return response.content
 
 
+# --- A2E.AI functions for uncensored/spicy videos ---
+def a2e_headers() -> Dict[str, str]:
+    if not A2E_API_KEY:
+        raise RuntimeError('A2E API key is not configured. Set A2E_API_KEY environment variable.')
+    return {
+        'Authorization': f'Bearer {A2E_API_KEY}',
+    }
+
+def a2e_create_image_to_video_job(image_bytes: bytes, prompt: str, duration: int = 5, resolution: str = '1080p') -> str:
+    """Create an image-to-video job using a2e.ai API (uncensored)"""
+    if not image_bytes:
+        raise RuntimeError('Missing image bytes for A2E request')
+    
+    url = f"{A2E_API_URL}/v1/image-to-video"
+    
+    # Prepare multipart form data
+    files = {'image': ('image.jpg', image_bytes, 'image/jpeg')}
+    data = {
+        'prompt': prompt,
+        'duration': duration,
+        'resolution': resolution
+    }
+    
+    response = requests.post(url, headers=a2e_headers(), files=files, data=data, timeout=(10, 45))
+    if response.status_code >= 400:
+        raise RuntimeError(f"A2E job creation failed ({response.status_code}): {response.text}")
+    
+    result = response.json()
+    job_id = result.get('id') or result.get('job_id') or result.get('jobId')
+    if not job_id:
+        raise RuntimeError('A2E API response missing job id')
+    return str(job_id)
+
+def a2e_get_job(job_id: str) -> Dict[str, Any]:
+    """Get A2E job status"""
+    url = f"{A2E_API_URL}/v1/jobs/{job_id}"
+    response = requests.get(url, headers=a2e_headers(), timeout=(10, 20))
+    if response.status_code >= 400:
+        raise RuntimeError(f"A2E job fetch failed ({response.status_code}): {response.text}")
+    return response.json()
+
+def a2e_extract_video_url(job_data: Dict[str, Any]) -> Optional[str]:
+    """Extract video URL from A2E job response"""
+    # Try common response formats
+    video_url = job_data.get('videoUrl') or job_data.get('video_url') or job_data.get('video')
+    if isinstance(video_url, str):
+        return video_url
+    
+    # Check nested structures
+    result = job_data.get('result') or job_data.get('data')
+    if isinstance(result, dict):
+        return result.get('videoUrl') or result.get('video_url') or result.get('url')
+    elif isinstance(result, str):
+        return result
+    
+    return None
+
+def a2e_download_video(video_url: str) -> bytes:
+    """Download video from A2E"""
+    response = requests.get(video_url, timeout=(10, 60))
+    if response.status_code >= 400:
+        raise RuntimeError(f"Failed downloading A2E video ({response.status_code}): {response.text[:200]}")
+    return response.content
+
+
 def fetch_imagine_job(job_id: int) -> Optional[Dict[str, Any]]:
     try:
         with get_db_connection() as conn:
@@ -3596,52 +3664,106 @@ def process_imagine_job(job_id: int):
         style = (job.get('style') or 'normal').lower()
         allow_nsfw = is_imagine_spicy_allowed(job.get('community_id'))
         style_prompt = imagine_style_prompt(style, allow_nsfw)
-        runway_job_id = runway_create_image_to_video_job(image_bytes, style_prompt)
-        update_imagine_job(job_id, runway_job_id=runway_job_id)
-        poll_interval = int(os.environ.get('RUNWAY_POLL_INTERVAL', '5'))
-        max_wait = int(os.environ.get('RUNWAY_MAX_WAIT_SECONDS', '240'))
-        start_time = time.time()
-        last_error = None
-        while time.time() - start_time < max_wait:
-            time.sleep(max(poll_interval, 2))
-            try:
-                runway_job = runway_get_job(runway_job_id)
-            except Exception as e:
-                last_error = str(e)
-                continue
-            status = str(runway_job.get('status') or runway_job.get('state') or '').lower()
-            if status in ('succeeded', 'completed', 'complete', 'success'):
-                asset_url = runway_extract_asset_url(runway_job)
-                if not asset_url:
-                    update_imagine_job(job_id, status=IMAGINE_STATUS_ERROR, error='Runway job completed without asset URL')
-                    return
-                video_bytes = runway_download_asset(asset_url)
-                if not video_bytes:
-                    update_imagine_job(job_id, status=IMAGINE_STATUS_ERROR, error='Failed downloading generated video')
-                    return
-                timestamp = datetime.utcnow().strftime('%Y%m%d_%H%M%S')
-                filename = f"job{job_id}_{timestamp}.mp4"
-                abs_path = os.path.join(IMAGINE_OUTPUT_DIR, filename)
+        
+        # Use A2E.ai for spicy videos when NSFW is allowed (uncensored)
+        # Otherwise use Runway
+        use_a2e = (style == 'spicy' and allow_nsfw and A2E_API_KEY)
+        
+        if use_a2e:
+            logger.info(f"[Imagine] Using A2E.ai for spicy video (job {job_id})")
+            # Create A2E job with explicit prompt for sexual content
+            a2e_prompt = "Create a highly sexual, erotic, and explicit video animation with seductive movements, provocative poses, sensual atmosphere, and intense sexual energy. Make it very sexual, erotic, and explicit."
+            a2e_job_id = a2e_create_image_to_video_job(image_bytes, a2e_prompt, duration=5, resolution='1080p')
+            update_imagine_job(job_id, runway_job_id=a2e_job_id)  # Reuse runway_job_id field
+            poll_interval = int(os.environ.get('A2E_POLL_INTERVAL', '10'))
+            max_wait = int(os.environ.get('A2E_MAX_WAIT_SECONDS', '300'))
+            start_time = time.time()
+            last_error = None
+            while time.time() - start_time < max_wait:
+                time.sleep(max(poll_interval, 2))
                 try:
-                    with open(abs_path, 'wb') as fh:
-                        fh.write(video_bytes)
-                except Exception as write_err:
-                    update_imagine_job(job_id, status=IMAGINE_STATUS_ERROR, error=f'Failed writing video: {write_err}')
+                    a2e_job = a2e_get_job(a2e_job_id)
+                except Exception as e:
+                    last_error = str(e)
+                    continue
+                status = str(a2e_job.get('status') or a2e_job.get('state') or '').lower()
+                if status in ('succeeded', 'completed', 'complete', 'success', 'done'):
+                    video_url = a2e_extract_video_url(a2e_job)
+                    if not video_url:
+                        update_imagine_job(job_id, status=IMAGINE_STATUS_ERROR, error='A2E job completed without video URL')
+                        return
+                    video_bytes = a2e_download_video(video_url)
+                    if not video_bytes:
+                        update_imagine_job(job_id, status=IMAGINE_STATUS_ERROR, error='Failed downloading generated video')
+                        return
+                    timestamp = datetime.utcnow().strftime('%Y%m%d_%H%M%S')
+                    filename = f"job{job_id}_{timestamp}.mp4"
+                    abs_path = os.path.join(IMAGINE_OUTPUT_DIR, filename)
+                    try:
+                        with open(abs_path, 'wb') as fh:
+                            fh.write(video_bytes)
+                    except Exception as write_err:
+                        update_imagine_job(job_id, status=IMAGINE_STATUS_ERROR, error=f'Failed writing video: {write_err}')
+                        return
+                    rel_path = f"uploads/{IMAGINE_OUTPUT_SUBDIR}/{filename}"
+                    if job.get('is_owner'):
+                        update_imagine_job(job_id, status=IMAGINE_STATUS_AWAITING_OWNER, result_path=rel_path)
+                    else:
+                        update_imagine_job(job_id, status=IMAGINE_STATUS_COMPLETED, result_path=rel_path, action='carousel_only')
+                    logger.info(f"[Imagine] A2E job {job_id} completed")
                     return
-                rel_path = f"uploads/{IMAGINE_OUTPUT_SUBDIR}/{filename}"
-                # AI videos only appear in carousel, never as replies
-                if job.get('is_owner'):
-                    update_imagine_job(job_id, status=IMAGINE_STATUS_AWAITING_OWNER, result_path=rel_path)
-                else:
-                    # For non-owners, mark as completed but don't create reply
-                    update_imagine_job(job_id, status=IMAGINE_STATUS_COMPLETED, result_path=rel_path, action='carousel_only')
-                logger.info(f"[Imagine] Job {job_id} completed")
-                return
-            if status in ('failed', 'error', 'cancelled'):
-                error_message = runway_job.get('error') or runway_job.get('message') or json.dumps(runway_job)[:200]
-                update_imagine_job(job_id, status=IMAGINE_STATUS_ERROR, error=error_message)
-                return
-        update_imagine_job(job_id, status=IMAGINE_STATUS_ERROR, error=last_error or 'Timed out waiting for Runway job')
+                if status in ('failed', 'error', 'cancelled'):
+                    error_message = a2e_job.get('error') or a2e_job.get('message') or json.dumps(a2e_job)[:200]
+                    update_imagine_job(job_id, status=IMAGINE_STATUS_ERROR, error=error_message)
+                    return
+            update_imagine_job(job_id, status=IMAGINE_STATUS_ERROR, error=last_error or 'Timed out waiting for A2E job')
+        else:
+            # Use Runway for normal/fun styles or when A2E is not available
+            logger.info(f"[Imagine] Using Runway for job {job_id}")
+            runway_job_id = runway_create_image_to_video_job(image_bytes, style_prompt)
+            update_imagine_job(job_id, runway_job_id=runway_job_id)
+            poll_interval = int(os.environ.get('RUNWAY_POLL_INTERVAL', '5'))
+            max_wait = int(os.environ.get('RUNWAY_MAX_WAIT_SECONDS', '240'))
+            start_time = time.time()
+            last_error = None
+            while time.time() - start_time < max_wait:
+                time.sleep(max(poll_interval, 2))
+                try:
+                    runway_job = runway_get_job(runway_job_id)
+                except Exception as e:
+                    last_error = str(e)
+                    continue
+                status = str(runway_job.get('status') or runway_job.get('state') or '').lower()
+                if status in ('succeeded', 'completed', 'complete', 'success'):
+                    asset_url = runway_extract_asset_url(runway_job)
+                    if not asset_url:
+                        update_imagine_job(job_id, status=IMAGINE_STATUS_ERROR, error='Runway job completed without asset URL')
+                        return
+                    video_bytes = runway_download_asset(asset_url)
+                    if not video_bytes:
+                        update_imagine_job(job_id, status=IMAGINE_STATUS_ERROR, error='Failed downloading generated video')
+                        return
+                    timestamp = datetime.utcnow().strftime('%Y%m%d_%H%M%S')
+                    filename = f"job{job_id}_{timestamp}.mp4"
+                    abs_path = os.path.join(IMAGINE_OUTPUT_DIR, filename)
+                    try:
+                        with open(abs_path, 'wb') as fh:
+                            fh.write(video_bytes)
+                    except Exception as write_err:
+                        update_imagine_job(job_id, status=IMAGINE_STATUS_ERROR, error=f'Failed writing video: {write_err}')
+                        return
+                    rel_path = f"uploads/{IMAGINE_OUTPUT_SUBDIR}/{filename}"
+                    if job.get('is_owner'):
+                        update_imagine_job(job_id, status=IMAGINE_STATUS_AWAITING_OWNER, result_path=rel_path)
+                    else:
+                        update_imagine_job(job_id, status=IMAGINE_STATUS_COMPLETED, result_path=rel_path, action='carousel_only')
+                    logger.info(f"[Imagine] Runway job {job_id} completed")
+                    return
+                if status in ('failed', 'error', 'cancelled'):
+                    error_message = runway_job.get('error') or runway_job.get('message') or json.dumps(runway_job)[:200]
+                    update_imagine_job(job_id, status=IMAGINE_STATUS_ERROR, error=error_message)
+                    return
+            update_imagine_job(job_id, status=IMAGINE_STATUS_ERROR, error=last_error or 'Timed out waiting for Runway job')
     except Exception as e:
         logger.error(f"[Imagine] Unhandled exception for job {job_id}: {e}", exc_info=True)
         update_imagine_job(job_id, status=IMAGINE_STATUS_ERROR, error=str(e))
