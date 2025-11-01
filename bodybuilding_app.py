@@ -17167,7 +17167,28 @@ def get_post():
                     hydrate_reply_metrics(ch)
             for reply in post['replies']:
                 hydrate_reply_metrics(reply)
-            
+
+            # Fetch AI videos for carousel
+            c.execute("""
+                SELECT ij.result_path, ij.created_by, ij.created_at, ij.style
+                FROM imagine_jobs ij
+                WHERE ij.target_type = 'post'
+                AND ij.target_id = ?
+                AND ij.status = 'completed'
+                AND ij.result_path IS NOT NULL
+                ORDER BY ij.created_at ASC
+            """, (post_id,))
+            ai_videos_raw = c.fetchall()
+            post['ai_videos'] = [
+                {
+                    'video_path': row['result_path'],
+                    'generated_by': row['created_by'],
+                    'created_at': row['created_at'],
+                    'style': row['style']
+                }
+                for row in ai_videos_raw
+            ]
+
             return jsonify({'success': True, 'post': post})
             
     except Exception as e:
