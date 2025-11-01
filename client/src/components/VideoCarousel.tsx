@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
 import ImageLoader from './ImageLoader'
-import { useRef as useReactRef } from 'react'
 
 type CarouselItem = {
   type: 'original' | 'ai_video'
@@ -25,7 +24,7 @@ export default function VideoCarousel({ items, className = '', onPreviewImage }:
   const [translateX, setTranslateX] = useState(0)
   const carouselRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
-  const videoPostersRef = useReactRef<Record<number, string>>({})
+  const videoPostersRef = useRef<Record<number, string>>({})
 
   // Reset to first item when items change
   useEffect(() => {
