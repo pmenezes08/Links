@@ -178,13 +178,11 @@ export default function VideoCarousel({ items, className = '', onPreviewImage }:
                   )}
                   <video
                     key={`${item.video_url}-${index}`}
-                    src={item.video_url ? item.video_url : (item.video_path ? normalizePath(item.video_path) : '')}
+                    src={item.video_path ? normalizePath(item.video_path) : (item.video_url || '')}
                     className="w-full max-h-[520px] rounded border border-white/10 bg-black"
                     controls
                     playsInline
                     loop
-                    preload="metadata"
-                    muted // Start muted to allow autoplay
                     style={{ transform: 'translateZ(0)' }}
                     onLoadedMetadata={(e) => {
                       const video = e.currentTarget as HTMLVideoElement
@@ -197,25 +195,6 @@ export default function VideoCarousel({ items, className = '', onPreviewImage }:
                         console.log('[Carousel] Set currentTime to 0 in metadata')
                       } catch (err) {
                         console.warn('[Carousel] Failed to set currentTime in metadata:', err)
-                      }
-                    }}
-                    onCanPlay={(e) => {
-                      const video = e.currentTarget as HTMLVideoElement
-                      console.log('[Carousel] Video can play - readyState:', video.readyState)
-                      // Only force render once per video
-                      if (!videoSeekedRef.current.has(index)) {
-                        try {
-                          video.currentTime = 0
-                          // Try to force rendering without infinite loop
-                          setTimeout(() => {
-                            if (video.readyState >= 3) { // HAVE_FUTURE_DATA or higher
-                              console.log('[Carousel] Video should now display first frame')
-                            }
-                          }, 50)
-                          videoSeekedRef.current.add(index)
-                        } catch (err) {
-                          console.warn('[Carousel] Failed to set currentTime in canPlay:', err)
-                        }
                       }
                     }}
                     onError={(e) => {
