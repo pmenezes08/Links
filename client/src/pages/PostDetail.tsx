@@ -270,9 +270,63 @@ export default function PostDetail(){
       } else if (!job.isOwner && job.status === 'completed') {
         imagine.removeJob(job.id)
         refreshPost()
+        // Trigger carousel refresh when new AI video is completed
+        // The carousel useEffect will detect the new video from the updated post/replies
       }
     })
   }, [imagine.jobs, imagine.removeJob, refreshPost])
+
+  // Fetch AI videos for carousel
+  useEffect(() => {
+    console.log('[Carousel] PostDetail useEffect triggered for post', post?.id, 'image_path:', post?.image_path, 'video_path:', post?.video_path, 'replies:', post?.replies?.length)
+    if (!post) {
+      console.log('[Carousel] PostDetail: no post, returning')
+      return
+    }
+    
+    async function fetchCarouselItems() {
+      if (!post) return
+      console.log('[Carousel] PostDetail fetchCarouselItems called for post', post.id)
+      setCarouselLoading(true)
+      try {
+        const resp = await fetch(`/api/imagine/videos/${post.id}`, { credentials: 'include' })
+        const json = await resp.json().catch(() => null)
+        console.log('[Carousel] PostDetail fetch response for post', post.id, ':', json)
+        if (resp.ok && json?.success && json.videos) {
+          // Only set carousel items if there are AI videos (more than just original image)
+          const hasAiVideos = json.videos.some((v: any) => v.type === 'ai_video')
+          console.log('[Carousel] PostDetail Has AI videos:', hasAiVideos, 'Videos:', json.videos)
+          if (hasAiVideos) {
+            // Carousel should show: original image + AI videos
+            console.log('[Carousel] PostDetail Setting carousel items:', json.videos)
+            setCarouselItems(json.videos)
+          } else {
+            // No AI videos - don't show carousel
+            console.log('[Carousel] PostDetail No AI videos, setting empty carousel items')
+            setCarouselItems([])
+          }
+        } else {
+          // API error: don't show carousel
+          console.log('[Carousel] PostDetail API error or no videos:', resp.ok, json)
+          setCarouselItems([])
+        }
+      } catch (err) {
+        console.error('[Carousel] PostDetail Failed to fetch carousel items:', err)
+        setCarouselItems([])
+      } finally {
+        setCarouselLoading(false)
+      }
+    }
+    
+    // Always check for carousel items if post has image, video, or replies (which might have videos)
+    if (post.image_path || post.video_path || (post.replies && post.replies.length > 0)) {
+      console.log('[Carousel] PostDetail condition met, calling fetchCarouselItems')
+      fetchCarouselItems()
+    } else {
+      console.log('[Carousel] PostDetail condition NOT met, clearing carousel items')
+      setCarouselItems([])
+    }
+  }, [post?.id, post?.image_path, post?.video_path, post?.replies?.length])
 
   const jobIndex = useMemo(() => {
     const map = new Map<string, ImagineJobState>()
@@ -320,7 +374,9 @@ export default function PostDetail(){
       await imagine.resolveImagine(ownerJobId, action)
       imagine.removeJob(ownerJobId)
       setOwnerJobId(null)
-      refreshPost()
+      await refreshPost()
+      // Force carousel refresh after owner decision (video is now available)
+      // The carousel useEffect will pick up the change from post.image_path/post.video_path
     } catch (err: any) {
       alert(err?.message || 'Failed to apply change')
     } finally {
@@ -643,7 +699,7 @@ export default function PostDetail(){
       <div className="max-w-2xl mx-auto px-3" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 14rem)', paddingTop: `calc(3.5rem + ${pullPx}px)` }}>
         <div className="mb-2">
           <button className="px-3 py-1.5 rounded-lg border border-white/10 bg-white/[0.03] text-sm hover:bg-white/10" onClick={()=> navigate(-1)} aria-label="Back">
-            ? Back
+            <i className="fa-solid fa-arrow-left mr-1" /> Back
           </button>
         </div>
         <div className="rounded-2xl border border-white/10 bg-black shadow-sm shadow-black/20">
@@ -663,7 +719,7 @@ export default function PostDetail(){
                 </>
               )
             })()}
-                    {/* Show carousel ONLY if AI videos exist, otherwise show regular image/video */}
+          {/* Show carousel ONLY if AI videos exist, otherwise show regular image/video */}
           {carouselLoading ? (
             <div className="px-3 flex items-center justify-center py-8">
               <div className="w-6 h-6 border-2 border-white/20 border-t-[#4db6ac] rounded-full animate-spin" />
@@ -673,7 +729,7 @@ export default function PostDetail(){
             <div className="px-0" onClick={(e)=> e.stopPropagation()}>
               <VideoCarousel
                 items={carouselItems}
-                onPreviewImage={(src: string) => setPreviewSrc(src)}
+                onPreviewImage={(src) => setPreviewSrc(src)}
               />
             </div>
           ) : post.image_path ? (

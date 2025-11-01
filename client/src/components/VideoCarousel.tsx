@@ -59,7 +59,7 @@ export default function VideoCarousel({ items, className = '', onPreviewImage }:
         setCurrentIndex(currentIndex - 1)
       }
     }
-
+    
     setTranslateX(0)
   }
 
@@ -90,7 +90,7 @@ export default function VideoCarousel({ items, className = '', onPreviewImage }:
         setCurrentIndex(currentIndex - 1)
       }
     }
-
+    
     setTranslateX(0)
   }
 

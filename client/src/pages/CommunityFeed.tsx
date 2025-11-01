@@ -13,6 +13,7 @@ import EditableAISummary from '../components/EditableAISummary'
 import GifPicker from '../components/GifPicker'
 import type { GifSelection } from '../components/GifPicker'
 import { gifSelectionToFile } from '../utils/gif'
+import VideoCarousel from '../components/VideoCarousel'
 
 type PollOption = { id: number; text: string; votes: number; user_voted?: boolean }
 type Poll = { id: number; question: string; is_active: number; options: PollOption[]; user_vote: number|null; total_votes: number; single_vote?: boolean; expires_at?: string | null }
@@ -273,7 +274,8 @@ export default function CommunityFeed() {
         if (p.id !== postId) return p
         const existing = Array.isArray(p.replies) ? p.replies : []
         // Prepend newest reply (API returns newest first elsewhere)
-        return { ...p, replies: [reply, ...existing] }
+        const newReplies = [reply, ...existing]
+        return { ...p, replies: newReplies }
       })
       return { ...prev, posts: updated }
     })
@@ -394,7 +396,7 @@ export default function CommunityFeed() {
 
   const postsOnly = useMemo(() => Array.isArray(data?.posts) ? data.posts : [], [data])
 
-  if (loading) return <div className="p-4 text-[#9fb0b5]">Loading…</div>
+  if (loading) return <div className="p-4 text-[#9fb0b5]">Loading?</div>
   if (error) return <div className="p-4 text-red-400">{error || 'Failed to load feed.'}</div>
   if (!data) return <div className="p-4 text-[#9fb0b5]">No posts yet.</div>
 
@@ -423,7 +425,7 @@ export default function CommunityFeed() {
         <div className="fixed top-[72px] left-0 right-0 z-50 flex items-center justify-center pointer-events-none">
           <div className="px-2 py-1 text-xs rounded-full bg-white/10 border border-white/15 text-white/80 flex items-center gap-2">
             <i className="fa-solid fa-rotate fa-spin" />
-            <span>Refreshing…</span>
+            <span>Refreshing?</span>
           </div>
         </div>
       )}
@@ -439,7 +441,7 @@ export default function CommunityFeed() {
                 else window.location.href = '/communities'
               }}
             >
-              ← Back to Communities
+              <i className="fa-solid fa-arrow-left mr-1" /> Back to Communities
             </button>
             <button className="ml-auto p-2 rounded-full border border-white/10 hover:bg-white/10" aria-label="Search"
               onClick={()=> { setShowSearch(true); setTimeout(()=>{ try{ (document.getElementById('hashtag-input') as HTMLInputElement)?.focus() }catch{} }, 50) }}>
@@ -549,11 +551,11 @@ export default function CommunityFeed() {
           <div className="w-[92%] max-w-[560px] rounded-2xl border border-white/10 bg-black p-3">
             <div className="flex items-center justify-between mb-2">
               <div className="font-semibold">Announcements</div>
-              <button className="px-2 py-1 rounded-full border border-white/10" onClick={()=> _setShowAnnouncements(false)}>✕</button>
+              <button className="px-2 py-1 rounded-full border border-white/10" onClick={()=> _setShowAnnouncements(false)}>?</button>
             </div>
             {(data?.is_community_admin || data?.community?.creator_username === data?.username || data?.username === 'admin') && (
               <div className="mb-3 p-2 rounded-xl border border-white/10 bg-white/[0.02]">
-                <textarea value={newAnnouncement} onChange={(e)=> setNewAnnouncement(e.target.value)} placeholder="Write an announcement…" className="w-full rounded-md bg-black border border-white/10 px-3 py-2 text-sm focus:border-teal-400/70 outline-none min-h-[72px]" />
+                <textarea value={newAnnouncement} onChange={(e)=> setNewAnnouncement(e.target.value)} placeholder="Write an announcement?" className="w-full rounded-md bg-black border border-white/10 px-3 py-2 text-sm focus:border-teal-400/70 outline-none min-h-[72px]" />
                 <div className="text-right mt-2">
                   <button disabled={savingAnn || !newAnnouncement.trim()} onClick={saveAnnouncement} className="px-3 py-1.5 rounded-md bg-[#4db6ac] disabled:opacity-50 text-black text-sm hover:brightness-110">Post</button>
                 </div>
@@ -564,7 +566,7 @@ export default function CommunityFeed() {
                 <div className="text-sm text-[#9fb0b5]">No announcements.</div>
               ) : _announcements.map((a:any)=> (
                 <div key={a.id} className="rounded-xl border border-white/10 p-3 bg-white/[0.03]">
-                  <div className="text-xs text-[#9fb0b5] mb-1">{a.created_by} • {(() => { try { const d = new Date(a.created_at); if (!isNaN(d.getTime())) return d.toLocaleDateString(); } catch(e) {} const s = String(a.created_at||'').split(' '); return s[0] || String(a.created_at||''); })()}</div>
+                  <div className="text-xs text-[#9fb0b5] mb-1">{a.created_by} ? {(() => { try { const d = new Date(a.created_at); if (!isNaN(d.getTime())) return d.toLocaleDateString(); } catch(e) {} const s = String(a.created_at||'').split(' '); return s[0] || String(a.created_at||''); })()}</div>
                   <div className="whitespace-pre-wrap text-sm">{a.content}</div>
                   {(data?.is_community_admin || data?.community?.creator_username === data?.username || data?.username === 'admin') && (
                     <div className="mt-2 text-right">
@@ -593,7 +595,7 @@ export default function CommunityFeed() {
               ) : results.map(r => (
                 <button key={r.id} className="w-full text-left rounded-xl border border-white/10 p-2 hover:bg-white/5" onClick={()=> scrollToPost(r.id)}>
                   <div className="text-sm text-white/90 truncate">{r.content}</div>
-                  <div className="text-xs text-[#9fb0b5]">{r.username} • {formatSmartTime(r.timestamp)}</div>
+                  <div className="text-xs text-[#9fb0b5]">{r.username} ? {formatSmartTime(r.timestamp)}</div>
                 </button>
               ))}
             </div>
@@ -748,10 +750,10 @@ export default function CommunityFeed() {
           <div className="w-[92%] max-w-[560px] rounded-2xl border border-white/10 bg-black p-3">
             <div className="flex items-center justify-between mb-2">
               <div className="font-semibold">Voters</div>
-              <button className="px-2 py-1 rounded-full border border-white/10" onClick={()=> setViewingVotersPollId(null)}>✕</button>
+              <button className="px-2 py-1 rounded-full border border-white/10" onClick={()=> setViewingVotersPollId(null)}>?</button>
             </div>
             {votersLoading ? (
-              <div className="text-[#9fb0b5] text-sm">Loading voters…</div>
+              <div className="text-[#9fb0b5] text-sm">Loading voters?</div>
             ) : (
               <div className="space-y-3 max-h-[420px] overflow-y-auto">
                 {votersData.length === 0 ? (
@@ -783,10 +785,10 @@ export default function CommunityFeed() {
           <div className="w-[92%] max-w-[560px] rounded-2xl border border-white/10 bg-black p-3">
             <div className="flex items-center justify-between mb-2">
               <div className="font-semibold">Reactions</div>
-              <button className="px-2 py-1 rounded-full border border-white/10" onClick={()=> setReactorsPostId(null)}>✕</button>
+              <button className="px-2 py-1 rounded-full border border-white/10" onClick={()=> setReactorsPostId(null)}>?</button>
             </div>
             {reactorsLoading ? (
-              <div className="text-[#9fb0b5] text-sm">Loading…</div>
+              <div className="text-[#9fb0b5] text-sm">Loading?</div>
             ) : (
               <div className="space-y-3 max-h-[420px] overflow-y-auto">
                 {reactorGroups.length === 0 ? (
@@ -833,6 +835,8 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
   const [childReplyGif, setChildReplyGif] = useState<GifSelection | null>(null)
   const [sendingChildReply, setSendingChildReply] = useState(false)
   const [gifPickerTarget, setGifPickerTarget] = useState<'main' | number | null>(null)
+  const [carouselItems, setCarouselItems] = useState<Array<{type: 'original' | 'ai_video', image_path?: string | null, image_url?: string | null, video_path?: string | null, video_url?: string | null, created_by?: string | null, style?: string | null}>>([])
+  const [carouselLoading, setCarouselLoading] = useState(false)
 
   // Detect links when editing
   useEffect(() => {
@@ -852,6 +856,54 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
     })
     setDetectedLinks(nonVideoLinks)
   }, [editText, isEditing])
+
+  // Fetch AI videos for carousel if post has image or might have AI videos
+  useEffect(() => {
+    console.log('[Carousel] useEffect triggered for post', post.id, 'image_path:', post.image_path, 'video_path:', post.video_path, 'replies:', post.replies?.length)
+    // Always try to fetch carousel items if post has an image OR video_path
+    // Even if image_path is null (replaced), we might have videos
+    async function fetchCarouselItems() {
+      console.log('[Carousel] fetchCarouselItems called for post', post.id)
+      setCarouselLoading(true)
+      try {
+        const resp = await fetch(`/api/imagine/videos/${post.id}`, { credentials: 'include' })
+        const json = await resp.json().catch(() => null)
+        console.log('[Carousel] Fetch response for post', post.id, ':', json)
+        if (resp.ok && json?.success && json.videos) {
+          // Only set carousel items if there are AI videos (more than just original image)
+          // If there's at least one AI video, show carousel with original + videos
+          const hasAiVideos = json.videos.some((v: any) => v.type === 'ai_video')
+          console.log('[Carousel] Has AI videos:', hasAiVideos, 'Videos:', json.videos)
+          if (hasAiVideos) {
+            // Carousel should show: original image + AI videos
+            console.log('[Carousel] Setting carousel items:', json.videos)
+            setCarouselItems(json.videos)
+          } else {
+            // No AI videos - don't show carousel, show regular image instead
+            console.log('[Carousel] No AI videos, setting empty carousel items')
+            setCarouselItems([])
+          }
+        } else {
+          // API error: don't show carousel
+          console.log('[Carousel] API error or no videos:', resp.ok, json)
+          setCarouselItems([])
+        }
+      } catch (err) {
+        console.error('[Carousel] Failed to fetch carousel items:', err)
+        setCarouselItems([])
+      } finally {
+        setCarouselLoading(false)
+      }
+    }
+    
+    // Only fetch if post has image_path (original photo exists) OR if replies might have videos
+    // Always check for carousel items if there's a potential for videos
+    if (post.image_path || post.video_path || (post.replies && post.replies.length > 0)) {
+      fetchCarouselItems()
+    } else {
+      setCarouselItems([])
+    }
+  }, [post.id, post.image_path, post.video_path, post.replies?.length, post.replies])
 
   function startRenamingLink(link: DetectedLink) {
     setRenamingLink(link)
@@ -1001,7 +1053,23 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
             </div>
           </div>
         )}
-        {post.image_path ? (
+        {/* Show carousel ONLY if AI videos exist, otherwise show regular image */}
+        {(() => {
+          console.log('[Carousel] Render check - loading:', carouselLoading, 'items:', carouselItems.length, 'post.image_path:', post.image_path)
+          return carouselLoading ? (
+            <div className="px-3 flex items-center justify-center py-8">
+              <div className="w-6 h-6 border-2 border-white/20 border-t-[#4db6ac] rounded-full animate-spin" />
+            </div>
+          ) : carouselItems.length > 0 ? (
+            // Show carousel if there are AI videos
+            <div className="px-3" onClick={(e)=> e.stopPropagation()}>
+              <VideoCarousel
+                items={carouselItems}
+                onPreviewImage={onPreviewImage}
+              />
+            </div>
+          ) : post.image_path ? (
+          // No AI videos - show regular image (not carousel)
           <div className="px-3">
             {(() => {
               const computed = normalizeMediaPath(post.image_path || '')
@@ -1015,8 +1083,8 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
               )
             })()}
           </div>
-        ) : null}
-        {post.video_path ? (
+        ) : post.video_path ? (
+          // Regular video (not AI generated) - show directly
           <div className="px-3" onClick={(e)=> e.stopPropagation()}>
             <video
               className="w-full max-h-[360px] rounded border border-white/10 bg-black"
@@ -1025,7 +1093,8 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
               playsInline
             />
           </div>
-        ) : null}
+        ) : null
+        })()}
         {post.audio_path ? (
           <div className="px-3 space-y-2" onClick={(e)=> { e.stopPropagation(); }}>
             {post.audio_summary && onSummaryUpdate && (
@@ -1066,7 +1135,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
               <div className="font-medium text-sm flex-1">
                 {post.poll.question}
                 {post.poll.expires_at ? (
-                  <span className="ml-2 text-[11px] text-[#9fb0b5]">• closes {(() => { try { const d = new Date(post.poll.expires_at as any); if (!isNaN(d.getTime())) return d.toLocaleDateString(); } catch(e) {} return String(post.poll.expires_at) })()}</span>
+                  <span className="ml-2 text-[11px] text-[#9fb0b5]">? closes {(() => { try { const d = new Date(post.poll.expires_at as any); if (!isNaN(d.getTime())) return d.toLocaleDateString(); } catch(e) {} return String(post.poll.expires_at) })()}</span>
                 ) : null}
               </div>
               {(post.username === currentUser || isAdmin || currentUser === 'admin') && (
@@ -1149,7 +1218,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                 onClick={(e)=> { e.preventDefault(); e.stopPropagation(); if (onPollClick) onPollClick() }}
                 className="text-[#4db6ac] hover:underline"
               >
-                View all polls →
+                View all polls ?
               </button>
             </div>
           </div>
@@ -1179,7 +1248,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
           </div>
         )}
       </div>
-      {/* Inline recent replies (last 1–2) */}
+      {/* Inline recent replies (last 1?2) */}
       {!post.poll && Array.isArray(post.replies) && post.replies.length > 0 && (
         <div className="px-3 pb-2 pt-2 mt-2 border-t border-white/10 space-y-2" onClick={(e)=> e.stopPropagation()}>
           {(() => {
@@ -1349,7 +1418,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
             ))
           })()}
           {post.replies.length > 2 && (
-            <button className="text-xs text-[#4db6ac] hover:underline" onClick={()=> onOpen()}>View all replies →</button>
+            <button className="text-xs text-[#4db6ac] hover:underline" onClick={()=> onOpen()}>View all replies ?</button>
           )}
         </div>
       )}
@@ -1362,7 +1431,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
               onChange={setReplyText}
               communityId={communityId as any}
               postId={post.id}
-              placeholder="Write a reply…"
+              placeholder="Write a reply?"
               className="w-full resize-none rounded-xl bg-transparent border-0 outline-none text-[14px] placeholder-white/40 px-1"
               rows={2}
             />
