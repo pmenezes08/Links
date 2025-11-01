@@ -278,41 +278,40 @@ export default function PostDetail(){
 
   // Fetch AI videos for carousel
   useEffect(() => {
-    if (!post) return
+    console.log('[Carousel] PostDetail useEffect triggered for post', post?.id, 'image_path:', post?.image_path, 'video_path:', post?.video_path, 'replies:', post?.replies?.length)
+    if (!post) {
+      console.log('[Carousel] PostDetail: no post, returning')
+      return
+    }
     
     async function fetchCarouselItems() {
+      console.log('[Carousel] PostDetail fetchCarouselItems called for post', post.id)
       setCarouselLoading(true)
       try {
         const resp = await fetch(`/api/imagine/videos/${post.id}`, { credentials: 'include' })
         const json = await resp.json().catch(() => null)
+        console.log('[Carousel] PostDetail fetch response for post', post.id, ':', json)
         if (resp.ok && json?.success && json.videos) {
           // Only set carousel items if there are AI videos (more than just original image)
           const hasAiVideos = json.videos.some((v: any) => v.type === 'ai_video')
+          console.log('[Carousel] PostDetail Has AI videos:', hasAiVideos, 'Videos:', json.videos)
           if (hasAiVideos) {
             // Carousel should show: original image + AI videos
+            console.log('[Carousel] PostDetail Setting carousel items:', json.videos)
             setCarouselItems(json.videos)
           } else {
             // No AI videos - don't show carousel
+            console.log('[Carousel] PostDetail No AI videos, setting empty carousel items')
             setCarouselItems([])
           }
         } else {
           // API error: don't show carousel
+          console.log('[Carousel] PostDetail API error or no videos:', resp.ok, json)
           setCarouselItems([])
         }
       } catch (err) {
-        console.error('Failed to fetch carousel items:', err)
-        // Fallback to original image if available
-        if (post.image_path) {
-          const normalized = normalizePath(post.image_path)
-          setCarouselItems([{
-            type: 'original',
-            image_path: post.image_path,
-            image_url: normalized,
-            created_by: null
-          }])
-        } else {
-          setCarouselItems([])
-        }
+        console.error('[Carousel] PostDetail Failed to fetch carousel items:', err)
+        setCarouselItems([])
       } finally {
         setCarouselLoading(false)
       }
@@ -320,8 +319,10 @@ export default function PostDetail(){
     
     // Always check for carousel items if post has image, video, or replies (which might have videos)
     if (post.image_path || post.video_path || (post.replies && post.replies.length > 0)) {
+      console.log('[Carousel] PostDetail condition met, calling fetchCarouselItems')
       fetchCarouselItems()
     } else {
+      console.log('[Carousel] PostDetail condition NOT met, clearing carousel items')
       setCarouselItems([])
     }
   }, [post?.id, post?.image_path, post?.video_path, post?.replies?.length])

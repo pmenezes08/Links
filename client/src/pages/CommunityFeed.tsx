@@ -859,9 +859,11 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
 
   // Fetch AI videos for carousel if post has image or might have AI videos
   useEffect(() => {
+    console.log('[Carousel] useEffect triggered for post', post.id, 'image_path:', post.image_path, 'video_path:', post.video_path, 'replies:', post.replies?.length)
     // Always try to fetch carousel items if post has an image OR video_path
     // Even if image_path is null (replaced), we might have videos
     async function fetchCarouselItems() {
+      console.log('[Carousel] fetchCarouselItems called for post', post.id)
       setCarouselLoading(true)
       try {
         const resp = await fetch(`/api/imagine/videos/${post.id}`, { credentials: 'include' })
