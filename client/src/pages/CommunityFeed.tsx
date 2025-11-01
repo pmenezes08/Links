@@ -274,7 +274,8 @@ export default function CommunityFeed() {
         if (p.id !== postId) return p
         const existing = Array.isArray(p.replies) ? p.replies : []
         // Prepend newest reply (API returns newest first elsewhere)
-        return { ...p, replies: [reply, ...existing] }
+        const newReplies = [reply, ...existing]
+        return { ...p, replies: newReplies }
       })
       return { ...prev, posts: updated }
     })
@@ -856,19 +857,16 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
     setDetectedLinks(nonVideoLinks)
   }, [editText, isEditing])
 
-  // Fetch AI videos for carousel if post has image
+  // Fetch AI videos for carousel if post has image or might have AI videos
   useEffect(() => {
-    if (!post.image_path && !post.video_path) {
-      setCarouselItems([])
-      return
-    }
-    
+    // Always try to fetch carousel items if post has an image OR video_path
+    // Even if image_path is null (replaced), we might have videos
     async function fetchCarouselItems() {
       setCarouselLoading(true)
       try {
         const resp = await fetch(`/api/imagine/videos/${post.id}`, { credentials: 'include' })
         const json = await resp.json().catch(() => null)
-        if (resp.ok && json?.success && json.videos) {
+        if (resp.ok && json?.success && json.videos && json.videos.length > 0) {
           setCarouselItems(json.videos)
         } else {
           // Fallback: if no videos but post has image, show just the image
@@ -881,6 +879,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
               created_by: null
             }])
           } else {
+            // No image and no videos - empty carousel
             setCarouselItems([])
           }
         }
@@ -903,8 +902,14 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
       }
     }
     
-    fetchCarouselItems()
-  }, [post.id, post.image_path, post.video_path, post.replies])
+    // Only fetch if post has image_path (original photo exists) OR if replies might have videos
+    // Always check for carousel items if there's a potential for videos
+    if (post.image_path || post.video_path || (post.replies && post.replies.length > 0)) {
+      fetchCarouselItems()
+    } else {
+      setCarouselItems([])
+    }
+  }, [post.id, post.image_path, post.video_path, post.replies?.length, post.replies])
 
   function startRenamingLink(link: DetectedLink) {
     setRenamingLink(link)

@@ -278,17 +278,12 @@ export default function PostDetail(){
   useEffect(() => {
     if (!post) return
     
-    if (!post.image_path && !post.video_path) {
-      setCarouselItems([])
-      return
-    }
-    
     async function fetchCarouselItems() {
       setCarouselLoading(true)
       try {
         const resp = await fetch(`/api/imagine/videos/${post.id}`, { credentials: 'include' })
         const json = await resp.json().catch(() => null)
-        if (resp.ok && json?.success && json.videos) {
+        if (resp.ok && json?.success && json.videos && json.videos.length > 0) {
           setCarouselItems(json.videos)
         } else {
           // Fallback: if no videos but post has image, show just the image
@@ -323,8 +318,13 @@ export default function PostDetail(){
       }
     }
     
-    fetchCarouselItems()
-  }, [post?.id, post?.image_path, post?.video_path, post?.replies])
+    // Always check for carousel items if post has image, video, or replies (which might have videos)
+    if (post.image_path || post.video_path || (post.replies && post.replies.length > 0)) {
+      fetchCarouselItems()
+    } else {
+      setCarouselItems([])
+    }
+  }, [post?.id, post?.image_path, post?.video_path, post?.replies?.length])
 
   const jobIndex = useMemo(() => {
     const map = new Map<string, ImagineJobState>()
