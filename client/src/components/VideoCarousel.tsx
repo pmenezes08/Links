@@ -24,11 +24,13 @@ export default function VideoCarousel({ items, className = '', onPreviewImage }:
   const [translateX, setTranslateX] = useState(0)
   const carouselRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+  const videoSeekedRef = useRef<Set<number>>(new Set())
 
   // Reset to first item when items change
   useEffect(() => {
     setCurrentIndex(0)
     setTranslateX(0)
+    videoSeekedRef.current.clear()
   }, [items.length])
 
   const handleTouchStart = (e: React.TouchEvent) => {
@@ -175,6 +177,7 @@ export default function VideoCarousel({ items, className = '', onPreviewImage }:
                     </div>
                   )}
                   <video
+                    key={`${item.video_url}-${index}`}
                     src={item.video_url ? item.video_url : (item.video_path ? normalizePath(item.video_path) : '')}
                     className="w-full max-h-[520px] rounded border border-white/10 bg-black"
                     controls
@@ -183,22 +186,31 @@ export default function VideoCarousel({ items, className = '', onPreviewImage }:
                     style={{ transform: 'translateZ(0)' }}
                     onLoadedMetadata={(e) => {
                       const video = e.currentTarget as HTMLVideoElement
-                      console.log('[Carousel] Video metadata - dimensions:', video.videoWidth, 'x', video.videoHeight)
-                      console.log('[Carousel] Video readyState:', video.readyState)
-                      console.log('[Carousel] Video src:', video.src)
+                      if (!videoSeekedRef.current.has(index)) {
+                        console.log('[Carousel] Video metadata - dimensions:', video.videoWidth, 'x', video.videoHeight)
+                        console.log('[Carousel] Video readyState:', video.readyState)
+                        console.log('[Carousel] Video src:', video.src)
+                        try {
+                          // Seek to first frame once
+                          video.currentTime = 0.1
+                          videoSeekedRef.current.add(index)
+                        } catch (err) {
+                          console.warn('[Carousel] Failed to seek in metadata:', err)
+                        }
+                      }
                     }}
                     onCanPlay={(e) => {
                       const video = e.currentTarget as HTMLVideoElement
-                      console.log('[Carousel] Video can play - seeking to first frame')
-                      try {
-                        // Seek to first frame to force display
-                        video.currentTime = 0.1
-                        // Small delay to ensure frame renders
-                        setTimeout(() => {
-                          video.currentTime = 0
-                        }, 50)
-                      } catch (err) {
-                        console.warn('[Carousel] Failed to seek to first frame:', err)
+                      // Only seek if we haven't already done so for this video
+                      if (!videoSeekedRef.current.has(index)) {
+                        console.log('[Carousel] Video can play - seeking to first frame')
+                        try {
+                          // Seek to first frame to force display
+                          video.currentTime = 0.1
+                          videoSeekedRef.current.add(index)
+                        } catch (err) {
+                          console.warn('[Carousel] Failed to seek to first frame:', err)
+                        }
                       }
                     }}
                   />
