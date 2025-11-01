@@ -3671,15 +3671,15 @@ def process_imagine_job(job_id: int):
         
         if use_a2e:
             logger.info(f"[Imagine] Using A2E.ai for spicy video (job {job_id})")
-            # Compress image before sending to A2E to avoid 413 errors
-            # A2E accepts up to 10MB, but we'll compress to keep requests small
+            # Compress image aggressively before sending to A2E to avoid 413 errors
+            # A2E API server has limits, so we need to keep images small (<2MB ideally)
             a2e_image_bytes = image_bytes
+            original_size = len(image_bytes)
             if PIL_AVAILABLE:
                 try:
                     with Image.open(BytesIO(image_bytes)) as img:
-                        original_size = len(image_bytes)
-                        # Resize to max 1920px on longest side (A2E supports high res, but compress to save bandwidth)
-                        max_dimension = 1920
+                        # Aggressively resize to max 1280px on longest side to keep file size small
+                        max_dimension = 1280
                         if img.size[0] > max_dimension or img.size[1] > max_dimension:
                             if img.size[0] > img.size[1]:
                                 new_size = (max_dimension, int(img.size[1] * (max_dimension / img.size[0])))
@@ -3701,14 +3701,39 @@ def process_imagine_job(job_id: int):
                             else:
                                 img = img.convert('RGB')
                         
-                        # Compress to JPEG with quality 85 (good balance)
+                        # Compress to JPEG with lower quality (70) to keep file size under 2MB
+                        quality = 70
                         output = BytesIO()
-                        img.save(output, format='JPEG', quality=85, optimize=True)
+                        img.save(output, format='JPEG', quality=quality, optimize=True)
                         a2e_image_bytes = output.getvalue()
+                        
+                        # If still too large (>2MB), reduce quality further
+                        max_size = 2 * 1024 * 1024  # 2MB
+                        if len(a2e_image_bytes) > max_size:
+                            quality = 50
+                            output = BytesIO()
+                            img.save(output, format='JPEG', quality=quality, optimize=True)
+                            a2e_image_bytes = output.getvalue()
+                            
+                            # If still too large, resize even smaller
+                            if len(a2e_image_bytes) > max_size:
+                                logger.warning(f"[Imagine] Image still too large ({len(a2e_image_bytes)} bytes), resizing to 1024px")
+                                max_dimension = 1024
+                                if img.size[0] > max_dimension or img.size[1] > max_dimension:
+                                    if img.size[0] > img.size[1]:
+                                        new_size = (max_dimension, int(img.size[1] * (max_dimension / img.size[0])))
+                                    else:
+                                        new_size = (int(img.size[0] * (max_dimension / img.size[1])), max_dimension)
+                                    img = img.resize(new_size, Image.Resampling.LANCZOS)
+                                    output = BytesIO()
+                                    img.save(output, format='JPEG', quality=40, optimize=True)
+                                    a2e_image_bytes = output.getvalue()
+                        
                         logger.info(f"[Imagine] Compressed image for A2E: {original_size} bytes -> {len(a2e_image_bytes)} bytes")
                 except Exception as e:
-                    logger.warning(f"[Imagine] Failed to compress image for A2E: {e}, using original")
-                    a2e_image_bytes = image_bytes
+                    logger.error(f"[Imagine] Failed to compress image for A2E: {e}, error will occur", exc_info=True)
+                    # Don't use original - it will fail
+                    raise RuntimeError(f"Failed to compress image for A2E: {e}. Original size: {original_size} bytes")
             
             # Create A2E job with explicit prompt for sexual content
             a2e_prompt = "Create a highly sexual, erotic, and explicit video animation with seductive movements, provocative poses, sensual atmosphere, and intense sexual energy. Make it very sexual, erotic, and explicit."
