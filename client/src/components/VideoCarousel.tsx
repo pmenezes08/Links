@@ -159,21 +159,26 @@ export default function VideoCarousel({ items, className = '', onPreviewImage }:
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
-        style={{ touchAction: 'pan-y pinch-zoom', willChange: 'transform' }}
+        style={{
+          maxHeight: '520px',
+          touchAction: 'pan-y pinch-zoom',
+          willChange: 'transform'
+        }}
       >
         <div
           className="flex transition-transform duration-300 ease-out"
           style={{
             transform: `translateX(${-currentIndex * 100 + translateX}%)`,
             width: `${items.length * 100}%`,
-            willChange: 'transform'
+            willChange: 'transform',
+            height: '520px'
           }}
         >
           {items.map((item, index) => (
             <div
               key={index}
-              className="relative flex-shrink-0 w-full"
-              style={{ width: `${100 / items.length}%`, minHeight: '200px' }}
+              className="relative flex-shrink-0"
+              style={{ width: `${100 / items.length}%`, height: '520px' }}
             >
               {item.type === 'original' && item.image_url && (
                 <div className="relative w-full">
