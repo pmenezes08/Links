@@ -12268,7 +12268,68 @@ def api_imagine_resolve():
 
     update_imagine_job(job_id, status=IMAGINE_STATUS_COMPLETED, action=normalized_action, result_path=result_path)
 
-    return jsonify({'success': True, 'result_path': result_path, 'result_url': get_public_upload_url(result_path)})
+            return jsonify({'success': True, 'result_path': result_path, 'result_url': get_public_upload_url(result_path)})
+
+@app.route('/api/carousel_items')
+@login_required
+def api_carousel_items():
+    """Get carousel items for a post (original image + AI videos)"""
+    username = session['username']
+    post_id = request.args.get('post_id', type=int)
+
+    if not post_id:
+        return jsonify({'success': False, 'error': 'Post ID is required'}), 400
+
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+
+            # Get post info
+            c.execute("SELECT image_path, video_path FROM posts WHERE id = ?", (post_id,))
+            post_row = c.fetchone()
+            if not post_row:
+                return jsonify({'success': False, 'error': 'Post not found'}), 404
+
+            carousel_items = []
+
+            # Add original image if it exists
+            if post_row['image_path']:
+                carousel_items.append({
+                    'type': 'original',
+                    'image_url': get_public_upload_url(post_row['image_path']),
+                    'image_path': post_row['image_path']
+                })
+
+            # Get all completed AI videos for this post
+            c.execute("""
+                SELECT ij.result_path, ij.created_by, ij.style
+                FROM imagine_jobs ij
+                WHERE ij.target_type = 'post'
+                AND ij.target_id = ?
+                AND ij.status = 'completed'
+                AND ij.result_path IS NOT NULL
+                ORDER BY ij.created_at ASC
+            """, (post_id,))
+
+            ai_videos = c.fetchall()
+            for video_row in ai_videos:
+                carousel_items.append({
+                    'type': 'ai_video',
+                    'video_url': get_public_upload_url(video_row['result_path']),
+                    'video_path': video_row['result_path'],
+                    'created_by': video_row['created_by'],
+                    'style': video_row['style']
+                })
+
+            return jsonify({
+                'success': True,
+                'videos': carousel_items,
+                'has_ai_videos': len([item for item in carousel_items if item['type'] == 'ai_video']) > 0
+            })
+
+    except Exception as e:
+        logger.error(f"Error fetching carousel items for post {post_id}: {str(e)}")
+        return jsonify({'success': False, 'error': 'Server error'}), 500
 
 @app.route('/create_poll', methods=['POST'])
 @login_required

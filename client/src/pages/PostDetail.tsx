@@ -15,7 +15,7 @@ import { extractVideoEmbed, removeVideoUrlFromText } from '../utils/videoEmbed'
 import EditableAISummary from '../components/EditableAISummary'
 import { useImagineJobs, type ImagineJobState, type ImagineStyle } from '../hooks/useImagineJobs'
 import { ImagineStyleModal, ImagineOwnerModal } from '../components/ImagineModal'
-import AIVideoCarousel from '../components/AIVideoCarousel'
+import VideoCarousel from '../components/VideoCarousel'
 
 type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null, parent_reply_id?: number|null, children?: Reply[], profile_picture?: string|null, image_path?: string|null, video_path?: string|null }
 type Post = { id: number; username: string; content: string; image_path?: string|null; video_path?: string|null; audio_path?: string|null; audio_summary?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; replies: Reply[]; ai_videos?: Array<{video_path: string; generated_by: string; created_at: string; style: string}> }
@@ -125,7 +125,9 @@ export default function PostDetail(){
   const [styleSubmitting, setStyleSubmitting] = useState(false)
   const [ownerJobId, setOwnerJobId] = useState<number | null>(null)
   const [resolvingJobId, setResolvingJobId] = useState<number | null>(null)
-  
+  const [carouselItems, setCarouselItems] = useState<Array<{type: 'original' | 'ai_video', image_path?: string | null, image_url?: string | null, video_path?: string | null, video_url?: string | null, created_by?: string | null, style?: string | null}>>([])
+  const [carouselLoading, setCarouselLoading] = useState(false)
+
   const fileInputRef = useRef<HTMLInputElement|null>(null)
   const [refreshHint, setRefreshHint] = useState(false)
   const [pullPx, setPullPx] = useState(0)
@@ -421,6 +423,55 @@ export default function PostDetail(){
     return () => { mounted = false }
   }, [])
 
+  // Fetch carousel items when post changes or AI jobs complete
+  useEffect(() => {
+    if (!post?.id) return
+
+    async function fetchCarouselItems() {
+      console.log('[Carousel] PostDetail fetchCarouselItems called for post', post!.id)
+      setCarouselLoading(true)
+      try {
+        const resp = await fetch(`/api/carousel_items?post_id=${post!.id}`, { credentials: 'include' })
+        const json = await resp.json().catch(() => null)
+
+        console.log('[Carousel] PostDetail fetch response for post', post!.id, ':', json)
+
+        if (resp.ok && json?.success) {
+          const hasAiVideos = json.has_ai_videos
+          console.log('[Carousel] PostDetail Has AI videos:', hasAiVideos, 'Videos:', json.videos)
+
+          if (hasAiVideos) {
+            // Carousel should show: original image + AI videos
+            console.log('[Carousel] PostDetail Setting carousel items:', json.videos)
+            setCarouselItems(json.videos)
+          } else {
+            // No AI videos - don't show carousel
+            console.log('[Carousel] PostDetail No AI videos, setting empty carousel items')
+            setCarouselItems([])
+          }
+        } else {
+          // API error: don't show carousel
+          console.log('[Carousel] PostDetail API error or no videos:', resp.ok, json)
+          setCarouselItems([])
+        }
+      } catch (err) {
+        console.error('[Carousel] PostDetail Failed to fetch carousel items:', err)
+        setCarouselItems([])
+      } finally {
+        setCarouselLoading(false)
+      }
+    }
+
+    // Always check for carousel items if post has image, video, or replies (which might have videos)
+    if (post!.image_path || post!.video_path || post!.replies.length > 0) {
+      console.log('[Carousel] PostDetail condition met, calling fetchCarouselItems')
+      fetchCarouselItems()
+    } else {
+      console.log('[Carousel] PostDetail condition NOT met, clearing carousel items')
+      setCarouselItems([])
+    }
+  }, [post?.id, post?.image_path, post?.video_path, post?.replies?.length, imagine.jobs])
+
   async function toggleReaction(reaction: string){
     if (!post) return
     // Optimistic update
@@ -612,14 +663,37 @@ export default function PostDetail(){
                 </>
               )
             })()}
-                    {/* AI Video Carousel - shows original image + all AI videos */}
-          {(post.image_path || (post.ai_videos && post.ai_videos.length > 0)) ? (
+                    {/* Show carousel ONLY if AI videos exist, otherwise show regular image/video */}
+          {carouselLoading ? (
+            <div className="px-3 flex items-center justify-center py-8">
+              <div className="w-6 h-6 border-2 border-white/20 border-t-[#4db6ac] rounded-full animate-spin" />
+            </div>
+          ) : carouselItems.length > 0 ? (
+            // Show carousel if there are AI videos
+            <div className="px-0" onClick={(e)=> e.stopPropagation()}>
+              <VideoCarousel
+                items={carouselItems}
+                onPreviewImage={(src: string) => setPreviewSrc(src)}
+              />
+            </div>
+          ) : post.image_path ? (
+            // No AI videos - show regular image (not carousel)
             <div className="px-0">
-              <AIVideoCarousel
-                originalImage={post.image_path}
-                aiVideos={post.ai_videos || []}
-                onImageClick={(src) => setPreviewSrc(src)}
-                className="group"
+              <ImageLoader
+                src={normalizePath(post.image_path as string)}
+                alt="Post image"
+                className="block mx-auto max-w-full max-h-[520px] rounded border border-white/10 cursor-zoom-in"
+                onClick={()=> setPreviewSrc(normalizePath(post.image_path as string))}
+              />
+            </div>
+          ) : post.video_path ? (
+            // Regular video (not AI generated) - show directly
+            <div className="px-3">
+              <video
+                className="w-full max-h-[420px] rounded border border-white/10 bg-black"
+                src={normalizePath(post.video_path)}
+                controls
+                playsInline
               />
             </div>
           ) : null}
