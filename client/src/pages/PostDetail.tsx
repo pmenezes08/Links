@@ -16,7 +16,7 @@ import EditableAISummary from '../components/EditableAISummary'
 import { useImagineJobs, type ImagineJobState, type ImagineStyle } from '../hooks/useImagineJobs'
 import { ImagineStyleModal, ImagineOwnerModal } from '../components/ImagineModal'
 
-type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null, parent_reply_id?: number|null, children?: Reply[], profile_picture?: string|null, image_path?: string|null }
+type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null, parent_reply_id?: number|null, children?: Reply[], profile_picture?: string|null, image_path?: string|null, video_path?: string|null }
 type Post = { id: number; username: string; content: string; image_path?: string|null; video_path?: string|null; audio_path?: string|null; audio_summary?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; replies: Reply[] }
 
 // old formatTimestamp removed; using formatSmartTime
@@ -1000,6 +1000,16 @@ function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDel
                   className="block mx-auto max-w-full max-h-[300px] rounded border border-white/10 cursor-zoom-in"
                 />
               </div>
+            </div>
+          ) : null}
+          {reply.video_path ? (
+            <div className="mt-2">
+              <video
+                className="w-full max-h-[320px] rounded border border-white/10 bg-black"
+                src={normalizePath(reply.video_path)}
+                controls
+                playsInline
+              />
             </div>
           ) : null}
           {(reply as any)?.audio_path ? (
