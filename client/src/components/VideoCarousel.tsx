@@ -207,6 +207,7 @@ export default function VideoCarousel({ items, className = '', onPreviewImage }:
                     controls
                     playsInline
                     preload="metadata"
+                    style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
                     onLoadedData={(e) => {
                       const video = e.currentTarget as HTMLVideoElement
                       console.log('[Carousel] Video data loaded for item:', index)
