@@ -186,9 +186,12 @@ export default function VideoCarousel({ items, className = '', onPreviewImage }:
                     style={{ transform: 'translateZ(0)' }}
                     onLoadedMetadata={(e) => {
                       const video = e.currentTarget as HTMLVideoElement
-                      console.log('[Carousel] Video metadata - dimensions:', video.videoWidth, 'x', video.videoHeight)
+                      console.log('[Carousel] Video metadata loaded for item:', index)
+                      console.log('[Carousel] Video dimensions:', video.videoWidth, 'x', video.videoHeight)
                       console.log('[Carousel] Video readyState:', video.readyState)
                       console.log('[Carousel] Video src:', video.src)
+                      console.log('[Carousel] Original video_path:', item.video_path)
+                      console.log('[Carousel] Original video_url:', item.video_url)
                       // Ensure video shows first frame when metadata loads
                       try {
                         video.currentTime = 0

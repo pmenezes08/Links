@@ -499,6 +499,15 @@ export default function PostDetail(){
           if (hasAiVideos) {
             // Carousel should show: original image + AI videos
             console.log('[Carousel] PostDetail Setting carousel items:', json.videos)
+            // Log the actual URLs being used
+            json.videos.forEach((item: any, i: number) => {
+              console.log(`[Carousel] Item ${i}:`, {
+                type: item.type,
+                video_path: item.video_path,
+                video_url: item.video_url,
+                normalized_path: item.video_path ? normalizePath(item.video_path) : 'N/A'
+              })
+            })
             setCarouselItems(json.videos)
           } else {
             // No AI videos - don't show carousel
