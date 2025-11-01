@@ -3166,7 +3166,11 @@ def imagine_style_prompt(style: str, nsfw_allowed: bool = False) -> str:
     key = style.lower()
     prompt = base_prompts.get(key, base_prompts['normal'])
     if key == 'spicy':
-        return prompt + safe_suffix
+        if nsfw_allowed:
+            # Make spicy style much more sexual/explicit when NSFW is allowed
+            prompt = "Create a highly sexual, erotic, and explicit video animation with seductive movements, provocative poses, sensual atmosphere, and intense sexual energy. Make it very sexual, erotic, and explicit."
+        else:
+            prompt = prompt + safe_suffix
     return prompt
 
 
