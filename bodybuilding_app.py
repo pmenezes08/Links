@@ -3210,9 +3210,9 @@ def runway_create_image_to_video_job(image_bytes: bytes, style_prompt: str) -> s
                     mime_type = f"image/{img.format.lower()}"
                 
                 # Runway API base64 limit is 2048 chars total for the data URI
-                # We need to keep the base64 payload small - resize to max 800px on longest side
-                # and use lower quality to ensure base64 string stays under 1800 chars (leaving room for data URI prefix)
-                max_dimension = 800
+                # We need to be very aggressive - resize to max 512px on longest side
+                # and use low quality to ensure base64 string stays well under 1800 chars
+                max_dimension = 512
                 if original_width > max_dimension or original_height > max_dimension:
                     if original_width > original_height:
                         new_width = max_dimension
@@ -3235,21 +3235,35 @@ def runway_create_image_to_video_job(image_bytes: bytes, style_prompt: str) -> s
                 elif img.mode != 'RGB':
                     img = img.convert('RGB')
                 
-                # Compress to JPEG with quality 70 (lower quality for smaller file size)
-                # Try to keep base64 string under 1800 chars (leaving ~200 chars for "data:image/jpeg;base64," prefix)
+                # Aggressively compress to JPEG - start with quality 50
+                # Keep trying lower quality until base64 string is under 1700 chars
                 output = BytesIO()
-                quality = 70
-                img.save(output, format='JPEG', quality=quality, optimize=True)
-                processed_image_bytes = output.getvalue()
+                quality = 50
+                base64_size = float('inf')
+                max_base64_size = 1700  # Leave room for "data:image/jpeg;base64," prefix (~30 chars)
                 
-                # If still too large, reduce quality further
-                base64_size = len(base64.b64encode(processed_image_bytes).decode('utf-8'))
-                max_base64_size = 1800  # Leave room for data URI prefix
-                if base64_size > max_base64_size:
-                    quality = 50
+                while base64_size > max_base64_size and quality >= 20:
                     output = BytesIO()
                     img.save(output, format='JPEG', quality=quality, optimize=True)
                     processed_image_bytes = output.getvalue()
+                    base64_size = len(base64.b64encode(processed_image_bytes).decode('utf-8'))
+                    if base64_size > max_base64_size:
+                        quality -= 10
+                        logger.info(f"[Imagine] Image too large ({base64_size} chars), reducing quality to {quality}")
+                
+                if base64_size > max_base64_size:
+                    # Last resort: resize even smaller
+                    logger.warning(f"[Imagine] Image still too large ({base64_size} chars) after quality {quality}, resizing to 400px")
+                    max_dimension = 400
+                    if img.size[0] > max_dimension or img.size[1] > max_dimension:
+                        if img.size[0] > img.size[1]:
+                            new_size = (max_dimension, int(img.size[1] * (max_dimension / img.size[0])))
+                        else:
+                            new_size = (int(img.size[0] * (max_dimension / img.size[1])), max_dimension)
+                        img = img.resize(new_size, Image.Resampling.LANCZOS)
+                        output = BytesIO()
+                        img.save(output, format='JPEG', quality=40, optimize=True)
+                        processed_image_bytes = output.getvalue()
                 
                 mime_type = 'image/jpeg'
                 width, height = img.size
