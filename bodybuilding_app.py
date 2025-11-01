@@ -12270,6 +12270,153 @@ def api_imagine_resolve():
 
     return jsonify({'success': True, 'result_path': result_path, 'result_url': get_public_upload_url(result_path)})
 
+
+@app.route('/api/imagine/videos/<int:post_id>', methods=['GET'])
+@login_required
+def api_imagine_videos(post_id: int):
+    """Fetch all completed AI videos for a post, including original image"""
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            
+            # Fetch the post to get original image
+            c.execute(f"SELECT image_path, video_path, username FROM posts WHERE id={ph}", (post_id,))
+            post_row = c.fetchone()
+            if not post_row:
+                return jsonify({'success': False, 'error': 'Post not found'}), 404
+            
+            if hasattr(post_row, 'keys'):
+                original_image = post_row.get('image_path')
+                post_video = post_row.get('video_path')
+            else:
+                original_image = post_row[0]
+                post_video = post_row[1]
+            
+            # If original image is missing but post has video (replace case), try to get source_path from jobs
+            if not original_image and post_video:
+                c.execute(f"""
+                    SELECT source_path
+                    FROM imagine_jobs
+                    WHERE target_type = 'post' AND target_id = {ph} AND result_path = {ph}
+                    ORDER BY created_at ASC
+                    LIMIT 1
+                """, (post_id, post_video))
+                source_row = c.fetchone()
+                if source_row:
+                    original_image = source_row['source_path'] if hasattr(source_row, 'keys') else source_row[0]
+            
+            # Fetch all completed imagine jobs for this post (including replies)
+            # First, get jobs directly targeting the post
+            c.execute(f"""
+                SELECT id, result_path, created_by, style, action, auto_reply_id, is_owner
+                FROM imagine_jobs
+                WHERE target_type = 'post' AND target_id = {ph} AND status = {ph}
+                ORDER BY created_at ASC
+            """, (post_id, IMAGINE_STATUS_COMPLETED))
+            post_jobs = c.fetchall() or []
+            
+            # Then get jobs for replies of this post
+            c.execute(f"""
+                SELECT ij.id, ij.result_path, ij.created_by, ij.style, ij.action, ij.auto_reply_id, ij.is_owner
+                FROM imagine_jobs ij
+                JOIN replies r ON r.id = ij.target_id
+                WHERE ij.target_type = 'reply' AND r.post_id = {ph} AND ij.status = {ph}
+                ORDER BY ij.created_at ASC
+            """, (post_id, IMAGINE_STATUS_COMPLETED))
+            reply_jobs = c.fetchall() or []
+            
+            videos = []
+            
+            # Add original image if it exists
+            if original_image:
+                videos.append({
+                    'type': 'original',
+                    'image_path': original_image,
+                    'image_url': get_public_upload_url(original_image),
+                    'created_by': None
+                })
+            
+            # Add videos from post-level jobs (owner chose "add_alongside")
+            for job in post_jobs:
+                if hasattr(job, 'keys'):
+                    result_path = job.get('result_path')
+                    created_by = job.get('created_by')
+                    style = job.get('style')
+                    action = job.get('action')
+                else:
+                    result_path = job[1]
+                    created_by = job[2]
+                    style = job[3]
+                    action = job[5]
+                
+                if result_path and action == 'add_alongside':
+                    videos.append({
+                        'type': 'ai_video',
+                        'video_path': result_path,
+                        'video_url': get_public_upload_url(result_path),
+                        'created_by': created_by,
+                        'style': style
+                    })
+            
+            # Add videos from reply jobs (non-owner generates or reply-level)
+            for job in reply_jobs:
+                if hasattr(job, 'keys'):
+                    result_path = job.get('result_path')
+                    created_by = job.get('created_by')
+                    style = job.get('style')
+                else:
+                    result_path = job[1]
+                    created_by = job[2]
+                    style = job[3]
+                
+                if result_path:
+                    videos.append({
+                        'type': 'ai_video',
+                        'video_path': result_path,
+                        'video_url': get_public_upload_url(result_path),
+                        'created_by': created_by,
+                        'style': style
+                    })
+            
+            # Also check if post has a video_path set (owner chose "replace")
+            if post_video:
+                # Find the corresponding job
+                matching_job = None
+                for job in post_jobs:
+                    if hasattr(job, 'keys'):
+                        job_result = job.get('result_path')
+                        created_by = job.get('created_by')
+                        style = job.get('style')
+                    else:
+                        job_result = job[1]
+                        created_by = job[2]
+                        style = job[3]
+                    
+                    if job_result == post_video:
+                        matching_job = {'created_by': created_by, 'style': style}
+                        break
+                
+                if matching_job:
+                    videos.append({
+                        'type': 'ai_video',
+                        'video_path': post_video,
+                        'video_url': get_public_upload_url(post_video),
+                        'created_by': matching_job['created_by'],
+                        'style': matching_job['style']
+                    })
+            
+            return jsonify({
+                'success': True,
+                'post_id': post_id,
+                'videos': videos
+            })
+            
+    except Exception as e:
+        logger.error(f"Failed to fetch AI videos for post {post_id}: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': 'Failed to fetch AI videos'}), 500
+
+
 @app.route('/create_poll', methods=['POST'])
 @login_required
 def create_poll():

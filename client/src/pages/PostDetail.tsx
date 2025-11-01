@@ -15,6 +15,7 @@ import { extractVideoEmbed, removeVideoUrlFromText } from '../utils/videoEmbed'
 import EditableAISummary from '../components/EditableAISummary'
 import { useImagineJobs, type ImagineJobState, type ImagineStyle } from '../hooks/useImagineJobs'
 import { ImagineStyleModal, ImagineOwnerModal } from '../components/ImagineModal'
+import VideoCarousel from '../components/VideoCarousel'
 
 type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null, parent_reply_id?: number|null, children?: Reply[], profile_picture?: string|null, image_path?: string|null, video_path?: string|null }
 type Post = { id: number; username: string; content: string; image_path?: string|null; video_path?: string|null; audio_path?: string|null; audio_summary?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; replies: Reply[] }
@@ -124,6 +125,8 @@ export default function PostDetail(){
   const [styleSubmitting, setStyleSubmitting] = useState(false)
   const [ownerJobId, setOwnerJobId] = useState<number | null>(null)
   const [resolvingJobId, setResolvingJobId] = useState<number | null>(null)
+  const [carouselItems, setCarouselItems] = useState<Array<{type: 'original' | 'ai_video', image_path?: string | null, image_url?: string | null, video_path?: string | null, video_url?: string | null, created_by?: string | null, style?: string | null}>>([])
+  const [carouselLoading, setCarouselLoading] = useState(false)
   
   const fileInputRef = useRef<HTMLInputElement|null>(null)
   const [refreshHint, setRefreshHint] = useState(false)
@@ -270,6 +273,58 @@ export default function PostDetail(){
       }
     })
   }, [imagine.jobs, imagine.removeJob, refreshPost])
+
+  // Fetch AI videos for carousel
+  useEffect(() => {
+    if (!post) return
+    
+    if (!post.image_path && !post.video_path) {
+      setCarouselItems([])
+      return
+    }
+    
+    async function fetchCarouselItems() {
+      setCarouselLoading(true)
+      try {
+        const resp = await fetch(`/api/imagine/videos/${post.id}`, { credentials: 'include' })
+        const json = await resp.json().catch(() => null)
+        if (resp.ok && json?.success && json.videos) {
+          setCarouselItems(json.videos)
+        } else {
+          // Fallback: if no videos but post has image, show just the image
+          if (post.image_path) {
+            const normalized = normalizePath(post.image_path)
+            setCarouselItems([{
+              type: 'original',
+              image_path: post.image_path,
+              image_url: normalized,
+              created_by: null
+            }])
+          } else {
+            setCarouselItems([])
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch carousel items:', err)
+        // Fallback to original image if available
+        if (post.image_path) {
+          const normalized = normalizePath(post.image_path)
+          setCarouselItems([{
+            type: 'original',
+            image_path: post.image_path,
+            image_url: normalized,
+            created_by: null
+          }])
+        } else {
+          setCarouselItems([])
+        }
+      } finally {
+        setCarouselLoading(false)
+      }
+    }
+    
+    fetchCarouselItems()
+  }, [post?.id, post?.image_path, post?.video_path, post?.replies])
 
   const jobIndex = useMemo(() => {
     const map = new Map<string, ImagineJobState>()
@@ -576,7 +631,7 @@ export default function PostDetail(){
     }catch{}
   }
 
-  if (loading) return <div className="p-4 text-[#9fb0b5]">Loading…</div>
+  if (loading) return <div className="p-4 text-[#9fb0b5]">Loading?</div>
   if (error || !post) return <div className="p-4 text-red-400">{error||'Error'}</div>
 
   return (
@@ -591,7 +646,7 @@ export default function PostDetail(){
       <div className="max-w-2xl mx-auto px-3" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 14rem)', paddingTop: `calc(3.5rem + ${pullPx}px)` }}>
         <div className="mb-2">
           <button className="px-3 py-1.5 rounded-lg border border-white/10 bg-white/[0.03] text-sm hover:bg-white/10" onClick={()=> navigate(-1)} aria-label="Back">
-            ← Back
+            ? Back
           </button>
         </div>
         <div className="rounded-2xl border border-white/10 bg-black shadow-sm shadow-black/20">
@@ -611,24 +666,17 @@ export default function PostDetail(){
                 </>
               )
             })()}
-          {post.image_path ? (
-              <div className="px-0">
-                <ImageLoader
-                  src={normalizePath(post.image_path as string)}
-                  alt="Post image"
-                  className="block mx-auto max-w-full max-h-[520px] rounded border border-white/10 cursor-zoom-in"
-                  onClick={()=> setPreviewSrc(normalizePath(post.image_path as string))}
-                />
-              </div>
-            ) : null}
-          {post.video_path ? (
-            <div className="px-3">
-              <video
-                className="w-full max-h-[420px] rounded border border-white/10 bg-black"
-                src={normalizePath(post.video_path)}
-                controls
-                playsInline
+          {/* Show carousel if post has image or videos */}
+          {carouselItems.length > 0 && !carouselLoading ? (
+            <div className="px-0" onClick={(e)=> e.stopPropagation()}>
+              <VideoCarousel
+                items={carouselItems}
+                onPreviewImage={(src) => setPreviewSrc(src)}
               />
+            </div>
+          ) : carouselLoading ? (
+            <div className="px-3 flex items-center justify-center py-8">
+              <div className="w-6 h-6 border-2 border-white/20 border-t-[#4db6ac] rounded-full animate-spin" />
             </div>
           ) : null}
           {post.audio_path ? (
@@ -671,7 +719,7 @@ export default function PostDetail(){
             {postImagineJob && postImagineJob.status !== 'completed' && postImagineJob.status !== 'error' ? (
               <div className="mt-1 text-[11px] text-[#7fe7df] flex items-center gap-1">
                 <i className="fa-solid fa-sparkles" />
-                <span>{postImagineJob.status === 'awaiting_owner' ? 'AI video ready—choose how to use it' : 'AI video is generating…'}</span>
+                <span>{postImagineJob.status === 'awaiting_owner' ? 'AI video ready?choose how to use it' : 'AI video is generating?'}</span>
               </div>
             ) : null}
           </div>
@@ -737,7 +785,7 @@ export default function PostDetail(){
             onChange={setContent}
             communityId={(post as any)?.community_id}
             postId={post?.id}
-            placeholder="Write a reply…"
+            placeholder="Write a reply?"
             className="w-full resize-none max-h-36 min-h-[30px] px-3 py-1.5 rounded-2xl bg-black border border-[#4db6ac] text-[16px] focus:outline-none focus:ring-1 focus:ring-[#4db6ac]"
             rows={3}
             perfDegraded={!!uploadFile}
@@ -1045,7 +1093,7 @@ function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDel
           {imagineJob && imagineJob.status !== 'completed' && imagineJob.status !== 'error' ? (
             <div className="mt-1 text-[10px] text-[#7fe7df] flex items-center gap-1">
               <i className="fa-solid fa-sparkles" />
-              <span>{imagineJob.status === 'awaiting_owner' ? 'AI video ready—open the prompt to finish' : 'Animating…'}</span>
+              <span>{imagineJob.status === 'awaiting_owner' ? 'AI video ready?open the prompt to finish' : 'Animating?'}</span>
             </div>
           ) : null}
           {showComposer ? (
