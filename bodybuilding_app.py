@@ -3200,17 +3200,61 @@ def runway_create_image_to_video_job(image_bytes: bytes, style_prompt: str) -> s
     except Exception:
         mime_type = None
 
+    # Compress and resize image before encoding to base64
+    processed_image_bytes = image_bytes
     if PIL_AVAILABLE:
         try:
             with Image.open(BytesIO(image_bytes)) as img:
-                width, height = img.size
+                original_width, original_height = img.size
                 if not mime_type and img.format:
                     mime_type = f"image/{img.format.lower()}"
-        except Exception:
+                
+                # Runway API has size limits - resize to max 1280px on longest side
+                max_dimension = 1280
+                if original_width > max_dimension or original_height > max_dimension:
+                    if original_width > original_height:
+                        new_width = max_dimension
+                        new_height = int(original_height * (max_dimension / original_width))
+                    else:
+                        new_height = max_dimension
+                        new_width = int(original_width * (max_dimension / original_height))
+                    img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+                
+                # Convert to RGB if necessary (for JPEG compression)
+                if img.mode in ('RGBA', 'LA', 'P'):
+                    background = Image.new('RGB', img.size, (255, 255, 255))
+                    if img.mode == 'P':
+                        img = img.convert('RGBA')
+                    if img.mode in ('RGBA', 'LA'):
+                        background.paste(img, mask=img.split()[-1] if img.mode == 'RGBA' else None)
+                    else:
+                        background.paste(img)
+                    img = background
+                elif img.mode != 'RGB':
+                    img = img.convert('RGB')
+                
+                # Compress to JPEG with quality 85 (good balance between size and quality)
+                output = BytesIO()
+                img.save(output, format='JPEG', quality=85, optimize=True)
+                processed_image_bytes = output.getvalue()
+                mime_type = 'image/jpeg'
+                width, height = img.size
+        except Exception as e:
+            logger.warning(f"[Imagine] Image processing failed: {e}, using original image")
             width = height = None
+            processed_image_bytes = image_bytes
 
     if not mime_type:
         mime_type = 'image/jpeg'
+
+    # Get dimensions for orientation calculation
+    if not width or not height:
+        if PIL_AVAILABLE:
+            try:
+                with Image.open(BytesIO(processed_image_bytes)) as img:
+                    width, height = img.size
+            except Exception:
+                width = height = None
 
     orientation = 'landscape'
     if width and height:
@@ -3249,7 +3293,13 @@ def runway_create_image_to_video_job(image_bytes: bytes, style_prompt: str) -> s
 
     ratio = select_ratio()
 
-    data_uri = f"data:{mime_type};base64,{base64.b64encode(image_bytes).decode('utf-8')}"
+    # Encode the processed (compressed/resized) image to base64
+    data_uri = f"data:{mime_type};base64,{base64.b64encode(processed_image_bytes).decode('utf-8')}"
+    
+    # Check if base64 string is still too large (Runway limit is 2048 chars for base64 string)
+    if len(data_uri) > 2000:
+        logger.warning(f"[Imagine] Base64 image still too large ({len(data_uri)} chars), may fail Runway validation")
+    
     prompt_text = style_prompt.strip() if style_prompt else 'Animate this scene as a short cinematic video.'
 
     payload: Dict[str, Any] = {
