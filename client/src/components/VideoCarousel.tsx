@@ -191,35 +191,31 @@ export default function VideoCarousel({ items, className = '', onPreviewImage }:
                       console.log('[Carousel] Video metadata - dimensions:', video.videoWidth, 'x', video.videoHeight)
                       console.log('[Carousel] Video readyState:', video.readyState)
                       console.log('[Carousel] Video src:', video.src)
-                      // Ensure video shows first frame
+                      // Ensure video shows first frame when metadata loads
                       try {
                         video.currentTime = 0
-                        console.log('[Carousel] Set currentTime to 0')
+                        console.log('[Carousel] Set currentTime to 0 in metadata')
                       } catch (err) {
-                        console.warn('[Carousel] Failed to set currentTime:', err)
+                        console.warn('[Carousel] Failed to set currentTime in metadata:', err)
                       }
                     }}
                     onCanPlay={(e) => {
                       const video = e.currentTarget as HTMLVideoElement
                       console.log('[Carousel] Video can play - readyState:', video.readyState)
-                      // Force display by setting currentTime and triggering play/pause
-                      try {
-                        video.currentTime = 0
-                        // Small play/pause cycle to force rendering
-                        const playPromise = video.play()
-                        if (playPromise !== undefined) {
-                          playPromise.then(() => {
-                            setTimeout(() => {
-                              video.pause()
-                              console.log('[Carousel] Forced video render by play/pause cycle')
-                            }, 100)
-                          }).catch(() => {
-                            // Ignore autoplay errors
-                            console.log('[Carousel] Autoplay failed, but video should still show')
-                          })
+                      // Only force render once per video
+                      if (!videoSeekedRef.current.has(index)) {
+                        try {
+                          video.currentTime = 0
+                          // Try to force rendering without infinite loop
+                          setTimeout(() => {
+                            if (video.readyState >= 3) { // HAVE_FUTURE_DATA or higher
+                              console.log('[Carousel] Video should now display first frame')
+                            }
+                          }, 50)
+                          videoSeekedRef.current.add(index)
+                        } catch (err) {
+                          console.warn('[Carousel] Failed to set currentTime in canPlay:', err)
                         }
-                      } catch (err) {
-                        console.warn('[Carousel] Failed to force video render:', err)
                       }
                     }}
                     onError={(e) => {
