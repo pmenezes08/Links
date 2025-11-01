@@ -12240,31 +12240,8 @@ def api_imagine_resolve():
     if target_id is None:
         return jsonify({'success': False, 'error': 'Invalid job target'}), 400
 
-    try:
-        with get_db_connection() as conn:
-            # AI videos only appear in carousel, never modify post/reply media
-            # No database modifications needed - carousel gets data from imagine_jobs table
-            """
-            c = conn.cursor()
-            ph = get_sql_placeholder()
-                if normalized_action == 'replace':
-                    c.execute(f"UPDATE posts SET image_path=NULL, video_path={ph} WHERE id={ph}", (result_path, target_id))
-                else:
-                    c.execute(f"UPDATE posts SET video_path={ph} WHERE id={ph}", (result_path, target_id))
-            else:
-                try:
-                    c.execute("ALTER TABLE replies ADD COLUMN video_path TEXT")
-                except Exception:
-                    pass
-                if normalized_action == 'replace':
-                    c.execute(f"UPDATE replies SET image_path=NULL, video_path={ph} WHERE id={ph}", (result_path, target_id))
-                else:
-                    c.execute(f"UPDATE replies SET video_path={ph} WHERE id={ph}", (result_path, target_id))
-            if not USE_MYSQL:
-                conn.commit()
-    except Exception as e:
-        logger.error(f"Imagine resolve failed for job {job_id}: {e}")
-        return jsonify({'success': False, 'error': 'Failed applying imagine result'}), 500
+    # AI videos only appear in carousel, never modify post/reply media
+    # No database modifications needed - carousel gets data from imagine_jobs table
 
     update_imagine_job(job_id, status=IMAGINE_STATUS_COMPLETED, action=normalized_action, result_path=result_path)
 
