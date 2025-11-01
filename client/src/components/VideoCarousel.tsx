@@ -173,32 +173,38 @@ export default function VideoCarousel({ items, className = '', onPreviewImage }:
                       <span className="font-semibold text-[#4db6ac]">@{item.created_by}</span>
                     </div>
                   )}
-                  <video
-                    src={item.video_url || (item.video_path ? normalizePath(item.video_path) : '')}
-                    className="block w-full max-h-[520px] object-contain rounded-xl bg-black"
-                    controls
-                    playsInline
-                    loop
-                    preload="auto"
-                    style={{ minHeight: '200px', display: 'block' }}
-                    onError={(e) => {
-                      const videoSrc = item.video_url || (item.video_path ? normalizePath(item.video_path) : '')
-                      console.error('[Carousel] Video error:', e)
-                      console.error('[Carousel] Video src:', videoSrc)
-                      console.error('[Carousel] Video element:', e.currentTarget)
-                      console.error('[Carousel] Video error details:', (e.currentTarget as HTMLVideoElement).error)
-                    }}
-                    onLoadStart={() => {
-                      const videoSrc = item.video_url || (item.video_path ? normalizePath(item.video_path) : '')
-                      console.log('[Carousel] Video loading:', videoSrc)
-                    }}
-                    onCanPlay={() => {
-                      console.log('[Carousel] Video can play')
-                    }}
-                    onLoadedData={() => {
-                      console.log('[Carousel] Video loaded')
-                    }}
-                  />
+                  <div className="w-full flex items-center justify-center bg-black rounded-xl overflow-hidden">
+                    <video
+                      src={item.video_url || (item.video_path ? normalizePath(item.video_path) : '')}
+                      className="w-full max-h-[520px] object-contain"
+                      controls
+                      playsInline
+                      loop
+                      muted
+                      preload="auto"
+                      style={{ width: '100%', maxWidth: '100%', height: 'auto', display: 'block' }}
+                      onError={(e) => {
+                        const videoSrc = item.video_url || (item.video_path ? normalizePath(item.video_path) : '')
+                        console.error('[Carousel] Video error:', e)
+                        console.error('[Carousel] Video src:', videoSrc)
+                        console.error('[Carousel] Video element:', e.currentTarget)
+                        console.error('[Carousel] Video error details:', (e.currentTarget as HTMLVideoElement).error)
+                      }}
+                      onLoadStart={() => {
+                        const videoSrc = item.video_url || (item.video_path ? normalizePath(item.video_path) : '')
+                        console.log('[Carousel] Video loading:', videoSrc)
+                      }}
+                      onCanPlay={() => {
+                        console.log('[Carousel] Video can play')
+                      }}
+                      onLoadedData={() => {
+                        console.log('[Carousel] Video loaded')
+                      }}
+                      onLoadedMetadata={(e) => {
+                        console.log('[Carousel] Video metadata loaded, dimensions:', (e.currentTarget as HTMLVideoElement).videoWidth, 'x', (e.currentTarget as HTMLVideoElement).videoHeight)
+                      }}
+                    />
+                  </div>
                 </div>
               )}
             </div>
