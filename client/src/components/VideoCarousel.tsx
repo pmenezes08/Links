@@ -183,35 +183,48 @@ export default function VideoCarousel({ items, className = '', onPreviewImage }:
                     controls
                     playsInline
                     loop
+                    preload="metadata"
+                    muted // Start muted to allow autoplay
                     style={{ transform: 'translateZ(0)' }}
                     onLoadedMetadata={(e) => {
                       const video = e.currentTarget as HTMLVideoElement
-                      if (!videoSeekedRef.current.has(index)) {
-                        console.log('[Carousel] Video metadata - dimensions:', video.videoWidth, 'x', video.videoHeight)
-                        console.log('[Carousel] Video readyState:', video.readyState)
-                        console.log('[Carousel] Video src:', video.src)
-                        try {
-                          // Seek to first frame once
-                          video.currentTime = 0.1
-                          videoSeekedRef.current.add(index)
-                        } catch (err) {
-                          console.warn('[Carousel] Failed to seek in metadata:', err)
-                        }
+                      console.log('[Carousel] Video metadata - dimensions:', video.videoWidth, 'x', video.videoHeight)
+                      console.log('[Carousel] Video readyState:', video.readyState)
+                      console.log('[Carousel] Video src:', video.src)
+                      // Ensure video shows first frame
+                      try {
+                        video.currentTime = 0
+                        console.log('[Carousel] Set currentTime to 0')
+                      } catch (err) {
+                        console.warn('[Carousel] Failed to set currentTime:', err)
                       }
                     }}
                     onCanPlay={(e) => {
                       const video = e.currentTarget as HTMLVideoElement
-                      // Only seek if we haven't already done so for this video
-                      if (!videoSeekedRef.current.has(index)) {
-                        console.log('[Carousel] Video can play - seeking to first frame')
-                        try {
-                          // Seek to first frame to force display
-                          video.currentTime = 0.1
-                          videoSeekedRef.current.add(index)
-                        } catch (err) {
-                          console.warn('[Carousel] Failed to seek to first frame:', err)
+                      console.log('[Carousel] Video can play - readyState:', video.readyState)
+                      // Force display by setting currentTime and triggering play/pause
+                      try {
+                        video.currentTime = 0
+                        // Small play/pause cycle to force rendering
+                        const playPromise = video.play()
+                        if (playPromise !== undefined) {
+                          playPromise.then(() => {
+                            setTimeout(() => {
+                              video.pause()
+                              console.log('[Carousel] Forced video render by play/pause cycle')
+                            }, 100)
+                          }).catch(() => {
+                            // Ignore autoplay errors
+                            console.log('[Carousel] Autoplay failed, but video should still show')
+                          })
                         }
+                      } catch (err) {
+                        console.warn('[Carousel] Failed to force video render:', err)
                       }
+                    }}
+                    onError={(e) => {
+                      const video = e.currentTarget as HTMLVideoElement
+                      console.error('[Carousel] Video error:', video.error, 'src:', video.src)
                     }}
                   />
                 </div>
