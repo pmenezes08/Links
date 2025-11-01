@@ -117,8 +117,11 @@ export default function VideoCarousel({ items, className = '', onPreviewImage }:
 
   const normalizePath = (path?: string | null) => {
     if (!path) return ''
-    if (path.startsWith('http')) return path
+    // If already a full URL, return as-is
+    if (path.startsWith('http://') || path.startsWith('https://')) return path
+    // If already starts with /, return as-is
     if (path.startsWith('/uploads') || path.startsWith('/static')) return path
+    // Otherwise, prepend /uploads/
     return path.startsWith('uploads') ? `/${path}` : `/uploads/${path}`
   }
 
@@ -176,6 +179,14 @@ export default function VideoCarousel({ items, className = '', onPreviewImage }:
                     controls
                     playsInline
                     loop
+                    preload="metadata"
+                    onError={(e) => {
+                      console.error('[Carousel] Video error:', e)
+                      console.error('[Carousel] Video src:', normalizePath(item.video_url))
+                    }}
+                    onLoadStart={() => {
+                      console.log('[Carousel] Video loading:', normalizePath(item.video_url))
+                    }}
                   />
                 </div>
               )}
