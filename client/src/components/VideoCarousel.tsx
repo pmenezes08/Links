@@ -24,7 +24,6 @@ export default function VideoCarousel({ items, className = '', onPreviewImage }:
   const [translateX, setTranslateX] = useState(0)
   const carouselRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
-  const videoPostersRef = useRef<Record<number, string>>({})
 
   // Reset to first item when items change
   useEffect(() => {
@@ -175,62 +174,11 @@ export default function VideoCarousel({ items, className = '', onPreviewImage }:
                     </div>
                   )}
                   <video
-                    key={`video-${index}-${item.video_url}`}
                     src={item.video_url || (item.video_path ? normalizePath(item.video_path) : '')}
                     className="w-full max-h-[520px] rounded border border-white/10 bg-black"
                     controls
                     playsInline
                     loop
-                    onError={(e) => {
-                      const videoSrc = item.video_url || (item.video_path ? normalizePath(item.video_path) : '')
-                      console.error('[Carousel] Video error:', e)
-                      console.error('[Carousel] Video src:', videoSrc)
-                      console.error('[Carousel] Video element:', e.currentTarget)
-                      console.error('[Carousel] Video error details:', (e.currentTarget as HTMLVideoElement).error)
-                    }}
-                    onLoadStart={() => {
-                      const videoSrc = item.video_url || (item.video_path ? normalizePath(item.video_path) : '')
-                      console.log('[Carousel] Video loading:', videoSrc)
-                    }}
-                    onCanPlay={() => {
-                      console.log('[Carousel] Video can play')
-                    }}
-                    onLoadedMetadata={(e) => {
-                      const video = e.currentTarget as HTMLVideoElement
-                      console.log('[Carousel] Video metadata loaded, dimensions:', video.videoWidth, 'x', video.videoHeight)
-                    }}
-                    onLoadedData={(e) => {
-                      // Seek to first frame once video data is loaded to ensure first frame displays
-                      const video = e.currentTarget as HTMLVideoElement
-                      try {
-                        if (video.readyState >= 2) { // HAVE_CURRENT_DATA
-                          video.currentTime = 0.1
-                          // Create poster from first frame
-                          setTimeout(() => {
-                            try {
-                              const canvas = document.createElement('canvas')
-                              canvas.width = video.videoWidth
-                              canvas.height = video.videoHeight
-                              const ctx = canvas.getContext('2d')
-                              if (ctx) {
-                                ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
-                                const posterUrl = canvas.toDataURL('image/jpeg')
-                                videoPostersRef.current[index] = posterUrl
-                                if (!video.poster) {
-                                  video.poster = posterUrl
-                                }
-                                console.log('[Carousel] Video poster created')
-                              }
-                            } catch (err) {
-                              console.warn('[Carousel] Failed to create poster:', err)
-                            }
-                          }, 100)
-                          console.log('[Carousel] Video first frame loaded')
-                        }
-                      } catch (err) {
-                        console.warn('[Carousel] Failed to seek to first frame:', err)
-                      }
-                    }}
                   />
                 </div>
               )}
