@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import ImageLoader from './ImageLoader'
+import { useRef as useReactRef } from 'react'
 
 type CarouselItem = {
   type: 'original' | 'ai_video'
@@ -24,6 +25,7 @@ export default function VideoCarousel({ items, className = '', onPreviewImage }:
   const [translateX, setTranslateX] = useState(0)
   const carouselRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+  const videoPostersRef = useReactRef<Record<number, string>>({})
 
   // Reset to first item when items change
   useEffect(() => {
@@ -174,7 +176,9 @@ export default function VideoCarousel({ items, className = '', onPreviewImage }:
                     </div>
                   )}
                   <video
+                    key={`video-${index}-${item.video_url}`}
                     src={item.video_url || (item.video_path ? normalizePath(item.video_path) : '')}
+                    poster={videoPostersRef.current[index]}
                     className="w-full h-auto rounded-xl"
                     controls
                     playsInline
@@ -211,6 +215,26 @@ export default function VideoCarousel({ items, className = '', onPreviewImage }:
                       try {
                         if (video.readyState >= 2) { // HAVE_CURRENT_DATA
                           video.currentTime = 0.1
+                          // Create poster from first frame
+                          setTimeout(() => {
+                            try {
+                              const canvas = document.createElement('canvas')
+                              canvas.width = video.videoWidth
+                              canvas.height = video.videoHeight
+                              const ctx = canvas.getContext('2d')
+                              if (ctx) {
+                                ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
+                                const posterUrl = canvas.toDataURL('image/jpeg')
+                                videoPostersRef.current[index] = posterUrl
+                                if (!video.poster) {
+                                  video.poster = posterUrl
+                                }
+                                console.log('[Carousel] Video poster created')
+                              }
+                            } catch (err) {
+                              console.warn('[Carousel] Failed to create poster:', err)
+                            }
+                          }, 100)
                           console.log('[Carousel] Video first frame loaded')
                         }
                       } catch (err) {
