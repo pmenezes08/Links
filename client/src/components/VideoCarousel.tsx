@@ -174,11 +174,12 @@ export default function VideoCarousel({ items, className = '', onPreviewImage }:
                     </div>
                   )}
                   <video
-                    src={item.video_url || (item.video_path ? normalizePath(item.video_path) : '')}
+                    src={item.video_url ? item.video_url : (item.video_path ? normalizePath(item.video_path) : '')}
                     className="w-full max-h-[520px] rounded border border-white/10 bg-black"
                     controls
                     playsInline
                     loop
+                    style={{ display: 'block', width: '100%', height: 'auto', maxHeight: '520px' }}
                   />
                 </div>
               )}
