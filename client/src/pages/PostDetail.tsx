@@ -650,7 +650,7 @@ export default function PostDetail(){
       <div className="max-w-2xl mx-auto px-3" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 14rem)', paddingTop: `calc(3.5rem + ${pullPx}px)` }}>
         <div className="mb-2">
           <button className="px-3 py-1.5 rounded-lg border border-white/10 bg-white/[0.03] text-sm hover:bg-white/10" onClick={()=> navigate(-1)} aria-label="Back">
-            ? Back
+            <span dangerouslySetInnerHTML={{ __html: '&larr;' }} /> Back
           </button>
         </div>
         <div className="rounded-2xl border border-white/10 bg-black shadow-sm shadow-black/20">
