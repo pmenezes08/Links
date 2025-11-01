@@ -441,7 +441,7 @@ export default function CommunityFeed() {
                 else window.location.href = '/communities'
               }}
             >
-              <span dangerouslySetInnerHTML={{ __html: '&larr;' }} /> Back to Communities
+              <i className="fa-solid fa-arrow-left mr-1" /> Back to Communities
             </button>
             <button className="ml-auto p-2 rounded-full border border-white/10 hover:bg-white/10" aria-label="Search"
               onClick={()=> { setShowSearch(true); setTimeout(()=>{ try{ (document.getElementById('hashtag-input') as HTMLInputElement)?.focus() }catch{} }, 50) }}>
