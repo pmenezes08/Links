@@ -177,19 +177,10 @@ export default function VideoCarousel({ items, className = '', onPreviewImage }:
                   <video
                     key={`video-${index}-${item.video_url}`}
                     src={item.video_url || (item.video_path ? normalizePath(item.video_path) : '')}
-                    poster={videoPostersRef.current[index]}
-                    className="w-full h-auto rounded-xl"
+                    className="w-full max-h-[520px] rounded border border-white/10 bg-black"
                     controls
                     playsInline
                     loop
-                    preload="metadata"
-                    style={{ 
-                      width: '100%',
-                      height: 'auto',
-                      maxHeight: '520px',
-                      display: 'block',
-                      backgroundColor: 'transparent'
-                    }}
                     onError={(e) => {
                       const videoSrc = item.video_url || (item.video_path ? normalizePath(item.video_path) : '')
                       console.error('[Carousel] Video error:', e)
