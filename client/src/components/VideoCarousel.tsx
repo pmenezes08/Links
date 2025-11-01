@@ -197,7 +197,7 @@ export default function VideoCarousel({ items, className = '', onPreviewImage }:
                   )}
                   <video
                     key={`${item.video_url}-${index}-${currentIndex === index ? 'active' : 'inactive'}`}
-                    src={item.video_path ? normalizePath(item.video_path) : (item.video_url || '')}
+                    src={item.video_url || (item.video_path ? normalizePath(item.video_path) : '')}
                     className="w-full max-h-[520px] rounded border border-white/10 bg-black"
                     controls
                     playsInline
