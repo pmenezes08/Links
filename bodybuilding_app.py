@@ -3479,10 +3479,23 @@ def a2e_create_image_to_video_job(image_bytes: bytes, prompt: str, duration: int
     if response.status_code >= 400:
         raise RuntimeError(f"A2E job creation failed ({response.status_code}): {response.text}")
     
-    result = response.json()
-    job_id = result.get('id') or result.get('job_id') or result.get('jobId')
+    # Handle response - A2E might return JSON or different format
+    try:
+        result = response.json()
+    except ValueError as e:
+        # If not JSON, check if it's a plain text ID
+        response_text = response.text.strip()
+        if response_text:
+            # Try to extract ID from response text
+            raise RuntimeError(f"A2E API returned non-JSON response: {response_text[:200]}")
+        else:
+            raise RuntimeError(f"A2E API returned empty response: {response.status_code}")
+    
+    job_id = result.get('id') or result.get('job_id') or result.get('jobId') or result.get('task_id') or result.get('taskId')
     if not job_id:
-        raise RuntimeError('A2E API response missing job id')
+        # Log the full response for debugging
+        logger.error(f"A2E API response missing job id. Response: {result}")
+        raise RuntimeError(f'A2E API response missing job id. Response keys: {list(result.keys()) if isinstance(result, dict) else "not a dict"}')
     return str(job_id)
 
 def a2e_get_job(job_id: str) -> Dict[str, Any]:
@@ -3491,7 +3504,12 @@ def a2e_get_job(job_id: str) -> Dict[str, Any]:
     response = requests.get(url, headers=a2e_headers(), timeout=(10, 20))
     if response.status_code >= 400:
         raise RuntimeError(f"A2E job fetch failed ({response.status_code}): {response.text}")
-    return response.json()
+    
+    try:
+        return response.json()
+    except ValueError as e:
+        response_text = response.text[:500]
+        raise RuntimeError(f"A2E API returned non-JSON response: {response_text}")
 
 def a2e_extract_video_url(job_data: Dict[str, Any]) -> Optional[str]:
     """Extract video URL from A2E job response"""
