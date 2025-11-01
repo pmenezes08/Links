@@ -1054,47 +1054,39 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
           </div>
         )}
         {/* Show carousel ONLY if AI videos exist, otherwise show regular image */}
-        {(() => {
-          console.log('[Carousel] Render check - loading:', carouselLoading, 'items:', carouselItems.length, 'post.image_path:', post.image_path)
-          return carouselLoading ? (
-            <div className="px-3 flex items-center justify-center py-8">
-              <div className="w-6 h-6 border-2 border-white/20 border-t-[#4db6ac] rounded-full animate-spin" />
-            </div>
-          ) : carouselItems.length > 0 ? (
-            // Show carousel if there are AI videos
-            <div className="px-3" onClick={(e)=> e.stopPropagation()}>
-              <VideoCarousel
-                items={carouselItems}
-                onPreviewImage={onPreviewImage}
-              />
-            </div>
-          ) : post.image_path ? (
+        {carouselLoading ? (
+          <div className="px-3 flex items-center justify-center py-8">
+            <div className="w-6 h-6 border-2 border-white/20 border-t-[#4db6ac] rounded-full animate-spin" />
+          </div>
+        ) : carouselItems.length > 0 ? (
+          // Show carousel if there are AI videos
+          <div className="px-0" onClick={(e)=> e.stopPropagation()}>
+            <VideoCarousel
+              items={carouselItems}
+              onPreviewImage={onPreviewImage}
+            />
+          </div>
+        ) : post.image_path ? (
           // No AI videos - show regular image (not carousel)
-          <div className="px-3">
-            {(() => {
-              const computed = normalizeMediaPath(post.image_path || '')
-              return (
-                <ImageLoader
-                  src={computed}
-                  alt="Post image"
-                  className="block mx-auto max-w-full max-h-[360px] rounded border border-white/10 cursor-zoom-in"
-                  onClick={() => onPreviewImage && onPreviewImage(computed)}
-                />
-              )
-            })()}
+          <div className="px-0">
+            <ImageLoader
+              src={normalizeMediaPath(post.image_path || '')}
+              alt="Post image"
+              className="block mx-auto max-w-full max-h-[520px] rounded border border-white/10 cursor-zoom-in"
+              onClick={() => onPreviewImage && onPreviewImage(normalizeMediaPath(post.image_path || ''))}
+            />
           </div>
         ) : post.video_path ? (
           // Regular video (not AI generated) - show directly
           <div className="px-3" onClick={(e)=> e.stopPropagation()}>
             <video
-              className="w-full max-h-[360px] rounded border border-white/10 bg-black"
+              className="w-full max-h-[420px] rounded border border-white/10 bg-black"
               src={normalizeMediaPath(post.video_path)}
               controls
               playsInline
             />
           </div>
-        ) : null
-        })()}
+        ) : null}
         {post.audio_path ? (
           <div className="px-3 space-y-2" onClick={(e)=> { e.stopPropagation(); }}>
             {post.audio_summary && onSummaryUpdate && (
