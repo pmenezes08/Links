@@ -15,6 +15,7 @@ export default function EditCommunity(){
   const [parentOptions, setParentOptions] = useState<Array<{ id:number; name:string; type?:string }>>([])
   const [selectedParentId, setSelectedParentId] = useState<string>('none')
   const [notifyOnNewMember, setNotifyOnNewMember] = useState(false)
+  const [allowSpicyImagine, setAllowSpicyImagine] = useState(false)
   const [maxMembers, setMaxMembers] = useState<string>('')
   const formRef = useRef<HTMLFormElement|null>(null)
 
@@ -42,6 +43,9 @@ export default function EditCommunity(){
           const pid = jc.community.parent_community_id
           if (pid){ setIsChild(true); setSelectedParentId(String(pid)) }
           setNotifyOnNewMember(!!jc.community.notify_on_new_member)
+          if (typeof jc.community.allow_nsfw_imagine !== 'undefined') {
+            setAllowSpicyImagine(!!jc.community.allow_nsfw_imagine)
+          }
           if (jc.community.max_members){ setMaxMembers(String(jc.community.max_members)) }
         }
         // Load available parents for dropdown
@@ -69,6 +73,7 @@ export default function EditCommunity(){
     // Parent setting
     fd.append('parent_community_id', isChild && selectedParentId !== 'none' ? selectedParentId : 'none')
     fd.append('notify_on_new_member', notifyOnNewMember ? 'true' : 'false')
+    fd.append('allow_nsfw_imagine', allowSpicyImagine ? 'true' : 'false')
     if (maxMembers.trim()) fd.append('max_members', maxMembers.trim())
     if (imageFile) fd.append('background_file', imageFile)
     const r = await fetch('/update_community', { method:'POST', credentials:'include', body: fd })
@@ -140,6 +145,24 @@ export default function EditCommunity(){
                   onClick={() => setNotifyOnNewMember(!notifyOnNewMember)}
                 >
                   <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${notifyOnNewMember ? 'translate-x-6' : 'translate-x-1'}`} />
+                </button>
+              </div>
+            </label>
+          </div>
+          <div>
+            <label className="block text-sm text-[#9fb0b5] mb-2">AI Imagine</label>
+            <label className="flex items-center justify-between px-4 py-3 rounded-lg border border-white/15 bg-black hover:bg-white/5 cursor-pointer">
+              <div className="flex-1">
+                <div className="text-sm font-medium text-white">Allow spicy Imagine videos</div>
+                <div className="text-xs text-[#9fb0b5] mt-0.5">When enabled, the Spicy option can produce unmoderated outputs for this community.</div>
+              </div>
+              <div className="ml-3">
+                <button
+                  type="button"
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${allowSpicyImagine ? 'bg-[#e57373]' : 'bg-white/20'}`}
+                  onClick={() => setAllowSpicyImagine(!allowSpicyImagine)}
+                >
+                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${allowSpicyImagine ? 'translate-x-6' : 'translate-x-1'}`} />
                 </button>
               </div>
             </label>
