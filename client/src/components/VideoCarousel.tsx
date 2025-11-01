@@ -174,25 +174,29 @@ export default function VideoCarousel({ items, className = '', onPreviewImage }:
                     </div>
                   )}
                   <video
-                    src={item.video_url || normalizePath(item.video_path) || ''}
+                    src={item.video_url || (item.video_path ? normalizePath(item.video_path) : '')}
                     className="block w-full max-h-[520px] object-contain rounded-xl bg-black"
                     controls
                     playsInline
                     loop
-                    preload="metadata"
-                    style={{ minHeight: '200px' }}
+                    preload="auto"
+                    style={{ minHeight: '200px', display: 'block' }}
                     onError={(e) => {
-                      const videoSrc = item.video_url || normalizePath(item.video_path) || ''
+                      const videoSrc = item.video_url || (item.video_path ? normalizePath(item.video_path) : '')
                       console.error('[Carousel] Video error:', e)
                       console.error('[Carousel] Video src:', videoSrc)
                       console.error('[Carousel] Video element:', e.currentTarget)
+                      console.error('[Carousel] Video error details:', (e.currentTarget as HTMLVideoElement).error)
                     }}
                     onLoadStart={() => {
-                      const videoSrc = item.video_url || normalizePath(item.video_path) || ''
+                      const videoSrc = item.video_url || (item.video_path ? normalizePath(item.video_path) : '')
                       console.log('[Carousel] Video loading:', videoSrc)
                     }}
                     onCanPlay={() => {
                       console.log('[Carousel] Video can play')
+                    }}
+                    onLoadedData={() => {
+                      console.log('[Carousel] Video loaded')
                     }}
                   />
                 </div>
