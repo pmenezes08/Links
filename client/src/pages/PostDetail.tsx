@@ -285,6 +285,7 @@ export default function PostDetail(){
     }
     
     async function fetchCarouselItems() {
+      if (!post) return
       console.log('[Carousel] PostDetail fetchCarouselItems called for post', post.id)
       setCarouselLoading(true)
       try {
