@@ -18,7 +18,7 @@ import { ImagineStyleModal, ImagineOwnerModal } from '../components/ImagineModal
 import VideoCarousel from '../components/VideoCarousel'
 
 type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null, parent_reply_id?: number|null, children?: Reply[], profile_picture?: string|null, image_path?: string|null, video_path?: string|null }
-type Post = { id: number; username: string; content: string; image_path?: string|null; video_path?: string|null; audio_path?: string|null; audio_summary?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; replies: Reply[] }
+type Post = { id: number; username: string; content: string; image_path?: string|null; video_path?: string|null; audio_path?: string|null; audio_summary?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; replies: Reply[]; ai_videos?: Array<{video_path: string; generated_by: string; created_at: string; style: string}> }
 
 // old formatTimestamp removed; using formatSmartTime
 
@@ -127,7 +127,7 @@ export default function PostDetail(){
   const [resolvingJobId, setResolvingJobId] = useState<number | null>(null)
   const [carouselItems, setCarouselItems] = useState<Array<{type: 'original' | 'ai_video', image_path?: string | null, image_url?: string | null, video_path?: string | null, video_url?: string | null, created_by?: string | null, style?: string | null}>>([])
   const [carouselLoading, setCarouselLoading] = useState(false)
-  
+
   const fileInputRef = useRef<HTMLInputElement|null>(null)
   const [refreshHint, setRefreshHint] = useState(false)
   const [pullPx, setPullPx] = useState(0)
@@ -479,6 +479,78 @@ export default function PostDetail(){
     return () => { mounted = false }
   }, [])
 
+  // Fetch carousel items when post changes or AI jobs complete
+  useEffect(() => {
+    if (!post?.id) return
+
+    async function fetchCarouselItems() {
+      console.log('[Carousel] PostDetail fetchCarouselItems called for post', post!.id)
+      setCarouselLoading(true)
+      try {
+        const resp = await fetch(`/api/carousel_items?post_id=${post!.id}`, { credentials: 'include' })
+        const json = await resp.json().catch(() => null)
+
+        console.log('[Carousel] PostDetail fetch response for post', post!.id, ':', json)
+
+        if (resp.ok && json?.success) {
+          const hasAiVideos = json.has_ai_videos
+          console.log('[Carousel] PostDetail Has AI videos:', hasAiVideos, 'Videos:', json.videos)
+
+          if (hasAiVideos) {
+            // Carousel should show: original image + AI videos
+            console.log('[Carousel] PostDetail Setting carousel items:', json.videos)
+            // Log the actual URLs being used
+            json.videos.forEach((item: any, i: number) => {
+              console.log(`[Carousel] Item ${i}:`, {
+                type: item.type,
+                video_path: item.video_path,
+                video_url: item.video_url,
+                normalized_path: item.video_path ? normalizePath(item.video_path) : 'N/A'
+              })
+            })
+            setCarouselItems(json.videos)
+          } else {
+            // No AI videos - don't show carousel
+            console.log('[Carousel] PostDetail No AI videos, setting empty carousel items')
+            setCarouselItems([])
+          }
+        } else {
+          // API error: don't show carousel
+          console.log('[Carousel] PostDetail API error or no videos:', resp.ok, json)
+          setCarouselItems([])
+        }
+      } catch (err) {
+        console.error('[Carousel] PostDetail Failed to fetch carousel items:', err)
+        setCarouselItems([])
+      } finally {
+        setCarouselLoading(false)
+      }
+    }
+
+    // Always check for carousel items if post has image, video, or replies (which might have videos)
+    if (post!.image_path || post!.video_path || post!.replies.length > 0) {
+      console.log('[Carousel] PostDetail condition met, calling fetchCarouselItems')
+      fetchCarouselItems()
+    } else {
+      console.log('[Carousel] PostDetail condition NOT met, clearing carousel items')
+      setCarouselItems([])
+    }
+  }, [post?.id, post?.image_path, post?.video_path, post?.replies?.length])
+
+  // Refetch carousel only when AI jobs complete (not during generation)
+  useEffect(() => {
+    const completedJobs = Object.values(imagine.jobs).filter(job =>
+      job.status === 'completed' && job.targetType === 'post' && job.targetId === post?.id
+    )
+
+    if (completedJobs.length > 0) {
+      console.log('[Carousel] AI jobs completed, triggering carousel refresh')
+      // Force a re-render by toggling loading state briefly
+      setCarouselLoading(true)
+      setTimeout(() => setCarouselLoading(false), 100)
+    }
+  }, [imagine.jobs, post?.id])
+
   async function toggleReaction(reaction: string){
     if (!post) return
     // Optimistic update
@@ -744,7 +816,7 @@ export default function PostDetail(){
             {postImagineJob && postImagineJob.status !== 'completed' && postImagineJob.status !== 'error' ? (
               <div className="mt-1 text-[11px] text-[#7fe7df] flex items-center gap-1">
                 <i className="fa-solid fa-sparkles" />
-                <span>{postImagineJob.status === 'awaiting_owner' ? 'AI video ready?choose how to use it' : 'AI video is generating?'}</span>
+                <span>{postImagineJob.status === 'awaiting_owner' ? 'AI video ready?choose how to use it' : 'AI video is generating'}</span>
               </div>
             ) : null}
           </div>
@@ -1118,7 +1190,7 @@ function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDel
           {imagineJob && imagineJob.status !== 'completed' && imagineJob.status !== 'error' ? (
             <div className="mt-1 text-[10px] text-[#7fe7df] flex items-center gap-1">
               <i className="fa-solid fa-sparkles" />
-              <span>{imagineJob.status === 'awaiting_owner' ? 'AI video ready?open the prompt to finish' : 'Animating?'}</span>
+              <span>{imagineJob.status === 'awaiting_owner' ? 'AI video ready?open the prompt to finish' : 'Animating'}</span>
             </div>
           ) : null}
           {showComposer ? (

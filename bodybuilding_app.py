@@ -3515,14 +3515,12 @@ def process_imagine_job(job_id: int):
                     update_imagine_job(job_id, status=IMAGINE_STATUS_ERROR, error=f'Failed writing video: {write_err}')
                     return
                 rel_path = f"uploads/{IMAGINE_OUTPUT_SUBDIR}/{filename}"
+                # AI videos only appear in carousel, never as replies
                 if job.get('is_owner'):
                     update_imagine_job(job_id, status=IMAGINE_STATUS_AWAITING_OWNER, result_path=rel_path)
                 else:
-                    reply_id = create_imagine_reply(job, rel_path, style)
-                    if reply_id:
-                        update_imagine_job(job_id, status=IMAGINE_STATUS_COMPLETED, result_path=rel_path, auto_reply_id=reply_id, action='auto_reply')
-                    else:
-                        update_imagine_job(job_id, status=IMAGINE_STATUS_ERROR, result_path=rel_path, error='Failed to create reply for generated video')
+                    # For non-owners, mark as completed but don't create reply
+                    update_imagine_job(job_id, status=IMAGINE_STATUS_COMPLETED, result_path=rel_path, action='carousel_only')
                 logger.info(f"[Imagine] Job {job_id} completed")
                 return
             if status in ('failed', 'error', 'cancelled'):
@@ -12242,33 +12240,73 @@ def api_imagine_resolve():
     if target_id is None:
         return jsonify({'success': False, 'error': 'Invalid job target'}), 400
 
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            ph = get_sql_placeholder()
-            if target_type == 'post':
-                if normalized_action == 'replace':
-                    c.execute(f"UPDATE posts SET image_path=NULL, video_path={ph} WHERE id={ph}", (result_path, target_id))
-                else:
-                    c.execute(f"UPDATE posts SET video_path={ph} WHERE id={ph}", (result_path, target_id))
-            else:
-                try:
-                    c.execute("ALTER TABLE replies ADD COLUMN video_path TEXT")
-                except Exception:
-                    pass
-                if normalized_action == 'replace':
-                    c.execute(f"UPDATE replies SET image_path=NULL, video_path={ph} WHERE id={ph}", (result_path, target_id))
-                else:
-                    c.execute(f"UPDATE replies SET video_path={ph} WHERE id={ph}", (result_path, target_id))
-            if not USE_MYSQL:
-                conn.commit()
-    except Exception as e:
-        logger.error(f"Imagine resolve failed for job {job_id}: {e}")
-        return jsonify({'success': False, 'error': 'Failed applying imagine result'}), 500
+    # AI videos only appear in carousel, never modify post/reply media
+    # No database modifications needed - carousel gets data from imagine_jobs table
 
     update_imagine_job(job_id, status=IMAGINE_STATUS_COMPLETED, action=normalized_action, result_path=result_path)
 
     return jsonify({'success': True, 'result_path': result_path, 'result_url': get_public_upload_url(result_path)})
+
+@app.route('/api/carousel_items')
+@login_required
+def api_carousel_items():
+    """Get carousel items for a post (original image + AI videos)"""
+    username = session['username']
+    post_id = request.args.get('post_id', type=int)
+
+    if not post_id:
+        return jsonify({'success': False, 'error': 'Post ID is required'}), 400
+
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+
+            # Get post info
+            c.execute("SELECT image_path, video_path FROM posts WHERE id = ?", (post_id,))
+            post_row = c.fetchone()
+            if not post_row:
+                return jsonify({'success': False, 'error': 'Post not found'}), 404
+
+            carousel_items = []
+
+            # Add original image if it exists
+            if post_row['image_path']:
+                carousel_items.append({
+                    'type': 'original',
+                    'image_url': get_public_upload_url(post_row['image_path']),
+                    'image_path': post_row['image_path']
+                })
+
+            # Get all completed AI videos for this post
+            c.execute("""
+                SELECT ij.result_path, ij.created_by, ij.style
+                FROM imagine_jobs ij
+                WHERE ij.target_type = 'post'
+                AND ij.target_id = ?
+                AND ij.status = 'completed'
+                AND ij.result_path IS NOT NULL
+                ORDER BY ij.created_at ASC
+            """, (post_id,))
+
+            ai_videos = c.fetchall()
+            for video_row in ai_videos:
+                carousel_items.append({
+                    'type': 'ai_video',
+                    'video_url': get_public_upload_url(video_row['result_path']),
+                    'video_path': video_row['result_path'],
+                    'created_by': video_row['created_by'],
+                    'style': video_row['style']
+                })
+
+            return jsonify({
+                'success': True,
+                'videos': carousel_items,
+                'has_ai_videos': len([item for item in carousel_items if item['type'] == 'ai_video']) > 0
+            })
+
+    except Exception as e:
+        logger.error(f"Error fetching carousel items for post {post_id}: {str(e)}")
+        return jsonify({'success': False, 'error': 'Server error'}), 500
 
 
 @app.route('/api/imagine/videos/<int:post_id>', methods=['GET'])
@@ -17324,7 +17362,28 @@ def get_post():
                     hydrate_reply_metrics(ch)
             for reply in post['replies']:
                 hydrate_reply_metrics(reply)
-            
+
+            # Fetch AI videos for carousel
+            c.execute("""
+                SELECT ij.result_path, ij.created_by, ij.created_at, ij.style
+                FROM imagine_jobs ij
+                WHERE ij.target_type = 'post'
+                AND ij.target_id = ?
+                AND ij.status = 'completed'
+                AND ij.result_path IS NOT NULL
+                ORDER BY ij.created_at ASC
+            """, (post_id,))
+            ai_videos_raw = c.fetchall()
+            post['ai_videos'] = [
+                {
+                    'video_path': row['result_path'],
+                    'generated_by': row['created_by'],
+                    'created_at': row['created_at'],
+                    'style': row['style']
+                }
+                for row in ai_videos_raw
+            ]
+
             return jsonify({'success': True, 'post': post})
             
     except Exception as e:
