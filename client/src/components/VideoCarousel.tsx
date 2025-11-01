@@ -184,8 +184,25 @@ export default function VideoCarousel({ items, className = '', onPreviewImage }:
                       width: '100%', 
                       height: 'auto', 
                       maxHeight: '520px',
-                      minHeight: '200px',
                       objectFit: 'contain'
+                    }}
+                    onLoadedMetadata={(e) => {
+                      const video = e.currentTarget as HTMLVideoElement
+                      console.log('[Carousel] Video metadata - dimensions:', video.videoWidth, 'x', video.videoHeight)
+                      console.log('[Carousel] Video readyState:', video.readyState)
+                      console.log('[Carousel] Video src:', video.src)
+                    }}
+                    onLoadedData={(e) => {
+                      const video = e.currentTarget as HTMLVideoElement
+                      console.log('[Carousel] Video data loaded - readyState:', video.readyState)
+                      // Force video to show first frame
+                      try {
+                        if (video.readyState >= 2) {
+                          video.currentTime = 0.01
+                        }
+                      } catch (err) {
+                        console.warn('[Carousel] Failed to seek:', err)
+                      }
                     }}
                   />
                 </div>
