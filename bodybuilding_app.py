@@ -3671,9 +3671,48 @@ def process_imagine_job(job_id: int):
         
         if use_a2e:
             logger.info(f"[Imagine] Using A2E.ai for spicy video (job {job_id})")
+            # Compress image before sending to A2E to avoid 413 errors
+            # A2E accepts up to 10MB, but we'll compress to keep requests small
+            a2e_image_bytes = image_bytes
+            if PIL_AVAILABLE:
+                try:
+                    with Image.open(BytesIO(image_bytes)) as img:
+                        original_size = len(image_bytes)
+                        # Resize to max 1920px on longest side (A2E supports high res, but compress to save bandwidth)
+                        max_dimension = 1920
+                        if img.size[0] > max_dimension or img.size[1] > max_dimension:
+                            if img.size[0] > img.size[1]:
+                                new_size = (max_dimension, int(img.size[1] * (max_dimension / img.size[0])))
+                            else:
+                                new_size = (int(img.size[0] * (max_dimension / img.size[1])), max_dimension)
+                            img = img.resize(new_size, Image.Resampling.LANCZOS)
+                        
+                        # Convert to RGB if necessary
+                        if img.mode not in ('RGB', 'L'):
+                            if img.mode in ('RGBA', 'LA', 'P'):
+                                background = Image.new('RGB', img.size, (255, 255, 255))
+                                if img.mode == 'P':
+                                    img = img.convert('RGBA')
+                                if img.mode in ('RGBA', 'LA'):
+                                    background.paste(img, mask=img.split()[-1] if img.mode == 'RGBA' else None)
+                                else:
+                                    background.paste(img)
+                                img = background
+                            else:
+                                img = img.convert('RGB')
+                        
+                        # Compress to JPEG with quality 85 (good balance)
+                        output = BytesIO()
+                        img.save(output, format='JPEG', quality=85, optimize=True)
+                        a2e_image_bytes = output.getvalue()
+                        logger.info(f"[Imagine] Compressed image for A2E: {original_size} bytes -> {len(a2e_image_bytes)} bytes")
+                except Exception as e:
+                    logger.warning(f"[Imagine] Failed to compress image for A2E: {e}, using original")
+                    a2e_image_bytes = image_bytes
+            
             # Create A2E job with explicit prompt for sexual content
             a2e_prompt = "Create a highly sexual, erotic, and explicit video animation with seductive movements, provocative poses, sensual atmosphere, and intense sexual energy. Make it very sexual, erotic, and explicit."
-            a2e_job_id = a2e_create_image_to_video_job(image_bytes, a2e_prompt, duration=5, resolution='1080p')
+            a2e_job_id = a2e_create_image_to_video_job(a2e_image_bytes, a2e_prompt, duration=5, resolution='1080p')
             update_imagine_job(job_id, runway_job_id=a2e_job_id)  # Reuse runway_job_id field
             poll_interval = int(os.environ.get('A2E_POLL_INTERVAL', '10'))
             max_wait = int(os.environ.get('A2E_MAX_WAIT_SECONDS', '300'))
