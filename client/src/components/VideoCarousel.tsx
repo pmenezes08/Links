@@ -138,13 +138,14 @@ export default function VideoCarousel({ items, className = '', onPreviewImage }:
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
-        style={{ touchAction: 'pan-y pinch-zoom' }}
+        style={{ touchAction: 'pan-y pinch-zoom', willChange: 'transform' }}
       >
         <div
           className="flex transition-transform duration-300 ease-out"
           style={{
             transform: `translateX(${-currentIndex * 100 + translateX}%)`,
-            width: `${items.length * 100}%`
+            width: `${items.length * 100}%`,
+            willChange: 'transform'
           }}
         >
           {items.map((item, index) => (
@@ -179,18 +180,28 @@ export default function VideoCarousel({ items, className = '', onPreviewImage }:
                     controls
                     playsInline
                     loop
+                    preload="auto"
                     style={{ 
                       display: 'block', 
                       width: '100%', 
                       height: 'auto', 
                       maxHeight: '520px',
-                      objectFit: 'contain'
+                      objectFit: 'contain',
+                      visibility: 'visible',
+                      opacity: 1,
+                      zIndex: 1
                     }}
                     onLoadedMetadata={(e) => {
                       const video = e.currentTarget as HTMLVideoElement
                       console.log('[Carousel] Video metadata - dimensions:', video.videoWidth, 'x', video.videoHeight)
                       console.log('[Carousel] Video readyState:', video.readyState)
                       console.log('[Carousel] Video src:', video.src)
+                      // Seek to first frame immediately
+                      try {
+                        video.currentTime = 0.1
+                      } catch (err) {
+                        console.warn('[Carousel] Failed to seek in metadata:', err)
+                      }
                     }}
                     onLoadedData={(e) => {
                       const video = e.currentTarget as HTMLVideoElement
@@ -199,9 +210,23 @@ export default function VideoCarousel({ items, className = '', onPreviewImage }:
                       try {
                         if (video.readyState >= 2) {
                           video.currentTime = 0.01
+                          // Force a repaint
+                          video.load()
                         }
                       } catch (err) {
                         console.warn('[Carousel] Failed to seek:', err)
+                      }
+                    }}
+                    onCanPlay={(e) => {
+                      const video = e.currentTarget as HTMLVideoElement
+                      console.log('[Carousel] Video can play - forcing first frame display')
+                      try {
+                        video.currentTime = 0.1
+                        // Ensure video is visible
+                        video.style.visibility = 'visible'
+                        video.style.opacity = '1'
+                      } catch (err) {
+                        console.warn('[Carousel] Failed to show first frame:', err)
                       }
                     }}
                   />
