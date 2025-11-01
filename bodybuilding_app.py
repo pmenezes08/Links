@@ -3321,19 +3321,50 @@ def runway_create_image_to_video_job(image_bytes: bytes, style_prompt: str) -> s
 
     ratio = select_ratio()
 
-    # Encode the processed (compressed/resized) image to base64
-    data_uri = f"data:{mime_type};base64,{base64.b64encode(processed_image_bytes).decode('utf-8')}"
-    
-    # Check if base64 string is still too large (Runway limit is 2048 chars for base64 string)
-    if len(data_uri) > 2000:
-        logger.warning(f"[Imagine] Base64 image still too large ({len(data_uri)} chars), may fail Runway validation")
-    
     prompt_text = style_prompt.strip() if style_prompt else 'Animate this scene as a short cinematic video.'
+
+    # Try to use a URL if PUBLIC_BASE_URL is configured, otherwise use base64
+    # Runway accepts either a URL or base64 string (with 2048 char limit for base64)
+    prompt_image = None
+    
+    # First try: Upload temporary image and use URL (if PUBLIC_BASE_URL is set)
+    if PUBLIC_BASE_URL:
+        try:
+            timestamp = datetime.utcnow().strftime('%Y%m%d_%H%M%S_%f')
+            temp_filename = f"temp_imagine_{timestamp}.jpg"
+            temp_path = os.path.join(IMAGINE_OUTPUT_DIR, temp_filename)
+            os.makedirs(IMAGINE_OUTPUT_DIR, exist_ok=True)
+            with open(temp_path, 'wb') as fh:
+                fh.write(processed_image_bytes)
+            rel_path = f"uploads/{IMAGINE_OUTPUT_SUBDIR}/{temp_filename}"
+            temp_url = f"{PUBLIC_BASE_URL}/{rel_path}"
+            prompt_image = temp_url
+            logger.info(f"[Imagine] Using temporary image URL: {temp_url}")
+        except Exception as e:
+            logger.warning(f"[Imagine] Failed to create temporary image URL: {e}, falling back to base64")
+
+    # Fallback: Use base64 data URI (must be <=2048 chars total)
+    if not prompt_image:
+        base64_str = base64.b64encode(processed_image_bytes).decode('utf-8')
+        data_uri = f"data:{mime_type};base64,{base64_str}"
+        
+        # Check if base64 string is still too large
+        if len(data_uri) > 2048:
+            logger.error(f"[Imagine] Base64 image too large ({len(data_uri)} chars), Runway will reject")
+            # Try using just the base64 string without data URI prefix
+            if len(base64_str) <= 2048:
+                prompt_image = base64_str
+                logger.info(f"[Imagine] Using base64 string without data URI prefix ({len(base64_str)} chars)")
+            else:
+                raise RuntimeError(f"Image too large even after compression ({len(data_uri)} chars for data URI, {len(base64_str)} chars for base64)")
+        else:
+            prompt_image = data_uri
+            logger.info(f"[Imagine] Using base64 data URI ({len(data_uri)} chars)")
 
     payload: Dict[str, Any] = {
         'model': normalized_model or 'gen4_turbo',
         'promptText': prompt_text,
-        'promptImage': data_uri,
+        'promptImage': prompt_image,
         'ratio': ratio
     }
 
